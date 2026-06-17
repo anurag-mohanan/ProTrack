@@ -1,0 +1,153 @@
+from app.api.v1 import users
+from app.api.v1.router_factory import (
+    APIRouter,
+    ContactFilters,
+    MilestoneFilters,
+    ProjectFilters,
+    TaskTypeFilters,
+    TimesheetEntryFilters,
+    TimesheetFilters,
+    build_crud_router,
+)
+from app.crud import (
+    contact,
+    customer,
+    milestone,
+    project,
+    role,
+    stream,
+    task_type,
+    timesheet,
+    timesheet_entry,
+)
+from app.schemas.identity import RoleCreate, RoleRead, RoleUpdate
+from app.schemas.organization import (
+    ContactCreate,
+    ContactRead,
+    ContactUpdate,
+    CustomerCreate,
+    CustomerRead,
+    CustomerUpdate,
+    StreamCreate,
+    StreamRead,
+    StreamUpdate,
+    TaskTypeCreate,
+    TaskTypeRead,
+    TaskTypeUpdate,
+)
+from app.schemas.project import (
+    MilestoneCreate,
+    MilestoneRead,
+    MilestoneUpdate,
+    ProjectCreate,
+    ProjectRead,
+    ProjectUpdate,
+)
+from app.schemas.timesheet import (
+    TimesheetCreate,
+    TimesheetEntryCreate,
+    TimesheetEntryRead,
+    TimesheetEntryUpdate,
+    TimesheetRead,
+    TimesheetUpdate,
+)
+
+api_router = APIRouter()
+
+api_router.include_router(
+    build_crud_router(
+        prefix="/roles",
+        tags=["roles"],
+        crud=role,
+        schema_read=RoleRead,
+        schema_create=RoleCreate,
+        schema_update=RoleUpdate,
+    )
+)
+api_router.include_router(users.router)
+api_router.include_router(
+    build_crud_router(
+        prefix="/streams",
+        tags=["streams"],
+        crud=stream,
+        schema_read=StreamRead,
+        schema_create=StreamCreate,
+        schema_update=StreamUpdate,
+    )
+)
+api_router.include_router(
+    build_crud_router(
+        prefix="/customers",
+        tags=["customers"],
+        crud=customer,
+        schema_read=CustomerRead,
+        schema_create=CustomerCreate,
+        schema_update=CustomerUpdate,
+    )
+)
+api_router.include_router(
+    build_crud_router(
+        prefix="/contacts",
+        tags=["contacts"],
+        crud=contact,
+        schema_read=ContactRead,
+        schema_create=ContactCreate,
+        schema_update=ContactUpdate,
+        filters_model=ContactFilters,
+    )
+)
+api_router.include_router(
+    build_crud_router(
+        prefix="/task-types",
+        tags=["task-types"],
+        crud=task_type,
+        schema_read=TaskTypeRead,
+        schema_create=TaskTypeCreate,
+        schema_update=TaskTypeUpdate,
+        filters_model=TaskTypeFilters,
+    )
+)
+api_router.include_router(
+    build_crud_router(
+        prefix="/projects",
+        tags=["projects"],
+        crud=project,
+        schema_read=ProjectRead,
+        schema_create=ProjectCreate,
+        schema_update=ProjectUpdate,
+        filters_model=ProjectFilters,
+    )
+)
+api_router.include_router(
+    build_crud_router(
+        prefix="/milestones",
+        tags=["milestones"],
+        crud=milestone,
+        schema_read=MilestoneRead,
+        schema_create=MilestoneCreate,
+        schema_update=MilestoneUpdate,
+        filters_model=MilestoneFilters,
+    )
+)
+api_router.include_router(
+    build_crud_router(
+        prefix="/timesheets",
+        tags=["timesheets"],
+        crud=timesheet,
+        schema_read=TimesheetRead,
+        schema_create=TimesheetCreate,
+        schema_update=TimesheetUpdate,
+        filters_model=TimesheetFilters,
+    )
+)
+api_router.include_router(
+    build_crud_router(
+        prefix="/timesheet-entries",
+        tags=["timesheet-entries"],
+        crud=timesheet_entry,
+        schema_read=TimesheetEntryRead,
+        schema_create=TimesheetEntryCreate,
+        schema_update=TimesheetEntryUpdate,
+        filters_model=TimesheetEntryFilters,
+    )
+)

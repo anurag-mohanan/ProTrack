@@ -1,0 +1,31 @@
+from uuid import UUID
+
+from app.api.deps import APIRouter, Depends, HTTPException, Session, get_db, status
+from app.crud.dashboard import (
+    get_dashboard_summary,
+    get_designer_workload,
+    get_project_dashboard,
+)
+from app.schemas.dashboard import DashboardSummary, DesignerWorkload, ProjectDashboard
+
+router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+
+@router.get("/summary", response_model=DashboardSummary)
+def dashboard_summary(db: Session = Depends(get_db)):
+    return get_dashboard_summary(db)
+
+
+@router.get("/workload", response_model=list[DesignerWorkload])
+def dashboard_workload(db: Session = Depends(get_db)):
+    return get_designer_workload(db)
+
+
+@router.get("/project/{project_id}", response_model=ProjectDashboard)
+def dashboard_project(project_id: UUID, db: Session = Depends(get_db)):
+    result = get_project_dashboard(db, project_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
+    return result

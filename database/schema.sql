@@ -124,6 +124,7 @@ CREATE TABLE projects (
     stream_id           UUID            NOT NULL REFERENCES streams (id),
     code                VARCHAR(50)     NOT NULL UNIQUE,
     quoted_hours        NUMERIC(8, 2)   NOT NULL CHECK (quoted_hours > 0),
+    actual_hours        NUMERIC(8, 2)   NOT NULL DEFAULT 0,
     due_date            DATE            NOT NULL,
     status              project_status  NOT NULL DEFAULT 'not_started',
     notes               TEXT,

@@ -1,9 +1,8 @@
-from app.api.v1 import users
+from app.api.v1 import dashboard, projects, users
 from app.api.v1.router_factory import (
     APIRouter,
     ContactFilters,
     MilestoneFilters,
-    ProjectFilters,
     TaskTypeFilters,
     TimesheetEntryFilters,
     TimesheetFilters,
@@ -13,13 +12,12 @@ from app.crud import (
     contact,
     customer,
     milestone,
-    project,
     role,
     stream,
     task_type,
     timesheet,
-    timesheet_entry,
 )
+from app.crud.timesheet_entry import timesheet_entry
 from app.schemas.identity import RoleCreate, RoleRead, RoleUpdate
 from app.schemas.organization import (
     ContactCreate,
@@ -35,14 +33,7 @@ from app.schemas.organization import (
     TaskTypeRead,
     TaskTypeUpdate,
 )
-from app.schemas.project import (
-    MilestoneCreate,
-    MilestoneRead,
-    MilestoneUpdate,
-    ProjectCreate,
-    ProjectRead,
-    ProjectUpdate,
-)
+from app.schemas.project import MilestoneCreate, MilestoneRead, MilestoneUpdate
 from app.schemas.timesheet import (
     TimesheetCreate,
     TimesheetEntryCreate,
@@ -108,15 +99,7 @@ api_router.include_router(
     )
 )
 api_router.include_router(
-    build_crud_router(
-        prefix="/projects",
-        tags=["projects"],
-        crud=project,
-        schema_read=ProjectRead,
-        schema_create=ProjectCreate,
-        schema_update=ProjectUpdate,
-        filters_model=ProjectFilters,
-    )
+    projects.router,
 )
 api_router.include_router(
     build_crud_router(
@@ -151,3 +134,4 @@ api_router.include_router(
         filters_model=TimesheetEntryFilters,
     )
 )
+api_router.include_router(dashboard.router)

@@ -1,5 +1,6 @@
 from app.models.enums import (
     MilestoneStatus,
+    ProjectHealth,
     ProjectStatus,
     TimesheetStatus,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "Milestone",
     "MilestoneStatus",
     "Project",
+    "ProjectHealth",
     "ProjectStatus",
     "Role",
     "Stream",

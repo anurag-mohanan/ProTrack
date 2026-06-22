@@ -8,6 +8,12 @@ class ProjectStatus(enum.Enum):
     completed = "completed"
 
 
+class ProjectHealth(enum.Enum):
+    green = "green"
+    yellow = "yellow"
+    red = "red"
+
+
 class MilestoneStatus(enum.Enum):
     not_started = "not_started"
     in_progress = "in_progress"

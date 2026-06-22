@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import MilestoneStatus, ProjectStatus
+from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus
 from app.schemas.common import TimestampSchema
 
 
@@ -45,7 +45,9 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectRead(ProjectBase, TimestampSchema):
-    pass
+    actual_hours: Decimal = Decimal("0")
+    progress_percent: Decimal = Decimal("0.00")
+    health: ProjectHealth = ProjectHealth.green
 
 
 class MilestoneBase(BaseModel):

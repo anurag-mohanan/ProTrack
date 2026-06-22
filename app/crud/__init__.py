@@ -1,6 +1,7 @@
 from app.crud.base import CRUDBase
 from app.crud.milestone import milestone
 from app.crud.project import project
+from app.crud.timesheet_entry import timesheet_entry
 from app.crud.user import user
 from app.models.models import (
     Contact,
@@ -36,9 +37,6 @@ customer = CRUDBase[Customer, CustomerCreate, CustomerUpdate](Customer)
 contact = CRUDBase[Contact, ContactCreate, ContactUpdate](Contact)
 task_type = CRUDBase[TaskType, TaskTypeCreate, TaskTypeUpdate](TaskType)
 timesheet = CRUDBase[Timesheet, TimesheetCreate, TimesheetUpdate](Timesheet)
-timesheet_entry = CRUDBase[
-    TimesheetEntry, TimesheetEntryCreate, TimesheetEntryUpdate
-](TimesheetEntry)
 
 __all__ = [
     "contact",

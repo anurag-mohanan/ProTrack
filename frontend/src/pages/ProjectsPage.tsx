@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -21,23 +21,45 @@ import PageHeader from '../components/common/PageHeader';
 import AlertBanner from '../components/common/AlertBanner';
 import StatusChip from '../components/common/StatusChip';
 import { useLookupMaps } from '../hooks/useLookupMaps';
-import { customersApi, projectsApi, streamsApi, usersApi } from '../api/resources';
-import type { Project, ProjectStatus } from '../types';
+import {
+  contactsApi,
+  customersApi,
+  projectsApi,
+  rolesApi,
+  streamsApi,
+  usersApi,
+} from '../api/resources';
+import type { Project, ProjectStatus, User } from '../types';
+
+const PROJECT_STATUSES: ProjectStatus[] = [
+  'not_started',
+  'in_progress',
+  'waiting_for_customer',
+  'completed',
+];
 
 const emptyForm = {
+  tool_number: '',
+  part_description: '',
   customer_id: '',
+  customer_contact_id: '',
+  design_leader_id: '',
+  designer_id: '',
+  surfacer_id: '',
   stream_id: '',
-  created_by: '',
-  name: '',
   code: '',
-  description: '',
-  status: 'draft' as ProjectStatus,
-  planned_start: '',
-  planned_end: '',
+  quoted_hours: '',
+  due_date: '',
+  status: 'not_started' as ProjectStatus,
+  notes: '',
 };
 
+function userLabel(user: User) {
+  return `${user.first_name} ${user.last_name}`;
+}
+
 export default function ProjectsPage() {
-  const { customers, streams } = useLookupMaps();
+  const { customers, users } = useLookupMaps();
   const [rows, setRows] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -45,7 +67,9 @@ export default function ProjectsPage() {
   const [form, setForm] = useState(emptyForm);
   const [customerOptions, setCustomerOptions] = useState<{ id: string; name: string }[]>([]);
   const [streamOptions, setStreamOptions] = useState<{ id: string; name: string }[]>([]);
-  const [userOptions, setUserOptions] = useState<{ id: string; name: string }[]>([]);
+  const [contactOptions, setContactOptions] = useState<{ id: string; name: string }[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [roleNames, setRoleNames] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
     projectsApi
@@ -56,14 +80,46 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     load();
-    Promise.all([customersApi.list(), streamsApi.list(), usersApi.list()])
-      .then(([c, s, u]) => {
+    Promise.all([customersApi.list(), streamsApi.list(), usersApi.list(), rolesApi.list()])
+      .then(([c, s, u, r]) => {
         setCustomerOptions(c.map((x) => ({ id: x.id, name: x.name })));
         setStreamOptions(s.map((x) => ({ id: x.id, name: x.name })));
-        setUserOptions(u.map((x) => ({ id: x.id, name: `${x.first_name} ${x.last_name}` })));
+        setAllUsers(u);
+        setRoleNames(Object.fromEntries(r.map((role) => [role.id, role.name])));
       })
       .catch(() => undefined);
   }, [load]);
+
+  useEffect(() => {
+    if (!form.customer_id) {
+      setContactOptions([]);
+      return;
+    }
+    contactsApi
+      .list({ customer_id: form.customer_id })
+      .then((contacts) =>
+        setContactOptions(
+          contacts.map((c) => ({
+            id: c.id,
+            name: `${c.first_name} ${c.last_name}`,
+          })),
+        ),
+      )
+      .catch(() => setContactOptions([]));
+  }, [form.customer_id]);
+
+  const usersByRole = useMemo(() => {
+    const filterRole = (roleName: string) =>
+      allUsers
+        .filter((u) => u.is_active && roleNames[u.role_id] === roleName)
+        .map((u) => ({ id: u.id, name: userLabel(u) }));
+
+    return {
+      designLeader: filterRole('Design Leader'),
+      designer: filterRole('Designer'),
+      surfacer: filterRole('Surfacer'),
+    };
+  }, [allUsers, roleNames]);
 
   const openCreate = () => {
     setEditing(null);
@@ -74,15 +130,19 @@ export default function ProjectsPage() {
   const openEdit = (row: Project) => {
     setEditing(row);
     setForm({
+      tool_number: row.tool_number,
+      part_description: row.part_description,
       customer_id: row.customer_id,
+      customer_contact_id: row.customer_contact_id,
+      design_leader_id: row.design_leader_id,
+      designer_id: row.designer_id ?? '',
+      surfacer_id: row.surfacer_id ?? '',
       stream_id: row.stream_id,
-      created_by: row.created_by,
-      name: row.name,
       code: row.code,
-      description: row.description ?? '',
+      quoted_hours: String(row.quoted_hours),
+      due_date: row.due_date,
       status: row.status,
-      planned_start: row.planned_start ?? '',
-      planned_end: row.planned_end ?? '',
+      notes: row.notes ?? '',
     });
     setOpen(true);
   };
@@ -90,10 +150,19 @@ export default function ProjectsPage() {
   const save = async () => {
     try {
       const payload = {
-        ...form,
-        description: form.description || null,
-        planned_start: form.planned_start || null,
-        planned_end: form.planned_end || null,
+        tool_number: form.tool_number,
+        part_description: form.part_description,
+        customer_id: form.customer_id,
+        customer_contact_id: form.customer_contact_id,
+        design_leader_id: form.design_leader_id,
+        designer_id: form.designer_id || null,
+        surfacer_id: form.surfacer_id || null,
+        stream_id: form.stream_id,
+        code: form.code,
+        quoted_hours: Number(form.quoted_hours),
+        due_date: form.due_date,
+        status: form.status,
+        notes: form.notes || null,
       };
       if (editing) {
         await projectsApi.update(editing.id, payload);
@@ -118,7 +187,8 @@ export default function ProjectsPage() {
 
   const columns: GridColDef<Project>[] = [
     { field: 'code', headerName: 'Code', width: 110 },
-    { field: 'name', headerName: 'Name', flex: 1, minWidth: 180 },
+    { field: 'tool_number', headerName: 'Tool #', width: 110 },
+    { field: 'part_description', headerName: 'Part', flex: 1, minWidth: 160 },
     {
       field: 'customer_id',
       headerName: 'Customer',
@@ -127,19 +197,20 @@ export default function ProjectsPage() {
       valueGetter: (_, row) => customers[row.customer_id] ?? row.customer_id,
     },
     {
-      field: 'stream_id',
-      headerName: 'Stream',
-      width: 160,
-      valueGetter: (_, row) => streams[row.stream_id] ?? row.stream_id,
+      field: 'design_leader_id',
+      headerName: 'Design Leader',
+      flex: 1,
+      minWidth: 140,
+      valueGetter: (_, row) => users[row.design_leader_id] ?? row.design_leader_id,
     },
     {
       field: 'status',
       headerName: 'Status',
-      width: 120,
+      width: 160,
       renderCell: (params) => <StatusChip value={params.value} />,
     },
-    { field: 'planned_start', headerName: 'Start', width: 110 },
-    { field: 'planned_end', headerName: 'End', width: 110 },
+    { field: 'due_date', headerName: 'Due Date', width: 120 },
+    { field: 'quoted_hours', headerName: 'Quoted Hrs', width: 110 },
     {
       field: 'actions',
       type: 'actions',
@@ -179,23 +250,38 @@ export default function ProjectsPage() {
               <TextField label="Code" fullWidth required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select label="Status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ProjectStatus })}>
-                  {['draft', 'active', 'on_hold', 'completed', 'cancelled'].map((s) => (
-                    <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>
-                  ))}
+              <TextField label="Tool Number" fullWidth required value={form.tool_number} onChange={(e) => setForm({ ...form, tool_number: e.target.value })} />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <TextField label="Part Description" fullWidth required value={form.part_description} onChange={(e) => setForm({ ...form, part_description: e.target.value })} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControl fullWidth required>
+                <InputLabel>Customer</InputLabel>
+                <Select
+                  label="Customer"
+                  value={form.customer_id}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      customer_id: e.target.value,
+                      customer_contact_id: '',
+                    })
+                  }
+                >
+                  {customerOptions.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12 }}>
-              <TextField label="Name" fullWidth required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormControl fullWidth required>
-                <InputLabel>Customer</InputLabel>
-                <Select label="Customer" value={form.customer_id} onChange={(e) => setForm({ ...form, customer_id: e.target.value })}>
-                  {customerOptions.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControl fullWidth required disabled={!form.customer_id}>
+                <InputLabel>Customer Contact</InputLabel>
+                <Select
+                  label="Customer Contact"
+                  value={form.customer_contact_id}
+                  onChange={(e) => setForm({ ...form, customer_contact_id: e.target.value })}
+                >
+                  {contactOptions.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
                 </Select>
               </FormControl>
             </Grid>
@@ -209,20 +295,48 @@ export default function ProjectsPage() {
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
               <FormControl fullWidth required>
-                <InputLabel>Created By</InputLabel>
-                <Select label="Created By" value={form.created_by} onChange={(e) => setForm({ ...form, created_by: e.target.value })}>
-                  {userOptions.map((u) => <MenuItem key={u.id} value={u.id}>{u.name}</MenuItem>)}
+                <InputLabel>Design Leader</InputLabel>
+                <Select label="Design Leader" value={form.design_leader_id} onChange={(e) => setForm({ ...form, design_leader_id: e.target.value })}>
+                  {usersByRole.designLeader.map((u) => <MenuItem key={u.id} value={u.id}>{u.name}</MenuItem>)}
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField label="Planned Start" type="date" fullWidth slotProps={{ inputLabel: { shrink: true } }} value={form.planned_start} onChange={(e) => setForm({ ...form, planned_start: e.target.value })} />
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FormControl fullWidth>
+                <InputLabel>Designer</InputLabel>
+                <Select label="Designer" value={form.designer_id} onChange={(e) => setForm({ ...form, designer_id: e.target.value })}>
+                  <MenuItem value="">None</MenuItem>
+                  {usersByRole.designer.map((u) => <MenuItem key={u.id} value={u.id}>{u.name}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FormControl fullWidth>
+                <InputLabel>Surfacer</InputLabel>
+                <Select label="Surfacer" value={form.surfacer_id} onChange={(e) => setForm({ ...form, surfacer_id: e.target.value })}>
+                  <MenuItem value="">None</MenuItem>
+                  {usersByRole.surfacer.map((u) => <MenuItem key={u.id} value={u.id}>{u.name}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField label="Quoted Hours" type="number" fullWidth required value={form.quoted_hours} onChange={(e) => setForm({ ...form, quoted_hours: e.target.value })} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField label="Due Date" type="date" fullWidth required slotProps={{ inputLabel: { shrink: true } }} value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField label="Planned End" type="date" fullWidth slotProps={{ inputLabel: { shrink: true } }} value={form.planned_end} onChange={(e) => setForm({ ...form, planned_end: e.target.value })} />
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select label="Status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ProjectStatus })}>
+                  {PROJECT_STATUSES.map((s) => (
+                    <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField label="Description" fullWidth multiline rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              <TextField label="Notes" fullWidth multiline rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             </Grid>
           </Grid>
         </DialogContent>

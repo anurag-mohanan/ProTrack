@@ -4,8 +4,18 @@ export interface Timestamped {
   updated_at: string;
 }
 
-export type ProjectStatus = 'draft' | 'active' | 'on_hold' | 'completed' | 'cancelled';
-export type MilestoneStatus = 'pending' | 'in_progress' | 'completed' | 'delayed';
+export type ProjectStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'waiting_for_customer'
+  | 'completed';
+
+export type MilestoneStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'completed'
+  | 'not_applicable';
+
 export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 
 export interface Role extends Timestamped {
@@ -53,26 +63,19 @@ export interface TaskType extends Timestamped {
 }
 
 export interface Project extends Timestamped {
+  tool_number: string;
+  part_description: string;
   customer_id: string;
+  customer_contact_id: string;
+  design_leader_id: string;
+  designer_id: string | null;
+  surfacer_id: string | null;
   stream_id: string;
-  created_by: string;
-  name: string;
   code: string;
-  description: string | null;
+  quoted_hours: number;
+  due_date: string;
   status: ProjectStatus;
-  planned_start: string | null;
-  planned_end: string | null;
-  actual_start: string | null;
-  actual_end: string | null;
-}
-
-export interface ProjectMember extends Timestamped {
-  project_id: string;
-  user_id: string;
-  role_on_project: string;
-  allocation_percent: number;
-  start_date: string | null;
-  end_date: string | null;
+  notes: string | null;
 }
 
 export interface Milestone extends Timestamped {
@@ -102,4 +105,8 @@ export interface TimesheetEntry extends Timestamped {
   entry_date: string;
   hours: number;
   description: string | null;
+}
+
+export function projectLabel(project: Pick<Project, 'code' | 'tool_number' | 'part_description'>) {
+  return `${project.code} — ${project.tool_number}`;
 }

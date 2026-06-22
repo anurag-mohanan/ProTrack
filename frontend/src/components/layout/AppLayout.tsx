@@ -18,21 +18,16 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import FolderIcon from '@mui/icons-material/Folder';
 import FlagIcon from '@mui/icons-material/Flag';
 import ScheduleIcon from '@mui/icons-material/Schedule';
-import GroupsIcon from '@mui/icons-material/Groups';
 import BusinessIcon from '@mui/icons-material/Business';
 import PeopleIcon from '@mui/icons-material/People';
 import CategoryIcon from '@mui/icons-material/Category';
-import AssessmentIcon from '@mui/icons-material/Assessment';
 
 const drawerWidth = 260;
 
 const navSections = [
   {
     title: 'Overview',
-    items: [
-      { label: 'Dashboard', path: '/', icon: <DashboardIcon /> },
-      { label: 'Reports', path: '/reports', icon: <AssessmentIcon /> },
-    ],
+    items: [{ label: 'Dashboard', path: '/', icon: <DashboardIcon /> }],
   },
   {
     title: 'Delivery',
@@ -40,7 +35,6 @@ const navSections = [
       { label: 'Projects', path: '/projects', icon: <FolderIcon /> },
       { label: 'Milestones', path: '/milestones', icon: <FlagIcon /> },
       { label: 'Timesheets', path: '/timesheets', icon: <ScheduleIcon /> },
-      { label: 'Resource Planning', path: '/resource-planning', icon: <GroupsIcon /> },
     ],
   },
   {

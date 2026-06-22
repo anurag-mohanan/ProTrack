@@ -1,14 +1,12 @@
 import { Chip } from '@mui/material';
 
 const colorMap: Record<string, 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info'> = {
-  draft: 'default',
-  active: 'primary',
-  on_hold: 'warning',
-  completed: 'success',
-  cancelled: 'error',
-  pending: 'default',
+  not_started: 'default',
   in_progress: 'info',
-  delayed: 'error',
+  waiting_for_customer: 'warning',
+  completed: 'success',
+  not_applicable: 'default',
+  draft: 'default',
   submitted: 'info',
   approved: 'success',
   rejected: 'error',

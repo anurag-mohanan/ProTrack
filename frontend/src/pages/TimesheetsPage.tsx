@@ -26,11 +26,13 @@ import StatusChip from '../components/common/StatusChip';
 import { useLookupMaps } from '../hooks/useLookupMaps';
 import {
   projectsApi,
+  taskTypesApi,
   timesheetEntriesApi,
   timesheetsApi,
   usersApi,
 } from '../api/resources';
 import type { Timesheet, TimesheetEntry, TimesheetStatus } from '../types';
+import { projectLabel } from '../types';
 
 export default function TimesheetsPage() {
   const { users, projects } = useLookupMaps();
@@ -40,6 +42,7 @@ export default function TimesheetsPage() {
   const [userOptions, setUserOptions] = useState<{ id: string; name: string }[]>([]);
   const [timesheetOptions, setTimesheetOptions] = useState<{ id: string; label: string }[]>([]);
   const [projectOptions, setProjectOptions] = useState<{ id: string; name: string }[]>([]);
+  const [taskTypeOptions, setTaskTypeOptions] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
@@ -49,6 +52,7 @@ export default function TimesheetsPage() {
   const [entryForm, setEntryForm] = useState({
     timesheet_id: '',
     project_id: '',
+    task_type_id: '',
     entry_date: '',
     hours: 8,
     description: '',
@@ -71,9 +75,10 @@ export default function TimesheetsPage() {
 
   useEffect(() => {
     load();
-    Promise.all([usersApi.list(), projectsApi.list()]).then(([u, p]) => {
+    Promise.all([usersApi.list(), projectsApi.list(), taskTypesApi.list()]).then(([u, p, t]) => {
       setUserOptions(u.map((x) => ({ id: x.id, name: `${x.first_name} ${x.last_name}` })));
-      setProjectOptions(p.map((x) => ({ id: x.id, name: `${x.code} — ${x.name}` })));
+      setProjectOptions(p.map((x) => ({ id: x.id, name: projectLabel(x) })));
+      setTaskTypeOptions(t.filter((x) => x.is_active).map((x) => ({ id: x.id, name: x.name })));
     });
   }, [load]);
 
@@ -90,7 +95,11 @@ export default function TimesheetsPage() {
 
   const saveEntry = async () => {
     try {
-      const payload = { ...entryForm, description: entryForm.description || null };
+      const payload = {
+        ...entryForm,
+        task_type_id: entryForm.task_type_id || null,
+        description: entryForm.description || null,
+      };
       if (editingEntry) await timesheetEntriesApi.update(editingEntry.id, payload);
       else await timesheetEntriesApi.create(payload);
       setEntryOpen(false);
@@ -164,6 +173,7 @@ export default function TimesheetsPage() {
             setEntryForm({
               timesheet_id: params.row.timesheet_id,
               project_id: params.row.project_id,
+              task_type_id: params.row.task_type_id ?? '',
               entry_date: params.row.entry_date,
               hours: params.row.hours,
               description: params.row.description ?? '',
@@ -218,7 +228,7 @@ export default function TimesheetsPage() {
               variant="contained"
               onClick={() => {
                 setEditingEntry(null);
-                setEntryForm({ timesheet_id: '', project_id: '', entry_date: '', hours: 8, description: '' });
+                setEntryForm({ timesheet_id: '', project_id: '', task_type_id: '', entry_date: '', hours: 8, description: '' });
                 setEntryOpen(true);
               }}
             >
@@ -279,6 +289,15 @@ export default function TimesheetsPage() {
                 <InputLabel>Project</InputLabel>
                 <Select label="Project" value={entryForm.project_id} onChange={(e) => setEntryForm({ ...entryForm, project_id: e.target.value })}>
                   {projectOptions.map((p) => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth>
+                <InputLabel>Task Type</InputLabel>
+                <Select label="Task Type" value={entryForm.task_type_id} onChange={(e) => setEntryForm({ ...entryForm, task_type_id: e.target.value })}>
+                  <MenuItem value="">None</MenuItem>
+                  {taskTypeOptions.map((t) => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
                 </Select>
               </FormControl>
             </Grid>

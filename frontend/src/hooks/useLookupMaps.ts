@@ -6,6 +6,7 @@ import {
   streamsApi,
   usersApi,
 } from '../api/resources';
+import { projectLabel } from '../types';
 
 export function useLookupMaps() {
   const [customers, setCustomers] = useState<Record<string, string>>({});
@@ -31,7 +32,7 @@ export function useLookupMaps() {
           ),
         );
         setProjects(
-          Object.fromEntries(projectRows.map((p) => [p.id, `${p.code} — ${p.name}`])),
+          Object.fromEntries(projectRows.map((p) => [p.id, projectLabel(p)])),
         );
         setRoles(Object.fromEntries(roleRows.map((r) => [r.id, r.name])));
       })

@@ -1,5 +1,5 @@
--- ProTrack PostgreSQL Schema
--- Generated from docs/01_Project_Vision.md, docs/02_Requirements.md, docs/03_Database_Design.md
+-- ProTrack PostgreSQL Schema (MVP)
+-- Aligned with app/models and docs/08_MVP_Scope.md
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
@@ -8,18 +8,17 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ---------------------------------------------------------------------------
 
 CREATE TYPE project_status AS ENUM (
-    'draft',
-    'active',
-    'on_hold',
-    'completed',
-    'cancelled'
+    'not_started',
+    'in_progress',
+    'waiting_for_customer',
+    'completed'
 );
 
 CREATE TYPE milestone_status AS ENUM (
-    'pending',
+    'not_started',
     'in_progress',
     'completed',
-    'delayed'
+    'not_applicable'
 );
 
 CREATE TYPE timesheet_status AS ENUM (
@@ -110,38 +109,26 @@ CREATE TABLE task_types (
 );
 
 -- ---------------------------------------------------------------------------
--- Projects & Resource Planning
+-- Projects
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE projects (
-    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    customer_id       UUID            NOT NULL REFERENCES customers (id),
-    stream_id         UUID            NOT NULL REFERENCES streams (id),
-    created_by        UUID            NOT NULL REFERENCES users (id),
-    name              VARCHAR(200)    NOT NULL,
-    code              VARCHAR(50)     NOT NULL UNIQUE,
-    description       TEXT,
-    status            project_status  NOT NULL DEFAULT 'draft',
-    planned_start     DATE,
-    planned_end       DATE,
-    actual_start      DATE,
-    actual_end        DATE,
-    created_at        TIMESTAMPTZ     NOT NULL DEFAULT now(),
-    updated_at        TIMESTAMPTZ     NOT NULL DEFAULT now()
-);
-
-CREATE TABLE project_members (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id         UUID         NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
-    user_id            UUID         NOT NULL REFERENCES users (id),
-    role_on_project    VARCHAR(50)  NOT NULL DEFAULT 'member',
-    allocation_percent SMALLINT     NOT NULL DEFAULT 100
-        CHECK (allocation_percent BETWEEN 0 AND 100),
-    start_date         DATE,
-    end_date           DATE,
-    created_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    UNIQUE (project_id, user_id)
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tool_number         VARCHAR(50)     NOT NULL,
+    part_description    VARCHAR(255)    NOT NULL,
+    customer_id         UUID            NOT NULL REFERENCES customers (id),
+    customer_contact_id UUID            NOT NULL REFERENCES contacts (id),
+    design_leader_id    UUID            NOT NULL REFERENCES users (id),
+    designer_id         UUID            REFERENCES users (id),
+    surfacer_id         UUID            REFERENCES users (id),
+    stream_id           UUID            NOT NULL REFERENCES streams (id),
+    code                VARCHAR(50)     NOT NULL UNIQUE,
+    quoted_hours        NUMERIC(8, 2)   NOT NULL CHECK (quoted_hours > 0),
+    due_date            DATE            NOT NULL,
+    status              project_status  NOT NULL DEFAULT 'not_started',
+    notes               TEXT,
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ     NOT NULL DEFAULT now()
 );
 
 -- ---------------------------------------------------------------------------
@@ -153,38 +140,12 @@ CREATE TABLE milestones (
     project_id   UUID              NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
     name         VARCHAR(200)      NOT NULL,
     description  TEXT,
-    status       milestone_status  NOT NULL DEFAULT 'pending',
+    status       milestone_status  NOT NULL DEFAULT 'not_started',
     due_date     DATE,
     completed_at TIMESTAMPTZ,
     sort_order   INTEGER           NOT NULL DEFAULT 0,
     created_at   TIMESTAMPTZ       NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ       NOT NULL DEFAULT now()
-);
-
--- ---------------------------------------------------------------------------
--- Milestone Templates
--- ---------------------------------------------------------------------------
-
-CREATE TABLE milestone_templates (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    stream_id   UUID         NOT NULL REFERENCES streams (id),
-    name        VARCHAR(200) NOT NULL,
-    description TEXT,
-    is_active   BOOLEAN      NOT NULL DEFAULT true,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    UNIQUE (stream_id, name)
-);
-
-CREATE TABLE milestone_template_items (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    template_id UUID         NOT NULL REFERENCES milestone_templates (id) ON DELETE CASCADE,
-    name        VARCHAR(200) NOT NULL,
-    description TEXT,
-    sort_order  INTEGER      NOT NULL DEFAULT 0,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    UNIQUE (template_id, name)
 );
 
 -- ---------------------------------------------------------------------------
@@ -221,21 +182,20 @@ CREATE TABLE timesheet_entries (
 -- Indexes
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX idx_users_role_id            ON users (role_id);
-CREATE INDEX idx_contacts_customer_id     ON contacts (customer_id);
-CREATE INDEX idx_task_types_stream_id     ON task_types (stream_id);
-CREATE INDEX idx_projects_customer_id     ON projects (customer_id);
-CREATE INDEX idx_projects_stream_id       ON projects (stream_id);
-CREATE INDEX idx_projects_status          ON projects (status);
-CREATE INDEX idx_project_members_user_id  ON project_members (user_id);
-CREATE INDEX idx_milestones_project_id           ON milestones (project_id);
-CREATE INDEX idx_milestones_due_date             ON milestones (due_date);
-CREATE INDEX idx_milestone_templates_stream_id   ON milestone_templates (stream_id);
-CREATE INDEX idx_milestone_template_items_tpl_id ON milestone_template_items (template_id);
-CREATE INDEX idx_timesheets_user_id       ON timesheets (user_id);
-CREATE INDEX idx_timesheet_entries_sheet  ON timesheet_entries (timesheet_id);
-CREATE INDEX idx_timesheet_entries_project ON timesheet_entries (project_id);
-CREATE INDEX idx_timesheet_entries_date   ON timesheet_entries (entry_date);
+CREATE INDEX idx_users_role_id              ON users (role_id);
+CREATE INDEX idx_contacts_customer_id       ON contacts (customer_id);
+CREATE INDEX idx_task_types_stream_id       ON task_types (stream_id);
+CREATE INDEX idx_projects_customer_id       ON projects (customer_id);
+CREATE INDEX idx_projects_stream_id         ON projects (stream_id);
+CREATE INDEX idx_projects_design_leader_id  ON projects (design_leader_id);
+CREATE INDEX idx_projects_status            ON projects (status);
+CREATE INDEX idx_projects_due_date          ON projects (due_date);
+CREATE INDEX idx_milestones_project_id      ON milestones (project_id);
+CREATE INDEX idx_milestones_due_date        ON milestones (due_date);
+CREATE INDEX idx_timesheets_user_id         ON timesheets (user_id);
+CREATE INDEX idx_timesheet_entries_sheet    ON timesheet_entries (timesheet_id);
+CREATE INDEX idx_timesheet_entries_project  ON timesheet_entries (project_id);
+CREATE INDEX idx_timesheet_entries_date     ON timesheet_entries (entry_date);
 
 -- ---------------------------------------------------------------------------
 -- updated_at trigger
@@ -270,17 +230,8 @@ CREATE TRIGGER trg_task_types_updated_at
 CREATE TRIGGER trg_projects_updated_at
     BEFORE UPDATE ON projects FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
 
-CREATE TRIGGER trg_project_members_updated_at
-    BEFORE UPDATE ON project_members FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
-
 CREATE TRIGGER trg_milestones_updated_at
     BEFORE UPDATE ON milestones FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
-
-CREATE TRIGGER trg_milestone_templates_updated_at
-    BEFORE UPDATE ON milestone_templates FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
-
-CREATE TRIGGER trg_milestone_template_items_updated_at
-    BEFORE UPDATE ON milestone_template_items FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
 
 CREATE TRIGGER trg_timesheets_updated_at
     BEFORE UPDATE ON timesheets FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
@@ -294,8 +245,10 @@ CREATE TRIGGER trg_timesheet_entries_updated_at
 
 INSERT INTO roles (name, description) VALUES
     ('Admin',            'Full system administration'),
-    ('Project Manager',  'Manage projects, resources, and approvals'),
-    ('Designer',         'Design work and time logging');
+    ('Project Manager',  'Manage projects and approvals'),
+    ('Design Leader',    'Lead design projects'),
+    ('Designer',         'Design work and time logging'),
+    ('Surfacer',         'Surface modeling work');
 
 INSERT INTO streams (name, description) VALUES
     ('Mold Design', 'Mold design projects');
@@ -312,21 +265,3 @@ CROSS JOIN (
         ('BOM Creation',       'Bill of materials creation')
 ) AS t(name, description)
 WHERE s.name = 'Mold Design';
-
-INSERT INTO milestone_templates (stream_id, name, description)
-SELECT s.id, 'Mold Design', 'Standard milestone template for mold design projects'
-FROM streams s
-WHERE s.name = 'Mold Design';
-
-INSERT INTO milestone_template_items (template_id, name, description, sort_order)
-SELECT mt.id, i.name, i.description, i.sort_order
-FROM milestone_templates mt
-CROSS JOIN (
-    VALUES
-        ('Feasibility',        'Assess design feasibility',        1),
-        ('Mold Design',        'Detailed mold design',             2),
-        ('Design Review',      'Review design with stakeholders',  3),
-        ('BOM Creation',       'Create bill of materials',         4),
-        ('Engineering Change', 'Implement engineering changes',    5)
-) AS i(name, description, sort_order)
-WHERE mt.name = 'Mold Design';

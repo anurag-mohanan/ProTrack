@@ -14,8 +14,8 @@ class ProjectBase(BaseModel):
     customer_id: UUID
     customer_contact_id: UUID
     design_leader_id: UUID
-    designer_id: UUID
-    surfacer_id: UUID
+    designer_id: UUID | None = None
+    surfacer_id: UUID | None = None
     stream_id: UUID
     code: str = Field(max_length=50)
     quoted_hours: Decimal = Field(gt=0)

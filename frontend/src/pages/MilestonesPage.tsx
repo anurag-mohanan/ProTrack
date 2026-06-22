@@ -23,12 +23,20 @@ import StatusChip from '../components/common/StatusChip';
 import { useLookupMaps } from '../hooks/useLookupMaps';
 import { milestonesApi, projectsApi } from '../api/resources';
 import type { Milestone, MilestoneStatus } from '../types';
+import { projectLabel } from '../types';
+
+const MILESTONE_STATUSES: MilestoneStatus[] = [
+  'not_started',
+  'in_progress',
+  'completed',
+  'not_applicable',
+];
 
 const emptyForm = {
   project_id: '',
   name: '',
   description: '',
-  status: 'pending' as MilestoneStatus,
+  status: 'not_started' as MilestoneStatus,
   due_date: '',
   sort_order: 0,
 };
@@ -53,7 +61,7 @@ export default function MilestonesPage() {
   useEffect(() => {
     load();
     projectsApi.list().then((p) =>
-      setProjectOptions(p.map((x) => ({ id: x.id, name: `${x.code} — ${x.name}` }))),
+      setProjectOptions(p.map((x) => ({ id: x.id, name: projectLabel(x) }))),
     );
   }, [load]);
 
@@ -113,7 +121,7 @@ export default function MilestonesPage() {
     {
       field: 'status',
       headerName: 'Status',
-      width: 130,
+      width: 150,
       renderCell: (params) => <StatusChip value={params.value} />,
     },
     { field: 'due_date', headerName: 'Due Date', width: 120 },
@@ -165,7 +173,7 @@ export default function MilestonesPage() {
               <FormControl fullWidth>
                 <InputLabel>Status</InputLabel>
                 <Select label="Status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as MilestoneStatus })}>
-                  {['pending', 'in_progress', 'completed', 'delayed'].map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
+                  {MILESTONE_STATUSES.map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
                 </Select>
               </FormControl>
             </Grid>

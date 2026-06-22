@@ -11,8 +11,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    create_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 
 class Base(DeclarativeBase):
@@ -34,6 +35,8 @@ __all__ = [
     "Text",
     "UniqueConstraint",
     "Uuid",
+    "create_engine",
     "mapped_column",
     "relationship",
+    "sessionmaker",
 ]

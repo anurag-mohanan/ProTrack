@@ -1,7 +1,5 @@
-from sqlalchemy.orm import Session
-
 from app.api.deps import HTTPException, status
-from app.crud.base import CRUDBase, select
+from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read
 from app.models.enums import MilestoneStatus, ProjectStatus
 from app.models.models import Contact, Milestone, Project, Role, User

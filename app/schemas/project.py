@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import MilestoneStatus, ProjectStatus
 from app.schemas.common import TimestampSchema
@@ -63,6 +63,10 @@ class MilestoneCreate(MilestoneBase):
 
 
 class MilestoneUpdate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"status": "completed"}},
+    )
+
     project_id: UUID | None = None
     name: str | None = Field(default=None, max_length=200)
     description: str | None = None

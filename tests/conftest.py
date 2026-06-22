@@ -48,7 +48,7 @@ MILESTONE_NAMES = (
 )
 
 
-def _seed_database(session) -> tuple[Milestone, User]:
+def _seed_database(session) -> Milestone:
     session.add_all(
         [
             Role(
@@ -146,7 +146,7 @@ def _seed_database(session) -> tuple[Milestone, User]:
     assert milestone is not None
     session.commit()
     session.refresh(milestone)
-    return milestone, anurag
+    return milestone
 
 
 @pytest.fixture
@@ -160,7 +160,7 @@ def client():
     Base.metadata.create_all(bind=engine)
 
     session = testing_session_local()
-    milestone, anurag = _seed_database(session)
+    milestone = _seed_database(session)
     session.close()
 
     def override_get_db():
@@ -175,7 +175,7 @@ def client():
     with TestClient(app) as test_client:
         test_client.milestone_id = str(milestone.id)
         test_client.project_id = str(milestone.project_id)
-        test_client.user_id = str(anurag.id)
+        test_client.user_id = str(IDS["user_anurag"])
         yield test_client
 
     app.dependency_overrides.clear()

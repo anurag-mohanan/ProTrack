@@ -9,7 +9,7 @@ def test_patch_status_only_leaves_other_fields_unchanged(client):
 
     before = client.get(f"/api/v1/milestones/{milestone_id}").json()
     assert before["name"] == "Feasibility"
-    assert before["description"] == "Initial feasibility review"
+    assert before["description"] == "Feasibility milestone"
     assert before["sort_order"] == 1
     assert before["project_id"] == project_id
     assert before["due_date"] == "2026-06-01"
@@ -25,7 +25,7 @@ def test_patch_status_only_leaves_other_fields_unchanged(client):
     after = response.json()
     assert after["status"] == "completed"
     assert after["name"] == "Feasibility"
-    assert after["description"] == "Initial feasibility review"
+    assert after["description"] == "Feasibility milestone"
     assert after["sort_order"] == 1
     assert after["project_id"] == project_id
     assert after["due_date"] == "2026-06-01"

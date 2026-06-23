@@ -1,43 +1,34 @@
 import { useEffect, useState } from 'react';
 import {
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
   Grid,
-  InputLabel,
-  MenuItem,
-  Select,
   TextField,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { getErrorMessage } from '../../api/client';
+import { useToast } from '../../context/ToastContext';
 import {
   createMilestone,
-  milestoneQueryKeys,
   updateMilestone,
 } from '../../services/milestoneService';
-import {
-  invalidateProjectDetail,
-  projectQueryKeys,
-} from '../../services/projectService';
-import type { Milestone, MilestoneCreate, MilestoneStatus } from '../../types';
-import { ErrorState } from '../common/ErrorState';
+import { invalidateMilestoneRelatedQueries } from '../../utils/queryInvalidation';
+import type { Milestone } from '../../types';
 
-const statusOptions: Array<{ value: MilestoneStatus; label: string }> = [
-  { value: 'not_started', label: 'Not Started' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'not_applicable', label: 'Not Applicable' },
-];
+interface MilestoneFormValues {
+  name: string;
+  due_date: string;
+  description: string;
+}
 
-const emptyForm: Omit<MilestoneCreate, 'project_id'> = {
+const emptyForm: MilestoneFormValues = {
   name: '',
-  description: '',
-  status: 'not_started',
   due_date: '',
-  sort_order: 0,
+  description: '',
 };
 
 interface MilestoneFormDialogProps {
@@ -55,7 +46,8 @@ export function MilestoneFormDialog({
 }: MilestoneFormDialogProps) {
   const isEdit = Boolean(milestone);
   const queryClient = useQueryClient();
-  const [form, setForm] = useState(emptyForm);
+  const { showSuccess, showError } = useToast();
+  const [form, setForm] = useState<MilestoneFormValues>(emptyForm);
 
   useEffect(() => {
     if (!open) {
@@ -66,21 +58,19 @@ export function MilestoneFormDialog({
       setForm({
         name: milestone.name,
         description: milestone.description ?? '',
-        status: milestone.status,
         due_date: milestone.due_date ?? '',
-        sort_order: milestone.sort_order,
       });
+    } else {
+      setForm(emptyForm);
     }
   }, [open, milestone]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload = {
-        name: form.name,
-        description: form.description || null,
-        status: form.status,
+        name: form.name.trim(),
+        description: form.description.trim() || null,
         due_date: form.due_date || null,
-        sort_order: form.sort_order,
       };
 
       if (isEdit && milestone) {
@@ -93,12 +83,12 @@ export function MilestoneFormDialog({
       });
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: milestoneQueryKeys.byProject(projectId),
-      });
-      invalidateProjectDetail(queryClient, projectId);
-      void queryClient.invalidateQueries({ queryKey: projectQueryKeys.detail(projectId) });
+      invalidateMilestoneRelatedQueries(queryClient, projectId);
+      showSuccess(isEdit ? 'Milestone updated successfully' : 'Milestone added successfully');
       onClose();
+    },
+    onError: (error) => {
+      showError(getErrorMessage(error));
     },
   });
 
@@ -109,7 +99,7 @@ export function MilestoneFormDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{isEdit ? 'Edit Milestone' : 'Create Milestone'}</DialogTitle>
+      <DialogTitle>{isEdit ? 'Edit Milestone' : 'Add Milestone'}</DialogTitle>
       <DialogContent>
         <Grid
           container
@@ -121,7 +111,7 @@ export function MilestoneFormDialog({
         >
           <Grid size={{ xs: 12 }}>
             <TextField
-              label="Milestone Name"
+              label="Name"
               required
               fullWidth
               value={form.name}
@@ -130,78 +120,50 @@ export function MilestoneFormDialog({
           </Grid>
           <Grid size={{ xs: 12 }}>
             <TextField
-              label="Description"
-              fullWidth
-              multiline
-              rows={2}
-              value={form.description ?? ''}
-              onChange={(event) =>
-                setForm({ ...form, description: event.target.value })
-              }
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <TextField
               label="Due Date"
               type="date"
               fullWidth
               slotProps={{ inputLabel: { shrink: true } }}
-              value={form.due_date ?? ''}
+              value={form.due_date}
               onChange={(event) =>
                 setForm({ ...form, due_date: event.target.value })
               }
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
-              <Select
-                label="Status"
-                value={form.status ?? 'not_started'}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    status: event.target.value as MilestoneStatus,
-                  })
-                }
-              >
-                {statusOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
+          <Grid size={{ xs: 12 }}>
             <TextField
-              label="Sort Order"
-              type="number"
+              label="Description"
               fullWidth
-              value={form.sort_order ?? 0}
+              multiline
+              rows={3}
+              value={form.description}
               onChange={(event) =>
-                setForm({ ...form, sort_order: Number(event.target.value) })
+                setForm({ ...form, description: event.target.value })
               }
             />
           </Grid>
         </Grid>
-
-        {saveMutation.error ? (
-          <ErrorState
-            error={saveMutation.error}
-            title={isEdit ? 'Update failed' : 'Create failed'}
-          />
-        ) : null}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose} disabled={saveMutation.isPending}>
+          Cancel
+        </Button>
         <Button
           type="submit"
           form="milestone-form"
           variant="contained"
-          disabled={saveMutation.isPending}
+          disabled={saveMutation.isPending || !form.name.trim()}
+          startIcon={
+            saveMutation.isPending ? (
+              <CircularProgress size={16} color="inherit" />
+            ) : undefined
+          }
         >
-          {saveMutation.isPending ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Milestone'}
+          {saveMutation.isPending
+            ? 'Saving…'
+            : isEdit
+              ? 'Save Changes'
+              : 'Add Milestone'}
         </Button>
       </DialogActions>
     </Dialog>

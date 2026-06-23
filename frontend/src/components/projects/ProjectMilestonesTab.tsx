@@ -2,35 +2,44 @@ import { useState } from 'react';
 import {
   Box,
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   IconButton,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import ReplayIcon from '@mui/icons-material/Replay';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getErrorMessage } from '../../api/client';
 import { MilestoneFormDialog } from './MilestoneFormDialog';
 import { EmptyState } from '../common/EmptyState';
 import { ErrorState } from '../common/ErrorState';
 import { MilestoneStatusChip } from '../common/StatusChip';
 import { LoadingState } from '../common/LoadingState';
+import { useToast } from '../../context/ToastContext';
 import {
+  completeMilestone,
   deleteMilestone,
   getMilestones,
   milestoneQueryKeys,
+  reopenMilestone,
 } from '../../services/milestoneService';
-import { invalidateProjectDetail } from '../../services/projectService';
+import { invalidateMilestoneRelatedQueries } from '../../utils/queryInvalidation';
 import type { Milestone } from '../../types';
 import { formatDate, formatDateTime } from '../../utils/format';
 
@@ -38,40 +47,83 @@ interface ProjectMilestonesTabProps {
   projectId: string;
 }
 
+type PendingAction = {
+  milestoneId: string;
+  action: 'complete' | 'reopen' | 'delete';
+};
+
 export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
   const queryClient = useQueryClient();
+  const { showSuccess, showError } = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Milestone | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: milestoneQueryKeys.byProject(projectId),
     queryFn: () => getMilestones({ project_id: projectId }),
   });
 
+  const refreshRelatedQueries = () => {
+    invalidateMilestoneRelatedQueries(queryClient, projectId);
+  };
+
+  const completeMutation = useMutation({
+    mutationFn: completeMilestone,
+    onMutate: (milestoneId) => {
+      setPendingAction({ milestoneId, action: 'complete' });
+    },
+    onSuccess: () => {
+      refreshRelatedQueries();
+      showSuccess('Milestone marked as completed');
+    },
+    onError: (err) => showError(getErrorMessage(err)),
+    onSettled: () => setPendingAction(null),
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: reopenMilestone,
+    onMutate: (milestoneId) => {
+      setPendingAction({ milestoneId, action: 'reopen' });
+    },
+    onSuccess: () => {
+      refreshRelatedQueries();
+      showSuccess('Milestone reopened');
+    },
+    onError: (err) => showError(getErrorMessage(err)),
+    onSettled: () => setPendingAction(null),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: deleteMilestone,
+    onMutate: (milestoneId) => {
+      setPendingAction({ milestoneId, action: 'delete' });
+    },
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: milestoneQueryKeys.byProject(projectId),
-      });
-      invalidateProjectDetail(queryClient, projectId);
+      refreshRelatedQueries();
+      showSuccess('Milestone deleted');
       setDeleteTarget(null);
     },
+    onError: (err) => showError(getErrorMessage(err)),
+    onSettled: () => setPendingAction(null),
   });
 
   const sortedMilestones = [...(data ?? [])].sort(
     (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
   );
 
+  const isRowPending = (milestoneId: string) =>
+    pendingAction?.milestoneId === milestoneId;
+
   if (isLoading) return <LoadingState message="Loading milestones…" />;
   if (error) return <ErrorState error={error} />;
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, gap: 2 }}>
         <Typography color="text.secondary">
-          Manage project milestones and due dates
+          Track delivery milestones, due dates, and completion status
         </Typography>
         <Button
           variant="contained"
@@ -81,58 +133,125 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
             setFormOpen(true);
           }}
         >
-          Create Milestone
+          Add Milestone
         </Button>
       </Box>
 
       {!sortedMilestones.length ? (
         <EmptyState
-          title="No milestones"
-          description="Create milestones to track delivery progress."
+          title="No milestones yet"
+          description="Add milestones to track project delivery progress."
         />
       ) : (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Milestone</TableCell>
-                <TableCell>Status</TableCell>
+                <TableCell>Name</TableCell>
                 <TableCell>Due Date</TableCell>
+                <TableCell>Status</TableCell>
                 <TableCell>Completed Date</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {sortedMilestones.map((milestone) => (
-                <TableRow key={milestone.id} hover>
-                  <TableCell>{milestone.name}</TableCell>
-                  <TableCell>
-                    <MilestoneStatusChip status={milestone.status} />
-                  </TableCell>
-                  <TableCell>{formatDate(milestone.due_date)}</TableCell>
-                  <TableCell>{formatDateTime(milestone.completed_at)}</TableCell>
-                  <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      aria-label="Edit milestone"
-                      onClick={() => {
-                        setEditingMilestone(milestone);
-                        setFormOpen(true);
-                      }}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      aria-label="Delete milestone"
-                      color="error"
-                      onClick={() => setDeleteTarget(milestone)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {sortedMilestones.map((milestone) => {
+                const rowPending = isRowPending(milestone.id);
+                const canComplete =
+                  milestone.status !== 'completed' &&
+                  milestone.status !== 'not_applicable';
+                const canReopen = milestone.status === 'completed';
+
+                return (
+                  <TableRow key={milestone.id} hover>
+                    <TableCell>
+                      <Box>
+                        <Typography sx={{ fontWeight: 600 }}>{milestone.name}</Typography>
+                        {milestone.description ? (
+                          <Typography variant="caption" color="text.secondary">
+                            {milestone.description}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                    </TableCell>
+                    <TableCell>{formatDate(milestone.due_date)}</TableCell>
+                    <TableCell>
+                      <MilestoneStatusChip status={milestone.status} />
+                    </TableCell>
+                    <TableCell>{formatDateTime(milestone.completed_at)}</TableCell>
+                    <TableCell align="right">
+                      {rowPending ? (
+                        <CircularProgress size={20} sx={{ mr: 1 }} />
+                      ) : null}
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}
+                      >
+                        {canComplete ? (
+                          <Tooltip title="Complete milestone">
+                            <span>
+                              <Button
+                                size="small"
+                                color="success"
+                                variant="outlined"
+                                startIcon={<TaskAltIcon />}
+                                disabled={Boolean(pendingAction)}
+                                onClick={() => completeMutation.mutate(milestone.id)}
+                              >
+                                Complete
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        ) : null}
+                        {canReopen ? (
+                          <Tooltip title="Reopen milestone">
+                            <span>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<ReplayIcon />}
+                                disabled={Boolean(pendingAction)}
+                                onClick={() => reopenMutation.mutate(milestone.id)}
+                              >
+                                Reopen
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        ) : null}
+                        <Tooltip title="Edit milestone">
+                          <span>
+                            <IconButton
+                              size="small"
+                              aria-label="Edit milestone"
+                              disabled={Boolean(pendingAction)}
+                              onClick={() => {
+                                setEditingMilestone(milestone);
+                                setFormOpen(true);
+                              }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title="Delete milestone">
+                          <span>
+                            <IconButton
+                              size="small"
+                              aria-label="Delete milestone"
+                              color="error"
+                              disabled={Boolean(pendingAction)}
+                              onClick={() => setDeleteTarget(milestone)}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -151,17 +270,25 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
       <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>
         <DialogTitle>Delete Milestone</DialogTitle>
         <DialogContent>
-          Delete milestone <strong>{deleteTarget?.name}</strong>?
+          Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This
+          action cannot be undone.
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button onClick={() => setDeleteTarget(null)} disabled={deleteMutation.isPending}>
+            Cancel
+          </Button>
           <Button
             color="error"
             variant="contained"
             disabled={deleteMutation.isPending}
+            startIcon={
+              deleteMutation.isPending ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : undefined
+            }
             onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
           >
-            Delete
+            {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

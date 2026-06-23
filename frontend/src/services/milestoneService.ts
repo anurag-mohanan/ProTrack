@@ -5,6 +5,8 @@ export interface MilestoneListParams extends ListParams {
   project_id?: string;
 }
 
+export { milestoneQueryKeys, invalidateMilestoneRelatedQueries } from '../utils/queryInvalidation';
+
 export async function getMilestones(
   params?: MilestoneListParams,
 ): Promise<Milestone[]> {
@@ -30,11 +32,17 @@ export async function updateMilestone(
   return data;
 }
 
+export async function completeMilestone(milestoneId: string): Promise<Milestone> {
+  return updateMilestone(milestoneId, { status: 'completed' });
+}
+
+export async function reopenMilestone(milestoneId: string): Promise<Milestone> {
+  return updateMilestone(milestoneId, {
+    status: 'not_started',
+    completed_at: null,
+  });
+}
+
 export async function deleteMilestone(milestoneId: string): Promise<void> {
   await apiClient.delete(`/milestones/${milestoneId}`);
 }
-
-export const milestoneQueryKeys = {
-  all: ['milestones'] as const,
-  byProject: (projectId: string) => ['milestones', projectId] as const,
-};

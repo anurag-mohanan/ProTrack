@@ -1,8 +1,8 @@
 from decimal import Decimal
 
 
-def test_dashboard_summary(client):
-    response = client.get("/api/v1/dashboard/summary")
+def test_dashboard_summary(client, auth_headers):
+    response = client.get("/api/v1/dashboard/summary", headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
     assert body["total_projects"] == 1
@@ -10,8 +10,8 @@ def test_dashboard_summary(client):
     assert Decimal(str(body["total_quoted_hours"])) == Decimal("120.00")
 
 
-def test_dashboard_workload(client):
-    response = client.get("/api/v1/dashboard/workload")
+def test_dashboard_workload(client, auth_headers):
+    response = client.get("/api/v1/dashboard/workload", headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
     assert len(body) >= 2
@@ -20,9 +20,9 @@ def test_dashboard_workload(client):
     assert "Designer" in roles
 
 
-def test_dashboard_project(client):
+def test_dashboard_project(client, auth_headers):
     project_id = client.project_id
-    response = client.get(f"/api/v1/dashboard/project/{project_id}")
+    response = client.get(f"/api/v1/dashboard/project/{project_id}", headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
     assert body["project"]["code"] == "TEST-001"

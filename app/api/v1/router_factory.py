@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from uuid import UUID
 
 from app.api.deps import (
@@ -10,9 +11,12 @@ from app.api.deps import (
     get_object_or_404,
     status,
 )
+from app.api.auth_deps import get_current_user, require_roles
 from app.crud.base import CRUDBase
 from app.models.enums import ProjectStatus, TimesheetStatus
+from app.models.models import User
 from app.schemas.common import BaseModel
+
 
 class EmptyFilters(BaseModel):
     pass
@@ -59,8 +63,13 @@ def build_crud_router(
     schema_create: type[BaseModel],
     schema_update: type[BaseModel],
     filters_model: type[BaseModel] = EmptyFilters,
+    write_roles: tuple[str, ...] = ("Admin", "Project Manager"),
+    router_dependencies: list[Callable] | None = None,
 ) -> APIRouter:
-    router = APIRouter(prefix=prefix, tags=tags)
+    dependencies = router_dependencies or [Depends(get_current_user)]
+    write_dependency = Depends(require_roles(*write_roles))
+
+    router = APIRouter(prefix=prefix, tags=tags, dependencies=dependencies)
 
     @router.get("", response_model=list[schema_read])
     def list_records(
@@ -80,11 +89,20 @@ def build_crud_router(
     def get_record(record_id: UUID, db: Session = Depends(get_db)):
         return get_object_or_404(crud, db, record_id)
 
-    @router.post("", response_model=schema_read, status_code=status.HTTP_201_CREATED)
+    @router.post(
+        "",
+        response_model=schema_read,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[write_dependency],
+    )
     def create_record(obj_in: schema_create, db: Session = Depends(get_db)):
         return crud.create(db, obj_in=obj_in)
 
-    @router.patch("/{record_id}", response_model=schema_read)
+    @router.patch(
+        "/{record_id}",
+        response_model=schema_read,
+        dependencies=[write_dependency],
+    )
     def update_record(
         record_id: UUID,
         obj_in: schema_update,
@@ -93,7 +111,11 @@ def build_crud_router(
         db_obj = get_object_or_404(crud, db, record_id)
         return crud.update(db, db_obj=db_obj, obj_in=obj_in)
 
-    @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @router.delete(
+        "/{record_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[write_dependency],
+    )
     def delete_record(record_id: UUID, db: Session = Depends(get_db)):
         deleted = crud.delete(db, record_id=record_id)
         if deleted is None:

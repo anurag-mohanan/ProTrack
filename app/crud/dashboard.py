@@ -3,8 +3,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
+from app.crud.base import Session
 from app.crud.project_metrics import build_project_read, calculate_progress_percent
 from app.models.enums import MilestoneStatus, ProjectStatus
 from app.models.models import Milestone, Project, Role, Timesheet, TimesheetEntry, User
@@ -28,6 +28,10 @@ def _round_hours(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _decimal(value) -> Decimal:
+    return Decimal(str(value or 0))
+
+
 def _current_week_bounds(today: date | None = None) -> tuple[date, date]:
     today = today or date.today()
     week_start = today - timedelta(days=today.weekday())
@@ -46,18 +50,51 @@ def _project_assignment_filter(user_id: UUID, role_name: str):
 
 
 def get_dashboard_summary(db: Session) -> DashboardSummary:
-    projects = db.scalars(select(Project)).all()
-    total_projects = len(projects)
-    not_started = sum(1 for p in projects if p.status == ProjectStatus.not_started)
-    in_progress = sum(1 for p in projects if p.status == ProjectStatus.in_progress)
-    completed = sum(1 for p in projects if p.status == ProjectStatus.completed)
-    on_hold = sum(1 for p in projects if p.status == ProjectStatus.waiting_for_customer)
+    total_projects = int(
+        db.scalar(select(func.count()).select_from(Project)) or 0
+    )
+    not_started = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(Project.status == ProjectStatus.not_started)
+        )
+        or 0
+    )
+    in_progress = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(Project.status == ProjectStatus.in_progress)
+        )
+        or 0
+    )
+    completed = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(Project.status == ProjectStatus.completed)
+        )
+        or 0
+    )
+    on_hold = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(Project.status == ProjectStatus.waiting_for_customer)
+        )
+        or 0
+    )
 
     total_quoted = _round_hours(
-        sum((Decimal(p.quoted_hours) for p in projects), Decimal("0"))
+        _decimal(
+            db.scalar(select(func.coalesce(func.sum(Project.quoted_hours), 0)))
+        )
     )
     total_actual = _round_hours(
-        sum((Decimal(p.actual_hours or 0) for p in projects), Decimal("0"))
+        _decimal(
+            db.scalar(select(func.coalesce(func.sum(Project.actual_hours), 0)))
+        )
     )
 
     completed_milestones = int(
@@ -118,10 +155,10 @@ def get_designer_workload(db: Session) -> list[DesignerWorkload]:
             1 for project in assigned_projects if project.status != ProjectStatus.completed
         )
         quoted_hours_assigned = _round_hours(
-            sum((Decimal(p.quoted_hours) for p in assigned_projects), Decimal("0"))
+            sum((_decimal(p.quoted_hours) for p in assigned_projects), Decimal("0"))
         )
         actual_hours_logged = _round_hours(
-            sum((Decimal(p.actual_hours or 0) for p in assigned_projects), Decimal("0"))
+            sum((_decimal(p.actual_hours) for p in assigned_projects), Decimal("0"))
         )
 
         hours_this_week = db.scalar(
@@ -140,7 +177,7 @@ def get_designer_workload(db: Session) -> list[DesignerWorkload]:
                 designer_name=f"{user.first_name} {user.last_name}",
                 role=role_name,
                 active_projects=active_projects,
-                hours_this_week=_round_hours(Decimal(str(hours_this_week or 0))),
+                hours_this_week=_round_hours(_decimal(hours_this_week)),
                 quoted_hours_assigned=quoted_hours_assigned,
                 actual_hours_logged=actual_hours_logged,
             )
@@ -176,8 +213,8 @@ def get_project_dashboard(db: Session, project_id: UUID) -> ProjectDashboard | N
     remaining = max(total - completed, 0)
     progress_percent = calculate_progress_percent(db, project_id)
 
-    quoted = _round_hours(Decimal(project.quoted_hours))
-    actual = _round_hours(Decimal(project.actual_hours or 0))
+    quoted = _round_hours(_decimal(project.quoted_hours))
+    actual = _round_hours(_decimal(project.actual_hours))
 
     recent_entries = db.scalars(
         select(TimesheetEntry)

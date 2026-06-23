@@ -3,11 +3,13 @@ from datetime import datetime
 from app.models.enums import MilestoneStatus
 
 
-def test_patch_status_only_leaves_other_fields_unchanged(client):
+def test_patch_status_only_leaves_other_fields_unchanged(client, auth_headers):
     milestone_id = client.milestone_id
     project_id = client.project_id
 
-    before = client.get(f"/api/v1/milestones/{milestone_id}").json()
+    before = client.get(
+        f"/api/v1/milestones/{milestone_id}", headers=auth_headers
+    ).json()
     assert before["name"] == "Feasibility"
     assert before["description"] == "Feasibility milestone"
     assert before["sort_order"] == 1
@@ -19,6 +21,7 @@ def test_patch_status_only_leaves_other_fields_unchanged(client):
     response = client.patch(
         f"/api/v1/milestones/{milestone_id}",
         json={"status": "completed"},
+        headers=auth_headers,
     )
 
     assert response.status_code == 200
@@ -32,12 +35,13 @@ def test_patch_status_only_leaves_other_fields_unchanged(client):
     assert after["completed_at"] is not None
 
 
-def test_patch_status_completed_sets_completed_at(client):
+def test_patch_status_completed_sets_completed_at(client, auth_headers):
     milestone_id = client.milestone_id
 
     response = client.patch(
         f"/api/v1/milestones/{milestone_id}",
         json={"status": "completed"},
+        headers=auth_headers,
     )
 
     assert response.status_code == 200
@@ -47,12 +51,13 @@ def test_patch_status_completed_sets_completed_at(client):
     assert parsed.year >= 2026
 
 
-def test_patch_status_away_from_completed_clears_completed_at(client):
+def test_patch_status_away_from_completed_clears_completed_at(client, auth_headers):
     milestone_id = client.milestone_id
 
     completed = client.patch(
         f"/api/v1/milestones/{milestone_id}",
         json={"status": "completed"},
+        headers=auth_headers,
     )
     assert completed.status_code == 200
     assert completed.json()["completed_at"] is not None
@@ -60,6 +65,7 @@ def test_patch_status_away_from_completed_clears_completed_at(client):
     reopened = client.patch(
         f"/api/v1/milestones/{milestone_id}",
         json={"status": "in_progress"},
+        headers=auth_headers,
     )
 
     assert reopened.status_code == 200

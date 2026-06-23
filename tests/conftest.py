@@ -24,12 +24,19 @@ from app.models.models import (
     User,
 )
 
+DEFAULT_PASSWORD = "Password@123"
+
 IDS = {
+    "role_admin": uuid.UUID("11111111-1111-1111-1111-111111111111"),
+    "role_pm": uuid.UUID("22222222-2222-2222-2222-222222222222"),
     "role_design_leader": uuid.UUID("d7a67e79-dffa-42f8-bea4-f646f73fd3fd"),
     "role_designer": uuid.UUID("85e2fc34-f0f3-468f-9390-9d8efb1c2a4f"),
     "role_surfacer": uuid.UUID("04582a31-25bf-4709-ac44-e6e05aae8406"),
+    "user_admin": uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+    "user_pm": uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
     "user_anurag": uuid.UUID("7cf429ba-ca31-4752-9a03-afa3ba4700a3"),
     "user_binil": uuid.UUID("1bb6229f-dcff-419a-a8fa-2b8a7fd15043"),
+    "user_ranjith": uuid.UUID("731ddf9e-d2d9-450b-a675-cb2ca8a021e3"),
     "stream": uuid.UUID("a4b9ba7c-4ff4-4a2c-8dc7-823a7cfacb55"),
     "customer": uuid.UUID("3946c135-d515-4bbd-affb-00b5c1893832"),
     "contact": uuid.UUID("b5301223-164f-4035-8017-252ff0452fa6"),
@@ -51,6 +58,8 @@ MILESTONE_NAMES = (
 def _seed_database(session) -> Milestone:
     session.add_all(
         [
+            Role(id=IDS["role_admin"], name="Admin", description="Admin"),
+            Role(id=IDS["role_pm"], name="Project Manager", description="PM"),
             Role(
                 id=IDS["role_design_leader"],
                 name="Design Leader",
@@ -68,25 +77,56 @@ def _seed_database(session) -> Milestone:
             ),
         ]
     )
-    anurag = User(
-        id=IDS["user_anurag"],
-        role_id=IDS["role_design_leader"],
-        email="anurag@prosohm.com",
-        password_hash=hash_password("changeme"),
-        first_name="Anurag",
-        last_name="Mohanan",
-        is_active=True,
+    password_hash = hash_password(DEFAULT_PASSWORD)
+    session.add_all(
+        [
+            User(
+                id=IDS["user_admin"],
+                role_id=IDS["role_admin"],
+                email="admin@prosohm.com",
+                password_hash=password_hash,
+                first_name="System",
+                last_name="Admin",
+                is_active=True,
+            ),
+            User(
+                id=IDS["user_pm"],
+                role_id=IDS["role_pm"],
+                email="pm@prosohm.com",
+                password_hash=password_hash,
+                first_name="Project",
+                last_name="Manager",
+                is_active=True,
+            ),
+            User(
+                id=IDS["user_anurag"],
+                role_id=IDS["role_design_leader"],
+                email="anurag@prosohm.com",
+                password_hash=password_hash,
+                first_name="Anurag",
+                last_name="Mohanan",
+                is_active=True,
+            ),
+            User(
+                id=IDS["user_binil"],
+                role_id=IDS["role_designer"],
+                email="binil@prosohm.com",
+                password_hash=password_hash,
+                first_name="Binil",
+                last_name="JR",
+                is_active=True,
+            ),
+            User(
+                id=IDS["user_ranjith"],
+                role_id=IDS["role_surfacer"],
+                email="ranjith@prosohm.com",
+                password_hash=password_hash,
+                first_name="Ranjith",
+                last_name="K",
+                is_active=True,
+            ),
+        ]
     )
-    binil = User(
-        id=IDS["user_binil"],
-        role_id=IDS["role_designer"],
-        email="binil@prosohm.com",
-        password_hash=hash_password("changeme"),
-        first_name="Binil",
-        last_name="JR",
-        is_active=True,
-    )
-    session.add_all([anurag, binil])
     session.add(
         Stream(
             id=IDS["stream"],
@@ -149,6 +189,16 @@ def _seed_database(session) -> Milestone:
     return milestone
 
 
+def login(client: TestClient, email: str, password: str = DEFAULT_PASSWORD) -> dict:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.fixture
 def client():
     engine = create_engine(
@@ -176,6 +226,12 @@ def client():
         test_client.milestone_id = str(milestone.id)
         test_client.project_id = str(milestone.project_id)
         test_client.user_id = str(IDS["user_anurag"])
+        test_client.auth_headers = login(test_client, "admin@prosohm.com")
         yield test_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def auth_headers(client):
+    return client.auth_headers

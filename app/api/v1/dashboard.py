@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, HTTPException, Session, get_db, status
 from app.crud.dashboard import (
     get_dashboard_summary,
@@ -8,7 +9,11 @@ from app.crud.dashboard import (
 )
 from app.schemas.dashboard import DashboardSummary, DesignerWorkload, ProjectDashboard
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+router = APIRouter(
+    prefix="/dashboard",
+    tags=["dashboard"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("/summary", response_model=DashboardSummary)

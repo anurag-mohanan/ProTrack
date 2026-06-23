@@ -6,12 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 import app.models  # noqa: F401 — register all models with Base.metadata
 from app.api.v1.api import api_router
 from app.db.base import Base
+from app.db.schema_sync import ensure_project_actual_hours
 from app.db.session import engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_project_actual_hours(engine)
     yield
 
 

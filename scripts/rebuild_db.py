@@ -14,13 +14,14 @@ from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.models.models import Contact, Customer, Role, Stream, TaskType, User
 
-# Stable UUIDs so docs and frontend testing stay consistent across rebuilds.
 IDS = {
+    "role_admin": uuid.UUID("11111111-1111-1111-1111-111111111111"),
+    "role_pm": uuid.UUID("22222222-2222-2222-2222-222222222222"),
     "role_design_leader": uuid.UUID("d7a67e79-dffa-42f8-bea4-f646f73fd3fd"),
     "role_designer": uuid.UUID("85e2fc34-f0f3-468f-9390-9d8efb1c2a4f"),
     "role_surfacer": uuid.UUID("04582a31-25bf-4709-ac44-e6e05aae8406"),
-    "role_admin": uuid.UUID("11111111-1111-1111-1111-111111111111"),
-    "role_pm": uuid.UUID("22222222-2222-2222-2222-222222222222"),
+    "user_admin": uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+    "user_pm": uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
     "user_anurag": uuid.UUID("7cf429ba-ca31-4752-9a03-afa3ba4700a3"),
     "user_binil": uuid.UUID("1bb6229f-dcff-419a-a8fa-2b8a7fd15043"),
     "user_ranjith": uuid.UUID("731ddf9e-d2d9-450b-a675-cb2ca8a021e3"),
@@ -37,7 +38,7 @@ TASK_TYPES = (
     ("BOM Creation", "Bill of materials creation"),
 )
 
-DEFAULT_PASSWORD = "changeme"
+DEFAULT_PASSWORD = "Password@123"
 
 
 def rebuild() -> None:
@@ -119,6 +120,24 @@ def rebuild() -> None:
         db.add_all(
             [
                 User(
+                    id=IDS["user_admin"],
+                    role_id=IDS["role_admin"],
+                    email="admin@prosohm.com",
+                    password_hash=password_hash,
+                    first_name="System",
+                    last_name="Admin",
+                    is_active=True,
+                ),
+                User(
+                    id=IDS["user_pm"],
+                    role_id=IDS["role_pm"],
+                    email="pm@prosohm.com",
+                    password_hash=password_hash,
+                    first_name="Project",
+                    last_name="Manager",
+                    is_active=True,
+                ),
+                User(
                     id=IDS["user_anurag"],
                     role_id=IDS["role_design_leader"],
                     email="anurag@prosohm.com",
@@ -150,11 +169,13 @@ def rebuild() -> None:
 
         db.commit()
         print("Seed complete.")
-        print(f"  Users password: {DEFAULT_PASSWORD}")
-        print(f"  Design Leader id: {IDS['user_anurag']}")
-        print(f"  Customer id:      {IDS['customer_ti']}")
-        print(f"  Contact id:       {IDS['contact_steve']}")
-        print(f"  Stream id:        {IDS['stream_mold_design']}")
+        print(f"  Default password: {DEFAULT_PASSWORD}")
+        print("  Accounts:")
+        print("    admin@prosohm.com (Admin)")
+        print("    pm@prosohm.com (Project Manager)")
+        print("    anurag@prosohm.com (Design Leader)")
+        print("    binil@prosohm.com (Designer)")
+        print("    ranjith@prosohm.com (Surfacer)")
     except Exception:
         db.rollback()
         raise

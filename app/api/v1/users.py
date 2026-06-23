@@ -1,13 +1,15 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
-
-from app.api.deps import get_db, get_object_or_404
+from app.api.auth_deps import require_roles
+from app.api.deps import APIRouter, Depends, HTTPException, Query, Session, get_db, get_object_or_404, status
 from app.crud import user as user_crud
 from app.schemas.identity import UserCreate, UserRead, UserUpdate
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter(
+    prefix="/users",
+    tags=["users"],
+    dependencies=[Depends(require_roles("Admin"))],
+)
 
 
 @router.get("", response_model=list[UserRead])

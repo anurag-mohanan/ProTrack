@@ -1,4 +1,6 @@
-from app.api.v1 import dashboard, projects, users
+from app.api.auth_deps import require_roles
+from app.api.deps import Depends
+from app.api.v1 import auth, dashboard, projects, users
 from app.api.v1.router_factory import (
     APIRouter,
     ContactFilters,
@@ -45,6 +47,13 @@ from app.schemas.timesheet import (
 
 api_router = APIRouter()
 
+api_router.include_router(auth.router)
+
+admin_only = [Depends(require_roles("Admin"))]
+master_data_write = ("Admin", "Project Manager")
+delivery_write = ("Admin", "Project Manager", "Design Leader")
+timesheet_write = ("Admin", "Project Manager", "Design Leader", "Designer", "Surfacer")
+
 api_router.include_router(
     build_crud_router(
         prefix="/roles",
@@ -53,6 +62,8 @@ api_router.include_router(
         schema_read=RoleRead,
         schema_create=RoleCreate,
         schema_update=RoleUpdate,
+        router_dependencies=admin_only,
+        write_roles=("Admin",),
     )
 )
 api_router.include_router(users.router)
@@ -64,6 +75,7 @@ api_router.include_router(
         schema_read=StreamRead,
         schema_create=StreamCreate,
         schema_update=StreamUpdate,
+        write_roles=master_data_write,
     )
 )
 api_router.include_router(
@@ -74,6 +86,7 @@ api_router.include_router(
         schema_read=CustomerRead,
         schema_create=CustomerCreate,
         schema_update=CustomerUpdate,
+        write_roles=master_data_write,
     )
 )
 api_router.include_router(
@@ -85,6 +98,7 @@ api_router.include_router(
         schema_create=ContactCreate,
         schema_update=ContactUpdate,
         filters_model=ContactFilters,
+        write_roles=master_data_write,
     )
 )
 api_router.include_router(
@@ -96,11 +110,10 @@ api_router.include_router(
         schema_create=TaskTypeCreate,
         schema_update=TaskTypeUpdate,
         filters_model=TaskTypeFilters,
+        write_roles=master_data_write,
     )
 )
-api_router.include_router(
-    projects.router,
-)
+api_router.include_router(projects.router)
 api_router.include_router(
     build_crud_router(
         prefix="/milestones",
@@ -110,6 +123,7 @@ api_router.include_router(
         schema_create=MilestoneCreate,
         schema_update=MilestoneUpdate,
         filters_model=MilestoneFilters,
+        write_roles=delivery_write,
     )
 )
 api_router.include_router(
@@ -121,6 +135,7 @@ api_router.include_router(
         schema_create=TimesheetCreate,
         schema_update=TimesheetUpdate,
         filters_model=TimesheetFilters,
+        write_roles=timesheet_write,
     )
 )
 api_router.include_router(
@@ -132,6 +147,7 @@ api_router.include_router(
         schema_create=TimesheetEntryCreate,
         schema_update=TimesheetEntryUpdate,
         filters_model=TimesheetEntryFilters,
+        write_roles=timesheet_write,
     )
 )
 api_router.include_router(dashboard.router)

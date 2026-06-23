@@ -18,3 +18,12 @@ export interface MilestoneUpdate {
   completed_at?: string | null;
   sort_order?: number;
 }
+
+export interface MilestoneCreate {
+  project_id: string;
+  name: string;
+  description?: string | null;
+  status?: MilestoneStatus;
+  due_date?: string | null;
+  sort_order?: number;
+}

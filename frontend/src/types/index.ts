@@ -6,6 +6,8 @@ export * from './TimesheetEntry';
 export * from './Dashboard';
 export * from './Auth';
 
+export * from './Reports';
+
 export interface Customer {
   id: string;
   name: string;

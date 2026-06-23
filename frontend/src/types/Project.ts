@@ -35,6 +35,22 @@ export interface ProjectCreate {
   notes?: string | null;
 }
 
+export interface ProjectUpdate {
+  tool_number?: string;
+  part_description?: string;
+  customer_id?: string;
+  customer_contact_id?: string;
+  design_leader_id?: string;
+  designer_id?: string | null;
+  surfacer_id?: string | null;
+  stream_id?: string;
+  code?: string;
+  quoted_hours?: number;
+  due_date?: string;
+  status?: ProjectStatus;
+  notes?: string | null;
+}
+
 export function projectLabel(
   project: Pick<Project, 'code' | 'tool_number' | 'part_description'>,
 ) {

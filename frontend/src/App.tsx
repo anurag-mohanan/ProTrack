@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { TimesheetEntryPage } from './pages/TimesheetEntryPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
 import { WorkloadPage } from './pages/WorkloadPage';
@@ -45,6 +46,7 @@ export default function App() {
                     element={<TimesheetEntryPage />}
                   />
                   <Route path="/workload" element={<WorkloadPage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
                 </Route>
               </Route>
 

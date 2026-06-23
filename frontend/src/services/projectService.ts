@@ -3,6 +3,7 @@ import type {
   ProjectCreate,
   ProjectDashboard,
   ProjectStatus,
+  ProjectUpdate,
 } from '../types';
 import { apiClient, buildQuery, type ListParams } from '../api/client';
 
@@ -27,9 +28,26 @@ export async function createProject(payload: ProjectCreate): Promise<Project> {
   return data;
 }
 
+export async function updateProject(
+  projectId: string,
+  payload: ProjectUpdate,
+): Promise<Project> {
+  const { data } = await apiClient.patch<Project>(`/projects/${projectId}`, payload);
+  return data;
+}
+
 export const projectQueryKeys = {
   all: ['projects'] as const,
   list: (status?: ProjectStatus) =>
     status ? (['projects', { status }] as const) : (['projects'] as const),
   detail: (projectId: string) => ['projects', projectId, 'detail'] as const,
 };
+
+export function invalidateProjectDetail(
+  queryClient: { invalidateQueries: (options: { queryKey: readonly string[] }) => void },
+  projectId: string,
+) {
+  void queryClient.invalidateQueries({ queryKey: projectQueryKeys.detail(projectId) });
+  void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+  void queryClient.invalidateQueries({ queryKey: ['dashboard', 'summary'] });
+}

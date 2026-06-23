@@ -1,7 +1,7 @@
 from fastapi import Depends
 
 from app.api.auth_deps import require_roles
-from app.api.v1 import auth, dashboard, projects, users
+from app.api.v1 import auth, dashboard, projects, reports, users
 from app.api.v1.router_factory import (
     APIRouter,
     ContactFilters,
@@ -152,3 +152,4 @@ api_router.include_router(
     )
 )
 api_router.include_router(dashboard.router)
+api_router.include_router(reports.router)

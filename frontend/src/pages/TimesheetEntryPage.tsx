@@ -17,6 +17,7 @@ import { fetchMilestones } from '../api/milestones';
 import { fetchTaskTypes } from '../api/lookups';
 import { fetchProjects } from '../api/projects';
 import { createTimesheetEntry } from '../api/timesheets';
+import { timesheetQueryKeys } from '../services/timesheetService';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { projectLabel } from '../types';
@@ -61,8 +62,10 @@ export function TimesheetEntryPage() {
   const createMutation = useMutation({
     mutationFn: createTimesheetEntry,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['timesheet-entries'] });
-      void queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      void queryClient.invalidateQueries({ queryKey: timesheetQueryKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: timesheetQueryKeys.entries(timesheetId),
+      });
       navigate('/timesheets');
     },
   });

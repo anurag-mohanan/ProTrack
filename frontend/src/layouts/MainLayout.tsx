@@ -11,6 +11,7 @@ import {
   Toolbar,
   Typography,
 } from '@mui/material';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import FolderIcon from '@mui/icons-material/Folder';
 import ScheduleIcon from '@mui/icons-material/Schedule';
@@ -26,6 +27,7 @@ const navItems = [
   { label: 'Projects', path: '/projects', icon: <FolderIcon /> },
   { label: 'Timesheets', path: '/timesheets', icon: <ScheduleIcon /> },
   { label: 'Workload', path: '/workload', icon: <GroupsIcon /> },
+  { label: 'Reports', path: '/reports', icon: <AssessmentIcon /> },
 ];
 
 export function MainLayout() {

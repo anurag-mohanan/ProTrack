@@ -14,8 +14,13 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchContacts, fetchCustomers, fetchStreams, fetchUsers } from '../../api/lookups';
-import { createProject, projectQueryKeys } from '../../services/projectService';
-import type { ProjectCreate, ProjectStatus } from '../../types';
+import {
+  createProject,
+  invalidateProjectDetail,
+  projectQueryKeys,
+  updateProject,
+} from '../../services/projectService';
+import type { Project, ProjectCreate, ProjectStatus, ProjectUpdate } from '../../types';
 import { ErrorState } from '../common/ErrorState';
 import { userDisplayName } from '../../utils/format';
 
@@ -42,17 +47,40 @@ const emptyForm: ProjectCreate = {
   notes: '',
 };
 
+function projectToForm(project: Project): ProjectCreate {
+  return {
+    tool_number: project.tool_number,
+    part_description: project.part_description,
+    customer_id: project.customer_id,
+    customer_contact_id: project.customer_contact_id,
+    design_leader_id: project.design_leader_id,
+    designer_id: project.designer_id ?? '',
+    surfacer_id: project.surfacer_id ?? '',
+    stream_id: project.stream_id,
+    code: project.code,
+    quoted_hours: project.quoted_hours,
+    due_date: project.due_date,
+    status: project.status,
+    notes: project.notes ?? '',
+  };
+}
+
 interface ProjectFormDialogProps {
   open: boolean;
   onClose: () => void;
+  project?: Project | null;
   onCreated?: (projectId: string) => void;
+  onUpdated?: (projectId: string) => void;
 }
 
 export function ProjectFormDialog({
   open,
   onClose,
+  project,
   onCreated,
+  onUpdated,
 }: ProjectFormDialogProps) {
+  const isEdit = Boolean(project);
   const queryClient = useQueryClient();
   const [form, setForm] = useState<ProjectCreate>(emptyForm);
 
@@ -83,19 +111,51 @@ export function ProjectFormDialog({
   useEffect(() => {
     if (!open) {
       setForm(emptyForm);
+      return;
     }
-  }, [open]);
+    if (project) {
+      setForm(projectToForm(project));
+    }
+  }, [open, project]);
 
-  useEffect(() => {
-    setForm((current) => ({ ...current, customer_contact_id: '' }));
-  }, [form.customer_id]);
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        ...form,
+        designer_id: form.designer_id || null,
+        surfacer_id: form.surfacer_id || null,
+        notes: form.notes || null,
+      };
 
-  const createMutation = useMutation({
-    mutationFn: createProject,
-    onSuccess: (project) => {
+      if (isEdit && project) {
+        const updatePayload: ProjectUpdate = {
+          tool_number: payload.tool_number,
+          code: payload.code,
+          customer_id: payload.customer_id,
+          customer_contact_id: payload.customer_contact_id,
+          design_leader_id: payload.design_leader_id,
+          designer_id: payload.designer_id,
+          surfacer_id: payload.surfacer_id,
+          stream_id: payload.stream_id,
+          quoted_hours: payload.quoted_hours,
+          due_date: payload.due_date,
+          status: payload.status,
+          notes: payload.notes,
+        };
+        return updateProject(project.id, updatePayload);
+      }
+
+      return createProject(payload);
+    },
+    onSuccess: (savedProject) => {
       void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      if (isEdit) {
+        invalidateProjectDetail(queryClient, savedProject.id);
+        onUpdated?.(savedProject.id);
+      } else {
+        onCreated?.(savedProject.id);
+      }
       onClose();
-      onCreated?.(project.id);
     },
   });
 
@@ -111,17 +171,23 @@ export function ProjectFormDialog({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    createMutation.mutate({
-      ...form,
-      designer_id: form.designer_id || null,
-      surfacer_id: form.surfacer_id || null,
-      notes: form.notes || null,
-    });
+    saveMutation.mutate();
+  };
+
+  const handleCustomerChange = (customerId: string) => {
+    setForm((current) => ({
+      ...current,
+      customer_id: customerId,
+      customer_contact_id:
+        project && customerId === project.customer_id
+          ? project.customer_contact_id
+          : '',
+    }));
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Create Project</DialogTitle>
+      <DialogTitle>{isEdit ? 'Edit Project' : 'Create Project'}</DialogTitle>
       <DialogContent>
         <Grid
           container
@@ -151,26 +217,26 @@ export function ProjectFormDialog({
               onChange={(event) => setForm({ ...form, code: event.target.value })}
             />
           </Grid>
-          <Grid size={{ xs: 12 }}>
-            <TextField
-              label="Part Description"
-              required
-              fullWidth
-              value={form.part_description}
-              onChange={(event) =>
-                setForm({ ...form, part_description: event.target.value })
-              }
-            />
-          </Grid>
+          {!isEdit ? (
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                label="Part Description"
+                required
+                fullWidth
+                value={form.part_description}
+                onChange={(event) =>
+                  setForm({ ...form, part_description: event.target.value })
+                }
+              />
+            </Grid>
+          ) : null}
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormControl fullWidth required>
               <InputLabel>Customer</InputLabel>
               <Select
                 label="Customer"
                 value={form.customer_id}
-                onChange={(event) =>
-                  setForm({ ...form, customer_id: event.target.value })
-                }
+                onChange={(event) => handleCustomerChange(event.target.value)}
               >
                 {activeCustomers.map((customer) => (
                   <MenuItem key={customer.id} value={customer.id}>
@@ -331,8 +397,11 @@ export function ProjectFormDialog({
           </Grid>
         </Grid>
 
-        {createMutation.error ? (
-          <ErrorState error={createMutation.error} title="Create failed" />
+        {saveMutation.error ? (
+          <ErrorState
+            error={saveMutation.error}
+            title={isEdit ? 'Update failed' : 'Create failed'}
+          />
         ) : null}
       </DialogContent>
       <DialogActions>
@@ -341,9 +410,15 @@ export function ProjectFormDialog({
           type="submit"
           form="project-form"
           variant="contained"
-          disabled={createMutation.isPending}
+          disabled={saveMutation.isPending}
         >
-          {createMutation.isPending ? 'Creating…' : 'Create Project'}
+          {saveMutation.isPending
+            ? isEdit
+              ? 'Saving…'
+              : 'Creating…'
+            : isEdit
+              ? 'Save Changes'
+              : 'Create Project'}
         </Button>
       </DialogActions>
     </Dialog>

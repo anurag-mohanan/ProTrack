@@ -1,5 +1,5 @@
 import { Chip, type ChipProps } from '@mui/material';
-import type { MilestoneStatus, ProjectHealth, ProjectStatus } from '../../types';
+import type { MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus } from '../../types';
 import { formatStatus } from '../../utils/format';
 
 const projectStatusLabels: Record<ProjectStatus, string> = {
@@ -49,6 +49,30 @@ export function MilestoneStatusChip({ status }: { status: MilestoneStatus }) {
       label={formatStatus(status)}
       variant="outlined"
       sx={{ textTransform: 'capitalize' }}
+    />
+  );
+}
+
+const timesheetStatusColors: Record<TimesheetStatus, ChipProps['color']> = {
+  draft: 'default',
+  submitted: 'info',
+  approved: 'success',
+  rejected: 'error',
+};
+
+const timesheetStatusLabels: Record<TimesheetStatus, string> = {
+  draft: 'Draft',
+  submitted: 'Submitted',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+export function TimesheetStatusChip({ status }: { status: TimesheetStatus }) {
+  return (
+    <Chip
+      size="small"
+      label={timesheetStatusLabels[status]}
+      color={timesheetStatusColors[status]}
     />
   );
 }

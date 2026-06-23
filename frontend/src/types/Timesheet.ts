@@ -14,3 +14,10 @@ export interface TimesheetCreate {
   week_start: string;
   status?: TimesheetStatus;
 }
+
+export interface TimesheetUpdate {
+  status?: TimesheetStatus;
+  submitted_at?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+}

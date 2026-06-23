@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Box,
+  Button,
   Card,
   CardContent,
   Grid,
@@ -9,9 +10,11 @@ import {
   Tabs,
   Typography,
 } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import EditIcon from '@mui/icons-material/Edit';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { fetchCustomers, fetchStreams, fetchUsers } from '../api/lookups';
+import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
 import { ProjectMilestonesTab } from '../components/projects/ProjectMilestonesTab';
 import { ProjectTimesheetsTab } from '../components/projects/ProjectTimesheetsTab';
 import { EmptyState } from '../components/common/EmptyState';
@@ -34,7 +37,9 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 export function ProjectDetailPage() {
   const { id = '' } = useParams();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState(0);
+  const [editOpen, setEditOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: projectQueryKeys.detail(id),
@@ -78,12 +83,30 @@ export function ProjectDetailPage() {
 
   return (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
-        {project.tool_number}
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        {project.part_description}
-      </Typography>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 2,
+          mb: 3,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
+            {project.tool_number}
+          </Typography>
+          <Typography color="text.secondary">{project.part_description}</Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          startIcon={<EditIcon />}
+          onClick={() => setEditOpen(true)}
+        >
+          Edit Project
+        </Button>
+      </Box>
 
       <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 3 }}>
         <Tab label="Overview" />
@@ -192,6 +215,15 @@ export function ProjectDetailPage() {
       <Box sx={{ mt: 3 }}>
         <Link to="/projects">← Back to projects</Link>
       </Box>
+
+      <ProjectFormDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        project={project}
+        onUpdated={() => {
+          void queryClient.invalidateQueries({ queryKey: projectQueryKeys.detail(id) });
+        }}
+      />
     </Box>
   );
 }

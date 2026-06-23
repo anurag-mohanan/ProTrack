@@ -2,12 +2,12 @@ import { Fragment, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -20,12 +20,22 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { createTimesheet, fetchTimesheetEntries, fetchTimesheets } from '../api/timesheets';
+import { fetchTimesheetEntries } from '../api/timesheets';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
+import { TimesheetStatusChip } from '../components/common/StatusChip';
 import { useAuth } from '../context/AuthContext';
-import { formatDate, formatNumber, formatStatus } from '../utils/format';
+import {
+  approveTimesheet,
+  createTimesheet,
+  getTimesheets,
+  rejectTimesheet,
+  submitTimesheet,
+  timesheetQueryKeys,
+} from '../services/timesheetService';
+import type { Timesheet } from '../types';
+import { formatDate, formatNumber } from '../utils/format';
 
 function weekStartMonday(date = new Date()): string {
   const copy = new Date(date);
@@ -35,31 +45,74 @@ function weekStartMonday(date = new Date()): string {
   return copy.toISOString().slice(0, 10);
 }
 
+function canSubmitTimesheet(timesheet: Timesheet, userId: string, roleName: string) {
+  return (
+    timesheet.status === 'draft' &&
+    (timesheet.user_id === userId || roleName === 'Admin' || roleName === 'Project Manager')
+  );
+}
+
+function canReviewTimesheet(roleName: string) {
+  return roleName === 'Admin' || roleName === 'Project Manager';
+}
+
 export function TimesheetsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [weekStart, setWeekStart] = useState(weekStartMonday());
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<unknown>(null);
 
   const timesheetsQuery = useQuery({
-    queryKey: ['timesheets'],
-    queryFn: () => fetchTimesheets(),
+    queryKey: timesheetQueryKeys.all,
+    queryFn: () => getTimesheets(),
   });
 
   const entriesQuery = useQuery({
-    queryKey: ['timesheet-entries', expandedId],
+    queryKey: timesheetQueryKeys.entries(expandedId ?? undefined),
     queryFn: () => fetchTimesheetEntries({ timesheet_id: expandedId ?? undefined }),
     enabled: Boolean(expandedId),
   });
 
+  const invalidateTimesheets = () => {
+    void queryClient.invalidateQueries({ queryKey: timesheetQueryKeys.all });
+    if (expandedId) {
+      void queryClient.invalidateQueries({
+        queryKey: timesheetQueryKeys.entries(expandedId),
+      });
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: createTimesheet,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      invalidateTimesheets();
       setCreateOpen(false);
       setWeekStart(weekStartMonday());
     },
+  });
+
+  const workflowMutation = useMutation({
+    mutationFn: async ({
+      action,
+      timesheetId,
+    }: {
+      action: 'submit' | 'approve' | 'reject';
+      timesheetId: string;
+    }) => {
+      if (action === 'submit') return submitTimesheet(timesheetId);
+      if (action === 'approve') {
+        if (!user) throw new Error('Not authenticated');
+        return approveTimesheet(timesheetId, user.id);
+      }
+      return rejectTimesheet(timesheetId);
+    },
+    onSuccess: () => {
+      setActionError(null);
+      invalidateTimesheets();
+    },
+    onError: (error) => setActionError(error),
   });
 
   const sortedTimesheets = useMemo(
@@ -81,6 +134,8 @@ export function TimesheetsPage() {
   if (timesheetsQuery.isLoading) return <LoadingState />;
   if (timesheetsQuery.error) return <ErrorState error={timesheetsQuery.error} />;
 
+  const roleName = user?.role_name ?? '';
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, gap: 2 }}>
@@ -89,7 +144,7 @@ export function TimesheetsPage() {
             Timesheets
           </Typography>
           <Typography color="text.secondary">
-            Weekly timesheets and logged hours
+            Weekly timesheets, submissions, and approvals
           </Typography>
         </Box>
         <Button
@@ -101,6 +156,12 @@ export function TimesheetsPage() {
           Create Timesheet
         </Button>
       </Box>
+
+      {actionError ? (
+        <Box sx={{ mb: 2 }}>
+          <ErrorState error={actionError} title="Timesheet action failed" />
+        </Box>
+      ) : null}
 
       {!sortedTimesheets.length ? (
         <EmptyState
@@ -120,37 +181,94 @@ export function TimesheetsPage() {
             <TableBody>
               {sortedTimesheets.map((timesheet) => {
                 const isExpanded = expandedId === timesheet.id;
+                const showSubmit = user
+                  ? canSubmitTimesheet(timesheet, user.id, roleName)
+                  : false;
+                const showReview =
+                  canReviewTimesheet(roleName) && timesheet.status === 'submitted';
+
                 return (
                   <Fragment key={timesheet.id}>
                     <TableRow hover>
                       <TableCell>{formatDate(timesheet.week_start)}</TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
-                          label={formatStatus(timesheet.status)}
-                          variant="outlined"
-                        />
+                        <TimesheetStatusChip status={timesheet.status} />
                       </TableCell>
                       <TableCell align="right">
-                        <Button
-                          size="small"
-                          onClick={() =>
-                            setExpandedId(isExpanded ? null : timesheet.id)
-                          }
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}
                         >
-                          {isExpanded ? 'Hide Entries' : 'View Entries'}
-                        </Button>
-                        <Button
-                          size="small"
-                          component={Link}
-                          to={`/timesheets/${timesheet.id}/entries/new`}
-                        >
-                          Add Entry
-                        </Button>
+                          {showSubmit ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              disabled={workflowMutation.isPending}
+                              onClick={() =>
+                                workflowMutation.mutate({
+                                  action: 'submit',
+                                  timesheetId: timesheet.id,
+                                })
+                              }
+                            >
+                              Submit
+                            </Button>
+                          ) : null}
+                          {showReview ? (
+                            <>
+                              <Button
+                                size="small"
+                                color="success"
+                                variant="outlined"
+                                disabled={workflowMutation.isPending}
+                                onClick={() =>
+                                  workflowMutation.mutate({
+                                    action: 'approve',
+                                    timesheetId: timesheet.id,
+                                  })
+                                }
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="small"
+                                color="error"
+                                variant="outlined"
+                                disabled={workflowMutation.isPending}
+                                onClick={() =>
+                                  workflowMutation.mutate({
+                                    action: 'reject',
+                                    timesheetId: timesheet.id,
+                                  })
+                                }
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          ) : null}
+                          <Button
+                            size="small"
+                            onClick={() =>
+                              setExpandedId(isExpanded ? null : timesheet.id)
+                            }
+                          >
+                            {isExpanded ? 'Hide Entries' : 'View Entries'}
+                          </Button>
+                          {timesheet.status === 'draft' ? (
+                            <Button
+                              size="small"
+                              component={Link}
+                              to={`/timesheets/${timesheet.id}/entries/new`}
+                            >
+                              Add Entry
+                            </Button>
+                          ) : null}
+                        </Stack>
                       </TableCell>
                     </TableRow>
                     {isExpanded ? (
-                      <TableRow key={`${timesheet.id}-entries`}>
+                      <TableRow>
                         <TableCell colSpan={3} sx={{ bgcolor: 'grey.50' }}>
                           {entriesQuery.isLoading ? (
                             <LoadingState message="Loading entries…" />

@@ -1,7 +1,7 @@
-from typing import Any
+from typing import override
 from uuid import UUID
 
-from app.api.deps import HTTPException, status
+from app.core.exceptions import ProTrackValidationError
 from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read
 from app.models.enums import MilestoneStatus
@@ -32,29 +32,20 @@ def _get_active_user(
 ) -> User:
     user = _lookup_user(db, user_id)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"{field_name} must reference an active user "
-                f"(no user found with id {user_id})"
-            ),
+        raise ProTrackValidationError(
+            f"{field_name} must reference an active user (no user found with id {user_id})"
         )
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"{field_name} must reference an active user",
+        raise ProTrackValidationError(
+            f"{field_name} must reference an active user"
         )
 
     if expected_role:
         role = db.get(Role, user.role_id)
         if role is None or role.name != expected_role:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"{field_name} must reference a user with the "
-                    f"{expected_role} role"
-                ),
+            raise ProTrackValidationError(
+                f"{field_name} must reference a user with the {expected_role} role"
             )
 
     return user
@@ -71,9 +62,8 @@ def _validate_project_references(
 ) -> None:
     contact = db.scalar(select(Contact).where(Contact.id == customer_contact_id))
     if contact is None or contact.customer_id != customer_id:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="customer_contact_id must belong to the selected customer_id",
+        raise ProTrackValidationError(
+            "customer_contact_id must belong to the selected customer_id"
         )
 
     _ = _get_active_user(
@@ -100,19 +90,50 @@ def _validate_project_references(
         )
 
 
+def _reference_ids_for_update(
+    db_obj: Project,
+    update_data: dict[str, object],
+) -> tuple[UUID, UUID, UUID, UUID | None, UUID | None]:
+    def pick_uuid(key: str, current: UUID) -> UUID:
+        if key not in update_data:
+            return current
+        value = update_data[key]
+        if not isinstance(value, UUID):
+            raise ProTrackValidationError(f"{key} must be a UUID")
+        return value
+
+    def pick_optional_uuid(key: str, current: UUID | None) -> UUID | None:
+        if key not in update_data:
+            return current
+        value = update_data[key]
+        if value is None:
+            return None
+        if not isinstance(value, UUID):
+            raise ProTrackValidationError(f"{key} must be a UUID")
+        return value
+
+    return (
+        pick_uuid("customer_id", db_obj.customer_id),
+        pick_uuid("customer_contact_id", db_obj.customer_contact_id),
+        pick_uuid("design_leader_id", db_obj.design_leader_id),
+        pick_optional_uuid("designer_id", db_obj.designer_id),
+        pick_optional_uuid("surfacer_id", db_obj.surfacer_id),
+    )
+
+
 class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
+    @override
     def create(self, db: Session, *, obj_in: ProjectCreate) -> Project:
-        data = obj_in.model_dump()
         _validate_project_references(
             db,
-            customer_id=data["customer_id"],
-            customer_contact_id=data["customer_contact_id"],
-            design_leader_id=data["design_leader_id"],
-            designer_id=data.get("designer_id"),
-            surfacer_id=data.get("surfacer_id"),
+            customer_id=obj_in.customer_id,
+            customer_contact_id=obj_in.customer_contact_id,
+            design_leader_id=obj_in.design_leader_id,
+            designer_id=obj_in.designer_id,
+            surfacer_id=obj_in.surfacer_id,
         )
 
-        db_obj = Project(**data)
+        db_obj = Project(**obj_in.model_dump())
         db.add(db_obj)
         db.flush()
 
@@ -130,29 +151,33 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         db.refresh(db_obj)
         return db_obj
 
+    @override
     def update(
         self,
         db: Session,
         *,
         db_obj: Project,
-        obj_in: ProjectUpdate | dict[str, Any],
+        obj_in: ProjectUpdate | dict[str, object],
     ) -> Project:
         if isinstance(obj_in, dict):
-            update_data = dict(obj_in)
+            update_data: dict[str, object] = dict(obj_in)
         else:
             update_data = obj_in.model_dump(exclude_unset=True)
 
+        (
+            customer_id,
+            customer_contact_id,
+            design_leader_id,
+            designer_id,
+            surfacer_id,
+        ) = _reference_ids_for_update(db_obj, update_data)
         _validate_project_references(
             db,
-            customer_id=update_data.get("customer_id", db_obj.customer_id),
-            customer_contact_id=update_data.get(
-                "customer_contact_id", db_obj.customer_contact_id
-            ),
-            design_leader_id=update_data.get(
-                "design_leader_id", db_obj.design_leader_id
-            ),
-            designer_id=update_data.get("designer_id", db_obj.designer_id),
-            surfacer_id=update_data.get("surfacer_id", db_obj.surfacer_id),
+            customer_id=customer_id,
+            customer_contact_id=customer_contact_id,
+            design_leader_id=design_leader_id,
+            designer_id=designer_id,
+            surfacer_id=surfacer_id,
         )
 
         return super().update(db, db_obj=db_obj, obj_in=update_data)
@@ -169,7 +194,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         *,
         skip: int = 0,
         limit: int = 100,
-        filters: dict[str, Any] | None = None,
+        filters: dict[str, object] | None = None,
     ) -> list[ProjectRead]:
         projects = self.get_multi(db, skip=skip, limit=limit, filters=filters)
         return [build_project_read(db, row) for row in projects]

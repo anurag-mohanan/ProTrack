@@ -12,6 +12,7 @@ from app.api.deps import (
     status,
 )
 from app.api.v1.router_factory import ProjectFilters
+from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import (
     READ_ALL_PROJECT_ROLES,
     can_create_project,
@@ -89,7 +90,13 @@ def create_project(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         )
-    db_obj = project.create(db, obj_in=obj_in)
+    try:
+        db_obj = project.create(db, obj_in=obj_in)
+    except ProTrackValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.detail,
+        ) from exc
     return project.get_read(db, db_obj.id)
 
 
@@ -106,7 +113,13 @@ def update_project(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         )
-    project.update(db, db_obj=db_project, obj_in=obj_in)
+    try:
+        project.update(db, db_obj=db_project, obj_in=obj_in)
+    except ProTrackValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.detail,
+        ) from exc
     return project.get_read(db, record_id)
 
 

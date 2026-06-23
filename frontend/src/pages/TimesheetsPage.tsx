@@ -1,328 +1,246 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Card,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
-  Grid,
-  InputLabel,
-  MenuItem,
-  Select,
-  Tab,
-  Tabs,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
 } from '@mui/material';
-import { DataGrid, GridActionsCellItem, type GridColDef } from '@mui/x-data-grid';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
-import PageHeader from '../components/common/PageHeader';
-import AlertBanner from '../components/common/AlertBanner';
-import StatusChip from '../components/common/StatusChip';
-import { useLookupMaps } from '../hooks/useLookupMaps';
-import {
-  projectsApi,
-  taskTypesApi,
-  timesheetEntriesApi,
-  timesheetsApi,
-  usersApi,
-} from '../api/resources';
-import type { Timesheet, TimesheetEntry, TimesheetStatus } from '../types';
-import { projectLabel } from '../types';
+import AddIcon from '@mui/icons-material/Add';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { createTimesheet, fetchTimesheetEntries, fetchTimesheets } from '../api/timesheets';
+import { EmptyState } from '../components/common/EmptyState';
+import { ErrorState } from '../components/common/ErrorState';
+import { LoadingState } from '../components/common/LoadingState';
+import { useAuth } from '../context/AuthContext';
+import { formatDate, formatNumber, formatStatus } from '../utils/format';
 
-export default function TimesheetsPage() {
-  const { users, projects } = useLookupMaps();
-  const [tab, setTab] = useState(0);
-  const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
-  const [entries, setEntries] = useState<TimesheetEntry[]>([]);
-  const [userOptions, setUserOptions] = useState<{ id: string; name: string }[]>([]);
-  const [timesheetOptions, setTimesheetOptions] = useState<{ id: string; label: string }[]>([]);
-  const [projectOptions, setProjectOptions] = useState<{ id: string; name: string }[]>([]);
-  const [taskTypeOptions, setTaskTypeOptions] = useState<{ id: string; name: string }[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [entryOpen, setEntryOpen] = useState(false);
-  const [editingSheet, setEditingSheet] = useState<Timesheet | null>(null);
-  const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
-  const [sheetForm, setSheetForm] = useState({ user_id: '', week_start: '', status: 'draft' as TimesheetStatus });
-  const [entryForm, setEntryForm] = useState({
-    timesheet_id: '',
-    project_id: '',
-    task_type_id: '',
-    entry_date: '',
-    hours: 8,
-    description: '',
+function weekStartMonday(date = new Date()): string {
+  const copy = new Date(date);
+  const day = copy.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  copy.setDate(copy.getDate() + diff);
+  return copy.toISOString().slice(0, 10);
+}
+
+export function TimesheetsPage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [weekStart, setWeekStart] = useState(weekStartMonday());
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const timesheetsQuery = useQuery({
+    queryKey: ['timesheets'],
+    queryFn: () => fetchTimesheets(),
   });
 
-  const load = useCallback(() => {
-    Promise.all([timesheetsApi.list(), timesheetEntriesApi.list()])
-      .then(([sheets, entryRows]) => {
-        setTimesheets(sheets);
-        setEntries(entryRows);
-        setTimesheetOptions(
-          sheets.map((s) => ({
-            id: s.id,
-            label: `${users[s.user_id] ?? s.user_id} · week of ${s.week_start}`,
-          })),
-        );
-      })
-      .catch((err) => setError(err.message));
-  }, [users]);
+  const entriesQuery = useQuery({
+    queryKey: ['timesheet-entries', expandedId],
+    queryFn: () => fetchTimesheetEntries({ timesheet_id: expandedId ?? undefined }),
+    enabled: Boolean(expandedId),
+  });
 
-  useEffect(() => {
-    load();
-    Promise.all([usersApi.list(), projectsApi.list(), taskTypesApi.list()]).then(([u, p, t]) => {
-      setUserOptions(u.map((x) => ({ id: x.id, name: `${x.first_name} ${x.last_name}` })));
-      setProjectOptions(p.map((x) => ({ id: x.id, name: projectLabel(x) })));
-      setTaskTypeOptions(t.filter((x) => x.is_active).map((x) => ({ id: x.id, name: x.name })));
+  const createMutation = useMutation({
+    mutationFn: createTimesheet,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      setCreateOpen(false);
+      setWeekStart(weekStartMonday());
+    },
+  });
+
+  const sortedTimesheets = useMemo(
+    () =>
+      [...(timesheetsQuery.data ?? [])].sort((a, b) =>
+        b.week_start.localeCompare(a.week_start),
+      ),
+    [timesheetsQuery.data],
+  );
+
+  const entryHoursByTimesheet = useMemo(() => {
+    const map = new Map<string, number>();
+    entriesQuery.data?.forEach((entry) => {
+      map.set(entry.timesheet_id, (map.get(entry.timesheet_id) ?? 0) + Number(entry.hours));
     });
-  }, [load]);
+    return map;
+  }, [entriesQuery.data]);
 
-  const saveSheet = async () => {
-    try {
-      if (editingSheet) await timesheetsApi.update(editingSheet.id, sheetForm);
-      else await timesheetsApi.create(sheetForm);
-      setSheetOpen(false);
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
-    }
-  };
-
-  const saveEntry = async () => {
-    try {
-      const payload = {
-        ...entryForm,
-        task_type_id: entryForm.task_type_id || null,
-        description: entryForm.description || null,
-      };
-      if (editingEntry) await timesheetEntriesApi.update(editingEntry.id, payload);
-      else await timesheetEntriesApi.create(payload);
-      setEntryOpen(false);
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
-    }
-  };
-
-  const sheetColumns: GridColDef<Timesheet>[] = [
-    {
-      field: 'user_id',
-      headerName: 'User',
-      flex: 1,
-      valueGetter: (_, row) => users[row.user_id] ?? row.user_id,
-    },
-    { field: 'week_start', headerName: 'Week Start', width: 120 },
-    {
-      field: 'status',
-      headerName: 'Status',
-      width: 120,
-      renderCell: (params) => <StatusChip value={params.value} />,
-    },
-    {
-      field: 'actions',
-      type: 'actions',
-      width: 90,
-      getActions: (params) => [
-        <GridActionsCellItem
-          icon={<EditIcon />}
-          label="Edit"
-          onClick={() => {
-            setEditingSheet(params.row);
-            setSheetForm({
-              user_id: params.row.user_id,
-              week_start: params.row.week_start,
-              status: params.row.status,
-            });
-            setSheetOpen(true);
-          }}
-        />,
-        <GridActionsCellItem
-          icon={<DeleteIcon />}
-          label="Delete"
-          onClick={() => timesheetsApi.remove(params.id as string).then(load)}
-        />,
-      ],
-    },
-  ];
-
-  const entryColumns: GridColDef<TimesheetEntry>[] = [
-    {
-      field: 'project_id',
-      headerName: 'Project',
-      flex: 1,
-      valueGetter: (_, row) => projects[row.project_id] ?? row.project_id,
-    },
-    { field: 'entry_date', headerName: 'Date', width: 120 },
-    { field: 'hours', headerName: 'Hours', width: 90 },
-    { field: 'description', headerName: 'Description', flex: 1 },
-    {
-      field: 'actions',
-      type: 'actions',
-      width: 90,
-      getActions: (params) => [
-        <GridActionsCellItem
-          icon={<EditIcon />}
-          label="Edit"
-          onClick={() => {
-            setEditingEntry(params.row);
-            setEntryForm({
-              timesheet_id: params.row.timesheet_id,
-              project_id: params.row.project_id,
-              task_type_id: params.row.task_type_id ?? '',
-              entry_date: params.row.entry_date,
-              hours: params.row.hours,
-              description: params.row.description ?? '',
-            });
-            setEntryOpen(true);
-          }}
-        />,
-        <GridActionsCellItem
-          icon={<DeleteIcon />}
-          label="Delete"
-          onClick={() => timesheetEntriesApi.remove(params.id as string).then(load)}
-        />,
-      ],
-    },
-  ];
+  if (timesheetsQuery.isLoading) return <LoadingState />;
+  if (timesheetsQuery.error) return <ErrorState error={timesheetsQuery.error} />;
 
   return (
     <Box>
-      <PageHeader title="Timesheets" subtitle="Weekly timesheets and time entries" />
-      <AlertBanner message={error} onClose={() => setError(null)} />
-      <Card sx={{ mb: 2 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-          <Tab label="Timesheets" />
-          <Tab label="Entries" />
-        </Tabs>
-      </Card>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, gap: 2 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
+            Timesheets
+          </Typography>
+          <Typography color="text.secondary">
+            Weekly timesheets and logged hours
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setCreateOpen(true)}
+          disabled={!user}
+        >
+          Create Timesheet
+        </Button>
+      </Box>
 
-      {tab === 0 && (
-        <>
-          <Box sx={{ mb: 2 }}>
-            <Button
-              variant="contained"
-              onClick={() => {
-                setEditingSheet(null);
-                setSheetForm({ user_id: '', week_start: '', status: 'draft' });
-                setSheetOpen(true);
-              }}
-            >
-              New Timesheet
-            </Button>
-          </Box>
-          <Card sx={{ p: 1 }}>
-            <DataGrid rows={timesheets} columns={sheetColumns} autoHeight pageSizeOptions={[10, 25]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }} disableRowSelectionOnClick />
-          </Card>
-        </>
+      {!sortedTimesheets.length ? (
+        <EmptyState
+          title="No timesheets yet"
+          description="Create a weekly timesheet to start logging time."
+        />
+      ) : (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Week Starting</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sortedTimesheets.map((timesheet) => {
+                const isExpanded = expandedId === timesheet.id;
+                return (
+                  <Fragment key={timesheet.id}>
+                    <TableRow hover>
+                      <TableCell>{formatDate(timesheet.week_start)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={formatStatus(timesheet.status)}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          onClick={() =>
+                            setExpandedId(isExpanded ? null : timesheet.id)
+                          }
+                        >
+                          {isExpanded ? 'Hide Entries' : 'View Entries'}
+                        </Button>
+                        <Button
+                          size="small"
+                          component={Link}
+                          to={`/timesheets/${timesheet.id}/entries/new`}
+                        >
+                          Add Entry
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded ? (
+                      <TableRow key={`${timesheet.id}-entries`}>
+                        <TableCell colSpan={3} sx={{ bgcolor: 'grey.50' }}>
+                          {entriesQuery.isLoading ? (
+                            <LoadingState message="Loading entries…" />
+                          ) : entriesQuery.error ? (
+                            <ErrorState error={entriesQuery.error} />
+                          ) : !entriesQuery.data?.length ? (
+                            <EmptyState
+                              title="No entries"
+                              description="Add a time entry for this week."
+                            />
+                          ) : (
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>Date</TableCell>
+                                  <TableCell align="right">Hours</TableCell>
+                                  <TableCell>Description</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {entriesQuery.data.map((entry) => (
+                                  <TableRow key={entry.id}>
+                                    <TableCell>{formatDate(entry.entry_date)}</TableCell>
+                                    <TableCell align="right">
+                                      {formatNumber(entry.hours)}
+                                    </TableCell>
+                                    <TableCell>{entry.description ?? '—'}</TableCell>
+                                  </TableRow>
+                                ))}
+                                <TableRow>
+                                  <TableCell>
+                                    <strong>Total</strong>
+                                  </TableCell>
+                                  <TableCell align="right">
+                                    <strong>
+                                      {formatNumber(
+                                        entryHoursByTimesheet.get(timesheet.id) ?? 0,
+                                      )}
+                                    </strong>
+                                  </TableCell>
+                                  <TableCell />
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
-      {tab === 1 && (
-        <>
-          <Box sx={{ mb: 2 }}>
-            <Button
-              variant="contained"
-              onClick={() => {
-                setEditingEntry(null);
-                setEntryForm({ timesheet_id: '', project_id: '', task_type_id: '', entry_date: '', hours: 8, description: '' });
-                setEntryOpen(true);
-              }}
-            >
-              New Entry
-            </Button>
-          </Box>
-          <Card sx={{ p: 1 }}>
-            <DataGrid rows={entries} columns={entryColumns} autoHeight pageSizeOptions={[10, 25]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }} disableRowSelectionOnClick />
-          </Card>
-        </>
-      )}
-
-      <Dialog open={sheetOpen} onClose={() => setSheetOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingSheet ? 'Edit Timesheet' : 'New Timesheet'}</DialogTitle>
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Create Timesheet</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth required>
-                <InputLabel>User</InputLabel>
-                <Select label="User" value={sheetForm.user_id} onChange={(e) => setSheetForm({ ...sheetForm, user_id: e.target.value })}>
-                  {userOptions.map((u) => <MenuItem key={u.id} value={u.id}>{u.name}</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField label="Week Start" type="date" fullWidth slotProps={{ inputLabel: { shrink: true } }} value={sheetForm.week_start} onChange={(e) => setSheetForm({ ...sheetForm, week_start: e.target.value })} />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select label="Status" value={sheetForm.status} onChange={(e) => setSheetForm({ ...sheetForm, status: e.target.value as TimesheetStatus })}>
-                  {['draft', 'submitted', 'approved', 'rejected'].map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
+          <TextField
+            label="Week Start"
+            type="date"
+            fullWidth
+            margin="normal"
+            slotProps={{ inputLabel: { shrink: true } }}
+            value={weekStart}
+            onChange={(event) => setWeekStart(event.target.value)}
+          />
+          {createMutation.error ? (
+            <ErrorState error={createMutation.error} title="Create failed" />
+          ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSheetOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={saveSheet}>Save</Button>
+          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!user || createMutation.isPending}
+            onClick={() => {
+              if (!user) return;
+              createMutation.mutate({
+                user_id: user.id,
+                week_start: weekStart,
+                status: 'draft',
+              });
+            }}
+          >
+            {createMutation.isPending ? 'Creating…' : 'Create'}
+          </Button>
         </DialogActions>
       </Dialog>
-
-      <Dialog open={entryOpen} onClose={() => setEntryOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingEntry ? 'Edit Entry' : 'New Entry'}</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth required>
-                <InputLabel>Timesheet</InputLabel>
-                <Select label="Timesheet" value={entryForm.timesheet_id} onChange={(e) => setEntryForm({ ...entryForm, timesheet_id: e.target.value })}>
-                  {timesheetOptions.map((t) => <MenuItem key={t.id} value={t.id}>{t.label}</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth required>
-                <InputLabel>Project</InputLabel>
-                <Select label="Project" value={entryForm.project_id} onChange={(e) => setEntryForm({ ...entryForm, project_id: e.target.value })}>
-                  {projectOptions.map((p) => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth>
-                <InputLabel>Task Type</InputLabel>
-                <Select label="Task Type" value={entryForm.task_type_id} onChange={(e) => setEntryForm({ ...entryForm, task_type_id: e.target.value })}>
-                  <MenuItem value="">None</MenuItem>
-                  {taskTypeOptions.map((t) => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField label="Date" type="date" fullWidth slotProps={{ inputLabel: { shrink: true } }} value={entryForm.entry_date} onChange={(e) => setEntryForm({ ...entryForm, entry_date: e.target.value })} />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField label="Hours" type="number" fullWidth value={entryForm.hours} onChange={(e) => setEntryForm({ ...entryForm, hours: Number(e.target.value) })} />
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <TextField label="Description" fullWidth multiline rows={2} value={entryForm.description} onChange={(e) => setEntryForm({ ...entryForm, description: e.target.value })} />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEntryOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={saveEntry}>Save</Button>
-        </DialogActions>
-      </Dialog>
-
-      {timesheets.length === 0 && tab === 0 && (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-          Create a timesheet first, then add entries on the Entries tab.
-        </Typography>
-      )}
     </Box>
   );
 }

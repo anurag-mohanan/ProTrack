@@ -1,4 +1,13 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import {
+  clearAccessToken,
+  getAccessToken,
+  setAccessToken,
+} from '../services/authStorage';
+
+/** Override with VITE_API_URL; defaults to backend direct URL per spec. */
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1';
 
 export class ApiError extends Error {
   status: number;
@@ -9,35 +18,52 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  });
-
-  if (!response.ok) {
-    let detail = response.statusText;
-    try {
-      const body = await response.json();
-      detail = body.detail ?? detail;
-    } catch {
-      // ignore parse errors
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+  if (axios.isAxiosError(error)) {
+    const detail = error.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((item) => item.msg ?? JSON.stringify(item)).join(', ');
     }
-    throw new ApiError(response.status, String(detail));
+    return error.message;
   }
-
-  if (response.status === 204) {
-    return undefined as T;
+  if (error instanceof Error) {
+    return error.message;
   }
-
-  return response.json() as Promise<T>;
+  return 'An unexpected error occurred';
 }
+
+export const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError<{ detail?: string }>) => {
+    if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
+      clearAccessToken();
+    }
+    const message = getErrorMessage(error);
+    const status = error.response?.status ?? 500;
+    return Promise.reject(new ApiError(status, message));
+  },
+);
+
+export { setAccessToken, clearAccessToken, getAccessToken };
 
 export interface ListParams {
   skip?: number;
@@ -45,7 +71,7 @@ export interface ListParams {
   [key: string]: string | number | boolean | undefined;
 }
 
-function toQuery(params?: ListParams): string {
+export function buildQuery(params?: ListParams): string {
   if (!params) return '';
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -55,26 +81,4 @@ function toQuery(params?: ListParams): string {
   });
   const query = search.toString();
   return query ? `?${query}` : '';
-}
-
-export function createResourceApi<T, TCreate = Partial<T>, TUpdate = Partial<T>>(
-  resource: string,
-) {
-  return {
-    list: (params?: ListParams) =>
-      request<T[]>(`/${resource}${toQuery(params)}`),
-    get: (id: string) => request<T>(`/${resource}/${id}`),
-    create: (data: TCreate) =>
-      request<T>(`/${resource}`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    update: (id: string, data: TUpdate) =>
-      request<T>(`/${resource}/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      }),
-    remove: (id: string) =>
-      request<void>(`/${resource}/${id}`, { method: 'DELETE' }),
-  };
 }

@@ -1,28 +1,47 @@
-import { Chip } from '@mui/material';
+import { Chip, type ChipProps } from '@mui/material';
+import type { MilestoneStatus, ProjectHealth, ProjectStatus } from '../../types';
+import { formatStatus } from '../../utils/format';
 
-const colorMap: Record<string, 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info'> = {
+const projectStatusColors: Record<ProjectStatus, ChipProps['color']> = {
   not_started: 'default',
   in_progress: 'info',
   waiting_for_customer: 'warning',
   completed: 'success',
-  not_applicable: 'default',
-  draft: 'default',
-  submitted: 'info',
-  approved: 'success',
-  rejected: 'error',
 };
 
-interface StatusChipProps {
-  value: string;
-}
+const healthColors: Record<ProjectHealth, ChipProps['color']> = {
+  green: 'success',
+  yellow: 'warning',
+  red: 'error',
+};
 
-export default function StatusChip({ value }: StatusChipProps) {
-  const label = value.replace(/_/g, ' ');
+export function StatusChip({ status }: { status: ProjectStatus }) {
   return (
     <Chip
       size="small"
-      label={label}
-      color={colorMap[value] ?? 'default'}
+      label={formatStatus(status)}
+      color={projectStatusColors[status]}
+      sx={{ textTransform: 'capitalize' }}
+    />
+  );
+}
+
+export function HealthChip({ health }: { health: ProjectHealth }) {
+  return (
+    <Chip
+      size="small"
+      label={health.toUpperCase()}
+      color={healthColors[health]}
+    />
+  );
+}
+
+export function MilestoneStatusChip({ status }: { status: MilestoneStatus }) {
+  return (
+    <Chip
+      size="small"
+      label={formatStatus(status)}
+      variant="outlined"
       sx={{ textTransform: 'capitalize' }}
     />
   );

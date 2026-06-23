@@ -1,33 +1,59 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { CssBaseline, ThemeProvider } from '@mui/material';
-import AppLayout from './components/layout/AppLayout';
-import DashboardPage from './pages/DashboardPage';
-import ProjectsPage from './pages/ProjectsPage';
-import MilestonesPage from './pages/MilestonesPage';
-import TimesheetsPage from './pages/TimesheetsPage';
-import CustomersPage from './pages/CustomersPage';
-import StreamsPage from './pages/StreamsPage';
-import UsersPage from './pages/UsersPage';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AuthProvider } from './context/AuthContext';
+import { MainLayout } from './layouts/MainLayout';
+import { DashboardPage } from './pages/DashboardPage';
+import { LoginPage } from './pages/LoginPage';
+import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import { ProjectsPage } from './pages/ProjectsPage';
+import { TimesheetEntryPage } from './pages/TimesheetEntryPage';
+import { TimesheetsPage } from './pages/TimesheetsPage';
+import { WorkloadPage } from './pages/WorkloadPage';
+import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
 import { theme } from './theme/theme';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 export default function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="projects" element={<ProjectsPage />} />
-            <Route path="milestones" element={<MilestonesPage />} />
-            <Route path="timesheets" element={<TimesheetsPage />} />
-            <Route path="customers" element={<CustomersPage />} />
-            <Route path="streams" element={<StreamsPage />} />
-            <Route path="users" element={<UsersPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <AuthProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route element={<PublicRoute />}>
+                <Route path="/login" element={<LoginPage />} />
+              </Route>
+
+              <Route element={<ProtectedRoute />}>
+                <Route element={<MainLayout />}>
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/projects" element={<ProjectsPage />} />
+                  <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                  <Route path="/timesheets" element={<TimesheetsPage />} />
+                  <Route
+                    path="/timesheets/:timesheetId/entries/new"
+                    element={<TimesheetEntryPage />}
+                  />
+                  <Route path="/workload" element={<WorkloadPage />} />
+                </Route>
+              </Route>
+
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }

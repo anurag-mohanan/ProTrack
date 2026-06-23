@@ -2,9 +2,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 import app.models  # noqa: F401 — register all models with Base.metadata
 from app.api.v1.api import api_router
+from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
 from app.db.schema_sync import ensure_project_actual_hours
 from app.db.session import engine
@@ -22,7 +24,31 @@ app = FastAPI(
     description="Project tracking and resource planning API for Prosohm",
     version="0.1.0",
     lifespan=lifespan,
+    swagger_ui_parameters={
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+    },
+    swagger_ui_init_oauth={
+        "usePkceWithAuthorizationCodeGrant": False,
+    },
 )
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description or "",
+        routes=app.routes,
+    )
+    app.openapi_schema = fix_ref_siblings(schema)
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 app.add_middleware(
     CORSMiddleware,

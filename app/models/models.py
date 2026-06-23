@@ -166,17 +166,20 @@ class Project(Base, TimestampMixin):
     design_leader_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
-    designer_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    designer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    surfacer_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    surfacer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     stream_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("streams.id"), nullable=False
     )
     code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     quoted_hours: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+    actual_hours: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2), nullable=False, default=Decimal("0")
+    )
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[ProjectStatus] = mapped_column(
         Enum(ProjectStatus, name="project_status", native_enum=True),
@@ -190,10 +193,10 @@ class Project(Base, TimestampMixin):
     design_leader: Mapped[User] = relationship(
         back_populates="design_leader_projects", foreign_keys=[design_leader_id]
     )
-    designer: Mapped[User] = relationship(
+    designer: Mapped[Optional[User]] = relationship(
         back_populates="designed_projects", foreign_keys=[designer_id]
     )
-    surfacer: Mapped[User] = relationship(
+    surfacer: Mapped[Optional[User]] = relationship(
         back_populates="surfaced_projects", foreign_keys=[surfacer_id]
     )
     stream: Mapped[Stream] = relationship(back_populates="projects")

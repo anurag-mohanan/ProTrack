@@ -1,12 +1,10 @@
 from typing import Any
 from uuid import UUID
 
-from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
-
-from app.crud.base import CRUDBase, select
+from app.api.deps import HTTPException, status
+from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read
-from app.models.enums import MilestoneStatus, ProjectStatus
+from app.models.enums import MilestoneStatus
 from app.models.models import Contact, Milestone, Project, Role, User
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 
@@ -21,13 +19,13 @@ DEFAULT_PROJECT_MILESTONES = (
 )
 
 
-def _lookup_user(db, user_id):
+def _lookup_user(db: Session, user_id: UUID) -> User | None:
     return db.scalar(select(User).where(User.id == user_id))
 
 
 def _get_active_user(
-    db,
-    user_id,
+    db: Session,
+    user_id: UUID,
     *,
     field_name: str,
     expected_role: str | None = None,
@@ -53,20 +51,23 @@ def _get_active_user(
         if role is None or role.name != expected_role:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"{field_name} must reference a user with the {expected_role} role",
+                detail=(
+                    f"{field_name} must reference a user with the "
+                    f"{expected_role} role"
+                ),
             )
 
     return user
 
 
 def _validate_project_references(
-    db,
+    db: Session,
     *,
-    customer_id,
-    customer_contact_id,
-    design_leader_id,
-    designer_id=None,
-    surfacer_id=None,
+    customer_id: UUID,
+    customer_contact_id: UUID,
+    design_leader_id: UUID,
+    designer_id: UUID | None = None,
+    surfacer_id: UUID | None = None,
 ) -> None:
     contact = db.scalar(select(Contact).where(Contact.id == customer_contact_id))
     if contact is None or contact.customer_id != customer_id:
@@ -75,7 +76,7 @@ def _validate_project_references(
             detail="customer_contact_id must belong to the selected customer_id",
         )
 
-    _get_active_user(
+    _ = _get_active_user(
         db,
         design_leader_id,
         field_name="design_leader_id",
@@ -83,7 +84,7 @@ def _validate_project_references(
     )
 
     if designer_id is not None:
-        _get_active_user(
+        _ = _get_active_user(
             db,
             designer_id,
             field_name="designer_id",
@@ -91,7 +92,7 @@ def _validate_project_references(
         )
 
     if surfacer_id is not None:
-        _get_active_user(
+        _ = _get_active_user(
             db,
             surfacer_id,
             field_name="surfacer_id",
@@ -157,10 +158,10 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         return super().update(db, db_obj=db_obj, obj_in=update_data)
 
     def get_read(self, db: Session, record_id: UUID) -> ProjectRead | None:
-        project = self.get(db, record_id)
-        if project is None:
+        db_project = self.get(db, record_id)
+        if db_project is None:
             return None
-        return build_project_read(db, project)
+        return build_project_read(db, db_project)
 
     def get_multi_read(
         self,
@@ -171,7 +172,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         filters: dict[str, Any] | None = None,
     ) -> list[ProjectRead]:
         projects = self.get_multi(db, skip=skip, limit=limit, filters=filters)
-        return [build_project_read(db, project) for project in projects]
+        return [build_project_read(db, row) for row in projects]
 
 
 project = CRUDProject(Project)

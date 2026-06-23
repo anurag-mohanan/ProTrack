@@ -187,8 +187,11 @@ CREATE INDEX idx_users_role_id              ON users (role_id);
 CREATE INDEX idx_contacts_customer_id       ON contacts (customer_id);
 CREATE INDEX idx_task_types_stream_id       ON task_types (stream_id);
 CREATE INDEX idx_projects_customer_id       ON projects (customer_id);
+CREATE INDEX idx_projects_customer_contact_id ON projects (customer_contact_id);
 CREATE INDEX idx_projects_stream_id         ON projects (stream_id);
 CREATE INDEX idx_projects_design_leader_id  ON projects (design_leader_id);
+CREATE INDEX idx_projects_designer_id       ON projects (designer_id);
+CREATE INDEX idx_projects_surfacer_id       ON projects (surfacer_id);
 CREATE INDEX idx_projects_status            ON projects (status);
 CREATE INDEX idx_projects_due_date          ON projects (due_date);
 CREATE INDEX idx_milestones_project_id      ON milestones (project_id);
@@ -211,34 +214,34 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_roles_updated_at
-    BEFORE UPDATE ON roles FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON roles FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_users_updated_at
-    BEFORE UPDATE ON users FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_streams_updated_at
-    BEFORE UPDATE ON streams FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON streams FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_customers_updated_at
-    BEFORE UPDATE ON customers FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON customers FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_contacts_updated_at
-    BEFORE UPDATE ON contacts FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON contacts FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_task_types_updated_at
-    BEFORE UPDATE ON task_types FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON task_types FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_projects_updated_at
-    BEFORE UPDATE ON projects FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON projects FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_milestones_updated_at
-    BEFORE UPDATE ON milestones FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON milestones FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_timesheets_updated_at
-    BEFORE UPDATE ON timesheets FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON timesheets FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_timesheet_entries_updated_at
-    BEFORE UPDATE ON timesheet_entries FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+    BEFORE UPDATE ON timesheet_entries FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- Seed data
@@ -266,3 +269,17 @@ CROSS JOIN (
         ('BOM Creation',       'Bill of materials creation')
 ) AS t(name, description)
 WHERE s.name = 'Mold Design';
+
+-- Default password for all seed users: Password@123 (bcrypt via pgcrypto)
+INSERT INTO users (role_id, email, password_hash, first_name, last_name)
+SELECT r.id, u.email, crypt('Password@123', gen_salt('bf')), u.first_name, u.last_name
+FROM roles r
+JOIN (
+    VALUES
+        ('Admin',           'admin@prosohm.com',   'System', 'Admin'),
+        ('Project Manager', 'pm@prosohm.com',      'Project', 'Manager'),
+        ('Design Leader',   'anurag@prosohm.com',  'Anurag', 'Mohanan'),
+        ('Designer',        'binil@prosohm.com',   'Binil', 'JR'),
+        ('Surfacer',        'ranjith@prosohm.com', 'Ranjith', 'K')
+) AS u(role_name, email, first_name, last_name)
+    ON r.name = u.role_name;

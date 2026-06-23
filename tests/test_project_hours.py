@@ -1,4 +1,11 @@
 from decimal import Decimal
+import uuid
+
+from sqlalchemy import select
+
+from app.models.enums import MilestoneStatus
+from app.models.models import Milestone
+from app.services.project_calculation_service import recalculate_project_progress
 
 
 def test_actual_hours_recalculates_on_timesheet_entry_create(client, auth_headers):
@@ -88,15 +95,28 @@ def test_project_read_includes_progress_and_health(client, auth_headers):
 
     project = client.get(f"/api/v1/projects/{project_id}", headers=auth_headers).json()
     assert project["progress_percent"] == "14.29"
+    assert project["status"] == "in_progress"
     assert project["health"] in {"green", "yellow", "red"}
 
 
-def test_completed_project_health_is_green(client, auth_headers):
+def test_completed_project_health_is_green(client, auth_headers, session):
     project_id = client.project_id
-    response = client.patch(
-        f"/api/v1/projects/{project_id}",
-        json={"status": "completed"},
-        headers=auth_headers,
-    )
+    _complete_all_milestones(session, project_id)
+    recalculate_project_progress(session, project_id)
+
+    response = client.get(f"/api/v1/projects/{project_id}", headers=auth_headers)
     assert response.status_code == 200
+    assert response.json()["status"] == "completed"
     assert response.json()["health"] == "green"
+
+
+def _complete_all_milestones(session, project_id):
+    project_uuid = (
+        project_id if isinstance(project_id, uuid.UUID) else uuid.UUID(str(project_id))
+    )
+    milestones = session.scalars(
+        select(Milestone).where(Milestone.project_id == project_uuid)
+    ).all()
+    for milestone in milestones:
+        milestone.status = MilestoneStatus.completed
+    session.commit()

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.models.enums import ProjectHealth
 from app.schemas.project import ProjectRead
 from app.schemas.timesheet import TimesheetEntryRead
 
@@ -20,6 +21,9 @@ class DashboardSummary(BaseModel):
     completed_milestones: int = 0
     total_milestones: int = 0
     overall_progress_percent: Decimal = Decimal("0.00")
+    green_projects: int = 0
+    yellow_projects: int = 0
+    red_projects: int = 0
 
 
 class DesignerWorkload(BaseModel):
@@ -48,4 +52,5 @@ class ProjectDashboard(BaseModel):
     project: ProjectRead
     milestone_summary: MilestoneSummary
     hours: ProjectHoursSummary
+    health: ProjectHealth
     recent_timesheet_entries: list[TimesheetEntryRead] = Field(default_factory=list)

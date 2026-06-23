@@ -22,6 +22,12 @@ const healthColors: Record<ProjectHealth, ChipProps['color']> = {
   red: 'error',
 };
 
+const healthLabels: Record<ProjectHealth, string> = {
+  green: 'Green',
+  yellow: 'Yellow',
+  red: 'Red',
+};
+
 export function StatusChip({ status }: { status: ProjectStatus }) {
   return (
     <Chip
@@ -36,7 +42,7 @@ export function HealthChip({ health }: { health: ProjectHealth }) {
   return (
     <Chip
       size="small"
-      label={health.toUpperCase()}
+      label={healthLabels[health]}
       color={healthColors[health]}
     />
   );

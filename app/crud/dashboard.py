@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 
 from app.crud.base import Session
-from app.crud.project_metrics import build_project_read, calculate_progress_percent
+from app.crud.project_metrics import build_project_read
 from app.models.enums import MilestoneStatus, ProjectStatus
 from app.models.models import Milestone, Project, Role, Timesheet, TimesheetEntry, User
 from app.schemas.dashboard import (
@@ -16,6 +16,11 @@ from app.schemas.dashboard import (
     ProjectHoursSummary,
 )
 from app.schemas.timesheet import TimesheetEntryRead
+from app.services.project_calculation_service import (
+    calculate_project_health,
+    count_projects_by_health,
+    get_milestone_summary,
+)
 
 WORKLOAD_ROLES = ("Designer", "Design Leader", "Surfacer")
 
@@ -117,6 +122,8 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
             * Decimal("100")
         )
 
+    green_projects, yellow_projects, red_projects = count_projects_by_health(db)
+
     return DashboardSummary(
         total_projects=total_projects,
         not_started_projects=not_started,
@@ -129,6 +136,9 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         completed_milestones=completed_milestones,
         total_milestones=total_milestones,
         overall_progress_percent=overall_progress,
+        green_projects=green_projects,
+        yellow_projects=yellow_projects,
+        red_projects=red_projects,
     )
 
 
@@ -191,27 +201,7 @@ def get_project_dashboard(db: Session, project_id: UUID) -> ProjectDashboard | N
     if project is None:
         return None
 
-    completed = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Milestone)
-            .where(
-                Milestone.project_id == project_id,
-                Milestone.status == MilestoneStatus.completed,
-            )
-        )
-        or 0
-    )
-    total = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Milestone)
-            .where(Milestone.project_id == project_id)
-        )
-        or 0
-    )
-    remaining = max(total - completed, 0)
-    progress_percent = calculate_progress_percent(db, project_id)
+    completed, remaining, progress_percent = get_milestone_summary(db, project_id)
 
     quoted = _round_hours(_decimal(project.quoted_hours))
     actual = _round_hours(_decimal(project.actual_hours))
@@ -235,6 +225,7 @@ def get_project_dashboard(db: Session, project_id: UUID) -> ProjectDashboard | N
             actual=actual,
             variance=_round_hours(actual - quoted),
         ),
+        health=calculate_project_health(project),
         recent_timesheet_entries=[
             TimesheetEntryRead.model_validate(entry, from_attributes=True)
             for entry in recent_entries

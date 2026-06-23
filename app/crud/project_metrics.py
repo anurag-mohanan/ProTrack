@@ -1,16 +1,15 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus
-from app.models.models import Milestone, Project, TimesheetEntry
+from app.models.models import Project, TimesheetEntry
 from app.schemas.project import ProjectRead
-
-
-def _round_percent(value: Decimal) -> Decimal:
-    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+from app.services.project_calculation_service import (
+    calculate_progress_percent,
+    calculate_project_health,
+)
 
 
 def recalculate_project_actual_hours(db: Session, project_id: UUID) -> Decimal:
@@ -27,47 +26,6 @@ def recalculate_project_actual_hours(db: Session, project_id: UUID) -> Decimal:
         db.commit()
         db.refresh(project)
     return actual_hours
-
-
-def calculate_progress_percent(db: Session, project_id: UUID) -> Decimal:
-    completed = db.scalar(
-        select(func.count())
-        .select_from(Milestone)
-        .where(
-            Milestone.project_id == project_id,
-            Milestone.status == MilestoneStatus.completed,
-        )
-    )
-    total = db.scalar(
-        select(func.count())
-        .select_from(Milestone)
-        .where(Milestone.project_id == project_id)
-    )
-    completed_count = int(completed or 0)
-    total_count = int(total or 0)
-    if total_count == 0:
-        return Decimal("0.00")
-    return _round_percent(
-        (Decimal(completed_count) / Decimal(total_count)) * Decimal("100")
-    )
-
-
-def calculate_project_health(project: Project) -> ProjectHealth:
-    if project.status == ProjectStatus.completed:
-        return ProjectHealth.green
-
-    quoted_hours = Decimal(project.quoted_hours)
-    actual_hours = Decimal(project.actual_hours or 0)
-
-    if quoted_hours <= 0:
-        return ProjectHealth.green
-
-    variance_pct = (actual_hours / quoted_hours) * Decimal("100")
-    if variance_pct <= Decimal("90"):
-        return ProjectHealth.green
-    if variance_pct <= Decimal("110"):
-        return ProjectHealth.yellow
-    return ProjectHealth.red
 
 
 def build_project_read(db: Session, project: Project) -> ProjectRead:

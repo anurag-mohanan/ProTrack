@@ -66,7 +66,7 @@ export function ProjectDetailPage() {
   if (detailQuery.error) return <ErrorState error={detailQuery.error} />;
   if (!detailQuery.data) return <EmptyState title="Project not found" />;
 
-  const { project, milestone_summary, hours } = detailQuery.data;
+  const { project, milestone_summary, hours, health } = detailQuery.data;
   const customerName =
     customersQuery.data?.find((customer) => customer.id === project.customer_id)?.name ??
     '—';
@@ -189,15 +189,15 @@ export function ProjectDetailPage() {
                 </Typography>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
                   <Typography color="text.secondary">Health</Typography>
-                  <HealthChip health={project.health} />
+                  <HealthChip health={health} />
                 </Box>
                 <InfoRow
                   label="Progress"
-                  value={`${formatNumber(project.progress_percent)}%`}
+                  value={`${formatNumber(milestone_summary.progress_percent)}%`}
                 />
                 <LinearProgress
                   variant="determinate"
-                  value={Math.min(Number(project.progress_percent), 100)}
+                  value={Math.min(Number(milestone_summary.progress_percent), 100)}
                   sx={{ mt: 2, height: 8, borderRadius: 1 }}
                 />
               </CardContent>

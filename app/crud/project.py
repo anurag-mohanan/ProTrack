@@ -7,6 +7,7 @@ from app.crud.project_metrics import build_project_read
 from app.models.enums import MilestoneStatus
 from app.models.models import Contact, Milestone, Project, Role, User
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
+from app.services.project_calculation_service import recalculate_project_progress
 
 DEFAULT_PROJECT_MILESTONES = (
     "Feasibility",
@@ -149,6 +150,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
 
         db.commit()
         db.refresh(db_obj)
+        recalculate_project_progress(db, db_obj.id)
         return db_obj
 
     @override

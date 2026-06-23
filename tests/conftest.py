@@ -200,21 +200,33 @@ def login(client: TestClient, email: str, password: str = DEFAULT_PASSWORD) -> d
 
 
 @pytest.fixture
-def client():
+def test_engine():
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    testing_session_local = sessionmaker(bind=engine, autocommit=False, autoflush=False)
     Base.metadata.create_all(bind=engine)
+    return engine
 
-    session = testing_session_local()
+
+@pytest.fixture
+def test_session_factory(test_engine):
+    return sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
+
+
+@pytest.fixture
+def seeded_db(test_session_factory):
+    session = test_session_factory()
     milestone = _seed_database(session)
     session.close()
+    return milestone
 
+
+@pytest.fixture
+def client(test_session_factory, seeded_db):
     def override_get_db():
-        db = testing_session_local()
+        db = test_session_factory()
         try:
             yield db
         finally:
@@ -223,13 +235,22 @@ def client():
     app.dependency_overrides[get_db] = override_get_db
 
     with TestClient(app) as test_client:
-        test_client.milestone_id = str(milestone.id)
-        test_client.project_id = str(milestone.project_id)
+        test_client.milestone_id = str(seeded_db.id)
+        test_client.project_id = str(seeded_db.project_id)
         test_client.user_id = str(IDS["user_anurag"])
         test_client.auth_headers = login(test_client, "admin@prosohm.com")
         yield test_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def session(test_session_factory, seeded_db):
+    db = test_session_factory()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture

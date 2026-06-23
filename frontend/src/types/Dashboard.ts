@@ -1,3 +1,4 @@
+import type { ProjectHealth } from './common';
 import type { Project } from './Project';
 import type { TimesheetEntry } from './TimesheetEntry';
 
@@ -13,6 +14,9 @@ export interface DashboardSummary {
   completed_milestones: number;
   total_milestones: number;
   overall_progress_percent: number;
+  green_projects: number;
+  yellow_projects: number;
+  red_projects: number;
 }
 
 export interface DesignerWorkload {
@@ -41,5 +45,6 @@ export interface ProjectDashboard {
   project: Project;
   milestone_summary: MilestoneSummary;
   hours: ProjectHoursSummary;
+  health: ProjectHealth;
   recent_timesheet_entries: TimesheetEntry[];
 }

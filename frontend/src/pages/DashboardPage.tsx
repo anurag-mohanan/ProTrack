@@ -52,12 +52,20 @@ export function DashboardPage() {
     { title: 'Total Projects', value: formatNumber(data.total_projects, 0) },
     { title: 'Active Projects', value: formatNumber(data.in_progress_projects, 0) },
     { title: 'Completed Projects', value: formatNumber(data.completed_projects, 0) },
+    { title: 'Green Projects', value: formatNumber(data.green_projects, 0) },
+    { title: 'Yellow Projects', value: formatNumber(data.yellow_projects, 0) },
+    { title: 'Red Projects', value: formatNumber(data.red_projects, 0) },
     { title: 'Total Quoted Hours', value: formatNumber(data.total_quoted_hours) },
     { title: 'Total Actual Hours', value: formatNumber(data.total_actual_hours) },
     {
       title: 'Hours Variance',
       value: formatNumber(data.hours_variance),
-      subtitle: data.hours_variance > 0 ? 'Over quoted' : data.hours_variance < 0 ? 'Under quoted' : 'On target',
+      subtitle:
+        data.hours_variance > 0
+          ? 'Over quoted'
+          : data.hours_variance < 0
+            ? 'Under quoted'
+            : 'On target',
     },
   ];
 

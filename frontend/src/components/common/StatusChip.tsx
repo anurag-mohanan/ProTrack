@@ -2,6 +2,13 @@ import { Chip, type ChipProps } from '@mui/material';
 import type { MilestoneStatus, ProjectHealth, ProjectStatus } from '../../types';
 import { formatStatus } from '../../utils/format';
 
+const projectStatusLabels: Record<ProjectStatus, string> = {
+  not_started: 'Not Started',
+  in_progress: 'In Progress',
+  waiting_for_customer: 'On Hold',
+  completed: 'Completed',
+};
+
 const projectStatusColors: Record<ProjectStatus, ChipProps['color']> = {
   not_started: 'default',
   in_progress: 'info',
@@ -19,9 +26,8 @@ export function StatusChip({ status }: { status: ProjectStatus }) {
   return (
     <Chip
       size="small"
-      label={formatStatus(status)}
+      label={projectStatusLabels[status]}
       color={projectStatusColors[status]}
-      sx={{ textTransform: 'capitalize' }}
     />
   );
 }

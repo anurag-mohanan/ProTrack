@@ -4,20 +4,21 @@ import {
   Card,
   CardContent,
   Grid,
+  LinearProgress,
   Tab,
   Tabs,
   Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
-import { fetchProjectDashboard } from '../api/dashboard';
-import { fetchCustomers, fetchUsers } from '../api/lookups';
+import { fetchCustomers, fetchStreams, fetchUsers } from '../api/lookups';
+import { ProjectMilestonesTab } from '../components/projects/ProjectMilestonesTab';
+import { ProjectTimesheetsTab } from '../components/projects/ProjectTimesheetsTab';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { HealthChip, StatusChip } from '../components/common/StatusChip';
 import { LoadingState } from '../components/common/LoadingState';
-import { ProjectMilestonesTab } from '../components/projects/ProjectMilestonesTab';
-import { ProjectTimesheetsTab } from '../components/projects/ProjectTimesheetsTab';
+import { getProjectDetail, projectQueryKeys } from '../services/projectService';
 import { formatDate, formatNumber, userDisplayName } from '../utils/format';
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -35,9 +36,9 @@ export function ProjectDetailPage() {
   const { id = '' } = useParams();
   const [tab, setTab] = useState(0);
 
-  const dashboardQuery = useQuery({
-    queryKey: ['dashboard', 'project', id],
-    queryFn: () => fetchProjectDashboard(id),
+  const detailQuery = useQuery({
+    queryKey: projectQueryKeys.detail(id),
+    queryFn: () => getProjectDetail(id),
     enabled: Boolean(id),
   });
 
@@ -51,18 +52,28 @@ export function ProjectDetailPage() {
     queryFn: fetchUsers,
   });
 
-  if (dashboardQuery.isLoading) return <LoadingState />;
-  if (dashboardQuery.error) return <ErrorState error={dashboardQuery.error} />;
-  if (!dashboardQuery.data) return <EmptyState title="Project not found" />;
+  const streamsQuery = useQuery({
+    queryKey: ['streams'],
+    queryFn: fetchStreams,
+  });
 
-  const { project, milestone_summary, hours } = dashboardQuery.data;
+  if (detailQuery.isLoading) return <LoadingState message="Loading project…" />;
+  if (detailQuery.error) return <ErrorState error={detailQuery.error} />;
+  if (!detailQuery.data) return <EmptyState title="Project not found" />;
+
+  const { project, milestone_summary, hours } = detailQuery.data;
   const customerName =
     customersQuery.data?.find((customer) => customer.id === project.customer_id)?.name ??
     '—';
+  const streamName =
+    streamsQuery.data?.find((stream) => stream.id === project.stream_id)?.name ?? '—';
   const designLeader =
     usersQuery.data?.find((user) => user.id === project.design_leader_id);
   const designer = project.designer_id
     ? usersQuery.data?.find((user) => user.id === project.designer_id)
+    : undefined;
+  const surfacer = project.surfacer_id
+    ? usersQuery.data?.find((user) => user.id === project.surfacer_id)
     : undefined;
 
   return (
@@ -82,7 +93,7 @@ export function ProjectDetailPage() {
 
       {tab === 0 && (
         <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid size={{ xs: 12, lg: 6 }}>
             <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -90,6 +101,7 @@ export function ProjectDetailPage() {
                 </Typography>
                 <InfoRow label="Code" value={project.code} />
                 <InfoRow label="Customer" value={customerName} />
+                <InfoRow label="Stream" value={streamName} />
                 <InfoRow label="Due Date" value={formatDate(project.due_date)} />
                 <InfoRow
                   label="Design Leader"
@@ -99,19 +111,19 @@ export function ProjectDetailPage() {
                   label="Designer"
                   value={designer ? userDisplayName(designer) : '—'}
                 />
+                <InfoRow
+                  label="Surfacer"
+                  value={surfacer ? userDisplayName(surfacer) : '—'}
+                />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
                   <Typography color="text.secondary">Status</Typography>
                   <StatusChip status={project.status} />
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                  <Typography color="text.secondary">Health</Typography>
-                  <HealthChip health={project.health} />
                 </Box>
               </CardContent>
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, lg: 2 }}>
             <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -126,14 +138,14 @@ export function ProjectDetailPage() {
                   value={formatNumber(milestone_summary.remaining, 0)}
                 />
                 <InfoRow
-                  label="Progress"
+                  label="Milestone Progress"
                   value={`${formatNumber(milestone_summary.progress_percent)}%`}
                 />
               </CardContent>
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, lg: 2 }}>
             <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -145,13 +157,36 @@ export function ProjectDetailPage() {
               </CardContent>
             </Card>
           </Grid>
+
+          <Grid size={{ xs: 12, sm: 6, lg: 2 }}>
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Health & Progress
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
+                  <Typography color="text.secondary">Health</Typography>
+                  <HealthChip health={project.health} />
+                </Box>
+                <InfoRow
+                  label="Progress"
+                  value={`${formatNumber(project.progress_percent)}%`}
+                />
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.min(Number(project.progress_percent), 100)}
+                  sx={{ mt: 2, height: 8, borderRadius: 1 }}
+                />
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
       )}
 
       {tab === 1 && <ProjectMilestonesTab projectId={project.id} />}
 
       {tab === 2 && (
-        <ProjectTimesheetsTab entries={dashboardQuery.data.recent_timesheet_entries} />
+        <ProjectTimesheetsTab entries={detailQuery.data.recent_timesheet_entries} />
       )}
 
       <Box sx={{ mt: 3 }}>

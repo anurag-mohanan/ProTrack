@@ -1,0 +1,35 @@
+import type {
+  Project,
+  ProjectCreate,
+  ProjectDashboard,
+  ProjectStatus,
+} from '../types';
+import { apiClient, buildQuery, type ListParams } from '../api/client';
+
+export interface ProjectListParams extends ListParams {
+  status?: ProjectStatus;
+}
+
+export async function getProjects(params?: ProjectListParams): Promise<Project[]> {
+  const { data } = await apiClient.get<Project[]>(`/projects${buildQuery(params)}`);
+  return data;
+}
+
+export async function getProjectDetail(projectId: string): Promise<ProjectDashboard> {
+  const { data } = await apiClient.get<ProjectDashboard>(
+    `/projects/${projectId}/detail`,
+  );
+  return data;
+}
+
+export async function createProject(payload: ProjectCreate): Promise<Project> {
+  const { data } = await apiClient.post<Project>('/projects', payload);
+  return data;
+}
+
+export const projectQueryKeys = {
+  all: ['projects'] as const,
+  list: (status?: ProjectStatus) =>
+    status ? (['projects', { status }] as const) : (['projects'] as const),
+  detail: (projectId: string) => ['projects', projectId, 'detail'] as const,
+};

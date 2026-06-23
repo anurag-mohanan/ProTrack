@@ -1,8 +1,22 @@
-import type { Customer, TaskType, User } from '../types';
-import { apiClient } from './client';
+import type { Contact, Customer, Stream, TaskType, User } from '../types';
+import { apiClient, buildQuery, type ListParams } from './client';
+
+export interface ContactListParams extends ListParams {
+  customer_id?: string;
+}
 
 export async function fetchCustomers(): Promise<Customer[]> {
   const { data } = await apiClient.get<Customer[]>('/customers');
+  return data;
+}
+
+export async function fetchContacts(params?: ContactListParams): Promise<Contact[]> {
+  const { data } = await apiClient.get<Contact[]>(`/contacts${buildQuery(params)}`);
+  return data;
+}
+
+export async function fetchStreams(): Promise<Stream[]> {
+  const { data } = await apiClient.get<Stream[]>('/streams');
   return data;
 }
 

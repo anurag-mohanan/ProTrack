@@ -30,3 +30,21 @@ export interface TaskType {
   is_billable: boolean;
   is_active: boolean;
 }
+
+export interface Stream {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+}
+
+export interface Contact {
+  id: string;
+  customer_id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  job_title: string | null;
+  is_primary: boolean;
+}

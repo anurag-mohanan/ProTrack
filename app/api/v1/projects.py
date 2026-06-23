@@ -23,8 +23,10 @@ from app.core.permissions import (
     project_assignment_filter,
 )
 from app.crud import project
+from app.crud.dashboard import get_project_dashboard
 from app.crud.project_metrics import build_project_read
 from app.models.models import User
+from app.schemas.dashboard import ProjectDashboard
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 
 router = APIRouter(
@@ -77,6 +79,30 @@ def get_project(
             detail="Insufficient permissions",
         )
     return project.get_read(db, record_id)
+
+
+@router.get("/{record_id}/detail", response_model=ProjectDashboard)
+def get_project_detail(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = project.get(db, record_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Record not found"
+        )
+    if not can_read_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    result = get_project_dashboard(db, record_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Record not found"
+        )
+    return result
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)

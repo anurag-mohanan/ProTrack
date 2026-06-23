@@ -16,8 +16,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
 
 def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)],
     db: Session = Depends(get_db),
-    token: Annotated[str, Depends(oauth2_scheme)] = "",
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -36,7 +36,7 @@ def get_current_user(
     return user
 
 
-def require_roles(*roles: str) -> Callable:
+def require_roles(*roles: str) -> Callable[..., User]:
     def dependency(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),

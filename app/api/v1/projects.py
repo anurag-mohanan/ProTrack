@@ -48,8 +48,7 @@ def list_projects(
     }
     role_name = get_role_name(db, current_user)
     if role_name not in READ_ALL_PROJECT_ROLES:
-        assignment = project_assignment_filter(current_user, role_name)
-        if assignment is None:
+        if project_assignment_filter(current_user, role_name) is None:
             return []
         rows = project.get_multi(db, skip=skip, limit=limit, filters=active_filters)
         rows = [row for row in rows if can_read_project(db, current_user, row)]

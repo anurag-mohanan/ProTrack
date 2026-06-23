@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
@@ -20,9 +22,12 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         db: Session,
         *,
         db_obj: User,
-        obj_in: UserUpdate,
+        obj_in: UserUpdate | dict[str, Any],
     ) -> User:
-        update_data = obj_in.model_dump(exclude_unset=True)
+        if isinstance(obj_in, dict):
+            update_data = dict(obj_in)
+        else:
+            update_data = obj_in.model_dump(exclude_unset=True)
         password = update_data.pop("password", None)
         if password is not None:
             update_data["password_hash"] = hash_password(password)

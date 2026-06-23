@@ -1,5 +1,10 @@
-from app.api.deps import HTTPException, status
-from app.crud.base import CRUDBase, Session, select
+from typing import Any
+from uuid import UUID
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.crud.base import CRUDBase, select
 from app.crud.project_metrics import build_project_read
 from app.models.enums import MilestoneStatus, ProjectStatus
 from app.models.models import Contact, Milestone, Project, Role, User
@@ -95,7 +100,7 @@ def _validate_project_references(
 
 
 class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
-    def create(self, db, *, obj_in: ProjectCreate) -> Project:
+    def create(self, db: Session, *, obj_in: ProjectCreate) -> Project:
         data = obj_in.model_dump()
         _validate_project_references(
             db,
@@ -124,8 +129,17 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         db.refresh(db_obj)
         return db_obj
 
-    def update(self, db, *, db_obj: Project, obj_in: ProjectUpdate) -> Project:
-        update_data = obj_in.model_dump(exclude_unset=True)
+    def update(
+        self,
+        db: Session,
+        *,
+        db_obj: Project,
+        obj_in: ProjectUpdate | dict[str, Any],
+    ) -> Project:
+        if isinstance(obj_in, dict):
+            update_data = dict(obj_in)
+        else:
+            update_data = obj_in.model_dump(exclude_unset=True)
 
         _validate_project_references(
             db,
@@ -142,7 +156,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
 
         return super().update(db, db_obj=db_obj, obj_in=update_data)
 
-    def get_read(self, db: Session, record_id) -> ProjectRead | None:
+    def get_read(self, db: Session, record_id: UUID) -> ProjectRead | None:
         project = self.get(db, record_id)
         if project is None:
             return None
@@ -154,7 +168,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         *,
         skip: int = 0,
         limit: int = 100,
-        filters: dict | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[ProjectRead]:
         projects = self.get_multi(db, skip=skip, limit=limit, filters=filters)
         return [build_project_read(db, project) for project in projects]

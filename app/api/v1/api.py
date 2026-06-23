@@ -1,5 +1,6 @@
+from fastapi import Depends
+
 from app.api.auth_deps import require_roles
-from app.api.deps import Depends
 from app.api.v1 import auth, dashboard, projects, users
 from app.api.v1.router_factory import (
     APIRouter,

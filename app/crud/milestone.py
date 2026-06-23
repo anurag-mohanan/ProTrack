@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from typing import Any
+
 from app.crud.base import CRUDBase
 from app.models.enums import MilestoneStatus
 from app.models.models import Milestone
@@ -12,7 +14,7 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
         db,
         *,
         db_obj: Milestone,
-        obj_in: MilestoneUpdate | dict,
+        obj_in: MilestoneUpdate | dict[str, Any],
     ) -> Milestone:
         if isinstance(obj_in, dict):
             update_data = dict(obj_in)

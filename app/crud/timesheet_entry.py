@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -24,7 +25,7 @@ class CRUDTimesheetEntry(
         db: Session,
         *,
         db_obj: TimesheetEntry,
-        obj_in: TimesheetEntryUpdate | dict,
+        obj_in: TimesheetEntryUpdate | dict[str, Any],
     ) -> TimesheetEntry:
         previous_project_id = db_obj.project_id
         updated = super().update(db, db_obj=db_obj, obj_in=obj_in)

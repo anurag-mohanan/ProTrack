@@ -1,20 +1,16 @@
-from collections.abc import Callable
+# pyright: reportInvalidTypeForm=false, reportArgumentType=false
+
+from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
 
-from app.api.deps import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Query,
-    Session,
-    get_db,
-    get_object_or_404,
-    status,
-)
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
 from app.api.auth_deps import get_current_user, require_roles
+from app.api.deps import get_db, get_object_or_404
 from app.crud.base import CRUDBase
 from app.models.enums import ProjectStatus, TimesheetStatus
-from app.models.models import User
 from app.schemas.common import BaseModel
 
 
@@ -58,24 +54,24 @@ def build_crud_router(
     *,
     prefix: str,
     tags: list[str],
-    crud: CRUDBase,
+    crud: CRUDBase[Any, Any, Any],
     schema_read: type[BaseModel],
     schema_create: type[BaseModel],
     schema_update: type[BaseModel],
     filters_model: type[BaseModel] = EmptyFilters,
     write_roles: tuple[str, ...] = ("Admin", "Project Manager"),
-    router_dependencies: list[Callable] | None = None,
+    router_dependencies: Sequence[Any] | None = None,
 ) -> APIRouter:
-    dependencies = router_dependencies or [Depends(get_current_user)]
+    dependencies = list(router_dependencies or [Depends(get_current_user)])
     write_dependency = Depends(require_roles(*write_roles))
 
-    router = APIRouter(prefix=prefix, tags=tags, dependencies=dependencies)
+    router = APIRouter(prefix=prefix, tags=tags, dependencies=dependencies)  # type: ignore[arg-type]
 
     @router.get("", response_model=list[schema_read])
     def list_records(
         skip: int = Query(0, ge=0),
         limit: int = Query(100, ge=1, le=500),
-        filters: filters_model = Depends(),
+        filters: filters_model = Depends(),  # type: ignore[valid-type]
         db: Session = Depends(get_db),
     ):
         active_filters = {
@@ -95,7 +91,7 @@ def build_crud_router(
         status_code=status.HTTP_201_CREATED,
         dependencies=[write_dependency],
     )
-    def create_record(obj_in: schema_create, db: Session = Depends(get_db)):
+    def create_record(obj_in: schema_create, db: Session = Depends(get_db)):  # type: ignore[valid-type]
         return crud.create(db, obj_in=obj_in)
 
     @router.patch(
@@ -105,7 +101,7 @@ def build_crud_router(
     )
     def update_record(
         record_id: UUID,
-        obj_in: schema_update,
+        obj_in: schema_update,  # type: ignore[valid-type]
         db: Session = Depends(get_db),
     ):
         db_obj = get_object_or_404(crud, db, record_id)

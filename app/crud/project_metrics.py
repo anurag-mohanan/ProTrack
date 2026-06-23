@@ -4,7 +4,6 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.crud.base import select
 from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus
 from app.models.models import Milestone, Project, TimesheetEntry
 from app.schemas.project import ProjectRead

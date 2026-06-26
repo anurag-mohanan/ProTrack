@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import func, select
 
@@ -59,8 +60,8 @@ def get_customer_summary_report(db: Session) -> list[CustomerSummaryReportRow]:
 
     report: list[CustomerSummaryReportRow] = []
     for row in rows:
-        quoted = Decimal(str(row[3] or 0)).quantize(Decimal("0.01"))
-        actual = Decimal(str(row[4] or 0)).quantize(Decimal("0.01"))
+        quoted = _round_hours(_decimal(row[3]))
+        actual = _round_hours(_decimal(row[4]))
         report.append(
             CustomerSummaryReportRow(
                 customer_id=row[0],
@@ -68,7 +69,7 @@ def get_customer_summary_report(db: Session) -> list[CustomerSummaryReportRow]:
                 project_count=int(row[2] or 0),
                 total_quoted_hours=quoted,
                 total_actual_hours=actual,
-                hours_variance=(actual - quoted).quantize(Decimal("0.01")),
+                hours_variance=_round_hours(actual - quoted),
             )
         )
     return report

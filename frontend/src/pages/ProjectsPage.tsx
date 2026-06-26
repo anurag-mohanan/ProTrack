@@ -80,9 +80,11 @@ export function ProjectsPage() {
     });
   }, [projectsQuery.data, search]);
 
-  const lookupsReady =
-    customersQuery.isSuccess && usersQuery.isSuccess && streamsQuery.isSuccess;
-  const tableReady = projectsQuery.isSuccess && lookupsReady;
+  const tableLoading =
+    projectsQuery.isPending ||
+    customersQuery.isPending ||
+    usersQuery.isPending ||
+    streamsQuery.isPending;
 
   if (projectsQuery.error) return <ErrorState error={projectsQuery.error} />;
   if (customersQuery.error) return <ErrorState error={customersQuery.error} />;
@@ -134,7 +136,7 @@ export function ProjectsPage() {
         </ContentCard>
       </Box>
 
-      {!tableReady ? (
+      {tableLoading ? (
         <ContentCard noPadding>
           <TableSkeleton rows={10} columns={8} />
         </ContentCard>

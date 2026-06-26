@@ -20,14 +20,14 @@ export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
       }}
     >
       <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+        <Typography variant="pageTitle" gutterBottom={Boolean(subtitle)}>
           {title}
         </Typography>
-        {subtitle && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+        {subtitle ? (
+          <Typography variant="body2" color="text.secondary">
             {subtitle}
           </Typography>
-        )}
+        ) : null}
       </Box>
       {action}
     </Box>

@@ -296,7 +296,7 @@ export function TimesheetsPage() {
                     </TableRow>
                     {isExpanded ? (
                       <TableRow>
-                        <TableCell colSpan={3} sx={{ bgcolor: 'grey.50' }}>
+                        <TableCell colSpan={3} sx={{ bgcolor: 'background.default' }}>
                           {entriesQuery.isLoading ? (
                             <LoadingState message="Loading entries…" />
                           ) : entriesQuery.error ? (

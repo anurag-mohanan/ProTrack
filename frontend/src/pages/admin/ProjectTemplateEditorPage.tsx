@@ -411,7 +411,7 @@ export default function ProjectTemplateEditorPage() {
         </Table>
 
         {(editingMilestoneKey !== null || milestoneDraft.milestone_name || !milestones.length) && (
-          <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+          <Box sx={{ mt: 3, p: 2, bgcolor: 'background.default', borderRadius: 2 }}>
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               {editingMilestoneKey ? 'Edit Milestone' : 'Add Milestone'}
             </Typography>

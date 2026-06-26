@@ -1,43 +1,38 @@
 import {
   Box,
-  Card,
-  CardContent,
   Grid,
   Typography,
 } from '@mui/material';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import PendingActionsIcon from '@mui/icons-material/PendingActions';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import SpeedIcon from '@mui/icons-material/Speed';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { useQuery } from '@tanstack/react-query';
 import { fetchDashboardSummary } from '../api/dashboard';
+import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
+import { DashboardCard } from '../components/ui/cards';
 import type { WorkflowDashboard } from '../types';
 import { getWorkflowDashboard } from '../services/notificationService';
 import { formatDate, formatNumber } from '../utils/format';
 
-interface StatCardProps {
+type Accent = 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' | 'accent';
+
+interface DashboardMetric {
   title: string;
   value: string;
   subtitle?: string;
-}
-
-function StatCard({ title, value, subtitle }: StatCardProps) {
-  return (
-    <Card sx={{ height: '100%' }}>
-      <CardContent>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
-          {title}
-        </Typography>
-        <Typography variant="h4" sx={{ fontWeight: 700 }}>
-          {value}
-        </Typography>
-        {subtitle ? (
-          <Typography variant="caption" color="text.secondary">
-            {subtitle}
-          </Typography>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
+  accent: Accent;
+  icon: typeof FolderOpenIcon;
 }
 
 export function DashboardPage() {
@@ -58,32 +53,40 @@ export function DashboardPage() {
 
   const workflow = workflowQuery.data;
 
-  const cards = [
-    { title: 'Total Projects', value: formatNumber(data.total_projects, 0) },
-    { title: 'Not Started', value: formatNumber(data.not_started_projects, 0) },
-    { title: 'In Progress', value: formatNumber(data.in_progress_projects, 0) },
-    { title: 'Completed', value: formatNumber(data.completed_projects, 0) },
-    { title: 'Green Projects', value: formatNumber(data.green_projects, 0) },
-    { title: 'Yellow Projects', value: formatNumber(data.yellow_projects, 0) },
-    { title: 'Red Projects', value: formatNumber(data.red_projects, 0) },
-    { title: 'Quoted Hours', value: formatNumber(data.total_quoted_hours) },
-    { title: 'Actual Hours', value: formatNumber(data.total_actual_hours) },
-    { title: 'Remaining Hours', value: formatNumber(data.total_remaining_hours) },
+  const cards: DashboardMetric[] = [
+    { title: 'Total Projects', value: formatNumber(data.total_projects, 0), accent: 'primary', icon: FolderOpenIcon },
+    { title: 'Not Started', value: formatNumber(data.not_started_projects, 0), accent: 'secondary', icon: HourglassEmptyIcon },
+    { title: 'In Progress', value: formatNumber(data.in_progress_projects, 0), accent: 'info', icon: SpeedIcon },
+    { title: 'Completed', value: formatNumber(data.completed_projects, 0), accent: 'success', icon: CheckCircleIcon },
+    { title: 'Green Projects', value: formatNumber(data.green_projects, 0), accent: 'success', icon: CheckCircleIcon },
+    { title: 'Yellow Projects', value: formatNumber(data.yellow_projects, 0), accent: 'warning', icon: WarningAmberIcon },
+    { title: 'Red Projects', value: formatNumber(data.red_projects, 0), accent: 'error', icon: WarningAmberIcon },
+    { title: 'Quoted Hours', value: formatNumber(data.total_quoted_hours), accent: 'primary', icon: ScheduleIcon },
+    { title: 'Actual Hours', value: formatNumber(data.total_actual_hours), accent: 'info', icon: AssignmentIcon },
+    { title: 'Remaining Hours', value: formatNumber(data.total_remaining_hours), accent: 'secondary', icon: PendingActionsIcon },
     {
       title: 'Pending Approvals',
       value: formatNumber(workflow.pending_timesheet_approvals, 0),
+      accent: 'warning',
+      icon: PendingActionsIcon,
     },
     {
       title: 'Unread Notifications',
       value: formatNumber(workflow.unread_notifications, 0),
+      accent: 'accent',
+      icon: NotificationsActiveIcon,
     },
     {
       title: 'Projects Due This Week',
       value: formatNumber(workflow.projects_due_this_week, 0),
+      accent: 'info',
+      icon: ScheduleIcon,
     },
     {
       title: 'Overdue Milestones',
       value: formatNumber(workflow.overdue_milestones, 0),
+      accent: 'error',
+      icon: WarningAmberIcon,
     },
     {
       title: 'Variance',
@@ -94,30 +97,36 @@ export function DashboardPage() {
           : data.hours_variance < 0
             ? 'Under quoted'
             : 'On target',
+      accent: data.hours_variance > 0 ? 'warning' : data.hours_variance < 0 ? 'success' : 'primary',
+      icon: data.hours_variance > 0 ? TrendingUpIcon : TrendingDownIcon,
     },
   ];
 
   return (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
-        Dashboard
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Portfolio overview and hour utilization
-      </Typography>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Portfolio overview, delivery health, and hour utilization"
+      />
 
-      <Grid container spacing={2}>
+      <Grid container spacing={2.5}>
         {cards.map((card) => (
-          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={card.title}>
-            <StatCard {...card} />
+          <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={card.title}>
+            <DashboardCard
+              title={card.title}
+              value={card.value}
+              subtitle={card.subtitle}
+              accent={card.accent}
+              icon={card.icon}
+            />
           </Grid>
         ))}
       </Grid>
 
-      <Typography variant="h6" sx={{ mt: 4, mb: 2, fontWeight: 700 }}>
+      <Typography variant="sectionTitle" sx={{ mt: 5, mb: 2 }}>
         My Tasks
       </Typography>
-      <Grid container spacing={2} sx={{ mb: 4 }}>
+      <Grid container spacing={2.5} sx={{ mb: 4 }}>
         {workflow.my_tasks.length === 0 ? (
           <Grid size={{ xs: 12 }}>
             <EmptyState title="No open tasks" />
@@ -125,22 +134,22 @@ export function DashboardPage() {
         ) : (
           workflow.my_tasks.map((task) => (
             <Grid size={{ xs: 12, md: 6 }} key={task.id}>
-              <StatCard
+              <DashboardCard
                 title={task.title}
                 value={task.project_code ?? '—'}
-                subtitle={
-                  task.due_date ? `Due ${formatDate(task.due_date)}` : 'No due date'
-                }
+                subtitle={task.due_date ? `Due ${formatDate(task.due_date)}` : 'No due date'}
+                accent="primary"
+                icon={AssignmentIcon}
               />
             </Grid>
           ))
         )}
       </Grid>
 
-      <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
+      <Typography variant="sectionTitle" sx={{ mb: 2 }}>
         Recent Activity
       </Typography>
-      <Grid container spacing={2}>
+      <Grid container spacing={2.5}>
         {workflow.recent_activity.length === 0 ? (
           <Grid size={{ xs: 12 }}>
             <EmptyState title="No recent activity" />
@@ -148,10 +157,12 @@ export function DashboardPage() {
         ) : (
           workflow.recent_activity.map((activity) => (
             <Grid size={{ xs: 12, md: 6 }} key={activity.id}>
-              <StatCard
+              <DashboardCard
                 title={activity.action.replaceAll('_', ' ')}
                 value={activity.user_name ?? 'System'}
                 subtitle={activity.new_value ?? activity.old_value ?? '—'}
+                accent="secondary"
+                icon={SpeedIcon}
               />
             </Grid>
           ))

@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import { Box } from '@mui/material';
+import { Box, useTheme } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
 import type { Customer, Project, Stream, User } from '../../types';
+import { prosohmDataGridSx } from '../../theme/componentStyles';
 import { StatusChip } from '../common/StatusChip';
 import { formatDate, formatNumber, userDisplayName } from '../../utils/format';
 
@@ -61,6 +62,8 @@ export function ProjectTable({
   streams,
 }: ProjectTableProps) {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
 
   const rows = useMemo(
     () => buildProjectTableRows(projects, customers, users, streams),
@@ -120,16 +123,7 @@ export function ProjectTable({
         paginationModel={{ pageSize: 500, page: 0 }}
         pageSizeOptions={[500]}
         onRowClick={(params) => navigate(`/projects/${params.id}`)}
-        sx={{
-          border: 0,
-          '& .MuiDataGrid-row': { cursor: 'pointer' },
-          '& .MuiDataGrid-virtualScroller': {
-            overflow: 'visible',
-          },
-          '& .MuiDataGrid-main': {
-            overflow: 'visible',
-          },
-        }}
+        sx={gridSx}
       />
     </Box>
   );

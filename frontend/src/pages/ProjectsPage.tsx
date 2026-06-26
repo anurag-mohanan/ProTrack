@@ -1,15 +1,11 @@
 import { useMemo, useState } from 'react';
 import {
   Box,
-  Button,
-  Card,
   FormControl,
   InputLabel,
   MenuItem,
-  Paper,
   Select,
   TextField,
-  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +16,9 @@ import { ProjectTable } from '../components/projects/ProjectTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
+import { PageHeader } from '../components/common/PageHeader';
+import { ContentCard } from '../components/ui/cards';
+import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { getProjects, projectQueryKeys } from '../services/projectService';
 import type { ProjectStatus } from '../types';
 
@@ -91,59 +90,48 @@ export function ProjectsPage() {
 
   return (
     <Box>
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: 2,
-          mb: 3,
-          flexWrap: 'wrap',
-        }}
-      >
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
-            Projects
-          </Typography>
-          <Typography color="text.secondary">
-            Manage engineering projects and assignments
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setCreateOpen(true)}
-        >
-          Create Project
-        </Button>
-      </Box>
+      <PageHeader
+        title="Projects"
+        subtitle="Manage engineering projects and assignments"
+        action={
+          <ProsohmButton
+            buttonVariant="primary"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateOpen(true)}
+          >
+            Create Project
+          </ProsohmButton>
+        }
+      />
 
-      <Card sx={{ p: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <TextField
-            label="Search tool number or description"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            sx={{ minWidth: 280, flex: 1 }}
-          />
-          <FormControl sx={{ minWidth: 220 }}>
-            <InputLabel>Status</InputLabel>
-            <Select
-              label="Status"
-              value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(event.target.value as ProjectStatus | 'all')
-              }
-            >
-              {statusOptions.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
-      </Card>
+      <Box sx={{ mb: 2.5 }}>
+        <ContentCard>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              label="Search tool number or description"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              sx={{ minWidth: 280, flex: 1 }}
+            />
+            <FormControl sx={{ minWidth: 220 }}>
+              <InputLabel>Status</InputLabel>
+              <Select
+                label="Status"
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as ProjectStatus | 'all')
+                }
+              >
+                {statusOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </ContentCard>
+      </Box>
 
       {!filteredProjects.length ? (
         <EmptyState
@@ -151,14 +139,14 @@ export function ProjectsPage() {
           description="Try adjusting your search or filters, or create a new project."
         />
       ) : (
-        <Paper sx={{ p: 1 }}>
+        <ContentCard noPadding>
           <ProjectTable
             projects={filteredProjects}
             customers={customersQuery.data ?? []}
             users={usersQuery.data ?? []}
             streams={streamsQuery.data ?? []}
           />
-        </Paper>
+        </ContentCard>
       )}
 
       <ProjectFormDialog

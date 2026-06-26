@@ -41,7 +41,12 @@ export function ProjectsPage() {
 
   const projectsQuery = useQuery({
     queryKey: projectQueryKeys.list(statusParam),
-    queryFn: () => getProjects(statusParam ? { status: statusParam } : undefined),
+    queryFn: () =>
+      getProjects(
+        statusParam
+          ? { status: statusParam, limit: 500 }
+          : { limit: 500 },
+      ),
   });
 
   const customersQuery = useQuery({

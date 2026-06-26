@@ -67,6 +67,8 @@ export function ProjectTable({
     [projects, customers, users, streams],
   );
 
+  // TODO: If project count exceeds ~500 rows, add virtualization or server-side pagination.
+
   const columns: GridColDef<ProjectTableRow>[] = [
     { field: 'tool_number', headerName: 'Tool Number', flex: 1, minWidth: 130 },
     {
@@ -113,15 +115,20 @@ export function ProjectTable({
         rows={rows}
         columns={columns}
         autoHeight
+        hideFooter
         disableRowSelectionOnClick
-        pageSizeOptions={[10, 25, 50]}
-        initialState={{
-          pagination: { paginationModel: { pageSize: 10 } },
-        }}
+        paginationModel={{ pageSize: 500, page: 0 }}
+        pageSizeOptions={[500]}
         onRowClick={(params) => navigate(`/projects/${params.id}`)}
         sx={{
           border: 0,
           '& .MuiDataGrid-row': { cursor: 'pointer' },
+          '& .MuiDataGrid-virtualScroller': {
+            overflow: 'visible',
+          },
+          '& .MuiDataGrid-main': {
+            overflow: 'visible',
+          },
         }}
       />
     </Box>

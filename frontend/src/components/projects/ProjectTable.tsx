@@ -115,7 +115,8 @@ function ProjectTableComponent({
     [navigate],
   );
 
-  // TODO: If project count exceeds ~500 rows, add server-side pagination while keeping page scroll.
+  // MIT DataGrid caps pageSize at 100; use footer pagination when the list is larger.
+  const needsPagination = rows.length > 100;
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -123,10 +124,10 @@ function ProjectTableComponent({
         rows={rows}
         columns={PROJECT_TABLE_COLUMNS}
         autoHeight
-        hideFooter
+        hideFooter={!needsPagination}
         disableRowSelectionOnClick
-        paginationModel={{ pageSize: 500, page: 0 }}
-        pageSizeOptions={[500]}
+        paginationModel={{ pageSize: 100, page: 0 }}
+        pageSizeOptions={[25, 50, 100]}
         onRowClick={handleRowClick}
         sx={gridSx}
       />

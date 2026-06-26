@@ -19,11 +19,15 @@ IDS = {
     "role_pm": uuid.UUID("22222222-2222-2222-2222-222222222222"),
     "role_design_leader": uuid.UUID("d7a67e79-dffa-42f8-bea4-f646f73fd3fd"),
     "role_designer": uuid.UUID("85e2fc34-f0f3-468f-9390-9d8efb1c2a4f"),
+    "role_senior_designer": uuid.UUID("e5e5e5e5-e5e5-4e5e-8e5e-e5e5e5e5e5e1"),
+    "role_junior_designer": uuid.UUID("f6f6f6f6-f6f6-4f6f-8f6f-f6f6f6f6f6f1"),
     "role_surfacer": uuid.UUID("04582a31-25bf-4709-ac44-e6e05aae8406"),
     "user_admin": uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
     "user_pm": uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
     "user_anurag": uuid.UUID("7cf429ba-ca31-4752-9a03-afa3ba4700a3"),
     "user_binil": uuid.UUID("1bb6229f-dcff-419a-a8fa-2b8a7fd15043"),
+    "user_senior_designer": uuid.UUID("c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3"),
+    "user_junior_designer": uuid.UUID("d4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4"),
     "user_ranjith": uuid.UUID("731ddf9e-d2d9-450b-a675-cb2ca8a021e3"),
     "stream_mold_design": uuid.UUID("a4b9ba7c-4ff4-4a2c-8dc7-823a7cfacb55"),
     "customer_ti": uuid.UUID("3946c135-d515-4bbd-affb-00b5c1893832"),
@@ -66,6 +70,16 @@ def rebuild() -> None:
                 id=IDS["role_designer"],
                 name="Designer",
                 description="Design work and time logging",
+            ),
+            Role(
+                id=IDS["role_senior_designer"],
+                name="Senior Designer",
+                description="Senior design work with project edit on assignments",
+            ),
+            Role(
+                id=IDS["role_junior_designer"],
+                name="Junior Designer",
+                description="Entry-level design work and time logging",
             ),
             Role(
                 id=IDS["role_surfacer"],
@@ -156,6 +170,24 @@ def rebuild() -> None:
                     is_active=True,
                 ),
                 User(
+                    id=IDS["user_senior_designer"],
+                    role_id=IDS["role_senior_designer"],
+                    email="senior@prosohm.com",
+                    password_hash=password_hash,
+                    first_name="Priya",
+                    last_name="Nair",
+                    is_active=True,
+                ),
+                User(
+                    id=IDS["user_junior_designer"],
+                    role_id=IDS["role_junior_designer"],
+                    email="junior@prosohm.com",
+                    password_hash=password_hash,
+                    first_name="Alex",
+                    last_name="Thomas",
+                    is_active=True,
+                ),
+                User(
                     id=IDS["user_ranjith"],
                     role_id=IDS["role_surfacer"],
                     email="ranjith@prosohm.com",
@@ -175,6 +207,8 @@ def rebuild() -> None:
         print("    pm@prosohm.com (Project Manager)")
         print("    anurag@prosohm.com (Design Leader)")
         print("    binil@prosohm.com (Designer)")
+        print("    senior@prosohm.com (Senior Designer)")
+        print("    junior@prosohm.com (Junior Designer)")
         print("    ranjith@prosohm.com (Surfacer)")
     except Exception:
         db.rollback()

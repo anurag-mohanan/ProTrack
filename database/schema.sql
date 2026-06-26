@@ -258,7 +258,9 @@ INSERT INTO roles (name, description) VALUES
     ('Admin',            'Full system administration'),
     ('Project Manager',  'Manage projects and approvals'),
     ('Design Leader',    'Lead design projects'),
+    ('Senior Designer',  'Senior design work with project edit on assignments'),
     ('Designer',         'Design work and time logging'),
+    ('Junior Designer',  'Entry-level design work and time logging'),
     ('Surfacer',         'Surface modeling work');
 
 INSERT INTO streams (name, description) VALUES
@@ -286,7 +288,9 @@ JOIN (
         ('Admin',           'admin@prosohm.com',   'System', 'Admin'),
         ('Project Manager', 'pm@prosohm.com',      'Project', 'Manager'),
         ('Design Leader',   'anurag@prosohm.com',  'Anurag', 'Mohanan'),
+        ('Senior Designer', 'senior@prosohm.com',  'Priya', 'Nair'),
         ('Designer',        'binil@prosohm.com',   'Binil', 'JR'),
+        ('Junior Designer', 'junior@prosohm.com',  'Alex', 'Thomas'),
         ('Surfacer',        'ranjith@prosohm.com', 'Ranjith', 'K')
 ) AS u(role_name, email, first_name, last_name)
     ON r.name = u.role_name;

@@ -31,10 +31,17 @@ import {
   createTimesheet,
   getTimesheets,
   rejectTimesheet,
+  returnTimesheetToDraft,
   submitTimesheet,
   timesheetQueryKeys,
 } from '../services/timesheetService';
 import { invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
+import {
+  canApproveTimesheet,
+  canRejectTimesheet,
+  canReturnToDraft,
+  canSubmitTimesheet,
+} from '../utils/permissions';
 import type { Timesheet } from '../types';
 import { formatDate, formatNumber } from '../utils/format';
 
@@ -46,23 +53,14 @@ function weekStartMonday(date = new Date()): string {
   return copy.toISOString().slice(0, 10);
 }
 
-function canSubmitTimesheet(timesheet: Timesheet, userId: string, roleName: string) {
-  return (
-    timesheet.status === 'draft' &&
-    (timesheet.user_id === userId || roleName === 'Admin' || roleName === 'Project Manager')
-  );
-}
-
-function canReviewTimesheet(roleName: string) {
-  return roleName === 'Admin' || roleName === 'Project Manager';
-}
-
 export function TimesheetsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [weekStart, setWeekStart] = useState(weekStartMonday());
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<Timesheet | null>(null);
+  const [rejectComments, setRejectComments] = useState('');
   const [actionError, setActionError] = useState<unknown>(null);
 
   const timesheetsQuery = useQuery({
@@ -98,19 +96,24 @@ export function TimesheetsPage() {
     mutationFn: async ({
       action,
       timesheetId,
+      comments,
     }: {
-      action: 'submit' | 'approve' | 'reject';
+      action: 'submit' | 'approve' | 'reject' | 'return';
       timesheetId: string;
+      comments?: string;
     }) => {
       if (action === 'submit') return submitTimesheet(timesheetId);
-      if (action === 'approve') {
-        if (!user) throw new Error('Not authenticated');
-        return approveTimesheet(timesheetId, user.id);
+      if (action === 'approve') return approveTimesheet(timesheetId, comments);
+      if (action === 'reject') {
+        if (!comments?.trim()) throw new Error('Comments are required when rejecting');
+        return rejectTimesheet(timesheetId, comments.trim());
       }
-      return rejectTimesheet(timesheetId);
+      return returnTimesheetToDraft(timesheetId);
     },
     onSuccess: () => {
       setActionError(null);
+      setRejectTarget(null);
+      setRejectComments('');
       invalidateTimesheets();
     },
     onError: (error) => setActionError(error),
@@ -183,10 +186,23 @@ export function TimesheetsPage() {
               {sortedTimesheets.map((timesheet) => {
                 const isExpanded = expandedId === timesheet.id;
                 const showSubmit = user
-                  ? canSubmitTimesheet(timesheet, user.id, roleName)
+                  ? canSubmitTimesheet(
+                      timesheet.status,
+                      timesheet.user_id,
+                      user.id,
+                      roleName,
+                    )
                   : false;
-                const showReview =
-                  canReviewTimesheet(roleName) && timesheet.status === 'submitted';
+                const showReview = canApproveTimesheet(timesheet.status, roleName);
+                const showReject = canRejectTimesheet(timesheet.status, roleName);
+                const showReturn = user
+                  ? canReturnToDraft(
+                      timesheet.status,
+                      timesheet.user_id,
+                      user.id,
+                      roleName,
+                    )
+                  : false;
 
                 return (
                   <Fragment key={timesheet.id}>
@@ -217,36 +233,46 @@ export function TimesheetsPage() {
                             </Button>
                           ) : null}
                           {showReview ? (
-                            <>
-                              <Button
-                                size="small"
-                                color="success"
-                                variant="outlined"
-                                disabled={workflowMutation.isPending}
-                                onClick={() =>
-                                  workflowMutation.mutate({
-                                    action: 'approve',
-                                    timesheetId: timesheet.id,
-                                  })
-                                }
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                size="small"
-                                color="error"
-                                variant="outlined"
-                                disabled={workflowMutation.isPending}
-                                onClick={() =>
-                                  workflowMutation.mutate({
-                                    action: 'reject',
-                                    timesheetId: timesheet.id,
-                                  })
-                                }
-                              >
-                                Reject
-                              </Button>
-                            </>
+                            <Button
+                              size="small"
+                              color="success"
+                              variant="outlined"
+                              disabled={workflowMutation.isPending}
+                              onClick={() =>
+                                workflowMutation.mutate({
+                                  action: 'approve',
+                                  timesheetId: timesheet.id,
+                                })
+                              }
+                            >
+                              Approve
+                            </Button>
+                          ) : null}
+                          {showReject ? (
+                            <Button
+                              size="small"
+                              color="error"
+                              variant="outlined"
+                              disabled={workflowMutation.isPending}
+                              onClick={() => setRejectTarget(timesheet)}
+                            >
+                              Reject
+                            </Button>
+                          ) : null}
+                          {showReturn ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              disabled={workflowMutation.isPending}
+                              onClick={() =>
+                                workflowMutation.mutate({
+                                  action: 'return',
+                                  timesheetId: timesheet.id,
+                                })
+                              }
+                            >
+                              Return to Draft
+                            </Button>
                           ) : null}
                           <Button
                             size="small"
@@ -352,11 +378,50 @@ export function TimesheetsPage() {
               createMutation.mutate({
                 user_id: user.id,
                 week_start: weekStart,
-                status: 'draft',
               });
             }}
           >
             {createMutation.isPending ? 'Creating…' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(rejectTarget)}
+        onClose={() => setRejectTarget(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Reject Timesheet</DialogTitle>
+        <DialogContent>
+          <TextField
+            label="Approval Comments"
+            fullWidth
+            multiline
+            rows={3}
+            margin="normal"
+            required
+            value={rejectComments}
+            onChange={(event) => setRejectComments(event.target.value)}
+            helperText="Explain what needs to change before resubmission."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRejectTarget(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={!rejectComments.trim() || workflowMutation.isPending}
+            onClick={() => {
+              if (!rejectTarget) return;
+              workflowMutation.mutate({
+                action: 'reject',
+                timesheetId: rejectTarget.id,
+                comments: rejectComments,
+              });
+            }}
+          >
+            Reject
           </Button>
         </DialogActions>
       </Dialog>

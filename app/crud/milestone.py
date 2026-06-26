@@ -3,9 +3,10 @@ from typing import Any
 from uuid import UUID
 
 from app.crud.base import CRUDBase
-from app.models.enums import MilestoneStatus
+from app.models.enums import ActivityAction, EntityType, MilestoneStatus
 from app.models.models import Milestone
 from app.schemas.project import MilestoneCreate, MilestoneUpdate
+from app.services.activity_service import log_activity
 from app.services.project_calculation_service import recalculate_project
 
 
@@ -21,12 +22,14 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
         *,
         db_obj: Milestone,
         obj_in: MilestoneUpdate | dict[str, Any],
+        actor=None,
     ) -> Milestone:
         if isinstance(obj_in, dict):
             update_data = dict(obj_in)
         else:
             update_data = obj_in.model_dump(exclude_unset=True)
 
+        previous_status = db_obj.status
         if "status" in update_data:
             if update_data["status"] == MilestoneStatus.completed:
                 update_data["completed_at"] = datetime.now(timezone.utc)
@@ -35,6 +38,31 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
 
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
         recalculate_project(db, updated.project_id)
+
+        if actor is not None and "status" in update_data and update_data["status"] != previous_status:
+            if update_data["status"] == MilestoneStatus.completed:
+                log_activity(
+                    db,
+                    user=actor,
+                    entity_type=EntityType.milestone,
+                    entity_id=updated.id,
+                    action=ActivityAction.milestone_completed,
+                    old_value=previous_status,
+                    new_value=updated.status,
+                )
+            elif (
+                previous_status == MilestoneStatus.completed
+                and update_data["status"] != MilestoneStatus.completed
+            ):
+                log_activity(
+                    db,
+                    user=actor,
+                    entity_type=EntityType.milestone,
+                    entity_id=updated.id,
+                    action=ActivityAction.milestone_reopened,
+                    old_value=previous_status,
+                    new_value=updated.status,
+                )
         return updated
 
     def delete(self, db, *, record_id: UUID) -> Milestone | None:

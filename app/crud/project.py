@@ -2,6 +2,7 @@ from typing import override
 from uuid import UUID
 
 from app.core.exceptions import ProTrackValidationError
+from app.core.permissions import DESIGNER_ASSIGNMENT_ROLES
 from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read
 from app.models.enums import MilestoneStatus
@@ -30,6 +31,7 @@ def _get_active_user(
     *,
     field_name: str,
     expected_role: str | None = None,
+    expected_roles: frozenset[str] | tuple[str, ...] | None = None,
 ) -> User:
     user = _lookup_user(db, user_id)
     if user is None:
@@ -42,7 +44,14 @@ def _get_active_user(
             f"{field_name} must reference an active user"
         )
 
-    if expected_role:
+    if expected_roles:
+        role = db.get(Role, user.role_id)
+        allowed = ", ".join(sorted(expected_roles))
+        if role is None or role.name not in expected_roles:
+            raise ProTrackValidationError(
+                f"{field_name} must reference a user with one of these roles: {allowed}"
+            )
+    elif expected_role:
         role = db.get(Role, user.role_id)
         if role is None or role.name != expected_role:
             raise ProTrackValidationError(
@@ -79,7 +88,7 @@ def _validate_project_references(
             db,
             designer_id,
             field_name="designer_id",
-            expected_role="Designer",
+            expected_roles=DESIGNER_ASSIGNMENT_ROLES,
         )
 
     if surfacer_id is not None:

@@ -3,6 +3,7 @@ export * from './Project';
 export * from './Milestone';
 export * from './Timesheet';
 export * from './TimesheetEntry';
+export * from './Workflow';
 export * from './Dashboard';
 export * from './Auth';
 

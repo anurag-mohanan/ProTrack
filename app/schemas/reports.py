@@ -1,9 +1,10 @@
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import ProjectStatus
+from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus
 from app.schemas.dashboard import DesignerWorkload
 
 
@@ -31,3 +32,40 @@ class ReportsBundle(BaseModel):
     project_hours: list[ProjectHoursReportRow]
     designer_utilization: list[DesignerWorkload]
     customer_summary: list[CustomerSummaryReportRow]
+
+
+class TimesheetApprovalReportRow(BaseModel):
+    timesheet_id: UUID
+    user_name: str
+    week_start: date
+    status: TimesheetStatus
+    total_hours: Decimal
+    approved_by_name: str | None = None
+    approval_comments: str | None = None
+
+
+class ProjectDelayReportRow(BaseModel):
+    project_id: UUID
+    tool_number: str
+    customer_name: str
+    due_date: date
+    days_overdue: int
+    health: ProjectHealth
+    status: ProjectStatus
+
+
+class MilestoneCompletionReportRow(BaseModel):
+    project_code: str
+    milestone_name: str
+    status: MilestoneStatus
+    due_date: date | None = None
+    completed_at: datetime | None = None
+
+
+class DesignerProductivityReportRow(BaseModel):
+    user_id: UUID
+    designer_name: str
+    role: str
+    approved_hours: Decimal
+    submitted_hours: Decimal
+    draft_hours: Decimal

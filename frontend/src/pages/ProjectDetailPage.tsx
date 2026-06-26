@@ -22,7 +22,8 @@ import { ErrorState } from '../components/common/ErrorState';
 import { HealthChip, StatusChip } from '../components/common/StatusChip';
 import { LoadingState } from '../components/common/LoadingState';
 import { getProjectDetail, invalidateProjectCalculationQueries, projectQueryKeys } from '../services/projectService';
-import { formatDate, formatNumber, userDisplayName } from '../utils/format';
+import { activityQueryKeys, getProjectActivities } from '../services/notificationService';
+import { formatDate, formatDateTime, formatNumber, userDisplayName } from '../utils/format';
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -44,6 +45,12 @@ export function ProjectDetailPage() {
   const detailQuery = useQuery({
     queryKey: projectQueryKeys.detail(id),
     queryFn: () => getProjectDetail(id),
+    enabled: Boolean(id),
+  });
+
+  const activityQuery = useQuery({
+    queryKey: activityQueryKeys.project(id),
+    queryFn: () => getProjectActivities(id),
     enabled: Boolean(id),
   });
 
@@ -205,6 +212,48 @@ export function ProjectDetailPage() {
             </Card>
           </Grid>
         </Grid>
+      )}
+
+      {tab === 0 && (
+        <Card sx={{ mt: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Recent Activity
+            </Typography>
+            {activityQuery.isLoading ? (
+              <LoadingState message="Loading activity…" />
+            ) : activityQuery.error ? (
+              <ErrorState error={activityQuery.error} />
+            ) : !activityQuery.data?.length ? (
+              <EmptyState title="No activity yet" />
+            ) : (
+              activityQuery.data.map((activity) => (
+                <Box
+                  key={activity.id}
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    py: 1,
+                    borderBottom: 1,
+                    borderColor: 'divider',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ fontWeight: 600 }}>
+                      {activity.action.replaceAll('_', ' ')}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {activity.user_name ?? 'System'} · {activity.new_value ?? '—'}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {formatDateTime(activity.created_at)}
+                  </Typography>
+                </Box>
+              ))
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {tab === 1 && <ProjectMilestonesTab projectId={project.id} />}

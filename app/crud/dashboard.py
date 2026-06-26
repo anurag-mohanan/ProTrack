@@ -6,16 +6,26 @@ from sqlalchemy import func, select
 
 from app.crud.base import Session
 from app.crud.project_metrics import build_project_read
-from app.models.enums import MilestoneStatus, ProjectStatus
-from app.models.models import Milestone, Project, Role, Timesheet, TimesheetEntry, User
+from app.core.permissions import (
+    FULL_ACCESS_ROLES,
+    READ_ALL_PROJECT_ROLES,
+    can_approve_timesheet,
+    project_assignment_filter,
+    get_role_name,
+)
+from app.models.enums import MilestoneStatus, ProjectStatus, TimesheetStatus
+from app.models.models import Activity, Milestone, Project, Role, Timesheet, TimesheetEntry, User
 from app.schemas.dashboard import (
     DashboardSummary,
     DesignerWorkload,
     MilestoneSummary,
+    MyTaskItem,
     ProjectDashboard,
     ProjectHoursSummary,
+    WorkflowDashboard,
 )
-from app.schemas.timesheet import TimesheetEntryRead
+from app.schemas.timesheet import ActivityRead, TimesheetEntryRead
+from app.services.notification_service import count_unread_notifications
 from app.services.project_calculation_service import (
     aggregate_portfolio_hours,
     calculate_hours,
@@ -23,7 +33,13 @@ from app.services.project_calculation_service import (
     get_milestone_summary,
 )
 
-WORKLOAD_ROLES = ("Designer", "Design Leader", "Surfacer")
+WORKLOAD_ROLES = (
+    "Design Leader",
+    "Senior Designer",
+    "Designer",
+    "Junior Designer",
+    "Surfacer",
+)
 
 
 def _round_percent(value: Decimal) -> Decimal:
@@ -43,16 +59,6 @@ def _current_week_bounds(today: date | None = None) -> tuple[date, date]:
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
     return week_start, week_end
-
-
-def _project_assignment_filter(user_id: UUID, role_name: str):
-    if role_name == "Design Leader":
-        return Project.design_leader_id == user_id
-    if role_name == "Designer":
-        return Project.designer_id == user_id
-    if role_name == "Surfacer":
-        return Project.surfacer_id == user_id
-    return None
 
 
 def get_dashboard_summary(db: Session) -> DashboardSummary:
@@ -147,7 +153,7 @@ def get_designer_workload(db: Session) -> list[DesignerWorkload]:
     workload: list[DesignerWorkload] = []
     for user in users:
         role_name = user.role.name
-        assignment_filter = _project_assignment_filter(user.id, role_name)
+        assignment_filter = project_assignment_filter(user, role_name)
         if assignment_filter is None:
             continue
 
@@ -223,4 +229,93 @@ def get_project_dashboard(db: Session, project_id: UUID) -> ProjectDashboard | N
             TimesheetEntryRead.model_validate(entry, from_attributes=True)
             for entry in recent_entries
         ],
+    )
+
+
+def _activity_to_read(db: Session, activity: Activity) -> ActivityRead:
+    user_name = None
+    if activity.user_id is not None:
+        user = db.get(User, activity.user_id)
+        if user is not None:
+            user_name = f"{user.first_name} {user.last_name}"
+    return ActivityRead(
+        id=activity.id,
+        user_id=activity.user_id,
+        user_name=user_name,
+        entity_type=activity.entity_type,
+        entity_id=activity.entity_id,
+        action=activity.action,
+        old_value=activity.old_value,
+        new_value=activity.new_value,
+        created_at=activity.created_at,
+        updated_at=activity.updated_at,
+    )
+
+
+def get_workflow_dashboard(db: Session, user: User) -> WorkflowDashboard:
+    today = date.today()
+    week_end = today + timedelta(days=7)
+    role_name = get_role_name(db, user)
+
+    assignment_filter = project_assignment_filter(user, role_name)
+    if role_name in READ_ALL_PROJECT_ROLES:
+        visible_projects = db.scalars(select(Project)).all()
+    elif assignment_filter is not None:
+        visible_projects = db.scalars(select(Project).where(assignment_filter)).all()
+    else:
+        visible_projects = []
+
+    project_ids = {project.id for project in visible_projects}
+    projects_due_this_week = sum(
+        1
+        for project in visible_projects
+        if project.status != ProjectStatus.completed
+        and today <= project.due_date <= week_end
+    )
+
+    overdue_milestones = 0
+    my_tasks: list[MyTaskItem] = []
+    if project_ids:
+        milestones = db.scalars(
+            select(Milestone)
+            .where(
+                Milestone.project_id.in_(project_ids),
+                Milestone.status != MilestoneStatus.completed,
+            )
+            .order_by(Milestone.due_date.asc())
+        ).all()
+        project_map = {project.id: project for project in visible_projects}
+        for row in milestones:
+            if row.due_date is not None and row.due_date < today:
+                overdue_milestones += 1
+            my_tasks.append(
+                MyTaskItem(
+                    id=row.id,
+                    title=row.name,
+                    task_type="milestone",
+                    due_date=row.due_date,
+                    project_code=project_map.get(row.project_id).code
+                    if project_map.get(row.project_id)
+                    else None,
+                )
+            )
+
+    submitted_timesheets = db.scalars(
+        select(Timesheet).where(Timesheet.status == TimesheetStatus.submitted)
+    ).all()
+    pending_approvals = sum(
+        1 for ts in submitted_timesheets if can_approve_timesheet(db, user, ts)
+    )
+
+    recent_activity_rows = db.scalars(
+        select(Activity).order_by(Activity.created_at.desc()).limit(10)
+    ).all()
+
+    return WorkflowDashboard(
+        my_tasks=my_tasks[:10],
+        projects_due_this_week=projects_due_this_week,
+        overdue_milestones=overdue_milestones,
+        pending_timesheet_approvals=pending_approvals,
+        unread_notifications=count_unread_notifications(db, user.id),
+        recent_activity=[_activity_to_read(db, row) for row in recent_activity_rows],
     )

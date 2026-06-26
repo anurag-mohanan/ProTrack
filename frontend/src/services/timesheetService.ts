@@ -25,29 +25,39 @@ export async function updateTimesheet(
 }
 
 export async function submitTimesheet(timesheetId: string): Promise<Timesheet> {
-  return updateTimesheet(timesheetId, {
-    status: 'submitted',
-    submitted_at: new Date().toISOString(),
-  });
+  const { data } = await apiClient.post<Timesheet>(
+    `/timesheets/${timesheetId}/submit`,
+  );
+  return data;
 }
 
 export async function approveTimesheet(
   timesheetId: string,
-  approverId: string,
+  comments?: string,
 ): Promise<Timesheet> {
-  return updateTimesheet(timesheetId, {
-    status: 'approved',
-    approved_by: approverId,
-    approved_at: new Date().toISOString(),
-  });
+  const { data } = await apiClient.post<Timesheet>(
+    `/timesheets/${timesheetId}/approve`,
+    { comments: comments ?? null },
+  );
+  return data;
 }
 
-export async function rejectTimesheet(timesheetId: string): Promise<Timesheet> {
-  return updateTimesheet(timesheetId, {
-    status: 'rejected',
-    approved_by: null,
-    approved_at: null,
-  });
+export async function rejectTimesheet(
+  timesheetId: string,
+  comments: string,
+): Promise<Timesheet> {
+  const { data } = await apiClient.post<Timesheet>(
+    `/timesheets/${timesheetId}/reject`,
+    { comments },
+  );
+  return data;
+}
+
+export async function returnTimesheetToDraft(timesheetId: string): Promise<Timesheet> {
+  const { data } = await apiClient.post<Timesheet>(
+    `/timesheets/${timesheetId}/return-to-draft`,
+  );
+  return data;
 }
 
 export const timesheetQueryKeys = {

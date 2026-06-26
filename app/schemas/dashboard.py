@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import ProjectHealth
 from app.schemas.project import ProjectRead
-from app.schemas.timesheet import TimesheetEntryRead
+from app.schemas.timesheet import ActivityRead, TimesheetEntryRead
 
 
 class DashboardSummary(BaseModel):
@@ -56,3 +56,20 @@ class ProjectDashboard(BaseModel):
     hours: ProjectHoursSummary
     health: ProjectHealth
     recent_timesheet_entries: list[TimesheetEntryRead] = Field(default_factory=list)
+
+
+class MyTaskItem(BaseModel):
+    id: UUID
+    title: str
+    task_type: str
+    due_date: date | None = None
+    project_code: str | None = None
+
+
+class WorkflowDashboard(BaseModel):
+    my_tasks: list[MyTaskItem] = Field(default_factory=list)
+    projects_due_this_week: int = 0
+    overdue_milestones: int = 0
+    pending_timesheet_approvals: int = 0
+    unread_notifications: int = 0
+    recent_activity: list[ActivityRead] = Field(default_factory=list)

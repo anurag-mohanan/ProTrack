@@ -6,7 +6,9 @@ INSERT INTO roles (name, description) VALUES
     ('Admin',           'Full system administration'),
     ('Project Manager', 'Manage projects and approvals'),
     ('Design Leader',   'Lead design projects'),
+    ('Senior Designer', 'Senior design work with project edit on assignments'),
     ('Designer',        'Design work and time logging'),
+    ('Junior Designer', 'Entry-level design work and time logging'),
     ('Surfacer',        'Surface modeling work')
 ON CONFLICT (name) DO UPDATE
     SET description = EXCLUDED.description,

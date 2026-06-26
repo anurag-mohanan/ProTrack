@@ -4,8 +4,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import TimesheetStatus
+from app.models.enums import ActivityAction, EntityType, NotificationType, TimesheetStatus
 from app.schemas.common import TimestampSchema
+
+
+class TimesheetApprovalRequest(BaseModel):
+    comments: str | None = None
+
+
+class TimesheetRejectRequest(BaseModel):
+    comments: str = Field(min_length=1)
 
 
 class TimesheetBase(BaseModel):
@@ -15,19 +23,17 @@ class TimesheetBase(BaseModel):
     submitted_at: datetime | None = None
     approved_by: UUID | None = None
     approved_at: datetime | None = None
+    approval_comments: str | None = None
 
 
-class TimesheetCreate(TimesheetBase):
-    pass
+class TimesheetCreate(BaseModel):
+    user_id: UUID
+    week_start: date
 
 
 class TimesheetUpdate(BaseModel):
     user_id: UUID | None = None
     week_start: date | None = None
-    status: TimesheetStatus | None = None
-    submitted_at: datetime | None = None
-    approved_by: UUID | None = None
-    approved_at: datetime | None = None
 
 
 class TimesheetRead(TimesheetBase, TimestampSchema):
@@ -60,3 +66,30 @@ class TimesheetEntryUpdate(BaseModel):
 
 class TimesheetEntryRead(TimesheetEntryBase, TimestampSchema):
     pass
+
+
+class ActivityRead(TimestampSchema):
+    id: UUID
+    user_id: UUID | None = None
+    user_name: str | None = None
+    entity_type: EntityType
+    entity_id: UUID
+    action: ActivityAction
+    old_value: str | None = None
+    new_value: str | None = None
+
+
+class NotificationRead(TimestampSchema):
+    id: UUID
+    user_id: UUID
+    notification_type: NotificationType
+    title: str
+    message: str
+    entity_type: EntityType | None = None
+    entity_id: UUID | None = None
+    is_read: bool
+    read_at: datetime | None = None
+
+
+class NotificationSummary(BaseModel):
+    unread_count: int

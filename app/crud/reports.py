@@ -1,14 +1,19 @@
-from decimal import Decimal
+from datetime import date
 
 from sqlalchemy import func, select
 
 from app.crud.base import Session
-from app.crud.dashboard import get_designer_workload
-from app.models.models import Customer, Project
+from app.crud.dashboard import get_designer_workload, _decimal, _round_hours
+from app.models.enums import MilestoneStatus, ProjectStatus, TimesheetStatus
+from app.models.models import Customer, Milestone, Project, Timesheet, TimesheetEntry, User
 from app.schemas.reports import (
     CustomerSummaryReportRow,
+    DesignerProductivityReportRow,
+    MilestoneCompletionReportRow,
+    ProjectDelayReportRow,
     ProjectHoursReportRow,
     ReportsBundle,
+    TimesheetApprovalReportRow,
 )
 from app.services.project_calculation_service import calculate_hours
 
@@ -64,6 +69,116 @@ def get_customer_summary_report(db: Session) -> list[CustomerSummaryReportRow]:
                 total_quoted_hours=quoted,
                 total_actual_hours=actual,
                 hours_variance=(actual - quoted).quantize(Decimal("0.01")),
+            )
+        )
+    return report
+
+
+def get_timesheet_approval_report(db: Session) -> list[TimesheetApprovalReportRow]:
+    rows = db.scalars(
+        select(Timesheet).order_by(Timesheet.week_start.desc())
+    ).all()
+    report: list[TimesheetApprovalReportRow] = []
+    for row in rows:
+        owner = db.get(User, row.user_id)
+        approver = db.get(User, row.approved_by) if row.approved_by else None
+        total_hours = db.scalar(
+            select(func.coalesce(func.sum(TimesheetEntry.hours), 0)).where(
+                TimesheetEntry.timesheet_id == row.id
+            )
+        )
+        report.append(
+            TimesheetApprovalReportRow(
+                timesheet_id=row.id,
+                user_name=f"{owner.first_name} {owner.last_name}" if owner else "Unknown",
+                week_start=row.week_start,
+                status=row.status,
+                total_hours=_round_hours(_decimal(total_hours)),
+                approved_by_name=(
+                    f"{approver.first_name} {approver.last_name}" if approver else None
+                ),
+                approval_comments=row.approval_comments,
+            )
+        )
+    return report
+
+
+def get_project_delay_report(db: Session) -> list[ProjectDelayReportRow]:
+    today = date.today()
+    rows = db.execute(
+        select(Project, Customer.name)
+        .join(Customer, Project.customer_id == Customer.id)
+        .where(
+            Project.due_date < today,
+            Project.status != ProjectStatus.completed,
+        )
+        .order_by(Project.due_date)
+    ).all()
+    report: list[ProjectDelayReportRow] = []
+    for project, customer_name in rows:
+        report.append(
+            ProjectDelayReportRow(
+                project_id=project.id,
+                tool_number=project.tool_number,
+                customer_name=customer_name,
+                due_date=project.due_date,
+                days_overdue=(today - project.due_date).days,
+                health=project.health,
+                status=project.status,
+            )
+        )
+    return report
+
+
+def get_milestone_completion_report(db: Session) -> list[MilestoneCompletionReportRow]:
+    rows = db.execute(
+        select(Milestone, Project.code)
+        .join(Project, Milestone.project_id == Project.id)
+        .order_by(Project.code, Milestone.sort_order)
+    ).all()
+    return [
+        MilestoneCompletionReportRow(
+            project_code=code,
+            milestone_name=milestone.name,
+            status=milestone.status,
+            due_date=milestone.due_date,
+            completed_at=milestone.completed_at,
+        )
+        for milestone, code in rows
+    ]
+
+
+def get_designer_productivity_report(db: Session) -> list[DesignerProductivityReportRow]:
+    users = db.scalars(select(User).where(User.is_active.is_(True))).all()
+    report: list[DesignerProductivityReportRow] = []
+    for user in users:
+        timesheets = db.scalars(
+            select(Timesheet).where(Timesheet.user_id == user.id)
+        ).all()
+        approved = submitted = draft = Decimal("0")
+        for ts in timesheets:
+            hours = _decimal(
+                db.scalar(
+                    select(func.coalesce(func.sum(TimesheetEntry.hours), 0)).where(
+                        TimesheetEntry.timesheet_id == ts.id
+                    )
+                )
+            )
+            if ts.status == TimesheetStatus.approved:
+                approved += hours
+            elif ts.status == TimesheetStatus.submitted:
+                submitted += hours
+            elif ts.status == TimesheetStatus.draft:
+                draft += hours
+        role_name = user.role.name if user.role else ""
+        report.append(
+            DesignerProductivityReportRow(
+                user_id=user.id,
+                designer_name=f"{user.first_name} {user.last_name}",
+                role=role_name,
+                approved_hours=_round_hours(approved),
+                submitted_hours=_round_hours(submitted),
+                draft_hours=_round_hours(draft),
             )
         )
     return report

@@ -7,8 +7,10 @@ from app.api.deps import get_db
 from app.core.auth import create_access_token
 from app.core.permissions import get_role_name
 from app.crud.auth import authenticate_user
+from app.models.enums import ActivityAction, EntityType
 from app.models.models import User
 from app.schemas.auth import CurrentUserRead, LoginRequest, Token
+from app.services.activity_service import log_activity
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -27,6 +29,14 @@ def login_json(body: LoginRequest, db: Session = Depends(get_db)):
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    log_activity(
+        db,
+        user=user,
+        entity_type=EntityType.user,
+        entity_id=user.id,
+        action=ActivityAction.user_logged_in,
+        new_value=user.email,
+    )
     return _issue_token(user)
 
 

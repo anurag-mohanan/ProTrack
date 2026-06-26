@@ -8,7 +8,12 @@ import app.models  # noqa: F401 — register all models with Base.metadata
 from app.api.v1.api import api_router
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
-from app.db.schema_sync import ensure_project_actual_hours, ensure_project_health
+from app.db.schema_sync import (
+    ensure_design_roles,
+    ensure_project_actual_hours,
+    ensure_project_health,
+    ensure_timesheet_approval_comments,
+)
 from app.db.session import engine
 
 
@@ -17,6 +22,8 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     ensure_project_actual_hours(engine)
     ensure_project_health(engine)
+    ensure_timesheet_approval_comments(engine)
+    ensure_design_roles(engine)
     yield
 
 

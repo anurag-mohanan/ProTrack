@@ -26,8 +26,10 @@ from app.crud import project
 from app.crud.dashboard import get_project_dashboard
 from app.crud.project_metrics import build_project_read
 from app.models.models import User
+from app.models.enums import ActivityAction, EntityType
 from app.schemas.dashboard import ProjectDashboard
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
+from app.services.activity_service import log_activity
 
 router = APIRouter(
     prefix="/projects",
@@ -118,6 +120,14 @@ def create_project(
         )
     try:
         db_obj = project.create(db, obj_in=obj_in)
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.project,
+            entity_id=db_obj.id,
+            action=ActivityAction.project_created,
+            new_value=db_obj.code,
+        )
     except ProTrackValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -141,6 +151,14 @@ def update_project(
         )
     try:
         project.update(db, db_obj=db_project, obj_in=obj_in)
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.project,
+            entity_id=db_project.id,
+            action=ActivityAction.project_updated,
+            new_value=db_project.code,
+        )
     except ProTrackValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

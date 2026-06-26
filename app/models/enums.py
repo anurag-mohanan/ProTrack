@@ -26,3 +26,30 @@ class TimesheetStatus(enum.Enum):
     submitted = "submitted"
     approved = "approved"
     rejected = "rejected"
+
+
+class ActivityAction(enum.Enum):
+    project_created = "project_created"
+    project_updated = "project_updated"
+    milestone_completed = "milestone_completed"
+    milestone_reopened = "milestone_reopened"
+    timesheet_submitted = "timesheet_submitted"
+    timesheet_approved = "timesheet_approved"
+    timesheet_rejected = "timesheet_rejected"
+    user_logged_in = "user_logged_in"
+
+
+class NotificationType(enum.Enum):
+    project_assigned = "project_assigned"
+    milestone_due_tomorrow = "milestone_due_tomorrow"
+    timesheet_approved = "timesheet_approved"
+    timesheet_rejected = "timesheet_rejected"
+    project_overdue = "project_overdue"
+    timesheet_submitted = "timesheet_submitted"
+
+
+class EntityType(enum.Enum):
+    project = "project"
+    milestone = "milestone"
+    timesheet = "timesheet"
+    user = "user"

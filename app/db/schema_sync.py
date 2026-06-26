@@ -6,7 +6,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.models.models import Project, TimesheetEntry
+from app.core.permissions import JUNIOR_DESIGNER, SENIOR_DESIGNER
+from app.models.models import Project, Role, TimesheetEntry
 from app.services.project_calculation_service import recalculate_project
 
 
@@ -111,3 +112,40 @@ def ensure_project_health(engine: Engine) -> None:
             _backfill_project_health(session)
         finally:
             session.close()
+
+
+def ensure_timesheet_approval_comments(engine: Engine) -> None:
+    dialect = engine.dialect.name
+    if dialect == "sqlite":
+        if not _sqlite_has_column(engine, "timesheets", "approval_comments"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE timesheets ADD COLUMN approval_comments TEXT")
+                )
+        return
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheets "
+                    "ADD COLUMN IF NOT EXISTS approval_comments TEXT"
+                )
+            )
+
+
+DESIGN_ROLE_SEED = (
+    (SENIOR_DESIGNER, "Senior design work with project edit on assignments"),
+    (JUNIOR_DESIGNER, "Entry-level design work and time logging"),
+)
+
+
+def ensure_design_roles(engine: Engine) -> None:
+    session = sessionmaker(bind=engine)()
+    try:
+        for name, description in DESIGN_ROLE_SEED:
+            existing = session.scalar(select(Role).where(Role.name == name))
+            if existing is None:
+                session.add(Role(name=name, description=description))
+        session.commit()
+    finally:
+        session.close()

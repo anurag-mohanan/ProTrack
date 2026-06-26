@@ -18,7 +18,9 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import GroupsIcon from '@mui/icons-material/Groups';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NotificationBell } from '../components/common/NotificationBell';
 import { useAuth } from '../context/AuthContext';
+import { canViewReports, canViewWorkload } from '../utils/permissions';
 
 const drawerWidth = 240;
 
@@ -33,6 +35,13 @@ const navItems = [
 export function MainLayout() {
   const { user, displayName, logout } = useAuth();
   const navigate = useNavigate();
+  const roleName = user?.role_name ?? '';
+
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.path === '/reports') return canViewReports(roleName);
+    if (item.path === '/workload') return canViewWorkload(roleName);
+    return true;
+  });
 
   const handleLogout = () => {
     logout();
@@ -56,7 +65,8 @@ export function MainLayout() {
           <Typography variant="h6" sx={{ fontWeight: 700 }} color="primary">
             ProTrack
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <NotificationBell />
             <Box sx={{ textAlign: 'right' }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
                 {displayName}
@@ -94,7 +104,7 @@ export function MainLayout() {
         <Toolbar />
         <Box sx={{ overflow: 'auto', py: 1 }}>
           <List>
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <ListItemButton
                 key={item.path}
                 component={NavLink}

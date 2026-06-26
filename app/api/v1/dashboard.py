@@ -6,8 +6,10 @@ from app.crud.dashboard import (
     get_dashboard_summary,
     get_designer_workload,
     get_project_dashboard,
+    get_workflow_dashboard,
 )
-from app.schemas.dashboard import DashboardSummary, DesignerWorkload, ProjectDashboard
+from app.models.models import User
+from app.schemas.dashboard import DashboardSummary, DesignerWorkload, ProjectDashboard, WorkflowDashboard
 
 router = APIRouter(
     prefix="/dashboard",
@@ -24,6 +26,14 @@ def dashboard_summary(db: Session = Depends(get_db)):
 @router.get("/workload", response_model=list[DesignerWorkload])
 def dashboard_workload(db: Session = Depends(get_db)):
     return get_designer_workload(db)
+
+
+@router.get("/workflow", response_model=WorkflowDashboard)
+def dashboard_workflow(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return get_workflow_dashboard(db, current_user)
 
 
 @router.get("/project/{project_id}", response_model=ProjectDashboard)

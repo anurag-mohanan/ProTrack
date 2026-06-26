@@ -1,26 +1,31 @@
 from fastapi import Depends
 
 from app.api.auth_deps import require_roles
-from app.api.v1 import auth, dashboard, projects, reports, users
+from app.api.v1 import (
+    activities,
+    auth,
+    dashboard,
+    milestones,
+    notifications,
+    projects,
+    reports,
+    timesheet_entries,
+    timesheets,
+    users,
+)
 from app.api.v1.router_factory import (
     APIRouter,
     ContactFilters,
-    MilestoneFilters,
     TaskTypeFilters,
-    TimesheetEntryFilters,
-    TimesheetFilters,
     build_crud_router,
 )
 from app.crud import (
     contact,
     customer,
-    milestone,
     role,
     stream,
     task_type,
-    timesheet,
 )
-from app.crud.timesheet_entry import timesheet_entry
 from app.schemas.identity import RoleCreate, RoleRead, RoleUpdate
 from app.schemas.organization import (
     ContactCreate,
@@ -37,23 +42,14 @@ from app.schemas.organization import (
     TaskTypeUpdate,
 )
 from app.schemas.project import MilestoneCreate, MilestoneRead, MilestoneUpdate
-from app.schemas.timesheet import (
-    TimesheetCreate,
-    TimesheetEntryCreate,
-    TimesheetEntryRead,
-    TimesheetEntryUpdate,
-    TimesheetRead,
-    TimesheetUpdate,
-)
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router)
 
 admin_only = [Depends(require_roles("Admin"))]
-master_data_write = ("Admin", "Project Manager")
-delivery_write = ("Admin", "Project Manager", "Design Leader")
-timesheet_write = ("Admin", "Project Manager", "Design Leader", "Designer", "Surfacer")
+master_data_write = ("Admin", "Engineering Manager")
+delivery_write = ("Admin", "Engineering Manager", "Design Leader")
 
 api_router.include_router(
     build_crud_router(
@@ -115,41 +111,10 @@ api_router.include_router(
     )
 )
 api_router.include_router(projects.router)
-api_router.include_router(
-    build_crud_router(
-        prefix="/milestones",
-        tags=["milestones"],
-        crud=milestone,
-        schema_read=MilestoneRead,
-        schema_create=MilestoneCreate,
-        schema_update=MilestoneUpdate,
-        filters_model=MilestoneFilters,
-        write_roles=delivery_write,
-    )
-)
-api_router.include_router(
-    build_crud_router(
-        prefix="/timesheets",
-        tags=["timesheets"],
-        crud=timesheet,
-        schema_read=TimesheetRead,
-        schema_create=TimesheetCreate,
-        schema_update=TimesheetUpdate,
-        filters_model=TimesheetFilters,
-        write_roles=timesheet_write,
-    )
-)
-api_router.include_router(
-    build_crud_router(
-        prefix="/timesheet-entries",
-        tags=["timesheet-entries"],
-        crud=timesheet_entry,
-        schema_read=TimesheetEntryRead,
-        schema_create=TimesheetEntryCreate,
-        schema_update=TimesheetEntryUpdate,
-        filters_model=TimesheetEntryFilters,
-        write_roles=timesheet_write,
-    )
-)
+api_router.include_router(milestones.router)
+api_router.include_router(timesheets.router)
+api_router.include_router(timesheet_entries.router)
+api_router.include_router(notifications.router)
+api_router.include_router(activities.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)

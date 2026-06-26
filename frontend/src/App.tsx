@@ -12,8 +12,19 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TimesheetEntryPage } from './pages/TimesheetEntryPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
 import { WorkloadPage } from './pages/WorkloadPage';
+import { HistoricalImportPage } from './pages/HistoricalImportPage';
 import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
 import { theme } from './theme/theme';
+import { useAuth } from './context/AuthContext';
+import { canImportHistoricalProjects } from './utils/permissions';
+
+function AdminHistoricalImportRoute() {
+  const { user } = useAuth();
+  if (!canImportHistoricalProjects(user?.role_name ?? '')) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <HistoricalImportPage />;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,6 +60,10 @@ export default function App() {
                   />
                   <Route path="/workload" element={<WorkloadPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
+                  <Route
+                    path="/admin/import-historical-projects"
+                    element={<AdminHistoricalImportRoute />}
+                  />
                 </Route>
               </Route>
 

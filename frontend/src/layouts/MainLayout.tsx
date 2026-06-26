@@ -16,11 +16,12 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import FolderIcon from '@mui/icons-material/Folder';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import GroupsIcon from '@mui/icons-material/Groups';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { NotificationBell } from '../components/common/NotificationBell';
 import { useAuth } from '../context/AuthContext';
-import { canViewReports, canViewWorkload } from '../utils/permissions';
+import { canImportHistoricalProjects, canViewReports, canViewWorkload } from '../utils/permissions';
 
 const drawerWidth = 240;
 
@@ -125,6 +126,36 @@ export function MainLayout() {
             ))}
           </List>
           <Divider sx={{ my: 1 }} />
+          {canImportHistoricalProjects(roleName) && (
+            <>
+              <Typography
+                variant="overline"
+                sx={{ px: 2, py: 1, display: 'block', color: 'text.secondary' }}
+              >
+                Administration
+              </Typography>
+              <List>
+                <ListItemButton
+                  component={NavLink}
+                  to="/admin/import-historical-projects"
+                  sx={{
+                    mx: 1,
+                    borderRadius: 1,
+                    '&.active': {
+                      bgcolor: 'primary.main',
+                      color: 'primary.contrastText',
+                      '& .MuiListItemIcon-root': { color: 'primary.contrastText' },
+                    },
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 40 }}>
+                    <UploadFileIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Import Historical Projects" />
+                </ListItemButton>
+              </List>
+            </>
+          )}
         </Box>
       </Drawer>
 

@@ -5,6 +5,7 @@ from app.api.v1 import (
     activities,
     auth,
     dashboard,
+    imports,
     milestones,
     notifications,
     projects,
@@ -118,3 +119,4 @@ api_router.include_router(notifications.router)
 api_router.include_router(activities.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)
+api_router.include_router(imports.router)

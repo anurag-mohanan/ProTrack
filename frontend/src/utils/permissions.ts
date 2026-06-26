@@ -60,6 +60,9 @@ export function isProjectStaffRole(roleName: string): boolean {
   return (PROJECT_STAFF_ROLES as readonly string[]).includes(roleName);
 }
 
+export function canImportHistoricalProjects(roleName: string): boolean {
+  return roleName === ROLES.ADMIN;
+}
 export function canManageUsers(roleName: string): boolean {
   return roleName === ROLES.ADMIN;
 }

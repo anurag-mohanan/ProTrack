@@ -10,6 +10,7 @@ from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
 from app.db.schema_sync import (
     ensure_design_roles,
+    ensure_design_team,
     ensure_project_actual_hours,
     ensure_project_health,
     ensure_timesheet_approval_comments,
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
     ensure_project_health(engine)
     ensure_timesheet_approval_comments(engine)
     ensure_design_roles(engine)
+    ensure_design_team(engine)
     yield
 
 

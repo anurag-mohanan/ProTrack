@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.enums import TimesheetStatus
@@ -15,7 +15,8 @@ JUNIOR_DESIGNER = "Junior Designer"
 SURFACER = "Surfacer"
 
 DESIGNER_ASSIGNMENT_ROLES = frozenset({SENIOR_DESIGNER, DESIGNER, JUNIOR_DESIGNER})
-ASSIGNED_PROJECT_ROLES = DESIGNER_ASSIGNMENT_ROLES | {SURFACER}
+PROJECT_STAFF_ROLES = DESIGNER_ASSIGNMENT_ROLES | {SURFACER}
+ASSIGNED_PROJECT_ROLES = PROJECT_STAFF_ROLES
 
 # Legacy alias used in older seeds/docs
 PROJECT_MANAGER = ENGINEERING_MANAGER
@@ -107,7 +108,7 @@ def can_update_project(db: Session, user: User, project: Project) -> bool:
     if role_name == DESIGN_LEADER:
         return project.design_leader_id == user.id
     if role_name == SENIOR_DESIGNER:
-        return project.designer_id == user.id
+        return user.id in {project.designer_id, project.surfacer_id}
     return False
 
 
@@ -219,8 +220,9 @@ def can_edit_timesheet_entry(db: Session, user: User, timesheet: Timesheet) -> b
 def project_assignment_filter(user: User, role_name: str):
     if role_name == DESIGN_LEADER:
         return Project.design_leader_id == user.id
-    if role_name in DESIGNER_ASSIGNMENT_ROLES:
-        return Project.designer_id == user.id
-    if role_name == SURFACER:
-        return Project.surfacer_id == user.id
+    if role_name in PROJECT_STAFF_ROLES:
+        return or_(
+            Project.designer_id == user.id,
+            Project.surfacer_id == user.id,
+        )
     return None

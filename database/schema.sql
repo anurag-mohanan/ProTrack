@@ -288,9 +288,14 @@ JOIN (
         ('Admin',           'admin@prosohm.com',   'System', 'Admin'),
         ('Project Manager', 'pm@prosohm.com',      'Project', 'Manager'),
         ('Design Leader',   'anurag@prosohm.com',  'Anurag', 'Mohanan'),
-        ('Senior Designer', 'senior@prosohm.com',  'Priya', 'Nair'),
-        ('Designer',        'binil@prosohm.com',   'Binil', 'JR'),
-        ('Junior Designer', 'junior@prosohm.com',  'Alex', 'Thomas'),
-        ('Surfacer',        'ranjith@prosohm.com', 'Ranjith', 'K')
+        ('Senior Designer', 'sandrarag@prosohm.com', 'Sandrarag', 'Sandrarag'),
+        ('Senior Designer', 'umesh@prosohm.com',     'Umesh', 'Umesh'),
+        ('Senior Designer', 'ramkumar@prosohm.com',  'Ramkumar', 'Ramkumar'),
+        ('Designer',        'binil@prosohm.com',     'Binil', 'JR'),
+        ('Designer',        'logesh@prosohm.com',    'Logesh', 'Logesh'),
+        ('Designer',        'sarath@prosohm.com',    'Sarath', 'Sarath'),
+        ('Junior Designer', 'akhil@prosohm.com',     'Akhil', 'Akhil'),
+        ('Junior Designer', 'abhay@prosohm.com',     'Abhay', 'Abhay'),
+        ('Surfacer',        'ranjith@prosohm.com',   'Ranjith', 'K')
 ) AS u(role_name, email, first_name, last_name)
     ON r.name = u.role_name;

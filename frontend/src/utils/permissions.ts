@@ -49,6 +49,17 @@ export function canReturnToDraft(
   return false;
 }
 
+export const PROJECT_STAFF_ROLES = [
+  ROLES.SENIOR_DESIGNER,
+  ROLES.DESIGNER,
+  ROLES.JUNIOR_DESIGNER,
+  ROLES.SURFACER,
+] as const;
+
+export function isProjectStaffRole(roleName: string): boolean {
+  return (PROJECT_STAFF_ROLES as readonly string[]).includes(roleName);
+}
+
 export function canManageUsers(roleName: string): boolean {
   return roleName === ROLES.ADMIN;
 }

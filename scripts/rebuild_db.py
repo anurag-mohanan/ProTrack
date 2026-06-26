@@ -12,6 +12,7 @@ import app.models  # noqa: F401 — register models
 from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
+from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.models.models import Contact, Customer, Role, Stream, TaskType, User
 
 IDS = {
@@ -26,8 +27,6 @@ IDS = {
     "user_pm": uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
     "user_anurag": uuid.UUID("7cf429ba-ca31-4752-9a03-afa3ba4700a3"),
     "user_binil": uuid.UUID("1bb6229f-dcff-419a-a8fa-2b8a7fd15043"),
-    "user_senior_designer": uuid.UUID("c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3"),
-    "user_junior_designer": uuid.UUID("d4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4"),
     "user_ranjith": uuid.UUID("731ddf9e-d2d9-450b-a675-cb2ca8a021e3"),
     "stream_mold_design": uuid.UUID("a4b9ba7c-4ff4-4a2c-8dc7-823a7cfacb55"),
     "customer_ti": uuid.UUID("3946c135-d515-4bbd-affb-00b5c1893832"),
@@ -131,6 +130,7 @@ def rebuild() -> None:
         )
 
         password_hash = hash_password(DEFAULT_PASSWORD)
+        role_by_name = {role.name: role.id for role in roles}
         db.add_all(
             [
                 User(
@@ -169,24 +169,7 @@ def rebuild() -> None:
                     last_name="JR",
                     is_active=True,
                 ),
-                User(
-                    id=IDS["user_senior_designer"],
-                    role_id=IDS["role_senior_designer"],
-                    email="senior@prosohm.com",
-                    password_hash=password_hash,
-                    first_name="Priya",
-                    last_name="Nair",
-                    is_active=True,
-                ),
-                User(
-                    id=IDS["user_junior_designer"],
-                    role_id=IDS["role_junior_designer"],
-                    email="junior@prosohm.com",
-                    password_hash=password_hash,
-                    first_name="Alex",
-                    last_name="Thomas",
-                    is_active=True,
-                ),
+                *build_design_team_users(password_hash, role_by_name),
                 User(
                     id=IDS["user_ranjith"],
                     role_id=IDS["role_surfacer"],
@@ -207,8 +190,8 @@ def rebuild() -> None:
         print("    pm@prosohm.com (Project Manager)")
         print("    anurag@prosohm.com (Design Leader)")
         print("    binil@prosohm.com (Designer)")
-        print("    senior@prosohm.com (Senior Designer)")
-        print("    junior@prosohm.com (Junior Designer)")
+        for member in DESIGN_TEAM:
+            print(f"    {member.email} ({member.role_name})")
         print("    ranjith@prosohm.com (Surfacer)")
     except Exception:
         db.rollback()

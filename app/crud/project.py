@@ -2,7 +2,7 @@ from typing import override
 from uuid import UUID
 
 from app.core.exceptions import ProTrackValidationError
-from app.core.permissions import DESIGNER_ASSIGNMENT_ROLES
+from app.core.permissions import PROJECT_STAFF_ROLES
 from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read
 from app.models.enums import MilestoneStatus
@@ -88,7 +88,7 @@ def _validate_project_references(
             db,
             designer_id,
             field_name="designer_id",
-            expected_roles=DESIGNER_ASSIGNMENT_ROLES,
+            expected_roles=PROJECT_STAFF_ROLES,
         )
 
     if surfacer_id is not None:
@@ -96,7 +96,7 @@ def _validate_project_references(
             db,
             surfacer_id,
             field_name="surfacer_id",
-            expected_role="Surfacer",
+            expected_roles=PROJECT_STAFF_ROLES,
         )
 
 

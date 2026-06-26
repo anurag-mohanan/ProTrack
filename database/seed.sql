@@ -37,3 +37,24 @@ WHERE s.name = 'Mold Design'
 ON CONFLICT (stream_id, name) DO UPDATE
     SET description = EXCLUDED.description,
         updated_at  = now();
+
+-- Design team users (default password: Password@123)
+INSERT INTO users (role_id, email, password_hash, first_name, last_name)
+SELECT r.id, u.email, crypt('Password@123', gen_salt('bf')), u.first_name, u.last_name
+FROM roles r
+JOIN (
+    VALUES
+        ('Senior Designer', 'sandrarag@prosohm.com', 'Sandrarag', 'Sandrarag'),
+        ('Designer',        'logesh@prosohm.com',    'Logesh', 'Logesh'),
+        ('Junior Designer', 'akhil@prosohm.com',     'Akhil', 'Akhil'),
+        ('Senior Designer', 'umesh@prosohm.com',     'Umesh', 'Umesh'),
+        ('Junior Designer', 'abhay@prosohm.com',     'Abhay', 'Abhay'),
+        ('Designer',        'sarath@prosohm.com',    'Sarath', 'Sarath'),
+        ('Senior Designer', 'ramkumar@prosohm.com',  'Ramkumar', 'Ramkumar')
+) AS u(role_name, email, first_name, last_name)
+    ON r.name = u.role_name
+ON CONFLICT (email) DO UPDATE
+    SET role_id = EXCLUDED.role_id,
+        first_name = EXCLUDED.first_name,
+        last_name = EXCLUDED.last_name,
+        updated_at = now();

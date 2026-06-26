@@ -7,6 +7,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.permissions import JUNIOR_DESIGNER, SENIOR_DESIGNER
+from app.core.security import hash_password
+from app.db.design_team import ensure_design_team_users
 from app.models.models import Project, Role, TimesheetEntry
 from app.services.project_calculation_service import recalculate_project
 
@@ -147,5 +149,13 @@ def ensure_design_roles(engine: Engine) -> None:
             if existing is None:
                 session.add(Role(name=name, description=description))
         session.commit()
+    finally:
+        session.close()
+
+
+def ensure_design_team(engine: Engine) -> None:
+    session = sessionmaker(bind=engine)()
+    try:
+        ensure_design_team_users(session, hash_password("Password@123"))
     finally:
         session.close()

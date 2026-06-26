@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
 from app.core.security import hash_password
+from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.base import Base
 from app.api.deps import get_db
 from app.main import app
@@ -38,8 +39,8 @@ IDS = {
     "user_pm": uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
     "user_anurag": uuid.UUID("7cf429ba-ca31-4752-9a03-afa3ba4700a3"),
     "user_binil": uuid.UUID("1bb6229f-dcff-419a-a8fa-2b8a7fd15043"),
-    "user_senior_designer": uuid.UUID("c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3"),
-    "user_junior_designer": uuid.UUID("d4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4"),
+    "user_senior_designer": uuid.UUID("10000001-0001-4001-8001-000000000001"),
+    "user_junior_designer": uuid.UUID("10000003-0003-4003-8003-000000000003"),
     "user_ranjith": uuid.UUID("731ddf9e-d2d9-450b-a675-cb2ca8a021e3"),
     "stream": uuid.UUID("a4b9ba7c-4ff4-4a2c-8dc7-823a7cfacb55"),
     "customer": uuid.UUID("3946c135-d515-4bbd-affb-00b5c1893832"),
@@ -92,6 +93,15 @@ def _seed_database(session) -> Milestone:
         ]
     )
     password_hash = hash_password(DEFAULT_PASSWORD)
+    role_by_name = {
+        "Admin": IDS["role_admin"],
+        "Engineering Manager": IDS["role_pm"],
+        "Design Leader": IDS["role_design_leader"],
+        "Designer": IDS["role_designer"],
+        "Senior Designer": IDS["role_senior_designer"],
+        "Junior Designer": IDS["role_junior_designer"],
+        "Surfacer": IDS["role_surfacer"],
+    }
     session.add_all(
         [
             User(
@@ -130,24 +140,7 @@ def _seed_database(session) -> Milestone:
                 last_name="JR",
                 is_active=True,
             ),
-            User(
-                id=IDS["user_senior_designer"],
-                role_id=IDS["role_senior_designer"],
-                email="senior@prosohm.com",
-                password_hash=password_hash,
-                first_name="Priya",
-                last_name="Nair",
-                is_active=True,
-            ),
-            User(
-                id=IDS["user_junior_designer"],
-                role_id=IDS["role_junior_designer"],
-                email="junior@prosohm.com",
-                password_hash=password_hash,
-                first_name="Alex",
-                last_name="Thomas",
-                is_active=True,
-            ),
+            *build_design_team_users(password_hash, role_by_name),
             User(
                 id=IDS["user_ranjith"],
                 role_id=IDS["role_surfacer"],

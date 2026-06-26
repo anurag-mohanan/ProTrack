@@ -6,10 +6,12 @@ from app.api.v1 import (
     auth,
     dashboard,
     imports,
+    lookups,
     milestones,
     notifications,
     projects,
     reports,
+    roles,
     timesheet_entries,
     timesheets,
     users,
@@ -23,11 +25,9 @@ from app.api.v1.router_factory import (
 from app.crud import (
     contact,
     customer,
-    role,
     stream,
     task_type,
 )
-from app.schemas.identity import RoleCreate, RoleRead, RoleUpdate
 from app.schemas.organization import (
     ContactCreate,
     ContactRead,
@@ -48,22 +48,12 @@ api_router = APIRouter()
 
 api_router.include_router(auth.router)
 
-admin_only = [Depends(require_roles("Admin"))]
+admin_access = [Depends(require_roles("Admin", "Engineering Manager"))]
 master_data_write = ("Admin", "Engineering Manager")
 delivery_write = ("Admin", "Engineering Manager", "Design Leader")
 
-api_router.include_router(
-    build_crud_router(
-        prefix="/roles",
-        tags=["roles"],
-        crud=role,
-        schema_read=RoleRead,
-        schema_create=RoleCreate,
-        schema_update=RoleUpdate,
-        router_dependencies=admin_only,
-        write_roles=("Admin",),
-    )
-)
+api_router.include_router(lookups.router)
+api_router.include_router(roles.router)
 api_router.include_router(users.router)
 api_router.include_router(
     build_crud_router(
@@ -73,6 +63,7 @@ api_router.include_router(
         schema_read=StreamRead,
         schema_create=StreamCreate,
         schema_update=StreamUpdate,
+        router_dependencies=admin_access,
         write_roles=master_data_write,
     )
 )
@@ -84,6 +75,7 @@ api_router.include_router(
         schema_read=CustomerRead,
         schema_create=CustomerCreate,
         schema_update=CustomerUpdate,
+        router_dependencies=admin_access,
         write_roles=master_data_write,
     )
 )
@@ -96,6 +88,7 @@ api_router.include_router(
         schema_create=ContactCreate,
         schema_update=ContactUpdate,
         filters_model=ContactFilters,
+        router_dependencies=admin_access,
         write_roles=master_data_write,
     )
 )
@@ -108,6 +101,7 @@ api_router.include_router(
         schema_create=TaskTypeCreate,
         schema_update=TaskTypeUpdate,
         filters_model=TaskTypeFilters,
+        router_dependencies=admin_access,
         write_roles=master_data_write,
     )
 )

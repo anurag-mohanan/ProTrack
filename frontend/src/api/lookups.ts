@@ -6,26 +6,26 @@ export interface ContactListParams extends ListParams {
 }
 
 export async function fetchCustomers(): Promise<Customer[]> {
-  const { data } = await apiClient.get<Customer[]>('/customers');
+  const { data } = await apiClient.get<Customer[]>('/lookups/customers');
   return data;
 }
 
 export async function fetchContacts(params?: ContactListParams): Promise<Contact[]> {
-  const { data } = await apiClient.get<Contact[]>(`/contacts${buildQuery(params)}`);
+  const { data } = await apiClient.get<Contact[]>(`/lookups/contacts${buildQuery(params)}`);
   return data;
 }
 
 export async function fetchStreams(): Promise<Stream[]> {
-  const { data } = await apiClient.get<Stream[]>('/streams');
+  const { data } = await apiClient.get<Stream[]>('/lookups/streams');
   return data;
 }
 
 export async function fetchUsers(): Promise<User[]> {
-  const { data } = await apiClient.get<User[]>('/users');
+  const { data } = await apiClient.get<User[]>('/lookups/users');
   return data;
 }
 
 export async function fetchTaskTypes(): Promise<TaskType[]> {
-  const { data } = await apiClient.get<TaskType[]>('/task-types');
+  const { data } = await apiClient.get<TaskType[]>('/lookups/task-types');
   return data;
 }

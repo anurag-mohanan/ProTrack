@@ -9,11 +9,12 @@ export * from './Auth';
 
 export * from './Reports';
 
-export interface Customer {
+export interface Role {
   id: string;
   name: string;
-  code: string | null;
-  is_active: boolean;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface User {
@@ -23,6 +24,20 @@ export interface User {
   email: string;
   role_id: string;
   is_active: boolean;
+  must_change_password?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  code: string | null;
+  notes?: string | null;
+  address?: string | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface TaskType {
@@ -50,4 +65,7 @@ export interface Contact {
   phone: string | null;
   job_title: string | null;
   is_primary: boolean;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }

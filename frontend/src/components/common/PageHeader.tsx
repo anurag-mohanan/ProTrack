@@ -1,42 +1,35 @@
-import { Box, Button, Stack, Typography } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
+import { Box, Typography } from '@mui/material';
+import type { ReactNode } from 'react';
 
 interface PageHeaderProps {
   title: string;
   subtitle?: string;
-  actionLabel?: string;
-  onAction?: () => void;
+  action?: ReactNode;
 }
 
-export default function PageHeader({
-  title,
-  subtitle,
-  actionLabel,
-  onAction,
-}: PageHeaderProps) {
+export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
   return (
-    <Stack
-      direction={{ xs: 'column', sm: 'row' }}
-      spacing={2}
+    <Box
       sx={{
-        mb: 3,
+        display: 'flex',
         justifyContent: 'space-between',
         alignItems: { xs: 'flex-start', sm: 'center' },
+        flexDirection: { xs: 'column', sm: 'row' },
+        gap: 2,
+        mb: 3,
       }}
     >
       <Box>
-        <Typography variant="h4">{title}</Typography>
+        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          {title}
+        </Typography>
         {subtitle && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {subtitle}
           </Typography>
         )}
       </Box>
-      {actionLabel && onAction && (
-        <Button variant="contained" startIcon={<AddIcon />} onClick={onAction}>
-          {actionLabel}
-        </Button>
-      )}
-    </Stack>
+      {action}
+    </Box>
   );
 }

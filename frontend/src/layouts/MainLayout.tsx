@@ -18,10 +18,22 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import GroupsIcon from '@mui/icons-material/Groups';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LogoutIcon from '@mui/icons-material/Logout';
+import PeopleIcon from '@mui/icons-material/People';
+import BusinessIcon from '@mui/icons-material/Business';
+import ContactPhoneIcon from '@mui/icons-material/ContactPhone';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import CategoryIcon from '@mui/icons-material/Category';
+import SecurityIcon from '@mui/icons-material/Security';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { NotificationBell } from '../components/common/NotificationBell';
 import { useAuth } from '../context/AuthContext';
-import { canImportHistoricalProjects, canViewReports, canViewWorkload } from '../utils/permissions';
+import {
+  canAccessAdministration,
+  canImportHistoricalProjects,
+  canViewReports,
+  canViewWorkload,
+} from '../utils/permissions';
 
 const drawerWidth = 240;
 
@@ -31,6 +43,22 @@ const navItems = [
   { label: 'Timesheets', path: '/timesheets', icon: <ScheduleIcon /> },
   { label: 'Workload', path: '/workload', icon: <GroupsIcon /> },
   { label: 'Reports', path: '/reports', icon: <AssessmentIcon /> },
+];
+
+const adminNavItems = [
+  { label: 'Users', path: '/admin/users', icon: <PeopleIcon /> },
+  { label: 'Customers', path: '/admin/customers', icon: <BusinessIcon /> },
+  { label: 'Contacts', path: '/admin/contacts', icon: <ContactPhoneIcon /> },
+  { label: 'Streams', path: '/admin/streams', icon: <AccountTreeIcon /> },
+  { label: 'Task Types', path: '/admin/task-types', icon: <CategoryIcon /> },
+  { label: 'Roles', path: '/admin/roles', icon: <SecurityIcon /> },
+  { label: 'System Settings', path: '/admin/settings', icon: <SettingsIcon /> },
+  {
+    label: 'Import Historical Projects',
+    path: '/admin/import-historical-projects',
+    icon: <UploadFileIcon />,
+    adminOnly: true,
+  },
 ];
 
 export function MainLayout() {
@@ -126,7 +154,7 @@ export function MainLayout() {
             ))}
           </List>
           <Divider sx={{ my: 1 }} />
-          {canImportHistoricalProjects(roleName) && (
+          {canAccessAdministration(roleName) && (
             <>
               <Typography
                 variant="overline"
@@ -135,24 +163,27 @@ export function MainLayout() {
                 Administration
               </Typography>
               <List>
-                <ListItemButton
-                  component={NavLink}
-                  to="/admin/import-historical-projects"
-                  sx={{
-                    mx: 1,
-                    borderRadius: 1,
-                    '&.active': {
-                      bgcolor: 'primary.main',
-                      color: 'primary.contrastText',
-                      '& .MuiListItemIcon-root': { color: 'primary.contrastText' },
-                    },
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: 40 }}>
-                    <UploadFileIcon />
-                  </ListItemIcon>
-                  <ListItemText primary="Import Historical Projects" />
-                </ListItemButton>
+                {adminNavItems
+                  .filter((item) => !item.adminOnly || canImportHistoricalProjects(roleName))
+                  .map((item) => (
+                    <ListItemButton
+                      key={item.path}
+                      component={NavLink}
+                      to={item.path}
+                      sx={{
+                        mx: 1,
+                        borderRadius: 1,
+                        '&.active': {
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
+                          '& .MuiListItemIcon-root': { color: 'primary.contrastText' },
+                        },
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
+                      <ListItemText primary={item.label} />
+                    </ListItemButton>
+                  ))}
               </List>
             </>
           )}

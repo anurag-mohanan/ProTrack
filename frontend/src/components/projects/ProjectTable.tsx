@@ -108,10 +108,11 @@ export function ProjectTable({
   ];
 
   return (
-    <Box sx={{ height: 560, width: '100%' }}>
+    <Box sx={{ width: '100%' }}>
       <DataGrid
         rows={rows}
         columns={columns}
+        autoHeight
         disableRowSelectionOnClick
         pageSizeOptions={[10, 25, 50]}
         initialState={{

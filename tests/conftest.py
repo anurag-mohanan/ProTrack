@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
 from app.core.security import hash_password
+from app.db.schema_sync import ensure_admin_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.base import Base
 from app.api.deps import get_db
@@ -232,6 +233,7 @@ def test_engine():
         poolclass=StaticPool,
     )
     Base.metadata.create_all(bind=engine)
+    ensure_admin_schema(engine)
     return engine
 
 

@@ -16,4 +16,5 @@ export interface CurrentUser {
   role_id: string;
   role_name: string;
   is_active: boolean;
+  must_change_password: boolean;
 }

@@ -4,7 +4,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { MainLayout } from './layouts/MainLayout';
+import ContactsAdminPage from './pages/admin/ContactsPage';
+import CustomersAdminPage from './pages/admin/CustomersPage';
+import RolesAdminPage from './pages/admin/RolesPage';
+import StreamsAdminPage from './pages/admin/StreamsPage';
+import SystemSettingsPage from './pages/admin/SystemSettingsPage';
+import TaskTypesAdminPage from './pages/admin/TaskTypesPage';
+import UsersAdminPage from './pages/admin/UsersPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { HistoricalImportPage } from './pages/HistoricalImportPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -12,7 +20,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TimesheetEntryPage } from './pages/TimesheetEntryPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
 import { WorkloadPage } from './pages/WorkloadPage';
-import { HistoricalImportPage } from './pages/HistoricalImportPage';
+import { AdminRoute } from './routes/AdminRoute';
 import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
 import { theme } from './theme/theme';
 import { useAuth } from './context/AuthContext';
@@ -43,33 +51,43 @@ export default function App() {
         <AuthProvider>
           <ToastProvider>
             <BrowserRouter>
-            <Routes>
-              <Route element={<PublicRoute />}>
-                <Route path="/login" element={<LoginPage />} />
-              </Route>
-
-              <Route element={<ProtectedRoute />}>
-                <Route element={<MainLayout />}>
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/projects" element={<ProjectsPage />} />
-                  <Route path="/projects/:id" element={<ProjectDetailPage />} />
-                  <Route path="/timesheets" element={<TimesheetsPage />} />
-                  <Route
-                    path="/timesheets/:timesheetId/entries/new"
-                    element={<TimesheetEntryPage />}
-                  />
-                  <Route path="/workload" element={<WorkloadPage />} />
-                  <Route path="/reports" element={<ReportsPage />} />
-                  <Route
-                    path="/admin/import-historical-projects"
-                    element={<AdminHistoricalImportRoute />}
-                  />
+              <Routes>
+                <Route element={<PublicRoute />}>
+                  <Route path="/login" element={<LoginPage />} />
                 </Route>
-              </Route>
 
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
+                <Route element={<ProtectedRoute />}>
+                  <Route element={<MainLayout />}>
+                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/projects" element={<ProjectsPage />} />
+                    <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                    <Route path="/timesheets" element={<TimesheetsPage />} />
+                    <Route
+                      path="/timesheets/:timesheetId/entries/new"
+                      element={<TimesheetEntryPage />}
+                    />
+                    <Route path="/workload" element={<WorkloadPage />} />
+                    <Route path="/reports" element={<ReportsPage />} />
+
+                    <Route element={<AdminRoute />}>
+                      <Route path="/admin/users" element={<UsersAdminPage />} />
+                      <Route path="/admin/customers" element={<CustomersAdminPage />} />
+                      <Route path="/admin/contacts" element={<ContactsAdminPage />} />
+                      <Route path="/admin/streams" element={<StreamsAdminPage />} />
+                      <Route path="/admin/task-types" element={<TaskTypesAdminPage />} />
+                      <Route path="/admin/roles" element={<RolesAdminPage />} />
+                      <Route path="/admin/settings" element={<SystemSettingsPage />} />
+                      <Route
+                        path="/admin/import-historical-projects"
+                        element={<AdminHistoricalImportRoute />}
+                      />
+                    </Route>
+                  </Route>
+                </Route>
+
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
             </BrowserRouter>
           </ToastProvider>
         </AuthProvider>

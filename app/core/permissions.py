@@ -59,8 +59,15 @@ def is_admin(db: Session, user: User) -> bool:
     return has_role(db, user, ADMIN)
 
 
+ADMINISTRATION_ROLES = FULL_ACCESS_ROLES
+
+
+def can_access_administration(db: Session, user: User) -> bool:
+    return has_role(db, user, *ADMINISTRATION_ROLES)
+
+
 def can_manage_users(db: Session, user: User) -> bool:
-    return is_admin(db, user)
+    return can_access_administration(db, user)
 
 
 def can_delete_records(db: Session, user: User) -> bool:

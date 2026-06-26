@@ -29,19 +29,30 @@ class UserBase(BaseModel):
     first_name: str = Field(max_length=100)
     last_name: str = Field(max_length=100)
     is_active: bool = True
+    must_change_password: bool = False
 
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
+    must_change_password: bool = True
 
 
 class UserUpdate(BaseModel):
     role_id: UUID | None = None
     email: EmailStr | None = None
-    password: str | None = Field(default=None, min_length=8, max_length=128)
     first_name: str | None = Field(default=None, max_length=100)
     last_name: str | None = Field(default=None, max_length=100)
     is_active: bool | None = None
+
+
+class ResetPasswordRequest(BaseModel):
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    generate_temporary: bool = False
+
+
+class ResetPasswordResponse(BaseModel):
+    temporary_password: str | None = None
+    message: str
 
 
 class UserRead(UserBase, TimestampSchema):

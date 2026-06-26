@@ -29,6 +29,7 @@ class CustomerBase(BaseModel):
     name: str = Field(max_length=200)
     code: str | None = Field(default=None, max_length=20)
     address: str | None = None
+    notes: str | None = None
     is_active: bool = True
 
 
@@ -40,6 +41,7 @@ class CustomerUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     code: str | None = Field(default=None, max_length=20)
     address: str | None = None
+    notes: str | None = None
     is_active: bool | None = None
 
 
@@ -55,6 +57,7 @@ class ContactBase(BaseModel):
     phone: str | None = Field(default=None, max_length=50)
     job_title: str | None = Field(default=None, max_length=100)
     is_primary: bool = False
+    is_active: bool = True
 
 
 class ContactCreate(ContactBase):
@@ -69,6 +72,7 @@ class ContactUpdate(BaseModel):
     phone: str | None = Field(default=None, max_length=50)
     job_title: str | None = Field(default=None, max_length=100)
     is_primary: bool | None = None
+    is_active: bool | None = None
 
 
 class ContactRead(ContactBase, TimestampSchema):

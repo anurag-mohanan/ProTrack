@@ -159,3 +159,44 @@ def ensure_design_team(engine: Engine) -> None:
         ensure_design_team_users(session, hash_password("Password@123"))
     finally:
         session.close()
+
+
+def ensure_admin_schema(engine: Engine) -> None:
+    dialect = engine.dialect.name
+
+    def _ensure_column_sqlite(table: str, column: str, ddl: str) -> None:
+        if not _sqlite_has_column(engine, table, column):
+            with engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+
+    if dialect == "sqlite":
+        _ensure_column_sqlite(
+            "users",
+            "must_change_password",
+            "must_change_password BOOLEAN NOT NULL DEFAULT 0",
+        )
+        _ensure_column_sqlite("customers", "notes", "notes TEXT")
+        _ensure_column_sqlite(
+            "contacts",
+            "is_active",
+            "is_active BOOLEAN NOT NULL DEFAULT 1",
+        )
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+            connection.execute(
+                text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS notes TEXT")
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE contacts "
+                    "ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
+                )
+            )

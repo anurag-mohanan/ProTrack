@@ -1,16 +1,40 @@
-import { createResourceApi } from './client';
+import { apiClient, buildQuery, type ListParams } from './client';
 import type {
   Contact,
   Customer,
-  Milestone,
-  Project,
   Role,
   Stream,
   TaskType,
-  Timesheet,
-  TimesheetEntry,
   User,
 } from '../types';
+
+export function createResourceApi<
+  T,
+  TCreate = Partial<T>,
+  TUpdate = Partial<T>,
+>(resource: string) {
+  return {
+    list: async (params?: ListParams): Promise<T[]> => {
+      const { data } = await apiClient.get<T[]>(`/${resource}${buildQuery(params)}`);
+      return data;
+    },
+    get: async (id: string): Promise<T> => {
+      const { data } = await apiClient.get<T>(`/${resource}/${id}`);
+      return data;
+    },
+    create: async (payload: TCreate): Promise<T> => {
+      const { data } = await apiClient.post<T>(`/${resource}`, payload);
+      return data;
+    },
+    update: async (id: string, payload: TUpdate): Promise<T> => {
+      const { data } = await apiClient.patch<T>(`/${resource}/${id}`, payload);
+      return data;
+    },
+    remove: async (id: string): Promise<void> => {
+      await apiClient.delete(`/${resource}/${id}`);
+    },
+  };
+}
 
 export const rolesApi = createResourceApi<Role>('roles');
 export const usersApi = createResourceApi<User>('users');
@@ -18,7 +42,24 @@ export const streamsApi = createResourceApi<Stream>('streams');
 export const customersApi = createResourceApi<Customer>('customers');
 export const contactsApi = createResourceApi<Contact>('contacts');
 export const taskTypesApi = createResourceApi<TaskType>('task-types');
-export const projectsApi = createResourceApi<Project>('projects');
-export const milestonesApi = createResourceApi<Milestone>('milestones');
-export const timesheetsApi = createResourceApi<Timesheet>('timesheets');
-export const timesheetEntriesApi = createResourceApi<TimesheetEntry>('timesheet-entries');
+
+export interface ResetPasswordPayload {
+  password?: string;
+  generate_temporary?: boolean;
+}
+
+export interface ResetPasswordResponse {
+  temporary_password: string | null;
+  message: string;
+}
+
+export async function resetUserPassword(
+  userId: string,
+  payload: ResetPasswordPayload,
+): Promise<ResetPasswordResponse> {
+  const { data } = await apiClient.post<ResetPasswordResponse>(
+    `/users/${userId}/reset-password`,
+    payload,
+  );
+  return data;
+}

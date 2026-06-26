@@ -1,15 +1,33 @@
+import secrets
+import string
+
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
 from app.api.auth_deps import require_roles
-from app.api.deps import APIRouter, Depends, HTTPException, Query, Session, get_db, get_object_or_404, status
+from app.api.deps import get_db, get_object_or_404
+from app.core.security import hash_password
 from app.crud import user as user_crud
-from app.schemas.identity import UserCreate, UserRead, UserUpdate
+from app.schemas.identity import (
+    ResetPasswordRequest,
+    ResetPasswordResponse,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+)
 
 router = APIRouter(
     prefix="/users",
     tags=["users"],
-    dependencies=[Depends(require_roles("Admin"))],
+    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
 )
+
+
+def _generate_temporary_password(length: int = 12) -> str:
+    alphabet = string.ascii_letters + string.digits + "!@#$"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 @router.get("", response_model=list[UserRead])
@@ -48,10 +66,35 @@ def update_user(
     return user_crud.update(db, db_obj=db_obj, obj_in=obj_in)
 
 
-@router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(record_id: UUID, db: Session = Depends(get_db)):
-    deleted = user_crud.delete(db, record_id=record_id)
-    if deleted is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Record not found"
-        )
+@router.post("/{record_id}/reset-password", response_model=ResetPasswordResponse)
+def reset_password(
+    record_id: UUID,
+    body: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    db_obj = get_object_or_404(user_crud, db, record_id)
+    if body.generate_temporary or not body.password:
+        temporary_password = _generate_temporary_password()
+    else:
+        temporary_password = body.password
+
+    user_crud.update(
+        db,
+        db_obj=db_obj,
+        obj_in={
+            "password_hash": hash_password(temporary_password),
+            "must_change_password": True,
+        },
+    )
+    return ResetPasswordResponse(
+        temporary_password=temporary_password,
+        message="Password reset successfully. User must change password on next login.",
+    )
+
+
+@router.delete("/{record_id}", status_code=status.HTTP_403_FORBIDDEN)
+def delete_user(record_id: UUID):
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="User deletion is disabled. Deactivate the user instead.",
+    )

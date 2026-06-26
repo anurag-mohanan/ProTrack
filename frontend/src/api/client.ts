@@ -54,7 +54,11 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError<{ detail?: string }>) => {
-    if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
+    const requestUrl = error.config?.url ?? '';
+    if (
+      error.response?.status === 401 &&
+      requestUrl.includes('/auth/me')
+    ) {
       clearAccessToken();
     }
     const message = getErrorMessage(error);

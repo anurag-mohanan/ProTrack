@@ -34,6 +34,7 @@ import {
   submitTimesheet,
   timesheetQueryKeys,
 } from '../services/timesheetService';
+import { invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
 import type { Timesheet } from '../types';
 import { formatDate, formatNumber } from '../utils/format';
 
@@ -75,8 +76,8 @@ export function TimesheetsPage() {
     enabled: Boolean(expandedId),
   });
 
-  const invalidateTimesheets = () => {
-    void queryClient.invalidateQueries({ queryKey: timesheetQueryKeys.all });
+  const invalidateTimesheets = (projectId?: string) => {
+    invalidateTimesheetRelatedQueries(queryClient, projectId);
     if (expandedId) {
       void queryClient.invalidateQueries({
         queryKey: timesheetQueryKeys.entries(expandedId),

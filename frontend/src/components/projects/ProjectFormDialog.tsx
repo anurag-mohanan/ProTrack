@@ -16,20 +16,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchContacts, fetchCustomers, fetchStreams, fetchUsers } from '../../api/lookups';
 import {
   createProject,
-  invalidateProjectDetail,
-  projectQueryKeys,
+  invalidateProjectCalculationQueries,
   updateProject,
 } from '../../services/projectService';
-import type { Project, ProjectCreate, ProjectStatus, ProjectUpdate } from '../../types';
+import type { Project, ProjectCreate, ProjectUpdate } from '../../types';
 import { ErrorState } from '../common/ErrorState';
 import { userDisplayName } from '../../utils/format';
-
-const statusOptions: Array<{ value: ProjectStatus; label: string }> = [
-  { value: 'not_started', label: 'Not Started' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'waiting_for_customer', label: 'On Hold' },
-  { value: 'completed', label: 'Completed' },
-];
 
 const emptyForm: ProjectCreate = {
   tool_number: '',
@@ -43,7 +35,6 @@ const emptyForm: ProjectCreate = {
   code: '',
   quoted_hours: 40,
   due_date: '',
-  status: 'not_started',
   notes: '',
 };
 
@@ -60,7 +51,6 @@ function projectToForm(project: Project): ProjectCreate {
     code: project.code,
     quoted_hours: project.quoted_hours,
     due_date: project.due_date,
-    status: project.status,
     notes: project.notes ?? '',
   };
 }
@@ -139,7 +129,6 @@ export function ProjectFormDialog({
           stream_id: payload.stream_id,
           quoted_hours: payload.quoted_hours,
           due_date: payload.due_date,
-          status: payload.status,
           notes: payload.notes,
         };
         return updateProject(project.id, updatePayload);
@@ -148,9 +137,8 @@ export function ProjectFormDialog({
       return createProject(payload);
     },
     onSuccess: (savedProject) => {
-      void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      invalidateProjectCalculationQueries(queryClient, savedProject.id);
       if (isEdit) {
-        invalidateProjectDetail(queryClient, savedProject.id);
         onUpdated?.(savedProject.id);
       } else {
         onCreated?.(savedProject.id);
@@ -363,27 +351,6 @@ export function ProjectFormDialog({
                 setForm({ ...form, due_date: event.target.value })
               }
             />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
-              <Select
-                label="Status"
-                value={form.status ?? 'not_started'}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    status: event.target.value as ProjectStatus,
-                  })
-                }
-              >
-                {statusOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
           </Grid>
           <Grid size={{ xs: 12 }}>
             <TextField

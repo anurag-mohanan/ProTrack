@@ -43,11 +43,4 @@ export const projectQueryKeys = {
   detail: (projectId: string) => ['projects', projectId, 'detail'] as const,
 };
 
-export function invalidateProjectDetail(
-  queryClient: { invalidateQueries: (options: { queryKey: readonly string[] }) => void },
-  projectId: string,
-) {
-  void queryClient.invalidateQueries({ queryKey: projectQueryKeys.detail(projectId) });
-  void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
-  void queryClient.invalidateQueries({ queryKey: ['dashboard', 'summary'] });
-}
+export { invalidateProjectCalculationQueries } from '../utils/queryInvalidation';

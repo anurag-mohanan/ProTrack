@@ -17,6 +17,7 @@ class DashboardSummary(BaseModel):
     on_hold_projects: int = 0
     total_quoted_hours: Decimal = Decimal("0")
     total_actual_hours: Decimal = Decimal("0")
+    total_remaining_hours: Decimal = Decimal("0")
     hours_variance: Decimal = Decimal("0")
     completed_milestones: int = 0
     total_milestones: int = 0
@@ -45,6 +46,7 @@ class MilestoneSummary(BaseModel):
 class ProjectHoursSummary(BaseModel):
     quoted: Decimal = Decimal("0")
     actual: Decimal = Decimal("0")
+    remaining: Decimal = Decimal("0")
     variance: Decimal = Decimal("0")
 
 

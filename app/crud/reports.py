@@ -3,44 +3,36 @@ from decimal import Decimal
 from sqlalchemy import func, select
 
 from app.crud.base import Session
-from app.crud.dashboard import get_designer_workload, _decimal, _round_hours
+from app.crud.dashboard import get_designer_workload
 from app.models.models import Customer, Project
 from app.schemas.reports import (
     CustomerSummaryReportRow,
     ProjectHoursReportRow,
     ReportsBundle,
 )
+from app.services.project_calculation_service import calculate_hours
 
 
 def get_project_hours_report(db: Session) -> list[ProjectHoursReportRow]:
     rows = db.execute(
-        select(
-            Project.id,
-            Project.tool_number,
-            Project.part_description,
-            Customer.name,
-            Project.quoted_hours,
-            Project.actual_hours,
-            Project.status,
-        )
+        select(Project, Customer.name)
         .join(Customer, Project.customer_id == Customer.id)
         .order_by(Project.tool_number)
     ).all()
 
     report: list[ProjectHoursReportRow] = []
-    for row in rows:
-        quoted = _round_hours(_decimal(row.quoted_hours))
-        actual = _round_hours(_decimal(row.actual_hours))
+    for project, customer_name in rows:
+        hours = calculate_hours(db, project)
         report.append(
             ProjectHoursReportRow(
-                project_id=row.id,
-                tool_number=row.tool_number,
-                part_description=row.part_description,
-                customer_name=row.name,
-                quoted_hours=quoted,
-                actual_hours=actual,
-                hours_variance=_round_hours(actual - quoted),
-                status=row.status,
+                project_id=project.id,
+                tool_number=project.tool_number,
+                part_description=project.part_description,
+                customer_name=customer_name,
+                quoted_hours=hours.quoted,
+                actual_hours=hours.actual,
+                hours_variance=hours.variance,
+                status=project.status,
             )
         )
     return report
@@ -62,8 +54,8 @@ def get_customer_summary_report(db: Session) -> list[CustomerSummaryReportRow]:
 
     report: list[CustomerSummaryReportRow] = []
     for row in rows:
-        quoted = _round_hours(_decimal(row[3]))
-        actual = _round_hours(_decimal(row[4]))
+        quoted = Decimal(str(row[3] or 0)).quantize(Decimal("0.01"))
+        actual = Decimal(str(row[4] or 0)).quantize(Decimal("0.01"))
         report.append(
             CustomerSummaryReportRow(
                 customer_id=row[0],
@@ -71,7 +63,7 @@ def get_customer_summary_report(db: Session) -> list[CustomerSummaryReportRow]:
                 project_count=int(row[2] or 0),
                 total_quoted_hours=quoted,
                 total_actual_hours=actual,
-                hours_variance=_round_hours(actual - quoted),
+                hours_variance=(actual - quoted).quantize(Decimal("0.01")),
             )
         )
     return report

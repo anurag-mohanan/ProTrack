@@ -5,7 +5,7 @@ export interface MilestoneListParams extends ListParams {
   project_id?: string;
 }
 
-export { milestoneQueryKeys, invalidateMilestoneRelatedQueries } from '../utils/queryInvalidation';
+export { milestoneQueryKeys, invalidateMilestoneRelatedQueries, invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
 
 export async function getMilestones(
   params?: MilestoneListParams,

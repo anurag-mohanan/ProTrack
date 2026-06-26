@@ -10,6 +10,7 @@ export interface DashboardSummary {
   on_hold_projects: number;
   total_quoted_hours: number;
   total_actual_hours: number;
+  total_remaining_hours: number;
   hours_variance: number;
   completed_milestones: number;
   total_milestones: number;
@@ -38,6 +39,7 @@ export interface MilestoneSummary {
 export interface ProjectHoursSummary {
   quoted: number;
   actual: number;
+  remaining: number;
   variance: number;
 }
 

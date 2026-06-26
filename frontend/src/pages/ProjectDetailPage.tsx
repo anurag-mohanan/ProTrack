@@ -21,7 +21,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { HealthChip, StatusChip } from '../components/common/StatusChip';
 import { LoadingState } from '../components/common/LoadingState';
-import { getProjectDetail, projectQueryKeys } from '../services/projectService';
+import { getProjectDetail, invalidateProjectCalculationQueries, projectQueryKeys } from '../services/projectService';
 import { formatDate, formatNumber, userDisplayName } from '../utils/format';
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -176,6 +176,7 @@ export function ProjectDetailPage() {
                 </Typography>
                 <InfoRow label="Quoted" value={formatNumber(hours.quoted)} />
                 <InfoRow label="Actual" value={formatNumber(hours.actual)} />
+                <InfoRow label="Remaining" value={formatNumber(hours.remaining)} />
                 <InfoRow label="Variance" value={formatNumber(hours.variance)} />
               </CardContent>
             </Card>
@@ -221,7 +222,7 @@ export function ProjectDetailPage() {
         onClose={() => setEditOpen(false)}
         project={project}
         onUpdated={() => {
-          void queryClient.invalidateQueries({ queryKey: projectQueryKeys.detail(id) });
+          invalidateProjectCalculationQueries(queryClient, id);
         }}
       />
     </Box>

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
@@ -6,11 +7,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus
-from app.models.models import Milestone, Project
+from app.models.models import Milestone, Project, TimesheetEntry
 
 
 def _round_percent(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _round_hours(value: Decimal) -> Decimal:
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _decimal(value) -> Decimal:
+    return Decimal(str(value or 0))
 
 
 def _coerce_uuid(project_id: UUID | str) -> UUID:
@@ -19,9 +28,24 @@ def _coerce_uuid(project_id: UUID | str) -> UUID:
     return UUID(str(project_id))
 
 
-def calculate_progress_percent(db: Session, project_id: UUID | str) -> Decimal:
-    project_id = _coerce_uuid(project_id)
-    completed_milestones = int(
+@dataclass(frozen=True)
+class MilestoneProgress:
+    completed_milestones: int
+    remaining_milestones: int
+    total_milestones: int
+    progress_percent: Decimal
+
+
+@dataclass(frozen=True)
+class ProjectHours:
+    quoted: Decimal
+    actual: Decimal
+    remaining: Decimal
+    variance: Decimal
+
+
+def _milestone_counts(db: Session, project_id: UUID) -> tuple[int, int]:
+    completed = int(
         db.scalar(
             select(func.count())
             .select_from(Milestone)
@@ -32,7 +56,7 @@ def calculate_progress_percent(db: Session, project_id: UUID | str) -> Decimal:
         )
         or 0
     )
-    total_milestones = int(
+    total = int(
         db.scalar(
             select(func.count())
             .select_from(Milestone)
@@ -40,13 +64,34 @@ def calculate_progress_percent(db: Session, project_id: UUID | str) -> Decimal:
         )
         or 0
     )
+    return completed, total
 
-    if total_milestones == 0:
-        return Decimal("0.00")
 
-    return _round_percent(
-        (Decimal(completed_milestones) / Decimal(total_milestones)) * Decimal("100")
+def calculate_progress(db: Session, project: Project) -> MilestoneProgress:
+    completed, total = _milestone_counts(db, project.id)
+    remaining = max(total - completed, 0)
+
+    if total == 0:
+        progress_percent = Decimal("0.00")
+    else:
+        progress_percent = _round_percent(
+            (Decimal(completed) / Decimal(total)) * Decimal("100")
+        )
+
+    return MilestoneProgress(
+        completed_milestones=completed,
+        remaining_milestones=remaining,
+        total_milestones=total,
+        progress_percent=progress_percent,
     )
+
+
+def calculate_project_status(progress_percent: Decimal) -> ProjectStatus:
+    if progress_percent == Decimal("0.00"):
+        return ProjectStatus.not_started
+    if progress_percent < Decimal("100.00"):
+        return ProjectStatus.in_progress
+    return ProjectStatus.completed
 
 
 def calculate_project_health(
@@ -67,20 +112,36 @@ def calculate_project_health(
     return ProjectHealth.green
 
 
-def recalculate_project_progress(db: Session, project_id: UUID | str) -> Project | None:
+def calculate_hours(db: Session, project: Project) -> ProjectHours:
+    total = db.scalar(
+        select(func.coalesce(func.sum(TimesheetEntry.hours), 0)).where(
+            TimesheetEntry.project_id == project.id
+        )
+    )
+    quoted = _round_hours(_decimal(project.quoted_hours))
+    actual = _round_hours(_decimal(total))
+    remaining = _round_hours(quoted - actual)
+    variance = _round_hours(actual - quoted)
+    return ProjectHours(
+        quoted=quoted,
+        actual=actual,
+        remaining=remaining,
+        variance=variance,
+    )
+
+
+def recalculate_project(db: Session, project_id: UUID | str) -> Project | None:
     project_id = _coerce_uuid(project_id)
     project = db.get(Project, project_id)
     if project is None:
         return None
 
-    progress_percent = calculate_progress_percent(db, project_id)
+    progress = calculate_progress(db, project)
+    project.status = calculate_project_status(progress.progress_percent)
 
-    if progress_percent == Decimal("0.00"):
-        project.status = ProjectStatus.not_started
-    elif progress_percent < Decimal("100.00"):
-        project.status = ProjectStatus.in_progress
-    else:
-        project.status = ProjectStatus.completed
+    hours = calculate_hours(db, project)
+    project.actual_hours = hours.actual
+    project.health = calculate_project_health(project)
 
     db.add(project)
     db.commit()
@@ -93,42 +154,56 @@ def get_milestone_summary(
     project_id: UUID | str,
 ) -> tuple[int, int, Decimal]:
     project_id = _coerce_uuid(project_id)
-    completed = int(
+    project = db.get(Project, project_id)
+    if project is None:
+        return 0, 0, Decimal("0.00")
+
+    progress = calculate_progress(db, project)
+    return (
+        progress.completed_milestones,
+        progress.remaining_milestones,
+        progress.progress_percent,
+    )
+
+
+def count_projects_by_health(db: Session) -> tuple[int, int, int]:
+    green = int(
         db.scalar(
             select(func.count())
-            .select_from(Milestone)
-            .where(
-                Milestone.project_id == project_id,
-                Milestone.status == MilestoneStatus.completed,
-            )
+            .select_from(Project)
+            .where(Project.health == ProjectHealth.green)
         )
         or 0
     )
-    total = int(
+    yellow = int(
         db.scalar(
             select(func.count())
-            .select_from(Milestone)
-            .where(Milestone.project_id == project_id)
+            .select_from(Project)
+            .where(Project.health == ProjectHealth.yellow)
         )
         or 0
     )
-    remaining = max(total - completed, 0)
-    progress_percent = calculate_progress_percent(db, project_id)
-    return completed, remaining, progress_percent
-
-
-def count_projects_by_health(
-    db: Session,
-    today: date | None = None,
-) -> tuple[int, int, int]:
-    projects = db.scalars(select(Project)).all()
-    green = yellow = red = 0
-    for project in projects:
-        health = calculate_project_health(project, today)
-        if health == ProjectHealth.green:
-            green += 1
-        elif health == ProjectHealth.yellow:
-            yellow += 1
-        else:
-            red += 1
+    red = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(Project.health == ProjectHealth.red)
+        )
+        or 0
+    )
     return green, yellow, red
+
+
+def aggregate_portfolio_hours(db: Session) -> ProjectHours:
+    total_quoted = _round_hours(
+        _decimal(db.scalar(select(func.coalesce(func.sum(Project.quoted_hours), 0))))
+    )
+    total_actual = _round_hours(
+        _decimal(db.scalar(select(func.coalesce(func.sum(Project.actual_hours), 0))))
+    )
+    return ProjectHours(
+        quoted=total_quoted,
+        actual=total_actual,
+        remaining=_round_hours(total_quoted - total_actual),
+        variance=_round_hours(total_actual - total_quoted),
+    )

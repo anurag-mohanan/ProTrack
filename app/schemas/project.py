@@ -40,7 +40,6 @@ class ProjectUpdate(BaseModel):
     code: str | None = Field(default=None, max_length=50)
     quoted_hours: Decimal | None = Field(default=None, gt=0)
     due_date: date | None = None
-    status: ProjectStatus | None = None
     notes: str | None = None
 
 

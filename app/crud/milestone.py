@@ -6,13 +6,13 @@ from app.crud.base import CRUDBase
 from app.models.enums import MilestoneStatus
 from app.models.models import Milestone
 from app.schemas.project import MilestoneCreate, MilestoneUpdate
-from app.services.project_calculation_service import recalculate_project_progress
+from app.services.project_calculation_service import recalculate_project
 
 
 class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
     def create(self, db, *, obj_in: MilestoneCreate) -> Milestone:
         db_obj = super().create(db, obj_in=obj_in)
-        recalculate_project_progress(db, db_obj.project_id)
+        recalculate_project(db, db_obj.project_id)
         return db_obj
 
     def update(
@@ -34,7 +34,7 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
                 update_data["completed_at"] = None
 
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
-        recalculate_project_progress(db, updated.project_id)
+        recalculate_project(db, updated.project_id)
         return updated
 
     def delete(self, db, *, record_id: UUID) -> Milestone | None:
@@ -44,7 +44,7 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
         project_id = db_obj.project_id
         deleted = super().delete(db, record_id=record_id)
         if deleted is not None:
-            recalculate_project_progress(db, project_id)
+            recalculate_project(db, project_id)
         return deleted
 
 

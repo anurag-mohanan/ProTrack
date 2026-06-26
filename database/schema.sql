@@ -7,6 +7,12 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Enumerations
 -- ---------------------------------------------------------------------------
 
+CREATE TYPE project_health AS ENUM (
+    'green',
+    'yellow',
+    'red'
+);
+
 CREATE TYPE project_status AS ENUM (
     'not_started',
     'in_progress',
@@ -127,6 +133,7 @@ CREATE TABLE projects (
     actual_hours        NUMERIC(8, 2)   NOT NULL DEFAULT 0,
     due_date            DATE            NOT NULL,
     status              project_status  NOT NULL DEFAULT 'not_started',
+    health              project_health  NOT NULL DEFAULT 'green',
     notes               TEXT,
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT now()

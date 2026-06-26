@@ -17,7 +17,8 @@ from app.schemas.dashboard import (
 )
 from app.schemas.timesheet import TimesheetEntryRead
 from app.services.project_calculation_service import (
-    calculate_project_health,
+    aggregate_portfolio_hours,
+    calculate_hours,
     count_projects_by_health,
     get_milestone_summary,
 )
@@ -91,16 +92,7 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         or 0
     )
 
-    total_quoted = _round_hours(
-        _decimal(
-            db.scalar(select(func.coalesce(func.sum(Project.quoted_hours), 0)))
-        )
-    )
-    total_actual = _round_hours(
-        _decimal(
-            db.scalar(select(func.coalesce(func.sum(Project.actual_hours), 0)))
-        )
-    )
+    portfolio_hours = aggregate_portfolio_hours(db)
 
     completed_milestones = int(
         db.scalar(
@@ -130,9 +122,10 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         in_progress_projects=in_progress,
         completed_projects=completed,
         on_hold_projects=on_hold,
-        total_quoted_hours=total_quoted,
-        total_actual_hours=total_actual,
-        hours_variance=_round_hours(total_actual - total_quoted),
+        total_quoted_hours=portfolio_hours.quoted,
+        total_actual_hours=portfolio_hours.actual,
+        total_remaining_hours=portfolio_hours.remaining,
+        hours_variance=portfolio_hours.variance,
         completed_milestones=completed_milestones,
         total_milestones=total_milestones,
         overall_progress_percent=overall_progress,
@@ -203,8 +196,7 @@ def get_project_dashboard(db: Session, project_id: UUID) -> ProjectDashboard | N
 
     completed, remaining, progress_percent = get_milestone_summary(db, project_id)
 
-    quoted = _round_hours(_decimal(project.quoted_hours))
-    actual = _round_hours(_decimal(project.actual_hours))
+    hours = calculate_hours(db, project)
 
     recent_entries = db.scalars(
         select(TimesheetEntry)
@@ -221,11 +213,12 @@ def get_project_dashboard(db: Session, project_id: UUID) -> ProjectDashboard | N
             progress_percent=progress_percent,
         ),
         hours=ProjectHoursSummary(
-            quoted=quoted,
-            actual=actual,
-            variance=_round_hours(actual - quoted),
+            quoted=hours.quoted,
+            actual=hours.actual,
+            remaining=hours.remaining,
+            variance=hours.variance,
         ),
-        health=calculate_project_health(project),
+        health=project.health,
         recent_timesheet_entries=[
             TimesheetEntryRead.model_validate(entry, from_attributes=True)
             for entry in recent_entries

@@ -20,11 +20,13 @@ export async function startImportJob(
   uploadId: string,
   dryRun: boolean,
   duplicateAction: DuplicateAction,
+  importAsArchived = false,
 ) {
   const payload: ImportRunRequest = {
     upload_id: uploadId,
     dry_run: dryRun,
     duplicate_action: duplicateAction,
+    import_as_archived: importAsArchived,
   };
   return runHistoricalImport(payload);
 }

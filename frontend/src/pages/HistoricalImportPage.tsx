@@ -70,6 +70,7 @@ export function HistoricalImportPage() {
   const [uploadResult, setUploadResult] = useState<ImportUploadResponse | null>(null);
   const [duplicateAction, setDuplicateAction] = useState<DuplicateAction>('skip');
   const [dryRun, setDryRun] = useState(true);
+  const [importAsArchived, setImportAsArchived] = useState(false);
   const [loading, setLoading] = useState(false);
   const [job, setJob] = useState<ImportJobProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +121,7 @@ export function HistoricalImportPage() {
         uploadResult.upload_id,
         dryRun,
         duplicateAction,
+        importAsArchived,
       );
       const completedJob = await pollImportJob(job_id, setJob);
       setJob(completedJob);
@@ -216,6 +218,16 @@ export function HistoricalImportPage() {
                     />
                   }
                   label="Dry run mode (validate without writing to the database)"
+                />
+
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={importAsArchived}
+                      onChange={(event) => setImportAsArchived(event.target.checked)}
+                    />
+                  }
+                  label="Import completed projects older than 1 year directly as archived"
                 />
 
                 <FormControl>

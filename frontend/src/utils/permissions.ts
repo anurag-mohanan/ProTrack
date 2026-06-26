@@ -77,6 +77,18 @@ export function canDeleteRecords(roleName: string): boolean {
   return roleName === ROLES.ADMIN;
 }
 
+export function canViewDeletedProjects(roleName: string): boolean {
+  return roleName === ROLES.ADMIN;
+}
+
+export function canArchiveProject(roleName: string): boolean {
+  return canEditProject(roleName);
+}
+
+export function canSoftDeleteProject(roleName: string): boolean {
+  return roleName === ROLES.ADMIN;
+}
+
 export function canEditProject(roleName: string): boolean {
   return (
     roleName === ROLES.ADMIN ||

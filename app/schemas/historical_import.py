@@ -59,6 +59,7 @@ class ImportRunRequest(BaseModel):
     upload_id: str
     dry_run: bool = False
     duplicate_action: DuplicateAction = DuplicateAction.skip
+    import_as_archived: bool = False
 
 
 class ImportSummary(BaseModel):

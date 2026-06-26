@@ -27,9 +27,7 @@ export function invalidateProjectCalculationQueries(
   void queryClient.invalidateQueries({ queryKey: ['dashboard', 'summary'] });
   void queryClient.invalidateQueries({ queryKey: ['dashboard', 'workload'] });
   void queryClient.invalidateQueries({ queryKey: reportQueryKeys.all });
-  void queryClient.invalidateQueries({ queryKey: reportQueryKeys.projectHours });
-  void queryClient.invalidateQueries({ queryKey: reportQueryKeys.customerSummary });
-  void queryClient.invalidateQueries({ queryKey: reportQueryKeys.designerUtilization });
+  void queryClient.invalidateQueries({ queryKey: ['reports'] });
   void queryClient.invalidateQueries({ queryKey: timesheetQueryKeys.all });
   void queryClient.invalidateQueries({ queryKey: ['timesheet-entries'] });
 }

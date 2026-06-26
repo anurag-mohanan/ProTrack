@@ -86,6 +86,18 @@ def can_delete_project(db: Session, user: User) -> bool:
     return is_admin(db, user)
 
 
+def can_view_deleted_projects(db: Session, user: User) -> bool:
+    return is_admin(db, user)
+
+
+def can_archive_project(db: Session, user: User, project: Project) -> bool:
+    return can_update_project(db, user, project)
+
+
+def can_soft_delete_project(db: Session, user: User) -> bool:
+    return is_admin(db, user)
+
+
 def can_update_project_status(db: Session, user: User) -> bool:
     return has_role(db, user, ADMIN, ENGINEERING_MANAGER)
 
@@ -100,6 +112,8 @@ def is_assigned_to_project(project: Project, user_id: UUID) -> bool:
 
 
 def can_read_project(db: Session, user: User, project: Project) -> bool:
+    if project.is_deleted and not is_admin(db, user):
+        return False
     role_name = get_role_name(db, user)
     if role_name in READ_ALL_PROJECT_ROLES:
         return True

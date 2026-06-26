@@ -4,9 +4,11 @@ import type { TimesheetEntry } from './TimesheetEntry';
 
 export interface DashboardSummary {
   total_projects: number;
+  active_projects: number;
   not_started_projects: number;
   in_progress_projects: number;
   completed_projects: number;
+  archived_projects: number;
   on_hold_projects: number;
   total_quoted_hours: number;
   total_actual_hours: number;

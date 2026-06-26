@@ -6,16 +6,30 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.auth_deps import require_roles
+from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db, get_object_or_404
+from app.core.exceptions import ProTrackValidationError
+from app.core.permissions import can_view_deleted_projects, is_admin
 from app.core.security import hash_password
 from app.crud import user as user_crud
+from app.models.enums import ActivityAction, EntityType
+from app.models.models import User
 from app.schemas.identity import (
     ResetPasswordRequest,
     ResetPasswordResponse,
     UserCreate,
+    UserDeleteCheck,
     UserRead,
     UserUpdate,
+)
+from app.services.activity_service import log_activity
+from app.services.user_lifecycle_service import (
+    archive_user,
+    get_user_delete_dependencies,
+    permanent_delete_user,
+    restore_user_from_archive,
+    restore_user_from_deleted,
+    soft_delete_user,
 )
 
 router = APIRouter(
@@ -23,6 +37,13 @@ router = APIRouter(
     tags=["users"],
     dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
 )
+
+
+def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=exc.detail,
+    )
 
 
 def _generate_temporary_password(length: int = 12) -> str:
@@ -36,19 +57,74 @@ def list_users(
     limit: int = Query(100, ge=1, le=500),
     role_id: UUID | None = None,
     is_active: bool | None = None,
+    include_archived: bool = False,
+    include_deleted: bool = False,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    filters = {}
-    if role_id is not None:
-        filters["role_id"] = role_id
-    if is_active is not None:
-        filters["is_active"] = is_active
-    return user_crud.get_multi(db, skip=skip, limit=limit, filters=filters)
+    if include_deleted and not can_view_deleted_projects(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    users = user_crud.get_multi(db, skip=skip, limit=limit)
+    filtered: list[User] = []
+    for row in users:
+        if row.is_deleted and not include_deleted:
+            continue
+        if row.is_archived and not include_archived and not row.is_deleted:
+            continue
+        if role_id is not None and row.role_id != role_id:
+            continue
+        if is_active is not None and row.is_active != is_active:
+            continue
+        filtered.append(row)
+    return filtered
+
+
+@router.get("/deleted", response_model=list[UserRead])
+def list_deleted_users(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not is_admin(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    users = user_crud.get_multi(db, skip=0, limit=10000)
+    deleted = [row for row in users if row.is_deleted]
+    return deleted[skip : skip + limit]
 
 
 @router.get("/{record_id}", response_model=UserRead)
 def get_user(record_id: UUID, db: Session = Depends(get_db)):
     return get_object_or_404(user_crud, db, record_id)
+
+
+@router.get("/{record_id}/delete-check", response_model=UserDeleteCheck)
+def check_user_delete(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not is_admin(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    db_user = user_crud.get(db, record_id)
+    if db_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Record not found"
+        )
+    deps = get_user_delete_dependencies(db, record_id)
+    return UserDeleteCheck(
+        can_permanently_delete=not deps.has_blockers,
+        blockers=deps.blocker_messages(),
+    )
 
 
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -92,9 +168,130 @@ def reset_password(
     )
 
 
+@router.post("/{record_id}/archive", response_model=UserRead)
+def archive_user_endpoint(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not is_admin(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    try:
+        archived = archive_user(db, record_id)
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.user,
+            entity_id=archived.id,
+            action=ActivityAction.user_archived,
+            new_value=archived.email,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return archived
+
+
+@router.post("/{record_id}/restore", response_model=UserRead)
+def restore_user_endpoint(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not is_admin(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    try:
+        restored = restore_user_from_archive(db, record_id)
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.user,
+            entity_id=restored.id,
+            action=ActivityAction.user_restored,
+            new_value=restored.email,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return restored
+
+
+@router.post("/{record_id}/soft-delete", response_model=UserRead)
+def soft_delete_user_endpoint(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not is_admin(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    try:
+        deleted = soft_delete_user(db, record_id, current_user)
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.user,
+            entity_id=deleted.id,
+            action=ActivityAction.user_deleted,
+            new_value=deleted.email,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return deleted
+
+
+@router.post("/{record_id}/restore-deleted", response_model=UserRead)
+def restore_deleted_user_endpoint(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not is_admin(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    try:
+        restored = restore_user_from_deleted(db, record_id)
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.user,
+            entity_id=restored.id,
+            action=ActivityAction.user_restored_from_deleted,
+            new_value=restored.email,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return restored
+
+
 @router.delete("/{record_id}", status_code=status.HTTP_403_FORBIDDEN)
-def delete_user(record_id: UUID):
+def delete_user_legacy(record_id: UUID):
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="User deletion is disabled. Deactivate the user instead.",
+        detail="User deletion is disabled. Deactivate or soft-delete the user instead.",
     )
+
+
+@router.delete("/{record_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
+def permanent_delete_user_endpoint(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not is_admin(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    try:
+        permanent_delete_user(db, record_id)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc

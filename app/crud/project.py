@@ -1,14 +1,17 @@
-from typing import override
+from typing import Any, override
 from uuid import UUID
+
+from sqlalchemy import Select
 
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import PROJECT_STAFF_ROLES
 from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read, build_project_reads
-from app.models.enums import MilestoneStatus
-from app.models.models import Contact, Milestone, Project, Role, User
-from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
+from app.models.enums import MilestoneStatus, ProjectLifecycleFilter
+from app.models.models import Contact, Customer, Milestone, Project, ProjectType, Role, User
+from app.schemas.project import ArchivedProjectListItem, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.project_calculation_service import recalculate_project
+from app.services.project_lifecycle_service import apply_lifecycle_filter, apply_lifecycle_sort
 from app.services.project_template_service import (
     create_milestones_from_template,
     resolve_template,
@@ -44,6 +47,11 @@ def _get_active_user(
         )
 
     if not user.is_active:
+        raise ProTrackValidationError(
+            f"{field_name} must reference an active user"
+        )
+
+    if user.is_archived or user.is_deleted:
         raise ProTrackValidationError(
             f"{field_name} must reference an active user"
         )
@@ -208,6 +216,28 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             return None
         return build_project_read(db, db_project)
 
+    def query_projects(
+        self,
+        db: Session,
+        *,
+        lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active,
+        skip: int = 0,
+        limit: int = 100,
+        filters: dict[str, Any] | None = None,
+        assignment_clause=None,
+    ) -> list[Project]:
+        stmt: Select[tuple[Project]] = select(Project)
+        stmt = apply_lifecycle_filter(stmt, lifecycle)
+        if assignment_clause is not None:
+            stmt = stmt.where(assignment_clause)
+        if filters:
+            for field, value in filters.items():
+                if field == "lifecycle" or value is None:
+                    continue
+                stmt = stmt.where(getattr(Project, field) == value)
+        stmt = apply_lifecycle_sort(stmt, lifecycle).offset(skip).limit(limit)
+        return list(db.scalars(stmt).all())
+
     def get_multi_read(
         self,
         db: Session,
@@ -215,9 +245,61 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         skip: int = 0,
         limit: int = 100,
         filters: dict[str, object] | None = None,
+        lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active,
+        assignment_clause=None,
     ) -> list[ProjectRead]:
-        projects = self.get_multi(db, skip=skip, limit=limit, filters=filters)
+        active_filters = {
+            key: value
+            for key, value in (filters or {}).items()
+            if key != "lifecycle" and value is not None
+        }
+        projects = self.query_projects(
+            db,
+            lifecycle=lifecycle,
+            skip=skip,
+            limit=limit,
+            filters=active_filters,
+            assignment_clause=assignment_clause,
+        )
         return build_project_reads(db, projects)
+
+    def get_archived_list(
+        self,
+        db: Session,
+        *,
+        skip: int = 0,
+        limit: int = 100,
+        assignment_clause=None,
+    ) -> list[ArchivedProjectListItem]:
+        projects = self.query_projects(
+            db,
+            lifecycle=ProjectLifecycleFilter.archived,
+            skip=skip,
+            limit=limit,
+            assignment_clause=assignment_clause,
+        )
+        items: list[ArchivedProjectListItem] = []
+        for project in projects:
+            read = build_project_read(db, project)
+            customer = db.get(Customer, project.customer_id)
+            project_type = (
+                db.get(ProjectType, project.project_type_id)
+                if project.project_type_id
+                else None
+            )
+            leader = db.get(User, project.design_leader_id)
+            leader_name = (
+                f"{leader.first_name} {leader.last_name}" if leader else "Unknown"
+            )
+            items.append(
+                ArchivedProjectListItem(
+                    **read.model_dump(),
+                    customer_name=customer.name if customer else "Unknown",
+                    project_type_name=project_type.name if project_type else None,
+                    design_leader_name=leader_name,
+                )
+            )
+        return items
 
 
 project = CRUDProject(Project)

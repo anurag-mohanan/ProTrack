@@ -4,6 +4,7 @@ import {
   Typography,
 } from '@mui/material';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import ArchiveIcon from '@mui/icons-material/Archive';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
@@ -15,6 +16,7 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { fetchDashboardSummary } from '../api/dashboard';
 import { PageHeader } from '../components/common/PageHeader';
 import { EmptyState } from '../components/common/EmptyState';
@@ -33,9 +35,11 @@ interface DashboardMetric {
   subtitle?: string;
   accent: Accent;
   icon: typeof FolderOpenIcon;
+  onClick?: () => void;
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard', 'summary'],
     queryFn: fetchDashboardSummary,
@@ -54,10 +58,30 @@ export function DashboardPage() {
   const workflow = workflowQuery.data;
 
   const cards: DashboardMetric[] = [
+    {
+      title: 'Active Projects',
+      value: formatNumber(data.active_projects, 0),
+      accent: 'primary',
+      icon: FolderOpenIcon,
+      onClick: () => navigate('/projects'),
+    },
+    {
+      title: 'Completed Projects',
+      value: formatNumber(data.completed_projects, 0),
+      accent: 'success',
+      icon: CheckCircleIcon,
+      onClick: () => navigate('/projects?lifecycle=completed'),
+    },
+    {
+      title: 'Archived Projects',
+      value: formatNumber(data.archived_projects, 0),
+      accent: 'secondary',
+      icon: ArchiveIcon,
+      onClick: () => navigate('/projects/archived'),
+    },
     { title: 'Total Projects', value: formatNumber(data.total_projects, 0), accent: 'primary', icon: FolderOpenIcon },
     { title: 'Not Started', value: formatNumber(data.not_started_projects, 0), accent: 'secondary', icon: HourglassEmptyIcon },
     { title: 'In Progress', value: formatNumber(data.in_progress_projects, 0), accent: 'info', icon: SpeedIcon },
-    { title: 'Completed', value: formatNumber(data.completed_projects, 0), accent: 'success', icon: CheckCircleIcon },
     { title: 'Green Projects', value: formatNumber(data.green_projects, 0), accent: 'success', icon: CheckCircleIcon },
     { title: 'Yellow Projects', value: formatNumber(data.yellow_projects, 0), accent: 'warning', icon: WarningAmberIcon },
     { title: 'Red Projects', value: formatNumber(data.red_projects, 0), accent: 'error', icon: WarningAmberIcon },
@@ -118,6 +142,7 @@ export function DashboardPage() {
               subtitle={card.subtitle}
               accent={card.accent}
               icon={card.icon}
+              onClick={card.onClick}
             />
           </Grid>
         ))}

@@ -61,15 +61,28 @@ def _current_week_bounds(today: date | None = None) -> tuple[date, date]:
     return week_start, week_end
 
 
+def _visible_projects_clause():
+    return (Project.is_deleted.is_(False), Project.is_archived.is_(False))
+
+
 def get_dashboard_summary(db: Session) -> DashboardSummary:
+    visible = _visible_projects_clause()
     total_projects = int(
-        db.scalar(select(func.count()).select_from(Project)) or 0
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(*visible)
+        )
+        or 0
     )
     not_started = int(
         db.scalar(
             select(func.count())
             .select_from(Project)
-            .where(Project.status == ProjectStatus.not_started)
+            .where(
+                *visible,
+                Project.status == ProjectStatus.not_started,
+            )
         )
         or 0
     )
@@ -77,7 +90,10 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         db.scalar(
             select(func.count())
             .select_from(Project)
-            .where(Project.status == ProjectStatus.in_progress)
+            .where(
+                *visible,
+                Project.status == ProjectStatus.in_progress,
+            )
         )
         or 0
     )
@@ -85,7 +101,21 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         db.scalar(
             select(func.count())
             .select_from(Project)
-            .where(Project.status == ProjectStatus.completed)
+            .where(
+                *visible,
+                Project.status == ProjectStatus.completed,
+            )
+        )
+        or 0
+    )
+    archived = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(
+                Project.is_deleted.is_(False),
+                Project.is_archived.is_(True),
+            )
         )
         or 0
     )
@@ -93,10 +123,14 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         db.scalar(
             select(func.count())
             .select_from(Project)
-            .where(Project.status == ProjectStatus.waiting_for_customer)
+            .where(
+                *visible,
+                Project.status == ProjectStatus.waiting_for_customer,
+            )
         )
         or 0
     )
+    active = not_started + in_progress + on_hold
 
     portfolio_hours = aggregate_portfolio_hours(db)
 
@@ -124,9 +158,11 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
 
     return DashboardSummary(
         total_projects=total_projects,
+        active_projects=active,
         not_started_projects=not_started,
         in_progress_projects=in_progress,
         completed_projects=completed,
+        archived_projects=archived,
         on_hold_projects=on_hold,
         total_quoted_hours=portfolio_hours.quoted,
         total_actual_hours=portfolio_hours.actual,
@@ -146,7 +182,12 @@ def get_designer_workload(db: Session) -> list[DesignerWorkload]:
     users = db.scalars(
         select(User)
         .join(Role, User.role_id == Role.id)
-        .where(Role.name.in_(WORKLOAD_ROLES), User.is_active.is_(True))
+        .where(
+            Role.name.in_(WORKLOAD_ROLES),
+            User.is_active.is_(True),
+            User.is_archived.is_(False),
+            User.is_deleted.is_(False),
+        )
         .order_by(User.last_name, User.first_name)
     ).all()
 
@@ -158,10 +199,21 @@ def get_designer_workload(db: Session) -> list[DesignerWorkload]:
             continue
 
         assigned_projects = db.scalars(
-            select(Project).where(assignment_filter)
+            select(Project).where(
+                assignment_filter,
+                Project.is_deleted.is_(False),
+                Project.is_archived.is_(False),
+            )
         ).all()
         active_projects = sum(
-            1 for project in assigned_projects if project.status != ProjectStatus.completed
+            1
+            for project in assigned_projects
+            if project.status
+            in (
+                ProjectStatus.not_started,
+                ProjectStatus.in_progress,
+                ProjectStatus.waiting_for_customer,
+            )
         )
         quoted_hours_assigned = _round_hours(
             sum((_decimal(p.quoted_hours) for p in assigned_projects), Decimal("0"))
@@ -258,10 +310,13 @@ def get_workflow_dashboard(db: Session, user: User) -> WorkflowDashboard:
     role_name = get_role_name(db, user)
 
     assignment_filter = project_assignment_filter(user, role_name)
+    visibility = _visible_projects_clause()
     if role_name in READ_ALL_PROJECT_ROLES:
-        visible_projects = db.scalars(select(Project)).all()
+        visible_projects = db.scalars(select(Project).where(*visibility)).all()
     elif assignment_filter is not None:
-        visible_projects = db.scalars(select(Project).where(assignment_filter)).all()
+        visible_projects = db.scalars(
+            select(Project).where(assignment_filter, *visibility)
+        ).all()
     else:
         visible_projects = []
 

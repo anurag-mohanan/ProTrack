@@ -20,7 +20,13 @@ def list_lookup_users(
     _current_user: User = Depends(get_current_user),
 ):
     users = db.scalars(
-        select(User).where(User.is_active.is_(True)).order_by(User.last_name, User.first_name)
+        select(User)
+        .where(
+            User.is_active.is_(True),
+            User.is_archived.is_(False),
+            User.is_deleted.is_(False),
+        )
+        .order_by(User.last_name, User.first_name)
     ).all()
     return [
         {

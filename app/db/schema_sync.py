@@ -227,10 +227,102 @@ def ensure_project_template_schema(engine: Engine) -> None:
                     "REFERENCES project_types(id)"
                 )
             )
+def ensure_project_lifecycle_schema(engine: Engine) -> None:
+    dialect = engine.dialect.name
+    project_columns = (
+        ("completed_at", "completed_at DATETIME"),
+        ("is_archived", "is_archived BOOLEAN NOT NULL DEFAULT 0"),
+        ("archived_at", "archived_at DATETIME"),
+        ("archived_by_id", "archived_by_id BLOB"),
+        ("is_deleted", "is_deleted BOOLEAN NOT NULL DEFAULT 0"),
+        ("deleted_at", "deleted_at DATETIME"),
+        ("deleted_by_id", "deleted_by_id BLOB"),
+    )
+
+    if dialect == "sqlite":
+        for column_name, ddl in project_columns:
+            if not _sqlite_has_column(engine, "projects", column_name):
+                with engine.begin() as connection:
+                    connection.execute(text(f"ALTER TABLE projects ADD COLUMN {ddl}"))
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP")
+            )
             connection.execute(
                 text(
-                    "ALTER TABLE projects "
-                    "ADD COLUMN IF NOT EXISTS project_template_id UUID "
-                    "REFERENCES project_templates(id)"
+                    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_archived "
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+            connection.execute(
+                text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP")
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_by_id UUID "
+                    "REFERENCES users(id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_deleted "
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+            connection.execute(
+                text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP")
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted_by_id UUID "
+                    "REFERENCES users(id)"
+                )
+            )
+
+
+def ensure_user_lifecycle_schema(engine: Engine) -> None:
+    dialect = engine.dialect.name
+    user_columns = (
+        ("is_archived", "is_archived BOOLEAN NOT NULL DEFAULT 0"),
+        ("archived_at", "archived_at DATETIME"),
+        ("is_deleted", "is_deleted BOOLEAN NOT NULL DEFAULT 0"),
+        ("deleted_at", "deleted_at DATETIME"),
+        ("deleted_by_id", "deleted_by_id BLOB"),
+    )
+
+    if dialect == "sqlite":
+        for column_name, ddl in user_columns:
+            if not _sqlite_has_column(engine, "users", column_name):
+                with engine.begin() as connection:
+                    connection.execute(text(f"ALTER TABLE users ADD COLUMN {ddl}"))
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_archived "
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP")
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_deleted "
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP")
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_by_id UUID "
+                    "REFERENCES users(id)"
                 )
             )

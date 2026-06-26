@@ -181,7 +181,14 @@ def recalculate_project(db: Session, project_id: UUID | str) -> Project | None:
         return None
 
     progress = calculate_progress(db, project)
-    project.status = calculate_project_status(progress.progress_percent)
+    new_status = calculate_project_status(progress.progress_percent)
+    if new_status == ProjectStatus.completed and project.completed_at is None:
+        from datetime import datetime, timezone
+
+        project.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    elif new_status != ProjectStatus.completed:
+        project.completed_at = None
+    project.status = new_status
 
     hours = calculate_hours(db, project)
     project.actual_hours = hours.actual

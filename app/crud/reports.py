@@ -19,12 +19,34 @@ from app.schemas.reports import (
 from app.services.project_calculation_service import calculate_hours
 
 
-def get_project_hours_report(db: Session) -> list[ProjectHoursReportRow]:
-    rows = db.execute(
+def _apply_report_filters(
+    stmt,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+):
+    if not include_deleted:
+        stmt = stmt.where(Project.is_deleted.is_(False))
+    if not include_archived:
+        stmt = stmt.where(Project.is_archived.is_(False))
+    return stmt
+
+
+def get_project_hours_report(
+    db: Session,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+) -> list[ProjectHoursReportRow]:
+    stmt = (
         select(Project, Customer.name)
         .join(Customer, Project.customer_id == Customer.id)
         .order_by(Project.tool_number)
-    ).all()
+    )
+    stmt = _apply_report_filters(
+        stmt, include_archived=include_archived, include_deleted=include_deleted
+    )
+    rows = db.execute(stmt).all()
 
     report: list[ProjectHoursReportRow] = []
     for project, customer_name in rows:
@@ -44,7 +66,17 @@ def get_project_hours_report(db: Session) -> list[ProjectHoursReportRow]:
     return report
 
 
-def get_customer_summary_report(db: Session) -> list[CustomerSummaryReportRow]:
+def get_customer_summary_report(
+    db: Session,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+) -> list[CustomerSummaryReportRow]:
+    project_join = Project.customer_id == Customer.id
+    if not include_deleted:
+        project_join = project_join & Project.is_deleted.is_(False)
+    if not include_archived:
+        project_join = project_join & Project.is_archived.is_(False)
     rows = db.execute(
         select(
             Customer.id,
@@ -53,7 +85,7 @@ def get_customer_summary_report(db: Session) -> list[CustomerSummaryReportRow]:
             func.coalesce(func.sum(Project.quoted_hours), 0),
             func.coalesce(func.sum(Project.actual_hours), 0),
         )
-        .outerjoin(Project, Project.customer_id == Customer.id)
+        .outerjoin(Project, project_join)
         .group_by(Customer.id, Customer.name)
         .order_by(Customer.name)
     ).all()
@@ -104,9 +136,14 @@ def get_timesheet_approval_report(db: Session) -> list[TimesheetApprovalReportRo
     return report
 
 
-def get_project_delay_report(db: Session) -> list[ProjectDelayReportRow]:
+def get_project_delay_report(
+    db: Session,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+) -> list[ProjectDelayReportRow]:
     today = date.today()
-    rows = db.execute(
+    stmt = (
         select(Project, Customer.name)
         .join(Customer, Project.customer_id == Customer.id)
         .where(
@@ -114,7 +151,11 @@ def get_project_delay_report(db: Session) -> list[ProjectDelayReportRow]:
             Project.status != ProjectStatus.completed,
         )
         .order_by(Project.due_date)
-    ).all()
+    )
+    stmt = _apply_report_filters(
+        stmt, include_archived=include_archived, include_deleted=include_deleted
+    )
+    rows = db.execute(stmt).all()
     report: list[ProjectDelayReportRow] = []
     for project, customer_name in rows:
         report.append(
@@ -131,12 +172,21 @@ def get_project_delay_report(db: Session) -> list[ProjectDelayReportRow]:
     return report
 
 
-def get_milestone_completion_report(db: Session) -> list[MilestoneCompletionReportRow]:
-    rows = db.execute(
+def get_milestone_completion_report(
+    db: Session,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+) -> list[MilestoneCompletionReportRow]:
+    stmt = (
         select(Milestone, Project.code)
         .join(Project, Milestone.project_id == Project.id)
         .order_by(Project.code, Milestone.sort_order)
-    ).all()
+    )
+    stmt = _apply_report_filters(
+        stmt, include_archived=include_archived, include_deleted=include_deleted
+    )
+    rows = db.execute(stmt).all()
     return [
         MilestoneCompletionReportRow(
             project_code=code,
@@ -185,9 +235,22 @@ def get_designer_productivity_report(db: Session) -> list[DesignerProductivityRe
     return report
 
 
-def get_reports_bundle(db: Session) -> ReportsBundle:
+def get_reports_bundle(
+    db: Session,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+) -> ReportsBundle:
     return ReportsBundle(
-        project_hours=get_project_hours_report(db),
+        project_hours=get_project_hours_report(
+            db,
+            include_archived=include_archived,
+            include_deleted=include_deleted,
+        ),
         designer_utilization=get_designer_workload(db),
-        customer_summary=get_customer_summary_report(db),
+        customer_summary=get_customer_summary_report(
+            db,
+            include_archived=include_archived,
+            include_deleted=include_deleted,
+        ),
     )

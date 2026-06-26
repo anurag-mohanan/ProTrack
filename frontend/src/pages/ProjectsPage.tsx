@@ -8,9 +8,10 @@ import {
   TextField,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchCustomers, fetchStreams, fetchUsers } from '../api/lookups';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
 import { ProjectTable } from '../components/projects/ProjectTable';
 import { EmptyState } from '../components/common/EmptyState';
@@ -20,8 +21,22 @@ import { TableSkeleton } from '../components/common/TableSkeleton';
 import { ContentCard } from '../components/ui/cards';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
-import { getProjects, projectQueryKeys } from '../services/projectService';
-import type { ProjectStatus } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import {
+  archiveProject,
+  getProjects,
+  projectQueryKeys,
+} from '../services/projectService';
+import type { ProjectLifecycleFilter, ProjectStatus } from '../types';
+import { canArchiveProject } from '../utils/permissions';
+
+const lifecycleOptions: Array<{ value: ProjectLifecycleFilter; label: string }> = [
+  { value: 'active', label: 'Active' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'archived', label: 'Archived' },
+  { value: 'deleted', label: 'Deleted' },
+];
 
 const statusOptions: Array<{ value: ProjectStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All Statuses' },
@@ -33,21 +48,39 @@ const statusOptions: Array<{ value: ProjectStatus | 'all'; label: string }> = [
 
 export function ProjectsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const { showSuccess, showError } = useToast();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   const [createOpen, setCreateOpen] = useState(false);
+  const [archiveId, setArchiveId] = useState<string | null>(null);
+
+  const lifecycle =
+    (searchParams.get('lifecycle') as ProjectLifecycleFilter | null) ?? 'active';
 
   const statusParam = statusFilter === 'all' ? undefined : statusFilter;
 
   const projectsQuery = useQuery({
-    queryKey: projectQueryKeys.list(statusParam),
+    queryKey: projectQueryKeys.list({ lifecycle, status: statusParam }),
     queryFn: () =>
-      getProjects(
-        statusParam
-          ? { status: statusParam, limit: 500 }
-          : { limit: 500 },
-      ),
+      getProjects({
+        lifecycle,
+        status: statusParam,
+        limit: 500,
+      }),
     staleTime: QUERY_STALE_TIMES.projects,
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: archiveProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      showSuccess('Project archived');
+      setArchiveId(null);
+    },
+    onError: (error: Error) => showError(error.message),
   });
 
   const customersQuery = useQuery({
@@ -86,6 +119,11 @@ export function ProjectsPage() {
     usersQuery.isPending ||
     streamsQuery.isPending;
 
+  const showArchiveActions =
+    lifecycle !== 'archived' &&
+    lifecycle !== 'deleted' &&
+    canArchiveProject(user?.role_name ?? '');
+
   if (projectsQuery.error) return <ErrorState error={projectsQuery.error} />;
   if (customersQuery.error) return <ErrorState error={customersQuery.error} />;
   if (usersQuery.error) return <ErrorState error={usersQuery.error} />;
@@ -97,13 +135,15 @@ export function ProjectsPage() {
         title="Projects"
         subtitle="Manage engineering projects and assignments"
         action={
-          <ProsohmButton
-            buttonVariant="primary"
-            startIcon={<AddIcon />}
-            onClick={() => setCreateOpen(true)}
-          >
-            Create Project
-          </ProsohmButton>
+          lifecycle === 'active' ? (
+            <ProsohmButton
+              buttonVariant="primary"
+              startIcon={<AddIcon />}
+              onClick={() => setCreateOpen(true)}
+            >
+              Create Project
+            </ProsohmButton>
+          ) : undefined
         }
       />
 
@@ -116,6 +156,28 @@ export function ProjectsPage() {
               onChange={(event) => setSearch(event.target.value)}
               sx={{ minWidth: 280, flex: 1 }}
             />
+            <FormControl sx={{ minWidth: 180 }}>
+              <InputLabel>Lifecycle</InputLabel>
+              <Select
+                label="Lifecycle"
+                value={lifecycle}
+                onChange={(event) => {
+                  const value = event.target.value as ProjectLifecycleFilter;
+                  if (value === 'active') {
+                    searchParams.delete('lifecycle');
+                    setSearchParams(searchParams);
+                  } else {
+                    setSearchParams({ lifecycle: value });
+                  }
+                }}
+              >
+                {lifecycleOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <FormControl sx={{ minWidth: 220 }}>
               <InputLabel>Status</InputLabel>
               <Select
@@ -152,6 +214,9 @@ export function ProjectsPage() {
             customers={customersQuery.data ?? []}
             users={usersQuery.data ?? []}
             streams={streamsQuery.data ?? []}
+            onArchive={
+              showArchiveActions ? (projectId) => setArchiveId(projectId) : undefined
+            }
           />
         </ContentCard>
       )}
@@ -160,6 +225,16 @@ export function ProjectsPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={(projectId) => navigate(`/projects/${projectId}`)}
+      />
+
+      <ConfirmDialog
+        open={archiveId !== null}
+        title="Archive project?"
+        message="Archived projects are removed from the default list but remain in reports and history."
+        confirmLabel="Archive"
+        loading={archiveMutation.isPending}
+        onClose={() => setArchiveId(null)}
+        onConfirm={() => archiveId && archiveMutation.mutate(archiveId)}
       />
     </Box>
   );

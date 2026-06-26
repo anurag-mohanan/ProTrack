@@ -1,5 +1,7 @@
 import type { ProjectHealth, ProjectStatus, Timestamped } from './common';
 
+export type ProjectLifecycleFilter = 'active' | 'completed' | 'archived' | 'deleted';
+
 export interface Project extends Timestamped {
   tool_number: string;
   part_description: string;
@@ -19,6 +21,24 @@ export interface Project extends Timestamped {
   due_date: string;
   status: ProjectStatus;
   notes: string | null;
+  completed_at?: string | null;
+  is_archived?: boolean;
+  archived_at?: string | null;
+  archived_by_id?: string | null;
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  deleted_by_id?: string | null;
+}
+
+export interface ArchivedProjectListItem extends Project {
+  customer_name: string;
+  project_type_name?: string | null;
+  design_leader_name: string;
+}
+
+export interface ProjectDeleteCheck {
+  can_permanently_delete: boolean;
+  blockers: string[];
 }
 
 export interface ProjectCreate {

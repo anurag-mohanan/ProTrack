@@ -12,6 +12,8 @@ import {
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import FolderIcon from '@mui/icons-material/Folder';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import DeleteIcon from '@mui/icons-material/Delete';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import GroupsIcon from '@mui/icons-material/Groups';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -30,6 +32,7 @@ import { ProsohmLogo } from '../branding/ProsohmLogo';
 import {
   canAccessAdministration,
   canImportHistoricalProjects,
+  canViewDeletedProjects,
   canViewReports,
   canViewWorkload,
 } from '../../utils/permissions';
@@ -39,6 +42,7 @@ export const DRAWER_WIDTH = 272;
 const navItems = [
   { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
   { label: 'Projects', path: '/projects', icon: FolderIcon },
+  { label: 'Archived Projects', path: '/projects/archived', icon: ArchiveIcon },
   { label: 'Timesheets', path: '/timesheets', icon: ScheduleIcon },
   { label: 'Workload', path: '/workload', icon: GroupsIcon },
   { label: 'Reports', path: '/reports', icon: AssessmentIcon },
@@ -54,6 +58,12 @@ const adminNavItems = [
   { label: 'Project Templates', path: '/admin/project-templates', icon: ViewTimelineIcon },
   { label: 'Roles', path: '/admin/roles', icon: SecurityIcon },
   { label: 'System Settings', path: '/admin/settings', icon: SettingsIcon },
+  {
+    label: 'Deleted Projects',
+    path: '/admin/deleted-projects',
+    icon: DeleteIcon,
+    adminOnly: true,
+  },
   {
     label: 'Import Historical Projects',
     path: '/admin/import-historical-projects',
@@ -160,7 +170,13 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
             </Box>
             <List disablePadding>
               {adminNavItems
-                .filter((item) => !item.adminOnly || canImportHistoricalProjects(roleName))
+                .filter((item) => {
+                  if (item.path === '/admin/deleted-projects') {
+                    return canViewDeletedProjects(roleName);
+                  }
+                  if (item.adminOnly) return canImportHistoricalProjects(roleName);
+                  return true;
+                })
                 .map((item) => (
                   <NavButton key={item.path} {...item} />
                 ))}

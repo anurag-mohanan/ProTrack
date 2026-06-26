@@ -85,6 +85,7 @@ def _execute_import_job(
     *,
     dry_run: bool,
     duplicate_action,
+    import_as_archived: bool,
 ) -> None:
     from app.db.session import SessionLocal
 
@@ -104,6 +105,7 @@ def _execute_import_job(
             upload_id,
             dry_run=dry_run,
             duplicate_action=duplicate_action,
+            import_as_archived=import_as_archived,
             progress_callback=progress_callback,
         )
         import_job_store.complete(
@@ -139,6 +141,7 @@ def run_historical_import(
         payload.upload_id,
         dry_run=payload.dry_run,
         duplicate_action=payload.duplicate_action,
+        import_as_archived=payload.import_as_archived,
     )
     return ImportRunResponse(job_id=job_id)
 

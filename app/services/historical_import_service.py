@@ -79,6 +79,42 @@ STATUS_MAP: dict[str, ProjectStatus] = {
     "closed": ProjectStatus.completed,
 }
 
+DEFAULT_IMPORT_ARCHIVE_DAYS = 365
+
+
+def _should_import_as_archived(
+    *,
+    status: ProjectStatus,
+    due_date: date,
+    import_as_archived: bool,
+) -> bool:
+    if not import_as_archived:
+        return False
+    if status != ProjectStatus.completed:
+        return False
+    age_days = (date.today() - due_date).days
+    return age_days >= DEFAULT_IMPORT_ARCHIVE_DAYS
+
+
+def _apply_import_archive_state(
+    project: Project,
+    *,
+    status: ProjectStatus,
+    due_date: date,
+    import_as_archived: bool,
+) -> None:
+    if not _should_import_as_archived(
+        status=status,
+        due_date=due_date,
+        import_as_archived=import_as_archived,
+    ):
+        return
+    if status == ProjectStatus.completed and project.completed_at is None:
+        project.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    project.is_archived = True
+    project.archived_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 MILESTONE_ALIASES: dict[str, str] = {
     "feasibility": "Feasibility",
     "blockout": "Blockout",
@@ -595,6 +631,7 @@ def _create_project_from_row(
     summary: ImportSummary,
     duplicate_action: DuplicateAction,
     existing: Project | None,
+    import_as_archived: bool = False,
 ) -> tuple[str, ImportRowPreview]:
     if row.errors:
         return "error", _preview_from_row(row)
@@ -653,6 +690,12 @@ def _create_project_from_row(
             db, existing, row.design_phase, row.progress, summary
         )
         existing.health = calculate_project_health(existing)
+        _apply_import_archive_state(
+            existing,
+            status=status,
+            due_date=due_date,
+            import_as_archived=import_as_archived,
+        )
         db.add(existing)
         db.commit()
         preview = _preview_from_row(row, existing_project_id=existing.id)
@@ -695,6 +738,12 @@ def _create_project_from_row(
     if row.status is not None:
         project.status = row.status
     project.health = calculate_project_health(project)
+    _apply_import_archive_state(
+        project,
+        status=project.status,
+        due_date=due_date,
+        import_as_archived=import_as_archived,
+    )
     db.add(project)
     db.commit()
 
@@ -709,6 +758,7 @@ def run_import(
     *,
     dry_run: bool,
     duplicate_action: DuplicateAction,
+    import_as_archived: bool = False,
     progress_callback=None,
 ) -> tuple[ImportSummary, list[ImportRowPreview]]:
     path = get_upload_path(upload_id)
@@ -756,6 +806,7 @@ def run_import(
                 summary=summary,
                 duplicate_action=duplicate_action,
                 existing=existing,
+                import_as_archived=import_as_archived,
             )
             if result == "imported":
                 summary.projects_imported += 1

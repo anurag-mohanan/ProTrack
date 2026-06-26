@@ -10,8 +10,9 @@ import {
   Tabs,
   Typography,
 } from '@mui/material';
+import ArchiveIcon from '@mui/icons-material/Archive';
 import EditIcon from '@mui/icons-material/Edit';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { fetchCustomers, fetchStreams, fetchUsers } from '../api/lookups';
 import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
@@ -21,9 +22,13 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { HealthChip, StatusChip } from '../components/common/StatusChip';
 import { LoadingState } from '../components/common/LoadingState';
-import { getProjectDetail, invalidateProjectCalculationQueries, projectQueryKeys } from '../services/projectService';
+import { getProjectDetail, invalidateProjectCalculationQueries, projectQueryKeys, archiveProject } from '../services/projectService';
 import { activityQueryKeys, getProjectActivities } from '../services/notificationService';
 import { formatDate, formatDateTime, formatNumber, userDisplayName } from '../utils/format';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { canArchiveProject } from '../utils/permissions';
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -39,8 +44,11 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 export function ProjectDetailPage() {
   const { id = '' } = useParams();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [tab, setTab] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: projectQueryKeys.detail(id),
@@ -67,6 +75,17 @@ export function ProjectDetailPage() {
   const streamsQuery = useQuery({
     queryKey: ['streams'],
     queryFn: fetchStreams,
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveProject(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      invalidateProjectCalculationQueries(queryClient, id);
+      showSuccess('Project archived');
+      setArchiveOpen(false);
+    },
+    onError: (error: Error) => showError(error.message),
   });
 
   if (detailQuery.isLoading) return <LoadingState message="Loading project…" />;
@@ -106,13 +125,27 @@ export function ProjectDetailPage() {
           </Typography>
           <Typography color="text.secondary">{project.part_description}</Typography>
         </Box>
-        <Button
-          variant="outlined"
-          startIcon={<EditIcon />}
-          onClick={() => setEditOpen(true)}
-        >
-          Edit Project
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {!project.is_archived &&
+          !project.is_deleted &&
+          canArchiveProject(user?.role_name ?? '') ? (
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<ArchiveIcon />}
+              onClick={() => setArchiveOpen(true)}
+            >
+              Archive Project
+            </Button>
+          ) : null}
+          <Button
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={() => setEditOpen(true)}
+          >
+            Edit Project
+          </Button>
+        </Box>
       </Box>
 
       <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 3 }}>
@@ -273,6 +306,16 @@ export function ProjectDetailPage() {
         onUpdated={() => {
           invalidateProjectCalculationQueries(queryClient, id);
         }}
+      />
+
+      <ConfirmDialog
+        open={archiveOpen}
+        title="Archive project?"
+        message="Archived projects are removed from the default list but remain in reports and history."
+        confirmLabel="Archive"
+        loading={archiveMutation.isPending}
+        onClose={() => setArchiveOpen(false)}
+        onConfirm={() => archiveMutation.mutate()}
       />
     </Box>
   );

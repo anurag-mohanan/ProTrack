@@ -6,6 +6,7 @@ import { ToastProvider } from './context/ToastContext';
 import { MainLayout } from './layouts/MainLayout';
 import ContactsAdminPage from './pages/admin/ContactsPage';
 import CustomersAdminPage from './pages/admin/CustomersPage';
+import DeletedProjectsAdminPage from './pages/admin/DeletedProjectsPage';
 import ProjectTemplatesAdminPage from './pages/admin/ProjectTemplatesPage';
 import ProjectTemplateEditorPage from './pages/admin/ProjectTemplateEditorPage';
 import ProjectTypesAdminPage from './pages/admin/ProjectTypesPage';
@@ -18,6 +19,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { HistoricalImportPage } from './pages/HistoricalImportPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import { ArchivedProjectsPage } from './pages/ArchivedProjectsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TimesheetEntryPage } from './pages/TimesheetEntryPage';
@@ -63,6 +65,7 @@ export default function App() {
                   <Route element={<MainLayout />}>
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/projects" element={<ProjectsPage />} />
+                    <Route path="/projects/archived" element={<ArchivedProjectsPage />} />
                     <Route path="/projects/:id" element={<ProjectDetailPage />} />
                     <Route path="/timesheets" element={<TimesheetsPage />} />
                     <Route
@@ -89,6 +92,10 @@ export default function App() {
                       />
                       <Route path="/admin/roles" element={<RolesAdminPage />} />
                       <Route path="/admin/settings" element={<SystemSettingsPage />} />
+                      <Route
+                        path="/admin/deleted-projects"
+                        element={<DeletedProjectsAdminPage />}
+                      />
                       <Route
                         path="/admin/import-historical-projects"
                         element={<AdminHistoricalImportRoute />}

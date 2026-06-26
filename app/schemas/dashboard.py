@@ -11,9 +11,11 @@ from app.schemas.timesheet import ActivityRead, TimesheetEntryRead
 
 class DashboardSummary(BaseModel):
     total_projects: int = 0
+    active_projects: int = 0
     not_started_projects: int = 0
     in_progress_projects: int = 0
     completed_projects: int = 0
+    archived_projects: int = 0
     on_hold_projects: int = 0
     total_quoted_hours: Decimal = Decimal("0")
     total_actual_hours: Decimal = Decimal("0")

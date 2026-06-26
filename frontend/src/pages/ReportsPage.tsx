@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import {
   Box,
+  FormControlLabel,
   Paper,
+  Switch,
   Tab,
   Table,
   TableBody,
@@ -16,21 +18,33 @@ import { useQuery } from '@tanstack/react-query';
 import { StatusChip } from '../components/common/StatusChip';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
+import { ContentCard } from '../components/ui/cards';
+import { useAuth } from '../context/AuthContext';
 import {
   getCustomerSummaryReport,
   getDesignerUtilizationReport,
   getProjectHoursReport,
   reportQueryKeys,
+  type ReportOptions,
 } from '../services/reportService';
 import type { ProjectStatus } from '../types';
+import { canViewDeletedProjects } from '../utils/permissions';
 import { formatNumber } from '../utils/format';
 
 export function ReportsPage() {
   const [tab, setTab] = useState(0);
+  const { user } = useAuth();
+  const [includeArchived, setIncludeArchived] = useState(true);
+  const [includeDeleted, setIncludeDeleted] = useState(false);
+
+  const reportOptions: ReportOptions = {
+    include_archived: includeArchived,
+    include_deleted: includeDeleted,
+  };
 
   const projectHoursQuery = useQuery({
-    queryKey: reportQueryKeys.projectHours,
-    queryFn: getProjectHoursReport,
+    queryKey: reportQueryKeys.projectHours(reportOptions),
+    queryFn: () => getProjectHoursReport(reportOptions),
   });
 
   const designerQuery = useQuery({
@@ -39,8 +53,8 @@ export function ReportsPage() {
   });
 
   const customerQuery = useQuery({
-    queryKey: reportQueryKeys.customerSummary,
-    queryFn: getCustomerSummaryReport,
+    queryKey: reportQueryKeys.customerSummary(reportOptions),
+    queryFn: () => getCustomerSummaryReport(reportOptions),
   });
 
   const isLoading =
@@ -56,6 +70,33 @@ export function ReportsPage() {
       <Typography color="text.secondary" sx={{ mb: 3 }}>
         Portfolio hours, designer utilization, and customer summaries
       </Typography>
+
+      <Box sx={{ mb: 3 }}>
+        <ContentCard>
+          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={includeArchived}
+                onChange={(event) => setIncludeArchived(event.target.checked)}
+              />
+            }
+            label="Include Archived"
+          />
+          {canViewDeletedProjects(user?.role_name ?? '') ? (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={includeDeleted}
+                  onChange={(event) => setIncludeDeleted(event.target.checked)}
+                />
+              }
+              label="Include Deleted (Admin)"
+            />
+          ) : null}
+          </Box>
+        </ContentCard>
+      </Box>
 
       <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 3 }}>
         <Tab label="Project Hours" />

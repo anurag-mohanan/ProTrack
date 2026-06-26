@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db, get_object_or_404
 from app.crud.base import CRUDBase
-from app.models.enums import ProjectStatus, TimesheetStatus
+from app.models.enums import ProjectLifecycleFilter, ProjectStatus, TimesheetStatus
 from app.schemas.common import BaseModel
 
 
@@ -34,6 +34,7 @@ class ProjectFilters(BaseModel):
     surfacer_id: UUID | None = None
     stream_id: UUID | None = None
     status: ProjectStatus | None = None
+    lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active
 
 
 class MilestoneFilters(BaseModel):

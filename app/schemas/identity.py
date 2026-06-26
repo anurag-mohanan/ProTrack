@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -57,3 +58,13 @@ class ResetPasswordResponse(BaseModel):
 
 class UserRead(UserBase, TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
+    is_archived: bool = False
+    archived_at: datetime | None = None
+    is_deleted: bool = False
+    deleted_at: datetime | None = None
+    deleted_by_id: UUID | None = None
+
+
+class UserDeleteCheck(BaseModel):
+    can_permanently_delete: bool
+    blockers: list[str] = Field(default_factory=list)

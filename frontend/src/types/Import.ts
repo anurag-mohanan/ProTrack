@@ -65,6 +65,7 @@ export interface ImportRunRequest {
   upload_id: string;
   dry_run: boolean;
   duplicate_action: DuplicateAction;
+  import_as_archived?: boolean;
 }
 
 export interface ImportRunResponse {

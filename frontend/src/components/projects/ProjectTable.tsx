@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
-import { Box, useTheme } from '@mui/material';
+import { Box, IconButton, useTheme } from '@mui/material';
+import ArchiveIcon from '@mui/icons-material/Archive';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
 import type { Customer, Project, Stream, User } from '../../types';
@@ -20,6 +21,7 @@ interface ProjectTableProps {
   customers: Customer[];
   users: User[];
   streams: Stream[];
+  onArchive?: (projectId: string) => void;
 }
 
 function buildNameMap<T extends { id: string }>(
@@ -100,10 +102,35 @@ function ProjectTableComponent({
   customers,
   users,
   streams,
+  onArchive,
 }: ProjectTableProps) {
   const navigate = useNavigate();
   const theme = useTheme();
   const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
+
+  const columns = useMemo(() => {
+    if (!onArchive) return PROJECT_TABLE_COLUMNS;
+    const archiveColumn: GridColDef<ProjectTableRow> = {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 90,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <IconButton
+          size="small"
+          aria-label="Archive project"
+          onClick={(event) => {
+            event.stopPropagation();
+            onArchive(String(params.id));
+          }}
+        >
+          <ArchiveIcon fontSize="small" />
+        </IconButton>
+      ),
+    };
+    return [...PROJECT_TABLE_COLUMNS, archiveColumn];
+  }, [onArchive]);
 
   const rows = useMemo(
     () => buildProjectTableRows(projects, customers, users, streams),
@@ -122,7 +149,7 @@ function ProjectTableComponent({
     <Box sx={{ width: '100%' }}>
       <DataGrid
         rows={rows}
-        columns={PROJECT_TABLE_COLUMNS}
+        columns={columns}
         autoHeight
         hideFooter={!needsPagination}
         disableRowSelectionOnClick

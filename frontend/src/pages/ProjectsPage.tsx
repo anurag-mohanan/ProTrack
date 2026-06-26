@@ -15,10 +15,11 @@ import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
 import { ProjectTable } from '../components/projects/ProjectTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
-import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
+import { TableSkeleton } from '../components/common/TableSkeleton';
 import { ContentCard } from '../components/ui/cards';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
+import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { getProjects, projectQueryKeys } from '../services/projectService';
 import type { ProjectStatus } from '../types';
 
@@ -46,21 +47,25 @@ export function ProjectsPage() {
           ? { status: statusParam, limit: 500 }
           : { limit: 500 },
       ),
+    staleTime: QUERY_STALE_TIMES.projects,
   });
 
   const customersQuery = useQuery({
-    queryKey: ['customers'],
+    queryKey: ['lookups', 'customers'],
     queryFn: fetchCustomers,
+    staleTime: QUERY_STALE_TIMES.lookups,
   });
 
   const usersQuery = useQuery({
-    queryKey: ['users'],
+    queryKey: ['lookups', 'users'],
     queryFn: fetchUsers,
+    staleTime: QUERY_STALE_TIMES.lookups,
   });
 
   const streamsQuery = useQuery({
-    queryKey: ['streams'],
+    queryKey: ['lookups', 'streams'],
     queryFn: fetchStreams,
+    staleTime: QUERY_STALE_TIMES.lookups,
   });
 
   const filteredProjects = useMemo(() => {
@@ -75,13 +80,9 @@ export function ProjectsPage() {
     });
   }, [projectsQuery.data, search]);
 
-  const isLoading =
-    projectsQuery.isLoading ||
-    customersQuery.isLoading ||
-    usersQuery.isLoading ||
-    streamsQuery.isLoading;
-
-  if (isLoading) return <LoadingState message="Loading projects…" />;
+  const lookupsReady =
+    customersQuery.isSuccess && usersQuery.isSuccess && streamsQuery.isSuccess;
+  const tableReady = projectsQuery.isSuccess && lookupsReady;
 
   if (projectsQuery.error) return <ErrorState error={projectsQuery.error} />;
   if (customersQuery.error) return <ErrorState error={customersQuery.error} />;
@@ -133,7 +134,11 @@ export function ProjectsPage() {
         </ContentCard>
       </Box>
 
-      {!filteredProjects.length ? (
+      {!tableReady ? (
+        <ContentCard noPadding>
+          <TableSkeleton rows={10} columns={8} />
+        </ContentCard>
+      ) : !filteredProjects.length ? (
         <EmptyState
           title="No projects found"
           description="Try adjusting your search or filters, or create a new project."

@@ -67,6 +67,50 @@ def _milestone_counts(db: Session, project_id: UUID) -> tuple[int, int]:
     return completed, total
 
 
+def batch_calculate_progress(
+    db: Session,
+    project_ids: list[UUID],
+) -> dict[UUID, MilestoneProgress]:
+    if not project_ids:
+        return {}
+
+    total_rows = db.execute(
+        select(Milestone.project_id, func.count())
+        .where(Milestone.project_id.in_(project_ids))
+        .group_by(Milestone.project_id)
+    ).all()
+    completed_rows = db.execute(
+        select(Milestone.project_id, func.count())
+        .where(
+            Milestone.project_id.in_(project_ids),
+            Milestone.status == MilestoneStatus.completed,
+        )
+        .group_by(Milestone.project_id)
+    ).all()
+
+    totals = {project_id: int(count) for project_id, count in total_rows}
+    completed_map = {project_id: int(count) for project_id, count in completed_rows}
+
+    progress_by_project: dict[UUID, MilestoneProgress] = {}
+    for project_id in project_ids:
+        total = totals.get(project_id, 0)
+        completed = completed_map.get(project_id, 0)
+        remaining = max(total - completed, 0)
+        if total == 0:
+            progress_percent = Decimal("0.00")
+        else:
+            progress_percent = _round_percent(
+                (Decimal(completed) / Decimal(total)) * Decimal("100")
+            )
+        progress_by_project[project_id] = MilestoneProgress(
+            completed_milestones=completed,
+            remaining_milestones=remaining,
+            total_milestones=total,
+            progress_percent=progress_percent,
+        )
+    return progress_by_project
+
+
 def calculate_progress(db: Session, project: Project) -> MilestoneProgress:
     completed, total = _milestone_counts(db, project.id)
     remaining = max(total - completed, 0)

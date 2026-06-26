@@ -4,7 +4,7 @@ from uuid import UUID
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import PROJECT_STAFF_ROLES
 from app.crud.base import CRUDBase, Session, select
-from app.crud.project_metrics import build_project_read
+from app.crud.project_metrics import build_project_read, build_project_reads
 from app.models.enums import MilestoneStatus
 from app.models.models import Contact, Milestone, Project, Role, User
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
@@ -217,7 +217,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         filters: dict[str, object] | None = None,
     ) -> list[ProjectRead]:
         projects = self.get_multi(db, skip=skip, limit=limit, filters=filters)
-        return [build_project_read(db, row) for row in projects]
+        return build_project_reads(db, projects)
 
 
 project = CRUDProject(Project)

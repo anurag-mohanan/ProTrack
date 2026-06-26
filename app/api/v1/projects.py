@@ -24,7 +24,7 @@ from app.core.permissions import (
 )
 from app.crud import project
 from app.crud.dashboard import get_project_dashboard
-from app.crud.project_metrics import build_project_read
+from app.crud.project_metrics import build_project_read, build_project_reads
 from app.models.models import User
 from app.models.enums import ActivityAction, EntityType
 from app.schemas.dashboard import ProjectDashboard
@@ -57,7 +57,7 @@ def list_projects(
             return []
         rows = project.get_multi(db, skip=skip, limit=limit, filters=active_filters)
         rows = [row for row in rows if can_read_project(db, current_user, row)]
-        return [build_project_read(db, row) for row in rows]
+        return build_project_reads(db, rows)
 
     return project.get_multi_read(
         db, skip=skip, limit=limit, filters=active_filters

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Box, useTheme } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
@@ -55,7 +55,47 @@ export function buildProjectTableRows(
   }));
 }
 
-export function ProjectTable({
+const PROJECT_TABLE_COLUMNS: GridColDef<ProjectTableRow>[] = [
+  { field: 'tool_number', headerName: 'Tool Number', flex: 1, minWidth: 130 },
+  {
+    field: 'part_description',
+    headerName: 'Part Description',
+    flex: 1.5,
+    minWidth: 180,
+  },
+  { field: 'customerName', headerName: 'Customer', flex: 1, minWidth: 140 },
+  {
+    field: 'designLeaderName',
+    headerName: 'Design Leader',
+    flex: 1,
+    minWidth: 140,
+  },
+  { field: 'designerName', headerName: 'Designer', flex: 1, minWidth: 120 },
+  { field: 'surfacerName', headerName: 'Surfacer', flex: 1, minWidth: 120 },
+  { field: 'streamName', headerName: 'Stream', flex: 1, minWidth: 120 },
+  {
+    field: 'due_date',
+    headerName: 'Due Date',
+    width: 120,
+    valueFormatter: (value) => formatDate(String(value)),
+  },
+  {
+    field: 'status',
+    headerName: 'Status',
+    width: 150,
+    renderCell: (params) => <StatusChip status={params.value} />,
+  },
+  {
+    field: 'quoted_hours',
+    headerName: 'Quoted Hours',
+    width: 130,
+    align: 'right',
+    headerAlign: 'right',
+    valueFormatter: (value) => formatNumber(Number(value)),
+  },
+];
+
+function ProjectTableComponent({
   projects,
   customers,
   users,
@@ -70,61 +110,28 @@ export function ProjectTable({
     [projects, customers, users, streams],
   );
 
-  // TODO: If project count exceeds ~500 rows, add virtualization or server-side pagination.
+  const handleRowClick = useMemo(
+    () => (params: { id: string | number }) => navigate(`/projects/${params.id}`),
+    [navigate],
+  );
 
-  const columns: GridColDef<ProjectTableRow>[] = [
-    { field: 'tool_number', headerName: 'Tool Number', flex: 1, minWidth: 130 },
-    {
-      field: 'part_description',
-      headerName: 'Part Description',
-      flex: 1.5,
-      minWidth: 180,
-    },
-    { field: 'customerName', headerName: 'Customer', flex: 1, minWidth: 140 },
-    {
-      field: 'designLeaderName',
-      headerName: 'Design Leader',
-      flex: 1,
-      minWidth: 140,
-    },
-    { field: 'designerName', headerName: 'Designer', flex: 1, minWidth: 120 },
-    { field: 'surfacerName', headerName: 'Surfacer', flex: 1, minWidth: 120 },
-    { field: 'streamName', headerName: 'Stream', flex: 1, minWidth: 120 },
-    {
-      field: 'due_date',
-      headerName: 'Due Date',
-      width: 120,
-      valueFormatter: (value) => formatDate(String(value)),
-    },
-    {
-      field: 'status',
-      headerName: 'Status',
-      width: 150,
-      renderCell: (params) => <StatusChip status={params.value} />,
-    },
-    {
-      field: 'quoted_hours',
-      headerName: 'Quoted Hours',
-      width: 130,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (value) => formatNumber(Number(value)),
-    },
-  ];
+  // TODO: If project count exceeds ~500 rows, add server-side pagination while keeping page scroll.
 
   return (
     <Box sx={{ width: '100%' }}>
       <DataGrid
         rows={rows}
-        columns={columns}
+        columns={PROJECT_TABLE_COLUMNS}
         autoHeight
         hideFooter
         disableRowSelectionOnClick
         paginationModel={{ pageSize: 500, page: 0 }}
         pageSizeOptions={[500]}
-        onRowClick={(params) => navigate(`/projects/${params.id}`)}
+        onRowClick={handleRowClick}
         sx={gridSx}
       />
     </Box>
   );
 }
+
+export const ProjectTable = memo(ProjectTableComponent);

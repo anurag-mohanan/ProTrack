@@ -1,0 +1,71 @@
+import type { Timestamped } from './common';
+
+export interface ProjectType extends Timestamped {
+  name: string;
+  description: string | null;
+  is_active: boolean;
+}
+
+export interface ProjectTemplateMilestone extends Timestamped {
+  project_template_id: string;
+  milestone_name: string;
+  description: string | null;
+  sort_order: number;
+  default_due_offset_days: number | null;
+  is_required: boolean;
+}
+
+export interface ProjectTemplate extends Timestamped {
+  name: string;
+  description: string | null;
+  project_type_id: string;
+  customer_id: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  milestone_count: number;
+  project_type_name?: string | null;
+  customer_name?: string | null;
+}
+
+export interface ProjectTemplateDetail extends ProjectTemplate {
+  milestones: ProjectTemplateMilestone[];
+}
+
+export interface ProjectTemplateMatch {
+  id: string;
+  name: string;
+  description: string | null;
+  project_type_id: string;
+  customer_id: string | null;
+  is_default: boolean;
+  is_customer_specific: boolean;
+  milestone_count: number;
+}
+
+export interface ProjectTemplateMilestoneInput {
+  milestone_name: string;
+  description?: string | null;
+  sort_order: number;
+  default_due_offset_days?: number | null;
+  is_required?: boolean;
+}
+
+export interface ProjectTemplateCreatePayload {
+  name: string;
+  description?: string | null;
+  project_type_id: string;
+  customer_id?: string | null;
+  is_default?: boolean;
+  is_active?: boolean;
+  milestones?: ProjectTemplateMilestoneInput[];
+}
+
+export interface ProjectTemplateUpdatePayload {
+  name?: string;
+  description?: string | null;
+  project_type_id?: string;
+  customer_id?: string | null;
+  is_default?: boolean;
+  is_active?: boolean;
+  milestones?: ProjectTemplateMilestoneInput[];
+}

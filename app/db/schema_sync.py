@@ -200,3 +200,37 @@ def ensure_admin_schema(engine: Engine) -> None:
                     "ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
                 )
             )
+
+
+def ensure_project_template_schema(engine: Engine) -> None:
+    dialect = engine.dialect.name
+
+    if dialect == "sqlite":
+        if not _sqlite_has_column(engine, "projects", "project_type_id"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE projects ADD COLUMN project_type_id BLOB")
+                )
+        if not _sqlite_has_column(engine, "projects", "project_template_id"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE projects ADD COLUMN project_template_id BLOB")
+                )
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ADD COLUMN IF NOT EXISTS project_type_id UUID "
+                    "REFERENCES project_types(id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ADD COLUMN IF NOT EXISTS project_template_id UUID "
+                    "REFERENCES project_templates(id)"
+                )
+            )

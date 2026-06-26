@@ -21,7 +21,11 @@ from app.core.permissions import DESIGNER, PROJECT_STAFF_ROLES
 from app.core.security import hash_password
 from app.crud.project import DEFAULT_PROJECT_MILESTONES
 from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus
-from app.models.models import Contact, Customer, Milestone, Project, Role, Stream, User
+from app.models.models import Contact, Customer, Milestone, Project, ProjectType, Role, Stream, User
+from app.services.project_template_service import (
+    create_milestones_from_template,
+    resolve_template_for_import,
+)
 from app.schemas.historical_import import (
     DuplicateAction,
     ImportRowPreview,
@@ -656,6 +660,10 @@ def _create_project_from_row(
         return "updated", preview
 
     code = _unique_project_code(db, code)
+    mold_design_type = db.scalar(
+        select(ProjectType).where(ProjectType.name == "Mold Design")
+    )
+    template = resolve_template_for_import(db, customer=customer)
     project = Project(
         tool_number=row.tool_number.strip(),
         part_description=part_description,
@@ -665,6 +673,8 @@ def _create_project_from_row(
         designer_id=designer.id if designer else None,
         surfacer_id=surfacer.id if surfacer else None,
         stream_id=stream.id,
+        project_type_id=mold_design_type.id if mold_design_type else None,
+        project_template_id=template.id,
         code=code,
         quoted_hours=row.quoted_hours,
         actual_hours=row.actual_hours or Decimal("0"),
@@ -676,15 +686,7 @@ def _create_project_from_row(
     db.add(project)
     db.flush()
 
-    for sort_order, name in enumerate(DEFAULT_PROJECT_MILESTONES, start=1):
-        db.add(
-            Milestone(
-                project_id=project.id,
-                name=name,
-                status=MilestoneStatus.not_started,
-                sort_order=sort_order,
-            )
-        )
+    create_milestones_from_template(db, project=project, template=template)
     db.flush()
 
     _apply_milestone_history(db, project, row.design_phase, row.progress, summary)

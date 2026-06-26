@@ -6,9 +6,10 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
 from app.crud.base import select
-from app.models.models import Contact, Customer, Role, Stream, TaskType, User
+from app.models.models import Contact, Customer, ProjectType, Role, Stream, TaskType, User
 from app.schemas.identity import RoleRead
 from app.schemas.organization import ContactRead, CustomerRead, StreamRead, TaskTypeRead
+from app.schemas.templates import ProjectTypeRead
 
 router = APIRouter(prefix="/lookups", tags=["lookups"])
 
@@ -84,3 +85,15 @@ def list_lookup_roles(
     _current_user: User = Depends(get_current_user),
 ):
     return db.scalars(select(Role).order_by(Role.name)).all()
+
+
+@router.get("/project-types", response_model=list[ProjectTypeRead])
+def list_lookup_project_types(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    return db.scalars(
+        select(ProjectType)
+        .where(ProjectType.is_active.is_(True))
+        .order_by(ProjectType.name)
+    ).all()

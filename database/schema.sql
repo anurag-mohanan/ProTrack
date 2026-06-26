@@ -115,6 +115,43 @@ CREATE TABLE task_types (
 );
 
 -- ---------------------------------------------------------------------------
+-- Project Types & Templates
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE project_types (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    is_active   BOOLEAN      NOT NULL DEFAULT true,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE TABLE project_templates (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            VARCHAR(200) NOT NULL,
+    description     TEXT,
+    project_type_id UUID         NOT NULL REFERENCES project_types (id),
+    customer_id     UUID         REFERENCES customers (id),
+    is_default      BOOLEAN      NOT NULL DEFAULT false,
+    is_active       BOOLEAN      NOT NULL DEFAULT true,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE TABLE project_template_milestones (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_template_id     UUID         NOT NULL REFERENCES project_templates (id) ON DELETE CASCADE,
+    milestone_name          VARCHAR(200) NOT NULL,
+    description             TEXT,
+    sort_order              INTEGER      NOT NULL DEFAULT 0,
+    default_due_offset_days INTEGER,
+    is_required             BOOLEAN      NOT NULL DEFAULT true,
+    created_at              TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------------
 -- Projects
 -- ---------------------------------------------------------------------------
 
@@ -128,6 +165,8 @@ CREATE TABLE projects (
     designer_id         UUID            REFERENCES users (id),
     surfacer_id         UUID            REFERENCES users (id),
     stream_id           UUID            NOT NULL REFERENCES streams (id),
+    project_type_id     UUID            REFERENCES project_types (id),
+    project_template_id UUID            REFERENCES project_templates (id),
     code                VARCHAR(50)     NOT NULL UNIQUE,
     quoted_hours        NUMERIC(8, 2)   NOT NULL CHECK (quoted_hours > 0),
     actual_hours        NUMERIC(8, 2)   NOT NULL DEFAULT 0,

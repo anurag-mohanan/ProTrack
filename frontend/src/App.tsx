@@ -6,6 +6,9 @@ import { ToastProvider } from './context/ToastContext';
 import { MainLayout } from './layouts/MainLayout';
 import ContactsAdminPage from './pages/admin/ContactsPage';
 import CustomersAdminPage from './pages/admin/CustomersPage';
+import ProjectTemplatesAdminPage from './pages/admin/ProjectTemplatesPage';
+import ProjectTemplateEditorPage from './pages/admin/ProjectTemplateEditorPage';
+import ProjectTypesAdminPage from './pages/admin/ProjectTypesPage';
 import RolesAdminPage from './pages/admin/RolesPage';
 import StreamsAdminPage from './pages/admin/StreamsPage';
 import SystemSettingsPage from './pages/admin/SystemSettingsPage';
@@ -75,6 +78,15 @@ export default function App() {
                       <Route path="/admin/contacts" element={<ContactsAdminPage />} />
                       <Route path="/admin/streams" element={<StreamsAdminPage />} />
                       <Route path="/admin/task-types" element={<TaskTypesAdminPage />} />
+                      <Route path="/admin/project-types" element={<ProjectTypesAdminPage />} />
+                      <Route
+                        path="/admin/project-templates"
+                        element={<ProjectTemplatesAdminPage />}
+                      />
+                      <Route
+                        path="/admin/project-templates/:templateId"
+                        element={<ProjectTemplateEditorPage />}
+                      />
                       <Route path="/admin/roles" element={<RolesAdminPage />} />
                       <Route path="/admin/settings" element={<SystemSettingsPage />} />
                       <Route

@@ -25,6 +25,8 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import CategoryIcon from '@mui/icons-material/Category';
 import SecurityIcon from '@mui/icons-material/Security';
 import SettingsIcon from '@mui/icons-material/Settings';
+import ViewTimelineIcon from '@mui/icons-material/ViewTimeline';
+import TypeSpecimenIcon from '@mui/icons-material/TypeSpecimen';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { NotificationBell } from '../components/common/NotificationBell';
 import { useAuth } from '../context/AuthContext';
@@ -51,6 +53,12 @@ const adminNavItems = [
   { label: 'Contacts', path: '/admin/contacts', icon: <ContactPhoneIcon /> },
   { label: 'Streams', path: '/admin/streams', icon: <AccountTreeIcon /> },
   { label: 'Task Types', path: '/admin/task-types', icon: <CategoryIcon /> },
+  { label: 'Project Types', path: '/admin/project-types', icon: <TypeSpecimenIcon /> },
+  {
+    label: 'Project Templates',
+    path: '/admin/project-templates',
+    icon: <ViewTimelineIcon />,
+  },
   { label: 'Roles', path: '/admin/roles', icon: <SecurityIcon /> },
   { label: 'System Settings', path: '/admin/settings', icon: <SettingsIcon /> },
   {

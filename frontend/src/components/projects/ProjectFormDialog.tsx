@@ -11,9 +11,11 @@ import {
   MenuItem,
   Select,
   TextField,
+  Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchContacts, fetchCustomers, fetchStreams, fetchUsers } from '../../api/lookups';
+import { fetchMatchingProjectTemplates, fetchProjectTypes } from '../../api/projectTemplates';
 import {
   createProject,
   invalidateProjectCalculationQueries,
@@ -32,6 +34,8 @@ const emptyForm: ProjectCreate = {
   designer_id: '',
   surfacer_id: '',
   stream_id: '',
+  project_type_id: '',
+  project_template_id: '',
   code: '',
   quoted_hours: 40,
   due_date: '',
@@ -48,6 +52,8 @@ function projectToForm(project: Project): ProjectCreate {
     designer_id: project.designer_id ?? '',
     surfacer_id: project.surfacer_id ?? '',
     stream_id: project.stream_id,
+    project_type_id: project.project_type_id ?? '',
+    project_template_id: project.project_template_id ?? '',
     code: project.code,
     quoted_hours: project.quoted_hours,
     due_date: project.due_date,
@@ -98,6 +104,22 @@ export function ProjectFormDialog({
     enabled: open,
   });
 
+  const projectTypesQuery = useQuery({
+    queryKey: ['project-types'],
+    queryFn: fetchProjectTypes,
+    enabled: open && !isEdit,
+  });
+
+  const matchingTemplatesQuery = useQuery({
+    queryKey: ['project-templates', form.customer_id, form.project_type_id],
+    queryFn: () =>
+      fetchMatchingProjectTemplates({
+        customer_id: form.customer_id,
+        project_type_id: form.project_type_id,
+      }),
+    enabled: open && !isEdit && Boolean(form.customer_id) && Boolean(form.project_type_id),
+  });
+
   useEffect(() => {
     if (!open) {
       setForm(emptyForm);
@@ -114,6 +136,7 @@ export function ProjectFormDialog({
         ...form,
         designer_id: form.designer_id || null,
         surfacer_id: form.surfacer_id || null,
+        project_template_id: form.project_template_id || null,
         notes: form.notes || null,
       };
 
@@ -157,6 +180,47 @@ export function ProjectFormDialog({
     [customersQuery.data],
   );
 
+  const activeProjectTypes = useMemo(
+    () => projectTypesQuery.data ?? [],
+    [projectTypesQuery.data],
+  );
+
+  const matchingTemplates = useMemo(
+    () => matchingTemplatesQuery.data ?? [],
+    [matchingTemplatesQuery.data],
+  );
+
+  const selectedTemplate = useMemo(
+    () => matchingTemplates.find((template) => template.id === form.project_template_id),
+    [form.project_template_id, matchingTemplates],
+  );
+
+  useEffect(() => {
+    if (isEdit || !open) return;
+    if (!form.customer_id || !form.project_type_id || matchingTemplates.length === 0) {
+      if (form.project_template_id) {
+        setForm((current) => ({ ...current, project_template_id: '' }));
+      }
+      return;
+    }
+
+    const preferred =
+      matchingTemplates.find((template) => template.is_customer_specific) ??
+      matchingTemplates.find((template) => template.is_default) ??
+      matchingTemplates[0];
+
+    if (preferred && preferred.id !== form.project_template_id) {
+      setForm((current) => ({ ...current, project_template_id: preferred.id }));
+    }
+  }, [
+    form.customer_id,
+    form.project_template_id,
+    form.project_type_id,
+    isEdit,
+    matchingTemplates,
+    open,
+  ]);
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     saveMutation.mutate();
@@ -170,6 +234,15 @@ export function ProjectFormDialog({
         project && customerId === project.customer_id
           ? project.customer_contact_id
           : '',
+      project_template_id: '',
+    }));
+  };
+
+  const handleProjectTypeChange = (projectTypeId: string) => {
+    setForm((current) => ({
+      ...current,
+      project_type_id: projectTypeId,
+      project_template_id: '',
     }));
   };
 
@@ -252,6 +325,58 @@ export function ProjectFormDialog({
               </Select>
             </FormControl>
           </Grid>
+          {!isEdit ? (
+            <>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth required>
+                  <InputLabel>Project Type</InputLabel>
+                  <Select
+                    label="Project Type"
+                    value={form.project_type_id}
+                    onChange={(event) => handleProjectTypeChange(event.target.value)}
+                  >
+                    {activeProjectTypes.map((projectType) => (
+                      <MenuItem key={projectType.id} value={projectType.id}>
+                        {projectType.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl
+                  fullWidth
+                  required
+                  disabled={!form.customer_id || !form.project_type_id}
+                >
+                  <InputLabel>Project Template</InputLabel>
+                  <Select
+                    label="Project Template"
+                    value={form.project_template_id}
+                    onChange={(event) =>
+                      setForm({ ...form, project_template_id: event.target.value })
+                    }
+                  >
+                    {matchingTemplates.map((template) => (
+                      <MenuItem key={template.id} value={template.id}>
+                        {template.name}
+                        {template.is_customer_specific ? ' (Customer)' : ''}
+                        {template.is_default ? ' (Default)' : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              {selectedTemplate ? (
+                <Grid size={{ xs: 12 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedTemplate.milestone_count} milestones will be created from this
+                    template.
+                  </Typography>
+                </Grid>
+              ) : null}
+            </>
+          ) : null}
           <Grid size={{ xs: 12, sm: 4 }}>
             <FormControl fullWidth required>
               <InputLabel>Design Leader</InputLabel>

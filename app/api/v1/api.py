@@ -9,6 +9,8 @@ from app.api.v1 import (
     lookups,
     milestones,
     notifications,
+    project_templates,
+    project_types,
     projects,
     reports,
     roles,
@@ -105,6 +107,8 @@ api_router.include_router(
         write_roles=master_data_write,
     )
 )
+api_router.include_router(project_types.router)
+api_router.include_router(project_templates.router)
 api_router.include_router(projects.router)
 api_router.include_router(milestones.router)
 api_router.include_router(timesheets.router)

@@ -8,15 +8,17 @@ import app.models  # noqa: F401 — register all models with Base.metadata
 from app.api.v1.api import api_router
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
+from app.db.project_template_seed import ensure_project_types_and_templates
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
     ensure_design_team,
+    ensure_project_template_schema,
     ensure_project_actual_hours,
     ensure_project_health,
     ensure_timesheet_approval_comments,
 )
-from app.db.session import engine
+from app.db.session import engine, sessionmaker
 
 
 @asynccontextmanager
@@ -27,7 +29,13 @@ async def lifespan(app: FastAPI):
     ensure_timesheet_approval_comments(engine)
     ensure_design_roles(engine)
     ensure_admin_schema(engine)
+    ensure_project_template_schema(engine)
     ensure_design_team(engine)
+    seed_session = sessionmaker(bind=engine)()
+    try:
+        ensure_project_types_and_templates(seed_session)
+    finally:
+        seed_session.close()
     yield
 
 

@@ -1,0 +1,93 @@
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+from app.schemas.common import TimestampSchema
+
+
+class ProjectTypeBase(BaseModel):
+    name: str = Field(max_length=100)
+    description: str | None = None
+    is_active: bool = True
+
+
+class ProjectTypeCreate(ProjectTypeBase):
+    pass
+
+
+class ProjectTypeUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=100)
+    description: str | None = None
+    is_active: bool | None = None
+
+
+class ProjectTypeRead(ProjectTypeBase, TimestampSchema):
+    pass
+
+
+class ProjectTemplateMilestoneBase(BaseModel):
+    milestone_name: str = Field(max_length=200)
+    description: str | None = None
+    sort_order: int = 0
+    default_due_offset_days: int | None = None
+    is_required: bool = True
+
+
+class ProjectTemplateMilestoneCreate(ProjectTemplateMilestoneBase):
+    pass
+
+
+class ProjectTemplateMilestoneUpdate(BaseModel):
+    milestone_name: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    sort_order: int | None = None
+    default_due_offset_days: int | None = None
+    is_required: bool | None = None
+
+
+class ProjectTemplateMilestoneRead(ProjectTemplateMilestoneBase, TimestampSchema):
+    project_template_id: UUID
+
+
+class ProjectTemplateBase(BaseModel):
+    name: str = Field(max_length=200)
+    description: str | None = None
+    project_type_id: UUID
+    customer_id: UUID | None = None
+    is_default: bool = False
+    is_active: bool = True
+
+
+class ProjectTemplateCreate(ProjectTemplateBase):
+    milestones: list[ProjectTemplateMilestoneCreate] = Field(default_factory=list)
+
+
+class ProjectTemplateUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    project_type_id: UUID | None = None
+    customer_id: UUID | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
+    milestones: list[ProjectTemplateMilestoneCreate] | None = None
+
+
+class ProjectTemplateRead(ProjectTemplateBase, TimestampSchema):
+    milestone_count: int = 0
+    project_type_name: str | None = None
+    customer_name: str | None = None
+
+
+class ProjectTemplateDetailRead(ProjectTemplateRead):
+    milestones: list[ProjectTemplateMilestoneRead] = Field(default_factory=list)
+
+
+class ProjectTemplateMatchRead(BaseModel):
+    id: UUID
+    name: str
+    description: str | None = None
+    project_type_id: UUID
+    customer_id: UUID | None = None
+    is_default: bool
+    is_customer_specific: bool = False
+    milestone_count: int = 0

@@ -8,6 +8,7 @@ export * from './Dashboard';
 export * from './Auth';
 
 export * from './Reports';
+export * from './ProjectTemplate';
 
 export interface Role {
   id: string;

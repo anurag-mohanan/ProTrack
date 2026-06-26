@@ -12,6 +12,7 @@ import app.models  # noqa: F401
 from app.core.security import hash_password
 from app.db.schema_sync import ensure_admin_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
+from app.db.project_template_seed import ensure_project_types_and_templates
 from app.db.base import Base
 from app.api.deps import get_db
 from app.main import app
@@ -21,10 +22,12 @@ from app.models.models import (
     Customer,
     Milestone,
     Project,
+    ProjectType,
     Role,
     Stream,
     User,
 )
+from sqlalchemy import select
 
 DEFAULT_PASSWORD = "Password@123"
 
@@ -210,6 +213,10 @@ def _seed_database(session) -> Milestone:
         if sort_order == 1:
             milestone = row
     assert milestone is not None
+    ensure_project_types_and_templates(session)
+    mold_type = session.scalar(select(ProjectType).where(ProjectType.name == "Mold Design"))
+    if mold_type is not None:
+        IDS["project_type_mold"] = mold_type.id
     session.commit()
     session.refresh(milestone)
     return milestone
@@ -276,6 +283,19 @@ def session(test_session_factory, seeded_db):
     db = test_session_factory()
     try:
         yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def project_type_mold_id(test_session_factory, seeded_db):
+    db = test_session_factory()
+    try:
+        project_type = db.scalar(
+            select(ProjectType).where(ProjectType.name == "Mold Design")
+        )
+        assert project_type is not None
+        return str(project_type.id)
     finally:
         db.close()
 

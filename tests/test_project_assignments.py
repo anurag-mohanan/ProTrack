@@ -1,7 +1,7 @@
 from tests.conftest import IDS, login
 
 
-def _project_payload(**overrides):
+def _project_payload(project_type_mold_id: str, **overrides):
     payload = {
         "tool_number": "T-200",
         "part_description": "Assignment test part",
@@ -11,6 +11,7 @@ def _project_payload(**overrides):
         "designer_id": str(IDS["user_binil"]),
         "surfacer_id": None,
         "stream_id": str(IDS["stream"]),
+        "project_type_id": project_type_mold_id,
         "code": "TEST-ASSIGN-001",
         "quoted_hours": 40,
         "due_date": "2026-08-01",
@@ -20,12 +21,13 @@ def _project_payload(**overrides):
     return payload
 
 
-def test_designer_tier_can_fill_designer_or_surfacer_slot(client):
+def test_designer_tier_can_fill_designer_or_surfacer_slot(client, project_type_mold_id):
     headers = login(client, "admin@prosohm.com")
 
     as_designer = client.post(
         "/api/v1/projects",
         json=_project_payload(
+            project_type_mold_id,
             code="TEST-JR-DESIGNER",
             designer_id=str(IDS["user_junior_designer"]),
             surfacer_id=str(IDS["user_senior_designer"]),
@@ -37,6 +39,7 @@ def test_designer_tier_can_fill_designer_or_surfacer_slot(client):
     as_surfacer = client.post(
         "/api/v1/projects",
         json=_project_payload(
+            project_type_mold_id,
             code="TEST-SR-SURFACER",
             designer_id=str(IDS["user_binil"]),
             surfacer_id=str(IDS["user_junior_designer"]),
@@ -46,11 +49,12 @@ def test_designer_tier_can_fill_designer_or_surfacer_slot(client):
     assert as_surfacer.status_code == 201
 
 
-def test_junior_assigned_as_surfacer_can_read_project(client):
+def test_junior_assigned_as_surfacer_can_read_project(client, project_type_mold_id):
     headers = login(client, "admin@prosohm.com")
     create = client.post(
         "/api/v1/projects",
         json=_project_payload(
+            project_type_mold_id,
             code="TEST-JR-ACCESS",
             designer_id=str(IDS["user_binil"]),
             surfacer_id=str(IDS["user_junior_designer"]),

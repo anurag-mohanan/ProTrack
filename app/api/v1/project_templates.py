@@ -1,0 +1,184 @@
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from app.api.auth_deps import get_current_user, require_roles
+from app.api.deps import get_db
+from app.core.exceptions import ProTrackValidationError
+from app.crud.project_template import project_template as project_template_crud
+from app.models.models import User
+from app.schemas.templates import (
+    ProjectTemplateCreate,
+    ProjectTemplateDetailRead,
+    ProjectTemplateMatchRead,
+    ProjectTemplateMilestoneRead,
+    ProjectTemplateRead,
+    ProjectTemplateUpdate,
+)
+from app.services.project_template_service import list_matching_templates
+
+router = APIRouter(prefix="/project-templates", tags=["project-templates"])
+
+
+def _build_template_read(
+    template,
+    *,
+    milestone_count: int | None = None,
+) -> ProjectTemplateRead:
+    count = milestone_count if milestone_count is not None else len(template.milestones)
+    return ProjectTemplateRead(
+        id=template.id,
+        name=template.name,
+        description=template.description,
+        project_type_id=template.project_type_id,
+        customer_id=template.customer_id,
+        is_default=template.is_default,
+        is_active=template.is_active,
+        created_at=template.created_at,
+        updated_at=template.updated_at,
+        milestone_count=count,
+        project_type_name=template.project_type.name if template.project_type else None,
+        customer_name=template.customer.name if template.customer else None,
+    )
+
+
+def _build_template_detail(template) -> ProjectTemplateDetailRead:
+    base = _build_template_read(template)
+    return ProjectTemplateDetailRead(
+        **base.model_dump(),
+        milestones=[
+            ProjectTemplateMilestoneRead.model_validate(milestone)
+            for milestone in template.milestones
+        ],
+    )
+
+
+@router.get("/match", response_model=list[ProjectTemplateMatchRead])
+def match_project_templates(
+    project_type_id: UUID = Query(...),
+    customer_id: UUID = Query(...),
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    templates = list_matching_templates(
+        db,
+        project_type_id=project_type_id,
+        customer_id=customer_id,
+    )
+    return [
+        ProjectTemplateMatchRead(
+            id=template.id,
+            name=template.name,
+            description=template.description,
+            project_type_id=template.project_type_id,
+            customer_id=template.customer_id,
+            is_default=template.is_default,
+            is_customer_specific=template.customer_id is not None,
+            milestone_count=len(template.milestones),
+        )
+        for template in templates
+    ]
+
+
+@router.get(
+    "",
+    response_model=list[ProjectTemplateRead],
+    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+)
+def list_project_templates(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    rows = project_template_crud.get_multi_with_counts(db, skip=skip, limit=limit)
+    result: list[ProjectTemplateRead] = []
+    for template, milestone_count in rows:
+        result.append(_build_template_read(template, milestone_count=milestone_count))
+    return result
+
+
+@router.get(
+    "/{record_id}",
+    response_model=ProjectTemplateDetailRead,
+    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+)
+def get_project_template(record_id: UUID, db: Session = Depends(get_db)):
+    template = project_template_crud.get_with_milestones(db, record_id)
+    if template is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return _build_template_detail(template)
+
+
+@router.post(
+    "",
+    response_model=ProjectTemplateDetailRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+)
+def create_project_template(
+    obj_in: ProjectTemplateCreate,
+    db: Session = Depends(get_db),
+):
+    template = project_template_crud.create(db, obj_in=obj_in)
+    return _build_template_detail(template)
+
+
+@router.patch(
+    "/{record_id}",
+    response_model=ProjectTemplateDetailRead,
+    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+)
+def update_project_template(
+    record_id: UUID,
+    obj_in: ProjectTemplateUpdate,
+    db: Session = Depends(get_db),
+):
+    template = project_template_crud.get_with_milestones(db, record_id)
+    if template is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    try:
+        updated = project_template_crud.update(db, db_obj=template, obj_in=obj_in)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return _build_template_detail(updated)
+
+
+@router.post(
+    "/{record_id}/duplicate",
+    response_model=ProjectTemplateDetailRead,
+    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+)
+def duplicate_project_template(record_id: UUID, db: Session = Depends(get_db)):
+    try:
+        duplicate = project_template_crud.duplicate(db, template_id=record_id)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return _build_template_detail(duplicate)
+
+
+@router.post(
+    "/{record_id}/deactivate",
+    response_model=ProjectTemplateRead,
+    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+)
+def deactivate_project_template(record_id: UUID, db: Session = Depends(get_db)):
+    try:
+        template = project_template_crud.deactivate(db, template_id=record_id)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return _build_template_read(template)
+
+
+@router.delete(
+    "/{record_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+)
+def delete_project_template(record_id: UUID, db: Session = Depends(get_db)):
+    try:
+        deleted = project_template_crud.delete(db, record_id=record_id)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if deleted is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")

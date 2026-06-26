@@ -9,6 +9,10 @@ from app.models.enums import MilestoneStatus
 from app.models.models import Contact, Milestone, Project, Role, User
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.project_calculation_service import recalculate_project
+from app.services.project_template_service import (
+    create_milestones_from_template,
+    resolve_template,
+)
 
 DEFAULT_PROJECT_MILESTONES = (
     "Feasibility",
@@ -147,15 +151,18 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         db.add(db_obj)
         db.flush()
 
-        for sort_order, name in enumerate(DEFAULT_PROJECT_MILESTONES, start=1):
-            db.add(
-                Milestone(
-                    project_id=db_obj.id,
-                    name=name,
-                    status=MilestoneStatus.not_started,
-                    sort_order=sort_order,
-                )
-            )
+        template = resolve_template(
+            db,
+            project_type_id=obj_in.project_type_id,
+            customer_id=obj_in.customer_id,
+            template_id=obj_in.project_template_id,
+        )
+        db_obj.project_template_id = template.id
+        create_milestones_from_template(
+            db,
+            project=db_obj,
+            template=template,
+        )
 
         db.commit()
         db.refresh(db_obj)

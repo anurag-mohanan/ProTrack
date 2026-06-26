@@ -9,6 +9,8 @@ export interface Project extends Timestamped {
   designer_id: string | null;
   surfacer_id: string | null;
   stream_id: string;
+  project_type_id?: string | null;
+  project_template_id?: string | null;
   code: string;
   quoted_hours: number;
   actual_hours: number;
@@ -28,6 +30,8 @@ export interface ProjectCreate {
   designer_id?: string | null;
   surfacer_id?: string | null;
   stream_id: string;
+  project_type_id: string;
+  project_template_id?: string | null;
   code: string;
   quoted_hours: number;
   due_date: string;

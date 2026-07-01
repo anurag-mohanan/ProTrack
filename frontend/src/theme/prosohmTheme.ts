@@ -13,6 +13,8 @@ declare module '@mui/material/styles' {
       sidebarDark: string;
       sidebarText: string;
       sidebarTextMuted: string;
+      sidebarActive: string;
+      sidebarDivider: string;
       header: string;
       surface: string;
       card: string;
@@ -20,6 +22,12 @@ declare module '@mui/material/styles' {
       hover: string;
       selected: string;
       accent: string;
+      shadowCard: string;
+      shadowCardHover: string;
+      shadowHeader: string;
+      shadowDialog: string;
+      gradientLogin: string;
+      gradientSidebar: string;
     };
   }
   interface PaletteOptions {
@@ -29,6 +37,8 @@ declare module '@mui/material/styles' {
       sidebarDark?: string;
       sidebarText?: string;
       sidebarTextMuted?: string;
+      sidebarActive?: string;
+      sidebarDivider?: string;
       header?: string;
       surface?: string;
       card?: string;
@@ -36,6 +46,12 @@ declare module '@mui/material/styles' {
       hover?: string;
       selected?: string;
       accent?: string;
+      shadowCard?: string;
+      shadowCardHover?: string;
+      shadowHeader?: string;
+      shadowDialog?: string;
+      gradientLogin?: string;
+      gradientSidebar?: string;
     };
   }
   interface TypographyVariants {
@@ -72,6 +88,7 @@ declare module '@mui/material/Button' {
 
 function buildPalette(mode: ProsohmColorMode) {
   const colors = mode === 'dark' ? prosohmColorsDark : prosohmColors;
+  const shadowBase = colors.secondary.main;
 
   return {
     mode,
@@ -97,6 +114,8 @@ function buildPalette(mode: ProsohmColorMode) {
       sidebarDark: colors.neutral.sidebarDark,
       sidebarText: colors.neutral.textOnDark,
       sidebarTextMuted: colors.neutral.textOnDarkMuted,
+      sidebarActive: colors.neutral.sidebarActive,
+      sidebarDivider: colors.neutral.sidebarDivider,
       header: colors.neutral.header,
       surface: colors.neutral.surface,
       card: colors.neutral.card,
@@ -104,6 +123,12 @@ function buildPalette(mode: ProsohmColorMode) {
       hover: colors.neutral.hover,
       selected: colors.neutral.selected,
       accent: colors.accent.main,
+      shadowCard: `0 8px 24px ${alpha(shadowBase, colors.shadow.card)}`,
+      shadowCardHover: `0 12px 28px ${alpha(shadowBase, colors.shadow.cardHover)}`,
+      shadowHeader: `0 4px 20px ${alpha(shadowBase, colors.shadow.header)}`,
+      shadowDialog: `0 24px 48px ${alpha(shadowBase, colors.shadow.dialog)}`,
+      gradientLogin: `linear-gradient(160deg, ${colors.neutral.sidebar} 0%, ${colors.secondary.dark} 55%, ${colors.primary.dark} 100%)`,
+      gradientSidebar: `linear-gradient(180deg, ${colors.neutral.sidebarOverlayTop} 0%, ${colors.neutral.sidebarOverlayBottom} 100%)`,
     },
   } as const;
 }
@@ -240,7 +265,7 @@ function buildComponents(mode: ProsohmColorMode): ThemeOptions['components'] {
           borderRadius: 16,
           border: `1px solid ${colors.neutral.border}`,
           backgroundColor: colors.neutral.card,
-          boxShadow: '0 8px 24px rgba(44, 62, 80, 0.06)',
+          boxShadow: `0 8px 24px ${alpha(colors.secondary.main, colors.shadow.card)}`,
         },
       },
     },
@@ -329,7 +354,32 @@ function buildComponents(mode: ProsohmColorMode): ThemeOptions['components'] {
       styleOverrides: {
         paper: {
           borderRadius: 20,
-          boxShadow: '0 24px 48px rgba(44, 62, 80, 0.16)',
+          boxShadow: `0 24px 48px ${alpha(colors.secondary.main, colors.shadow.dialog)}`,
+        },
+      },
+    },
+    MuiTabs: {
+      styleOverrides: {
+        root: {
+          minHeight: 44,
+          borderBottom: `1px solid ${colors.neutral.border}`,
+        },
+        indicator: {
+          height: 3,
+          borderRadius: '3px 3px 0 0',
+        },
+      },
+    },
+    MuiTab: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+          fontWeight: 600,
+          fontSize: '0.875rem',
+          minHeight: 44,
+          '&.Mui-selected': {
+            color: colors.primary.main,
+          },
         },
       },
     },

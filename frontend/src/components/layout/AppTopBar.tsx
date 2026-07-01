@@ -20,6 +20,8 @@ import { DRAWER_WIDTH } from './AppSidebar';
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/projects': 'Projects',
+  '/projects/archived': 'Archived Projects',
+  '/admin/deleted-projects': 'Deleted Projects',
   '/timesheets': 'Timesheets',
   '/workload': 'Workload',
   '/reports': 'Reports',
@@ -72,7 +74,7 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
         width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
         ml: { sm: `${DRAWER_WIDTH}px` },
         bgcolor: 'prosohm.header',
-        boxShadow: '0 4px 20px rgba(44, 62, 80, 0.06)',
+        boxShadow: (theme) => theme.palette.prosohm.shadowHeader,
       }}
     >
       <Toolbar sx={{ minHeight: '72px !important', px: { xs: 2, md: 3 } }}>
@@ -84,7 +86,7 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
             {pageTitle}
           </Typography>
           <Typography variant="captionLabel" color="text.secondary" noWrap>
-            Engineering project management
+            ProTrack · Prosohm Engineering Management
           </Typography>
         </Box>
 

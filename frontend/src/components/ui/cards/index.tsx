@@ -46,7 +46,7 @@ function CardShell({
         '&:hover': onClick
           ? {
               transform: 'translateY(-2px)',
-              boxShadow: '0 12px 28px rgba(44, 62, 80, 0.12)',
+              boxShadow: (theme) => theme.palette.prosohm.shadowCardHover,
             }
           : undefined,
       }}

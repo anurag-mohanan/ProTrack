@@ -12,12 +12,12 @@ import {
   TableHead,
   TableRow,
   Tabs,
-  Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { StatusChip } from '../components/common/StatusChip';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
+import { PageHeader } from '../components/common/PageHeader';
 import { ContentCard } from '../components/ui/cards';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -64,12 +64,10 @@ export function ReportsPage() {
 
   return (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
-        Reports
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Portfolio hours, designer utilization, and customer summaries
-      </Typography>
+      <PageHeader
+        title="Reports"
+        subtitle="Portfolio hours, designer utilization, and customer summaries"
+      />
 
       <Box sx={{ mb: 3 }}>
         <ContentCard>

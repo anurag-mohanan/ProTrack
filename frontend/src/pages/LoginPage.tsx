@@ -54,8 +54,7 @@ export function LoginPage() {
           justifyContent: 'space-between',
           p: 6,
           color: 'prosohm.sidebarText',
-          background: (theme) =>
-            `linear-gradient(160deg, ${theme.palette.prosohm.sidebar} 0%, ${theme.palette.secondary.dark} 55%, ${theme.palette.primary.dark} 100%)`,
+          background: (theme) => theme.palette.prosohm.gradientLogin,
         }}
       >
         <ProsohmLogo light size="lg" />
@@ -95,7 +94,7 @@ export function LoginPage() {
                   Welcome back
                 </Typography>
                 <Typography color="text.secondary">
-                  Sign in to manage engineering projects and delivery workflows.
+                  Sign in to ProTrack — Prosohm&apos;s engineering management platform.
                 </Typography>
               </Box>
 

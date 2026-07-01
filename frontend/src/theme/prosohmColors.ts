@@ -59,11 +59,23 @@ export const prosohmColors = {
     divider: '#dee2e6',
     hover: 'rgba(26, 188, 156, 0.08)',
     selected: 'rgba(26, 188, 156, 0.14)',
+    sidebarActive: 'rgba(26, 188, 156, 0.16)',
+    sidebarDivider: 'rgba(255, 255, 255, 0.08)',
+    sidebarOverlayTop: 'rgba(255, 255, 255, 0.03)',
+    sidebarOverlayBottom: 'rgba(0, 0, 0, 0.08)',
     textPrimary: '#2c3e50',
     textSecondary: '#6c757d',
     textMuted: '#94a3b8',
     textOnDark: '#ffffff',
     textOnDarkMuted: 'rgba(255, 255, 255, 0.72)',
+  },
+  /** Shadow opacities applied against secondary.main in the theme builder. */
+  shadow: {
+    card: 0.06,
+    cardHover: 0.12,
+    header: 0.06,
+    dialog: 0.16,
+    logo: 0.2,
   },
 } as const;
 
@@ -99,7 +111,12 @@ export const prosohmColorsDark = {
     textMuted: '#64748b',
     textOnDark: '#ffffff',
     textOnDarkMuted: 'rgba(255, 255, 255, 0.72)',
+    sidebarActive: 'rgba(26, 188, 156, 0.2)',
+    sidebarDivider: 'rgba(255, 255, 255, 0.08)',
+    sidebarOverlayTop: 'rgba(255, 255, 255, 0.04)',
+    sidebarOverlayBottom: 'rgba(0, 0, 0, 0.16)',
   },
+  shadow: prosohmColors.shadow,
 } as const;
 
 export type ProsohmColorMode = 'light' | 'dark';

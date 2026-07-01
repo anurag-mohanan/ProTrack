@@ -92,7 +92,7 @@ function NavButton({
       sx={{
         color: 'prosohm.sidebarTextMuted',
         '&.active': {
-          bgcolor: 'rgba(26, 188, 156, 0.16)',
+          bgcolor: 'prosohm.sidebarActive',
           color: 'prosohm.sidebarText',
           borderLeft: '3px solid',
           borderColor: 'primary.main',
@@ -137,8 +137,7 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
           boxSizing: 'border-box',
           bgcolor: 'prosohm.sidebar',
           color: 'prosohm.sidebarText',
-          backgroundImage:
-            'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.08) 100%)',
+          backgroundImage: (theme) => theme.palette.prosohm.gradientSidebar,
         },
       }}
     >
@@ -161,7 +160,7 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
 
         {canAccessAdministration(roleName) ? (
           <>
-            <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
+            <Divider sx={{ my: 2, borderColor: 'prosohm.sidebarDivider' }} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1 }}>
               <AdminPanelSettingsIcon sx={{ fontSize: 16, color: 'primary.main' }} />
               <Typography variant="overline" sx={{ color: 'prosohm.sidebarTextMuted' }}>

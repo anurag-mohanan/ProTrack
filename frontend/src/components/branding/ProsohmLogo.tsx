@@ -23,6 +23,7 @@ export function ProsohmLogo({
   const textColor = light
     ? theme.palette.prosohm.sidebarText
     : theme.palette.text.primary;
+  const logoShadow = `0 8px 20px ${theme.palette.primary.main}33`;
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -34,7 +35,7 @@ export function ProsohmLogo({
           background: `linear-gradient(135deg, ${primary} 0%, ${theme.palette.primary.dark} 100%)`,
           display: 'grid',
           placeItems: 'center',
-          boxShadow: `0 8px 20px ${theme.palette.primary.main}33`,
+          boxShadow: logoShadow,
         }}
       >
         <Typography
@@ -59,7 +60,7 @@ export function ProsohmLogo({
               letterSpacing: '-0.02em',
             }}
           >
-            Prosohm
+            ProTrack
           </Typography>
           {size !== 'sm' ? (
             <Typography
@@ -67,11 +68,11 @@ export function ProsohmLogo({
                 fontSize: dimensions.subtitle,
                 fontWeight: 600,
                 color: light ? theme.palette.prosohm.sidebarTextMuted : 'text.secondary',
-                letterSpacing: '0.08em',
+                letterSpacing: '0.06em',
                 textTransform: 'uppercase',
               }}
             >
-              ProTrack
+              Prosohm Projects
             </Typography>
           ) : null}
         </Box>

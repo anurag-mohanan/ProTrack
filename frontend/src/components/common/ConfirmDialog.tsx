@@ -1,11 +1,11 @@
 import {
-  Button,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
 } from '@mui/material';
+import { ProsohmButton } from '../ui/ProsohmButton';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -15,6 +15,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   onClose: () => void;
   loading?: boolean;
+  danger?: boolean;
 }
 
 export function ConfirmDialog({
@@ -25,6 +26,7 @@ export function ConfirmDialog({
   onConfirm,
   onClose,
   loading = false,
+  danger = false,
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
@@ -32,13 +34,17 @@ export function ConfirmDialog({
       <DialogContent>
         <DialogContentText>{message}</DialogContentText>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={loading}>
+      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+        <ProsohmButton buttonVariant="outlined" onClick={onClose} disabled={loading}>
           Cancel
-        </Button>
-        <Button variant="contained" onClick={onConfirm} disabled={loading}>
+        </ProsohmButton>
+        <ProsohmButton
+          buttonVariant={danger ? 'danger' : 'primary'}
+          onClick={onConfirm}
+          loading={loading}
+        >
           {confirmLabel}
-        </Button>
+        </ProsohmButton>
       </DialogActions>
     </Dialog>
   );

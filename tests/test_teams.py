@@ -207,6 +207,12 @@ def test_user_team_assignment_syncs_membership(client, session):
     assert len(members_after) == 0
 
 
+def test_list_teams_returns_200(client):
+    response = client.get("/api/v1/teams", headers=client.auth_headers)
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
 def test_lookups_teams_available_to_authenticated_users(client):
     client.post(
         "/api/v1/teams",

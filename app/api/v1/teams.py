@@ -21,10 +21,13 @@ from app.schemas.team import (
 router = APIRouter(
     prefix="/teams",
     tags=["teams"],
-    dependencies=[Depends(get_current_user), Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(get_current_user)],
 )
 
 write_access = Depends(require_roles("Admin", "Engineering Manager"))
+read_access = Depends(
+    require_roles("Admin", "Engineering Manager", "Design Leader", "Read Only")
+)
 
 
 def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
@@ -40,6 +43,7 @@ def list_teams(
     limit: int = Query(100, ge=1, le=500),
     is_active: bool | None = None,
     db: Session = Depends(get_db),
+    _user: User = read_access,
 ):
     return team.list_read(db, skip=skip, limit=limit, is_active=is_active)
 
@@ -58,7 +62,11 @@ def create_team(
 
 
 @router.get("/{record_id}", response_model=TeamRead)
-def get_team(record_id: UUID, db: Session = Depends(get_db)):
+def get_team(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = read_access,
+):
     result = team.get_read(db, record_id)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
@@ -93,7 +101,11 @@ def delete_team(
 
 
 @router.get("/{record_id}/members", response_model=list[TeamMemberRead])
-def list_team_members(record_id: UUID, db: Session = Depends(get_db)):
+def list_team_members(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = read_access,
+):
     get_object_or_404(db, Team, record_id)
     return team.list_members(db, record_id)
 

@@ -11,6 +11,15 @@ def test_list_projects_defaults_to_active(client):
     assert projects[0]["tool_number"] == "T-100"
 
 
+def test_list_projects_lifecycle_all_with_limit_500(client):
+    response = client.get(
+        "/api/v1/projects?lifecycle=all&limit=500",
+        headers=client.auth_headers,
+    )
+    assert response.status_code == 200
+    assert len(response.json()) >= 1
+
+
 def test_list_projects_lifecycle_all_includes_completed(client):
     project_id = client.project_id
 

@@ -63,6 +63,12 @@ export function isProjectStaffRole(roleName: string): boolean {
 export function canImportHistoricalProjects(roleName: string): boolean {
   return roleName === ROLES.ADMIN;
 }
+
+export function canImportHistoricalTimesheets(roleName: string): boolean {
+  return (
+    roleName === ROLES.ADMIN || roleName === ROLES.ENGINEERING_MANAGER
+  );
+}
 export function canAccessAdministration(roleName: string): boolean {
   return (
     roleName === ROLES.ADMIN || roleName === ROLES.ENGINEERING_MANAGER

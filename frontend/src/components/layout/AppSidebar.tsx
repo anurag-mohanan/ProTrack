@@ -33,6 +33,7 @@ import { ProsohmLogo } from '../branding/ProsohmLogo';
 import {
   canAccessAdministration,
   canImportHistoricalProjects,
+  canImportHistoricalTimesheets,
   canViewDeletedProjects,
   canViewReports,
   canViewWorkload,
@@ -72,7 +73,13 @@ const adminNavItems = [
     label: 'Import Historical Projects',
     path: '/admin/import-historical-projects',
     icon: UploadFileIcon,
-    adminOnly: true,
+    importProjects: true,
+  },
+  {
+    label: 'Import Historical Timesheets',
+    path: '/admin/import-historical-timesheets',
+    icon: UploadFileIcon,
+    importTimesheets: true,
   },
 ];
 
@@ -177,7 +184,12 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
                   if (item.path === '/admin/deleted-projects') {
                     return canViewDeletedProjects(roleName);
                   }
-                  if (item.adminOnly) return canImportHistoricalProjects(roleName);
+                  if ('importProjects' in item && item.importProjects) {
+                    return canImportHistoricalProjects(roleName);
+                  }
+                  if ('importTimesheets' in item && item.importTimesheets) {
+                    return canImportHistoricalTimesheets(roleName);
+                  }
                   return true;
                 })
                 .map((item) => (

@@ -19,6 +19,7 @@ import NonProductiveCodesAdminPage from './pages/admin/NonProductiveCodesPage';
 import UsersAdminPage from './pages/admin/UsersPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { HistoricalImportPage } from './pages/HistoricalImportPage';
+import { HistoricalTimesheetImportPage } from './pages/HistoricalTimesheetImportPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ArchivedProjectsPage } from './pages/ArchivedProjectsPage';
@@ -32,7 +33,7 @@ import { AdminRoute } from './routes/AdminRoute';
 import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
 import { theme } from './theme/theme';
 import { useAuth } from './context/AuthContext';
-import { canImportHistoricalProjects } from './utils/permissions';
+import { canImportHistoricalProjects, canImportHistoricalTimesheets } from './utils/permissions';
 
 function AdminHistoricalImportRoute() {
   const { user } = useAuth();
@@ -40,6 +41,14 @@ function AdminHistoricalImportRoute() {
     return <Navigate to="/dashboard" replace />;
   }
   return <HistoricalImportPage />;
+}
+
+function AdminHistoricalTimesheetImportRoute() {
+  const { user } = useAuth();
+  if (!canImportHistoricalTimesheets(user?.role_name ?? '')) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <HistoricalTimesheetImportPage />;
 }
 
 const queryClient = new QueryClient({
@@ -108,6 +117,10 @@ export default function App() {
                       <Route
                         path="/admin/import-historical-projects"
                         element={<AdminHistoricalImportRoute />}
+                      />
+                      <Route
+                        path="/admin/import-historical-timesheets"
+                        element={<AdminHistoricalTimesheetImportRoute />}
                       />
                     </Route>
                   </Route>

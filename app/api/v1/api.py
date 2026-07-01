@@ -6,6 +6,7 @@ from app.api.v1 import (
     auth,
     dashboard,
     imports,
+    timesheet_imports,
     lookups,
     milestones,
     non_productive_codes,
@@ -122,3 +123,4 @@ api_router.include_router(activities.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(reports.router)
 api_router.include_router(imports.router)
+api_router.include_router(timesheet_imports.router)

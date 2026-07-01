@@ -278,6 +278,8 @@ def get_design_task_type_id(session) -> uuid.UUID:
 
 @pytest.fixture
 def client(test_session_factory, seeded_db):
+    import app.db.session as db_session_module
+
     def override_get_db():
         db = test_session_factory()
         try:
@@ -285,7 +287,9 @@ def client(test_session_factory, seeded_db):
         finally:
             db.close()
 
+    original_session_local = db_session_module.SessionLocal
     app.dependency_overrides[get_db] = override_get_db
+    db_session_module.SessionLocal = test_session_factory
 
     db = test_session_factory()
     try:
@@ -302,6 +306,7 @@ def client(test_session_factory, seeded_db):
         yield test_client
 
     app.dependency_overrides.clear()
+    db_session_module.SessionLocal = original_session_local
 
 
 @pytest.fixture

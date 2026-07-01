@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.api.auth_deps import get_current_user
+from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
 from app.core.permissions import can_view_deleted_projects
 from app.crud.reports import (
@@ -67,7 +67,18 @@ from app.schemas.reports import (
 router = APIRouter(
     prefix="/reports",
     tags=["reports"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[
+        Depends(get_current_user),
+        Depends(
+            require_roles(
+                "Admin",
+                "Engineering Manager",
+                "Design Leader",
+                "Read Only",
+                "Project Manager",
+            )
+        ),
+    ],
 )
 
 

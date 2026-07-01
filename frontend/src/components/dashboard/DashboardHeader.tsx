@@ -4,7 +4,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import BusinessIcon from '@mui/icons-material/Business';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import { useAuth } from '../../context/AuthContext';
-import { canAccessAdministration, canEditProject, ROLES } from '../../utils/permissions';
+import { canAccessAdministration, canEditProject, isReadOnlyRole, ROLES } from '../../utils/permissions';
 import { formatDate } from '../../utils/format';
 
 function getGreeting(): string {
@@ -32,6 +32,7 @@ export function DashboardHeader({
   const showAdminActions = canAccessAdministration(roleName);
   const showNewUser = roleName === ROLES.ADMIN;
   const showNewProject = canEditProject(roleName);
+  const showNewTimesheet = !isReadOnlyRole(roleName);
 
   return (
     <Box
@@ -74,15 +75,17 @@ export function DashboardHeader({
             New Project
           </Button>
         ) : null}
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<ScheduleIcon />}
-          onClick={onTimesheet}
-          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-        >
-          New Timesheet
-        </Button>
+        {showNewTimesheet ? (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<ScheduleIcon />}
+            onClick={onTimesheet}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+          >
+            New Timesheet
+          </Button>
+        ) : null}
         {showAdminActions ? (
           <Button
             variant="outlined"

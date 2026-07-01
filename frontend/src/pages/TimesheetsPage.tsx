@@ -41,6 +41,7 @@ import {
   canRejectTimesheet,
   canReturnToDraft,
   canSubmitTimesheet,
+  isReadOnlyRole,
 } from '../utils/permissions';
 import type { Timesheet } from '../types';
 import { formatDate, formatNumber } from '../utils/format';
@@ -146,14 +147,16 @@ export function TimesheetsPage() {
         title="Timesheets"
         subtitle="Weekly engineering timesheets"
         action={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setCreateOpen(true)}
-            disabled={!user}
-          >
-            Create Timesheet
-          </Button>
+          !isReadOnlyRole(roleName) ? (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreateOpen(true)}
+              disabled={!user}
+            >
+              Create Timesheet
+            </Button>
+          ) : undefined
         }
       />
 

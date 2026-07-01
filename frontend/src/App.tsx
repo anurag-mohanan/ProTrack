@@ -40,13 +40,16 @@ import { TimesheetEntryPage } from './pages/TimesheetEntryPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
 import { ResourcePlanningPage } from './pages/ResourcePlanningPage';
 import { WorkloadPage } from './pages/WorkloadPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { AdminRoute } from './routes/AdminRoute';
+import { RoleRoute } from './routes/RoleRoute';
 import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
 import { theme } from './theme/theme';
 import { useAuth } from './context/AuthContext';
 import {
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
+  canViewReports,
   ROLES,
 } from './utils/permissions';
 
@@ -107,9 +110,11 @@ export default function App() {
                       path="/timesheets/:timesheetId/entries/new"
                       element={<TimesheetEntryPage />}
                     />
-                    <Route path="/workload" element={<WorkloadPage />} />
-                    <Route path="/resource-planning" element={<ResourcePlanningPage />} />
-                    <Route path="/reports" element={<ReportsPage />} />
+                    <Route element={<RoleRoute allowed={canViewReports} />}>
+                      <Route path="/workload" element={<WorkloadPage />} />
+                      <Route path="/resource-planning" element={<ResourcePlanningPage />} />
+                      <Route path="/reports" element={<ReportsPage />} />
+                    </Route>
 
                     <Route element={<AdminRoute />}>
                       <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
@@ -176,7 +181,7 @@ export default function App() {
                 </Route>
 
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </BrowserRouter>
           </ToastProvider>

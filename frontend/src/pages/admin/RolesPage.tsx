@@ -36,6 +36,7 @@ const SYSTEM_ROLE_NAMES = new Set([
   'Designer',
   'Junior Designer',
   'Surfacer',
+  'Read Only',
 ]);
 
 interface RoleFormState {

@@ -14,6 +14,7 @@ from app.db.phase8_schema_sync import ensure_phase8_foundation
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
+    ensure_production_roles,
     ensure_design_team,
     ensure_project_lifecycle_schema,
     ensure_project_stage_and_execution_status,
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
     ensure_project_health(engine)
     ensure_timesheet_approval_comments(engine)
     ensure_design_roles(engine)
+    ensure_production_roles(engine)
     ensure_admin_schema(engine)
     ensure_project_template_schema(engine)
     ensure_project_lifecycle_schema(engine)

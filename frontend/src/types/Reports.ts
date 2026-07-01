@@ -96,3 +96,69 @@ export interface ExecutionStatusSummaryRow {
 }
 
 export type { DesignerWorkload };
+
+export interface ProjectsByTeamReportRow {
+  team_id: string;
+  team_name: string;
+  team_colour: string;
+  project_count: number;
+}
+
+export interface HoursByTeamReportRow {
+  team_id: string;
+  team_name: string;
+  quoted_hours: number;
+  actual_hours: number;
+  hours_variance: number;
+}
+
+export interface QuotedVsActualByTeamReportRow {
+  team_id: string;
+  team_name: string;
+  quoted_hours: number;
+  actual_hours: number;
+  variance_hours: number;
+  variance_percent: number;
+}
+
+export interface TeamUtilizationReportRow {
+  team_id: string | null;
+  team_name: string;
+  member_count: number;
+  allocated_hours: number;
+  actual_hours: number;
+  utilization_percent: number;
+}
+
+export interface CustomerByTeamReportRow {
+  team_id: string;
+  team_name: string;
+  customer_id: string;
+  customer_name: string;
+  project_count: number;
+}
+
+export interface DesignerByTeamReportRow {
+  team_id: string;
+  team_name: string;
+  user_id: string;
+  user_name: string;
+  role_within_team: string | null;
+}
+
+export interface TeamProfitabilityReportRow {
+  team_id: string;
+  team_name: string;
+  quoted_hours: number;
+  actual_hours: number;
+  margin_hours: number;
+  margin_percent: number;
+}
+
+export interface MonthlyTeamSummaryRow {
+  team_id: string;
+  team_name: string;
+  year: number;
+  month: number;
+  actual_hours: number;
+}

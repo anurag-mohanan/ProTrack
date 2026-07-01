@@ -36,6 +36,7 @@ export function AdminSearchBar({
 }: AdminSearchBarProps) {
   const navigate = useNavigate();
   const [input, setInput] = useState('');
+  const [open, setOpen] = useState(false);
 
   const searchQuery = useQuery({
     queryKey: ['admin-global-search'],
@@ -53,6 +54,7 @@ export function AdminSearchBar({
       return { users, customers, teams, roles, taskTypes, npCodes, templates };
     },
     staleTime: 60_000,
+    enabled: open,
   });
 
   const options = useMemo((): SearchOption[] => {
@@ -95,6 +97,9 @@ export function AdminSearchBar({
   return (
     <Autocomplete
       freeSolo
+      open={open}
+      onOpen={() => setOpen(true)}
+      onClose={() => setOpen(false)}
       options={options}
       groupBy={(option) => (typeof option === 'string' ? '' : option.group)}
       getOptionLabel={(option) => (typeof option === 'string' ? option : option.label)}

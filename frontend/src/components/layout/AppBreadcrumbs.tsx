@@ -13,6 +13,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/projects/archived': 'Archived Projects',
   '/timesheets': 'Timesheets',
   '/workload': 'Workload',
+  '/resource-planning': 'Resource Planning',
   '/reports': 'Reports',
   '/admin/users': 'Users',
   '/admin/customers': 'Customers',

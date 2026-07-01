@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Box, Grid } from '@mui/material';
-import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -247,16 +246,6 @@ export function MilestoneFormDialog({
             />
           </Grid>
         </FormSection>
-
-        {isEdit ? (
-          <FormSection title="History" subtitle="Audit trail coming soon" icon={FlagOutlinedIcon}>
-            <Grid size={{ xs: 12 }}>
-              <Box sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
-                Milestone change history will appear here in a future release.
-              </Box>
-            </Grid>
-          </FormSection>
-        ) : null}
       </Box>
     </FormDrawer>
 

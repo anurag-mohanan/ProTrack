@@ -1,5 +1,4 @@
 import {
-  Paper,
   Table,
   TableBody,
   TableCell,
@@ -13,6 +12,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
+import { ContentCard } from '../components/ui/cards';
 import { formatNumber } from '../utils/format';
 
 export function WorkloadPage() {
@@ -34,8 +34,9 @@ export function WorkloadPage() {
       {!data?.length ? (
         <EmptyState title="No workload data" description="Designers will appear here once projects are assigned." />
       ) : (
-        <TableContainer component={Paper}>
-          <Table size="small">
+        <ContentCard title="Designer Workload" noPadding>
+          <TableContainer>
+            <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>Designer</TableCell>
@@ -60,6 +61,7 @@ export function WorkloadPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ContentCard>
       )}
     </>
   );

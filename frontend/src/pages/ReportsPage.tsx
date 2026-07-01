@@ -21,6 +21,7 @@ import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
 import { ContentCard } from '../components/ui/cards';
 import { ExecutionStatusChip } from '../components/common/StatusChip';
+import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
 import { useAuth } from '../context/AuthContext';
 import {
   getBillableUtilizationReport,
@@ -58,6 +59,7 @@ const TAB_CONFIG = [
   { label: 'By Project Stage', slug: 'by-stage' },
   { label: 'By Execution Status', slug: 'by-execution-status' },
   { label: 'Project Portfolio', slug: 'project-portfolio' },
+  { label: 'Team Reports', slug: 'team-reports' },
 ] as const;
 
 function tabIndexFromSlug(slug: string | null): number {
@@ -161,7 +163,12 @@ export function ReportsPage() {
     enabled: tab === 12,
   });
 
+  const teamReportsEnabled = tab === 13;
+
   const activeQuery = useMemo(() => {
+    if (teamReportsEnabled) {
+      return { isLoading: false, error: null, isError: false };
+    }
     const queries = [
       projectHoursQuery,
       productiveQuery,
@@ -584,6 +591,8 @@ export function ReportsPage() {
           </Table>
         </TableContainer>
       ) : null}
+
+      {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}
     </Box>
   );
 }

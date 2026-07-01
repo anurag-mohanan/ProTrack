@@ -13,16 +13,17 @@ SENIOR_DESIGNER = "Senior Designer"
 DESIGNER = "Designer"
 JUNIOR_DESIGNER = "Junior Designer"
 SURFACER = "Surfacer"
+READ_ONLY = "Read Only"
+LEGACY_PROJECT_MANAGER = "Project Manager"
 
 DESIGNER_ASSIGNMENT_ROLES = frozenset({SENIOR_DESIGNER, DESIGNER, JUNIOR_DESIGNER})
 PROJECT_STAFF_ROLES = DESIGNER_ASSIGNMENT_ROLES | {SURFACER}
 ASSIGNED_PROJECT_ROLES = PROJECT_STAFF_ROLES
 
-# Legacy alias used in older seeds/docs
-PROJECT_MANAGER = ENGINEERING_MANAGER
-
 FULL_ACCESS_ROLES = {ADMIN, ENGINEERING_MANAGER}
-READ_ALL_PROJECT_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER}
+READ_ALL_PROJECT_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER, READ_ONLY}
+REPORT_VIEWER_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER, READ_ONLY}
+RESOURCE_PLANNING_ROLES = REPORT_VIEWER_ROLES
 TIMESHEET_APPROVER_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER}
 TIMESHEET_ENTRY_WRITE_ROLES = FULL_ACCESS_ROLES | {
     DESIGN_LEADER,
@@ -46,13 +47,24 @@ def get_role_name(db: Session, user: User) -> str:
     return role.name if role is not None else ""
 
 
+def normalize_role_name(role_name: str) -> str:
+    if role_name == LEGACY_PROJECT_MANAGER:
+        return ENGINEERING_MANAGER
+    return role_name
+
+
 def has_role(db: Session, user: User, *roles: str) -> bool:
-    role_name = get_role_name(db, user)
-    if role_name in roles:
-        return True
-    if PROJECT_MANAGER in roles and role_name == ENGINEERING_MANAGER:
-        return True
-    return False
+    role_name = normalize_role_name(get_role_name(db, user))
+    normalized_roles = {normalize_role_name(role) for role in roles}
+    return role_name in normalized_roles
+
+
+def can_view_reports(db: Session, user: User) -> bool:
+    return has_role(db, user, *REPORT_VIEWER_ROLES)
+
+
+def can_view_resource_planning(db: Session, user: User) -> bool:
+    return can_view_reports(db, user)
 
 
 def is_admin(db: Session, user: User) -> bool:
@@ -176,8 +188,8 @@ def _design_leader_can_approve(db: Session, user: User, timesheet: Timesheet) ->
 
 
 def can_read_timesheet(db: Session, user: User, timesheet: Timesheet) -> bool:
-    role_name = get_role_name(db, user)
-    if role_name in FULL_ACCESS_ROLES:
+    role_name = normalize_role_name(get_role_name(db, user))
+    if role_name in FULL_ACCESS_ROLES | {READ_ONLY}:
         return True
     if role_name == DESIGN_LEADER and _design_leader_can_approve(db, user, timesheet):
         return True

@@ -12,6 +12,14 @@ import type {
   ProjectPortfolioReportRow,
   ProjectStageSummaryRow,
   TopNpActivityReportRow,
+  ProjectsByTeamReportRow,
+  HoursByTeamReportRow,
+  QuotedVsActualByTeamReportRow,
+  TeamUtilizationReportRow,
+  CustomerByTeamReportRow,
+  DesignerByTeamReportRow,
+  TeamProfitabilityReportRow,
+  MonthlyTeamSummaryRow,
 } from '../types';
 import { apiClient, buildQuery } from '../api/client';
 
@@ -126,6 +134,72 @@ export async function getExecutionStatusSummaryReport(
   return data;
 }
 
+export async function getProjectsByTeamReport(
+  options?: ReportOptions,
+): Promise<ProjectsByTeamReportRow[]> {
+  const { data } = await apiClient.get<ProjectsByTeamReportRow[]>(
+    `/reports/projects-by-team${reportQuery(options)}`,
+  );
+  return data;
+}
+
+export async function getHoursByTeamReport(
+  options?: ReportOptions,
+): Promise<HoursByTeamReportRow[]> {
+  const { data } = await apiClient.get<HoursByTeamReportRow[]>(
+    `/reports/hours-by-team${reportQuery(options)}`,
+  );
+  return data;
+}
+
+export async function getQuotedVsActualByTeamReport(
+  options?: ReportOptions,
+): Promise<QuotedVsActualByTeamReportRow[]> {
+  const { data } = await apiClient.get<QuotedVsActualByTeamReportRow[]>(
+    `/reports/quoted-vs-actual-by-team${reportQuery(options)}`,
+  );
+  return data;
+}
+
+export async function getTeamUtilizationReport(): Promise<TeamUtilizationReportRow[]> {
+  const { data } = await apiClient.get<TeamUtilizationReportRow[]>(
+    '/reports/team-utilization',
+  );
+  return data;
+}
+
+export async function getCustomerByTeamReport(
+  options?: ReportOptions,
+): Promise<CustomerByTeamReportRow[]> {
+  const { data } = await apiClient.get<CustomerByTeamReportRow[]>(
+    `/reports/customer-by-team${reportQuery(options)}`,
+  );
+  return data;
+}
+
+export async function getDesignerByTeamReport(): Promise<DesignerByTeamReportRow[]> {
+  const { data } = await apiClient.get<DesignerByTeamReportRow[]>(
+    '/reports/designer-by-team',
+  );
+  return data;
+}
+
+export async function getTeamProfitabilityReport(
+  options?: ReportOptions,
+): Promise<TeamProfitabilityReportRow[]> {
+  const { data } = await apiClient.get<TeamProfitabilityReportRow[]>(
+    `/reports/team-profitability${reportQuery(options)}`,
+  );
+  return data;
+}
+
+export async function getMonthlyTeamSummaryReport(): Promise<MonthlyTeamSummaryRow[]> {
+  const { data } = await apiClient.get<MonthlyTeamSummaryRow[]>(
+    '/reports/monthly-team-summary',
+  );
+  return data;
+}
+
 export const reportQueryKeys = {
   all: ['reports'] as const,
   projectHours: (options?: ReportOptions) =>
@@ -146,4 +220,5 @@ export const reportQueryKeys = {
     ['reports', 'project-stage-summary', options ?? {}] as const,
   executionStatusSummary: (options?: ReportOptions) =>
     ['reports', 'execution-status-summary', options ?? {}] as const,
+  teamReports: (options?: ReportOptions) => ['reports', 'team', options ?? {}] as const,
 };

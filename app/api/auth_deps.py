@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.core.auth import decode_access_token
-from app.core.permissions import get_role_name
+from app.core.permissions import get_role_name, normalize_role_name
 from app.models.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
@@ -41,8 +41,9 @@ def require_roles(*roles: str) -> Callable[..., User]:
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        role_name = get_role_name(db, current_user)
-        if role_name not in roles:
+        role_name = normalize_role_name(get_role_name(db, current_user))
+        normalized_allowed = {normalize_role_name(role) for role in roles}
+        if role_name not in normalized_allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",

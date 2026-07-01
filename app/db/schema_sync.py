@@ -153,6 +153,32 @@ def ensure_design_roles(engine: Engine) -> None:
         session.close()
 
 
+def ensure_production_roles(engine: Engine) -> None:
+    session = sessionmaker(bind=engine)()
+    try:
+        read_only = session.scalar(select(Role).where(Role.name == "Read Only"))
+        if read_only is None:
+            session.add(
+                Role(
+                    name="Read Only",
+                    description="View-only access to projects, reports, and planning",
+                )
+            )
+
+        engineering_manager = session.scalar(
+            select(Role).where(Role.name == "Engineering Manager")
+        )
+        project_manager = session.scalar(select(Role).where(Role.name == "Project Manager"))
+        if engineering_manager is None and project_manager is not None:
+            project_manager.name = "Engineering Manager"
+            if not project_manager.description:
+                project_manager.description = "Manage projects and engineering operations"
+
+        session.commit()
+    finally:
+        session.close()
+
+
 def ensure_design_team(engine: Engine) -> None:
     session = sessionmaker(bind=engine)()
     try:

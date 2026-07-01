@@ -2,7 +2,7 @@ from uuid import UUID
 
 from datetime import date
 
-from app.api.auth_deps import get_current_user
+from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import APIRouter, Depends, HTTPException, Session, get_db, get_object_or_404, status
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import can_update_project
@@ -41,6 +41,16 @@ from app.services.dashboard_service import (
     get_dashboard_my_tasks,
     get_dashboard_recent_activity,
     safe_dashboard_call,
+)
+
+_planning_access = Depends(
+    require_roles(
+        "Admin",
+        "Engineering Manager",
+        "Design Leader",
+        "Read Only",
+        "Project Manager",
+    )
 )
 
 router = APIRouter(
@@ -109,12 +119,20 @@ def dashboard_overview(
     return get_dashboard_overview(db, current_user)
 
 
-@router.get("/workload", response_model=list[DesignerWorkload])
+@router.get(
+    "/workload",
+    response_model=list[DesignerWorkload],
+    dependencies=[_planning_access],
+)
 def dashboard_workload(db: Session = Depends(get_db)):
     return get_designer_workload(db)
 
 
-@router.get("/resource-planning", response_model=list[TeamResourcePlanningRow])
+@router.get(
+    "/resource-planning",
+    response_model=list[TeamResourcePlanningRow],
+    dependencies=[_planning_access],
+)
 def dashboard_resource_planning(
     team_id: UUID | None = None,
     db: Session = Depends(get_db),
@@ -122,7 +140,11 @@ def dashboard_resource_planning(
     return get_team_resource_planning(db, team_id=team_id)
 
 
-@router.get("/resource-planning/grid", response_model=ResourcePlanningGrid)
+@router.get(
+    "/resource-planning/grid",
+    response_model=ResourcePlanningGrid,
+    dependencies=[_planning_access],
+)
 def dashboard_resource_planning_grid(
     start: date | None = None,
     granularity: ResourcePlanningGranularity = ResourcePlanningGranularity.week,

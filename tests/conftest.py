@@ -42,6 +42,7 @@ IDS = {
     "role_senior_designer": uuid.UUID("e5e5e5e5-e5e5-4e5e-8e5e-e5e5e5e5e5e1"),
     "role_junior_designer": uuid.UUID("f6f6f6f6-f6f6-4f6f-8f6f-f6f6f6f6f6f1"),
     "role_surfacer": uuid.UUID("04582a31-25bf-4709-ac44-e6e05aae8406"),
+    "role_read_only": uuid.UUID("88888888-8888-8888-8888-888888888888"),
     "user_admin": uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
     "user_pm": uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
     "user_anurag": uuid.UUID("7cf429ba-ca31-4752-9a03-afa3ba4700a3"),
@@ -49,6 +50,7 @@ IDS = {
     "user_senior_designer": uuid.UUID("10000001-0001-4001-8001-000000000001"),
     "user_junior_designer": uuid.UUID("10000003-0003-4003-8003-000000000003"),
     "user_ranjith": uuid.UUID("731ddf9e-d2d9-450b-a675-cb2ca8a021e3"),
+    "user_readonly": uuid.UUID("99999999-9999-9999-9999-999999999999"),
     "stream": uuid.UUID("a4b9ba7c-4ff4-4a2c-8dc7-823a7cfacb55"),
     "customer": uuid.UUID("3946c135-d515-4bbd-affb-00b5c1893832"),
     "contact": uuid.UUID("b5301223-164f-4035-8017-252ff0452fa6"),
@@ -97,6 +99,11 @@ def _seed_database(session) -> Milestone:
                 name="Surfacer",
                 description="Surface modeling",
             ),
+            Role(
+                id=IDS["role_read_only"],
+                name="Read Only",
+                description="View-only access",
+            ),
         ]
     )
     password_hash = hash_password(DEFAULT_PASSWORD)
@@ -108,6 +115,7 @@ def _seed_database(session) -> Milestone:
         "Senior Designer": IDS["role_senior_designer"],
         "Junior Designer": IDS["role_junior_designer"],
         "Surfacer": IDS["role_surfacer"],
+        "Read Only": IDS["role_read_only"],
     }
     session.add_all(
         [
@@ -155,6 +163,15 @@ def _seed_database(session) -> Milestone:
                 password_hash=password_hash,
                 first_name="Ranjith",
                 last_name="K",
+                is_active=True,
+            ),
+            User(
+                id=IDS["user_readonly"],
+                role_id=IDS["role_read_only"],
+                email="readonly@prosohm.com",
+                password_hash=password_hash,
+                first_name="Read",
+                last_name="Only",
                 is_active=True,
             ),
         ]

@@ -65,7 +65,7 @@ def build_crud_router(
     schema_create: type[BaseModel],
     schema_update: type[BaseModel],
     filters_model: type[BaseModel] = EmptyFilters,
-    write_roles: tuple[str, ...] = ("Admin", "Project Manager"),
+    write_roles: tuple[str, ...] = ("Admin", "Engineering Manager"),
     router_dependencies: Sequence[Any] | None = None,
 ) -> APIRouter:
     dependencies = list(router_dependencies or [Depends(get_current_user)])

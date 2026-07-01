@@ -10,7 +10,6 @@ import {
   Typography,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
-import PersonIcon from '@mui/icons-material/Person';
 import { NotificationBell } from '../common/NotificationBell';
 import { ProsohmLogo } from '../branding/ProsohmLogo';
 import { ProsohmButton } from '../ui/ProsohmButton';
@@ -103,10 +102,6 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
                 {roleName}
               </Typography>
             </Box>
-            <MenuItem onClick={() => setAnchorEl(null)}>
-              <PersonIcon fontSize="small" sx={{ mr: 1.5 }} />
-              Profile
-            </MenuItem>
             <MenuItem
               onClick={() => {
                 setAnchorEl(null);

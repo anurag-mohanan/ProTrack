@@ -57,8 +57,8 @@ def rebuild() -> None:
             Role(id=IDS["role_admin"], name="Admin", description="Full system administration"),
             Role(
                 id=IDS["role_pm"],
-                name="Project Manager",
-                description="Manage projects and approvals",
+                name="Engineering Manager",
+                description="Manage projects and engineering operations",
             ),
             Role(
                 id=IDS["role_design_leader"],
@@ -84,6 +84,10 @@ def rebuild() -> None:
                 id=IDS["role_surfacer"],
                 name="Surfacer",
                 description="Surface modeling work",
+            ),
+            Role(
+                name="Read Only",
+                description="View-only access to projects, reports, and planning",
             ),
         ]
         db.add_all(roles)

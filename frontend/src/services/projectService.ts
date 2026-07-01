@@ -1,17 +1,19 @@
 import type {
   ArchivedProjectListItem,
+  ExecutionStatus,
   Project,
   ProjectCreate,
   ProjectDashboard,
   ProjectDeleteCheck,
   ProjectLifecycleFilter,
-  ProjectStatus,
+  ProjectStage,
   ProjectUpdate,
 } from '../types';
 import { apiClient, buildQuery, type ListParams } from '../api/client';
 
 export interface ProjectListParams extends ListParams {
-  status?: ProjectStatus;
+  execution_status?: ExecutionStatus;
+  project_stage?: ProjectStage;
   lifecycle?: ProjectLifecycleFilter;
 }
 
@@ -91,7 +93,11 @@ export async function permanentDeleteProject(projectId: string): Promise<void> {
 
 export const projectQueryKeys = {
   all: ['projects'] as const,
-  list: (params?: { status?: ProjectStatus; lifecycle?: ProjectLifecycleFilter }) =>
+  list: (params?: {
+    execution_status?: ExecutionStatus;
+    project_stage?: ProjectStage;
+    lifecycle?: ProjectLifecycleFilter;
+  }) =>
     params ? (['projects', params] as const) : (['projects'] as const),
   archived: ['projects', 'archived'] as const,
   deleted: ['projects', 'deleted'] as const,

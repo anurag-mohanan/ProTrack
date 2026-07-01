@@ -32,7 +32,10 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
         previous_status = db_obj.status
         if "status" in update_data:
             if update_data["status"] == MilestoneStatus.completed:
-                update_data["completed_at"] = datetime.now(timezone.utc)
+                if update_data.get("completed_at") is None:
+                    update_data["completed_at"] = datetime.now(timezone.utc).replace(
+                        tzinfo=None
+                    )
             else:
                 update_data["completed_at"] = None
 

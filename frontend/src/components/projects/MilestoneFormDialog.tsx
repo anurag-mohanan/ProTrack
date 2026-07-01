@@ -6,7 +6,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   Grid,
+  InputLabel,
+  MenuItem,
+  Select,
   TextField,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -17,19 +21,31 @@ import {
   updateMilestone,
 } from '../../services/milestoneService';
 import { invalidateMilestoneRelatedQueries } from '../../utils/queryInvalidation';
-import type { Milestone } from '../../types';
+import type { Milestone, MilestoneStatus } from '../../types';
+import { formatDateTime } from '../../utils/format';
 
 interface MilestoneFormValues {
   name: string;
   due_date: string;
   description: string;
+  status: MilestoneStatus;
+  completed_at: string;
 }
 
 const emptyForm: MilestoneFormValues = {
   name: '',
   due_date: '',
   description: '',
+  status: 'not_started',
+  completed_at: '',
 };
+
+const milestoneStatusOptions: Array<{ value: MilestoneStatus; label: string }> = [
+  { value: 'not_started', label: 'Not Started' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'not_applicable', label: 'Not Applicable' },
+];
 
 interface MilestoneFormDialogProps {
   open: boolean;
@@ -59,6 +75,10 @@ export function MilestoneFormDialog({
         name: milestone.name,
         description: milestone.description ?? '',
         due_date: milestone.due_date ?? '',
+        status: milestone.status,
+        completed_at: milestone.completed_at
+          ? milestone.completed_at.slice(0, 16)
+          : '',
       });
     } else {
       setForm(emptyForm);
@@ -71,6 +91,13 @@ export function MilestoneFormDialog({
         name: form.name.trim(),
         description: form.description.trim() || null,
         due_date: form.due_date || null,
+        status: form.status,
+        completed_at:
+          form.status === 'completed' && form.completed_at
+            ? new Date(form.completed_at).toISOString()
+            : form.status === 'completed'
+              ? null
+              : null,
       };
 
       if (isEdit && milestone) {
@@ -79,7 +106,10 @@ export function MilestoneFormDialog({
 
       return createMilestone({
         project_id: projectId,
-        ...payload,
+        name: payload.name,
+        description: payload.description,
+        due_date: payload.due_date,
+        status: payload.status,
       });
     },
     onSuccess: () => {
@@ -118,7 +148,7 @@ export function MilestoneFormDialog({
               onChange={(event) => setForm({ ...form, name: event.target.value })}
             />
           </Grid>
-          <Grid size={{ xs: 12 }}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               label="Due Date"
               type="date"
@@ -130,6 +160,53 @@ export function MilestoneFormDialog({
               }
             />
           </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select
+                label="Status"
+                value={form.status}
+                onChange={(event) => {
+                  const status = event.target.value as MilestoneStatus;
+                  setForm({
+                    ...form,
+                    status,
+                    completed_at:
+                      status === 'completed' && !form.completed_at
+                        ? new Date().toISOString().slice(0, 16)
+                        : status === 'completed'
+                          ? form.completed_at
+                          : '',
+                  });
+                }}
+              >
+                {milestoneStatusOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          {form.status === 'completed' ? (
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                label="Completion Date"
+                type="datetime-local"
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+                value={form.completed_at}
+                onChange={(event) =>
+                  setForm({ ...form, completed_at: event.target.value })
+                }
+                helperText={
+                  milestone?.completed_at
+                    ? `Current: ${formatDateTime(milestone.completed_at)}`
+                    : undefined
+                }
+              />
+            </Grid>
+          ) : null}
           <Grid size={{ xs: 12 }}>
             <TextField
               label="Description"

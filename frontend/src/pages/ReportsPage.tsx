@@ -20,7 +20,7 @@ import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
 import { ContentCard } from '../components/ui/cards';
-import { StatusChip } from '../components/common/StatusChip';
+import { ExecutionStatusChip } from '../components/common/StatusChip';
 import { useAuth } from '../context/AuthContext';
 import {
   getBillableUtilizationReport,
@@ -32,11 +32,15 @@ import {
   getNpHoursByDesignerReport,
   getProductiveHoursReport,
   getProjectHoursReport,
+  getProjectPortfolioReport,
+  getProjectStageSummaryReport,
+  getExecutionStatusSummaryReport,
   getTopNpActivitiesReport,
   reportQueryKeys,
   type ReportOptions,
 } from '../services/reportService';
-import type { ProjectStatus } from '../types';
+import type { ExecutionStatus } from '../types';
+import { EXECUTION_STATUS_LABELS, PROJECT_STAGE_LABELS } from '../types/common';
 import { canViewDeletedProjects } from '../utils/permissions';
 import { formatNumber } from '../utils/format';
 
@@ -51,6 +55,9 @@ const TAB_CONFIG = [
   { label: 'Billable Utilization', slug: 'billable-utilization' },
   { label: 'Designer Utilization', slug: 'designer-utilization' },
   { label: 'Customer Summary', slug: 'customer-summary' },
+  { label: 'By Project Stage', slug: 'by-stage' },
+  { label: 'By Execution Status', slug: 'by-execution-status' },
+  { label: 'Project Portfolio', slug: 'project-portfolio' },
 ] as const;
 
 function tabIndexFromSlug(slug: string | null): number {
@@ -136,6 +143,24 @@ export function ReportsPage() {
     enabled: tab === 9,
   });
 
+  const stageSummaryQuery = useQuery({
+    queryKey: reportQueryKeys.projectStageSummary(reportOptions),
+    queryFn: () => getProjectStageSummaryReport(reportOptions),
+    enabled: tab === 10,
+  });
+
+  const executionSummaryQuery = useQuery({
+    queryKey: reportQueryKeys.executionStatusSummary(reportOptions),
+    queryFn: () => getExecutionStatusSummaryReport(reportOptions),
+    enabled: tab === 11,
+  });
+
+  const portfolioQuery = useQuery({
+    queryKey: reportQueryKeys.projectPortfolio(reportOptions),
+    queryFn: () => getProjectPortfolioReport(reportOptions),
+    enabled: tab === 12,
+  });
+
   const activeQuery = useMemo(() => {
     const queries = [
       projectHoursQuery,
@@ -148,6 +173,9 @@ export function ReportsPage() {
       billableQuery,
       designerQuery,
       customerQuery,
+      stageSummaryQuery,
+      executionSummaryQuery,
+      portfolioQuery,
     ];
     return queries[tab] ?? projectHoursQuery;
   }, [
@@ -162,6 +190,9 @@ export function ReportsPage() {
     billableQuery,
     designerQuery,
     customerQuery,
+    stageSummaryQuery,
+    executionSummaryQuery,
+    portfolioQuery,
   ]);
 
   const handleTabChange = (_: unknown, value: number) => {
@@ -229,7 +260,8 @@ export function ReportsPage() {
                 <TableCell align="right">Quoted</TableCell>
                 <TableCell align="right">Actual</TableCell>
                 <TableCell align="right">Variance</TableCell>
-                <TableCell>Status</TableCell>
+                <TableCell>Stage</TableCell>
+                <TableCell>Execution Status</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -242,7 +274,10 @@ export function ReportsPage() {
                   <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.hours_variance)}</TableCell>
                   <TableCell>
-                    <StatusChip status={row.status as ProjectStatus} />
+                    {PROJECT_STAGE_LABELS[row.project_stage]}
+                  </TableCell>
+                  <TableCell>
+                    <ExecutionStatusChip status={row.execution_status} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -470,6 +505,79 @@ export function ReportsPage() {
                   <TableCell align="right">{formatNumber(row.total_quoted_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.total_actual_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.hours_variance)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : null}
+
+      {tab === 10 && !stageSummaryQuery.isLoading && !stageSummaryQuery.error ? (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Project Stage</TableCell>
+                <TableCell align="right">Projects</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {(stageSummaryQuery.data ?? []).map((row) => (
+                <TableRow key={row.project_stage} hover>
+                  <TableCell>{PROJECT_STAGE_LABELS[row.project_stage]}</TableCell>
+                  <TableCell align="right">{row.project_count}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : null}
+
+      {tab === 11 && !executionSummaryQuery.isLoading && !executionSummaryQuery.error ? (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Execution Status</TableCell>
+                <TableCell align="right">Projects</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {(executionSummaryQuery.data ?? []).map((row) => (
+                <TableRow key={row.execution_status} hover>
+                  <TableCell>
+                    {EXECUTION_STATUS_LABELS[row.execution_status as ExecutionStatus]}
+                  </TableCell>
+                  <TableCell align="right">{row.project_count}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : null}
+
+      {tab === 12 && !portfolioQuery.isLoading && !portfolioQuery.error ? (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Tool Number</TableCell>
+                <TableCell>Customer</TableCell>
+                <TableCell>Stage</TableCell>
+                <TableCell>Execution Status</TableCell>
+                <TableCell>Due Date</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {(portfolioQuery.data ?? []).map((row) => (
+                <TableRow key={row.project_id} hover>
+                  <TableCell>{row.tool_number}</TableCell>
+                  <TableCell>{row.customer_name}</TableCell>
+                  <TableCell>{PROJECT_STAGE_LABELS[row.project_stage]}</TableCell>
+                  <TableCell>
+                    <ExecutionStatusChip status={row.execution_status} />
+                  </TableCell>
+                  <TableCell>{row.due_date}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

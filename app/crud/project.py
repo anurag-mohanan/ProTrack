@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, override
 from uuid import UUID
 
@@ -7,7 +8,7 @@ from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import PROJECT_STAFF_ROLES
 from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read, build_project_reads
-from app.models.enums import MilestoneStatus, ProjectLifecycleFilter
+from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectLifecycleFilter
 from app.models.models import Contact, Customer, Milestone, Project, ProjectType, Role, User
 from app.schemas.project import ArchivedProjectListItem, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.project_calculation_service import recalculate_project
@@ -205,6 +206,15 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             designer_id=designer_id,
             surfacer_id=surfacer_id,
         )
+
+        if "execution_status" in update_data:
+            new_status = update_data["execution_status"]
+            if new_status == ExecutionStatus.completed and db_obj.completed_at is None:
+                update_data["completed_at"] = datetime.now(timezone.utc).replace(
+                    tzinfo=None
+                )
+            elif new_status != ExecutionStatus.completed:
+                update_data["completed_at"] = None
 
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
         recalculate_project(db, updated.id)

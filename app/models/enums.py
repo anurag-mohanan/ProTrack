@@ -1,10 +1,16 @@
 import enum
 
 
-class ProjectStatus(enum.Enum):
-    not_started = "not_started"
-    in_progress = "in_progress"
-    waiting_for_customer = "waiting_for_customer"
+class ProjectStage(enum.Enum):
+    preliminary = "preliminary"
+    intermediate = "intermediate"
+    final = "final"
+
+
+class ExecutionStatus(enum.Enum):
+    currently_being_worked_on = "currently_being_worked_on"
+    on_hold = "on_hold"
+    cancelled = "cancelled"
     completed = "completed"
 
 

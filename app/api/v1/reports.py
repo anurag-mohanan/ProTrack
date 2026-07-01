@@ -6,6 +6,7 @@ from app.crud.reports import (
     get_billable_vs_non_billable_report,
     get_customer_summary_report,
     get_designer_productivity_report,
+    get_execution_status_summary_report,
     get_milestone_completion_report,
     get_monthly_np_trends_report,
     get_non_productive_hours_report,
@@ -13,10 +14,13 @@ from app.crud.reports import (
     get_productive_hours_report,
     get_project_delay_report,
     get_project_hours_report,
+    get_project_portfolio_report,
+    get_project_stage_summary_report,
     get_reports_bundle,
     get_timesheet_approval_report,
     get_top_np_activities_report,
 )
+from app.models.enums import ProjectStage
 from app.crud.dashboard import get_designer_workload
 from app.models.models import User
 from app.schemas.dashboard import DesignerWorkload
@@ -25,6 +29,7 @@ from app.schemas.reports import (
     BillableVsNonBillableReportRow,
     CustomerSummaryReportRow,
     DesignerProductivityReportRow,
+    ExecutionStatusSummaryRow,
     MilestoneCompletionReportRow,
     MonthlyNpTrendReportRow,
     NonProductiveHoursReportRow,
@@ -32,6 +37,8 @@ from app.schemas.reports import (
     ProductiveHoursReportRow,
     ProjectDelayReportRow,
     ProjectHoursReportRow,
+    ProjectPortfolioReportRow,
+    ProjectStageSummaryRow,
     ReportsBundle,
     TimesheetApprovalReportRow,
     TopNpActivityReportRow,
@@ -146,3 +153,27 @@ def billable_vs_non_billable_report(db: Session = Depends(get_db)):
 @router.get("/top-np-activities", response_model=list[TopNpActivityReportRow])
 def top_np_activities_report(db: Session = Depends(get_db)):
     return get_top_np_activities_report(db)
+
+
+@router.get("/project-portfolio", response_model=list[ProjectPortfolioReportRow])
+def project_portfolio_report(
+    db: Session = Depends(get_db),
+    options: dict[str, bool] = Depends(_report_options),
+):
+    return get_project_portfolio_report(db, **options)
+
+
+@router.get("/project-stage-summary", response_model=list[ProjectStageSummaryRow])
+def project_stage_summary_report(
+    db: Session = Depends(get_db),
+    options: dict[str, bool] = Depends(_report_options),
+):
+    return get_project_stage_summary_report(db, **options)
+
+
+@router.get("/execution-status-summary", response_model=list[ExecutionStatusSummaryRow])
+def execution_status_summary_report(
+    db: Session = Depends(get_db),
+    options: dict[str, bool] = Depends(_report_options),
+):
+    return get_execution_status_summary_report(db, **options)

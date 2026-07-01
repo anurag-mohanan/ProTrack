@@ -5,7 +5,7 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
 import type { Customer, Project, Stream, User } from '../../types';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
-import { StatusChip } from '../common/StatusChip';
+import { ProjectStageChip, ExecutionStatusChip } from '../common/StatusChip';
 import { formatDate, formatNumber, userDisplayName } from '../../utils/format';
 
 export interface ProjectTableRow extends Project {
@@ -82,10 +82,16 @@ const PROJECT_TABLE_COLUMNS: GridColDef<ProjectTableRow>[] = [
     valueFormatter: (value) => formatDate(String(value)),
   },
   {
-    field: 'status',
-    headerName: 'Status',
-    width: 150,
-    renderCell: (params) => <StatusChip status={params.value} />,
+    field: 'project_stage',
+    headerName: 'Project Stage',
+    width: 140,
+    renderCell: (params) => <ProjectStageChip stage={params.value} />,
+  },
+  {
+    field: 'execution_status',
+    headerName: 'Execution Status',
+    width: 190,
+    renderCell: (params) => <ExecutionStatusChip status={params.value} />,
   },
   {
     field: 'quoted_hours',

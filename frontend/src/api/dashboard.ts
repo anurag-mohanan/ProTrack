@@ -8,7 +8,8 @@ import type {
   ProjectDashboard,
 } from '../types';
 import type { Activity } from '../types/Workflow';
-import { apiClient } from './client';
+import type { ProjectStage } from '../types';
+import { apiClient, buildQuery } from './client';
 
 export async function fetchDashboardKpis(): Promise<DashboardKpis> {
   const { data } = await apiClient.get<DashboardKpis>('/dashboard/kpis');
@@ -35,8 +36,12 @@ export async function fetchDashboardOverview(): Promise<DashboardOverview> {
   return data;
 }
 
-export async function fetchDashboardSummary(): Promise<DashboardSummary> {
-  const { data } = await apiClient.get<DashboardSummary>('/dashboard/summary');
+export async function fetchDashboardSummary(
+  projectStage?: ProjectStage,
+): Promise<DashboardSummary> {
+  const { data } = await apiClient.get<DashboardSummary>(
+    `/dashboard/summary${buildQuery({ project_stage: projectStage })}`,
+  );
   return data;
 }
 
@@ -56,7 +61,10 @@ export async function fetchProjectDashboard(
 
 export const dashboardQueryKeys = {
   all: ['dashboard'] as const,
-  summary: ['dashboard', 'summary'] as const,
+  summary: (projectStage?: ProjectStage) =>
+    projectStage
+      ? (['dashboard', 'summary', projectStage] as const)
+      : (['dashboard', 'summary'] as const),
   kpis: ['dashboard', 'kpis'] as const,
   attentionProjects: ['dashboard', 'attention-projects'] as const,
   recentActivity: ['dashboard', 'recent-activity'] as const,

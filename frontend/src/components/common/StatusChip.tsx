@@ -1,19 +1,28 @@
 import { Chip, type ChipProps } from '@mui/material';
-import type { MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus } from '../../types';
+import type {
+  ExecutionStatus,
+  MilestoneStatus,
+  ProjectHealth,
+  ProjectStage,
+  TimesheetStatus,
+} from '../../types';
+import {
+  EXECUTION_STATUS_LABELS,
+  PROJECT_STAGE_LABELS,
+} from '../../types/common';
 import { formatStatus } from '../../utils/format';
 
-const projectStatusLabels: Record<ProjectStatus, string> = {
-  not_started: 'Not Started',
-  in_progress: 'In Progress',
-  waiting_for_customer: 'On Hold',
-  completed: 'Completed',
+const executionStatusColors: Record<ExecutionStatus, ChipProps['color']> = {
+  currently_being_worked_on: 'info',
+  on_hold: 'warning',
+  cancelled: 'default',
+  completed: 'success',
 };
 
-const projectStatusColors: Record<ProjectStatus, ChipProps['color']> = {
-  not_started: 'default',
-  in_progress: 'info',
-  waiting_for_customer: 'warning',
-  completed: 'success',
+const projectStageColors: Record<ProjectStage, ChipProps['color']> = {
+  preliminary: 'default',
+  intermediate: 'info',
+  final: 'secondary',
 };
 
 const healthColors: Record<ProjectHealth, ChipProps['color']> = {
@@ -28,12 +37,28 @@ const healthLabels: Record<ProjectHealth, string> = {
   red: 'Red',
 };
 
-export function StatusChip({ status }: { status: ProjectStatus }) {
+export function ExecutionStatusChip({ status }: { status: ExecutionStatus }) {
   return (
     <Chip
       size="small"
-      label={projectStatusLabels[status]}
-      color={projectStatusColors[status]}
+      label={EXECUTION_STATUS_LABELS[status]}
+      color={executionStatusColors[status]}
+    />
+  );
+}
+
+/** @deprecated Use ExecutionStatusChip */
+export function StatusChip({ status }: { status: ExecutionStatus }) {
+  return <ExecutionStatusChip status={status} />;
+}
+
+export function ProjectStageChip({ stage }: { stage: ProjectStage }) {
+  return (
+    <Chip
+      size="small"
+      label={PROJECT_STAGE_LABELS[stage]}
+      color={projectStageColors[stage]}
+      variant="outlined"
     />
   );
 }

@@ -31,6 +31,7 @@ import {
   restoreDeletedProject,
 } from '../../services/projectService';
 import { formatDate } from '../../utils/format';
+import { EXECUTION_STATUS_LABELS } from '../../types/common';
 
 export default function DeletedProjectsPage() {
   const queryClient = useQueryClient();
@@ -114,7 +115,9 @@ export default function DeletedProjectsPage() {
                     <TableCell>
                       {project.deleted_at ? formatDate(project.deleted_at) : '—'}
                     </TableCell>
-                    <TableCell>{project.status.replaceAll('_', ' ')}</TableCell>
+                    <TableCell>
+                      {EXECUTION_STATUS_LABELS[project.execution_status]}
+                    </TableCell>
                     <TableCell align="right">
                       <Tooltip title="View">
                         <IconButton

@@ -1,3 +1,4 @@
+import type { ExecutionStatus, ProjectStage } from './common';
 import type { DesignerWorkload } from './Dashboard';
 
 export interface ProjectHoursReportRow {
@@ -8,7 +9,8 @@ export interface ProjectHoursReportRow {
   quoted_hours: number;
   actual_hours: number;
   hours_variance: number;
-  status: string;
+  execution_status: ExecutionStatus;
+  project_stage: ProjectStage;
 }
 
 export interface CustomerSummaryReportRow {
@@ -71,6 +73,26 @@ export interface TopNpActivityReportRow {
   description: string;
   total_hours: number;
   entry_count: number;
+}
+
+export interface ProjectPortfolioReportRow {
+  project_id: string;
+  tool_number: string;
+  customer_name: string;
+  project_stage: ProjectStage;
+  execution_status: ExecutionStatus;
+  due_date: string;
+  health: string;
+}
+
+export interface ProjectStageSummaryRow {
+  project_stage: ProjectStage;
+  project_count: number;
+}
+
+export interface ExecutionStatusSummaryRow {
+  execution_status: ExecutionStatus;
+  project_count: number;
 }
 
 export type { DesignerWorkload };

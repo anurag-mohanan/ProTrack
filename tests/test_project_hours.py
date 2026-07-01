@@ -99,7 +99,7 @@ def test_project_read_includes_progress_and_health(client, auth_headers):
 
     project = client.get(f"/api/v1/projects/{project_id}", headers=auth_headers).json()
     assert project["progress_percent"] == "14.29"
-    assert project["status"] == "in_progress"
+    assert project["execution_status"] == "currently_being_worked_on"
     assert project["health"] in {"green", "yellow", "red"}
 
 
@@ -108,9 +108,15 @@ def test_completed_project_health_is_green(client, auth_headers, session):
     _complete_all_milestones(session, project_id)
     recalculate_project(session, project_id)
 
+    client.patch(
+        f"/api/v1/projects/{project_id}",
+        json={"execution_status": "completed"},
+        headers=auth_headers,
+    )
+
     response = client.get(f"/api/v1/projects/{project_id}", headers=auth_headers)
     assert response.status_code == 200
-    assert response.json()["status"] == "completed"
+    assert response.json()["execution_status"] == "completed"
     assert response.json()["health"] == "green"
 
 

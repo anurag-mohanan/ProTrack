@@ -1,7 +1,8 @@
 from app.models.enums import (
+    ExecutionStatus,
     MilestoneStatus,
     ProjectHealth,
-    ProjectStatus,
+    ProjectStage,
     TimesheetStatus,
 )
 from app.models.models import (
@@ -20,11 +21,12 @@ from app.models.models import (
 __all__ = [
     "Contact",
     "Customer",
+    "ExecutionStatus",
     "Milestone",
     "MilestoneStatus",
     "Project",
     "ProjectHealth",
-    "ProjectStatus",
+    "ProjectStage",
     "Role",
     "Stream",
     "TaskType",

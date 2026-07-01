@@ -21,11 +21,20 @@ import {
   invalidateProjectCalculationQueries,
   updateProject,
 } from '../../services/projectService';
-import type { Project, ProjectCreate, ProjectUpdate } from '../../types';
+import type { ExecutionStatus, Project, ProjectCreate, ProjectStage, ProjectUpdate } from '../../types';
+import {
+  EXECUTION_STATUS_LABELS,
+  PROJECT_STAGE_LABELS,
+} from '../../types/common';
 import { ErrorState } from '../common/ErrorState';
 import { userDisplayName } from '../../utils/format';
 
-const emptyForm: ProjectCreate = {
+interface ProjectFormValues extends ProjectCreate {
+  project_stage: ProjectStage;
+  execution_status: ExecutionStatus;
+}
+
+const emptyForm: ProjectFormValues = {
   tool_number: '',
   part_description: '',
   customer_id: '',
@@ -40,9 +49,11 @@ const emptyForm: ProjectCreate = {
   quoted_hours: 40,
   due_date: '',
   notes: '',
+  project_stage: 'preliminary',
+  execution_status: 'currently_being_worked_on',
 };
 
-function projectToForm(project: Project): ProjectCreate {
+function projectToForm(project: Project): ProjectFormValues {
   return {
     tool_number: project.tool_number,
     part_description: project.part_description,
@@ -58,6 +69,8 @@ function projectToForm(project: Project): ProjectCreate {
     quoted_hours: project.quoted_hours,
     due_date: project.due_date,
     notes: project.notes ?? '',
+    project_stage: project.project_stage,
+    execution_status: project.execution_status,
   };
 }
 
@@ -78,7 +91,7 @@ export function ProjectFormDialog({
 }: ProjectFormDialogProps) {
   const isEdit = Boolean(project);
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<ProjectCreate>(emptyForm);
+  const [form, setForm] = useState<ProjectFormValues>(emptyForm);
 
   const customersQuery = useQuery({
     queryKey: ['customers'],
@@ -153,6 +166,8 @@ export function ProjectFormDialog({
           quoted_hours: payload.quoted_hours,
           due_date: payload.due_date,
           notes: payload.notes,
+          project_stage: payload.project_stage,
+          execution_status: payload.execution_status,
         };
         return updateProject(project.id, updatePayload);
       }
@@ -477,6 +492,60 @@ export function ProjectFormDialog({
               }
             />
           </Grid>
+          {isEdit ? (
+            <>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth required>
+                  <InputLabel>Project Stage</InputLabel>
+                  <Select
+                    label="Project Stage"
+                    value={form.project_stage}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        project_stage: event.target.value as ProjectStage,
+                      })
+                    }
+                  >
+                    {(
+                      Object.entries(PROJECT_STAGE_LABELS) as Array<
+                        [ProjectStage, string]
+                      >
+                    ).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>
+                        {label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth required>
+                  <InputLabel>Execution Status</InputLabel>
+                  <Select
+                    label="Execution Status"
+                    value={form.execution_status}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        execution_status: event.target.value as ExecutionStatus,
+                      })
+                    }
+                  >
+                    {(
+                      Object.entries(EXECUTION_STATUS_LABELS) as Array<
+                        [ExecutionStatus, string]
+                      >
+                    ).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>
+                        {label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </>
+          ) : null}
           <Grid size={{ xs: 12 }}>
             <TextField
               label="Notes"

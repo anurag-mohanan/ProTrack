@@ -1,8 +1,9 @@
-import type { Project, ProjectStatus } from '../types';
+import type { Project, ExecutionStatus, ProjectStage } from '../types';
 import { apiClient, buildQuery, type ListParams } from './client';
 
 export interface ProjectListParams extends ListParams {
-  status?: ProjectStatus;
+  execution_status?: ExecutionStatus;
+  project_stage?: ProjectStage;
 }
 
 export async function fetchProjects(params?: ProjectListParams): Promise<Project[]> {

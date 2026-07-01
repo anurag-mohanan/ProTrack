@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 import app.models  # noqa: F401
 from app.crud import project as project_crud
 from app.db.base import Base
-from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus
+from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth
 from app.models.models import Contact, Customer, Milestone, Project, Role, Stream, User
 
 
@@ -60,7 +60,7 @@ def metrics_session():
             code=f"MET-{index}",
             quoted_hours=Decimal("10.00"),
             due_date=date(2026, 8, 1),
-            status=ProjectStatus.in_progress,
+            execution_status=ExecutionStatus.currently_being_worked_on,
             health=ProjectHealth.green,
         )
         session.add(project)

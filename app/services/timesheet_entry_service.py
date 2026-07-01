@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import FULL_ACCESS_ROLES, get_role_name, is_admin
-from app.models.enums import ProjectStatus, WorkCategory
+from app.models.enums import ExecutionStatus, WorkCategory
 from app.models.models import (
     Customer,
     Milestone,
@@ -22,9 +22,8 @@ from app.models.models import (
 from app.schemas.timesheet import TimesheetEntryCreate, TimesheetEntryUpdate
 
 ACTIVE_PROJECT_STATUSES = (
-    ProjectStatus.not_started,
-    ProjectStatus.in_progress,
-    ProjectStatus.waiting_for_customer,
+    ExecutionStatus.currently_being_worked_on,
+    ExecutionStatus.on_hold,
 )
 
 
@@ -46,7 +45,7 @@ def _get_active_project(db: Session, project_id: UUID) -> Project:
         raise ProTrackValidationError("Project not found")
     if project.is_deleted or project.is_archived:
         raise ProTrackValidationError("Project is not available for timesheet entry")
-    if project.status not in ACTIVE_PROJECT_STATUSES:
+    if project.execution_status not in ACTIVE_PROJECT_STATUSES:
         raise ProTrackValidationError(
             "Only active projects (Not Started, In Progress, On Hold) can be used"
         )

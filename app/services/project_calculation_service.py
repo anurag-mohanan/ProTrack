@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus
+from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth
 from app.models.models import Milestone, Project, TimesheetEntry
 
 
@@ -130,21 +130,13 @@ def calculate_progress(db: Session, project: Project) -> MilestoneProgress:
     )
 
 
-def calculate_project_status(progress_percent: Decimal) -> ProjectStatus:
-    if progress_percent == Decimal("0.00"):
-        return ProjectStatus.not_started
-    if progress_percent < Decimal("100.00"):
-        return ProjectStatus.in_progress
-    return ProjectStatus.completed
-
-
 def calculate_project_health(
     project: Project,
     today: date | None = None,
 ) -> ProjectHealth:
     today = today or date.today()
 
-    if project.status == ProjectStatus.completed:
+    if project.execution_status == ExecutionStatus.completed:
         return ProjectHealth.green
 
     if project.due_date < today:
@@ -179,16 +171,6 @@ def recalculate_project(db: Session, project_id: UUID | str) -> Project | None:
     project = db.get(Project, project_id)
     if project is None:
         return None
-
-    progress = calculate_progress(db, project)
-    new_status = calculate_project_status(progress.progress_percent)
-    if new_status == ProjectStatus.completed and project.completed_at is None:
-        from datetime import datetime, timezone
-
-        project.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    elif new_status != ProjectStatus.completed:
-        project.completed_at = None
-    project.status = new_status
 
     hours = calculate_hours(db, project)
     project.actual_hours = hours.actual

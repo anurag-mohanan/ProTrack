@@ -9,6 +9,7 @@ from app.crud.dashboard import (
     get_project_dashboard,
     get_workflow_dashboard,
 )
+from app.models.enums import ProjectStage
 from app.models.models import User
 from app.schemas.dashboard import (
     DashboardKpis,
@@ -38,10 +39,11 @@ router = APIRouter(
 
 @router.get("/summary", response_model=DashboardSummary)
 def dashboard_summary(
+    project_stage: ProjectStage | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_dashboard_summary(db, current_user)
+    return get_dashboard_summary(db, current_user, project_stage=project_stage)
 
 
 @router.get("/kpis", response_model=DashboardKpis)

@@ -13,7 +13,7 @@ from app.core.permissions import (
     project_assignment_filter,
     get_role_name,
 )
-from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
+from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
 from app.models.models import Activity, Customer, Milestone, Project, Role, Timesheet, TimesheetEntry, User
 from app.schemas.dashboard import (
     DashboardFuturePlaceholders,
@@ -110,34 +110,56 @@ def get_dashboard_overview(db: Session, user: User) -> DashboardOverview:
     )
 
 
-def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
+def get_dashboard_summary(
+    db: Session,
+    user: User,
+    *,
+    project_stage: ProjectStage | None = None,
+) -> DashboardSummary:
     visible = _visible_projects_clause()
+    stage = ()
+    if project_stage is not None:
+        stage = (Project.project_stage == project_stage,)
     total_projects = int(
         db.scalar(
             select(func.count())
             .select_from(Project)
-            .where(*visible)
+            .where(*visible, *stage)
         )
         or 0
     )
-    not_started = int(
+    being_worked_on = int(
         db.scalar(
             select(func.count())
             .select_from(Project)
             .where(
                 *visible,
-                Project.status == ProjectStatus.not_started,
+                *stage,
+                Project.execution_status == ExecutionStatus.currently_being_worked_on,
             )
         )
         or 0
     )
-    in_progress = int(
+    on_hold = int(
         db.scalar(
             select(func.count())
             .select_from(Project)
             .where(
                 *visible,
-                Project.status == ProjectStatus.in_progress,
+                *stage,
+                Project.execution_status == ExecutionStatus.on_hold,
+            )
+        )
+        or 0
+    )
+    cancelled = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(
+                *visible,
+                *stage,
+                Project.execution_status == ExecutionStatus.cancelled,
             )
         )
         or 0
@@ -148,7 +170,8 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
             .select_from(Project)
             .where(
                 *visible,
-                Project.status == ProjectStatus.completed,
+                *stage,
+                Project.execution_status == ExecutionStatus.completed,
             )
         )
         or 0
@@ -164,18 +187,7 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
         )
         or 0
     )
-    on_hold = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Project)
-            .where(
-                *visible,
-                Project.status == ProjectStatus.waiting_for_customer,
-            )
-        )
-        or 0
-    )
-    active = not_started + in_progress + on_hold
+    active = being_worked_on + on_hold + cancelled
 
     portfolio_hours = aggregate_portfolio_hours(db)
 
@@ -201,7 +213,7 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
 
     green_projects, yellow_projects, red_projects = count_projects_by_health(db)
 
-    engineering_kpis = get_dashboard_kpis(db)
+    engineering_kpis = get_dashboard_kpis(db, project_stage=project_stage)
 
     approved_entries = db.scalars(
         select(TimesheetEntry)
@@ -263,11 +275,13 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
     return DashboardSummary(
         total_projects=total_projects,
         active_projects=active,
-        not_started_projects=not_started,
-        in_progress_projects=in_progress,
+        being_worked_on_projects=being_worked_on,
+        on_hold_projects=on_hold,
+        cancelled_projects=cancelled,
         completed_projects=completed,
         archived_projects=archived,
-        on_hold_projects=on_hold,
+        not_started_projects=0,
+        in_progress_projects=being_worked_on,
         projects_due_this_week=engineering_kpis.projects_due_this_week,
         overdue_projects=engineering_kpis.overdue_projects,
         completed_this_month=engineering_kpis.completed_this_month,
@@ -326,11 +340,11 @@ def get_designer_workload(db: Session) -> list[DesignerWorkload]:
         active_projects = sum(
             1
             for project in assigned_projects
-            if project.status
+            if project.execution_status
             in (
-                ProjectStatus.not_started,
-                ProjectStatus.in_progress,
-                ProjectStatus.waiting_for_customer,
+                ExecutionStatus.currently_being_worked_on,
+                ExecutionStatus.on_hold,
+                ExecutionStatus.cancelled,
             )
         )
         quoted_hours_assigned = _round_hours(
@@ -442,7 +456,7 @@ def get_workflow_dashboard(db: Session, user: User) -> WorkflowDashboard:
     projects_due_this_week = sum(
         1
         for project in visible_projects
-        if project.status != ProjectStatus.completed
+        if project.execution_status != ExecutionStatus.completed
         and today <= project.due_date <= week_end
     )
 

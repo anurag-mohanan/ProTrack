@@ -10,13 +10,13 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
 from app.core.security import hash_password
-from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_user_lifecycle_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category
+from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
 from app.db.base import Base
 from app.api.deps import get_db
 from app.main import app
-from app.models.enums import MilestoneStatus, ProjectStatus
+from app.models.enums import ExecutionStatus, MilestoneStatus
 from app.models.models import (
     Contact,
     Customer,
@@ -196,7 +196,7 @@ def _seed_database(session) -> Milestone:
             quoted_hours=Decimal("120.00"),
             actual_hours=Decimal("0"),
             due_date=date(2026, 7, 1),
-            status=ProjectStatus.in_progress,
+            execution_status=ExecutionStatus.currently_being_worked_on,
         )
     )
     milestone = None
@@ -243,6 +243,7 @@ def test_engine():
     Base.metadata.create_all(bind=engine)
     ensure_admin_schema(engine)
     ensure_project_lifecycle_schema(engine)
+    ensure_project_stage_and_execution_status(engine)
     ensure_user_lifecycle_schema(engine)
     ensure_timesheet_entry_work_category(engine)
     ensure_non_productive_codes(engine)

@@ -45,7 +45,10 @@ function pushRecentId(key: string, id: string) {
   localStorage.setItem(key, JSON.stringify(next));
 }
 
-const ACTIVE_PROJECT_STATUSES = new Set(['not_started', 'in_progress', 'waiting_for_customer']);
+const ACTIVE_PROJECT_STATUSES = new Set([
+  'currently_being_worked_on',
+  'on_hold',
+]);
 
 export function TimesheetEntryPage() {
   const { timesheetId = '' } = useParams();
@@ -105,7 +108,7 @@ export function TimesheetEntryPage() {
         (project) =>
           !project.is_archived &&
           !project.is_deleted &&
-          ACTIVE_PROJECT_STATUSES.has(project.status),
+          ACTIVE_PROJECT_STATUSES.has(project.execution_status),
       ),
     [projectsQuery.data],
   );

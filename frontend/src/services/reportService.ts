@@ -3,11 +3,14 @@ import type {
   BillableVsNonBillableReportRow,
   CustomerSummaryReportRow,
   DesignerWorkload,
+  ExecutionStatusSummaryRow,
   MonthlyNpTrendReportRow,
   NonProductiveHoursReportRow,
   NpHoursByDesignerReportRow,
   ProductiveHoursReportRow,
   ProjectHoursReportRow,
+  ProjectPortfolioReportRow,
+  ProjectStageSummaryRow,
   TopNpActivityReportRow,
 } from '../types';
 import { apiClient, buildQuery } from '../api/client';
@@ -96,6 +99,33 @@ export async function getTopNpActivitiesReport(): Promise<TopNpActivityReportRow
   return data;
 }
 
+export async function getProjectPortfolioReport(
+  options?: ReportOptions,
+): Promise<ProjectPortfolioReportRow[]> {
+  const { data } = await apiClient.get<ProjectPortfolioReportRow[]>(
+    `/reports/project-portfolio${reportQuery(options)}`,
+  );
+  return data;
+}
+
+export async function getProjectStageSummaryReport(
+  options?: ReportOptions,
+): Promise<ProjectStageSummaryRow[]> {
+  const { data } = await apiClient.get<ProjectStageSummaryRow[]>(
+    `/reports/project-stage-summary${reportQuery(options)}`,
+  );
+  return data;
+}
+
+export async function getExecutionStatusSummaryReport(
+  options?: ReportOptions,
+): Promise<ExecutionStatusSummaryRow[]> {
+  const { data } = await apiClient.get<ExecutionStatusSummaryRow[]>(
+    `/reports/execution-status-summary${reportQuery(options)}`,
+  );
+  return data;
+}
+
 export const reportQueryKeys = {
   all: ['reports'] as const,
   projectHours: (options?: ReportOptions) =>
@@ -110,4 +140,10 @@ export const reportQueryKeys = {
   npHoursByDesigner: ['reports', 'np-hours-by-designer'] as const,
   billableVsNonBillable: ['reports', 'billable-vs-non-billable'] as const,
   topNpActivities: ['reports', 'top-np-activities'] as const,
+  projectPortfolio: (options?: ReportOptions) =>
+    ['reports', 'project-portfolio', options ?? {}] as const,
+  projectStageSummary: (options?: ReportOptions) =>
+    ['reports', 'project-stage-summary', options ?? {}] as const,
+  executionStatusSummary: (options?: ReportOptions) =>
+    ['reports', 'execution-status-summary', options ?? {}] as const,
 };

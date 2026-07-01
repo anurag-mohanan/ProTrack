@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import ProjectHealth, ProjectStatus
+from app.models.enums import ExecutionStatus, ProjectHealth, ProjectStage
 from app.schemas.project import ProjectRead
 from app.schemas.timesheet import ActivityRead, TimesheetEntryRead
 
@@ -58,8 +58,9 @@ class WorkflowDashboard(BaseModel):
 
 
 class DashboardKpis(BaseModel):
-    in_progress_projects: int = 0
+    being_worked_on_projects: int = 0
     on_hold_projects: int = 0
+    cancelled_projects: int = 0
     completed_this_month: int = 0
     projects_due_this_week: int = 0
     overdue_projects: int = 0
@@ -67,6 +68,8 @@ class DashboardKpis(BaseModel):
     total_quoted_hours_active: Decimal = Decimal("0")
     total_actual_hours_productive: Decimal = Decimal("0")
     np_hours_this_month: Decimal = Decimal("0")
+    # Legacy alias for older clients
+    in_progress_projects: int = 0
 
 
 class DashboardNpCodeRow(BaseModel):
@@ -88,7 +91,7 @@ class ProjectAttentionRow(BaseModel):
     designer_name: str | None = None
     due_date: date
     health: ProjectHealth
-    status: ProjectStatus
+    execution_status: ExecutionStatus
     attention_reason: str
 
 
@@ -112,14 +115,17 @@ class DashboardMyTasks(BaseModel):
 class DashboardSummary(BaseModel):
     total_projects: int = 0
     active_projects: int = 0
-    not_started_projects: int = 0
-    in_progress_projects: int = 0
+    being_worked_on_projects: int = 0
+    on_hold_projects: int = 0
+    cancelled_projects: int = 0
     completed_projects: int = 0
     archived_projects: int = 0
-    on_hold_projects: int = 0
     projects_due_this_week: int = 0
     overdue_projects: int = 0
     completed_this_month: int = 0
+    # Legacy fields retained for compatibility
+    not_started_projects: int = 0
+    in_progress_projects: int = 0
     billable_hours: Decimal = Decimal("0")
     non_billable_hours: Decimal = Decimal("0")
     np_hours: Decimal = Decimal("0")

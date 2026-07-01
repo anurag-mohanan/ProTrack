@@ -5,13 +5,14 @@ from sqlalchemy import func, select
 
 from app.crud.base import Session
 from app.crud.dashboard import get_designer_workload, _decimal, _round_hours
-from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
+from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
 from app.models.models import Customer, Milestone, NonProductiveCode, Project, TaskType, Timesheet, TimesheetEntry, User
 from app.schemas.reports import (
     BillableUtilizationReportRow,
     BillableVsNonBillableReportRow,
     CustomerSummaryReportRow,
     DesignerProductivityReportRow,
+    ExecutionStatusSummaryRow,
     MilestoneCompletionReportRow,
     MonthlyNpTrendReportRow,
     NonProductiveHoursReportRow,
@@ -19,6 +20,8 @@ from app.schemas.reports import (
     ProductiveHoursReportRow,
     ProjectDelayReportRow,
     ProjectHoursReportRow,
+    ProjectPortfolioReportRow,
+    ProjectStageSummaryRow,
     ReportsBundle,
     TimesheetApprovalReportRow,
     TopNpActivityReportRow,
@@ -67,7 +70,8 @@ def get_project_hours_report(
                 quoted_hours=hours.quoted,
                 actual_hours=hours.actual,
                 hours_variance=hours.variance,
-                status=project.status,
+                execution_status=project.execution_status,
+                project_stage=project.project_stage,
             )
         )
     return report
@@ -155,7 +159,7 @@ def get_project_delay_report(
         .join(Customer, Project.customer_id == Customer.id)
         .where(
             Project.due_date < today,
-            Project.status != ProjectStatus.completed,
+            Project.execution_status != ExecutionStatus.completed,
         )
         .order_by(Project.due_date)
     )
@@ -173,7 +177,8 @@ def get_project_delay_report(
                 due_date=project.due_date,
                 days_overdue=(today - project.due_date).days,
                 health=project.health,
-                status=project.status,
+                execution_status=project.execution_status,
+                project_stage=project.project_stage,
             )
         )
     return report
@@ -453,6 +458,77 @@ def get_top_np_activities_report(db: Session, *, limit: int = 10) -> list[TopNpA
             description=row[1],
             total_hours=_round_hours(_decimal(row[2])),
             entry_count=int(row[3]),
+        )
+        for row in rows
+    ]
+
+
+def get_project_portfolio_report(
+    db: Session,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+) -> list[ProjectPortfolioReportRow]:
+    stmt = (
+        select(Project, Customer.name)
+        .join(Customer, Project.customer_id == Customer.id)
+        .order_by(Project.tool_number)
+    )
+    stmt = _apply_report_filters(
+        stmt, include_archived=include_archived, include_deleted=include_deleted
+    )
+    rows = db.execute(stmt).all()
+    return [
+        ProjectPortfolioReportRow(
+            project_id=project.id,
+            tool_number=project.tool_number,
+            customer_name=customer_name,
+            project_stage=project.project_stage,
+            execution_status=project.execution_status,
+            due_date=project.due_date,
+            health=project.health,
+        )
+        for project, customer_name in rows
+    ]
+
+
+def get_project_stage_summary_report(
+    db: Session,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+) -> list[ProjectStageSummaryRow]:
+    stmt = select(Project.project_stage, func.count()).group_by(Project.project_stage)
+    if not include_deleted:
+        stmt = stmt.where(Project.is_deleted.is_(False))
+    if not include_archived:
+        stmt = stmt.where(Project.is_archived.is_(False))
+    rows = db.execute(stmt.order_by(Project.project_stage)).all()
+    return [
+        ProjectStageSummaryRow(
+            project_stage=row[0],
+            project_count=int(row[1] or 0),
+        )
+        for row in rows
+    ]
+
+
+def get_execution_status_summary_report(
+    db: Session,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+) -> list[ExecutionStatusSummaryRow]:
+    stmt = select(Project.execution_status, func.count()).group_by(Project.execution_status)
+    if not include_deleted:
+        stmt = stmt.where(Project.is_deleted.is_(False))
+    if not include_archived:
+        stmt = stmt.where(Project.is_archived.is_(False))
+    rows = db.execute(stmt.order_by(Project.execution_status)).all()
+    return [
+        ExecutionStatusSummaryRow(
+            execution_status=row[0],
+            project_count=int(row[1] or 0),
         )
         for row in rows
     ]

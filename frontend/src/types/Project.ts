@@ -1,4 +1,9 @@
-import type { ProjectHealth, ProjectStatus, Timestamped } from './common';
+import type {
+  ExecutionStatus,
+  ProjectHealth,
+  ProjectStage,
+  Timestamped,
+} from './common';
 
 export type ProjectLifecycleFilter = 'active' | 'completed' | 'archived' | 'deleted';
 
@@ -19,7 +24,8 @@ export interface Project extends Timestamped {
   progress_percent: number;
   health: ProjectHealth;
   due_date: string;
-  status: ProjectStatus;
+  project_stage: ProjectStage;
+  execution_status: ExecutionStatus;
   notes: string | null;
   completed_at?: string | null;
   is_archived?: boolean;
@@ -55,7 +61,8 @@ export interface ProjectCreate {
   code: string;
   quoted_hours: number;
   due_date: string;
-  status?: ProjectStatus;
+  project_stage?: ProjectStage;
+  execution_status?: ExecutionStatus;
   notes?: string | null;
 }
 
@@ -71,7 +78,8 @@ export interface ProjectUpdate {
   code?: string;
   quoted_hours?: number;
   due_date?: string;
-  status?: ProjectStatus;
+  project_stage?: ProjectStage;
+  execution_status?: ExecutionStatus;
   notes?: string | null;
 }
 

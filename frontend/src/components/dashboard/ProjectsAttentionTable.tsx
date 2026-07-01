@@ -55,7 +55,7 @@ export function ProjectsAttentionTable({ rows }: ProjectsAttentionTableProps) {
             <TableCell>Designer</TableCell>
             <TableCell>Due Date</TableCell>
             <TableCell>Health</TableCell>
-            <TableCell>Status</TableCell>
+            <TableCell>Execution Status</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -79,7 +79,7 @@ export function ProjectsAttentionTable({ rows }: ProjectsAttentionTableProps) {
                 <HealthChip health={row.health} />
               </TableCell>
               <TableCell>
-                <StatusChip status={row.status} />
+                <StatusChip status={row.execution_status} />
               </TableCell>
             </TableRow>
           ))}

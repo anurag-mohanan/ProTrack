@@ -4,11 +4,16 @@ export interface Timestamped {
   updated_at: string;
 }
 
-export type ProjectStatus =
-  | 'not_started'
-  | 'in_progress'
-  | 'waiting_for_customer'
+export type ProjectStage = 'preliminary' | 'intermediate' | 'final';
+
+export type ExecutionStatus =
+  | 'currently_being_worked_on'
+  | 'on_hold'
+  | 'cancelled'
   | 'completed';
+
+/** @deprecated Use ExecutionStatus */
+export type ProjectStatus = ExecutionStatus;
 
 export type MilestoneStatus =
   | 'not_started'
@@ -19,3 +24,16 @@ export type MilestoneStatus =
 export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 
 export type ProjectHealth = 'green' | 'yellow' | 'red';
+
+export const PROJECT_STAGE_LABELS: Record<ProjectStage, string> = {
+  preliminary: 'Preliminary',
+  intermediate: 'Intermediate',
+  final: 'Final',
+};
+
+export const EXECUTION_STATUS_LABELS: Record<ExecutionStatus, string> = {
+  currently_being_worked_on: 'Currently Being Worked On',
+  on_hold: 'On Hold',
+  cancelled: 'Cancelled',
+  completed: 'Completed',
+};

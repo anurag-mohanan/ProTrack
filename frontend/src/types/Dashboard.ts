@@ -1,18 +1,20 @@
-import type { ProjectHealth } from './common';
+import type { ExecutionStatus, ProjectHealth } from './common';
 import type { Project } from './Project';
 import type { TimesheetEntry } from './TimesheetEntry';
 
 export interface DashboardSummary {
   total_projects: number;
   active_projects: number;
-  not_started_projects: number;
-  in_progress_projects: number;
+  being_worked_on_projects: number;
+  on_hold_projects: number;
+  cancelled_projects: number;
   completed_projects: number;
   archived_projects: number;
-  on_hold_projects: number;
   projects_due_this_week: number;
   overdue_projects: number;
   completed_this_month: number;
+  not_started_projects: number;
+  in_progress_projects: number;
   billable_hours: number;
   non_billable_hours: number;
   np_hours: number;
@@ -56,8 +58,9 @@ export interface DashboardOverview {
 }
 
 export interface DashboardKpis {
-  in_progress_projects: number;
+  being_worked_on_projects: number;
   on_hold_projects: number;
+  cancelled_projects: number;
   completed_this_month: number;
   projects_due_this_week: number;
   overdue_projects: number;
@@ -65,6 +68,7 @@ export interface DashboardKpis {
   total_quoted_hours_active: number;
   total_actual_hours_productive: number;
   np_hours_this_month: number;
+  in_progress_projects: number;
 }
 
 export interface ProjectAttentionRow {
@@ -75,7 +79,7 @@ export interface ProjectAttentionRow {
   designer_name: string | null;
   due_date: string;
   health: ProjectHealth;
-  status: import('./common').ProjectStatus;
+  execution_status: ExecutionStatus;
   attention_reason: 'overdue' | 'blocked' | 'due_soon' | 'on_hold';
 }
 

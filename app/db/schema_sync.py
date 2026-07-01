@@ -227,6 +227,64 @@ def ensure_project_template_schema(engine: Engine) -> None:
                     "REFERENCES project_types(id)"
                 )
             )
+def ensure_project_stage_and_execution_status(engine: Engine) -> None:
+    """Add project_stage and migrate legacy status values to execution status."""
+    dialect = engine.dialect.name
+    legacy_status_map = (
+        ("not_started", "currently_being_worked_on"),
+        ("in_progress", "currently_being_worked_on"),
+        ("waiting_for_customer", "on_hold"),
+        ("completed", "completed"),
+    )
+
+    if dialect == "sqlite":
+        if not _sqlite_has_column(engine, "projects", "project_stage"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE projects ADD COLUMN project_stage "
+                        "VARCHAR(32) NOT NULL DEFAULT 'preliminary'"
+                    )
+                )
+        with engine.begin() as connection:
+            for old_value, new_value in legacy_status_map:
+                connection.execute(
+                    text(
+                        "UPDATE projects SET status = :new_value WHERE status = :old_value"
+                    ),
+                    {"old_value": old_value, "new_value": new_value},
+                )
+            connection.execute(
+                text(
+                    "UPDATE projects SET project_stage = 'preliminary' "
+                    "WHERE project_stage IS NULL OR project_stage = ''"
+                )
+            )
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_stage "
+                    "VARCHAR(32) NOT NULL DEFAULT 'preliminary'"
+                )
+            )
+            for old_value, new_value in legacy_status_map:
+                connection.execute(
+                    text(
+                        "UPDATE projects SET status = :new_value WHERE status = :old_value"
+                    ),
+                    {"old_value": old_value, "new_value": new_value},
+                )
+            connection.execute(
+                text(
+                    "UPDATE projects SET project_stage = 'preliminary' "
+                    "WHERE project_stage IS NULL OR project_stage = ''"
+                )
+            )
+
+
 def ensure_project_lifecycle_schema(engine: Engine) -> None:
     dialect = engine.dialect.name
     project_columns = (

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.permissions import DESIGNER, PROJECT_STAFF_ROLES
 from app.core.security import hash_password
 from app.crud.project import DEFAULT_PROJECT_MILESTONES
-from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
+from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
 from app.models.models import (
     Contact,
     Customer,
@@ -75,24 +75,28 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "notes": ("notes", "comments"),
 }
 
-STATUS_MAP: dict[str, ProjectStatus] = {
-    "not started": ProjectStatus.not_started,
-    "not_started": ProjectStatus.not_started,
-    "new": ProjectStatus.not_started,
-    "in progress": ProjectStatus.in_progress,
-    "in_progress": ProjectStatus.in_progress,
-    "active": ProjectStatus.in_progress,
-    "wip": ProjectStatus.in_progress,
-    "working": ProjectStatus.in_progress,
-    "waiting for customer": ProjectStatus.waiting_for_customer,
-    "waiting_for_customer": ProjectStatus.waiting_for_customer,
-    "waiting": ProjectStatus.waiting_for_customer,
-    "on hold": ProjectStatus.waiting_for_customer,
-    "hold": ProjectStatus.waiting_for_customer,
-    "completed": ProjectStatus.completed,
-    "complete": ProjectStatus.completed,
-    "done": ProjectStatus.completed,
-    "closed": ProjectStatus.completed,
+STATUS_MAP: dict[str, ExecutionStatus] = {
+    "not started": ExecutionStatus.currently_being_worked_on,
+    "not_started": ExecutionStatus.currently_being_worked_on,
+    "new": ExecutionStatus.currently_being_worked_on,
+    "in progress": ExecutionStatus.currently_being_worked_on,
+    "in_progress": ExecutionStatus.currently_being_worked_on,
+    "active": ExecutionStatus.currently_being_worked_on,
+    "wip": ExecutionStatus.currently_being_worked_on,
+    "working": ExecutionStatus.currently_being_worked_on,
+    "currently being worked on": ExecutionStatus.currently_being_worked_on,
+    "currently_being_worked_on": ExecutionStatus.currently_being_worked_on,
+    "waiting for customer": ExecutionStatus.on_hold,
+    "waiting_for_customer": ExecutionStatus.on_hold,
+    "waiting": ExecutionStatus.on_hold,
+    "on hold": ExecutionStatus.on_hold,
+    "hold": ExecutionStatus.on_hold,
+    "cancelled": ExecutionStatus.cancelled,
+    "canceled": ExecutionStatus.cancelled,
+    "completed": ExecutionStatus.completed,
+    "complete": ExecutionStatus.completed,
+    "done": ExecutionStatus.completed,
+    "closed": ExecutionStatus.completed,
 }
 
 DEFAULT_IMPORT_ARCHIVE_DAYS = 365
@@ -104,13 +108,13 @@ KNOWN_NP_CODES = frozenset(
 
 def _should_import_as_archived(
     *,
-    status: ProjectStatus,
+    status: ExecutionStatus,
     due_date: date,
     import_as_archived: bool,
 ) -> bool:
     if not import_as_archived:
         return False
-    if status != ProjectStatus.completed:
+    if status != ExecutionStatus.completed:
         return False
     age_days = (date.today() - due_date).days
     return age_days >= DEFAULT_IMPORT_ARCHIVE_DAYS
@@ -119,7 +123,7 @@ def _should_import_as_archived(
 def _apply_import_archive_state(
     project: Project,
     *,
-    status: ProjectStatus,
+    status: ExecutionStatus,
     due_date: date,
     import_as_archived: bool,
 ) -> None:
@@ -129,7 +133,7 @@ def _apply_import_archive_state(
         import_as_archived=import_as_archived,
     ):
         return
-    if status == ProjectStatus.completed and project.completed_at is None:
+    if status == ExecutionStatus.completed and project.completed_at is None:
         project.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     project.is_archived = True
     project.archived_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -162,7 +166,7 @@ class ParsedImportRow:
     actual_hours: Decimal | None = None
     design_phase: str | None = None
     progress: Decimal | None = None
-    status: ProjectStatus | None = None
+    status: ExecutionStatus | None = None
     part_description: str | None = None
     due_date: date | None = None
     design_leader: str | None = None
@@ -232,7 +236,7 @@ def _parse_date(value: Any) -> date | None:
     return None
 
 
-def _parse_status(value: Any) -> ProjectStatus | None:
+def _parse_status(value: Any) -> ExecutionStatus | None:
     text = _normalize_key(_cell_text(value))
     if not text:
         return None
@@ -839,7 +843,7 @@ def _create_project_from_row(
     part_description = row.part_description or f"Imported project {row.tool_number}"
     due_date = row.due_date or (date.today() + timedelta(days=90))
     code = row.code or row.tool_number
-    status = row.status or ProjectStatus.not_started
+    status = row.status or ExecutionStatus.currently_being_worked_on
 
     if existing is not None and duplicate_action == DuplicateAction.update:
         existing.customer_id = customer.id
@@ -851,7 +855,7 @@ def _create_project_from_row(
         existing.part_description = part_description
         existing.quoted_hours = row.quoted_hours
         existing.due_date = due_date
-        existing.status = status
+        existing.execution_status = status
         if row.actual_hours is not None:
             existing.actual_hours = row.actual_hours
         db.add(existing)
@@ -892,7 +896,7 @@ def _create_project_from_row(
         quoted_hours=row.quoted_hours,
         actual_hours=row.actual_hours or Decimal("0"),
         due_date=due_date,
-        status=status,
+        execution_status=status,
         health=ProjectHealth.green,
         notes="Imported from historical workbook",
     )
@@ -906,11 +910,11 @@ def _create_project_from_row(
     if row.actual_hours is not None:
         project.actual_hours = row.actual_hours
     if row.status is not None:
-        project.status = row.status
+        project.execution_status = row.status
     project.health = calculate_project_health(project)
     _apply_import_archive_state(
         project,
-        status=project.status,
+        status=project.execution_status,
         due_date=due_date,
         import_as_archived=import_as_archived,
     )

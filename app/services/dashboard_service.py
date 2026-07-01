@@ -16,7 +16,15 @@ from app.core.permissions import (
     get_role_name,
     project_assignment_filter,
 )
-from app.models.enums import ActivityAction, MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
+from app.models.enums import (
+    ActivityAction,
+    ExecutionStatus,
+    MilestoneStatus,
+    ProjectHealth,
+    ProjectStage,
+    TimesheetStatus,
+    WorkCategory,
+)
 from app.models.models import (
     Activity,
     Customer,
@@ -64,10 +72,17 @@ def _visible_projects_clause():
     return (Project.is_deleted.is_(False), Project.is_archived.is_(False))
 
 
-def _active_project_clause():
+def _stage_clause(project_stage: ProjectStage | None):
+    if project_stage is None:
+        return ()
+    return (Project.project_stage == project_stage,)
+
+
+def _active_project_clause(project_stage: ProjectStage | None = None):
     return (
         *_visible_projects_clause(),
-        Project.status != ProjectStatus.completed,
+        *_stage_clause(project_stage),
+        Project.execution_status != ExecutionStatus.completed,
     )
 
 
@@ -78,7 +93,7 @@ def _current_week_bounds(today: date | None = None) -> tuple[date, date]:
 
 
 def _attention_reason(project: Project, today: date) -> str | None:
-    if project.status == ProjectStatus.completed:
+    if project.execution_status == ExecutionStatus.completed:
         return None
     if project.due_date is not None and project.due_date < today:
         return "overdue"
@@ -86,7 +101,7 @@ def _attention_reason(project: Project, today: date) -> str | None:
         return "blocked"
     if project.due_date is not None and project.due_date <= today + timedelta(days=7):
         return "due_soon"
-    if project.status == ProjectStatus.waiting_for_customer:
+    if project.execution_status == ExecutionStatus.on_hold:
         return "on_hold"
     return None
 
@@ -111,36 +126,57 @@ def _activity_to_read(db: Session, activity: Activity) -> ActivityRead:
     )
 
 
-def get_dashboard_kpis(db: Session) -> DashboardKpis:
+def get_dashboard_kpis(
+    db: Session,
+    *,
+    project_stage: ProjectStage | None = None,
+) -> DashboardKpis:
     """Reliable engineering KPIs from aggregate SQL — no user-specific estimates."""
     today = date.today()
     month_start = today.replace(day=1)
     due_cutoff = today + timedelta(days=7)
     visible = _visible_projects_clause()
-    active = _active_project_clause()
-    not_completed = Project.status != ProjectStatus.completed
-    in_progress = and_(Project.status == ProjectStatus.in_progress, *visible)
-    on_hold = and_(Project.status == ProjectStatus.waiting_for_customer, *visible)
-    completed_month = and_(
-        Project.status == ProjectStatus.completed,
+    stage = _stage_clause(project_stage)
+    active = _active_project_clause(project_stage)
+    not_completed = Project.execution_status != ExecutionStatus.completed
+    being_worked_on = and_(
+        Project.execution_status == ExecutionStatus.currently_being_worked_on,
         *visible,
+        *stage,
+    )
+    on_hold = and_(
+        Project.execution_status == ExecutionStatus.on_hold,
+        *visible,
+        *stage,
+    )
+    cancelled = and_(
+        Project.execution_status == ExecutionStatus.cancelled,
+        *visible,
+        *stage,
+    )
+    completed_month = and_(
+        Project.execution_status == ExecutionStatus.completed,
+        *visible,
+        *stage,
         Project.completed_at.is_not(None),
         func.date(Project.completed_at) >= month_start,
         func.date(Project.completed_at) <= today,
     )
     due_next_7_days = and_(
         *visible,
+        *stage,
         not_completed,
         Project.due_date >= today,
         Project.due_date <= due_cutoff,
     )
-    overdue = and_(*visible, not_completed, Project.due_date < today)
+    overdue = and_(*visible, *stage, not_completed, Project.due_date < today)
     archived = and_(Project.is_deleted.is_(False), Project.is_archived.is_(True))
 
     project_row = db.execute(
         select(
-            func.count().filter(in_progress),
+            func.count().filter(being_worked_on),
             func.count().filter(on_hold),
+            func.count().filter(cancelled),
             func.count().filter(completed_month),
             func.count().filter(due_next_7_days),
             func.count().filter(overdue),
@@ -177,16 +213,19 @@ def get_dashboard_kpis(db: Session) -> DashboardKpis:
         )
     )
 
+    being_worked_on_count = int(project_row[0] or 0)
     return DashboardKpis(
-        in_progress_projects=int(project_row[0] or 0),
+        being_worked_on_projects=being_worked_on_count,
         on_hold_projects=int(project_row[1] or 0),
-        completed_this_month=int(project_row[2] or 0),
-        projects_due_this_week=int(project_row[3] or 0),
-        overdue_projects=int(project_row[4] or 0),
-        archived_projects=int(project_row[5] or 0),
-        total_quoted_hours_active=_round_hours(_decimal(project_row[6])),
+        cancelled_projects=int(project_row[2] or 0),
+        completed_this_month=int(project_row[3] or 0),
+        projects_due_this_week=int(project_row[4] or 0),
+        overdue_projects=int(project_row[5] or 0),
+        archived_projects=int(project_row[6] or 0),
+        total_quoted_hours_active=_round_hours(_decimal(project_row[7])),
         total_actual_hours_productive=total_actual_hours,
         np_hours_this_month=np_hours_this_month,
+        in_progress_projects=being_worked_on_count,
     )
 
 
@@ -284,12 +323,12 @@ def get_attention_projects(db: Session, *, limit: int = 10) -> list[ProjectAtten
         select(Project)
         .where(
             *visibility,
-            Project.status != ProjectStatus.completed,
+            Project.execution_status != ExecutionStatus.completed,
             or_(
                 Project.due_date < today,
                 Project.health == ProjectHealth.red,
                 and_(Project.due_date >= today, Project.due_date <= due_soon_cutoff),
-                Project.status == ProjectStatus.waiting_for_customer,
+                Project.execution_status == ExecutionStatus.on_hold,
             ),
         )
         .limit(max(limit * 5, 50))
@@ -332,7 +371,7 @@ def get_attention_projects(db: Session, *, limit: int = 10) -> list[ProjectAtten
             designer_name=designer_names.get(project.id),
             due_date=project.due_date or today,
             health=project.health or ProjectHealth.green,
-            status=project.status,
+            execution_status=project.execution_status,
             attention_reason=reason,
         )
         for _, _, project, reason in top
@@ -413,9 +452,9 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
 
     pending_reviews: list[DashboardTaskItem] = []
     for project in user_projects:
-        if project.status not in (
-            ProjectStatus.in_progress,
-            ProjectStatus.waiting_for_customer,
+        if project.execution_status not in (
+            ExecutionStatus.currently_being_worked_on,
+            ExecutionStatus.on_hold,
         ):
             continue
         if project.health != ProjectHealth.yellow:

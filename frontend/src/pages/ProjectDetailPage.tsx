@@ -20,7 +20,8 @@ import { ProjectMilestonesTab } from '../components/projects/ProjectMilestonesTa
 import { ProjectTimesheetsTab } from '../components/projects/ProjectTimesheetsTab';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
-import { HealthChip, StatusChip } from '../components/common/StatusChip';
+import { HealthChip, ExecutionStatusChip, ProjectStageChip } from '../components/common/StatusChip';
+import { fetchProjectTypes, fetchMatchingProjectTemplates } from '../api/projectTemplates';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
 import { getProjectDetail, invalidateProjectCalculationQueries, projectQueryKeys, archiveProject } from '../services/projectService';
@@ -78,6 +79,26 @@ export function ProjectDetailPage() {
     queryFn: fetchStreams,
   });
 
+  const projectTypesQuery = useQuery({
+    queryKey: ['project-types'],
+    queryFn: fetchProjectTypes,
+  });
+
+  const projectTemplatesQuery = useQuery({
+    queryKey: [
+      'project-templates',
+      id,
+      detailQuery.data?.project.project_template_id,
+      detailQuery.data?.project.project_type_id,
+    ],
+    queryFn: () =>
+      fetchMatchingProjectTemplates({
+        customer_id: detailQuery.data!.project.customer_id,
+        project_type_id: detailQuery.data!.project.project_type_id ?? '',
+      }),
+    enabled: Boolean(detailQuery.data?.project.project_type_id),
+  });
+
   const archiveMutation = useMutation({
     mutationFn: () => archiveProject(id),
     onSuccess: () => {
@@ -94,6 +115,7 @@ export function ProjectDetailPage() {
   if (!detailQuery.data) return <EmptyState title="Project not found" />;
 
   const { project, milestone_summary, hours, health } = detailQuery.data;
+
   const customerName =
     customersQuery.data?.find((customer) => customer.id === project.customer_id)?.name ??
     '—';
@@ -107,6 +129,13 @@ export function ProjectDetailPage() {
   const surfacer = project.surfacer_id
     ? usersQuery.data?.find((user) => user.id === project.surfacer_id)
     : undefined;
+  const projectTypeName =
+    projectTypesQuery.data?.find((type) => type.id === project.project_type_id)?.name ??
+    '—';
+  const templateName =
+    projectTemplatesQuery.data?.find(
+      (template) => template.id === project.project_template_id,
+    )?.name ?? '—';
 
   return (
     <Box>
@@ -142,7 +171,8 @@ export function ProjectDetailPage() {
 
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
         <HealthChip health={health} />
-        <StatusChip status={project.status} />
+        <ProjectStageChip stage={project.project_stage} />
+        <ExecutionStatusChip status={project.execution_status} />
       </Box>
 
       <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 3 }}>
@@ -159,10 +189,18 @@ export function ProjectDetailPage() {
                 <Typography variant="h6" gutterBottom>
                   Project Information
                 </Typography>
-                <InfoRow label="Code" value={project.code} />
+                <InfoRow label="Tool Number" value={project.tool_number} />
+                <InfoRow label="Project Code" value={project.code} />
                 <InfoRow label="Customer" value={customerName} />
+                <InfoRow label="Project Type" value={projectTypeName} />
+                <InfoRow label="Template" value={templateName} />
                 <InfoRow label="Stream" value={streamName} />
                 <InfoRow label="Due Date" value={formatDate(project.due_date)} />
+                <InfoRow
+                  label="Quoted Hours"
+                  value={formatNumber(project.quoted_hours)}
+                />
+                <InfoRow label="Actual Hours" value={formatNumber(hours.actual)} />
                 <InfoRow
                   label="Design Leader"
                   value={designLeader ? userDisplayName(designLeader) : '—'}
@@ -176,8 +214,22 @@ export function ProjectDetailPage() {
                   value={surfacer ? userDisplayName(surfacer) : '—'}
                 />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                  <Typography color="text.secondary">Status</Typography>
-                  <StatusChip status={project.status} />
+                  <Typography color="text.secondary">Project Stage</Typography>
+                  <ProjectStageChip stage={project.project_stage} />
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
+                  <Typography color="text.secondary">Execution Status</Typography>
+                  <ExecutionStatusChip status={project.execution_status} />
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
+                  <Typography color="text.secondary">Health</Typography>
+                  <HealthChip health={health} />
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
+                  <Typography color="text.secondary">Progress</Typography>
+                  <Typography sx={{ fontWeight: 600 }}>
+                    {formatNumber(milestone_summary.progress_percent)}%
+                  </Typography>
                 </Box>
               </CardContent>
             </Card>

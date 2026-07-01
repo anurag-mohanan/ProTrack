@@ -10,7 +10,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProTrackValidationError
-from app.models.enums import EntityType, ProjectLifecycleFilter, ProjectStatus
+from app.models.enums import EntityType, ExecutionStatus, ProjectLifecycleFilter, ProjectStage
 from app.models.models import Activity, Milestone, Project, TimesheetEntry, User
 
 
@@ -100,7 +100,10 @@ def archive_project(db: Session, project_id: UUID, actor: User) -> Project:
         raise ProTrackValidationError("Deleted projects cannot be archived")
     if project.is_archived:
         raise ProTrackValidationError("Project is already archived")
-    if project.status == ProjectStatus.completed and project.completed_at is None:
+    if (
+        project.execution_status == ExecutionStatus.completed
+        and project.completed_at is None
+    ):
         project.completed_at = _utcnow()
     project.is_archived = True
     project.archived_at = _utcnow()
@@ -176,26 +179,33 @@ def apply_lifecycle_filter(stmt, lifecycle: ProjectLifecycleFilter):
         return stmt.where(Project.is_archived.is_(True))
     stmt = stmt.where(Project.is_archived.is_(False))
     if lifecycle == ProjectLifecycleFilter.completed:
-        return stmt.where(Project.status == ProjectStatus.completed)
+        return stmt.where(Project.execution_status == ExecutionStatus.completed)
     if lifecycle == ProjectLifecycleFilter.active:
         return stmt.where(
-            Project.status.in_(
+            Project.execution_status.in_(
                 (
-                    ProjectStatus.not_started,
-                    ProjectStatus.in_progress,
-                    ProjectStatus.waiting_for_customer,
+                    ExecutionStatus.currently_being_worked_on,
+                    ExecutionStatus.on_hold,
+                    ExecutionStatus.cancelled,
                 )
             )
         )
     return stmt
 
 
-_STATUS_SORT = case(
-    (Project.status == ProjectStatus.not_started, 1),
-    (Project.status == ProjectStatus.in_progress, 2),
-    (Project.status == ProjectStatus.waiting_for_customer, 3),
-    (Project.status == ProjectStatus.completed, 4),
+_EXECUTION_STATUS_SORT = case(
+    (Project.execution_status == ExecutionStatus.currently_being_worked_on, 1),
+    (Project.execution_status == ExecutionStatus.on_hold, 2),
+    (Project.execution_status == ExecutionStatus.cancelled, 3),
+    (Project.execution_status == ExecutionStatus.completed, 4),
     else_=5,
+)
+
+_PROJECT_STAGE_SORT = case(
+    (Project.project_stage == ProjectStage.preliminary, 1),
+    (Project.project_stage == ProjectStage.intermediate, 2),
+    (Project.project_stage == ProjectStage.final, 3),
+    else_=4,
 )
 
 
@@ -210,7 +220,8 @@ def apply_lifecycle_sort(stmt, lifecycle: ProjectLifecycleFilter):
     if lifecycle == ProjectLifecycleFilter.deleted:
         return stmt.order_by(Project.deleted_at.desc())
     return stmt.order_by(
-        _STATUS_SORT,
+        _EXECUTION_STATUS_SORT,
+        _PROJECT_STAGE_SORT,
         Project.due_date.asc(),
         Project.updated_at.desc(),
     )

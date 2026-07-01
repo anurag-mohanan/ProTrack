@@ -1,4 +1,5 @@
-import { Box, Grid, Typography } from '@mui/material';
+import { Box, FormControl, Grid, InputLabel, MenuItem, Select, Typography } from '@mui/material';
+import CancelIcon from '@mui/icons-material/Cancel';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
@@ -8,9 +9,13 @@ import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import TimelapseIcon from '@mui/icons-material/Timelapse';
 import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { dashboardQueryKeys, fetchDashboardSummary } from '../api/dashboard';
+import { ContentCard } from '../components/ui/cards';
+import type { ProjectStage } from '../types';
+import { PROJECT_STAGE_LABELS } from '../types/common';
 import { ActionKpiCard, DashboardSection } from '../components/dashboard/DashboardCards';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { MyTasksWidget } from '../components/dashboard/MyTasksWidget';
@@ -30,10 +35,15 @@ const EMPTY_TASKS = {
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const [projectStageFilter, setProjectStageFilter] = useState<ProjectStage | 'all'>(
+    'all',
+  );
+
+  const stageParam = projectStageFilter === 'all' ? undefined : projectStageFilter;
 
   const dashboardQuery = useQuery({
-    queryKey: dashboardQueryKeys.summary,
-    queryFn: fetchDashboardSummary,
+    queryKey: dashboardQueryKeys.summary(stageParam),
+    queryFn: () => fetchDashboardSummary(stageParam),
     staleTime: QUERY_STALE_TIMES.dashboard,
     retry: 1,
   });
@@ -53,21 +63,33 @@ export function DashboardPage() {
     summary?.total_actual_hours_productive ?? summary?.billable_hours ?? 0;
   const npHoursThisMonth = summary?.np_hours_this_month ?? summary?.np_hours ?? 0;
 
+  const beingWorkedOn =
+    summary?.being_worked_on_projects ?? summary?.in_progress_projects ?? 0;
+  const cancelledProjects = summary?.cancelled_projects ?? 0;
+
   const rowOneCards = [
     {
-      title: 'Active Projects',
-      value: unavailable ? '—' : formatNumber(summary!.in_progress_projects, 0),
-      subtitle: unavailable ? 'No data available' : 'In progress',
+      title: 'Projects Being Worked On',
+      value: unavailable ? '—' : formatNumber(beingWorkedOn, 0),
+      subtitle: unavailable ? 'No data available' : 'Active engineering work',
       icon: FolderOpenIcon,
-      statusColor: !unavailable && summary!.in_progress_projects > 0 ? ('primary' as const) : undefined,
-      onClick: () => navigate('/projects?status=in_progress'),
+      statusColor: !unavailable && beingWorkedOn > 0 ? ('primary' as const) : undefined,
+      onClick: () =>
+        navigate('/projects?execution_status=currently_being_worked_on'),
     },
     {
       title: 'Projects On Hold',
       value: unavailable ? '—' : formatNumber(summary!.on_hold_projects, 0),
-      subtitle: unavailable ? 'No data available' : 'Waiting for customer',
+      subtitle: unavailable ? 'No data available' : 'Work paused',
       icon: PauseCircleIcon,
-      onClick: () => navigate('/projects?status=waiting_for_customer'),
+      onClick: () => navigate('/projects?execution_status=on_hold'),
+    },
+    {
+      title: 'Cancelled Projects',
+      value: unavailable ? '—' : formatNumber(cancelledProjects, 0),
+      subtitle: unavailable ? 'No data available' : 'Cancelled portfolio',
+      icon: CancelIcon,
+      onClick: () => navigate('/projects?execution_status=cancelled'),
     },
     {
       title: 'Projects Due Next 7 Days',
@@ -91,10 +113,11 @@ export function DashboardPage() {
     {
       title: 'Completed Projects',
       value: unavailable ? '—' : formatNumber(completedThisMonth, 0),
-      subtitle: unavailable ? 'No data available' : 'This month',
+      subtitle: unavailable ? 'No data available' : 'Completed this month',
       icon: TaskAltIcon,
       statusColor: !unavailable && completedThisMonth > 0 ? ('success' as const) : undefined,
-      onClick: () => navigate('/projects?lifecycle=completed&completed=month'),
+      onClick: () =>
+        navigate('/projects?execution_status=completed&lifecycle=completed&completed=month'),
     },
     {
       title: 'Total Quoted Hours',
@@ -134,6 +157,30 @@ export function DashboardPage() {
         onCustomer={() => navigate('/admin/customers')}
         onUser={() => navigate('/admin/users')}
       />
+
+      <Box sx={{ mb: 2.5 }}>
+        <ContentCard>
+          <FormControl sx={{ minWidth: 220 }}>
+            <InputLabel>Project Stage</InputLabel>
+            <Select
+              label="Project Stage"
+              value={projectStageFilter}
+              onChange={(event) =>
+                setProjectStageFilter(event.target.value as ProjectStage | 'all')
+              }
+            >
+              <MenuItem value="all">All Stages</MenuItem>
+              {(
+                Object.entries(PROJECT_STAGE_LABELS) as Array<[ProjectStage, string]>
+              ).map(([value, label]) => (
+                <MenuItem key={value} value={value}>
+                  {label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </ContentCard>
+      </Box>
 
       <WidgetErrorBoundary title="KPI cards">
         <Grid container spacing={2.5} sx={{ mb: 2.5 }}>

@@ -28,7 +28,11 @@ import {
   getProjects,
   projectQueryKeys,
 } from '../services/projectService';
-import type { ProjectLifecycleFilter, ProjectStatus } from '../types';
+import type { ExecutionStatus, ProjectLifecycleFilter, ProjectStage } from '../types';
+import {
+  EXECUTION_STATUS_LABELS,
+  PROJECT_STAGE_LABELS,
+} from '../types/common';
 import { canArchiveProject } from '../utils/permissions';
 
 const lifecycleOptions: Array<{ value: ProjectLifecycleFilter; label: string }> = [
@@ -38,12 +42,18 @@ const lifecycleOptions: Array<{ value: ProjectLifecycleFilter; label: string }> 
   { value: 'deleted', label: 'Deleted' },
 ];
 
-const statusOptions: Array<{ value: ProjectStatus | 'all'; label: string }> = [
-  { value: 'all', label: 'All Statuses' },
-  { value: 'not_started', label: 'Not Started' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'waiting_for_customer', label: 'On Hold' },
-  { value: 'completed', label: 'Completed' },
+const executionStatusOptions: Array<{ value: ExecutionStatus | 'all'; label: string }> = [
+  { value: 'all', label: 'All Execution Statuses' },
+  ...(
+    Object.entries(EXECUTION_STATUS_LABELS) as Array<[ExecutionStatus, string]>
+  ).map(([value, label]) => ({ value, label })),
+];
+
+const projectStageOptions: Array<{ value: ProjectStage | 'all'; label: string }> = [
+  { value: 'all', label: 'All Stages' },
+  ...(
+    Object.entries(PROJECT_STAGE_LABELS) as Array<[ProjectStage, string]>
+  ).map(([value, label]) => ({ value, label })),
 ];
 
 export function ProjectsPage() {
@@ -53,7 +63,12 @@ export function ProjectsPage() {
   const { showSuccess, showError } = useToast();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
+  const [executionStatusFilter, setExecutionStatusFilter] = useState<
+    ExecutionStatus | 'all'
+  >('all');
+  const [projectStageFilter, setProjectStageFilter] = useState<ProjectStage | 'all'>(
+    'all',
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [archiveId, setArchiveId] = useState<string | null>(null);
 
@@ -63,25 +78,43 @@ export function ProjectsPage() {
   const completedFilter = searchParams.get('completed');
 
   useEffect(() => {
-    const status = searchParams.get('status');
+    const executionStatus = searchParams.get('execution_status');
     if (
-      status &&
-      statusOptions.some((option) => option.value === status)
+      executionStatus &&
+      executionStatusOptions.some((option) => option.value === executionStatus)
     ) {
-      setStatusFilter(status as ProjectStatus);
-    } else if (!status) {
-      setStatusFilter('all');
+      setExecutionStatusFilter(executionStatus as ExecutionStatus);
+    } else if (!executionStatus) {
+      setExecutionStatusFilter('all');
+    }
+
+    const projectStage = searchParams.get('project_stage');
+    if (
+      projectStage &&
+      projectStageOptions.some((option) => option.value === projectStage)
+    ) {
+      setProjectStageFilter(projectStage as ProjectStage);
+    } else if (!projectStage) {
+      setProjectStageFilter('all');
     }
   }, [searchParams]);
 
-  const statusParam = statusFilter === 'all' ? undefined : statusFilter;
+  const executionStatusParam =
+    executionStatusFilter === 'all' ? undefined : executionStatusFilter;
+  const projectStageParam =
+    projectStageFilter === 'all' ? undefined : projectStageFilter;
 
   const projectsQuery = useQuery({
-    queryKey: projectQueryKeys.list({ lifecycle, status: statusParam }),
+    queryKey: projectQueryKeys.list({
+      lifecycle,
+      execution_status: executionStatusParam,
+      project_stage: projectStageParam,
+    }),
     queryFn: () =>
       getProjects({
         lifecycle,
-        status: statusParam,
+        execution_status: executionStatusParam,
+        project_stage: projectStageParam,
         limit: 500,
       }),
     staleTime: QUERY_STALE_TIMES.projects,
@@ -143,7 +176,7 @@ export function ProjectsPage() {
       );
 
       rows = rows.filter((project) => {
-        if (!project.due_date || project.status === 'completed') return false;
+        if (!project.due_date || project.execution_status === 'completed') return false;
         const due = new Date(`${project.due_date}T00:00:00`);
         return due >= rangeStart && due <= rangeEnd;
       });
@@ -151,7 +184,7 @@ export function ProjectsPage() {
 
     if (dueFilter === 'overdue') {
       rows = rows.filter((project) => {
-        if (!project.due_date || project.status === 'completed') return false;
+        if (!project.due_date || project.execution_status === 'completed') return false;
         return new Date(`${project.due_date}T00:00:00`) < today;
       });
     }
@@ -159,7 +192,7 @@ export function ProjectsPage() {
     if (completedFilter === 'month') {
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       rows = rows.filter((project) => {
-        if (project.status !== 'completed' || !project.completed_at) return false;
+        if (project.execution_status !== 'completed' || !project.completed_at) return false;
         const completed = new Date(project.completed_at);
         return completed >= monthStart && completed <= today;
       });
@@ -235,23 +268,47 @@ export function ProjectsPage() {
               </Select>
             </FormControl>
             <FormControl sx={{ minWidth: 220 }}>
-              <InputLabel>Status</InputLabel>
+              <InputLabel>Project Stage</InputLabel>
               <Select
-                label="Status"
-                value={statusFilter}
+                label="Project Stage"
+                value={projectStageFilter}
                 onChange={(event) => {
-                  const value = event.target.value as ProjectStatus | 'all';
-                  setStatusFilter(value);
+                  const value = event.target.value as ProjectStage | 'all';
+                  setProjectStageFilter(value);
                   const next = new URLSearchParams(searchParams);
                   if (value === 'all') {
-                    next.delete('status');
+                    next.delete('project_stage');
                   } else {
-                    next.set('status', value);
+                    next.set('project_stage', value);
                   }
                   setSearchParams(next);
                 }}
               >
-                {statusOptions.map((option) => (
+                {projectStageOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl sx={{ minWidth: 240 }}>
+              <InputLabel>Execution Status</InputLabel>
+              <Select
+                label="Execution Status"
+                value={executionStatusFilter}
+                onChange={(event) => {
+                  const value = event.target.value as ExecutionStatus | 'all';
+                  setExecutionStatusFilter(value);
+                  const next = new URLSearchParams(searchParams);
+                  if (value === 'all') {
+                    next.delete('execution_status');
+                  } else {
+                    next.set('execution_status', value);
+                  }
+                  setSearchParams(next);
+                }}
+              >
+                {executionStatusOptions.map((option) => (
                   <MenuItem key={option.value} value={option.value}>
                     {option.label}
                   </MenuItem>

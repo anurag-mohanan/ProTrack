@@ -10,8 +10,11 @@ def test_dashboard_summary(client, auth_headers):
     assert Decimal(str(body["total_quoted_hours"])) == Decimal("120.00")
     assert "projects_due_this_week" in body
     assert "attention_projects" in body
-    assert "np_hours_panel" in body
-    assert len(body["attention_projects"]) <= 10
+    assert "customer_workload" in body
+    assert "designer_availability" in body
+    assert "team_summary" in body
+    assert "activity_feed" in body
+    assert len(body["attention_projects"]) <= 25
 
 
 def test_dashboard_workload(client, auth_headers):

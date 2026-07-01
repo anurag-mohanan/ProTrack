@@ -101,6 +101,14 @@ export function ProjectsPage() {
         teamIds: [teamId],
       }));
     }
+
+    const customerId = searchParams.get('customer_id');
+    if (customerId) {
+      setFilterValues((current) => ({
+        ...current,
+        customerIds: [customerId],
+      }));
+    }
   }, [searchParams]);
 
   const listParams = useMemo(

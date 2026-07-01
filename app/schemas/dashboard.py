@@ -1,10 +1,16 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import ExecutionStatus, ProjectHealth, ProjectStage
+from app.models.enums import (
+    DashboardActivityCategory,
+    DesignerAvailabilityStatus,
+    ExecutionStatus,
+    ProjectHealth,
+    ProjectStage,
+)
 from app.schemas.project import ProjectRead
 from app.schemas.timesheet import ActivityRead, TimesheetEntryRead
 
@@ -104,6 +110,54 @@ class DashboardTaskItem(BaseModel):
     project_code: str | None = None
     project_id: UUID | None = None
     href: str | None = None
+    priority: str | None = None
+
+
+class DashboardCustomerWorkloadRow(BaseModel):
+    customer_id: UUID
+    customer_name: str
+    active_tools: int = 0
+    quoted_hours: Decimal = Decimal("0")
+    actual_hours: Decimal = Decimal("0")
+    designers_assigned: int = 0
+
+
+class DashboardDesignerAvailabilitySummary(BaseModel):
+    total_designers: int = 0
+    allocated: int = 0
+    available: int = 0
+    on_leave: int = 0
+
+
+class DashboardDesignerAvailabilityRow(BaseModel):
+    user_id: UUID
+    designer_name: str
+    status: DesignerAvailabilityStatus
+    current_tool_number: str | None = None
+    current_customer_name: str | None = None
+    current_stage: ProjectStage | None = None
+    current_milestone: str | None = None
+
+
+class DashboardTeamSummaryRow(BaseModel):
+    team_id: UUID
+    team_name: str
+    team_colour: str | None = None
+    project_count: int = 0
+    designer_count: int = 0
+    quoted_hours: Decimal = Decimal("0")
+    actual_hours: Decimal = Decimal("0")
+    available_capacity_hours: Decimal = Decimal("0")
+
+
+class DashboardActivityItem(BaseModel):
+    id: str
+    category: DashboardActivityCategory
+    title: str
+    detail: str | None = None
+    actor_name: str | None = None
+    occurred_at: datetime
+    href: str | None = None
 
 
 class DashboardMyTasks(BaseModel):
@@ -145,6 +199,15 @@ class DashboardSummary(BaseModel):
     attention_projects: list[ProjectAttentionRow] = Field(default_factory=list)
     my_tasks: DashboardMyTasks = Field(default_factory=DashboardMyTasks)
     recent_activity: list[ActivityRead] = Field(default_factory=list)
+    activity_feed: list[DashboardActivityItem] = Field(default_factory=list)
+    customer_workload: list[DashboardCustomerWorkloadRow] = Field(default_factory=list)
+    designer_availability_summary: DashboardDesignerAvailabilitySummary = Field(
+        default_factory=DashboardDesignerAvailabilitySummary
+    )
+    designer_availability: list[DashboardDesignerAvailabilityRow] = Field(
+        default_factory=list
+    )
+    team_summary: list[DashboardTeamSummaryRow] = Field(default_factory=list)
     np_hours_this_month: Decimal = Decimal("0")
     np_hours_panel: DashboardNpPanel = Field(default_factory=DashboardNpPanel)
 

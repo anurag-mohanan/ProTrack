@@ -4,7 +4,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import BusinessIcon from '@mui/icons-material/Business';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import { useAuth } from '../../context/AuthContext';
-import { canAccessAdministration, canEditProject } from '../../utils/permissions';
+import { canAccessAdministration, canEditProject, ROLES } from '../../utils/permissions';
 import { formatDate } from '../../utils/format';
 
 function getGreeting(): string {
@@ -30,6 +30,7 @@ export function DashboardHeader({
   const { user, displayName } = useAuth();
   const roleName = user?.role_name ?? '';
   const showAdminActions = canAccessAdministration(roleName);
+  const showNewUser = roleName === ROLES.ADMIN;
   const showNewProject = canEditProject(roleName);
 
   return (
@@ -80,29 +81,29 @@ export function DashboardHeader({
           onClick={onTimesheet}
           sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
         >
-          Timesheet
+          New Timesheet
         </Button>
         {showAdminActions ? (
-          <>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<BusinessIcon />}
-              onClick={onCustomer}
-              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-            >
-              Customer
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<PersonAddIcon />}
-              onClick={onUser}
-              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-            >
-              User
-            </Button>
-          </>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<BusinessIcon />}
+            onClick={onCustomer}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+          >
+            New Customer
+          </Button>
+        ) : null}
+        {showNewUser ? (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<PersonAddIcon />}
+            onClick={onUser}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+          >
+            New User
+          </Button>
         ) : null}
       </Box>
     </Box>

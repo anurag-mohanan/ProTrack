@@ -80,3 +80,18 @@ class EntityType(enum.Enum):
     milestone = "milestone"
     timesheet = "timesheet"
     user = "user"
+
+
+class DesignerAvailabilityStatus(enum.Enum):
+    available = "available"
+    working = "working"
+    on_hold = "on_hold"
+    leave = "leave"
+
+
+class DashboardActivityCategory(enum.Enum):
+    project = "project"
+    milestone = "milestone"
+    timesheet = "timesheet"
+    user = "user"
+    import_event = "import"

@@ -17,6 +17,7 @@ from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, Pr
 from app.models.models import Activity, Customer, Milestone, Project, Role, Timesheet, TimesheetEntry, User
 from app.schemas.dashboard import (
     DashboardFuturePlaceholders,
+    DashboardDesignerAvailabilitySummary,
     DashboardKpis,
     DashboardMyTasks,
     DashboardNpPanel,
@@ -34,10 +35,14 @@ from app.schemas.dashboard import (
 from app.schemas.timesheet import ActivityRead, TimesheetEntryRead
 from app.services.dashboard_service import (
     get_attention_projects,
+    get_customer_workload,
+    get_dashboard_activity_feed,
     get_dashboard_kpis,
     get_dashboard_my_tasks,
     get_dashboard_recent_activity,
+    get_designer_availability,
     get_np_hours_panel,
+    get_team_summary,
     safe_dashboard_call,
 )
 from app.services.notification_service import count_unread_notifications
@@ -221,33 +226,46 @@ def get_dashboard_summary(
 
     green_projects, yellow_projects, red_projects = count_projects_by_health(db)
 
-    engineering_kpis = get_dashboard_kpis(db, project_stage=project_stage)
+    engineering_kpis = get_dashboard_kpis(
+        db, project_stage=project_stage, team_id=team_id
+    )
 
-    approved_entries = db.scalars(
-        select(TimesheetEntry)
-        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
-        .where(Timesheet.status == TimesheetStatus.approved)
-    ).all()
     billable_hours = _round_hours(
-        sum(
-            (_decimal(entry.hours) for entry in approved_entries if entry.is_billable and entry.work_category == WorkCategory.productive),
-            Decimal("0"),
+        _decimal(
+            db.scalar(
+                select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
+                .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+                .where(
+                    Timesheet.status == TimesheetStatus.approved,
+                    TimesheetEntry.work_category == WorkCategory.productive,
+                    TimesheetEntry.is_billable.is_(True),
+                )
+            )
         )
     )
     np_hours = _round_hours(
-        sum(
-            (_decimal(entry.hours) for entry in approved_entries if entry.work_category == WorkCategory.non_productive),
-            Decimal("0"),
+        _decimal(
+            db.scalar(
+                select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
+                .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+                .where(
+                    Timesheet.status == TimesheetStatus.approved,
+                    TimesheetEntry.work_category == WorkCategory.non_productive,
+                )
+            )
         )
     )
     non_billable_hours = _round_hours(
-        sum(
-            (
-                _decimal(entry.hours)
-                for entry in approved_entries
-                if entry.work_category == WorkCategory.productive and not entry.is_billable
-            ),
-            Decimal("0"),
+        _decimal(
+            db.scalar(
+                select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
+                .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+                .where(
+                    Timesheet.status == TimesheetStatus.approved,
+                    TimesheetEntry.work_category == WorkCategory.productive,
+                    TimesheetEntry.is_billable.is_(False),
+                )
+            )
         )
     )
     total_logged = billable_hours + non_billable_hours + np_hours
@@ -259,7 +277,7 @@ def get_dashboard_summary(
 
     attention_projects = safe_dashboard_call(
         "attention_projects",
-        lambda: get_attention_projects(db, limit=10),
+        lambda: get_attention_projects(db, limit=25, team_id=team_id),
         [],
     )
     my_tasks = safe_dashboard_call(
@@ -270,6 +288,26 @@ def get_dashboard_summary(
     recent_activity = safe_dashboard_call(
         "recent_activity",
         lambda: get_dashboard_recent_activity(db, limit=20),
+        [],
+    )
+    activity_feed = safe_dashboard_call(
+        "activity_feed",
+        lambda: get_dashboard_activity_feed(db, limit=20),
+        [],
+    )
+    customer_workload = safe_dashboard_call(
+        "customer_workload",
+        lambda: get_customer_workload(db, team_id=team_id),
+        [],
+    )
+    designer_summary, designer_availability = safe_dashboard_call(
+        "designer_availability",
+        lambda: get_designer_availability(db, team_id=team_id),
+        (DashboardDesignerAvailabilitySummary(), []),
+    )
+    team_summary = safe_dashboard_call(
+        "team_summary",
+        lambda: get_team_summary(db, team_id=team_id),
         [],
     )
     np_hours_panel = safe_dashboard_call(
@@ -287,7 +325,7 @@ def get_dashboard_summary(
         on_hold_projects=on_hold,
         cancelled_projects=cancelled,
         completed_projects=completed,
-        archived_projects=archived,
+        archived_projects=engineering_kpis.archived_projects if team_id is None else archived,
         not_started_projects=0,
         in_progress_projects=being_worked_on,
         projects_due_this_week=engineering_kpis.projects_due_this_week,
@@ -312,6 +350,11 @@ def get_dashboard_summary(
         attention_projects=attention_projects,
         my_tasks=my_tasks,
         recent_activity=recent_activity,
+        activity_feed=activity_feed,
+        customer_workload=customer_workload,
+        designer_availability_summary=designer_summary,
+        designer_availability=designer_availability,
+        team_summary=team_summary,
         np_hours_this_month=engineering_kpis.np_hours_this_month,
         np_hours_panel=np_hours_panel,
     )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -18,6 +18,9 @@ from app.core.permissions import (
 )
 from app.models.enums import (
     ActivityAction,
+    DashboardActivityCategory,
+    DesignerAvailabilityStatus,
+    EntityType,
     ExecutionStatus,
     MilestoneStatus,
     ProjectHealth,
@@ -31,16 +34,25 @@ from app.models.models import (
     Milestone,
     NonProductiveCode,
     Project,
+    Role,
+    Team,
+    TeamMember,
     Timesheet,
     TimesheetEntry,
+    TimesheetImportHistory,
     User,
 )
 from app.schemas.dashboard import (
+    DashboardActivityItem,
+    DashboardCustomerWorkloadRow,
+    DashboardDesignerAvailabilityRow,
+    DashboardDesignerAvailabilitySummary,
     DashboardKpis,
     DashboardMyTasks,
     DashboardNpCodeRow,
     DashboardNpPanel,
     DashboardTaskItem,
+    DashboardTeamSummaryRow,
     ProjectAttentionRow,
 )
 from app.schemas.timesheet import ActivityRead
@@ -48,6 +60,17 @@ from app.schemas.timesheet import ActivityRead
 logger = logging.getLogger(__name__)
 
 _ATTENTION_PRIORITY = {"overdue": 0, "blocked": 1, "due_soon": 2, "on_hold": 3}
+
+WORKLOAD_ROLES = (
+    "Design Leader",
+    "Senior Designer",
+    "Designer",
+    "Junior Designer",
+    "Surfacer",
+)
+
+_LEAVE_NP_CODE = "C500"
+_WEEKLY_CAPACITY_HOURS = Decimal("40")
 
 _DASHBOARD_ACTIVITY_ACTIONS = (
     ActivityAction.project_created,
@@ -76,6 +99,24 @@ def _stage_clause(project_stage: ProjectStage | None):
     if project_stage is None:
         return ()
     return (Project.project_stage == project_stage,)
+
+
+def _team_clause(team_id: UUID | None):
+    if team_id is None:
+        return ()
+    return (Project.team_id == team_id,)
+
+
+def _task_priority(due_date: date | None, today: date) -> str:
+    if due_date is None:
+        return "low"
+    if due_date < today:
+        return "high"
+    if due_date <= today + timedelta(days=3):
+        return "high"
+    if due_date <= today + timedelta(days=7):
+        return "medium"
+    return "low"
 
 
 def _active_project_clause(project_stage: ProjectStage | None = None):
@@ -130,6 +171,7 @@ def get_dashboard_kpis(
     db: Session,
     *,
     project_stage: ProjectStage | None = None,
+    team_id: UUID | None = None,
 ) -> DashboardKpis:
     """Reliable engineering KPIs from aggregate SQL — no user-specific estimates."""
     today = date.today()
@@ -137,27 +179,32 @@ def get_dashboard_kpis(
     due_cutoff = today + timedelta(days=7)
     visible = _visible_projects_clause()
     stage = _stage_clause(project_stage)
-    active = _active_project_clause(project_stage)
+    team = _team_clause(team_id)
+    active = _active_project_clause(project_stage) + team
     not_completed = Project.execution_status != ExecutionStatus.completed
     being_worked_on = and_(
         Project.execution_status == ExecutionStatus.currently_being_worked_on,
         *visible,
         *stage,
+        *team,
     )
     on_hold = and_(
         Project.execution_status == ExecutionStatus.on_hold,
         *visible,
         *stage,
+        *team,
     )
     cancelled = and_(
         Project.execution_status == ExecutionStatus.cancelled,
         *visible,
         *stage,
+        *team,
     )
     completed_month = and_(
         Project.execution_status == ExecutionStatus.completed,
         *visible,
         *stage,
+        *team,
         Project.completed_at.is_not(None),
         func.date(Project.completed_at) >= month_start,
         func.date(Project.completed_at) <= today,
@@ -165,12 +212,15 @@ def get_dashboard_kpis(
     due_next_7_days = and_(
         *visible,
         *stage,
+        *team,
         not_completed,
         Project.due_date >= today,
         Project.due_date <= due_cutoff,
     )
-    overdue = and_(*visible, *stage, not_completed, Project.due_date < today)
+    overdue = and_(*visible, *stage, *team, not_completed, Project.due_date < today)
     archived = and_(Project.is_deleted.is_(False), Project.is_archived.is_(True))
+    if team_id is not None:
+        archived = and_(archived, Project.team_id == team_id)
 
     project_row = db.execute(
         select(
@@ -314,15 +364,22 @@ def get_np_hours_panel(db: Session) -> DashboardNpPanel:
     )
 
 
-def get_attention_projects(db: Session, *, limit: int = 10) -> list[ProjectAttentionRow]:
+def get_attention_projects(
+    db: Session,
+    *,
+    limit: int = 10,
+    team_id: UUID | None = None,
+) -> list[ProjectAttentionRow]:
     today = date.today()
     due_soon_cutoff = today + timedelta(days=7)
     visibility = _visible_projects_clause()
+    team = _team_clause(team_id)
 
     candidates = db.scalars(
         select(Project)
         .where(
             *visibility,
+            *team,
             Project.execution_status != ExecutionStatus.completed,
             or_(
                 Project.due_date < today,
@@ -414,6 +471,7 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
             subtitle=f"Timesheet week of {ts.week_start.isoformat()}",
             due_date=ts.week_start,
             href="/timesheets",
+            priority=_task_priority(ts.week_start, today),
         )
         for ts in submitted_timesheets
         if can_approve_timesheet(db, user, ts)
@@ -447,6 +505,7 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
                     project_code=project.code if project else None,
                     project_id=row.project_id,
                     href=f"/projects/{row.project_id}" if project else None,
+                    priority=_task_priority(row.due_date, today),
                 )
             )
 
@@ -469,6 +528,7 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
                 project_code=project.code,
                 project_id=project.id,
                 href=f"/projects/{project.id}",
+                priority=_task_priority(project.due_date, today),
             )
         )
     pending_reviews.sort(key=lambda item: item.due_date or today)
@@ -487,3 +547,377 @@ def safe_dashboard_call(name: str, fn, default):
     except Exception:
         logger.exception("Dashboard section failed: %s", name)
         return default
+
+
+def _activity_category(action: ActivityAction) -> DashboardActivityCategory:
+    if action in (
+        ActivityAction.project_created,
+        ActivityAction.project_updated,
+        ActivityAction.project_archived,
+        ActivityAction.project_restored,
+        ActivityAction.project_deleted,
+        ActivityAction.project_restored_from_deleted,
+    ):
+        return DashboardActivityCategory.project
+    if action in (
+        ActivityAction.milestone_completed,
+        ActivityAction.milestone_reopened,
+    ):
+        return DashboardActivityCategory.milestone
+    if action in (
+        ActivityAction.timesheet_submitted,
+        ActivityAction.timesheet_approved,
+        ActivityAction.timesheet_rejected,
+    ):
+        return DashboardActivityCategory.timesheet
+    return DashboardActivityCategory.user
+
+
+def _activity_title(action: ActivityAction) -> str:
+    labels = {
+        ActivityAction.project_created: "Project created",
+        ActivityAction.project_updated: "Project updated",
+        ActivityAction.milestone_completed: "Milestone completed",
+        ActivityAction.timesheet_submitted: "Timesheet submitted",
+        ActivityAction.timesheet_approved: "Timesheet approved",
+        ActivityAction.timesheet_rejected: "Timesheet rejected",
+        ActivityAction.project_archived: "Project archived",
+        ActivityAction.project_restored: "Project restored",
+        ActivityAction.project_restored_from_deleted: "Project restored",
+        ActivityAction.user_logged_in: "User signed in",
+        ActivityAction.user_archived: "User archived",
+        ActivityAction.user_restored: "User restored",
+    }
+    return labels.get(action, action.value.replace("_", " ").title())
+
+
+def get_dashboard_activity_feed(
+    db: Session,
+    *,
+    limit: int = 20,
+) -> list[DashboardActivityItem]:
+    feed: list[DashboardActivityItem] = []
+
+    activity_rows = db.scalars(
+        select(Activity)
+        .where(Activity.action.in_(_DASHBOARD_ACTIVITY_ACTIONS))
+        .order_by(Activity.created_at.desc())
+        .limit(limit)
+    ).all()
+    for activity in activity_rows:
+        read = _activity_to_read(db, activity)
+        href = None
+        if activity.entity_type == EntityType.project:
+            href = f"/projects/{activity.entity_id}"
+        elif activity.entity_type == EntityType.timesheet:
+            href = "/timesheets"
+        feed.append(
+            DashboardActivityItem(
+                id=str(activity.id),
+                category=_activity_category(activity.action),
+                title=_activity_title(activity.action),
+                detail=read.new_value or read.old_value,
+                actor_name=read.user_name,
+                occurred_at=activity.created_at,
+                href=href,
+            )
+        )
+
+    import_rows = db.scalars(
+        select(TimesheetImportHistory)
+        .order_by(TimesheetImportHistory.created_at.desc())
+        .limit(max(5, limit // 4))
+    ).all()
+    for record in import_rows:
+        importer = db.get(User, record.imported_by_id)
+        importer_name = (
+            f"{importer.first_name} {importer.last_name}" if importer else None
+        )
+        feed.append(
+            DashboardActivityItem(
+                id=f"import-{record.id}",
+                category=DashboardActivityCategory.import_event,
+                title="Timesheet import",
+                detail=f"{record.filename} · {record.rows_imported} rows · {record.designer_name}",
+                actor_name=importer_name,
+                occurred_at=record.created_at,
+                href="/admin/imports/historical-timesheets#history",
+            )
+        )
+
+    feed.sort(key=lambda item: item.occurred_at, reverse=True)
+    return feed[:limit]
+
+
+def get_customer_workload(
+    db: Session,
+    *,
+    team_id: UUID | None = None,
+    limit: int = 20,
+) -> list[DashboardCustomerWorkloadRow]:
+    team = _team_clause(team_id)
+    active_statuses = (
+        ExecutionStatus.currently_being_worked_on,
+        ExecutionStatus.on_hold,
+    )
+    designer_key = func.coalesce(Project.designer_id, Project.design_leader_id)
+    rows = db.execute(
+        select(
+            Customer.id,
+            Customer.name,
+            func.count(Project.id),
+            func.coalesce(func.sum(Project.quoted_hours), 0),
+            func.coalesce(func.sum(Project.actual_hours), 0),
+            func.count(func.distinct(designer_key)),
+        )
+        .join(Customer, Project.customer_id == Customer.id)
+        .where(
+            Project.is_deleted.is_(False),
+            Project.is_archived.is_(False),
+            Project.execution_status.in_(active_statuses),
+            *team,
+        )
+        .group_by(Customer.id, Customer.name)
+        .order_by(func.count(Project.id).desc(), Customer.name)
+        .limit(limit)
+    ).all()
+
+    return [
+        DashboardCustomerWorkloadRow(
+            customer_id=row[0],
+            customer_name=row[1],
+            active_tools=int(row[2] or 0),
+            quoted_hours=_round_hours(_decimal(row[3])),
+            actual_hours=_round_hours(_decimal(row[4])),
+            designers_assigned=int(row[5] or 0),
+        )
+        for row in rows
+    ]
+
+
+def _designer_user_ids_for_team(db: Session, team_id: UUID | None) -> set[UUID] | None:
+    if team_id is None:
+        return None
+    member_ids = set(
+        db.scalars(
+            select(TeamMember.user_id).where(TeamMember.team_id == team_id)
+        ).all()
+    )
+    assigned_ids = set(
+        db.scalars(
+            select(User.id).where(User.team_id == team_id, User.is_deleted.is_(False))
+        ).all()
+    )
+    return member_ids | assigned_ids
+
+
+def get_designer_availability(
+    db: Session,
+    *,
+    team_id: UUID | None = None,
+) -> tuple[DashboardDesignerAvailabilitySummary, list[DashboardDesignerAvailabilityRow]]:
+    today = date.today()
+    team_user_ids = _designer_user_ids_for_team(db, team_id)
+
+    designers = db.scalars(
+        select(User)
+        .join(Role, User.role_id == Role.id)
+        .where(
+            Role.name.in_(WORKLOAD_ROLES),
+            User.is_active.is_(True),
+            User.is_archived.is_(False),
+            User.is_deleted.is_(False),
+        )
+        .order_by(User.last_name, User.first_name)
+    ).all()
+    if team_user_ids is not None:
+        designers = [designer for designer in designers if designer.id in team_user_ids]
+
+    if not designers:
+        return DashboardDesignerAvailabilitySummary(), []
+
+    designer_ids = [designer.id for designer in designers]
+
+    leave_ids = set(
+        db.scalars(
+            select(Timesheet.user_id)
+            .join(TimesheetEntry, TimesheetEntry.timesheet_id == Timesheet.id)
+            .join(
+                NonProductiveCode,
+                TimesheetEntry.non_productive_code_id == NonProductiveCode.id,
+            )
+            .where(
+                Timesheet.user_id.in_(designer_ids),
+                Timesheet.status == TimesheetStatus.approved,
+                TimesheetEntry.entry_date == today,
+                TimesheetEntry.work_category == WorkCategory.non_productive,
+                NonProductiveCode.code == _LEAVE_NP_CODE,
+                TimesheetEntry.hours > 0,
+            )
+            .distinct()
+        ).all()
+    )
+
+    active_projects = db.scalars(
+        select(Project).where(
+            Project.is_deleted.is_(False),
+            Project.is_archived.is_(False),
+            Project.execution_status.in_(
+                (
+                    ExecutionStatus.currently_being_worked_on,
+                    ExecutionStatus.on_hold,
+                )
+            ),
+            or_(
+                Project.designer_id.in_(designer_ids),
+                Project.design_leader_id.in_(designer_ids),
+            ),
+            *_team_clause(team_id),
+        )
+    ).all()
+
+    projects_by_designer: dict[UUID, list[Project]] = {designer_id: [] for designer_id in designer_ids}
+    for project in active_projects:
+        for designer_id in (project.designer_id, project.design_leader_id):
+            if designer_id in projects_by_designer:
+                projects_by_designer[designer_id].append(project)
+
+    all_project_ids = [project.id for project in active_projects]
+    milestone_names = _batch_current_milestones(db, all_project_ids)
+    customer_ids = {project.customer_id for project in active_projects}
+    customer_names = {
+        row.id: row.name
+        for row in db.scalars(select(Customer).where(Customer.id.in_(customer_ids))).all()
+    } if customer_ids else {}
+
+    rows: list[DashboardDesignerAvailabilityRow] = []
+    allocated = 0
+    available_count = 0
+    on_leave_count = 0
+
+    for designer in designers:
+        assigned = projects_by_designer.get(designer.id, [])
+        current_tool_number = None
+        current_customer_name = None
+        current_stage = None
+        current_milestone = None
+
+        if designer.id in leave_ids:
+            status = DesignerAvailabilityStatus.leave
+            on_leave_count += 1
+        else:
+            working = [
+                project
+                for project in assigned
+                if project.execution_status == ExecutionStatus.currently_being_worked_on
+            ]
+            on_hold_projects = [
+                project
+                for project in assigned
+                if project.execution_status == ExecutionStatus.on_hold
+            ]
+            if working:
+                status = DesignerAvailabilityStatus.working
+                allocated += 1
+            elif on_hold_projects:
+                status = DesignerAvailabilityStatus.on_hold
+                allocated += 1
+            else:
+                status = DesignerAvailabilityStatus.available
+                available_count += 1
+
+            if assigned:
+                primary = sorted(
+                    assigned,
+                    key=lambda project: (
+                        0
+                        if project.execution_status
+                        == ExecutionStatus.currently_being_worked_on
+                        else 1,
+                        project.due_date or today,
+                    ),
+                )[0]
+                current_tool_number = primary.tool_number or primary.code
+                current_customer_name = customer_names.get(primary.customer_id)
+                current_stage = primary.project_stage
+                current_milestone = milestone_names.get(primary.id)
+
+        rows.append(
+            DashboardDesignerAvailabilityRow(
+                user_id=designer.id,
+                designer_name=f"{designer.first_name} {designer.last_name}",
+                status=status,
+                current_tool_number=current_tool_number,
+                current_customer_name=current_customer_name,
+                current_stage=current_stage,
+                current_milestone=current_milestone,
+            )
+        )
+
+    summary = DashboardDesignerAvailabilitySummary(
+        total_designers=len(designers),
+        allocated=allocated,
+        available=available_count,
+        on_leave=on_leave_count,
+    )
+    return summary, rows
+
+
+def get_team_summary(
+    db: Session,
+    *,
+    team_id: UUID | None = None,
+) -> list[DashboardTeamSummaryRow]:
+    teams = db.scalars(
+        select(Team).where(Team.is_active.is_(True)).order_by(Team.name)
+    ).all()
+    if team_id is not None:
+        teams = [team for team in teams if team.id == team_id]
+
+    active_statuses = (
+        ExecutionStatus.currently_being_worked_on,
+        ExecutionStatus.on_hold,
+    )
+    rows: list[DashboardTeamSummaryRow] = []
+
+    for team in teams:
+        member_count = int(
+            db.scalar(
+                select(func.count())
+                .select_from(TeamMember)
+                .where(TeamMember.team_id == team.id)
+            )
+            or 0
+        )
+        project_row = db.execute(
+            select(
+                func.count(Project.id),
+                func.coalesce(func.sum(Project.quoted_hours), 0),
+                func.coalesce(func.sum(Project.actual_hours), 0),
+            )
+            .select_from(Project)
+            .where(
+                Project.team_id == team.id,
+                Project.is_deleted.is_(False),
+                Project.is_archived.is_(False),
+                Project.execution_status.in_(active_statuses),
+            )
+        ).one()
+        quoted = _round_hours(_decimal(project_row[1]))
+        capacity = _round_hours(_WEEKLY_CAPACITY_HOURS * Decimal(member_count))
+        available = _round_hours(max(capacity - quoted, Decimal("0")))
+
+        rows.append(
+            DashboardTeamSummaryRow(
+                team_id=team.id,
+                team_name=team.name,
+                team_colour=team.colour,
+                project_count=int(project_row[0] or 0),
+                designer_count=member_count,
+                quoted_hours=quoted,
+                actual_hours=_round_hours(_decimal(project_row[2])),
+                available_capacity_hours=available,
+            )
+        )
+
+    return rows

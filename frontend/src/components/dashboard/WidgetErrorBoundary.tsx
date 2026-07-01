@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { Alert, Box } from '@mui/material';
+import { Paper, Typography } from '@mui/material';
 
 interface WidgetErrorBoundaryProps {
   children: ReactNode;
@@ -27,11 +27,11 @@ export class WidgetErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <Box sx={{ mb: 2 }}>
-          <Alert severity="warning">
-            {this.props.title ? `Unable to load ${this.props.title}.` : 'Unable to load widget.'}
-          </Alert>
-        </Box>
+        <Paper variant="outlined" sx={{ borderRadius: 3, p: 2.5 }}>
+          <Typography variant="body2" color="text.secondary">
+            No data available.
+          </Typography>
+        </Paper>
       );
     }
     return this.props.children;

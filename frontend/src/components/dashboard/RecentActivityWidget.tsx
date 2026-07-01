@@ -1,38 +1,41 @@
-import { Box, Paper, Typography } from '@mui/material';
-import type { Activity } from '../../types';
+import { Box, List, ListItemButton, ListItemText, Paper, Typography } from '@mui/material';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import type { DashboardActivityItem } from '../../types';
 import { formatDateTime } from '../../utils/format';
 
-const ACTION_LABELS: Record<string, string> = {
-  project_created: 'Project created',
-  project_updated: 'Project updated',
-  milestone_completed: 'Milestone completed',
-  timesheet_submitted: 'Timesheet submitted',
-  project_archived: 'Project archived',
-  project_restored: 'Project restored',
-  project_restored_from_deleted: 'Project restored',
+const CATEGORY_LABELS: Record<DashboardActivityItem['category'], string> = {
+  project: 'Project',
+  milestone: 'Milestone',
+  timesheet: 'Timesheet',
+  user: 'User',
+  import: 'Import',
 };
 
-function activityLabel(action: string): string {
-  return ACTION_LABELS[action] ?? action.replaceAll('_', ' ');
-}
+const CATEGORY_COLORS: Record<DashboardActivityItem['category'], string> = {
+  project: 'primary.main',
+  milestone: 'secondary.main',
+  timesheet: 'info.main',
+  user: 'success.main',
+  import: 'warning.main',
+};
 
 interface RecentActivityWidgetProps {
-  activities: Activity[];
+  activities: DashboardActivityItem[];
 }
 
 export function RecentActivityWidget({ activities }: RecentActivityWidgetProps) {
-  if (!activities.length) {
+  const navigate = useNavigate();
+  const sorted = useMemo(
+    () => [...activities].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)),
+    [activities],
+  );
+
+  if (!sorted.length) {
     return (
-      <Paper
-        variant="outlined"
-        sx={{
-          borderRadius: 3,
-          p: 2.5,
-          boxShadow: (theme) => theme.palette.prosohm.shadowCard,
-        }}
-      >
+      <Paper variant="outlined" sx={{ borderRadius: 3, p: 2.5 }}>
         <Typography variant="body2" color="text.secondary">
-          No data available
+          No data available.
         </Typography>
       </Paper>
     );
@@ -47,33 +50,51 @@ export function RecentActivityWidget({ activities }: RecentActivityWidgetProps) 
         boxShadow: (theme) => theme.palette.prosohm.shadowCard,
       }}
     >
-      {activities.map((activity, index) => (
-        <Box
-          key={activity.id}
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: 2,
-            px: 2.5,
-            py: 1.25,
-            borderBottom: index < activities.length - 1 ? '1px solid' : 'none',
-            borderColor: 'divider',
-          }}
-        >
-          <Box sx={{ minWidth: 0 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {activityLabel(activity.action)}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {activity.new_value ?? activity.old_value ?? activity.user_name ?? 'System'}
-            </Typography>
-          </Box>
-          <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
-            {formatDateTime(activity.created_at)}
-          </Typography>
-        </Box>
-      ))}
+      <List dense disablePadding>
+        {sorted.map((activity) => (
+          <ListItemButton
+            key={activity.id}
+            disabled={!activity.href}
+            onClick={() => {
+              if (activity.href) navigate(activity.href);
+            }}
+            sx={{
+              px: 0,
+              py: 0,
+              alignItems: 'stretch',
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              '&:last-child': { borderBottom: 'none' },
+            }}
+          >
+            <Box
+              sx={{
+                width: 4,
+                bgcolor: CATEGORY_COLORS[activity.category],
+                flexShrink: 0,
+              }}
+            />
+            <ListItemText
+              sx={{ px: 2, py: 1.25 }}
+              primary={activity.title}
+              secondary={
+                [
+                  CATEGORY_LABELS[activity.category],
+                  activity.detail,
+                  activity.actor_name,
+                  formatDateTime(activity.occurred_at),
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || undefined
+              }
+              slotProps={{
+                primary: { variant: 'body2', sx: { fontWeight: 600 } },
+                secondary: { variant: 'caption' },
+              }}
+            />
+          </ListItemButton>
+        ))}
+      </List>
     </Paper>
   );
 }

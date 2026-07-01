@@ -34,6 +34,11 @@ export interface DashboardSummary {
   attention_projects: ProjectAttentionRow[];
   my_tasks: DashboardMyTasks;
   recent_activity: import('./Workflow').Activity[];
+  activity_feed: DashboardActivityItem[];
+  customer_workload: DashboardCustomerWorkloadRow[];
+  designer_availability_summary: DashboardDesignerAvailabilitySummary;
+  designer_availability: DashboardDesignerAvailabilityRow[];
+  team_summary: DashboardTeamSummaryRow[];
   np_hours_this_month: number;
   np_hours_panel: DashboardNpPanel;
 }
@@ -91,6 +96,63 @@ export interface DashboardTaskItem {
   due_date?: string | null;
   project_code?: string | null;
   project_id?: string | null;
+  href?: string | null;
+  priority?: 'high' | 'medium' | 'low' | string | null;
+}
+
+export interface DashboardCustomerWorkloadRow {
+  customer_id: string;
+  customer_name: string;
+  active_tools: number;
+  quoted_hours: number;
+  actual_hours: number;
+  designers_assigned: number;
+}
+
+export interface DashboardDesignerAvailabilitySummary {
+  total_designers: number;
+  allocated: number;
+  available: number;
+  on_leave: number;
+}
+
+export type DesignerAvailabilityStatus = 'available' | 'working' | 'on_hold' | 'leave';
+
+export interface DashboardDesignerAvailabilityRow {
+  user_id: string;
+  designer_name: string;
+  status: DesignerAvailabilityStatus;
+  current_tool_number?: string | null;
+  current_customer_name?: string | null;
+  current_stage?: import('./common').ProjectStage | null;
+  current_milestone?: string | null;
+}
+
+export interface DashboardTeamSummaryRow {
+  team_id: string;
+  team_name: string;
+  team_colour?: string | null;
+  project_count: number;
+  designer_count: number;
+  quoted_hours: number;
+  actual_hours: number;
+  available_capacity_hours: number;
+}
+
+export type DashboardActivityCategory =
+  | 'project'
+  | 'milestone'
+  | 'timesheet'
+  | 'user'
+  | 'import';
+
+export interface DashboardActivityItem {
+  id: string;
+  category: DashboardActivityCategory;
+  title: string;
+  detail?: string | null;
+  actor_name?: string | null;
+  occurred_at: string;
   href?: string | null;
 }
 

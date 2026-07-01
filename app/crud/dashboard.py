@@ -13,13 +13,19 @@ from app.core.permissions import (
     project_assignment_filter,
     get_role_name,
 )
-from app.models.enums import MilestoneStatus, ProjectStatus, TimesheetStatus, WorkCategory
-from app.models.models import Activity, Milestone, Project, Role, Timesheet, TimesheetEntry, User
+from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
+from app.models.models import Activity, Customer, Milestone, Project, Role, Timesheet, TimesheetEntry, User
 from app.schemas.dashboard import (
+    DashboardFuturePlaceholders,
+    DashboardKpis,
+    DashboardMyTasks,
+    DashboardOverview,
     DashboardSummary,
+    DashboardTaskItem,
     DesignerWorkload,
     MilestoneSummary,
     MyTaskItem,
+    ProjectAttentionRow,
     ProjectDashboard,
     ProjectHoursSummary,
     WorkflowDashboard,
@@ -63,6 +69,248 @@ def _current_week_bounds(today: date | None = None) -> tuple[date, date]:
 
 def _visible_projects_clause():
     return (Project.is_deleted.is_(False), Project.is_archived.is_(False))
+
+
+def _active_statuses():
+    return (
+        ProjectStatus.not_started,
+        ProjectStatus.in_progress,
+        ProjectStatus.waiting_for_customer,
+    )
+
+
+def _attention_reason(project: Project, today: date) -> str | None:
+    if project.status == ProjectStatus.completed:
+        return None
+    if project.due_date < today:
+        return "overdue"
+    if project.health == ProjectHealth.red:
+        return "blocked"
+    if project.due_date <= today + timedelta(days=5):
+        return "due_soon"
+    if project.status == ProjectStatus.waiting_for_customer:
+        return "on_hold"
+    return None
+
+
+_ATTENTION_PRIORITY = {"overdue": 0, "blocked": 1, "due_soon": 2, "on_hold": 3}
+
+
+def _current_milestone_name(db: Session, project_id: UUID) -> str | None:
+    in_progress = db.scalar(
+        select(Milestone)
+        .where(
+            Milestone.project_id == project_id,
+            Milestone.status == MilestoneStatus.in_progress,
+        )
+        .order_by(Milestone.sort_order)
+        .limit(1)
+    )
+    if in_progress is not None:
+        return in_progress.name
+    next_milestone = db.scalar(
+        select(Milestone)
+        .where(
+            Milestone.project_id == project_id,
+            Milestone.status != MilestoneStatus.completed,
+        )
+        .order_by(Milestone.sort_order)
+        .limit(1)
+    )
+    return next_milestone.name if next_milestone else None
+
+
+def _designer_display_name(db: Session, project: Project) -> str | None:
+    user_id = project.designer_id or project.design_leader_id
+    if user_id is None:
+        return None
+    user = db.get(User, user_id)
+    if user is None:
+        return None
+    return f"{user.first_name} {user.last_name}"
+
+
+def get_dashboard_overview(db: Session, user: User) -> DashboardOverview:
+    today = date.today()
+    week_end = today + timedelta(days=7)
+    month_start = today.replace(day=1)
+    visibility = _visible_projects_clause()
+    role_name = get_role_name(db, user)
+
+    visible_projects = db.scalars(select(Project).where(*visibility)).all()
+    active_projects = [
+        project
+        for project in visible_projects
+        if project.status in _active_statuses()
+    ]
+
+    projects_due_this_week = sum(
+        1
+        for project in visible_projects
+        if project.status != ProjectStatus.completed
+        and today <= project.due_date <= week_end
+    )
+    overdue_projects = sum(
+        1
+        for project in visible_projects
+        if project.status != ProjectStatus.completed and project.due_date < today
+    )
+
+    submitted_timesheets = db.scalars(
+        select(Timesheet).where(Timesheet.status == TimesheetStatus.submitted)
+    ).all()
+    pending_timesheets = sum(
+        1 for ts in submitted_timesheets if can_approve_timesheet(db, user, ts)
+    )
+
+    workload = get_designer_workload(db)
+    if workload:
+        total_week_hours = sum((_decimal(row.hours_this_week) for row in workload), Decimal("0"))
+        capacity = Decimal(len(workload)) * Decimal("40")
+        designer_utilization = (
+            _round_percent((total_week_hours / capacity) * Decimal("100"))
+            if capacity > 0
+            else Decimal("0.00")
+        )
+    else:
+        designer_utilization = Decimal("0.00")
+
+    billable_this_month = db.scalar(
+        select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(
+            Timesheet.status == TimesheetStatus.approved,
+            TimesheetEntry.entry_date >= month_start,
+            TimesheetEntry.entry_date <= today,
+            TimesheetEntry.is_billable.is_(True),
+            TimesheetEntry.work_category == WorkCategory.productive,
+        )
+    )
+
+    customer_names = {
+        row.id: row.name
+        for row in db.scalars(select(Customer)).all()
+    }
+
+    attention_candidates: list[tuple[int, Project, str]] = []
+    for project in visible_projects:
+        reason = _attention_reason(project, today)
+        if reason is None:
+            continue
+        attention_candidates.append(
+            (_ATTENTION_PRIORITY.get(reason, 99), project, reason)
+        )
+    attention_candidates.sort(
+        key=lambda item: (item[0], item[1].due_date, item[1].tool_number)
+    )
+
+    projects_requiring_attention: list[ProjectAttentionRow] = []
+    for _, project, reason in attention_candidates[:10]:
+        projects_requiring_attention.append(
+            ProjectAttentionRow(
+                project_id=project.id,
+                tool_number=project.tool_number,
+                customer_name=customer_names.get(project.customer_id, "Unknown"),
+                current_milestone=_current_milestone_name(db, project.id),
+                designer_name=_designer_display_name(db, project),
+                due_date=project.due_date,
+                health=project.health,
+                status=project.status,
+                attention_reason=reason,
+            )
+        )
+
+    assignment_filter = project_assignment_filter(user, role_name)
+    if role_name in READ_ALL_PROJECT_ROLES:
+        user_projects = visible_projects
+    elif assignment_filter is not None:
+        user_projects = db.scalars(
+            select(Project).where(assignment_filter, *visibility)
+        ).all()
+    else:
+        user_projects = []
+
+    assigned_projects = [
+        DashboardTaskItem(
+            id=project.id,
+            title=project.tool_number,
+            task_type="project",
+            subtitle=project.part_description,
+            due_date=project.due_date,
+            project_code=project.code,
+            project_id=project.id,
+            href=f"/projects/{project.id}",
+        )
+        for project in user_projects
+        if project.status in _active_statuses()
+    ][:8]
+
+    pending_approvals = [
+        DashboardTaskItem(
+            id=ts.id,
+            title="Timesheet approval",
+            task_type="approval",
+            subtitle=f"Week of {ts.week_start.isoformat()}",
+            due_date=ts.week_start,
+            href="/timesheets",
+        )
+        for ts in submitted_timesheets
+        if can_approve_timesheet(db, user, ts)
+    ][:8]
+
+    user_project_ids = {project.id for project in user_projects}
+    upcoming_milestones: list[DashboardTaskItem] = []
+    if user_project_ids:
+        milestone_rows = db.scalars(
+            select(Milestone)
+            .where(
+                Milestone.project_id.in_(user_project_ids),
+                Milestone.status != MilestoneStatus.completed,
+                Milestone.due_date.is_not(None),
+                Milestone.due_date >= today,
+                Milestone.due_date <= today + timedelta(days=14),
+            )
+            .order_by(Milestone.due_date.asc())
+            .limit(8)
+        ).all()
+        project_map = {project.id: project for project in user_projects}
+        for row in milestone_rows:
+            project = project_map.get(row.project_id)
+            upcoming_milestones.append(
+                DashboardTaskItem(
+                    id=row.id,
+                    title=row.name,
+                    task_type="milestone",
+                    subtitle=project.tool_number if project else None,
+                    due_date=row.due_date,
+                    project_code=project.code if project else None,
+                    project_id=row.project_id,
+                    href=f"/projects/{row.project_id}" if project else None,
+                )
+            )
+
+    recent_activity_rows = db.scalars(
+        select(Activity).order_by(Activity.created_at.desc()).limit(15)
+    ).all()
+
+    return DashboardOverview(
+        kpis=DashboardKpis(
+            active_projects=len(active_projects),
+            projects_due_this_week=projects_due_this_week,
+            overdue_projects=overdue_projects,
+            pending_timesheets=pending_timesheets,
+            designer_utilization_percent=designer_utilization,
+            billable_hours_this_month=_round_hours(_decimal(billable_this_month)),
+        ),
+        projects_requiring_attention=projects_requiring_attention,
+        my_tasks=DashboardMyTasks(
+            assigned_projects=assigned_projects,
+            pending_approvals=pending_approvals,
+            upcoming_milestones=upcoming_milestones,
+        ),
+        recent_activity=[_activity_to_read(db, row) for row in recent_activity_rows],
+        placeholders=DashboardFuturePlaceholders(),
+    )
 
 
 def get_dashboard_summary(db: Session) -> DashboardSummary:

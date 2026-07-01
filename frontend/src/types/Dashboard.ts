@@ -26,6 +26,58 @@ export interface DashboardSummary {
   red_projects: number;
 }
 
+export interface DashboardOverview {
+  kpis: DashboardKpis;
+  projects_requiring_attention: ProjectAttentionRow[];
+  my_tasks: DashboardMyTasks;
+  recent_activity: import('./Workflow').Activity[];
+  placeholders: DashboardFuturePlaceholders;
+}
+
+export interface DashboardKpis {
+  active_projects: number;
+  projects_due_this_week: number;
+  overdue_projects: number;
+  pending_timesheets: number;
+  designer_utilization_percent: number;
+  billable_hours_this_month: number;
+}
+
+export interface ProjectAttentionRow {
+  project_id: string;
+  tool_number: string;
+  customer_name: string;
+  current_milestone: string | null;
+  designer_name: string | null;
+  due_date: string;
+  health: ProjectHealth;
+  status: import('./common').ProjectStatus;
+  attention_reason: 'overdue' | 'blocked' | 'due_soon' | 'on_hold';
+}
+
+export interface DashboardTaskItem {
+  id: string;
+  title: string;
+  task_type: string;
+  subtitle?: string | null;
+  due_date?: string | null;
+  project_code?: string | null;
+  project_id?: string | null;
+  href?: string | null;
+}
+
+export interface DashboardMyTasks {
+  assigned_projects: DashboardTaskItem[];
+  pending_approvals: DashboardTaskItem[];
+  upcoming_milestones: DashboardTaskItem[];
+}
+
+export interface DashboardFuturePlaceholders {
+  notifications_enabled: boolean;
+  ai_recommendations_enabled: boolean;
+  todays_priorities_enabled: boolean;
+}
+
 export interface DesignerWorkload {
   user_id: string;
   designer_name: string;

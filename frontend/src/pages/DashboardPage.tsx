@@ -1,226 +1,117 @@
-import {
-  Box,
-  Grid,
-  Typography,
-} from '@mui/material';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import ArchiveIcon from '@mui/icons-material/Archive';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import { Box, Grid } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
-import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import ScheduleIcon from '@mui/icons-material/Schedule';
-import SpeedIcon from '@mui/icons-material/Speed';
-import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
-import MoneyOffIcon from '@mui/icons-material/MoneyOff';
-import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
-import PercentIcon from '@mui/icons-material/Percent';
-import TrendingDownIcon from '@mui/icons-material/TrendingDown';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import PendingActionsIcon from '@mui/icons-material/PendingActions';
+import GroupsIcon from '@mui/icons-material/Groups';
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { fetchDashboardSummary } from '../api/dashboard';
-import { PageHeader } from '../components/common/PageHeader';
-import { EmptyState } from '../components/common/EmptyState';
+import { fetchDashboardOverview } from '../api/dashboard';
+import { ActionKpiCard, DashboardSection } from '../components/dashboard/DashboardCards';
+import { DashboardFutureStrip } from '../components/dashboard/DashboardFutureStrip';
+import { DashboardHeader } from '../components/dashboard/DashboardHeader';
+import { MyTasksWidget } from '../components/dashboard/MyTasksWidget';
+import { ProjectsAttentionTable } from '../components/dashboard/ProjectsAttentionTable';
+import { RecentActivityWidget } from '../components/dashboard/RecentActivityWidget';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
-import { DashboardCard } from '../components/ui/cards';
-import type { WorkflowDashboard } from '../types';
-import { getWorkflowDashboard } from '../services/notificationService';
-import { formatDate, formatNumber } from '../utils/format';
-
-type Accent = 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' | 'accent';
-
-interface DashboardMetric {
-  title: string;
-  value: string;
-  subtitle?: string;
-  accent: Accent;
-  icon: typeof FolderOpenIcon;
-  onClick?: () => void;
-}
+import { formatNumber } from '../utils/format';
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const { data, isLoading, error } = useQuery({
-    queryKey: ['dashboard', 'summary'],
-    queryFn: fetchDashboardSummary,
+    queryKey: ['dashboard', 'overview'],
+    queryFn: fetchDashboardOverview,
   });
 
-  const workflowQuery = useQuery<WorkflowDashboard>({
-    queryKey: ['dashboard', 'workflow'],
-    queryFn: getWorkflowDashboard,
-  });
-
-  if (isLoading || workflowQuery.isLoading) return <LoadingState />;
+  if (isLoading) return <LoadingState message="Loading your dashboard…" />;
   if (error) return <ErrorState error={error} />;
-  if (workflowQuery.error) return <ErrorState error={workflowQuery.error} />;
-  if (!data || !workflowQuery.data) return <EmptyState title="No dashboard data available" />;
+  if (!data) return null;
 
-  const workflow = workflowQuery.data;
+  const { kpis } = data;
 
-  const cards: DashboardMetric[] = [
+  const kpiCards = [
     {
       title: 'Active Projects',
-      value: formatNumber(data.active_projects, 0),
-      accent: 'primary',
+      value: formatNumber(kpis.active_projects, 0),
+      subtitle: 'In progress or on hold',
       icon: FolderOpenIcon,
       onClick: () => navigate('/projects'),
     },
     {
-      title: 'Completed Projects',
-      value: formatNumber(data.completed_projects, 0),
-      accent: 'success',
-      icon: CheckCircleIcon,
-      onClick: () => navigate('/projects?lifecycle=completed'),
-    },
-    {
-      title: 'Archived Projects',
-      value: formatNumber(data.archived_projects, 0),
-      accent: 'secondary',
-      icon: ArchiveIcon,
-      onClick: () => navigate('/projects/archived'),
-    },
-    { title: 'Total Projects', value: formatNumber(data.total_projects, 0), accent: 'primary', icon: FolderOpenIcon },
-    { title: 'Not Started', value: formatNumber(data.not_started_projects, 0), accent: 'secondary', icon: HourglassEmptyIcon },
-    { title: 'In Progress', value: formatNumber(data.in_progress_projects, 0), accent: 'info', icon: SpeedIcon },
-    { title: 'Green Projects', value: formatNumber(data.green_projects, 0), accent: 'success', icon: CheckCircleIcon },
-    { title: 'Yellow Projects', value: formatNumber(data.yellow_projects, 0), accent: 'warning', icon: WarningAmberIcon },
-    { title: 'Red Projects', value: formatNumber(data.red_projects, 0), accent: 'error', icon: WarningAmberIcon },
-    { title: 'Quoted Hours', value: formatNumber(data.total_quoted_hours), accent: 'primary', icon: ScheduleIcon },
-    { title: 'Actual Hours', value: formatNumber(data.total_actual_hours), accent: 'info', icon: AssignmentIcon },
-    {
-      title: 'Billable Hours',
-      value: formatNumber(data.billable_hours),
-      accent: 'success',
-      icon: MonetizationOnIcon,
-    },
-    {
-      title: 'Non-Billable Hours',
-      value: formatNumber(data.non_billable_hours),
-      accent: 'warning',
-      icon: MoneyOffIcon,
-    },
-    {
-      title: 'NP Hours',
-      value: formatNumber(data.np_hours),
-      accent: 'secondary',
-      icon: DoNotDisturbIcon,
-    },
-    {
-      title: 'Productive %',
-      value: `${formatNumber(data.productive_percent)}%`,
-      accent: 'info',
-      icon: PercentIcon,
-    },
-    { title: 'Remaining Hours', value: formatNumber(data.total_remaining_hours), accent: 'secondary', icon: PendingActionsIcon },
-    {
-      title: 'Pending Approvals',
-      value: formatNumber(workflow.pending_timesheet_approvals, 0),
-      accent: 'warning',
-      icon: PendingActionsIcon,
-    },
-    {
-      title: 'Unread Notifications',
-      value: formatNumber(workflow.unread_notifications, 0),
-      accent: 'accent',
-      icon: NotificationsActiveIcon,
-    },
-    {
       title: 'Projects Due This Week',
-      value: formatNumber(workflow.projects_due_this_week, 0),
-      accent: 'info',
+      value: formatNumber(kpis.projects_due_this_week, 0),
+      subtitle: 'Due in the next 7 days',
       icon: ScheduleIcon,
+      statusColor: kpis.projects_due_this_week > 0 ? ('warning' as const) : undefined,
+      onClick: () => navigate('/projects'),
     },
     {
-      title: 'Overdue Milestones',
-      value: formatNumber(workflow.overdue_milestones, 0),
-      accent: 'error',
+      title: 'Overdue Projects',
+      value: formatNumber(kpis.overdue_projects, 0),
+      subtitle: 'Past due date',
       icon: WarningAmberIcon,
+      statusColor: kpis.overdue_projects > 0 ? ('error' as const) : undefined,
+      onClick: () => navigate('/projects'),
     },
     {
-      title: 'Variance',
-      value: formatNumber(data.hours_variance),
-      subtitle:
-        data.hours_variance > 0
-          ? 'Over quoted'
-          : data.hours_variance < 0
-            ? 'Under quoted'
-            : 'On target',
-      accent: data.hours_variance > 0 ? 'warning' : data.hours_variance < 0 ? 'success' : 'primary',
-      icon: data.hours_variance > 0 ? TrendingUpIcon : TrendingDownIcon,
+      title: 'Pending Timesheets',
+      value: formatNumber(kpis.pending_timesheets, 0),
+      subtitle: 'Awaiting your approval',
+      icon: PendingActionsIcon,
+      statusColor: kpis.pending_timesheets > 0 ? ('warning' as const) : undefined,
+      onClick: () => navigate('/timesheets'),
+    },
+    {
+      title: 'Designer Utilization',
+      value: `${formatNumber(kpis.designer_utilization_percent)}%`,
+      subtitle: 'Team hours this week',
+      icon: GroupsIcon,
+      onClick: () => navigate('/workload'),
+    },
+    {
+      title: 'Billable Hours This Month',
+      value: formatNumber(kpis.billable_hours_this_month),
+      subtitle: 'Approved productive hours',
+      icon: MonetizationOnIcon,
+      onClick: () => navigate('/reports'),
     },
   ];
 
   return (
-    <Box>
-      <PageHeader
-        title="Dashboard"
-        subtitle="Portfolio overview, delivery health, and hour utilization"
+    <Box sx={{ maxWidth: 1280, mx: 'auto' }}>
+      <DashboardHeader
+        onNewProject={() => navigate('/projects')}
+        onTimesheet={() => navigate('/timesheets')}
+        onCustomer={() => navigate('/admin/customers')}
+        onUser={() => navigate('/admin/users')}
       />
 
-      <Grid container spacing={2.5}>
-        {cards.map((card) => (
-          <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={card.title}>
-            <DashboardCard
-              title={card.title}
-              value={card.value}
-              subtitle={card.subtitle}
-              accent={card.accent}
-              icon={card.icon}
-              onClick={card.onClick}
-            />
+      <Grid container spacing={2} sx={{ mb: 3.5 }}>
+        {kpiCards.map((card) => (
+          <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={card.title}>
+            <ActionKpiCard {...card} />
           </Grid>
         ))}
       </Grid>
 
-      <Typography variant="sectionTitle" sx={{ mt: 5, mb: 2 }}>
-        My Tasks
-      </Typography>
-      <Grid container spacing={2.5} sx={{ mb: 4 }}>
-        {workflow.my_tasks.length === 0 ? (
-          <Grid size={{ xs: 12 }}>
-            <EmptyState title="No open tasks" />
-          </Grid>
-        ) : (
-          workflow.my_tasks.map((task) => (
-            <Grid size={{ xs: 12, md: 6 }} key={task.id}>
-              <DashboardCard
-                title={task.title}
-                value={task.project_code ?? '—'}
-                subtitle={task.due_date ? `Due ${formatDate(task.due_date)}` : 'No due date'}
-                accent="primary"
-                icon={AssignmentIcon}
-              />
-            </Grid>
-          ))
-        )}
-      </Grid>
+      <DashboardSection
+        title="Projects Requiring Attention"
+        subtitle="Overdue, due soon, blocked, or on hold"
+      >
+        <ProjectsAttentionTable rows={data.projects_requiring_attention} />
+      </DashboardSection>
 
-      <Typography variant="sectionTitle" sx={{ mb: 2 }}>
-        Recent Activity
-      </Typography>
-      <Grid container spacing={2.5}>
-        {workflow.recent_activity.length === 0 ? (
-          <Grid size={{ xs: 12 }}>
-            <EmptyState title="No recent activity" />
-          </Grid>
-        ) : (
-          workflow.recent_activity.map((activity) => (
-            <Grid size={{ xs: 12, md: 6 }} key={activity.id}>
-              <DashboardCard
-                title={activity.action.replaceAll('_', ' ')}
-                value={activity.user_name ?? 'System'}
-                subtitle={activity.new_value ?? activity.old_value ?? '—'}
-                accent="secondary"
-                icon={SpeedIcon}
-              />
-            </Grid>
-          ))
-        )}
-      </Grid>
+      <DashboardSection title="My Tasks" subtitle="Assignments, approvals, and upcoming milestones">
+        <MyTasksWidget tasks={data.my_tasks} />
+      </DashboardSection>
+
+      <DashboardSection title="Recent Activity" subtitle="Latest updates across ProTrack">
+        <RecentActivityWidget activities={data.recent_activity} />
+      </DashboardSection>
+
+      <DashboardFutureStrip placeholders={data.placeholders} />
     </Box>
   );
 }

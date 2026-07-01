@@ -7,7 +7,7 @@ import {
 
 /** Override with VITE_API_URL; defaults to backend direct URL per spec. */
 export const API_BASE_URL =
-  import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1';
+  import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8002/api/v1';
 
 export class ApiError extends Error {
   status: number;

@@ -11,6 +11,56 @@ def test_list_projects_defaults_to_active(client):
     assert projects[0]["tool_number"] == "T-100"
 
 
+def test_list_projects_lifecycle_all_includes_completed(client):
+    project_id = client.project_id
+
+    patch = client.patch(
+        f"/api/v1/projects/{project_id}",
+        json={"execution_status": "completed"},
+        headers=client.auth_headers,
+    )
+    assert patch.status_code == 200
+
+    active = client.get(
+        "/api/v1/projects?lifecycle=active",
+        headers=client.auth_headers,
+    )
+    assert active.status_code == 200
+    assert active.json() == []
+
+    all_projects = client.get(
+        "/api/v1/projects?lifecycle=all",
+        headers=client.auth_headers,
+    )
+    assert all_projects.status_code == 200
+    assert len(all_projects.json()) == 1
+    assert all_projects.json()[0]["execution_status"] == "completed"
+
+
+def test_list_projects_lifecycle_all_includes_archived(client):
+    project_id = client.project_id
+
+    client.post(
+        f"/api/v1/projects/{project_id}/archive",
+        headers=client.auth_headers,
+    )
+
+    completed = client.get(
+        "/api/v1/projects?lifecycle=completed",
+        headers=client.auth_headers,
+    )
+    assert completed.status_code == 200
+    assert completed.json() == []
+
+    all_projects = client.get(
+        "/api/v1/projects?lifecycle=all",
+        headers=client.auth_headers,
+    )
+    assert all_projects.status_code == 200
+    assert len(all_projects.json()) == 1
+    assert all_projects.json()[0]["is_archived"] is True
+
+
 def test_archive_and_restore_project(client):
     project_id = client.project_id
 

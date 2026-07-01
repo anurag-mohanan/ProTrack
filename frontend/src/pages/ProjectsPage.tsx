@@ -41,6 +41,7 @@ import type { ExecutionStatus, ProjectLifecycleFilter, ProjectStage } from '../t
 import { canArchiveProject } from '../utils/permissions';
 
 const lifecycleOptions: Array<{ value: ProjectLifecycleFilter; label: string }> = [
+  { value: 'all', label: 'All Projects' },
   { value: 'active', label: 'Active' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
@@ -73,7 +74,7 @@ export function ProjectsPage() {
   const [restoreId, setRestoreId] = useState<string | null>(null);
 
   const lifecycle =
-    (searchParams.get('lifecycle') as ProjectLifecycleFilter | null) ?? 'active';
+    (searchParams.get('lifecycle') as ProjectLifecycleFilter | null) ?? 'all';
   const dueFilter = searchParams.get('due');
   const completedFilter = searchParams.get('completed');
 
@@ -275,6 +276,7 @@ export function ProjectsPage() {
   const showRestoreActions = lifecycle === 'cancelled';
 
   const lifecycleSubtitle: Record<ProjectLifecycleFilter, string> = {
+    all: 'Browse all projects including active, completed, and archived',
     active: 'Manage engineering projects and assignments',
     completed: 'Review completed projects and delivery history',
     cancelled: 'Cancelled projects are excluded from workload and active KPIs',
@@ -293,19 +295,21 @@ export function ProjectsPage() {
     <Box>
       <PageHeader
         title={
-          lifecycle === 'cancelled'
-            ? 'Cancelled Projects'
-            : lifecycle === 'completed'
-              ? 'Completed Projects'
-              : lifecycle === 'archived'
-                ? 'Archived Projects'
-                : lifecycle === 'deleted'
-                  ? 'Deleted Projects'
-                  : 'Projects'
+          lifecycle === 'all'
+            ? 'All Projects'
+            : lifecycle === 'cancelled'
+              ? 'Cancelled Projects'
+              : lifecycle === 'completed'
+                ? 'Completed Projects'
+                : lifecycle === 'archived'
+                  ? 'Archived Projects'
+                  : lifecycle === 'deleted'
+                    ? 'Deleted Projects'
+                    : 'Projects'
         }
         subtitle={lifecycleSubtitle[lifecycle]}
         action={
-          lifecycle === 'active' ? (
+          lifecycle === 'active' || lifecycle === 'all' ? (
             <ProsohmButton
               buttonVariant="primary"
               startIcon={<AddIcon />}
@@ -332,7 +336,7 @@ export function ProjectsPage() {
             onChange={(event) => {
               const value = event.target.value as ProjectLifecycleFilter;
               const next = new URLSearchParams(searchParams);
-              if (value === 'active') {
+              if (value === 'all') {
                 next.delete('lifecycle');
               } else {
                 next.set('lifecycle', value);

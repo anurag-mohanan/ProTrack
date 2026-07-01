@@ -6,6 +6,7 @@ import type {
 } from './common';
 
 export type ProjectLifecycleFilter =
+  | 'all'
   | 'active'
   | 'completed'
   | 'cancelled'

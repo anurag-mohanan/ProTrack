@@ -175,6 +175,8 @@ def apply_lifecycle_filter(stmt, lifecycle: ProjectLifecycleFilter):
     if lifecycle == ProjectLifecycleFilter.deleted:
         return stmt.where(Project.is_deleted.is_(True))
     stmt = stmt.where(Project.is_deleted.is_(False))
+    if lifecycle == ProjectLifecycleFilter.all:
+        return stmt
     if lifecycle == ProjectLifecycleFilter.archived:
         return stmt.where(Project.is_archived.is_(True))
     stmt = stmt.where(Project.is_archived.is_(False))

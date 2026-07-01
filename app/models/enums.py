@@ -40,6 +40,7 @@ class WorkCategory(enum.Enum):
 
 
 class ProjectLifecycleFilter(enum.Enum):
+    all = "all"
     active = "active"
     completed = "completed"
     cancelled = "cancelled"

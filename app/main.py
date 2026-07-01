@@ -6,6 +6,7 @@ from fastapi.openapi.utils import get_openapi
 
 import app.models  # noqa: F401 — register all models with Base.metadata
 from app.api.v1.api import api_router
+from app.core.config import ENABLE_DEMO_SEED
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -54,7 +55,8 @@ async def lifespan(app: FastAPI):
     ensure_phase7_foundation(engine)
     ensure_phase8_foundation(engine)
     ensure_performance_indexes(engine)
-    ensure_design_team(engine)
+    if ENABLE_DEMO_SEED:
+        ensure_design_team(engine)
     seed_session = sessionmaker(bind=engine)()
     try:
         ensure_project_types_and_templates(seed_session)

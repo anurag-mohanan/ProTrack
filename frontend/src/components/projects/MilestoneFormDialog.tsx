@@ -51,6 +51,7 @@ interface MilestoneFormDialogProps {
   onClose: () => void;
   projectId: string;
   milestone?: Milestone | null;
+  onSaved?: () => void;
 }
 
 export function MilestoneFormDialog({
@@ -58,6 +59,7 @@ export function MilestoneFormDialog({
   onClose,
   projectId,
   milestone,
+  onSaved,
 }: MilestoneFormDialogProps) {
   const isEdit = Boolean(milestone);
   const queryClient = useQueryClient();
@@ -115,6 +117,7 @@ export function MilestoneFormDialog({
     onSuccess: () => {
       invalidateMilestoneRelatedQueries(queryClient, projectId);
       showSuccess(isEdit ? 'Milestone updated successfully' : 'Milestone added successfully');
+      onSaved?.();
       onClose();
     },
     onError: (error) => {
@@ -127,6 +130,7 @@ export function MilestoneFormDialog({
     onSuccess: () => {
       invalidateMilestoneRelatedQueries(queryClient, projectId);
       showSuccess('Milestone deleted');
+      onSaved?.();
       onClose();
     },
     onError: (error) => showError(getErrorMessage(error)),

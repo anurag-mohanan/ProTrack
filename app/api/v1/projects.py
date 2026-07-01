@@ -24,10 +24,27 @@ from app.core.permissions import (
     get_role_name,
     project_assignment_filter,
 )
+from app.crud.command_center import (
+    clone_project,
+    engineering_change,
+    project_decision,
+    update_project_folders,
+)
 from app.crud import project
 from app.crud.dashboard import get_project_dashboard
 from app.models.enums import ActivityAction, EntityType, ExecutionStatus, ProjectLifecycleFilter, ProjectStage
 from app.models.models import User
+from app.schemas.command_center import (
+    EngineeringChangeCreate,
+    EngineeringChangeRead,
+    EngineeringChangeUpdate,
+    ProjectCommandCenter,
+    ProjectDecisionCreate,
+    ProjectDecisionRead,
+    ProjectDecisionUpdate,
+    ProjectFolderPaths,
+    ProjectFolderPathsUpdate,
+)
 from app.schemas.dashboard import ProjectDashboard
 from app.schemas.project import (
     ArchivedProjectListItem,
@@ -37,6 +54,7 @@ from app.schemas.project import (
     ProjectUpdate,
 )
 from app.services.activity_service import log_activity
+from app.services.command_center_service import get_project_command_center
 from app.services.project_lifecycle_service import (
     archive_project,
     get_project_delete_dependencies,
@@ -246,6 +264,206 @@ def get_project_detail(
             status_code=status.HTTP_404_NOT_FOUND, detail="Record not found"
         )
     return result
+
+
+@router.get("/{record_id}/command-center", response_model=ProjectCommandCenter)
+def get_project_command_center_endpoint(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = project.get(db, record_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Record not found"
+        )
+    if not can_read_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    result = get_project_command_center(db, record_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Record not found"
+        )
+    return result
+
+
+@router.post("/{record_id}/clone", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
+def clone_project_endpoint(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_create_project(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    try:
+        cloned = clone_project(db, db_project)
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.project,
+            entity_id=cloned.id,
+            action=ActivityAction.project_created,
+            new_value=cloned.code,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return project.get_read(db, cloned.id)
+
+
+@router.patch("/{record_id}/folders", response_model=ProjectFolderPaths)
+def update_project_folders_endpoint(
+    record_id: UUID,
+    payload: ProjectFolderPathsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    updated = update_project_folders(db, db_project, payload)
+    from app.services.command_center_service import _resolve_folders
+
+    return _resolve_folders(db, updated)
+
+
+@router.get("/{record_id}/decisions", response_model=list[ProjectDecisionRead])
+def list_project_decisions(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_read_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    return project_decision.list_for_project(db, record_id)
+
+
+@router.post(
+    "/{record_id}/decisions",
+    response_model=ProjectDecisionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_project_decision(
+    record_id: UUID,
+    payload: ProjectDecisionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    try:
+        return project_decision.create(
+            db, project_id=record_id, user_id=current_user.id, obj_in=payload
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.patch("/{record_id}/decisions/{decision_id}", response_model=ProjectDecisionRead)
+def update_project_decision(
+    record_id: UUID,
+    decision_id: UUID,
+    payload: ProjectDecisionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    try:
+        row = project_decision.update(
+            db, decision_id=decision_id, project_id=record_id, obj_in=payload
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Decision not found")
+    return row
+
+
+@router.delete("/{record_id}/decisions/{decision_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project_decision(
+    record_id: UUID,
+    decision_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    if not project_decision.delete(db, decision_id=decision_id, project_id=record_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Decision not found")
+
+
+@router.post(
+    "/{record_id}/engineering-changes",
+    response_model=EngineeringChangeRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_engineering_change(
+    record_id: UUID,
+    payload: EngineeringChangeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    row = engineering_change.create(db, project_id=record_id, obj_in=payload)
+    return EngineeringChangeRead.model_validate(row, from_attributes=True)
+
+
+@router.patch(
+    "/{record_id}/engineering-changes/{ec_id}",
+    response_model=EngineeringChangeRead,
+)
+def update_engineering_change(
+    record_id: UUID,
+    ec_id: UUID,
+    payload: EngineeringChangeUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    row = engineering_change.update(
+        db, ec_id=ec_id, project_id=record_id, obj_in=payload
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Engineering change not found"
+        )
+    return EngineeringChangeRead.model_validate(row, from_attributes=True)
 
 
 @router.get("/{record_id}/delete-check", response_model=ProjectDeleteCheck)

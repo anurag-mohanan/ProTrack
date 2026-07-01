@@ -2,347 +2,489 @@ import { useState } from 'react';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
+  Chip,
   Grid,
-  LinearProgress,
-  Tab,
-  Tabs,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   Typography,
 } from '@mui/material';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import EditIcon from '@mui/icons-material/Edit';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import FileCopyIcon from '@mui/icons-material/FileCopy';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
-import { fetchCustomers, fetchStreams, fetchUsers } from '../api/lookups';
-import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
-import { ProjectMilestonesTab } from '../components/projects/ProjectMilestonesTab';
-import { ProjectTimesheetsTab } from '../components/projects/ProjectTimesheetsTab';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  cloneProject,
+  commandCenterQueryKeys,
+  createEngineeringChange,
+  createProjectDecision,
+  deleteProjectDecision,
+  fetchProjectCommandCenter,
+  updateProjectDecision,
+  updateProjectFolders,
+} from '../api/commandCenter';
+import { DecisionLogPanel } from '../components/command-center/DecisionLogPanel';
+import { KpiPanel } from '../components/command-center/KpiPanel';
+import { WorkflowTimeline } from '../components/command-center/WorkflowTimeline';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
-import { HealthChip, ExecutionStatusChip, ProjectStageChip } from '../components/common/StatusChip';
-import { fetchProjectTypes, fetchMatchingProjectTemplates } from '../api/projectTemplates';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
-import { getProjectDetail, invalidateProjectCalculationQueries, projectQueryKeys, archiveProject } from '../services/projectService';
-import { activityQueryKeys, getProjectActivities } from '../services/notificationService';
-import { formatDate, formatDateTime, formatNumber, userDisplayName } from '../utils/format';
-import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import {
+  HealthChip,
+  ExecutionStatusChip,
+  ProjectStageChip,
+} from '../components/common/StatusChip';
+import { MilestoneFormDialog } from '../components/projects/MilestoneFormDialog';
+import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
+import { AppCard, FormDrawer, FormField, PriorityBadge } from '../components/ui/design-system';
+import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { archiveProject, invalidateProjectCalculationQueries } from '../services/projectService';
+import { formatDate, formatNumber } from '../utils/format';
 import { canArchiveProject } from '../utils/permissions';
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoLine({ label, value }: { label: string; value: string }) {
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1, gap: 2 }}>
-      <Typography color="text.secondary">{label}</Typography>
-      <Typography sx={{ fontWeight: 600, textAlign: 'right' }}>
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.75, gap: 2 }}>
+      <Typography variant="body2" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'right' }}>
         {value}
       </Typography>
     </Box>
   );
 }
 
+function copyToClipboard(value: string, showSuccess: (msg: string) => void) {
+  void navigator.clipboard.writeText(value);
+  showSuccess('Path copied to clipboard');
+}
+
 export function ProjectDetailPage() {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
-  const [tab, setTab] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [milestoneOpen, setMilestoneOpen] = useState(false);
+  const [folderOpen, setFolderOpen] = useState(false);
+  const [ecOpen, setEcOpen] = useState(false);
+  const [folderForm, setFolderForm] = useState({
+    project_folder_path: '',
+    cad_folder_path: '',
+    released_folder_path: '',
+  });
+  const [ecForm, setEcForm] = useState({ ec_number: '', title: '', hours: 0 });
 
-  const detailQuery = useQuery({
-    queryKey: projectQueryKeys.detail(id),
-    queryFn: () => getProjectDetail(id),
+  const query = useQuery({
+    queryKey: commandCenterQueryKeys.detail(id),
+    queryFn: () => fetchProjectCommandCenter(id),
     enabled: Boolean(id),
   });
 
-  const activityQuery = useQuery({
-    queryKey: activityQueryKeys.project(id),
-    queryFn: () => getProjectActivities(id),
-    enabled: Boolean(id),
-  });
-
-  const customersQuery = useQuery({
-    queryKey: ['customers'],
-    queryFn: fetchCustomers,
-  });
-
-  const usersQuery = useQuery({
-    queryKey: ['users'],
-    queryFn: fetchUsers,
-  });
-
-  const streamsQuery = useQuery({
-    queryKey: ['streams'],
-    queryFn: fetchStreams,
-  });
-
-  const projectTypesQuery = useQuery({
-    queryKey: ['project-types'],
-    queryFn: fetchProjectTypes,
-  });
-
-  const projectTemplatesQuery = useQuery({
-    queryKey: [
-      'project-templates',
-      id,
-      detailQuery.data?.project.project_template_id,
-      detailQuery.data?.project.project_type_id,
-    ],
-    queryFn: () =>
-      fetchMatchingProjectTemplates({
-        customer_id: detailQuery.data!.project.customer_id,
-        project_type_id: detailQuery.data!.project.project_type_id ?? '',
-      }),
-    enabled: Boolean(detailQuery.data?.project.project_type_id),
-  });
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: commandCenterQueryKeys.detail(id) });
+    invalidateProjectCalculationQueries(queryClient, id);
+  };
 
   const archiveMutation = useMutation({
     mutationFn: () => archiveProject(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
-      invalidateProjectCalculationQueries(queryClient, id);
       showSuccess('Project archived');
       setArchiveOpen(false);
+      invalidate();
     },
     onError: (error: Error) => showError(error.message),
   });
 
-  if (detailQuery.isLoading) return <LoadingState message="Loading project…" />;
-  if (detailQuery.error) return <ErrorState error={detailQuery.error} />;
-  if (!detailQuery.data) return <EmptyState title="Project not found" />;
+  const cloneMutation = useMutation({
+    mutationFn: () => cloneProject(id),
+    onSuccess: (cloned: { id: string }) => {
+      showSuccess('Project cloned');
+      navigate(`/projects/${cloned.id}`);
+    },
+    onError: (error: Error) => showError(error.message),
+  });
 
-  const { project, milestone_summary, hours, health } = detailQuery.data;
+  const folderMutation = useMutation({
+    mutationFn: () => updateProjectFolders(id, folderForm),
+    onSuccess: () => {
+      showSuccess('Folder paths saved');
+      setFolderOpen(false);
+      invalidate();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
 
-  const customerName =
-    customersQuery.data?.find((customer) => customer.id === project.customer_id)?.name ??
-    '—';
-  const streamName =
-    streamsQuery.data?.find((stream) => stream.id === project.stream_id)?.name ?? '—';
-  const designLeader =
-    usersQuery.data?.find((user) => user.id === project.design_leader_id);
-  const designer = project.designer_id
-    ? usersQuery.data?.find((user) => user.id === project.designer_id)
-    : undefined;
-  const surfacer = project.surfacer_id
-    ? usersQuery.data?.find((user) => user.id === project.surfacer_id)
-    : undefined;
-  const projectTypeName =
-    projectTypesQuery.data?.find((type) => type.id === project.project_type_id)?.name ??
-    '—';
-  const templateName =
-    projectTemplatesQuery.data?.find(
-      (template) => template.id === project.project_template_id,
-    )?.name ?? '—';
+  const ecMutation = useMutation({
+    mutationFn: () =>
+      createEngineeringChange(id, {
+        ec_number: ecForm.ec_number,
+        title: ecForm.title,
+        hours: ecForm.hours,
+      }),
+    onSuccess: () => {
+      showSuccess('Engineering change created');
+      setEcOpen(false);
+      setEcForm({ ec_number: '', title: '', hours: 0 });
+      invalidate();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const decisionMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof createProjectDecision>[1]) =>
+      createProjectDecision(id, payload),
+    onSuccess: () => {
+      showSuccess('Decision logged');
+      invalidate();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  if (query.isLoading) return <LoadingState message="Loading command center…" />;
+  if (query.error) return <ErrorState error={query.error} />;
+  if (!query.data) return <EmptyState title="Project not found" />;
+
+  const data = query.data;
+  const { header, project, folders } = data;
+  const displayFolder =
+    folders.project_folder_path || folders.suggested_project_folder || '';
+
+  const openFolder = (path: string) => {
+    if (!path) {
+      showError('No folder path configured');
+      return;
+    }
+    copyToClipboard(path, showSuccess);
+  };
+
+  const openFoldersEditor = () => {
+    setFolderForm({
+      project_folder_path: folders.project_folder_path ?? folders.suggested_project_folder ?? '',
+      cad_folder_path: folders.cad_folder_path ?? folders.suggested_cad_folder ?? '',
+      released_folder_path:
+        folders.released_folder_path ?? folders.suggested_released_folder ?? '',
+    });
+    setFolderOpen(true);
+  };
 
   return (
     <Box>
       <PageHeader
-        title={project.tool_number}
-        subtitle={project.part_description}
+        title={header.tool_number}
+        subtitle={header.part_description}
         action={
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {!project.is_archived &&
-            !project.is_deleted &&
-            canArchiveProject(user?.role_name ?? '') ? (
-              <Button
-                variant="outlined"
-                color="secondary"
-                startIcon={<ArchiveIcon />}
-                onClick={() => setArchiveOpen(true)}
-              >
-                Archive Project
-              </Button>
-            ) : null}
+          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
             {!project.is_archived && !project.is_deleted ? (
-              <Button
-                variant="contained"
-                startIcon={<EditIcon />}
-                onClick={() => setEditOpen(true)}
-              >
-                Edit Project
-              </Button>
+              <>
+                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setEditOpen(true)}>
+                  Edit
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<FileCopyIcon />}
+                  onClick={() => cloneMutation.mutate()}
+                  disabled={cloneMutation.isPending}
+                >
+                  Clone
+                </Button>
+                {canArchiveProject(user?.role_name ?? '') ? (
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    startIcon={<ArchiveIcon />}
+                    onClick={() => setArchiveOpen(true)}
+                  >
+                    Archive
+                  </Button>
+                ) : null}
+              </>
             ) : null}
-          </Box>
+            <Button
+              component={Link}
+              to="/timesheets"
+              variant="outlined"
+              startIcon={<ScheduleIcon />}
+            >
+              Timesheets
+            </Button>
+            <Button component={Link} to="/reports" variant="outlined" startIcon={<AssessmentIcon />}>
+              Reports
+            </Button>
+            <Button variant="outlined" startIcon={<FolderOpenIcon />} onClick={openFoldersEditor}>
+              Open Folder
+            </Button>
+          </Stack>
         }
       />
 
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
-        <HealthChip health={health} />
-        <ProjectStageChip stage={project.project_stage} />
-        <ExecutionStatusChip status={project.execution_status} />
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {[
+          { label: 'Customer', value: header.customer_name },
+          { label: 'Team', value: header.team_name ?? '—' },
+          { label: 'Designer', value: header.designer_name ?? '—' },
+          { label: 'Current Milestone', value: header.current_milestone ?? '—' },
+          { label: 'Completion', value: `${formatNumber(header.completion_percent)}%` },
+          { label: 'Days Remaining', value: String(header.days_remaining) },
+        ].map((item) => (
+          <Grid size={{ xs: 6, sm: 4, md: 2 }} key={item.label}>
+            <AppCard title={item.label}>
+              <Typography sx={{ fontWeight: 700 }}>{item.value}</Typography>
+            </AppCard>
+          </Grid>
+        ))}
+      </Grid>
+
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 3 }}>
+        <HealthChip health={header.health} />
+        <ProjectStageChip stage={header.project_stage} />
+        <ExecutionStatusChip status={header.execution_status} />
+        <PriorityBadge priority={header.priority} />
       </Box>
 
-      <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 3 }}>
-        <Tab label="Overview" />
-        <Tab label="Milestones" />
-        <Tab label="Timesheets" />
-      </Tabs>
-
-      {tab === 0 && (
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, lg: 6 }}>
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Project Information
-                </Typography>
-                <InfoRow label="Tool Number" value={project.tool_number} />
-                <InfoRow label="Project Code" value={project.code} />
-                <InfoRow label="Customer" value={customerName} />
-                <InfoRow label="Project Type" value={projectTypeName} />
-                <InfoRow label="Template" value={templateName} />
-                <InfoRow label="Stream" value={streamName} />
-                <InfoRow label="Due Date" value={formatDate(project.due_date)} />
-                <InfoRow
-                  label="Quoted Hours"
-                  value={formatNumber(project.quoted_hours)}
-                />
-                <InfoRow label="Actual Hours" value={formatNumber(hours.actual)} />
-                <InfoRow
-                  label="Design Leader"
-                  value={designLeader ? userDisplayName(designLeader) : '—'}
-                />
-                <InfoRow
-                  label="Designer"
-                  value={designer ? userDisplayName(designer) : '—'}
-                />
-                <InfoRow
-                  label="Surfacer"
-                  value={surfacer ? userDisplayName(surfacer) : '—'}
-                />
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                  <Typography color="text.secondary">Project Stage</Typography>
-                  <ProjectStageChip stage={project.project_stage} />
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                  <Typography color="text.secondary">Execution Status</Typography>
-                  <ExecutionStatusChip status={project.execution_status} />
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                  <Typography color="text.secondary">Health</Typography>
-                  <HealthChip health={health} />
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                  <Typography color="text.secondary">Progress</Typography>
-                  <Typography sx={{ fontWeight: 600 }}>
-                    {formatNumber(milestone_summary.progress_percent)}%
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, lg: 2 }}>
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Milestone Summary
-                </Typography>
-                <InfoRow
-                  label="Completed"
-                  value={formatNumber(milestone_summary.completed, 0)}
-                />
-                <InfoRow
-                  label="Remaining"
-                  value={formatNumber(milestone_summary.remaining, 0)}
-                />
-                <InfoRow
-                  label="Milestone Progress"
-                  value={`${formatNumber(milestone_summary.progress_percent)}%`}
-                />
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, lg: 2 }}>
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Hours Summary
-                </Typography>
-                <InfoRow label="Quoted" value={formatNumber(hours.quoted)} />
-                <InfoRow label="Actual" value={formatNumber(hours.actual)} />
-                <InfoRow label="Remaining" value={formatNumber(hours.remaining)} />
-                <InfoRow label="Variance" value={formatNumber(hours.variance)} />
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, lg: 2 }}>
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Health & Progress
-                </Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
-                  <Typography color="text.secondary">Health</Typography>
-                  <HealthChip health={health} />
-                </Box>
-                <InfoRow
-                  label="Progress"
-                  value={`${formatNumber(milestone_summary.progress_percent)}%`}
-                />
-                <LinearProgress
-                  variant="determinate"
-                  value={Math.min(Number(milestone_summary.progress_percent), 100)}
-                  sx={{ mt: 2, height: 8, borderRadius: 1 }}
-                />
-              </CardContent>
-            </Card>
-          </Grid>
+      <Grid container spacing={2.5}>
+        <Grid size={{ xs: 12, lg: 8 }}>
+          <AppCard title="Project Timeline" subtitle="Engineering workflow milestones">
+            <WorkflowTimeline steps={data.timeline} />
+          </AppCard>
         </Grid>
-      )}
-
-      {tab === 0 && (
-        <Card sx={{ mt: 3 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Recent Activity
-            </Typography>
-            {activityQuery.isLoading ? (
-              <LoadingState message="Loading activity…" />
-            ) : activityQuery.error ? (
-              <ErrorState error={activityQuery.error} />
-            ) : !activityQuery.data?.length ? (
-              <EmptyState title="No activity yet" />
+        <Grid size={{ xs: 12, lg: 4 }}>
+          <AppCard title="Project Risks" subtitle="Automatically detected">
+            {!data.risks.length ? (
+              <Typography variant="body2" color="text.secondary">
+                No active risks detected.
+              </Typography>
             ) : (
-              activityQuery.data.map((activity) => (
+              data.risks.map((risk) => (
                 <Box
-                  key={activity.id}
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    py: 1,
-                    borderBottom: 1,
-                    borderColor: 'divider',
-                  }}
+                  key={`${risk.risk_type}-${risk.title}`}
+                  sx={{ mb: 1.5, p: 1.5, borderRadius: 2, bgcolor: 'action.hover' }}
                 >
-                  <Box>
-                    <Typography sx={{ fontWeight: 600 }}>
-                      {activity.action.replaceAll('_', ' ')}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {activity.user_name ?? 'System'} · {activity.new_value ?? '—'}
-                    </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.5 }}>
+                    <Chip
+                      size="small"
+                      label={risk.severity}
+                      color={
+                        risk.severity === 'critical'
+                          ? 'error'
+                          : risk.severity === 'high'
+                            ? 'warning'
+                            : 'default'
+                      }
+                    />
+                    <Typography sx={{ fontWeight: 600 }}>{risk.title}</Typography>
                   </Box>
-                  <Typography variant="caption" color="text.secondary">
-                    {formatDateTime(activity.created_at)}
-                  </Typography>
+                  {risk.detail ? (
+                    <Typography variant="caption" color="text.secondary">
+                      {risk.detail}
+                    </Typography>
+                  ) : null}
                 </Box>
               ))
             )}
-          </CardContent>
-        </Card>
-      )}
+          </AppCard>
+        </Grid>
 
-      {tab === 1 && <ProjectMilestonesTab projectId={project.id} />}
+        <Grid size={{ xs: 12 }}>
+          <AppCard title="Project KPIs">
+            <KpiPanel kpis={data.kpis} />
+          </AppCard>
+        </Grid>
 
-      {tab === 2 && (
-        <ProjectTimesheetsTab entries={detailQuery.data.recent_timesheet_entries} />
-      )}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <AppCard title="Project Team" subtitle="Capacity and availability">
+            <InfoLine label="Engineering Manager" value={data.team.engineering_manager_name ?? '—'} />
+            <InfoLine label="Design Leader" value={data.team.design_leader_name ?? '—'} />
+            <InfoLine label="Designer" value={data.team.designer_name ?? '—'} />
+            <InfoLine label="Surfacer" value={data.team.surfacer_name ?? '—'} />
+            <InfoLine label="Team" value={data.team.team_name ?? '—'} />
+            {data.team.members.map((member) => (
+              <Box key={member.user_id} sx={{ mt: 2, p: 1.5, borderRadius: 2, bgcolor: 'action.hover' }}>
+                <Typography sx={{ fontWeight: 600 }}>
+                  {member.name} · {member.role}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Capacity {formatNumber(member.capacity_hours)}h · Allocated{' '}
+                  {formatNumber(member.allocated_hours)}h · Available{' '}
+                  {formatNumber(member.available_hours)}h
+                </Typography>
+              </Box>
+            ))}
+          </AppCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <AppCard title="Customer Summary">
+            <InfoLine label="Customer" value={data.customer_summary.customer_name} />
+            <InfoLine
+              label="Primary Contact"
+              value={data.customer_summary.primary_contact_name ?? '—'}
+            />
+            <InfoLine label="Active Projects" value={String(data.customer_summary.active_projects)} />
+            <InfoLine
+              label="Completed Projects"
+              value={String(data.customer_summary.completed_projects)}
+            />
+            <InfoLine
+              label="Average Hours"
+              value={formatNumber(data.customer_summary.average_hours)}
+            />
+          </AppCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <AppCard title="Engineering Changes">
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <Chip label={`Open: ${data.engineering_changes.open_count}`} color="warning" />
+              <Chip label={`Closed: ${data.engineering_changes.closed_count}`} color="success" />
+              <Chip label={`Hours: ${formatNumber(data.engineering_changes.total_hours)}`} />
+            </Box>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>EC #</TableCell>
+                  <TableCell>Title</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Hours</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {data.engineering_changes.items.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{row.ec_number}</TableCell>
+                    <TableCell>{row.title}</TableCell>
+                    <TableCell>{row.status}</TableCell>
+                    <TableCell align="right">{formatNumber(row.hours)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </AppCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <AppCard title="Recent Timesheets">
+            {!data.recent_timesheets.length ? (
+              <EmptyState title="No timesheet entries" />
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Hours</TableCell>
+                    <TableCell>Billable</TableCell>
+                    <TableCell>Notes</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {data.recent_timesheets.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{formatDate(row.entry_date)}</TableCell>
+                      <TableCell>{formatNumber(row.hours)}</TableCell>
+                      <TableCell>{row.is_billable ? 'Yes' : 'No'}</TableCell>
+                      <TableCell>{row.description ?? '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </AppCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <AppCard title="Project Folder" subtitle="Paths only — no file storage">
+            <InfoLine label="Project Folder" value={displayFolder || '—'} />
+            <InfoLine
+              label="CAD Folder"
+              value={folders.cad_folder_path ?? folders.suggested_cad_folder ?? '—'}
+            />
+            <InfoLine
+              label="Released Folder"
+              value={folders.released_folder_path ?? folders.suggested_released_folder ?? '—'}
+            />
+            <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              <Button
+                size="small"
+                startIcon={<FolderOpenIcon />}
+                onClick={() => openFolder(displayFolder)}
+                disabled={!displayFolder}
+              >
+                Copy Project Path
+              </Button>
+              <Button size="small" startIcon={<ContentCopyIcon />} onClick={openFoldersEditor}>
+                Edit Paths
+              </Button>
+            </Stack>
+          </AppCard>
+        </Grid>
+
+        <Grid size={{ xs: 12 }}>
+          <AppCard
+            title="Quick Actions"
+            action={
+              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                <ProsohmButton size="small" onClick={() => setMilestoneOpen(true)}>
+                  Add Milestone
+                </ProsohmButton>
+                <Button component={Link} to="/timesheets" size="small" variant="outlined">
+                  Add Timesheet
+                </Button>
+                <ProsohmButton size="small" onClick={() => setEditOpen(true)}>
+                  Assign Designer
+                </ProsohmButton>
+                <ProsohmButton size="small" onClick={() => setEcOpen(true)}>
+                  Create EC
+                </ProsohmButton>
+                <ProsohmButton size="small" onClick={() => setArchiveOpen(true)}>
+                  Archive
+                </ProsohmButton>
+              </Stack>
+            }
+          >
+            <Typography variant="body2" color="text.secondary">
+              Use the actions above to update milestones, assignments, engineering changes, and folder
+              paths without leaving the command center.
+            </Typography>
+          </AppCard>
+        </Grid>
+
+        <Grid size={{ xs: 12 }}>
+          <AppCard title="Engineering Decision Log">
+            <DecisionLogPanel
+              decisions={data.decisions}
+              loading={decisionMutation.isPending}
+              onCreate={(payload) => decisionMutation.mutate(payload)}
+              onUpdate={(decisionId, payload) =>
+                void updateProjectDecision(id, decisionId, payload).then(() => {
+                  showSuccess('Decision updated');
+                  invalidate();
+                })
+              }
+              onDelete={(decisionId) =>
+                void deleteProjectDecision(id, decisionId).then(() => {
+                  showSuccess('Decision deleted');
+                  invalidate();
+                })
+              }
+            />
+          </AppCard>
+        </Grid>
+      </Grid>
 
       <Box sx={{ mt: 3 }}>
         <Link to="/projects">← Back to projects</Link>
@@ -352,10 +494,77 @@ export function ProjectDetailPage() {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         project={project}
-        onUpdated={() => {
-          invalidateProjectCalculationQueries(queryClient, id);
-        }}
+        onUpdated={invalidate}
       />
+
+      <MilestoneFormDialog
+        open={milestoneOpen}
+        onClose={() => setMilestoneOpen(false)}
+        projectId={project.id}
+        onSaved={invalidate}
+      />
+
+      <FormDrawer
+        open={folderOpen}
+        onClose={() => setFolderOpen(false)}
+        title="Project Folder Paths"
+        subtitle="Store paths only — no CAD uploads"
+        formId="folder-form"
+        submitLabel="Save Paths"
+        loading={folderMutation.isPending}
+        onSubmit={() => folderMutation.mutate()}
+      >
+        <Box id="folder-form" component="form" onSubmit={(e) => e.preventDefault()} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <FormField
+            label="Project Folder Path"
+            value={folderForm.project_folder_path}
+            onChange={(e) =>
+              setFolderForm((c) => ({ ...c, project_folder_path: e.target.value }))
+            }
+          />
+          <FormField
+            label="CAD Folder"
+            value={folderForm.cad_folder_path}
+            onChange={(e) => setFolderForm((c) => ({ ...c, cad_folder_path: e.target.value }))}
+          />
+          <FormField
+            label="Released Folder"
+            value={folderForm.released_folder_path}
+            onChange={(e) =>
+              setFolderForm((c) => ({ ...c, released_folder_path: e.target.value }))
+            }
+          />
+        </Box>
+      </FormDrawer>
+
+      <FormDrawer
+        open={ecOpen}
+        onClose={() => setEcOpen(false)}
+        title="Create Engineering Change"
+        formId="ec-form"
+        submitLabel="Create EC"
+        loading={ecMutation.isPending}
+        onSubmit={() => ecMutation.mutate()}
+      >
+        <Box id="ec-form" component="form" onSubmit={(e) => e.preventDefault()} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <FormField
+            label="EC Number"
+            value={ecForm.ec_number}
+            onChange={(e) => setEcForm((c) => ({ ...c, ec_number: e.target.value }))}
+          />
+          <FormField
+            label="Title"
+            value={ecForm.title}
+            onChange={(e) => setEcForm((c) => ({ ...c, title: e.target.value }))}
+          />
+          <FormField
+            label="Hours"
+            type="number"
+            value={ecForm.hours}
+            onChange={(e) => setEcForm((c) => ({ ...c, hours: Number(e.target.value) }))}
+          />
+        </Box>
+      </FormDrawer>
 
       <ConfirmDialog
         open={archiveOpen}

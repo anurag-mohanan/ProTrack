@@ -140,3 +140,33 @@ class DashboardActivityCategory(enum.Enum):
     timesheet = "timesheet"
     user = "user"
     import_event = "import"
+
+
+class DecisionCategory(enum.Enum):
+    design = "design"
+    customer = "customer"
+    manufacturing = "manufacturing"
+    tooling = "tooling"
+    schedule = "schedule"
+    quality = "quality"
+    general = "general"
+
+
+class EngineeringChangeStatus(enum.Enum):
+    open = "open"
+    closed = "closed"
+
+
+class TimelineStepStatus(enum.Enum):
+    completed = "completed"
+    current = "current"
+    upcoming = "upcoming"
+    delayed = "delayed"
+
+
+class ProjectRiskType(enum.Enum):
+    milestone_delay = "milestone_delay"
+    hours_over_quote = "hours_over_quote"
+    overdue = "overdue"
+    missing_approvals = "missing_approvals"
+    designer_overloaded = "designer_overloaded"

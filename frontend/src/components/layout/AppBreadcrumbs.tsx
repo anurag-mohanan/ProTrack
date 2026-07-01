@@ -42,7 +42,7 @@ function resolveBreadcrumbs(pathname: string): BreadcrumbItem[] {
   if (pathname.startsWith('/projects/') && pathname !== '/projects/archived') {
     return [
       { label: 'Projects', to: '/projects' },
-      { label: 'Project Details' },
+      { label: 'Command Center' },
     ];
   }
 

@@ -11,14 +11,13 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import (
-    FULL_ACCESS_ROLES,
     READ_ALL_PROJECT_ROLES,
     can_approve_timesheet,
     get_role_name,
     project_assignment_filter,
 )
-from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
-from app.models.models import Activity, Customer, Milestone, Project, Role, Timesheet, TimesheetEntry, User
+from app.models.enums import ActivityAction, MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
+from app.models.models import Activity, Customer, Milestone, Project, Timesheet, TimesheetEntry, User
 from app.schemas.dashboard import (
     DashboardKpis,
     DashboardMyTasks,
@@ -29,25 +28,20 @@ from app.schemas.timesheet import ActivityRead
 
 logger = logging.getLogger(__name__)
 
-WORKLOAD_ROLES = (
-    "Design Leader",
-    "Senior Designer",
-    "Designer",
-    "Junior Designer",
-    "Surfacer",
-)
-
-_ACTIVE_STATUSES = (
-    ProjectStatus.not_started,
-    ProjectStatus.in_progress,
-    ProjectStatus.waiting_for_customer,
-)
-
 _ATTENTION_PRIORITY = {"overdue": 0, "blocked": 1, "due_soon": 2, "on_hold": 3}
 
-
-def _round_percent(value: Decimal) -> Decimal:
-    return value.quantize(Decimal("0.01"))
+_DASHBOARD_ACTIVITY_ACTIONS = (
+    ActivityAction.project_created,
+    ActivityAction.project_updated,
+    ActivityAction.milestone_completed,
+    ActivityAction.timesheet_submitted,
+    ActivityAction.project_archived,
+    ActivityAction.project_restored,
+    ActivityAction.user_archived,
+    ActivityAction.user_restored,
+    ActivityAction.user_restored_from_deleted,
+    ActivityAction.project_restored_from_deleted,
+)
 
 
 def _round_hours(value: Decimal) -> Decimal:
@@ -60,6 +54,13 @@ def _decimal(value) -> Decimal:
 
 def _visible_projects_clause():
     return (Project.is_deleted.is_(False), Project.is_archived.is_(False))
+
+
+def _active_project_clause():
+    return (
+        *_visible_projects_clause(),
+        Project.status != ProjectStatus.completed,
+    )
 
 
 def _current_week_bounds(today: date | None = None) -> tuple[date, date]:
@@ -102,133 +103,66 @@ def _activity_to_read(db: Session, activity: Activity) -> ActivityRead:
     )
 
 
-def get_dashboard_kpis(db: Session, user: User) -> DashboardKpis:
+def get_dashboard_kpis(db: Session) -> DashboardKpis:
+    """Reliable engineering KPIs from aggregate SQL — no user-specific estimates."""
     today = date.today()
-    week_end = today + timedelta(days=7)
+    week_start, week_end = _current_week_bounds(today)
     month_start = today.replace(day=1)
-    visibility = _visible_projects_clause()
+    visible = _visible_projects_clause()
+    active = _active_project_clause()
     not_completed = Project.status != ProjectStatus.completed
+    in_progress = and_(Project.status == ProjectStatus.in_progress, *visible)
+    on_hold = and_(Project.status == ProjectStatus.waiting_for_customer, *visible)
+    completed_month = and_(
+        Project.status == ProjectStatus.completed,
+        *visible,
+        Project.completed_at.is_not(None),
+        func.date(Project.completed_at) >= month_start,
+        func.date(Project.completed_at) <= today,
+    )
+    due_this_week = and_(
+        *visible,
+        not_completed,
+        Project.due_date >= week_start,
+        Project.due_date <= week_end,
+    )
+    overdue = and_(*visible, not_completed, Project.due_date < today)
+    archived = and_(Project.is_deleted.is_(False), Project.is_archived.is_(True))
 
-    active_projects = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Project)
-            .where(
-                *visibility,
-                Project.status.in_(_ACTIVE_STATUSES),
-            )
-        )
-        or 0
-    )
-    projects_due_this_week = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Project)
-            .where(
-                *visibility,
-                not_completed,
-                Project.due_date >= today,
-                Project.due_date <= week_end,
-            )
-        )
-        or 0
-    )
-    overdue_projects = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Project)
-            .where(
-                *visibility,
-                not_completed,
-                Project.due_date < today,
-            )
-        )
-        or 0
-    )
+    project_row = db.execute(
+        select(
+            func.count().filter(in_progress),
+            func.count().filter(on_hold),
+            func.count().filter(completed_month),
+            func.count().filter(due_this_week),
+            func.count().filter(overdue),
+            func.count().filter(archived),
+            func.coalesce(func.sum(Project.quoted_hours).filter(and_(*active)), 0),
+        ).select_from(Project)
+    ).one()
 
-    submitted_timesheets = db.scalars(
-        select(Timesheet).where(Timesheet.status == TimesheetStatus.submitted)
-    ).all()
-    pending_timesheets = sum(
-        1 for ts in submitted_timesheets if can_approve_timesheet(db, user, ts)
-    )
-
-    week_start, week_end_bounds = _current_week_bounds(today)
-    total_week_hours = _decimal(
-        db.scalar(
-            select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
-            .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
-            .join(User, Timesheet.user_id == User.id)
-            .join(Role, User.role_id == Role.id)
-            .where(
-                Role.name.in_(WORKLOAD_ROLES),
-                User.is_active.is_(True),
-                User.is_archived.is_(False),
-                User.is_deleted.is_(False),
-                TimesheetEntry.entry_date >= week_start,
-                TimesheetEntry.entry_date <= week_end_bounds,
-            )
-        )
-    )
-    designer_count = int(
-        db.scalar(
-            select(func.count())
-            .select_from(User)
-            .join(Role, User.role_id == Role.id)
-            .where(
-                Role.name.in_(WORKLOAD_ROLES),
-                User.is_active.is_(True),
-                User.is_archived.is_(False),
-                User.is_deleted.is_(False),
-            )
-        )
-        or 0
-    )
-    capacity = Decimal(designer_count) * Decimal("40")
-    designer_utilization = (
-        _round_percent((total_week_hours / capacity) * Decimal("100"))
-        if capacity > 0
-        else Decimal("0.00")
-    )
-
-    billable_this_month = _round_hours(
+    total_actual_hours = _round_hours(
         _decimal(
             db.scalar(
                 select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
                 .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
                 .where(
                     Timesheet.status == TimesheetStatus.approved,
-                    TimesheetEntry.entry_date >= month_start,
-                    TimesheetEntry.entry_date <= today,
-                    TimesheetEntry.is_billable.is_(True),
                     TimesheetEntry.work_category == WorkCategory.productive,
-                )
-            )
-        )
-    )
-    np_hours_this_month = _round_hours(
-        _decimal(
-            db.scalar(
-                select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
-                .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
-                .where(
-                    Timesheet.status == TimesheetStatus.approved,
-                    TimesheetEntry.entry_date >= month_start,
-                    TimesheetEntry.entry_date <= today,
-                    TimesheetEntry.work_category == WorkCategory.non_productive,
                 )
             )
         )
     )
 
     return DashboardKpis(
-        active_projects=active_projects,
-        projects_due_this_week=projects_due_this_week,
-        overdue_projects=overdue_projects,
-        pending_timesheets=pending_timesheets,
-        designer_utilization_percent=designer_utilization,
-        billable_hours_this_month=billable_this_month,
-        np_hours_this_month=np_hours_this_month,
+        in_progress_projects=int(project_row[0] or 0),
+        on_hold_projects=int(project_row[1] or 0),
+        completed_this_month=int(project_row[2] or 0),
+        projects_due_this_week=int(project_row[3] or 0),
+        overdue_projects=int(project_row[4] or 0),
+        archived_projects=int(project_row[5] or 0),
+        total_quoted_hours_active=_round_hours(_decimal(project_row[6])),
+        total_actual_hours_productive=total_actual_hours,
     )
 
 
@@ -273,7 +207,7 @@ def _batch_designer_names(db: Session, projects: list[Project]) -> dict[UUID, st
     }
 
 
-def get_attention_projects(db: Session, *, limit: int = 10) -> list[ProjectAttentionRow]:
+def get_attention_projects(db: Session, *, limit: int = 25) -> list[ProjectAttentionRow]:
     today = date.today()
     due_soon_cutoff = today + timedelta(days=5)
     visibility = _visible_projects_clause()
@@ -313,9 +247,10 @@ def get_attention_projects(db: Session, *, limit: int = 10) -> list[ProjectAtten
 
     projects = [item[2] for item in top]
     project_ids = [project.id for project in projects]
+    customer_ids = {project.customer_id for project in projects}
     customer_names = {
         row.id: row.name
-        for row in db.scalars(select(Customer)).all()
+        for row in db.scalars(select(Customer).where(Customer.id.in_(customer_ids))).all()
     }
     milestone_names = _batch_current_milestones(db, project_ids)
     designer_names = _batch_designer_names(db, projects)
@@ -336,9 +271,12 @@ def get_attention_projects(db: Session, *, limit: int = 10) -> list[ProjectAtten
     ]
 
 
-def get_dashboard_recent_activity(db: Session, *, limit: int = 15) -> list[ActivityRead]:
+def get_dashboard_recent_activity(db: Session, *, limit: int = 20) -> list[ActivityRead]:
     rows = db.scalars(
-        select(Activity).order_by(Activity.created_at.desc()).limit(limit)
+        select(Activity)
+        .where(Activity.action.in_(_DASHBOARD_ACTIVITY_ACTIONS))
+        .order_by(Activity.created_at.desc())
+        .limit(limit)
     ).all()
     return [_activity_to_read(db, row) for row in rows]
 
@@ -358,21 +296,6 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
     else:
         user_projects = []
 
-    assigned_projects = [
-        DashboardTaskItem(
-            id=project.id,
-            title=project.tool_number or project.code,
-            task_type="project",
-            subtitle=project.part_description,
-            due_date=project.due_date,
-            project_code=project.code,
-            project_id=project.id,
-            href=f"/projects/{project.id}",
-        )
-        for project in user_projects
-        if project.status in _ACTIVE_STATUSES
-    ][:8]
-
     submitted_timesheets = db.scalars(
         select(Timesheet).where(Timesheet.status == TimesheetStatus.submitted)
     ).all()
@@ -387,7 +310,7 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
         )
         for ts in submitted_timesheets
         if can_approve_timesheet(db, user, ts)
-    ][:8]
+    ][:10]
 
     user_project_ids = {project.id for project in user_projects}
     upcoming_milestones: list[DashboardTaskItem] = []
@@ -402,7 +325,7 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
                 Milestone.due_date <= today + timedelta(days=14),
             )
             .order_by(Milestone.due_date.asc())
-            .limit(8)
+            .limit(10)
         ).all()
         project_map = {project.id: project for project in user_projects}
         for row in milestone_rows:
@@ -421,7 +344,6 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
             )
 
     return DashboardMyTasks(
-        assigned_projects=assigned_projects,
         pending_approvals=pending_approvals,
         upcoming_milestones=upcoming_milestones,
     )

@@ -6,9 +6,9 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { EmptyState } from '../common/EmptyState';
 import { HealthChip, StatusChip } from '../common/StatusChip';
 import type { ProjectAttentionRow } from '../../types';
 import { formatDate } from '../../utils/format';
@@ -29,8 +29,10 @@ export function ProjectsAttentionTable({ rows }: ProjectsAttentionTableProps) {
 
   if (!rows.length) {
     return (
-      <Paper variant="outlined" sx={{ borderRadius: 3, p: 1 }}>
-        <EmptyState title="Nothing urgent right now" description="All active projects look on track." />
+      <Paper variant="outlined" sx={{ borderRadius: 3, p: 2 }}>
+        <Typography variant="body2" color="text.secondary">
+          No data available
+        </Typography>
       </Paper>
     );
   }

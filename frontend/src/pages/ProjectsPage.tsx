@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   FormControl,
@@ -59,6 +59,20 @@ export function ProjectsPage() {
 
   const lifecycle =
     (searchParams.get('lifecycle') as ProjectLifecycleFilter | null) ?? 'active';
+  const dueFilter = searchParams.get('due');
+  const completedFilter = searchParams.get('completed');
+
+  useEffect(() => {
+    const status = searchParams.get('status');
+    if (
+      status &&
+      statusOptions.some((option) => option.value === status)
+    ) {
+      setStatusFilter(status as ProjectStatus);
+    } else if (!status) {
+      setStatusFilter('all');
+    }
+  }, [searchParams]);
 
   const statusParam = statusFilter === 'all' ? undefined : statusFilter;
 
@@ -102,16 +116,53 @@ export function ProjectsPage() {
   });
 
   const filteredProjects = useMemo(() => {
+    let rows = projectsQuery.data ?? [];
     const term = search.trim().toLowerCase();
-    if (!term) return projectsQuery.data ?? [];
+    if (term) {
+      rows = rows.filter((project) => {
+        const haystack = [project.tool_number, project.part_description]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(term);
+      });
+    }
 
-    return (projectsQuery.data ?? []).filter((project) => {
-      const haystack = [project.tool_number, project.part_description]
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(term);
-    });
-  }, [projectsQuery.data, search]);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (dueFilter === 'week') {
+      const weekStart = new Date(today);
+      const day = weekStart.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      weekStart.setDate(weekStart.getDate() + diff);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+
+      rows = rows.filter((project) => {
+        if (!project.due_date || project.status === 'completed') return false;
+        const due = new Date(`${project.due_date}T00:00:00`);
+        return due >= weekStart && due <= weekEnd;
+      });
+    }
+
+    if (dueFilter === 'overdue') {
+      rows = rows.filter((project) => {
+        if (!project.due_date || project.status === 'completed') return false;
+        return new Date(`${project.due_date}T00:00:00`) < today;
+      });
+    }
+
+    if (completedFilter === 'month') {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      rows = rows.filter((project) => {
+        if (project.status !== 'completed' || !project.completed_at) return false;
+        const completed = new Date(project.completed_at);
+        return completed >= monthStart && completed <= today;
+      });
+    }
+
+    return rows;
+  }, [projectsQuery.data, search, dueFilter, completedFilter]);
 
   const tableLoading =
     projectsQuery.isPending ||
@@ -163,12 +214,13 @@ export function ProjectsPage() {
                 value={lifecycle}
                 onChange={(event) => {
                   const value = event.target.value as ProjectLifecycleFilter;
+                  const next = new URLSearchParams(searchParams);
                   if (value === 'active') {
-                    searchParams.delete('lifecycle');
-                    setSearchParams(searchParams);
+                    next.delete('lifecycle');
                   } else {
-                    setSearchParams({ lifecycle: value });
+                    next.set('lifecycle', value);
                   }
+                  setSearchParams(next);
                 }}
               >
                 {lifecycleOptions.map((option) => (
@@ -183,9 +235,17 @@ export function ProjectsPage() {
               <Select
                 label="Status"
                 value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as ProjectStatus | 'all')
-                }
+                onChange={(event) => {
+                  const value = event.target.value as ProjectStatus | 'all';
+                  setStatusFilter(value);
+                  const next = new URLSearchParams(searchParams);
+                  if (value === 'all') {
+                    next.delete('status');
+                  } else {
+                    next.set('status', value);
+                  }
+                  setSearchParams(next);
+                }}
               >
                 {statusOptions.map((option) => (
                   <MenuItem key={option.value} value={option.value}>

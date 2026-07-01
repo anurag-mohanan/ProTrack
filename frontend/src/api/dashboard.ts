@@ -56,6 +56,7 @@ export async function fetchProjectDashboard(
 
 export const dashboardQueryKeys = {
   all: ['dashboard'] as const,
+  summary: ['dashboard', 'summary'] as const,
   kpis: ['dashboard', 'kpis'] as const,
   attentionProjects: ['dashboard', 'attention-projects'] as const,
   recentActivity: ['dashboard', 'recent-activity'] as const,

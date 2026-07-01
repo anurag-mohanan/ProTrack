@@ -37,18 +37,18 @@ router = APIRouter(
 
 
 @router.get("/summary", response_model=DashboardSummary)
-def dashboard_summary(db: Session = Depends(get_db)):
-    return get_dashboard_summary(db)
-
-
-@router.get("/kpis", response_model=DashboardKpis)
-def dashboard_kpis(
+def dashboard_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    return get_dashboard_summary(db, current_user)
+
+
+@router.get("/kpis", response_model=DashboardKpis)
+def dashboard_kpis(db: Session = Depends(get_db)):
     return safe_dashboard_call(
         "kpis",
-        lambda: get_dashboard_kpis(db, current_user),
+        lambda: get_dashboard_kpis(db),
         DashboardKpis(),
     )
 
@@ -57,7 +57,7 @@ def dashboard_kpis(
 def dashboard_attention_projects(db: Session = Depends(get_db)):
     return safe_dashboard_call(
         "attention_projects",
-        lambda: get_attention_projects(db, limit=10),
+        lambda: get_attention_projects(db, limit=25),
         [],
     )
 
@@ -66,7 +66,7 @@ def dashboard_attention_projects(db: Session = Depends(get_db)):
 def dashboard_recent_activity(db: Session = Depends(get_db)):
     return safe_dashboard_call(
         "recent_activity",
-        lambda: get_dashboard_recent_activity(db, limit=15),
+        lambda: get_dashboard_recent_activity(db, limit=20),
         [],
     )
 

@@ -10,12 +10,17 @@ export interface DashboardSummary {
   completed_projects: number;
   archived_projects: number;
   on_hold_projects: number;
+  projects_due_this_week: number;
+  overdue_projects: number;
+  completed_this_month: number;
   billable_hours: number;
   non_billable_hours: number;
   np_hours: number;
   productive_percent: number;
   total_quoted_hours: number;
   total_actual_hours: number;
+  total_quoted_hours_active: number;
+  total_actual_hours_productive: number;
   total_remaining_hours: number;
   hours_variance: number;
   completed_milestones: number;
@@ -24,6 +29,9 @@ export interface DashboardSummary {
   green_projects: number;
   yellow_projects: number;
   red_projects: number;
+  attention_projects: ProjectAttentionRow[];
+  my_tasks: DashboardMyTasks;
+  recent_activity: import('./Workflow').Activity[];
 }
 
 export interface DashboardOverview {
@@ -35,13 +43,14 @@ export interface DashboardOverview {
 }
 
 export interface DashboardKpis {
-  active_projects: number;
+  in_progress_projects: number;
+  on_hold_projects: number;
+  completed_this_month: number;
   projects_due_this_week: number;
   overdue_projects: number;
-  pending_timesheets: number;
-  designer_utilization_percent: number;
-  billable_hours_this_month: number;
-  np_hours_this_month: number;
+  archived_projects: number;
+  total_quoted_hours_active: number;
+  total_actual_hours_productive: number;
 }
 
 export interface ProjectAttentionRow {
@@ -68,7 +77,6 @@ export interface DashboardTaskItem {
 }
 
 export interface DashboardMyTasks {
-  assigned_projects: DashboardTaskItem[];
   pending_approvals: DashboardTaskItem[];
   upcoming_milestones: DashboardTaskItem[];
 }

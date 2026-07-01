@@ -9,30 +9,6 @@ from app.schemas.project import ProjectRead
 from app.schemas.timesheet import ActivityRead, TimesheetEntryRead
 
 
-class DashboardSummary(BaseModel):
-    total_projects: int = 0
-    active_projects: int = 0
-    not_started_projects: int = 0
-    in_progress_projects: int = 0
-    completed_projects: int = 0
-    archived_projects: int = 0
-    on_hold_projects: int = 0
-    billable_hours: Decimal = Decimal("0")
-    non_billable_hours: Decimal = Decimal("0")
-    np_hours: Decimal = Decimal("0")
-    productive_percent: Decimal = Decimal("0.00")
-    total_quoted_hours: Decimal = Decimal("0")
-    total_actual_hours: Decimal = Decimal("0")
-    total_remaining_hours: Decimal = Decimal("0")
-    hours_variance: Decimal = Decimal("0")
-    completed_milestones: int = 0
-    total_milestones: int = 0
-    overall_progress_percent: Decimal = Decimal("0.00")
-    green_projects: int = 0
-    yellow_projects: int = 0
-    red_projects: int = 0
-
-
 class DesignerWorkload(BaseModel):
     user_id: UUID
     designer_name: str
@@ -82,13 +58,14 @@ class WorkflowDashboard(BaseModel):
 
 
 class DashboardKpis(BaseModel):
-    active_projects: int = 0
+    in_progress_projects: int = 0
+    on_hold_projects: int = 0
+    completed_this_month: int = 0
     projects_due_this_week: int = 0
     overdue_projects: int = 0
-    pending_timesheets: int = 0
-    designer_utilization_percent: Decimal = Decimal("0.00")
-    billable_hours_this_month: Decimal = Decimal("0")
-    np_hours_this_month: Decimal = Decimal("0")
+    archived_projects: int = 0
+    total_quoted_hours_active: Decimal = Decimal("0")
+    total_actual_hours_productive: Decimal = Decimal("0")
 
 
 class ProjectAttentionRow(BaseModel):
@@ -115,9 +92,40 @@ class DashboardTaskItem(BaseModel):
 
 
 class DashboardMyTasks(BaseModel):
-    assigned_projects: list[DashboardTaskItem] = Field(default_factory=list)
     pending_approvals: list[DashboardTaskItem] = Field(default_factory=list)
     upcoming_milestones: list[DashboardTaskItem] = Field(default_factory=list)
+
+
+class DashboardSummary(BaseModel):
+    total_projects: int = 0
+    active_projects: int = 0
+    not_started_projects: int = 0
+    in_progress_projects: int = 0
+    completed_projects: int = 0
+    archived_projects: int = 0
+    on_hold_projects: int = 0
+    projects_due_this_week: int = 0
+    overdue_projects: int = 0
+    completed_this_month: int = 0
+    billable_hours: Decimal = Decimal("0")
+    non_billable_hours: Decimal = Decimal("0")
+    np_hours: Decimal = Decimal("0")
+    productive_percent: Decimal = Decimal("0.00")
+    total_quoted_hours: Decimal = Decimal("0")
+    total_actual_hours: Decimal = Decimal("0")
+    total_quoted_hours_active: Decimal = Decimal("0")
+    total_actual_hours_productive: Decimal = Decimal("0")
+    total_remaining_hours: Decimal = Decimal("0")
+    hours_variance: Decimal = Decimal("0")
+    completed_milestones: int = 0
+    total_milestones: int = 0
+    overall_progress_percent: Decimal = Decimal("0.00")
+    green_projects: int = 0
+    yellow_projects: int = 0
+    red_projects: int = 0
+    attention_projects: list[ProjectAttentionRow] = Field(default_factory=list)
+    my_tasks: DashboardMyTasks = Field(default_factory=DashboardMyTasks)
+    recent_activity: list[ActivityRead] = Field(default_factory=list)
 
 
 class DashboardFuturePlaceholders(BaseModel):

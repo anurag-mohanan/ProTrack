@@ -8,6 +8,11 @@ def test_dashboard_summary(client, auth_headers):
     assert body["total_projects"] == 1
     assert body["total_milestones"] == 7
     assert Decimal(str(body["total_quoted_hours"])) == Decimal("120.00")
+    assert "projects_due_this_week" in body
+    assert "attention_projects" in body
+    assert "my_tasks" in body
+    assert "recent_activity" in body
+    assert len(body["recent_activity"]) <= 20
 
 
 def test_dashboard_workload(client, auth_headers):
@@ -43,11 +48,17 @@ def test_dashboard_granular_endpoints(client, auth_headers):
         assert response.status_code == 200, path
 
     kpis = client.get("/api/v1/dashboard/kpis", headers=auth_headers).json()
-    assert "np_hours_this_month" in kpis
-    assert "billable_hours_this_month" in kpis
+    assert "in_progress_projects" in kpis
+    assert "total_quoted_hours_active" in kpis
+    assert "total_actual_hours_productive" in kpis
 
     activity = client.get("/api/v1/dashboard/recent-activity", headers=auth_headers).json()
-    assert len(activity) <= 15
+    assert len(activity) <= 20
+
+    tasks = client.get("/api/v1/dashboard/my-tasks", headers=auth_headers).json()
+    assert "pending_approvals" in tasks
+    assert "upcoming_milestones" in tasks
+    assert "assigned_projects" not in tasks
 
 
 def test_np_code_seed_includes_c506(client, auth_headers):

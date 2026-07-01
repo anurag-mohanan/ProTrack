@@ -7,18 +7,12 @@ const ACTION_LABELS: Record<string, string> = {
   project_updated: 'Project updated',
   project_archived: 'Project archived',
   project_restored: 'Project restored',
-  project_deleted: 'Project deleted',
-  project_restored_from_deleted: 'Project restored from deleted',
+  project_restored_from_deleted: 'Project restored',
   milestone_completed: 'Milestone completed',
-  milestone_reopened: 'Milestone reopened',
   timesheet_submitted: 'Timesheet submitted',
-  timesheet_approved: 'Timesheet approved',
-  timesheet_rejected: 'Timesheet rejected',
-  user_logged_in: 'User signed in',
   user_archived: 'User archived',
   user_restored: 'User restored',
-  user_deleted: 'User deleted',
-  user_restored_from_deleted: 'User restored from deleted',
+  user_restored_from_deleted: 'User restored',
 };
 
 function activityLabel(action: string): string {
@@ -34,7 +28,7 @@ export function RecentActivityWidget({ activities }: RecentActivityWidgetProps) 
     return (
       <Paper variant="outlined" sx={{ borderRadius: 3, p: 2 }}>
         <Typography variant="body2" color="text.secondary">
-          No recent activity yet.
+          No data available
         </Typography>
       </Paper>
     );

@@ -81,12 +81,12 @@ def _visible_projects_clause():
 def get_dashboard_overview(db: Session, user: User) -> DashboardOverview:
     kpis = safe_dashboard_call(
         "kpis",
-        lambda: get_dashboard_kpis(db, user),
+        lambda: get_dashboard_kpis(db),
         DashboardKpis(),
     )
     projects_requiring_attention = safe_dashboard_call(
         "attention_projects",
-        lambda: get_attention_projects(db, limit=10),
+        lambda: get_attention_projects(db, limit=25),
         [],
     )
     my_tasks = safe_dashboard_call(
@@ -96,7 +96,7 @@ def get_dashboard_overview(db: Session, user: User) -> DashboardOverview:
     )
     recent_activity = safe_dashboard_call(
         "recent_activity",
-        lambda: get_dashboard_recent_activity(db, limit=15),
+        lambda: get_dashboard_recent_activity(db, limit=20),
         [],
     )
     return DashboardOverview(
@@ -108,7 +108,7 @@ def get_dashboard_overview(db: Session, user: User) -> DashboardOverview:
     )
 
 
-def get_dashboard_summary(db: Session) -> DashboardSummary:
+def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
     visible = _visible_projects_clause()
     total_projects = int(
         db.scalar(
@@ -199,6 +199,8 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
 
     green_projects, yellow_projects, red_projects = count_projects_by_health(db)
 
+    engineering_kpis = get_dashboard_kpis(db)
+
     approved_entries = db.scalars(
         select(TimesheetEntry)
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
@@ -233,6 +235,22 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         else Decimal("0.00")
     )
 
+    attention_projects = safe_dashboard_call(
+        "attention_projects",
+        lambda: get_attention_projects(db, limit=25),
+        [],
+    )
+    my_tasks = safe_dashboard_call(
+        "my_tasks",
+        lambda: get_dashboard_my_tasks(db, user),
+        DashboardMyTasks(),
+    )
+    recent_activity = safe_dashboard_call(
+        "recent_activity",
+        lambda: get_dashboard_recent_activity(db, limit=20),
+        [],
+    )
+
     return DashboardSummary(
         total_projects=total_projects,
         active_projects=active,
@@ -241,12 +259,17 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         completed_projects=completed,
         archived_projects=archived,
         on_hold_projects=on_hold,
+        projects_due_this_week=engineering_kpis.projects_due_this_week,
+        overdue_projects=engineering_kpis.overdue_projects,
+        completed_this_month=engineering_kpis.completed_this_month,
         billable_hours=billable_hours,
         non_billable_hours=non_billable_hours,
         np_hours=np_hours,
         productive_percent=productive_percent,
         total_quoted_hours=portfolio_hours.quoted,
         total_actual_hours=portfolio_hours.actual,
+        total_quoted_hours_active=engineering_kpis.total_quoted_hours_active,
+        total_actual_hours_productive=engineering_kpis.total_actual_hours_productive,
         total_remaining_hours=portfolio_hours.remaining,
         hours_variance=portfolio_hours.variance,
         completed_milestones=completed_milestones,
@@ -255,6 +278,9 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         green_projects=green_projects,
         yellow_projects=yellow_projects,
         red_projects=red_projects,
+        attention_projects=attention_projects,
+        my_tasks=my_tasks,
+        recent_activity=recent_activity,
     )
 
 

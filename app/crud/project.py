@@ -8,11 +8,19 @@ from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import PROJECT_STAFF_ROLES
 from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read, build_project_reads
-from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectLifecycleFilter
+from app.models.enums import (
+    EntityType,
+    ExecutionStatus,
+    MilestoneStatus,
+    NotificationType,
+    ProjectLifecycleFilter,
+)
 from app.models.models import Contact, Customer, Milestone, Project, ProjectType, Role, User
 from app.schemas.project import ArchivedProjectListItem, ProjectCreate, ProjectRead, ProjectUpdate
+from app.services.notification_service import create_notification
 from app.services.project_calculation_service import recalculate_project
 from app.services.project_lifecycle_service import apply_lifecycle_filter, apply_lifecycle_sort
+from app.services.project_number_service import generate_project_code
 from app.services.project_template_service import (
     create_milestones_from_template,
     resolve_template,
@@ -72,6 +80,62 @@ def _get_active_user(
             )
 
     return user
+
+
+def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate:
+    customer = db.get(Customer, obj_in.customer_id)
+    if customer is None:
+        raise ProTrackValidationError(
+            "customer_id must reference an existing customer"
+        )
+
+    data = obj_in.model_dump()
+    if data.get("team_id") is None and customer.default_team_id is not None:
+        data["team_id"] = customer.default_team_id
+    if (
+        data.get("project_template_id") is None
+        and customer.default_project_template_id is not None
+    ):
+        data["project_template_id"] = customer.default_project_template_id
+
+    if customer.project_number_format:
+        code = (data.get("code") or "").strip()
+        tool_number = (data.get("tool_number") or "").strip()
+        if not code or code == tool_number:
+            data["code"] = generate_project_code(db, customer, tool_number)
+
+    return ProjectCreate(**data)
+
+
+def _notify_project_assignments(
+    db: Session,
+    project: Project,
+    *,
+    previous_designer_id: UUID | None = None,
+    previous_leader_id: UUID | None = None,
+) -> None:
+    assignments: list[tuple[UUID, str]] = []
+    if (
+        project.designer_id is not None
+        and project.designer_id != previous_designer_id
+    ):
+        assignments.append((project.designer_id, "designer"))
+    if (
+        project.design_leader_id is not None
+        and project.design_leader_id != previous_leader_id
+    ):
+        assignments.append((project.design_leader_id, "design leader"))
+
+    for user_id, _role in assignments:
+        create_notification(
+            db,
+            user_id=user_id,
+            notification_type=NotificationType.project_assigned,
+            title="New project assignment",
+            message=f"You were assigned to project {project.code}",
+            entity_type=EntityType.project,
+            entity_id=project.id,
+        )
 
 
 def _validate_project_references(
@@ -147,24 +211,25 @@ def _reference_ids_for_update(
 class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
     @override
     def create(self, db: Session, *, obj_in: ProjectCreate) -> Project:
+        prepared = _prepare_project_create(db, obj_in)
         _validate_project_references(
             db,
-            customer_id=obj_in.customer_id,
-            customer_contact_id=obj_in.customer_contact_id,
-            design_leader_id=obj_in.design_leader_id,
-            designer_id=obj_in.designer_id,
-            surfacer_id=obj_in.surfacer_id,
+            customer_id=prepared.customer_id,
+            customer_contact_id=prepared.customer_contact_id,
+            design_leader_id=prepared.design_leader_id,
+            designer_id=prepared.designer_id,
+            surfacer_id=prepared.surfacer_id,
         )
 
-        db_obj = Project(**obj_in.model_dump())
+        db_obj = Project(**prepared.model_dump())
         db.add(db_obj)
         db.flush()
 
         template = resolve_template(
             db,
-            project_type_id=obj_in.project_type_id,
-            customer_id=obj_in.customer_id,
-            template_id=obj_in.project_template_id,
+            project_type_id=prepared.project_type_id,
+            customer_id=prepared.customer_id,
+            template_id=prepared.project_template_id,
         )
         db_obj.project_template_id = template.id
         if db_obj.team_id is None and template.default_team_id is not None:
@@ -178,6 +243,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         db.commit()
         db.refresh(db_obj)
         recalculate_project(db, db_obj.id)
+        _notify_project_assignments(db, db_obj)
         return db_obj
 
     @override
@@ -220,6 +286,13 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
 
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
         recalculate_project(db, updated.id)
+        if "designer_id" in update_data or "design_leader_id" in update_data:
+            _notify_project_assignments(
+                db,
+                updated,
+                previous_designer_id=db_obj.designer_id,
+                previous_leader_id=db_obj.design_leader_id,
+            )
         return updated
 
     def get_read(self, db: Session, record_id: UUID) -> ProjectRead | None:

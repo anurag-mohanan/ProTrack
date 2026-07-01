@@ -47,6 +47,40 @@ class ProjectLifecycleFilter(enum.Enum):
     deleted = "deleted"
 
 
+class ProjectPriority(enum.Enum):
+    critical = "critical"
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+class EmploymentType(enum.Enum):
+    full_time = "full_time"
+    part_time = "part_time"
+    contract = "contract"
+    intern = "intern"
+
+
+class SkillLevel(enum.Enum):
+    beginner = "beginner"
+    intermediate = "intermediate"
+    advanced = "advanced"
+    expert = "expert"
+
+
+class UserAvailabilityStatus(enum.Enum):
+    available = "available"
+    allocated = "allocated"
+    on_leave = "on_leave"
+    unavailable = "unavailable"
+
+
+class DueDateCalculationMode(enum.Enum):
+    from_start = "from_start"
+    from_previous_milestone = "from_previous_milestone"
+    business_days = "business_days"
+
+
 class ActivityAction(enum.Enum):
     project_created = "project_created"
     project_updated = "project_updated"
@@ -64,6 +98,11 @@ class ActivityAction(enum.Enum):
     user_restored = "user_restored"
     user_deleted = "user_deleted"
     user_restored_from_deleted = "user_restored_from_deleted"
+    customer_created = "customer_created"
+    customer_updated = "customer_updated"
+    settings_updated = "settings_updated"
+    import_completed = "import_completed"
+    data_exported = "data_exported"
 
 
 class NotificationType(enum.Enum):
@@ -73,6 +112,9 @@ class NotificationType(enum.Enum):
     timesheet_rejected = "timesheet_rejected"
     project_overdue = "project_overdue"
     timesheet_submitted = "timesheet_submitted"
+    project_due_soon = "project_due_soon"
+    import_completed = "import_completed"
+    pending_approval = "pending_approval"
 
 
 class EntityType(enum.Enum):
@@ -80,6 +122,9 @@ class EntityType(enum.Enum):
     milestone = "milestone"
     timesheet = "timesheet"
     user = "user"
+    customer = "customer"
+    settings = "settings"
+    import_batch = "import_batch"
 
 
 class DesignerAvailabilityStatus(enum.Enum):

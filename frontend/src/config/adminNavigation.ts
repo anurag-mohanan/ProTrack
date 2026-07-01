@@ -245,7 +245,8 @@ export const ADMIN_MANAGE_ITEMS: AdminHubItem[] = [
   { id: 'task-types', title: 'Task Types', description: 'Productive task types.', icon: CategoryIcon, path: '/admin/task-types' },
   { id: 'roles', title: 'Roles', description: 'Security roles.', icon: SecurityIcon, path: '/admin/roles' },
   { id: 'np-codes', title: 'Non Productive Codes', description: 'NP codes for timesheets.', icon: BlockIcon, path: '/admin/non-productive-codes' },
-  { id: 'settings', title: 'Company Settings', description: 'Organisation configuration.', icon: SettingsIcon, path: '/admin/settings' },
+  { id: 'departments', title: 'Departments', description: 'Organisation departments.', icon: GroupsIcon, path: '/admin/settings/departments' },
+  { id: 'settings', title: 'Settings Hub', description: 'All configuration pages.', icon: SettingsIcon, path: '/admin/settings' },
 ];
 
 export const ADMIN_IMPORT_ITEMS = (roleName: string): AdminHubItem[] => {
@@ -293,12 +294,12 @@ export const ADMIN_REPORT_ITEMS: AdminHubItem[] = [
 
 export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = [
   { id: 'general', title: 'General Settings', description: 'Core application options.', icon: SettingsIcon, path: '/admin/settings' },
-  { id: 'company', title: 'Company Information', description: 'Organisation profile.', icon: BusinessIcon, path: '/admin/settings', comingSoon: true },
-  { id: 'working-hours', title: 'Working Hours', description: 'Standard working hours.', icon: SettingsIcon, path: '/admin/settings', comingSoon: true },
-  { id: 'holidays', title: 'Holiday Calendar', description: 'Non-working days.', icon: SettingsIcon, path: '/admin/settings', comingSoon: true },
-  { id: 'email', title: 'Email Settings', description: 'SMTP and notifications.', icon: SettingsIcon, path: '/admin/settings', comingSoon: true },
-  { id: 'theme', title: 'Theme & Branding', description: 'Visual identity.', icon: SettingsIcon, path: '/admin/settings', comingSoon: true },
-  { id: 'backup', title: 'Backup Settings', description: 'Data backup schedule.', icon: StorageIcon, path: '/admin/settings', comingSoon: true },
+  { id: 'company', title: 'Company Profile', description: 'Organisation profile.', icon: BusinessIcon, path: '/admin/settings/company' },
+  { id: 'working-hours', title: 'Working Hours', description: 'Standard working hours.', icon: SettingsIcon, path: '/admin/settings/company' },
+  { id: 'holidays', title: 'Holiday Calendar', description: 'Non-working days.', icon: SettingsIcon, path: '/admin/settings/holidays' },
+  { id: 'departments', title: 'Departments', description: 'Organisation departments.', icon: GroupsIcon, path: '/admin/settings/departments' },
+  { id: 'paths', title: 'File Paths', description: 'Project folder templates.', icon: FolderSharedIcon, path: '/admin/settings/paths' },
+  { id: 'notifications', title: 'Notifications', description: 'System notification rules.', icon: AssessmentIcon, path: '/admin/settings/notifications' },
 ];
 
 export const ADMIN_SYSTEM_ITEMS: AdminHubItem[] = [

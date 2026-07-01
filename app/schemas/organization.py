@@ -2,6 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.models.enums import DueDateCalculationMode
 from app.schemas.common import TimestampSchema
 
 
@@ -31,6 +32,13 @@ class CustomerBase(BaseModel):
     address: str | None = None
     notes: str | None = None
     is_active: bool = True
+    default_project_template_id: UUID | None = None
+    default_team_id: UUID | None = None
+    default_project_type_id: UUID | None = None
+    default_folder_structure: str | None = Field(default=None, max_length=500)
+    due_date_calculation: DueDateCalculationMode = DueDateCalculationMode.from_start
+    project_number_format: str | None = Field(default=None, max_length=100)
+    project_number_prefix: str | None = Field(default=None, max_length=50)
 
 
 class CustomerCreate(CustomerBase):
@@ -43,6 +51,13 @@ class CustomerUpdate(BaseModel):
     address: str | None = None
     notes: str | None = None
     is_active: bool | None = None
+    default_project_template_id: UUID | None = None
+    default_team_id: UUID | None = None
+    default_project_type_id: UUID | None = None
+    default_folder_structure: str | None = Field(default=None, max_length=500)
+    due_date_calculation: DueDateCalculationMode | None = None
+    project_number_format: str | None = Field(default=None, max_length=100)
+    project_number_prefix: str | None = Field(default=None, max_length=50)
 
 
 class CustomerRead(CustomerBase, TimestampSchema):
@@ -56,6 +71,7 @@ class ContactBase(BaseModel):
     email: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
     job_title: str | None = Field(default=None, max_length=100)
+    contact_type_id: UUID | None = None
     is_primary: bool = False
     is_active: bool = True
 
@@ -71,6 +87,7 @@ class ContactUpdate(BaseModel):
     email: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
     job_title: str | None = Field(default=None, max_length=100)
+    contact_type_id: UUID | None = None
     is_primary: bool | None = None
     is_active: bool | None = None
 

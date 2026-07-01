@@ -1,7 +1,9 @@
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.models.enums import ProjectStage
 from app.schemas.common import TimestampSchema
 
 
@@ -31,6 +33,8 @@ class ProjectTemplateMilestoneBase(BaseModel):
     sort_order: int = 0
     default_due_offset_days: int | None = None
     is_required: bool = True
+    project_stage: ProjectStage | None = None
+    estimated_hours: Decimal | None = None
 
 
 class ProjectTemplateMilestoneCreate(ProjectTemplateMilestoneBase):
@@ -43,6 +47,8 @@ class ProjectTemplateMilestoneUpdate(BaseModel):
     sort_order: int | None = None
     default_due_offset_days: int | None = None
     is_required: bool | None = None
+    project_stage: ProjectStage | None = None
+    estimated_hours: Decimal | None = None
 
 
 class ProjectTemplateMilestoneRead(ProjectTemplateMilestoneBase, TimestampSchema):

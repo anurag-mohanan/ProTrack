@@ -9,6 +9,7 @@ from app.api.v1.api import api_router
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
 from app.db.project_template_seed import ensure_project_types_and_templates
+from app.db.phase7_schema_sync import ensure_phase7_foundation
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI):
     ensure_timesheet_entry_work_category(engine)
     ensure_non_productive_codes(engine)
     ensure_standard_task_types(engine)
+    ensure_phase7_foundation(engine)
     ensure_design_team(engine)
     seed_session = sessionmaker(bind=engine)()
     try:

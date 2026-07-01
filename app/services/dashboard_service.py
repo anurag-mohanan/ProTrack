@@ -26,6 +26,7 @@ from app.models.enums import (
     ProjectHealth,
     ProjectStage,
     TimesheetStatus,
+    UserAvailabilityStatus,
     WorkCategory,
 )
 from app.models.models import (
@@ -56,6 +57,7 @@ from app.schemas.dashboard import (
     ProjectAttentionRow,
 )
 from app.schemas.timesheet import ActivityRead
+from app.services.holiday_service import is_holiday
 
 logger = logging.getLogger(__name__)
 
@@ -802,7 +804,13 @@ def get_designer_availability(
         current_stage = None
         current_milestone = None
 
-        if designer.id in leave_ids:
+        if designer.id in leave_ids or is_holiday(db, today):
+            status = DesignerAvailabilityStatus.leave
+            on_leave_count += 1
+        elif designer.availability_status in (
+            UserAvailabilityStatus.on_leave,
+            UserAvailabilityStatus.unavailable,
+        ):
             status = DesignerAvailabilityStatus.leave
             on_leave_count += 1
         else:

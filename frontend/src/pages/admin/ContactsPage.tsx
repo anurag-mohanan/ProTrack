@@ -30,7 +30,9 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { contactsApi, customersApi } from '../../api/resources';
+import { fetchContactTypes } from '../../api/settings';
 import type { Contact, Customer } from '../../types';
+import type { ContactType } from '../../types/Settings';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 
 interface ContactFormState {
@@ -40,6 +42,8 @@ interface ContactFormState {
   email: string;
   phone: string;
   job_title: string;
+  contact_type_id: string;
+  is_primary: boolean;
   is_active: boolean;
 }
 
@@ -50,6 +54,8 @@ const emptyForm: ContactFormState = {
   email: '',
   phone: '',
   job_title: '',
+  contact_type_id: '',
+  is_primary: false,
   is_active: true,
 };
 
@@ -65,6 +71,7 @@ export default function ContactsPage() {
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [contactTypes, setContactTypes] = useState<ContactType[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -90,12 +97,14 @@ export default function ContactsPage() {
     try {
       const contactParams =
         customerFilter !== 'all' ? { customer_id: customerFilter } : undefined;
-      const [contactsData, customersData] = await Promise.all([
+      const [contactsData, customersData, contactTypesData] = await Promise.all([
         contactsApi.list(contactParams),
         customersApi.list(),
+        fetchContactTypes(),
       ]);
       setContacts(contactsData);
       setCustomers(customersData);
+      setContactTypes(contactTypesData);
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -147,6 +156,8 @@ export default function ContactsPage() {
       email: contact.email ?? '',
       phone: contact.phone ?? '',
       job_title: contact.job_title ?? '',
+      contact_type_id: contact.contact_type_id ?? '',
+      is_primary: contact.is_primary,
       is_active: contact.is_active,
     });
     setFormOpen(true);
@@ -162,6 +173,8 @@ export default function ContactsPage() {
         email: form.email || null,
         phone: form.phone || null,
         job_title: form.job_title || null,
+        contact_type_id: form.contact_type_id || null,
+        is_primary: form.is_primary,
         is_active: form.is_active,
       };
       if (editingContact) {
@@ -392,6 +405,37 @@ export default function ContactsPage() {
               setForm((current) => ({ ...current, job_title: event.target.value }))
             }
             fullWidth
+          />
+          <FormControl fullWidth>
+            <InputLabel>Contact Type</InputLabel>
+            <Select
+              label="Contact Type"
+              value={form.contact_type_id}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  contact_type_id: String(event.target.value),
+                }))
+              }
+            >
+              <MenuItem value="">Not set</MenuItem>
+              {contactTypes.map((type) => (
+                <MenuItem key={type.id} value={type.id}>
+                  {type.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.is_primary}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, is_primary: event.target.checked }))
+                }
+              />
+            }
+            label="Primary contact"
           />
           <FormControlLabel
             control={

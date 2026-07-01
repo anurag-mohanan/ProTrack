@@ -76,6 +76,8 @@ function createMilestoneRow(
     sort_order: partial?.sort_order ?? sortOrder,
     default_due_offset_days: partial?.default_due_offset_days ?? null,
     is_required: partial?.is_required ?? true,
+    project_stage: partial?.project_stage ?? '',
+    estimated_hours: partial?.estimated_hours ?? null,
   };
 }
 
@@ -128,6 +130,8 @@ export default function ProjectTemplateEditorPage() {
               sort_order: milestone.sort_order,
               default_due_offset_days: milestone.default_due_offset_days,
               is_required: milestone.is_required,
+              project_stage: milestone.project_stage ?? '',
+              estimated_hours: milestone.estimated_hours ?? null,
             }),
           ),
       );
@@ -370,6 +374,8 @@ export default function ProjectTemplateEditorPage() {
               <TableCell>Milestone Name</TableCell>
               <TableCell>Description</TableCell>
               <TableCell width={120}>Due Offset</TableCell>
+              <TableCell width={120}>Stage</TableCell>
+              <TableCell width={120}>Est. Hours</TableCell>
               <TableCell width={90}>Required</TableCell>
               <TableCell width={100}>Actions</TableCell>
             </TableRow>
@@ -392,6 +398,8 @@ export default function ProjectTemplateEditorPage() {
                 <TableCell>{row.milestone_name}</TableCell>
                 <TableCell>{row.description || '—'}</TableCell>
                 <TableCell>{row.default_due_offset_days ?? '—'}</TableCell>
+                <TableCell>{row.project_stage || '—'}</TableCell>
+                <TableCell>{row.estimated_hours ?? '—'}</TableCell>
                 <TableCell>{row.is_required ? 'Yes' : 'No'}</TableCell>
                 <TableCell>
                   <Tooltip title="Edit">
@@ -452,6 +460,42 @@ export default function ProjectTemplateEditorPage() {
                     setMilestoneDraft((current) => ({
                       ...current,
                       default_due_offset_days: event.target.value
+                        ? Number(event.target.value)
+                        : null,
+                    }))
+                  }
+                  fullWidth
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 2 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Stage</InputLabel>
+                  <Select
+                    label="Stage"
+                    value={milestoneDraft.project_stage ?? ''}
+                    onChange={(event) =>
+                      setMilestoneDraft((current) => ({
+                        ...current,
+                        project_stage: String(event.target.value),
+                      }))
+                    }
+                  >
+                    <MenuItem value="">None</MenuItem>
+                    <MenuItem value="preliminary">Preliminary</MenuItem>
+                    <MenuItem value="intermediate">Intermediate</MenuItem>
+                    <MenuItem value="final">Final</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 2 }}>
+                <TextField
+                  label="Est. Hours"
+                  type="number"
+                  value={milestoneDraft.estimated_hours ?? ''}
+                  onChange={(event) =>
+                    setMilestoneDraft((current) => ({
+                      ...current,
+                      estimated_hours: event.target.value
                         ? Number(event.target.value)
                         : null,
                     }))

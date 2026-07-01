@@ -147,3 +147,36 @@ export function TimesheetStatusBadge({ status }: { status: TimesheetStatus }) {
   };
   return <BadgeShell label={labels[status]} color={colors[status]} />;
 }
+
+export type ProjectPriority = 'critical' | 'high' | 'medium' | 'low';
+
+const priorityColors: Record<ProjectPriority, ChipProps['color']> = {
+  critical: 'error',
+  high: 'warning',
+  medium: 'info',
+  low: 'default',
+};
+
+const priorityLabels: Record<ProjectPriority, string> = {
+  critical: 'Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+};
+
+export function PriorityBadge({
+  priority = 'medium',
+  variant = 'filled',
+}: {
+  priority?: ProjectPriority | string | null;
+  variant?: BadgeVariant;
+}) {
+  const key = (priority ?? 'medium') as ProjectPriority;
+  return (
+    <BadgeShell
+      label={priorityLabels[key] ?? 'Medium'}
+      color={priorityColors[key] ?? 'default'}
+      variant={variant}
+    />
+  );
+}

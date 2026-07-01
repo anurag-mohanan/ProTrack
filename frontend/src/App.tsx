@@ -10,6 +10,11 @@ import AdminImportsPage from './pages/admin/AdminImportsPage';
 import AdminManageHubPage from './pages/admin/AdminManageHubPage';
 import AdminReportsPage from './pages/admin/AdminReportsPage';
 import AdminSettingsHubPage from './pages/admin/AdminSettingsHubPage';
+import CompanyProfilePage from './pages/admin/CompanyProfilePage';
+import HolidayCalendarPage from './pages/admin/HolidayCalendarPage';
+import DepartmentsPage from './pages/admin/DepartmentsPage';
+import FilePathSettingsPage from './pages/admin/FilePathSettingsPage';
+import NotificationSettingsPage from './pages/admin/NotificationSettingsPage';
 import AdminSystemPage from './pages/admin/AdminSystemPage';
 import ContactsAdminPage from './pages/admin/ContactsPage';
 import CustomersAdminPage from './pages/admin/CustomersPage';
@@ -114,6 +119,11 @@ export default function App() {
                       <Route path="/admin/imports" element={<AdminImportsPage />} />
                       <Route path="/admin/reports" element={<AdminReportsPage />} />
                       <Route path="/admin/settings" element={<AdminSettingsHubPage />} />
+                      <Route path="/admin/settings/company" element={<CompanyProfilePage />} />
+                      <Route path="/admin/settings/holidays" element={<HolidayCalendarPage />} />
+                      <Route path="/admin/settings/departments" element={<DepartmentsPage />} />
+                      <Route path="/admin/settings/paths" element={<FilePathSettingsPage />} />
+                      <Route path="/admin/settings/notifications" element={<NotificationSettingsPage />} />
                       <Route path="/admin/system" element={<AdminSystemRoute />} />
 
                       <Route path="/admin/users" element={<UsersAdminPage />} />

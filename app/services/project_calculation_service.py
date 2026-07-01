@@ -133,6 +133,8 @@ def calculate_progress(db: Session, project: Project) -> MilestoneProgress:
 def calculate_project_health(
     project: Project,
     today: date | None = None,
+    *,
+    db: Session | None = None,
 ) -> ProjectHealth:
     today = today or date.today()
 
@@ -142,8 +144,34 @@ def calculate_project_health(
     if project.due_date < today:
         return ProjectHealth.red
 
+    if db is not None:
+        hours = calculate_hours(db, project)
+        if hours.quoted > 0 and hours.actual > hours.quoted:
+            return ProjectHealth.red
+
     if project.due_date <= today + timedelta(days=5):
         return ProjectHealth.yellow
+
+    if db is not None:
+        hours = calculate_hours(db, project)
+        if hours.quoted > 0 and hours.actual >= hours.quoted * Decimal("0.85"):
+            return ProjectHealth.yellow
+
+        overdue_milestones = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Milestone)
+                .where(
+                    Milestone.project_id == project.id,
+                    Milestone.status != MilestoneStatus.completed,
+                    Milestone.due_date.is_not(None),
+                    Milestone.due_date < today,
+                )
+            )
+            or 0
+        )
+        if overdue_milestones > 0 and project.due_date <= today + timedelta(days=14):
+            return ProjectHealth.yellow
 
     return ProjectHealth.green
 
@@ -174,7 +202,7 @@ def recalculate_project(db: Session, project_id: UUID | str) -> Project | None:
 
     hours = calculate_hours(db, project)
     project.actual_hours = hours.actual
-    project.health = calculate_project_health(project)
+    project.health = calculate_project_health(project, db=db)
 
     db.add(project)
     db.commit()

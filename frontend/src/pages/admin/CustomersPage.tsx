@@ -24,13 +24,18 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { contactsApi, customersApi } from '../../api/resources';
+import { fetchTeams } from '../../api/lookups';
+import { fetchProjectTemplates, fetchProjectTypes } from '../../api/projectTemplates';
 import type { Contact, Customer } from '../../types';
+import type { ProjectTemplate, ProjectType } from '../../types/ProjectTemplate';
+import type { Team } from '../../types/Team';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
   FormDrawer,
   FormField,
   FormSection,
+  FormSelect,
   ModernDrawer,
   SearchToolbar,
 } from '../../components/ui/design-system';
@@ -42,6 +47,13 @@ interface CustomerFormState {
   code: string;
   notes: string;
   is_active: boolean;
+  default_project_template_id: string;
+  default_team_id: string;
+  default_project_type_id: string;
+  default_folder_structure: string;
+  due_date_calculation: string;
+  project_number_format: string;
+  project_number_prefix: string;
 }
 
 const emptyForm: CustomerFormState = {
@@ -49,6 +61,13 @@ const emptyForm: CustomerFormState = {
   code: '',
   notes: '',
   is_active: true,
+  default_project_template_id: '',
+  default_team_id: '',
+  default_project_type_id: '',
+  default_folder_structure: '',
+  due_date_calculation: 'from_start',
+  project_number_format: '',
+  project_number_prefix: '',
 };
 
 function formatDate(value: string | undefined): string {
@@ -62,6 +81,9 @@ export default function CustomersPage() {
   const { showSuccess, showError } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
+  const [projectTemplates, setProjectTemplates] = useState<ProjectTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -81,12 +103,19 @@ export default function CustomersPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [customersData, contactsData] = await Promise.all([
-        customersApi.list(),
-        contactsApi.list(),
-      ]);
+      const [customersData, contactsData, teamsData, typesData, templatesData] =
+        await Promise.all([
+          customersApi.list(),
+          contactsApi.list(),
+          fetchTeams(),
+          fetchProjectTypes(),
+          fetchProjectTemplates(),
+        ]);
       setCustomers(customersData);
       setContacts(contactsData);
+      setTeams(teamsData.filter((team) => team.is_active));
+      setProjectTypes(typesData.filter((type) => type.is_active));
+      setProjectTemplates(templatesData.filter((template) => template.is_active));
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -122,6 +151,13 @@ export default function CustomersPage() {
       code: customer.code ?? '',
       notes: customer.notes ?? '',
       is_active: customer.is_active,
+      default_project_template_id: customer.default_project_template_id ?? '',
+      default_team_id: customer.default_team_id ?? '',
+      default_project_type_id: customer.default_project_type_id ?? '',
+      default_folder_structure: customer.default_folder_structure ?? '',
+      due_date_calculation: customer.due_date_calculation ?? 'from_start',
+      project_number_format: customer.project_number_format ?? '',
+      project_number_prefix: customer.project_number_prefix ?? '',
     });
     setFormOpen(true);
   };
@@ -134,6 +170,13 @@ export default function CustomersPage() {
         code: form.code || null,
         notes: form.notes || null,
         is_active: form.is_active,
+        default_project_template_id: form.default_project_template_id || null,
+        default_team_id: form.default_team_id || null,
+        default_project_type_id: form.default_project_type_id || null,
+        default_folder_structure: form.default_folder_structure || null,
+        due_date_calculation: form.due_date_calculation as Customer['due_date_calculation'],
+        project_number_format: form.project_number_format || null,
+        project_number_prefix: form.project_number_prefix || null,
       };
       if (editingCustomer) {
         await customersApi.update(editingCustomer.id, payload);
@@ -311,6 +354,120 @@ export default function CustomersPage() {
                   />
                 }
                 label="Active customer"
+              />
+            </Grid>
+          </FormSection>
+
+          <FormSection title="Project Defaults" icon={BarChartOutlinedIcon}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Default Project Type"
+                value={form.default_project_type_id}
+                options={[
+                  { value: '', label: 'None' },
+                  ...projectTypes.map((type) => ({ value: type.id, label: type.name })),
+                ]}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    default_project_type_id: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Default Team"
+                searchable
+                value={form.default_team_id}
+                options={[
+                  { value: '', label: 'None' },
+                  ...teams.map((team) => ({ value: team.id, label: team.name })),
+                ]}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    default_team_id: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormSelect
+                label="Default Project Template"
+                searchable
+                value={form.default_project_template_id}
+                options={[
+                  { value: '', label: 'None' },
+                  ...projectTemplates.map((template) => ({
+                    value: template.id,
+                    label: template.name,
+                  })),
+                ]}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    default_project_template_id: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Default Folder Structure"
+                value={form.default_folder_structure}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    default_folder_structure: event.target.value,
+                  }))
+                }
+              />
+            </Grid>
+          </FormSection>
+
+          <FormSection title="Project Numbering" icon={BusinessOutlinedIcon}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Number Prefix"
+                value={form.project_number_prefix}
+                helper="Example: SYBRIDGE, TI, ABC"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    project_number_prefix: event.target.value,
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Due Date Calculation"
+                value={form.due_date_calculation}
+                options={[
+                  { value: 'from_start', label: 'From project start' },
+                  { value: 'from_previous_milestone', label: 'From previous milestone' },
+                  { value: 'business_days', label: 'Business days only' },
+                ]}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    due_date_calculation: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Project Number Format"
+                value={form.project_number_format}
+                helper="Use {tool_number}, {prefix}, {seq}, {customer_code}"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    project_number_format: event.target.value,
+                  }))
+                }
               />
             </Grid>
           </FormSection>

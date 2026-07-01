@@ -13,6 +13,8 @@ export interface ProjectTemplateMilestone extends Timestamped {
   sort_order: number;
   default_due_offset_days: number | null;
   is_required: boolean;
+  project_stage?: string | null;
+  estimated_hours?: number | null;
 }
 
 export interface ProjectTemplate extends Timestamped {
@@ -49,6 +51,8 @@ export interface ProjectTemplateMilestoneInput {
   sort_order: number;
   default_due_offset_days?: number | null;
   is_required?: boolean;
+  project_stage?: string | null;
+  estimated_hours?: number | null;
 }
 
 export interface ProjectTemplateCreatePayload {

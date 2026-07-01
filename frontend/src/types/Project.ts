@@ -29,6 +29,7 @@ export interface Project extends Timestamped {
   actual_hours: number;
   progress_percent: number;
   health: ProjectHealth;
+  priority?: 'critical' | 'high' | 'medium' | 'low';
   due_date: string;
   project_stage: ProjectStage;
   execution_status: ExecutionStatus;
@@ -68,6 +69,7 @@ export interface ProjectCreate {
   code: string;
   quoted_hours: number;
   due_date: string;
+  priority?: 'critical' | 'high' | 'medium' | 'low';
   project_stage?: ProjectStage;
   execution_status?: ExecutionStatus;
   notes?: string | null;
@@ -87,6 +89,7 @@ export interface ProjectUpdate {
   code?: string;
   quoted_hours?: number;
   due_date?: string;
+  priority?: 'critical' | 'high' | 'medium' | 'low';
   project_stage?: ProjectStage;
   execution_status?: ExecutionStatus;
   notes?: string | null;

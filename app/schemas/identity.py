@@ -1,8 +1,14 @@
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.models.enums import (
+    EmploymentType,
+    SkillLevel,
+    UserAvailabilityStatus,
+)
 from app.schemas.common import TimestampSchema
 
 
@@ -32,6 +38,15 @@ class UserBase(BaseModel):
     is_active: bool = True
     must_change_password: bool = False
     team_id: UUID | None = None
+    department_id: UUID | None = None
+    working_hours_per_day: Decimal = Decimal("8")
+    working_days: str = "Mon,Tue,Wed,Thu,Fri"
+    employment_type: EmploymentType | None = None
+    skill_level: SkillLevel | None = None
+    joining_date: date | None = None
+    leaving_date: date | None = None
+    availability_status: UserAvailabilityStatus = UserAvailabilityStatus.available
+    max_allocation_percent: int = 100
 
 
 class UserCreate(UserBase):
@@ -46,6 +61,15 @@ class UserUpdate(BaseModel):
     last_name: str | None = Field(default=None, max_length=100)
     is_active: bool | None = None
     team_id: UUID | None = None
+    department_id: UUID | None = None
+    working_hours_per_day: Decimal | None = Field(default=None, gt=0, le=24)
+    working_days: str | None = Field(default=None, max_length=50)
+    employment_type: EmploymentType | None = None
+    skill_level: SkillLevel | None = None
+    joining_date: date | None = None
+    leaving_date: date | None = None
+    availability_status: UserAvailabilityStatus | None = None
+    max_allocation_percent: int | None = Field(default=None, ge=0, le=100)
 
 
 class ResetPasswordRequest(BaseModel):
@@ -61,6 +85,7 @@ class ResetPasswordResponse(BaseModel):
 class UserRead(UserBase, TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
     team_name: str | None = None
+    department_name: str | None = None
     is_archived: bool = False
     archived_at: datetime | None = None
     is_deleted: bool = False

@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Customer, Project, Stream, Team, User } from '../../types';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
 import { ProjectStageChip, ExecutionStatusChip } from '../common/StatusChip';
+import { PriorityBadge } from '../ui/design-system';
 import { formatDate, formatNumber, userDisplayName } from '../../utils/format';
 
 export interface ProjectTableRow extends Project {
@@ -83,6 +84,12 @@ const PROJECT_TABLE_COLUMNS: GridColDef<ProjectTableRow>[] = [
   { field: 'designerName', headerName: 'Designer', flex: 1, minWidth: 120 },
   { field: 'surfacerName', headerName: 'Surfacer', flex: 1, minWidth: 120 },
   { field: 'streamName', headerName: 'Stream', flex: 1, minWidth: 120 },
+  {
+    field: 'priority',
+    headerName: 'Priority',
+    width: 110,
+    renderCell: (params) => <PriorityBadge priority={params.value as string | null} />,
+  },
   {
     field: 'due_date',
     headerName: 'Due Date',

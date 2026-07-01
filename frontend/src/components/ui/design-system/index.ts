@@ -9,6 +9,7 @@ export {
   MilestoneStatusBadge,
   LifecycleBadge,
   TimesheetStatusBadge,
+  PriorityBadge,
 } from './StatusBadge';
 export { FormField } from './FormField';
 export { FormSelect, type SelectOption } from './FormSelect';

@@ -68,6 +68,17 @@ def resolve_template(
             )
         return template
 
+    customer = db.get(Customer, customer_id)
+    if customer is not None and customer.default_project_template_id is not None:
+        default_template = db.get(ProjectTemplate, customer.default_project_template_id)
+        if (
+            default_template is not None
+            and default_template.is_active
+            and default_template.project_type_id == project_type_id
+            and default_template.customer_id in (None, customer_id)
+        ):
+            return default_template
+
     customer_template = db.scalar(
         select(ProjectTemplate).where(
             ProjectTemplate.project_type_id == project_type_id,

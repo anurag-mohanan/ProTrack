@@ -50,6 +50,7 @@ const emptyForm: ProjectFormValues = {
   quoted_hours: 40,
   due_date: '',
   notes: '',
+  priority: 'medium' as const,
   project_stage: 'preliminary',
   execution_status: 'currently_being_worked_on',
 };
@@ -71,6 +72,7 @@ function projectToForm(project: Project): ProjectFormValues {
     quoted_hours: project.quoted_hours,
     due_date: project.due_date,
     notes: project.notes ?? '',
+    priority: project.priority ?? 'medium',
     project_stage: project.project_stage,
     execution_status: project.execution_status,
   };
@@ -177,6 +179,7 @@ export function ProjectFormDialog({
           notes: payload.notes,
           project_stage: payload.project_stage,
           execution_status: payload.execution_status,
+          priority: payload.priority,
         };
         return updateProject(project.id, updatePayload);
       }
@@ -249,6 +252,7 @@ export function ProjectFormDialog({
   };
 
   const handleCustomerChange = (customerId: string) => {
+    const customer = activeCustomers.find((item) => item.id === customerId);
     setForm((current) => ({
       ...current,
       customer_id: customerId,
@@ -256,7 +260,9 @@ export function ProjectFormDialog({
         project && customerId === project.customer_id
           ? project.customer_contact_id
           : '',
-      project_template_id: '',
+      project_type_id: customer?.default_project_type_id ?? current.project_type_id,
+      team_id: customer?.default_team_id ?? current.team_id,
+      project_template_id: customer?.default_project_template_id ?? '',
     }));
   };
 
@@ -559,8 +565,49 @@ export function ProjectFormDialog({
                 }
               />
             </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Priority"
+                required
+                value={form.priority ?? 'medium'}
+                options={[
+                  { value: 'critical', label: 'Critical' },
+                  { value: 'high', label: 'High' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'low', label: 'Low' },
+                ]}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    priority: event.target.value as ProjectFormValues['priority'],
+                  })
+                }
+              />
+            </Grid>
           </FormSection>
-        ) : null}
+        ) : (
+          <FormSection title="Priority" icon={FlagOutlinedIcon}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Priority"
+                required
+                value={form.priority ?? 'medium'}
+                options={[
+                  { value: 'critical', label: 'Critical' },
+                  { value: 'high', label: 'High' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'low', label: 'Low' },
+                ]}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    priority: event.target.value as ProjectFormValues['priority'],
+                  })
+                }
+              />
+            </Grid>
+          </FormSection>
+        )}
 
         <FormSection title="Notes" subtitle="Additional project context" icon={NotesOutlinedIcon}>
           <Grid size={{ xs: 12 }}>

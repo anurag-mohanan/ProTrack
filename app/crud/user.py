@@ -7,6 +7,7 @@ from app.core.security import hash_password
 from app.crud.base import CRUDBase
 from app.crud.team import sync_user_team_membership
 from app.models.models import Team, User
+from app.models.foundation import Department
 from app.schemas.identity import UserCreate, UserRead, UserUpdate
 
 
@@ -15,23 +16,12 @@ def build_user_read(db: Session, user: User) -> UserRead:
     if user.team_id is not None:
         team = db.get(Team, user.team_id)
         team_name = team.name if team else None
-    return UserRead(
-        id=user.id,
-        role_id=user.role_id,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        is_active=user.is_active,
-        must_change_password=user.must_change_password,
-        team_id=user.team_id,
-        team_name=team_name,
-        is_archived=user.is_archived,
-        archived_at=user.archived_at,
-        is_deleted=user.is_deleted,
-        deleted_at=user.deleted_at,
-        deleted_by_id=user.deleted_by_id,
-        created_at=user.created_at,
-        updated_at=user.updated_at,
+    department_name = None
+    if user.department_id is not None:
+        department = db.get(Department, user.department_id)
+        department_name = department.name if department else None
+    return UserRead.model_validate(user, from_attributes=True).model_copy(
+        update={"team_name": team_name, "department_name": department_name}
     )
 
 

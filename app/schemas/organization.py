@@ -101,3 +101,25 @@ class TaskTypeUpdate(BaseModel):
 
 class TaskTypeRead(TaskTypeBase, TimestampSchema):
     pass
+
+
+class NonProductiveCodeBase(BaseModel):
+    code: str = Field(max_length=20)
+    description: str = Field(max_length=255)
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class NonProductiveCodeCreate(NonProductiveCodeBase):
+    pass
+
+
+class NonProductiveCodeUpdate(BaseModel):
+    code: str | None = Field(default=None, max_length=20)
+    description: str | None = Field(default=None, max_length=255)
+    is_active: bool | None = None
+    sort_order: int | None = None
+
+
+class NonProductiveCodeRead(NonProductiveCodeBase, TimestampSchema):
+    pass

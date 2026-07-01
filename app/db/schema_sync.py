@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.permissions import JUNIOR_DESIGNER, SENIOR_DESIGNER
 from app.core.security import hash_password
 from app.db.design_team import ensure_design_team_users
-from app.models.models import Project, Role, TimesheetEntry
+from app.models.models import NonProductiveCode, Project, Role, Stream, TaskType, TimesheetEntry
 from app.services.project_calculation_service import recalculate_project
 
 
@@ -324,5 +324,194 @@ def ensure_user_lifecycle_schema(engine: Engine) -> None:
                 text(
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_by_id UUID "
                     "REFERENCES users(id)"
+                )
+            )
+
+
+NP_CODE_SEED: tuple[tuple[str, str, int], ...] = (
+    ("C500", "Lack of Work", 1),
+    ("C501", "IT / Software Issues", 2),
+    ("C502", "Meetings", 3),
+    ("C503", "File Upload / Download", 4),
+    ("C504", "Training", 5),
+    ("C505", "Administration", 6),
+    ("EST001", "Estimation", 7),
+)
+
+STANDARD_TASK_TYPE_NAMES: tuple[tuple[str, str], ...] = (
+    ("Design", "Productive design work"),
+    ("Surfacing", "Surface modeling work"),
+    ("Feasibility", "Feasibility assessment"),
+    ("Engineering Change (EC)", "Engineering change orders"),
+    ("2D Drawings", "2D drawing production"),
+)
+
+
+def ensure_non_productive_codes(engine: Engine) -> None:
+    session = sessionmaker(bind=engine)()
+    try:
+        existing = session.scalar(select(func.count()).select_from(NonProductiveCode)) or 0
+        if int(existing) == 0:
+            for code, description, sort_order in NP_CODE_SEED:
+                session.add(
+                    NonProductiveCode(
+                        code=code,
+                        description=description,
+                        sort_order=sort_order,
+                        is_active=True,
+                    )
+                )
+            session.commit()
+    finally:
+        session.close()
+
+
+def ensure_standard_task_types(engine: Engine) -> None:
+    session = sessionmaker(bind=engine)()
+    try:
+        stream = session.scalar(select(Stream).where(Stream.name == "Mold Design"))
+        if stream is None:
+            return
+        existing_names = {
+            row.name
+            for row in session.scalars(
+                select(TaskType).where(TaskType.stream_id == stream.id)
+            ).all()
+        }
+        for name, description in STANDARD_TASK_TYPE_NAMES:
+            if name in existing_names:
+                continue
+            session.add(
+                TaskType(
+                    stream_id=stream.id,
+                    name=name,
+                    description=description,
+                    is_billable=True,
+                    is_active=True,
+                )
+            )
+        session.commit()
+    finally:
+        session.close()
+
+
+def _sqlite_rebuild_timesheet_entries(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE timesheet_entries_new (
+                    id BLOB PRIMARY KEY,
+                    timesheet_id BLOB NOT NULL REFERENCES timesheets(id) ON DELETE CASCADE,
+                    project_id BLOB REFERENCES projects(id),
+                    customer_id BLOB REFERENCES customers(id),
+                    task_type_id BLOB REFERENCES task_types(id),
+                    milestone_id BLOB REFERENCES milestones(id),
+                    non_productive_code_id BLOB REFERENCES non_productive_codes(id),
+                    work_category VARCHAR(32) NOT NULL DEFAULT 'productive',
+                    is_billable BOOLEAN NOT NULL DEFAULT 1,
+                    entry_date DATE NOT NULL,
+                    hours NUMERIC(5, 2) NOT NULL,
+                    description TEXT,
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    CHECK (hours > 0 AND hours <= 24)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO timesheet_entries_new (
+                    id, timesheet_id, project_id, customer_id, task_type_id,
+                    milestone_id, non_productive_code_id, work_category, is_billable,
+                    entry_date, hours, description, created_at, updated_at
+                )
+                SELECT
+                    id, timesheet_id, project_id, customer_id, task_type_id,
+                    milestone_id, non_productive_code_id,
+                    COALESCE(work_category, 'productive'), COALESCE(is_billable, 1),
+                    entry_date, hours, description, created_at, updated_at
+                FROM timesheet_entries
+                """
+            )
+        )
+        connection.execute(text("DROP TABLE timesheet_entries"))
+        connection.execute(
+            text("ALTER TABLE timesheet_entries_new RENAME TO timesheet_entries")
+        )
+
+
+def ensure_timesheet_entry_work_category(engine: Engine) -> None:
+    dialect = engine.dialect.name
+    entry_columns_sqlite = (
+        ("customer_id", "customer_id BLOB"),
+        ("non_productive_code_id", "non_productive_code_id BLOB"),
+        ("work_category", "work_category VARCHAR(32) NOT NULL DEFAULT 'productive'"),
+        ("is_billable", "is_billable BOOLEAN NOT NULL DEFAULT 1"),
+    )
+
+    if dialect == "sqlite":
+        for column_name, ddl in entry_columns_sqlite:
+            if not _sqlite_has_column(engine, "timesheet_entries", column_name):
+                with engine.begin() as connection:
+                    connection.execute(
+                        text(f"ALTER TABLE timesheet_entries ADD COLUMN {ddl}")
+                    )
+        with engine.connect() as connection:
+            rows = connection.execute(text("PRAGMA table_info(timesheet_entries)")).fetchall()
+        project_col = next((row for row in rows if row[1] == "project_id"), None)
+        if project_col is not None and project_col[3] == 1:
+            _sqlite_rebuild_timesheet_entries(engine)
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries "
+                    "ALTER COLUMN project_id DROP NOT NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS "
+                    "customer_id UUID REFERENCES customers(id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS "
+                    "non_productive_code_id UUID REFERENCES non_productive_codes(id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "DO $$ BEGIN "
+                    "CREATE TYPE work_category AS ENUM ('productive', 'non_productive'); "
+                    "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS "
+                    "work_category work_category NOT NULL DEFAULT 'productive'"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS "
+                    "is_billable BOOLEAN NOT NULL DEFAULT TRUE"
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE timesheet_entries te
+                    SET customer_id = p.customer_id
+                    FROM projects p
+                    WHERE te.project_id = p.id AND te.customer_id IS NULL
+                    """
                 )
             )

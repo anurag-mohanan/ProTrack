@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
 from app.core.security import hash_password
-from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_user_lifecycle_schema
+from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_user_lifecycle_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
 from app.db.base import Base
@@ -25,6 +25,7 @@ from app.models.models import (
     ProjectType,
     Role,
     Stream,
+    TaskType,
     User,
 )
 from sqlalchemy import select
@@ -243,6 +244,9 @@ def test_engine():
     ensure_admin_schema(engine)
     ensure_project_lifecycle_schema(engine)
     ensure_user_lifecycle_schema(engine)
+    ensure_timesheet_entry_work_category(engine)
+    ensure_non_productive_codes(engine)
+    ensure_standard_task_types(engine)
     return engine
 
 
@@ -252,11 +256,23 @@ def test_session_factory(test_engine):
 
 
 @pytest.fixture
-def seeded_db(test_session_factory):
+def seeded_db(test_session_factory, test_engine):
     session = test_session_factory()
     milestone = _seed_database(session)
     session.close()
+    ensure_standard_task_types(test_engine)
     return milestone
+
+
+def get_design_task_type_id(session) -> uuid.UUID:
+    task_type = session.scalar(
+        select(TaskType).where(
+            TaskType.name == "Design",
+            TaskType.stream_id == IDS["stream"],
+        )
+    )
+    assert task_type is not None, "Design task type not seeded"
+    return task_type.id
 
 
 @pytest.fixture
@@ -270,10 +286,17 @@ def client(test_session_factory, seeded_db):
 
     app.dependency_overrides[get_db] = override_get_db
 
+    db = test_session_factory()
+    try:
+        design_task_type_id = get_design_task_type_id(db)
+    finally:
+        db.close()
+
     with TestClient(app) as test_client:
         test_client.milestone_id = str(seeded_db.id)
         test_client.project_id = str(seeded_db.project_id)
         test_client.user_id = str(IDS["user_anurag"])
+        test_client.task_type_id = str(design_task_type_id)
         test_client.auth_headers = login(test_client, "admin@prosohm.com")
         yield test_client
 

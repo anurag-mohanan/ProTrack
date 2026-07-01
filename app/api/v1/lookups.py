@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
 from app.crud.base import select
-from app.models.models import Contact, Customer, ProjectType, Role, Stream, TaskType, User
+from app.models.models import Contact, Customer, NonProductiveCode, ProjectType, Role, Stream, TaskType, User
 from app.schemas.identity import RoleRead
-from app.schemas.organization import ContactRead, CustomerRead, StreamRead, TaskTypeRead
+from app.schemas.organization import ContactRead, CustomerRead, NonProductiveCodeRead, StreamRead, TaskTypeRead
 from app.schemas.templates import ProjectTypeRead
 
 router = APIRouter(prefix="/lookups", tags=["lookups"])
@@ -83,6 +83,18 @@ def list_lookup_task_types(
     if stream_id is not None:
         query = query.where(TaskType.stream_id == stream_id)
     return db.scalars(query.order_by(TaskType.name)).all()
+
+
+@router.get("/non-productive-codes", response_model=list[NonProductiveCodeRead])
+def list_lookup_non_productive_codes(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    return db.scalars(
+        select(NonProductiveCode)
+        .where(NonProductiveCode.is_active.is_(True))
+        .order_by(NonProductiveCode.sort_order, NonProductiveCode.code)
+    ).all()
 
 
 @router.get("/roles", response_model=list[RoleRead])

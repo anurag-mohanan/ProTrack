@@ -1,4 +1,4 @@
-import type { Contact, Customer, Stream, TaskType, User } from '../types';
+import type { Contact, Customer, NonProductiveCode, Stream, TaskType, User } from '../types';
 import { apiClient, buildQuery, type ListParams } from './client';
 
 export interface ContactListParams extends ListParams {
@@ -25,7 +25,16 @@ export async function fetchUsers(): Promise<User[]> {
   return data;
 }
 
-export async function fetchTaskTypes(): Promise<TaskType[]> {
-  const { data } = await apiClient.get<TaskType[]>('/lookups/task-types');
+export async function fetchTaskTypes(streamId?: string): Promise<TaskType[]> {
+  const { data } = await apiClient.get<TaskType[]>(
+    `/lookups/task-types${buildQuery(streamId ? { stream_id: streamId } : undefined)}`,
+  );
+  return data;
+}
+
+export async function fetchNonProductiveCodes(): Promise<NonProductiveCode[]> {
+  const { data } = await apiClient.get<NonProductiveCode[]>(
+    '/lookups/non-productive-codes',
+  );
   return data;
 }

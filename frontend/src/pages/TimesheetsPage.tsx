@@ -311,14 +311,30 @@ export function TimesheetsPage() {
                               <TableHead>
                                 <TableRow>
                                   <TableCell>Date</TableCell>
+                                  <TableCell>Category</TableCell>
+                                  <TableCell>Project / NP Code</TableCell>
+                                  <TableCell>Task</TableCell>
+                                  <TableCell>Billable</TableCell>
                                   <TableCell align="right">Hours</TableCell>
-                                  <TableCell>Description</TableCell>
+                                  <TableCell>Notes</TableCell>
                                 </TableRow>
                               </TableHead>
                               <TableBody>
                                 {entriesQuery.data.map((entry) => (
                                   <TableRow key={entry.id}>
                                     <TableCell>{formatDate(entry.entry_date)}</TableCell>
+                                    <TableCell>
+                                      {entry.work_category === 'non_productive'
+                                        ? 'Non-Productive'
+                                        : 'Productive'}
+                                    </TableCell>
+                                    <TableCell>
+                                      {entry.work_category === 'non_productive'
+                                        ? entry.non_productive_code ?? '—'
+                                        : entry.project_tool_number ?? '—'}
+                                    </TableCell>
+                                    <TableCell>{entry.task_type_name ?? '—'}</TableCell>
+                                    <TableCell>{entry.is_billable ? 'Yes' : 'No'}</TableCell>
                                     <TableCell align="right">
                                       {formatNumber(entry.hours)}
                                     </TableCell>
@@ -326,7 +342,7 @@ export function TimesheetsPage() {
                                   </TableRow>
                                 ))}
                                 <TableRow>
-                                  <TableCell>
+                                  <TableCell colSpan={5}>
                                     <strong>Total</strong>
                                   </TableCell>
                                   <TableCell align="right">

@@ -5,12 +5,16 @@ from sqlalchemy import func, select
 
 from app.crud.base import Session
 from app.crud.dashboard import get_designer_workload, _decimal, _round_hours
-from app.models.enums import MilestoneStatus, ProjectStatus, TimesheetStatus
-from app.models.models import Customer, Milestone, Project, Timesheet, TimesheetEntry, User
+from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
+from app.models.models import Customer, Milestone, NonProductiveCode, Project, TaskType, Timesheet, TimesheetEntry, User
 from app.schemas.reports import (
+    BillableUtilizationReportRow,
     CustomerSummaryReportRow,
     DesignerProductivityReportRow,
     MilestoneCompletionReportRow,
+    MonthlyNpTrendReportRow,
+    NonProductiveHoursReportRow,
+    ProductiveHoursReportRow,
     ProjectDelayReportRow,
     ProjectHoursReportRow,
     ReportsBundle,
@@ -233,6 +237,142 @@ def get_designer_productivity_report(db: Session) -> list[DesignerProductivityRe
             )
         )
     return report
+
+
+def get_productive_hours_report(db: Session) -> list[ProductiveHoursReportRow]:
+    rows = db.execute(
+        select(TimesheetEntry, Project, Customer.name, TaskType.name)
+        .outerjoin(Project, TimesheetEntry.project_id == Project.id)
+        .outerjoin(Customer, TimesheetEntry.customer_id == Customer.id)
+        .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
+        .where(TimesheetEntry.work_category == WorkCategory.productive)
+    ).all()
+    grouped: dict[tuple, dict] = {}
+    for entry, project, customer_name, task_name in rows:
+        key = (entry.project_id, entry.task_type_id)
+        bucket = grouped.setdefault(
+            key,
+            {
+                "project_id": entry.project_id,
+                "tool_number": project.tool_number if project else None,
+                "customer_name": customer_name,
+                "task_type_name": task_name,
+                "total": Decimal("0"),
+                "billable": Decimal("0"),
+                "non_billable": Decimal("0"),
+            },
+        )
+        hours = _decimal(entry.hours)
+        bucket["total"] += hours
+        if entry.is_billable:
+            bucket["billable"] += hours
+        else:
+            bucket["non_billable"] += hours
+    return [
+        ProductiveHoursReportRow(
+            project_id=values["project_id"],
+            tool_number=values["tool_number"],
+            customer_name=values["customer_name"],
+            task_type_name=values["task_type_name"],
+            total_hours=_round_hours(values["total"]),
+            billable_hours=_round_hours(values["billable"]),
+            non_billable_hours=_round_hours(values["non_billable"]),
+        )
+        for values in grouped.values()
+    ]
+
+
+def get_non_productive_hours_report(db: Session) -> list[NonProductiveHoursReportRow]:
+    rows = db.execute(
+        select(TimesheetEntry, NonProductiveCode, Customer.name)
+        .join(
+            NonProductiveCode,
+            TimesheetEntry.non_productive_code_id == NonProductiveCode.id,
+        )
+        .outerjoin(Customer, TimesheetEntry.customer_id == Customer.id)
+        .where(TimesheetEntry.work_category == WorkCategory.non_productive)
+    ).all()
+    grouped: dict[str, dict] = {}
+    for entry, np_code, customer_name in rows:
+        bucket = grouped.setdefault(
+            np_code.code,
+            {
+                "code": np_code.code,
+                "description": np_code.description,
+                "customer_name": customer_name,
+                "total": Decimal("0"),
+            },
+        )
+        bucket["total"] += _decimal(entry.hours)
+    return [
+        NonProductiveHoursReportRow(
+            non_productive_code=values["code"],
+            description=values["description"],
+            customer_name=values["customer_name"],
+            total_hours=_round_hours(values["total"]),
+        )
+        for values in sorted(grouped.values(), key=lambda row: row["code"])
+    ]
+
+
+def get_billable_utilization_report(db: Session) -> list[BillableUtilizationReportRow]:
+    users = db.scalars(select(User).where(User.is_active.is_(True))).all()
+    report: list[BillableUtilizationReportRow] = []
+    for user in users:
+        entries = db.scalars(
+            select(TimesheetEntry)
+            .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+            .where(
+                Timesheet.user_id == user.id,
+                Timesheet.status == TimesheetStatus.approved,
+            )
+        ).all()
+        billable = non_billable = np_hours = Decimal("0")
+        for entry in entries:
+            hours = _decimal(entry.hours)
+            if entry.work_category == WorkCategory.non_productive:
+                np_hours += hours
+            elif entry.is_billable:
+                billable += hours
+            else:
+                non_billable += hours
+        total = billable + non_billable + np_hours
+        if total == 0:
+            billable_pct = non_billable_pct = Decimal("0.00")
+        else:
+            billable_pct = _round_hours((billable / total) * Decimal("100"))
+            non_billable_pct = _round_hours(((non_billable + np_hours) / total) * Decimal("100"))
+        report.append(
+            BillableUtilizationReportRow(
+                user_id=user.id,
+                designer_name=f"{user.first_name} {user.last_name}",
+                billable_hours=_round_hours(billable),
+                non_billable_hours=_round_hours(non_billable),
+                np_hours=_round_hours(np_hours),
+                billable_percent=billable_pct,
+                non_billable_percent=non_billable_pct,
+            )
+        )
+    return report
+
+
+def get_monthly_np_trends_report(db: Session) -> list[MonthlyNpTrendReportRow]:
+    rows = db.scalars(
+        select(TimesheetEntry).where(
+            TimesheetEntry.work_category == WorkCategory.non_productive
+        )
+    ).all()
+    grouped: dict[str, Decimal] = {}
+    for entry in rows:
+        month_key = entry.entry_date.strftime("%Y-%m")
+        grouped[month_key] = grouped.get(month_key, Decimal("0")) + _decimal(entry.hours)
+    return [
+        MonthlyNpTrendReportRow(
+            month=month,
+            total_np_hours=_round_hours(total),
+        )
+        for month, total in sorted(grouped.items())
+    ]
 
 
 def get_reports_bundle(

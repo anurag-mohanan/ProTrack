@@ -2,9 +2,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.models.enums import ActivityAction, EntityType, NotificationType, TimesheetStatus
+from app.models.enums import ActivityAction, EntityType, NotificationType, TimesheetStatus, WorkCategory
 from app.schemas.common import TimestampSchema
 
 
@@ -42,12 +42,23 @@ class TimesheetRead(TimesheetBase, TimestampSchema):
 
 class TimesheetEntryBase(BaseModel):
     timesheet_id: UUID
-    project_id: UUID
+    work_category: WorkCategory = WorkCategory.productive
+    project_id: UUID | None = None
+    customer_id: UUID | None = None
     task_type_id: UUID | None = None
     milestone_id: UUID | None = None
+    non_productive_code_id: UUID | None = None
     entry_date: date
     hours: Decimal = Field(gt=0, le=24)
+    is_billable: bool = True
     description: str | None = None
+
+    @field_validator("hours")
+    @classmethod
+    def validate_half_hour_increments(cls, value: Decimal) -> Decimal:
+        if (value * 2) % 1 != 0:
+            raise ValueError("Hours must be in 0.5 increments")
+        return value
 
 
 class TimesheetEntryCreate(TimesheetEntryBase):
@@ -56,16 +67,35 @@ class TimesheetEntryCreate(TimesheetEntryBase):
 
 class TimesheetEntryUpdate(BaseModel):
     timesheet_id: UUID | None = None
+    work_category: WorkCategory | None = None
     project_id: UUID | None = None
+    customer_id: UUID | None = None
     task_type_id: UUID | None = None
     milestone_id: UUID | None = None
+    non_productive_code_id: UUID | None = None
     entry_date: date | None = None
     hours: Decimal | None = Field(default=None, gt=0, le=24)
+    is_billable: bool | None = None
     description: str | None = None
+
+    @field_validator("hours")
+    @classmethod
+    def validate_half_hour_increments(cls, value: Decimal | None) -> Decimal | None:
+        if value is None:
+            return value
+        if (value * 2) % 1 != 0:
+            raise ValueError("Hours must be in 0.5 increments")
+        return value
 
 
 class TimesheetEntryRead(TimesheetEntryBase, TimestampSchema):
-    pass
+    project_tool_number: str | None = None
+    project_code: str | None = None
+    customer_name: str | None = None
+    task_type_name: str | None = None
+    milestone_name: str | None = None
+    non_productive_code: str | None = None
+    non_productive_description: str | None = None
 
 
 class ActivityRead(TimestampSchema):

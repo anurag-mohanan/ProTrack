@@ -187,7 +187,9 @@ def test_scenario_6_timesheet_updates_hours(client, auth_headers):
         "/api/v1/timesheet-entries",
         json={
             "timesheet_id": timesheet["id"],
+            "work_category": "productive",
             "project_id": project_id,
+            "task_type_id": client.task_type_id,
             "entry_date": "2026-06-17",
             "hours": 10,
         },
@@ -256,7 +258,9 @@ def test_scenario_8_delete_timesheet_recalculates_hours(client, auth_headers):
         "/api/v1/timesheet-entries",
         json={
             "timesheet_id": timesheet["id"],
+            "work_category": "productive",
             "project_id": project_id,
+            "task_type_id": client.task_type_id,
             "entry_date": "2026-06-24",
             "hours": 5,
         },

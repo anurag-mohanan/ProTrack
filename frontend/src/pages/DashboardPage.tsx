@@ -12,6 +12,10 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import SpeedIcon from '@mui/icons-material/Speed';
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
+import MoneyOffIcon from '@mui/icons-material/MoneyOff';
+import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
+import PercentIcon from '@mui/icons-material/Percent';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
@@ -87,6 +91,30 @@ export function DashboardPage() {
     { title: 'Red Projects', value: formatNumber(data.red_projects, 0), accent: 'error', icon: WarningAmberIcon },
     { title: 'Quoted Hours', value: formatNumber(data.total_quoted_hours), accent: 'primary', icon: ScheduleIcon },
     { title: 'Actual Hours', value: formatNumber(data.total_actual_hours), accent: 'info', icon: AssignmentIcon },
+    {
+      title: 'Billable Hours',
+      value: formatNumber(data.billable_hours),
+      accent: 'success',
+      icon: MonetizationOnIcon,
+    },
+    {
+      title: 'Non-Billable Hours',
+      value: formatNumber(data.non_billable_hours),
+      accent: 'warning',
+      icon: MoneyOffIcon,
+    },
+    {
+      title: 'NP Hours',
+      value: formatNumber(data.np_hours),
+      accent: 'secondary',
+      icon: DoNotDisturbIcon,
+    },
+    {
+      title: 'Productive %',
+      value: `${formatNumber(data.productive_percent)}%`,
+      accent: 'info',
+      icon: PercentIcon,
+    },
     { title: 'Remaining Hours', value: formatNumber(data.total_remaining_hours), accent: 'secondary', icon: PendingActionsIcon },
     {
       title: 'Pending Approvals',

@@ -28,6 +28,11 @@ class TimesheetStatus(enum.Enum):
     rejected = "rejected"
 
 
+class WorkCategory(enum.Enum):
+    productive = "productive"
+    non_productive = "non_productive"
+
+
 class ProjectLifecycleFilter(enum.Enum):
     active = "active"
     completed = "completed"

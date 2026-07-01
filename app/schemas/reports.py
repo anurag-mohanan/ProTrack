@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus
+from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
 from app.schemas.dashboard import DesignerWorkload
 
 
@@ -69,3 +69,35 @@ class DesignerProductivityReportRow(BaseModel):
     approved_hours: Decimal
     submitted_hours: Decimal
     draft_hours: Decimal
+
+
+class ProductiveHoursReportRow(BaseModel):
+    project_id: UUID | None = None
+    tool_number: str | None = None
+    customer_name: str | None = None
+    task_type_name: str | None = None
+    total_hours: Decimal
+    billable_hours: Decimal
+    non_billable_hours: Decimal
+
+
+class NonProductiveHoursReportRow(BaseModel):
+    non_productive_code: str
+    description: str
+    customer_name: str | None = None
+    total_hours: Decimal
+
+
+class BillableUtilizationReportRow(BaseModel):
+    user_id: UUID
+    designer_name: str
+    billable_hours: Decimal
+    non_billable_hours: Decimal
+    np_hours: Decimal
+    billable_percent: Decimal
+    non_billable_percent: Decimal
+
+
+class MonthlyNpTrendReportRow(BaseModel):
+    month: str
+    total_np_hours: Decimal

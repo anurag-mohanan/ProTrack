@@ -14,6 +14,7 @@ import RolesAdminPage from './pages/admin/RolesPage';
 import StreamsAdminPage from './pages/admin/StreamsPage';
 import SystemSettingsPage from './pages/admin/SystemSettingsPage';
 import TaskTypesAdminPage from './pages/admin/TaskTypesPage';
+import NonProductiveCodesAdminPage from './pages/admin/NonProductiveCodesPage';
 import UsersAdminPage from './pages/admin/UsersPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { HistoricalImportPage } from './pages/HistoricalImportPage';
@@ -81,6 +82,10 @@ export default function App() {
                       <Route path="/admin/contacts" element={<ContactsAdminPage />} />
                       <Route path="/admin/streams" element={<StreamsAdminPage />} />
                       <Route path="/admin/task-types" element={<TaskTypesAdminPage />} />
+                      <Route
+                        path="/admin/non-productive-codes"
+                        element={<NonProductiveCodesAdminPage />}
+                      />
                       <Route path="/admin/project-types" element={<ProjectTypesAdminPage />} />
                       <Route
                         path="/admin/project-templates"

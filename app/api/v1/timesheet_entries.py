@@ -3,7 +3,7 @@ from uuid import UUID
 from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, HTTPException, Query, Session, get_db, status
 from app.crud.timesheet_entry import timesheet_entry
-from app.models.models import TimesheetEntry, User
+from app.models.models import User
 from app.schemas.timesheet import TimesheetEntryCreate, TimesheetEntryRead, TimesheetEntryUpdate
 
 router = APIRouter(
@@ -27,14 +27,14 @@ def list_timesheet_entries(
         for key, value in {"timesheet_id": timesheet_id, "project_id": project_id}.items()
         if value is not None
     }
-    return timesheet_entry.get_multi(
+    return timesheet_entry.get_multi_read(
         db, skip=skip, limit=limit, filters=filters or None
     )
 
 
 @router.get("/{record_id}", response_model=TimesheetEntryRead)
 def get_timesheet_entry(record_id: UUID, db: Session = Depends(get_db)):
-    row = timesheet_entry.get(db, record_id)
+    row = timesheet_entry.get_read(db, record_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
     return row
@@ -46,7 +46,7 @@ def create_timesheet_entry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return timesheet_entry.create(db, obj_in=obj_in, actor=current_user)
+    return timesheet_entry.create_read(db, obj_in=obj_in, actor=current_user)
 
 
 @router.patch("/{record_id}", response_model=TimesheetEntryRead)
@@ -59,7 +59,9 @@ def update_timesheet_entry(
     db_obj = timesheet_entry.get(db, record_id)
     if db_obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
-    return timesheet_entry.update(db, db_obj=db_obj, obj_in=obj_in, actor=current_user)
+    return timesheet_entry.update_read(
+        db, db_obj=db_obj, obj_in=obj_in, actor=current_user
+    )
 
 
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)

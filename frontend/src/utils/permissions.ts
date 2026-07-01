@@ -109,3 +109,7 @@ export function canViewReports(roleName: string): boolean {
 export function canViewWorkload(roleName: string): boolean {
   return canViewReports(roleName);
 }
+
+export function canOverrideBillable(roleName: string): boolean {
+  return roleName === ROLES.ADMIN || roleName === ROLES.ENGINEERING_MANAGER;
+}

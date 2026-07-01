@@ -20,7 +20,9 @@ def _add_entry(client, auth_headers, timesheet_id: str, project_id: str, hours: 
         "/api/v1/timesheet-entries",
         json={
             "timesheet_id": timesheet_id,
+            "work_category": "productive",
             "project_id": project_id,
+            "task_type_id": client.task_type_id,
             "entry_date": "2026-06-17",
             "hours": hours,
         },

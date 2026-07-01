@@ -17,6 +17,10 @@ class DashboardSummary(BaseModel):
     completed_projects: int = 0
     archived_projects: int = 0
     on_hold_projects: int = 0
+    billable_hours: Decimal = Decimal("0")
+    non_billable_hours: Decimal = Decimal("0")
+    np_hours: Decimal = Decimal("0")
+    productive_percent: Decimal = Decimal("0.00")
     total_quoted_hours: Decimal = Decimal("0")
     total_actual_hours: Decimal = Decimal("0")
     total_remaining_hours: Decimal = Decimal("0")

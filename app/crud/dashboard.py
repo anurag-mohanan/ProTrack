@@ -13,7 +13,7 @@ from app.core.permissions import (
     project_assignment_filter,
     get_role_name,
 )
-from app.models.enums import MilestoneStatus, ProjectStatus, TimesheetStatus
+from app.models.enums import MilestoneStatus, ProjectStatus, TimesheetStatus, WorkCategory
 from app.models.models import Activity, Milestone, Project, Role, Timesheet, TimesheetEntry, User
 from app.schemas.dashboard import (
     DashboardSummary,
@@ -156,6 +156,40 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
 
     green_projects, yellow_projects, red_projects = count_projects_by_health(db)
 
+    approved_entries = db.scalars(
+        select(TimesheetEntry)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(Timesheet.status == TimesheetStatus.approved)
+    ).all()
+    billable_hours = _round_hours(
+        sum(
+            (_decimal(entry.hours) for entry in approved_entries if entry.is_billable and entry.work_category == WorkCategory.productive),
+            Decimal("0"),
+        )
+    )
+    np_hours = _round_hours(
+        sum(
+            (_decimal(entry.hours) for entry in approved_entries if entry.work_category == WorkCategory.non_productive),
+            Decimal("0"),
+        )
+    )
+    non_billable_hours = _round_hours(
+        sum(
+            (
+                _decimal(entry.hours)
+                for entry in approved_entries
+                if entry.work_category == WorkCategory.productive and not entry.is_billable
+            ),
+            Decimal("0"),
+        )
+    )
+    total_logged = billable_hours + non_billable_hours + np_hours
+    productive_percent = (
+        _round_percent((billable_hours / total_logged) * Decimal("100"))
+        if total_logged > 0
+        else Decimal("0.00")
+    )
+
     return DashboardSummary(
         total_projects=total_projects,
         active_projects=active,
@@ -164,6 +198,10 @@ def get_dashboard_summary(db: Session) -> DashboardSummary:
         completed_projects=completed,
         archived_projects=archived,
         on_hold_projects=on_hold,
+        billable_hours=billable_hours,
+        non_billable_hours=non_billable_hours,
+        np_hours=np_hours,
+        productive_percent=productive_percent,
         total_quoted_hours=portfolio_hours.quoted,
         total_actual_hours=portfolio_hours.actual,
         total_remaining_hours=portfolio_hours.remaining,

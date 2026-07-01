@@ -17,6 +17,9 @@ from app.db.schema_sync import (
     ensure_project_template_schema,
     ensure_project_actual_hours,
     ensure_project_health,
+    ensure_non_productive_codes,
+    ensure_standard_task_types,
+    ensure_timesheet_entry_work_category,
     ensure_timesheet_approval_comments,
     ensure_user_lifecycle_schema,
 )
@@ -34,6 +37,9 @@ async def lifespan(app: FastAPI):
     ensure_project_template_schema(engine)
     ensure_project_lifecycle_schema(engine)
     ensure_user_lifecycle_schema(engine)
+    ensure_timesheet_entry_work_category(engine)
+    ensure_non_productive_codes(engine)
+    ensure_standard_task_types(engine)
     ensure_design_team(engine)
     seed_session = sessionmaker(bind=engine)()
     try:

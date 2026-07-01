@@ -29,7 +29,9 @@ def test_actual_hours_recalculates_on_timesheet_entry_create(client, auth_header
         "/api/v1/timesheet-entries",
         json={
             "timesheet_id": timesheet.json()["id"],
+            "work_category": "productive",
             "project_id": project_id,
+            "task_type_id": client.task_type_id,
             "entry_date": "2026-06-17",
             "hours": 8,
             "description": "Design work",
@@ -59,7 +61,9 @@ def test_actual_hours_recalculates_on_entry_update_and_delete(client, auth_heade
         "/api/v1/timesheet-entries",
         json={
             "timesheet_id": timesheet["id"],
+            "work_category": "productive",
             "project_id": project_id,
+            "task_type_id": client.task_type_id,
             "entry_date": "2026-06-17",
             "hours": 4,
         },

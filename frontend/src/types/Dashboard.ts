@@ -10,6 +10,10 @@ export interface DashboardSummary {
   completed_projects: number;
   archived_projects: number;
   on_hold_projects: number;
+  billable_hours: number;
+  non_billable_hours: number;
+  np_hours: number;
+  productive_percent: number;
   total_quoted_hours: number;
   total_actual_hours: number;
   total_remaining_hours: number;

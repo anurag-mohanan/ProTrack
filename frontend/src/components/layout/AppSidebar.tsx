@@ -26,6 +26,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ViewTimelineIcon from '@mui/icons-material/ViewTimeline';
 import TypeSpecimenIcon from '@mui/icons-material/TypeSpecimen';
+import BlockIcon from '@mui/icons-material/Block';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { NavLink } from 'react-router-dom';
 import { ProsohmLogo } from '../branding/ProsohmLogo';
@@ -54,6 +55,7 @@ const adminNavItems = [
   { label: 'Contacts', path: '/admin/contacts', icon: ContactPhoneIcon },
   { label: 'Streams', path: '/admin/streams', icon: AccountTreeIcon },
   { label: 'Task Types', path: '/admin/task-types', icon: CategoryIcon },
+  { label: 'NP Codes', path: '/admin/non-productive-codes', icon: BlockIcon },
   { label: 'Project Types', path: '/admin/project-types', icon: TypeSpecimenIcon },
   { label: 'Project Templates', path: '/admin/project-templates', icon: ViewTimelineIcon },
   { label: 'Roles', path: '/admin/roles', icon: SecurityIcon },

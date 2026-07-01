@@ -42,6 +42,11 @@ export const streamsApi = createResourceApi<Stream>('streams');
 export const customersApi = createResourceApi<Customer>('customers');
 export const contactsApi = createResourceApi<Contact>('contacts');
 export const taskTypesApi = createResourceApi<TaskType>('task-types');
+export const nonProductiveCodesApi = createResourceApi<
+  import('../types').NonProductiveCode,
+  import('../types').NonProductiveCodeCreate,
+  import('../types').NonProductiveCodeUpdate
+>('non-productive-codes');
 
 export interface ResetPasswordPayload {
   password?: string;

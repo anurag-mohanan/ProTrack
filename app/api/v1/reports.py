@@ -2,9 +2,13 @@ from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
 from app.core.permissions import can_view_deleted_projects
 from app.crud.reports import (
+    get_billable_utilization_report,
     get_customer_summary_report,
     get_designer_productivity_report,
     get_milestone_completion_report,
+    get_monthly_np_trends_report,
+    get_non_productive_hours_report,
+    get_productive_hours_report,
     get_project_delay_report,
     get_project_hours_report,
     get_reports_bundle,
@@ -14,9 +18,13 @@ from app.crud.dashboard import get_designer_workload
 from app.models.models import User
 from app.schemas.dashboard import DesignerWorkload
 from app.schemas.reports import (
+    BillableUtilizationReportRow,
     CustomerSummaryReportRow,
     DesignerProductivityReportRow,
     MilestoneCompletionReportRow,
+    MonthlyNpTrendReportRow,
+    NonProductiveHoursReportRow,
+    ProductiveHoursReportRow,
     ProjectDelayReportRow,
     ProjectHoursReportRow,
     ReportsBundle,
@@ -97,3 +105,23 @@ def milestone_completion_report(
 @router.get("/designer-productivity", response_model=list[DesignerProductivityReportRow])
 def designer_productivity_report(db: Session = Depends(get_db)):
     return get_designer_productivity_report(db)
+
+
+@router.get("/productive-hours", response_model=list[ProductiveHoursReportRow])
+def productive_hours_report(db: Session = Depends(get_db)):
+    return get_productive_hours_report(db)
+
+
+@router.get("/non-productive-hours", response_model=list[NonProductiveHoursReportRow])
+def non_productive_hours_report(db: Session = Depends(get_db)):
+    return get_non_productive_hours_report(db)
+
+
+@router.get("/billable-utilization", response_model=list[BillableUtilizationReportRow])
+def billable_utilization_report(db: Session = Depends(get_db)):
+    return get_billable_utilization_report(db)
+
+
+@router.get("/monthly-np-trends", response_model=list[MonthlyNpTrendReportRow])
+def monthly_np_trends_report(db: Session = Depends(get_db)):
+    return get_monthly_np_trends_report(db)

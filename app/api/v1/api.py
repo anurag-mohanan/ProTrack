@@ -8,6 +8,7 @@ from app.api.v1 import (
     imports,
     lookups,
     milestones,
+    non_productive_codes,
     notifications,
     project_templates,
     project_types,
@@ -113,6 +114,7 @@ api_router.include_router(projects.router)
 api_router.include_router(milestones.router)
 api_router.include_router(timesheets.router)
 api_router.include_router(timesheet_entries.router)
+api_router.include_router(non_productive_codes.router)
 api_router.include_router(notifications.router)
 api_router.include_router(activities.router)
 api_router.include_router(dashboard.router)

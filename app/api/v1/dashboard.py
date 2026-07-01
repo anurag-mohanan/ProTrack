@@ -1,7 +1,12 @@
 from uuid import UUID
 
+from datetime import date
+
 from app.api.auth_deps import get_current_user
-from app.api.deps import APIRouter, Depends, HTTPException, Session, get_db, status
+from app.api.deps import APIRouter, Depends, HTTPException, Session, get_db, get_object_or_404, status
+from app.core.exceptions import ProTrackValidationError
+from app.core.permissions import can_update_project
+from app.crud import project as project_crud
 from app.crud.dashboard import (
     get_dashboard_overview,
     get_dashboard_summary,
@@ -23,7 +28,13 @@ from app.schemas.dashboard import (
 )
 from app.schemas.timesheet import ActivityRead
 from app.schemas.reports import TeamResourcePlanningRow
+from app.schemas.resource_planning import (
+    ResourcePlanningAssignRequest,
+    ResourcePlanningGranularity,
+    ResourcePlanningGrid,
+)
 from app.crud.team_reports import get_team_resource_planning
+from app.services.resource_planning_service import get_resource_planning_grid
 from app.services.dashboard_service import (
     get_attention_projects,
     get_dashboard_kpis,
@@ -109,6 +120,46 @@ def dashboard_resource_planning(
     db: Session = Depends(get_db),
 ):
     return get_team_resource_planning(db, team_id=team_id)
+
+
+@router.get("/resource-planning/grid", response_model=ResourcePlanningGrid)
+def dashboard_resource_planning_grid(
+    start: date | None = None,
+    granularity: ResourcePlanningGranularity = ResourcePlanningGranularity.week,
+    team_id: UUID | None = None,
+    db: Session = Depends(get_db),
+):
+    return get_resource_planning_grid(
+        db,
+        start=start,
+        granularity=granularity,
+        team_id=team_id,
+    )
+
+
+@router.post("/resource-planning/assign", status_code=status.HTTP_204_NO_CONTENT)
+def dashboard_resource_planning_assign(
+    payload: ResourcePlanningAssignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project_crud, db, payload.project_id)
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    try:
+        project_crud.update(
+            db,
+            db_obj=db_project,
+            obj_in={"designer_id": payload.designer_id},
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.detail,
+        ) from exc
 
 
 @router.get("/workflow", response_model=WorkflowDashboard)

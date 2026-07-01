@@ -194,6 +194,36 @@ def calculate_hours(db: Session, project: Project) -> ProjectHours:
     )
 
 
+def batch_calculate_hours(
+    db: Session,
+    projects: list[Project],
+) -> dict[UUID, ProjectHours]:
+    if not projects:
+        return {}
+
+    project_ids = [project.id for project in projects]
+    actual_rows = db.execute(
+        select(TimesheetEntry.project_id, func.coalesce(func.sum(TimesheetEntry.hours), 0))
+        .where(TimesheetEntry.project_id.in_(project_ids))
+        .group_by(TimesheetEntry.project_id)
+    ).all()
+    actual_by_project = {row[0]: _round_hours(_decimal(row[1])) for row in actual_rows}
+
+    hours_by_project: dict[UUID, ProjectHours] = {}
+    for project in projects:
+        quoted = _round_hours(_decimal(project.quoted_hours))
+        actual = actual_by_project.get(project.id, Decimal("0.00"))
+        remaining = _round_hours(quoted - actual)
+        variance = _round_hours(actual - quoted)
+        hours_by_project[project.id] = ProjectHours(
+            quoted=quoted,
+            actual=actual,
+            remaining=remaining,
+            variance=variance,
+        )
+    return hours_by_project
+
+
 def recalculate_project(db: Session, project_id: UUID | str) -> Project | None:
     project_id = _coerce_uuid(project_id)
     project = db.get(Project, project_id)

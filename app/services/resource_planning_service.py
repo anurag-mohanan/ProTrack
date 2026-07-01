@@ -23,8 +23,8 @@ from app.schemas.resource_planning import (
     UnassignedProjectBlock,
 )
 from app.services.dashboard_service import WORKLOAD_ROLES, _batch_current_milestones
-from app.services.holiday_service import is_holiday
-from app.services.project_calculation_service import calculate_hours
+from app.services.holiday_service import is_holiday_cached, load_holiday_dates
+from app.services.project_calculation_service import batch_calculate_hours
 
 
 def _round(value: Decimal) -> Decimal:
@@ -44,7 +44,11 @@ def _user_works_on(user: User, day: date) -> bool:
     return any(part.strip() == code for part in working_days)
 
 
-def _daily_capacity(db: Session, user: User, day: date) -> Decimal:
+def _daily_capacity(
+    user: User,
+    day: date,
+    holidays: set[date],
+) -> Decimal:
     if user.availability_status in (
         UserAvailabilityStatus.on_leave,
         UserAvailabilityStatus.unavailable,
@@ -52,18 +56,22 @@ def _daily_capacity(db: Session, user: User, day: date) -> Decimal:
         return Decimal("0")
     if not _user_works_on(user, day):
         return Decimal("0")
-    if is_holiday(db, day):
+    if is_holiday_cached(holidays, day):
         return Decimal("0")
     return _decimal(user.working_hours_per_day or 8)
 
 
-def _remaining_business_days(db: Session, start: date, end: date) -> int:
+def _remaining_business_days(
+    start: date,
+    end: date,
+    holidays: set[date],
+) -> int:
     if end < start:
         return 0
     count = 0
     current = start
     while current <= end:
-        if current.weekday() < 5 and not is_holiday(db, current):
+        if current.weekday() < 5 and not is_holiday_cached(holidays, current):
             count += 1
         current += timedelta(days=1)
     return max(count, 1)
@@ -171,23 +179,24 @@ def _designer_user_ids_for_team(db: Session, team_id: UUID | None) -> set[UUID] 
 
 
 def _hours_for_project_on_day(
-    db: Session,
     project: Project,
     day: date,
     today: date,
+    *,
+    remaining_hours: Decimal,
+    business_days: int,
+    holidays: set[date],
 ) -> Decimal:
     if project.execution_status in (
         ExecutionStatus.completed,
         ExecutionStatus.cancelled,
     ):
         return Decimal("0")
-    if day > project.due_date:
+    if day > project.due_date or day < today:
         return Decimal("0")
-    hours = calculate_hours(db, project)
-    remaining = max(hours.remaining, Decimal("0"))
-    spread_end = max(project.due_date, today)
-    business_days = _remaining_business_days(db, today, spread_end)
-    return _round(remaining / Decimal(business_days))
+    if day.weekday() >= 5 or is_holiday_cached(holidays, day):
+        return Decimal("0")
+    return _round(remaining_hours / Decimal(business_days))
 
 
 def get_resource_planning_grid(
@@ -201,6 +210,7 @@ def get_resource_planning_grid(
     anchor = start or today
     periods, end_date = _build_periods(anchor, granularity)
     team_user_ids = _designer_user_ids_for_team(db, team_id)
+    holidays = load_holiday_dates(db, anchor, end_date)
 
     designers = db.scalars(
         select(User)
@@ -251,6 +261,17 @@ def get_resource_planning_grid(
         for row in db.scalars(select(Team).where(Team.is_active.is_(True))).all()
     }
 
+    project_hours = batch_calculate_hours(db, active_projects)
+    project_daily_rates: dict[UUID, tuple[Decimal, int]] = {}
+    for project in active_projects:
+        hours = project_hours.get(project.id)
+        if hours is None:
+            continue
+        remaining = max(hours.remaining, Decimal("0"))
+        spread_end = max(project.due_date, today)
+        business_days = _remaining_business_days(today, spread_end, holidays)
+        project_daily_rates[project.id] = (remaining, business_days)
+
     designer_rows: list[ResourcePlanningDesignerRow] = []
     for designer in designers:
         assigned_projects = [
@@ -270,11 +291,22 @@ def get_resource_planning_grid(
 
             day = period.start_date
             while day <= period.end_date:
-                day_capacity = _daily_capacity(db, designer, day)
+                day_capacity = _daily_capacity(designer, day, holidays)
                 period_capacity += day_capacity
 
                 for project in assigned_projects:
-                    day_hours = _hours_for_project_on_day(db, project, day, today)
+                    rate = project_daily_rates.get(project.id)
+                    if rate is None:
+                        continue
+                    remaining_hours, business_days = rate
+                    day_hours = _hours_for_project_on_day(
+                        project,
+                        day,
+                        today,
+                        remaining_hours=remaining_hours,
+                        business_days=business_days,
+                        holidays=holidays,
+                    )
                     if day_hours <= 0:
                         continue
                     period_allocated += day_hours
@@ -349,7 +381,9 @@ def get_resource_planning_grid(
     for project in active_projects:
         if project.designer_id is not None:
             continue
-        hours = calculate_hours(db, project)
+        hours = project_hours.get(project.id)
+        if hours is None:
+            continue
         unassigned.append(
             UnassignedProjectBlock(
                 project_id=project.id,

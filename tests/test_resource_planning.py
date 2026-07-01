@@ -39,6 +39,20 @@ def test_resource_planning_grid_monthly(client, auth_headers):
     assert len(response.json()["periods"]) == 6
 
 
+def test_resource_planning_grid_performance(client, auth_headers):
+    import time
+
+    start = time.perf_counter()
+    response = client.get(
+        "/api/v1/dashboard/resource-planning/grid",
+        headers=auth_headers,
+        params={"granularity": "week"},
+    )
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    assert response.status_code == 200
+    assert elapsed_ms < 1000
+
+
 def test_resource_planning_assign_designer(client, auth_headers, test_session_factory):
     from app.models.models import Project, User
     from sqlalchemy import select

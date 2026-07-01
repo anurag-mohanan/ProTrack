@@ -14,7 +14,6 @@ import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import PeopleIcon from '@mui/icons-material/People';
 import SecurityIcon from '@mui/icons-material/Security';
 import SettingsIcon from '@mui/icons-material/Settings';
-import StorageIcon from '@mui/icons-material/Storage';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import TypeSpecimenIcon from '@mui/icons-material/TypeSpecimen';
@@ -139,6 +138,8 @@ export function getAdminNavSections(roleName: string): AdminNavItem[] {
     },
   );
 
+  const visibleImportChildren = importChildren.filter((item) => !item.comingSoon);
+
   const sections: AdminNavItem[] = [
     { id: 'dashboard', label: 'Dashboard', path: '/admin/dashboard', icon: DashboardIcon },
     { id: 'create', label: 'Create', path: '/admin/create', icon: AddIcon },
@@ -148,7 +149,7 @@ export function getAdminNavSections(roleName: string): AdminNavItem[] {
       label: 'Imports',
       path: '/admin/imports',
       icon: UploadFileIcon,
-      children: importChildren,
+      children: visibleImportChildren,
     },
     { id: 'reports', label: 'Reports', path: '/admin/reports', icon: AssessmentIcon },
     { id: 'settings', label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
@@ -281,15 +282,11 @@ export const ADMIN_IMPORT_ITEMS = (roleName: string): AdminHubItem[] => {
     { id: 'users-import', title: 'Users', description: 'Bulk user import.', icon: PeopleIcon, path: '/admin/imports', comingSoon: true },
     { id: 'templates-import', title: 'Project Templates', description: 'Template import.', icon: ViewTimelineIcon, path: '/admin/imports', comingSoon: true },
   );
-  return items;
+  return items.filter((item) => !item.comingSoon);
 };
 
 export const ADMIN_REPORT_ITEMS: AdminHubItem[] = [
-  { id: 'user-activity', title: 'User Activity', description: 'Track user actions.', icon: PeopleIcon, path: '/admin/reports', comingSoon: true },
   { id: 'import-history', title: 'Import History', description: 'Historical import audit.', icon: HistoryIcon, path: '/admin/imports/historical-timesheets#history' },
-  { id: 'system-audit', title: 'System Audit', description: 'Configuration changes.', icon: SecurityIcon, path: '/admin/reports', comingSoon: true },
-  { id: 'login-history', title: 'Login History', description: 'Authentication events.', icon: AssessmentIcon, path: '/admin/reports', comingSoon: true },
-  { id: 'role-changes', title: 'Role Changes', description: 'Role assignment history.', icon: ManageAccountsIcon, path: '/admin/reports', comingSoon: true },
 ];
 
 export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = [
@@ -303,10 +300,5 @@ export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = [
 ];
 
 export const ADMIN_SYSTEM_ITEMS: AdminHubItem[] = [
-  { id: 'health', title: 'System Health', description: 'Service status overview.', icon: BuildIcon, path: '/admin/system', comingSoon: true },
-  { id: 'database', title: 'Database', description: 'Connection and storage.', icon: StorageIcon, path: '/admin/system', comingSoon: true },
-  { id: 'api', title: 'API Status', description: 'Endpoint availability.', icon: AssessmentIcon, path: '/admin/system', comingSoon: true },
-  { id: 'logs', title: 'Logs', description: 'Application log viewer.', icon: HistoryIcon, path: '/admin/system', comingSoon: true },
-  { id: 'jobs', title: 'Background Jobs', description: 'Async task queue.', icon: UploadFileIcon, path: '/admin/system', comingSoon: true },
   { id: 'version', title: 'Version Information', description: 'Build and release details.', icon: SettingsIcon, path: '/admin/system' },
 ];

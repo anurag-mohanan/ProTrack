@@ -158,7 +158,14 @@ export function ProjectDetailPage() {
 
   if (query.isLoading) return <LoadingState message="Loading command center…" />;
   if (query.error) return <ErrorState error={query.error} />;
-  if (!query.data) return <EmptyState title="Project not found" />;
+  if (!query.data) {
+    return (
+      <EmptyState
+        title="Project unavailable"
+        description="This project may have been removed or you may not have access to view it."
+      />
+    );
+  }
 
   const data = query.data;
   const { header, project, folders } = data;

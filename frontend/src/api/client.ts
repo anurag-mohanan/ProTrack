@@ -36,6 +36,42 @@ export function getErrorMessage(error: unknown): string {
   return 'An unexpected error occurred';
 }
 
+export function getUserFriendlyErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) {
+      return 'Your session has expired. Please sign in again.';
+    }
+    if (error.status === 403) {
+      return 'You do not have permission to view this information.';
+    }
+    if (error.status === 404) {
+      return 'The requested information could not be found.';
+    }
+    if (error.status >= 500) {
+      return 'Something went wrong. Please try again in a moment.';
+    }
+  }
+
+  const raw = getErrorMessage(error).trim();
+  const normalized = raw.toLowerCase();
+  if (!raw) {
+    return 'Something went wrong. Please try again.';
+  }
+  if (normalized.includes('network error') || normalized.includes('failed to fetch')) {
+    return 'Unable to reach the server. Check your connection and try again.';
+  }
+  if (normalized.includes('record not found') || normalized.includes('not found')) {
+    return 'The requested information could not be found.';
+  }
+  if (normalized.includes('insufficient permissions') || normalized.includes('forbidden')) {
+    return 'You do not have permission to perform this action.';
+  }
+  if (normalized.includes('validation') || normalized.includes('required')) {
+    return raw;
+  }
+  return 'Something went wrong. Please try again.';
+}
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {

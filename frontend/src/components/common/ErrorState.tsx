@@ -1,5 +1,5 @@
 import { Alert, Box } from '@mui/material';
-import { getErrorMessage } from '../../api/client';
+import { getUserFriendlyErrorMessage } from '../../api/client';
 
 interface ErrorStateProps {
   error: unknown;
@@ -10,7 +10,7 @@ export function ErrorState({ error, title = 'Unable to load data' }: ErrorStateP
   return (
     <Box sx={{ py: 2 }}>
       <Alert severity="error">
-        <strong>{title}:</strong> {getErrorMessage(error)}
+        <strong>{title}:</strong> {getUserFriendlyErrorMessage(error)}
       </Alert>
     </Box>
   );

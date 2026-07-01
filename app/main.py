@@ -15,6 +15,7 @@ from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
     ensure_production_roles,
+    ensure_performance_indexes,
     ensure_design_team,
     ensure_project_lifecycle_schema,
     ensure_project_stage_and_execution_status,
@@ -52,6 +53,7 @@ async def lifespan(app: FastAPI):
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
     ensure_phase8_foundation(engine)
+    ensure_performance_indexes(engine)
     ensure_design_team(engine)
     seed_session = sessionmaker(bind=engine)()
     try:

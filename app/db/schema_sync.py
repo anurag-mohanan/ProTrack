@@ -153,6 +153,34 @@ def ensure_design_roles(engine: Engine) -> None:
         session.close()
 
 
+PERFORMANCE_INDEXES = (
+    ("idx_timesheet_entries_project_id", "timesheet_entries", "project_id"),
+    ("idx_timesheet_entries_timesheet_id", "timesheet_entries", "timesheet_id"),
+    ("idx_timesheet_entries_entry_date", "timesheet_entries", "entry_date"),
+    ("idx_projects_designer_id", "projects", "designer_id"),
+    ("idx_projects_customer_id", "projects", "customer_id"),
+    ("idx_projects_team_id", "projects", "team_id"),
+    ("idx_projects_execution_status", "projects", "execution_status"),
+    ("idx_milestones_project_id", "milestones", "project_id"),
+    ("idx_activities_project_id", "activities", "project_id"),
+    ("idx_timesheets_user_id", "timesheets", "user_id"),
+    ("idx_timesheets_week_start", "timesheets", "week_start"),
+)
+
+
+def ensure_performance_indexes(engine: Engine) -> None:
+    with engine.begin() as connection:
+        for index_name, table_name, column_name in PERFORMANCE_INDEXES:
+            if not _sqlite_has_column(engine, table_name, column_name):
+                continue
+            connection.execute(
+                text(
+                    f"CREATE INDEX IF NOT EXISTS {index_name} "
+                    f"ON {table_name} ({column_name})"
+                )
+            )
+
+
 def ensure_production_roles(engine: Engine) -> None:
     session = sessionmaker(bind=engine)()
     try:

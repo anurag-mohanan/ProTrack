@@ -24,7 +24,9 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { resetUserPassword, rolesApi, usersApi } from '../../api/resources';
+import { fetchTeams } from '../../api/lookups';
 import type { Role, User } from '../../types';
+import type { Team } from '../../types/Team';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
@@ -34,6 +36,7 @@ import {
   FormSelect,
   ModernDrawer,
   SearchToolbar,
+  EmptyState,
 } from '../../components/ui/design-system';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
 
@@ -42,6 +45,7 @@ interface UserFormState {
   last_name: string;
   email: string;
   role_id: string;
+  team_id: string;
   password: string;
   is_active: boolean;
 }
@@ -51,6 +55,7 @@ const emptyForm: UserFormState = {
   last_name: '',
   email: '',
   role_id: '',
+  team_id: '',
   password: '',
   is_active: true,
 };
@@ -66,6 +71,7 @@ export default function UsersPage() {
   const { showSuccess, showError } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -108,12 +114,14 @@ export default function UsersPage() {
       if (activeFilter === 'active') params.is_active = true;
       if (activeFilter === 'inactive') params.is_active = false;
 
-      const [usersData, rolesData] = await Promise.all([
+      const [usersData, rolesData, teamsData] = await Promise.all([
         usersApi.list(params),
         rolesApi.list(),
+        fetchTeams(),
       ]);
       setUsers(usersData);
       setRoles(rolesData);
+      setTeams(teamsData);
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -136,6 +144,14 @@ export default function UsersPage() {
     });
   }, [search, users]);
 
+  const teamOptions = useMemo(
+    () => [
+      { value: '', label: 'No Team' },
+      ...teams.map((team) => ({ value: team.id, label: team.name })),
+    ],
+    [teams],
+  );
+
   const openCreate = () => {
     setEditingUser(null);
     setForm({
@@ -152,6 +168,7 @@ export default function UsersPage() {
       last_name: user.last_name,
       email: user.email,
       role_id: user.role_id,
+      team_id: user.team_id ?? '',
       password: '',
       is_active: user.is_active,
     });
@@ -167,6 +184,7 @@ export default function UsersPage() {
           last_name: form.last_name,
           email: form.email,
           role_id: form.role_id,
+          team_id: form.team_id || null,
           is_active: form.is_active,
         });
         showSuccess('User updated successfully.');
@@ -176,6 +194,7 @@ export default function UsersPage() {
           last_name: form.last_name,
           email: form.email,
           role_id: form.role_id,
+          team_id: form.team_id || null,
           password: form.password,
           is_active: form.is_active,
         } as Partial<User> & { password: string });
@@ -247,6 +266,13 @@ export default function UsersPage() {
           variant="outlined"
         />
       ),
+    },
+    {
+      field: 'team_name',
+      headerName: 'Team',
+      flex: 1,
+      minWidth: 130,
+      valueGetter: (_value, row) => row.team_name ?? '—',
     },
     {
       field: 'is_active',
@@ -347,17 +373,21 @@ export default function UsersPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <DataGrid
-          rows={filteredUsers}
-          columns={columns}
-          autoHeight
-          disableRowSelectionOnClick
-          pageSizeOptions={[10, 25, 50]}
-          initialState={{
-            pagination: { paginationModel: { pageSize: 10 } },
-          }}
-          sx={gridSx}
-        />
+        {filteredUsers.length === 0 ? (
+          <EmptyState title="No users found" description="Try adjusting your search or filters." />
+        ) : (
+          <DataGrid
+            rows={filteredUsers}
+            columns={columns}
+            autoHeight
+            disableRowSelectionOnClick
+            pageSizeOptions={[10, 25, 50]}
+            initialState={{
+              pagination: { paginationModel: { pageSize: 10 } },
+            }}
+            sx={gridSx}
+          />
+        )}
       </ContentCard>
 
       <FormDrawer
@@ -425,6 +455,20 @@ export default function UsersPage() {
                   setForm((current) => ({
                     ...current,
                     role_id: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormSelect
+                label="Team"
+                searchable
+                value={form.team_id}
+                options={teamOptions}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    team_id: String(event.target.value),
                   }))
                 }
               />
@@ -498,6 +542,13 @@ export default function UsersPage() {
                 <FormField
                   label="Status"
                   value={viewUser.is_active ? 'Active' : 'Inactive'}
+                  slotProps={{ input: { readOnly: true } }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormField
+                  label="Team"
+                  value={viewUser.team_name ?? 'No Team'}
                   slotProps={{ input: { readOnly: true } }}
                 />
               </Grid>

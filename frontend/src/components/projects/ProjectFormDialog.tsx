@@ -454,9 +454,15 @@ export function ProjectFormDialog({
               searchable
               value={form.designer_id ?? ''}
               options={[{ value: '', label: 'None' }, ...userOptions]}
-              onChange={(event) =>
-                setForm({ ...form, designer_id: String(event.target.value) })
-              }
+              onChange={(event) => {
+                const designerId = String(event.target.value);
+                const designer = (usersQuery.data ?? []).find((user) => user.id === designerId);
+                setForm({
+                  ...form,
+                  designer_id: designerId,
+                  team_id: designer?.team_id ?? form.team_id,
+                });
+              }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 4 }}>

@@ -1,29 +1,22 @@
-import { Box, FormControl, Grid, InputLabel, MenuItem, Select, Typography } from '@mui/material';
-import CancelIcon from '@mui/icons-material/Cancel';
+import { Box, FormControl, InputLabel, MenuItem, Select } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
-import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
-import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
-import TimelapseIcon from '@mui/icons-material/Timelapse';
-import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchTeams } from '../api/lookups';
 import { useNavigate } from 'react-router-dom';
 import { dashboardQueryKeys, fetchDashboardSummary } from '../api/dashboard';
 import { ContentCard } from '../components/ui/cards';
-import type { ProjectStage } from '../types';
-import { PROJECT_STAGE_LABELS } from '../types/common';
 import { ActionKpiCard, DashboardSection } from '../components/dashboard/DashboardCards';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { MyTasksWidget } from '../components/dashboard/MyTasksWidget';
-import { NpHoursPanel } from '../components/dashboard/NpHoursPanel';
 import { ProjectsAttentionTable } from '../components/dashboard/ProjectsAttentionTable';
 import { RecentActivityWidget } from '../components/dashboard/RecentActivityWidget';
 import { WidgetErrorBoundary } from '../components/dashboard/WidgetErrorBoundary';
+import { EmptyState } from '../components/common/EmptyState';
 import { LoadingState } from '../components/common/LoadingState';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { formatNumber } from '../utils/format';
@@ -36,12 +29,7 @@ const EMPTY_TASKS = {
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const [projectStageFilter, setProjectStageFilter] = useState<ProjectStage | 'all'>(
-    'all',
-  );
   const [teamFilter, setTeamFilter] = useState<string>('all');
-
-  const stageParam = projectStageFilter === 'all' ? undefined : projectStageFilter;
   const teamParam = teamFilter === 'all' ? undefined : teamFilter;
 
   const teamsQuery = useQuery({
@@ -51,8 +39,8 @@ export function DashboardPage() {
   });
 
   const dashboardQuery = useQuery({
-    queryKey: dashboardQueryKeys.summary(stageParam, teamParam),
-    queryFn: () => fetchDashboardSummary(stageParam, teamParam),
+    queryKey: dashboardQueryKeys.summary(undefined, teamParam),
+    queryFn: () => fetchDashboardSummary(undefined, teamParam),
     staleTime: QUERY_STALE_TIMES.dashboard,
     retry: 1,
   });
@@ -64,27 +52,16 @@ export function DashboardPage() {
   const summary = dashboardQuery.data;
   const unavailable = dashboardQuery.isError || !summary;
 
-  const dueNext7Days = summary?.projects_due_this_week ?? 0;
-  const overdueProjects = summary?.overdue_projects ?? 0;
-  const completedThisMonth = summary?.completed_this_month ?? 0;
-  const quotedHoursActive = summary?.total_quoted_hours_active ?? summary?.total_quoted_hours ?? 0;
-  const actualHoursProductive =
-    summary?.total_actual_hours_productive ?? summary?.billable_hours ?? 0;
-  const npHoursThisMonth = summary?.np_hours_this_month ?? summary?.np_hours ?? 0;
-
-  const beingWorkedOn =
-    summary?.being_worked_on_projects ?? summary?.in_progress_projects ?? 0;
-  const cancelledProjects = summary?.cancelled_projects ?? 0;
-
-  const rowOneCards = [
+  const kpiCards = [
     {
-      title: 'Projects Being Worked On',
-      value: unavailable ? '—' : formatNumber(beingWorkedOn, 0),
-      subtitle: unavailable ? 'No data available' : 'Active engineering work',
+      title: 'Active Projects',
+      value: unavailable
+        ? '—'
+        : formatNumber(summary!.being_worked_on_projects ?? summary!.in_progress_projects ?? 0, 0),
+      subtitle: unavailable ? 'No data available' : 'Currently being worked on',
       icon: FolderOpenIcon,
-      statusColor: !unavailable && beingWorkedOn > 0 ? ('primary' as const) : undefined,
-      onClick: () =>
-        navigate('/projects?execution_status=currently_being_worked_on'),
+      statusColor: !unavailable && (summary!.being_worked_on_projects ?? 0) > 0 ? ('primary' as const) : undefined,
+      onClick: () => navigate('/projects?execution_status=currently_being_worked_on'),
     },
     {
       title: 'Projects On Hold',
@@ -94,72 +71,34 @@ export function DashboardPage() {
       onClick: () => navigate('/projects?execution_status=on_hold'),
     },
     {
-      title: 'Cancelled Projects',
-      value: unavailable ? '—' : formatNumber(cancelledProjects, 0),
-      subtitle: unavailable ? 'No data available' : 'Cancelled portfolio',
-      icon: CancelIcon,
-      onClick: () => navigate('/projects?lifecycle=cancelled'),
-    },
-    {
       title: 'Projects Due Next 7 Days',
-      value: unavailable ? '—' : formatNumber(dueNext7Days, 0),
+      value: unavailable ? '—' : formatNumber(summary!.projects_due_this_week ?? 0, 0),
       subtitle: unavailable ? 'No data available' : 'Due within 7 days',
       icon: ScheduleIcon,
-      statusColor: !unavailable && dueNext7Days > 0 ? ('warning' as const) : undefined,
+      statusColor: !unavailable && (summary!.projects_due_this_week ?? 0) > 0 ? ('warning' as const) : undefined,
       onClick: () => navigate('/projects?due=7days'),
     },
     {
       title: 'Overdue Projects',
-      value: unavailable ? '—' : formatNumber(overdueProjects, 0),
+      value: unavailable ? '—' : formatNumber(summary!.overdue_projects ?? 0, 0),
       subtitle: unavailable ? 'No data available' : 'Past due date',
       icon: WarningAmberIcon,
-      statusColor: !unavailable && overdueProjects > 0 ? ('error' as const) : undefined,
+      statusColor: !unavailable && (summary!.overdue_projects ?? 0) > 0 ? ('error' as const) : undefined,
       onClick: () => navigate('/projects?due=overdue'),
     },
-  ];
-
-  const rowTwoCards = [
     {
       title: 'Completed Projects',
-      value: unavailable ? '—' : formatNumber(completedThisMonth, 0),
+      value: unavailable ? '—' : formatNumber(summary!.completed_this_month ?? 0, 0),
       subtitle: unavailable ? 'No data available' : 'Completed this month',
       icon: TaskAltIcon,
-      statusColor: !unavailable && completedThisMonth > 0 ? ('success' as const) : undefined,
+      statusColor: !unavailable && (summary!.completed_this_month ?? 0) > 0 ? ('success' as const) : undefined,
       onClick: () =>
         navigate('/projects?execution_status=completed&lifecycle=completed&completed=month'),
-    },
-    {
-      title: 'Total Quoted Hours',
-      value: unavailable ? '—' : formatNumber(quotedHoursActive),
-      subtitle: unavailable ? 'No data available' : 'Active projects',
-      icon: MonetizationOnIcon,
-      onClick: () => navigate('/projects'),
-    },
-    {
-      title: 'Total Actual Hours',
-      value: unavailable ? '—' : formatNumber(actualHoursProductive),
-      subtitle: unavailable ? 'No data available' : 'Approved productive',
-      icon: TimelapseIcon,
-      onClick: () => navigate('/reports?tab=productive-hours'),
-    },
-    {
-      title: 'Archived Projects',
-      value: unavailable ? '—' : formatNumber(summary?.archived_projects ?? 0, 0),
-      subtitle: unavailable ? 'No data available' : 'Archived portfolio',
-      icon: Inventory2OutlinedIcon,
-      onClick: () => navigate('/projects?lifecycle=archived'),
-    },
-    {
-      title: 'Non-Productive Hours',
-      value: unavailable ? '—' : formatNumber(npHoursThisMonth),
-      subtitle: unavailable ? 'No data available' : 'Approved NP this month',
-      icon: DoNotDisturbIcon,
-      onClick: () => navigate('/reports?tab=np-hours'),
     },
   ];
 
   return (
-    <Box sx={{ maxWidth: 1440, mx: 'auto', px: { xs: 0, sm: 0.5 } }}>
+    <Box sx={{ maxWidth: 1280, mx: 'auto' }}>
       <DashboardHeader
         onNewProject={() => navigate('/projects')}
         onTimesheet={() => navigate('/timesheets')}
@@ -167,29 +106,10 @@ export function DashboardPage() {
         onUser={() => navigate('/admin/users')}
       />
 
-      <Box sx={{ mb: 2.5 }}>
-        <ContentCard>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <FormControl sx={{ minWidth: 220 }}>
-              <InputLabel>Project Stage</InputLabel>
-              <Select
-                label="Project Stage"
-                value={projectStageFilter}
-                onChange={(event) =>
-                  setProjectStageFilter(event.target.value as ProjectStage | 'all')
-                }
-              >
-                <MenuItem value="all">All Stages</MenuItem>
-                {(
-                  Object.entries(PROJECT_STAGE_LABELS) as Array<[ProjectStage, string]>
-                ).map(([value, label]) => (
-                  <MenuItem key={value} value={value}>
-                    {label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl sx={{ minWidth: 220 }}>
+      {(teamsQuery.data?.length ?? 0) > 0 ? (
+        <Box sx={{ mb: 2 }}>
+          <ContentCard>
+            <FormControl sx={{ minWidth: 220 }} size="small">
               <InputLabel>Team</InputLabel>
               <Select
                 label="Team"
@@ -204,92 +124,74 @@ export function DashboardPage() {
                 ))}
               </Select>
             </FormControl>
-          </Box>
-        </ContentCard>
-      </Box>
+          </ContentCard>
+        </Box>
+      ) : null}
 
       <WidgetErrorBoundary title="KPI cards">
-        <Grid container spacing={2.5} sx={{ mb: 2.5 }}>
-          {rowOneCards.map((card) => (
-            <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={card.title}>
-              <ActionKpiCard {...card} />
-            </Grid>
-          ))}
-        </Grid>
         <Box
           sx={{
             display: 'grid',
             gridTemplateColumns: {
               xs: '1fr',
               sm: 'repeat(2, 1fr)',
-              md: 'repeat(3, 1fr)',
               lg: 'repeat(5, 1fr)',
             },
-            gap: 2.5,
-            mb: 4,
+            gap: 2,
+            mb: 2.5,
           }}
         >
-          {rowTwoCards.map((card) => (
+          {kpiCards.map((card) => (
             <ActionKpiCard key={card.title} {...card} />
           ))}
         </Box>
       </WidgetErrorBoundary>
 
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, xl: 8 }}>
-          <WidgetErrorBoundary title="projects requiring attention">
-            <DashboardSection
-              title="Projects Requiring Attention"
-              subtitle="Overdue, due within 7 days, on hold, or blocked"
-            >
-              {unavailable || !summary?.attention_projects?.length ? (
-                <Typography variant="body2" color="text.secondary">
-                  No data available
-                </Typography>
-              ) : (
-                <ProjectsAttentionTable rows={summary.attention_projects} />
-              )}
-            </DashboardSection>
-          </WidgetErrorBoundary>
-        </Grid>
-        <Grid size={{ xs: 12, xl: 4 }}>
-          <WidgetErrorBoundary title="non-productive hours">
-            <NpHoursPanel panel={summary?.np_hours_panel} />
-          </WidgetErrorBoundary>
-        </Grid>
-      </Grid>
+      <Box sx={{ mb: 2.5 }}>
+        <WidgetErrorBoundary title="projects requiring attention">
+          <DashboardSection
+            title="Projects Requiring Attention"
+            subtitle="Overdue, due within 7 days, on hold, or blocked"
+          >
+            {unavailable || !summary?.attention_projects?.length ? (
+              <EmptyState title="No projects require attention" description="You're all caught up." />
+            ) : (
+              <ProjectsAttentionTable rows={summary.attention_projects} />
+            )}
+          </DashboardSection>
+        </WidgetErrorBoundary>
+      </Box>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, lg: 6 }}>
-          <WidgetErrorBoundary title="my tasks">
-            <DashboardSection
-              title="My Tasks"
-              subtitle="Milestones, reviews, and approvals assigned to you"
-            >
-              {unavailable ? (
-                <Typography variant="body2" color="text.secondary">
-                  No data available
-                </Typography>
-              ) : (
-                <MyTasksWidget tasks={summary.my_tasks ?? EMPTY_TASKS} />
-              )}
-            </DashboardSection>
-          </WidgetErrorBoundary>
-        </Grid>
-        <Grid size={{ xs: 12, lg: 6 }}>
-          <WidgetErrorBoundary title="recent activity">
-            <DashboardSection title="Recent Activity" subtitle="Latest engineering updates">
-              {unavailable || !summary?.recent_activity?.length ? (
-                <Typography variant="body2" color="text.secondary">
-                  No data available
-                </Typography>
-              ) : (
-                <RecentActivityWidget activities={summary.recent_activity} />
-              )}
-            </DashboardSection>
-          </WidgetErrorBoundary>
-        </Grid>
-      </Grid>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' },
+          gap: 2.5,
+        }}
+      >
+        <WidgetErrorBoundary title="recent activity">
+          <DashboardSection title="Recent Activity" subtitle="Latest engineering updates">
+            {unavailable || !summary?.recent_activity?.length ? (
+              <EmptyState title="No activity yet" description="Updates will appear here." />
+            ) : (
+              <RecentActivityWidget activities={summary.recent_activity} />
+            )}
+          </DashboardSection>
+        </WidgetErrorBoundary>
+
+        <WidgetErrorBoundary title="my tasks">
+          <DashboardSection
+            title="My Tasks"
+            subtitle="Milestones, reviews, and approvals assigned to you"
+          >
+            {unavailable ? (
+              <EmptyState title="No tasks available" />
+            ) : (
+              <MyTasksWidget tasks={summary.my_tasks ?? EMPTY_TASKS} />
+            )}
+          </DashboardSection>
+        </WidgetErrorBoundary>
+      </Box>
     </Box>
   );
 }

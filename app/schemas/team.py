@@ -7,7 +7,7 @@ from app.schemas.common import TimestampSchema
 
 
 class TeamBase(BaseModel):
-    name: str = Field(max_length=100)
+    name: str = Field(min_length=1, max_length=100)
     description: str | None = None
     team_lead_id: UUID | None = None
     colour: str = Field(default="#1976d2", max_length=20)

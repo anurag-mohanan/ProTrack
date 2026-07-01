@@ -17,7 +17,6 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { apiClient } from '../../api/client';
 import { fetchUsers } from '../../api/lookups';
 import { teamsApi } from '../../api/resources';
-import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ContentCard } from '../../components/ui/cards';
@@ -28,6 +27,8 @@ import {
   FormSection,
   FormSelect,
   SearchToolbar,
+  DeleteDialog,
+  EmptyState,
 } from '../../components/ui/design-system';
 import { useToast } from '../../context/ToastContext';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
@@ -116,6 +117,10 @@ export default function TeamsPage() {
   };
 
   const handleSave = async () => {
+    if (!form.name.trim()) {
+      showError('Team name is required.');
+      return;
+    }
     setSaving(true);
     try {
       const payload: TeamCreate = {
@@ -270,7 +275,19 @@ export default function TeamsPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <DataGrid rows={filteredTeams} columns={columns} autoHeight sx={gridSx} />
+        {filteredTeams.length === 0 ? (
+          <EmptyState
+            title="No teams found"
+            description="Create a team to organize designers and projects."
+            action={
+              <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
+                Create Team
+              </ProsohmButton>
+            }
+          />
+        ) : (
+          <DataGrid rows={filteredTeams} columns={columns} autoHeight sx={gridSx} />
+        )}
       </ContentCard>
 
       <FormDrawer
@@ -323,10 +340,13 @@ export default function TeamsPage() {
                 label="Team Lead"
                 searchable
                 value={form.team_lead_id}
-                options={users.map((user) => ({
-                  value: user.id,
-                  label: userDisplayName(user),
-                }))}
+                options={[
+                  { value: '', label: 'None' },
+                  ...users.map((user) => ({
+                    value: user.id,
+                    label: userDisplayName(user),
+                  })),
+                ]}
                 onChange={(event) =>
                   setForm({ ...form, team_lead_id: String(event.target.value) })
                 }
@@ -426,12 +446,11 @@ export default function TeamsPage() {
         </Box>
       </FormDrawer>
 
-      <ConfirmDialog
+      <DeleteDialog
         open={Boolean(deleteTarget)}
-        title="Delete Team"
-        message={`Delete "${deleteTarget?.name}"? Projects will keep their history but lose the team link.`}
-        confirmLabel="Delete"
-        danger
+        objectLabel="Team"
+        objectName={deleteTarget?.name ?? ''}
+        extraMessage="Projects linked to this team will have their team cleared."
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => void handleDelete()}
       />

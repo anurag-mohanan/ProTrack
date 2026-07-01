@@ -25,6 +25,8 @@ export interface User {
   last_name: string;
   email: string;
   role_id: string;
+  team_id?: string | null;
+  team_name?: string | null;
   is_active: boolean;
   must_change_password?: boolean;
   created_at?: string;

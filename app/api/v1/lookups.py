@@ -37,6 +37,7 @@ def list_lookup_users(
             "email": user.email,
             "role_id": user.role_id,
             "is_active": user.is_active,
+            "team_id": user.team_id,
         }
         for user in users
     ]

@@ -630,3 +630,23 @@ def ensure_team_schema(engine: Engine) -> None:
                     "ADD COLUMN IF NOT EXISTS default_team_id UUID REFERENCES teams(id)"
                 )
             )
+
+
+def ensure_user_team_schema(engine: Engine) -> None:
+    """Add primary team assignment column on users."""
+    dialect = engine.dialect.name
+
+    if dialect == "sqlite":
+        if not _sqlite_has_column(engine, "users", "team_id"):
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ADD COLUMN team_id BLOB"))
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id)"
+                )
+            )

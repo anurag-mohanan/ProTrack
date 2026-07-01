@@ -2,11 +2,12 @@ from datetime import datetime, timezone
 from typing import override
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProTrackValidationError
-from app.crud.base import CRUDBase, Session
-from app.models.models import Team, TeamMember, User
+from app.crud.base import CRUDBase
+from app.models.models import Project, Team, TeamMember, User
 from app.schemas.team import (
     TeamCreate,
     TeamMemberCreate,
@@ -19,6 +20,35 @@ from app.schemas.team import (
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def sync_user_team_membership(
+    db: Session,
+    user_id: UUID,
+    team_id: UUID | None,
+) -> None:
+    """Keep TeamMember rows and User.team_id in sync with primary team assignment."""
+    user = db.get(User, user_id)
+    if user is None:
+        raise ProTrackValidationError("User not found")
+
+    if team_id is not None:
+        team = db.get(Team, team_id)
+        if team is None or not team.is_active:
+            raise ProTrackValidationError("team_id must reference an active team")
+
+    user.team_id = team_id
+    db.add(user)
+    db.execute(delete(TeamMember).where(TeamMember.user_id == user_id))
+    if team_id is not None:
+        db.add(
+            TeamMember(
+                team_id=team_id,
+                user_id=user_id,
+                joined_at=_utcnow(),
+            )
+        )
+    db.flush()
 
 
 def _user_display(user: User | None) -> str:
@@ -70,11 +100,23 @@ def build_team_member_read(db: Session, member: TeamMember) -> TeamMemberRead:
 class CRUDTeam(CRUDBase[Team, TeamCreate, TeamUpdate]):
     @override
     def create(self, db: Session, *, obj_in: TeamCreate) -> Team:
+        name = obj_in.name.strip()
+        if not name:
+            raise ProTrackValidationError("Team name is required.")
+        existing = db.scalar(select(Team.id).where(Team.name == name))
+        if existing is not None:
+            raise ProTrackValidationError("A team with this name already exists.")
         if obj_in.team_lead_id is not None:
             lead = db.get(User, obj_in.team_lead_id)
             if lead is None or not lead.is_active:
                 raise ProTrackValidationError("team_lead_id must reference an active user")
-        return super().create(db, obj_in=obj_in)
+        payload = obj_in.model_copy(update={"name": name})
+        created = super().create(db, obj_in=payload)
+        if created.team_lead_id is not None:
+            sync_user_team_membership(db, created.team_lead_id, created.id)
+            db.commit()
+            db.refresh(created)
+        return created
 
     @override
     def update(
@@ -85,14 +127,45 @@ class CRUDTeam(CRUDBase[Team, TeamCreate, TeamUpdate]):
         obj_in: TeamUpdate | dict[str, object],
     ) -> Team:
         if isinstance(obj_in, dict):
-            update_data = obj_in
+            update_data = dict(obj_in)
         else:
             update_data = obj_in.model_dump(exclude_unset=True)
+        if "name" in update_data and update_data["name"] is not None:
+            name = str(update_data["name"]).strip()
+            if not name:
+                raise ProTrackValidationError("Team name is required.")
+            duplicate = db.scalar(
+                select(Team.id).where(Team.name == name, Team.id != db_obj.id)
+            )
+            if duplicate is not None:
+                raise ProTrackValidationError("A team with this name already exists.")
+            update_data["name"] = name
         if "team_lead_id" in update_data and update_data["team_lead_id"] is not None:
             lead = db.get(User, update_data["team_lead_id"])
             if lead is None or not lead.is_active:
                 raise ProTrackValidationError("team_lead_id must reference an active user")
-        return super().update(db, db_obj=db_obj, obj_in=update_data)
+        updated = super().update(db, db_obj=db_obj, obj_in=update_data)
+        if "team_lead_id" in update_data and updated.team_lead_id is not None:
+            sync_user_team_membership(db, updated.team_lead_id, updated.id)
+            db.commit()
+            db.refresh(updated)
+        return updated
+
+    @override
+    def delete(self, db: Session, *, record_id: UUID) -> Team | None:
+        team_obj = self.get(db, record_id)
+        if team_obj is None:
+            return None
+        db.execute(
+            update(Project).where(Project.team_id == record_id).values(team_id=None)
+        )
+        db.execute(
+            update(User).where(User.team_id == record_id).values(team_id=None)
+        )
+        db.execute(delete(TeamMember).where(TeamMember.team_id == record_id))
+        db.delete(team_obj)
+        db.commit()
+        return team_obj
 
     def get_read(self, db: Session, record_id: UUID) -> TeamRead | None:
         team = self.get(db, record_id)

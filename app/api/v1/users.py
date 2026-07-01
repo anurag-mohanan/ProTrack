@@ -12,6 +12,7 @@ from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import can_view_deleted_projects, is_admin
 from app.core.security import hash_password
 from app.crud import user as user_crud
+from app.crud.user import build_user_read
 from app.models.enums import ActivityAction, EntityType
 from app.models.models import User
 from app.schemas.identity import (
@@ -79,7 +80,7 @@ def list_users(
         if is_active is not None and row.is_active != is_active:
             continue
         filtered.append(row)
-    return filtered
+    return [build_user_read(db, row) for row in filtered]
 
 
 @router.get("/deleted", response_model=list[UserRead])
@@ -96,12 +97,15 @@ def list_deleted_users(
         )
     users = user_crud.get_multi(db, skip=0, limit=10000)
     deleted = [row for row in users if row.is_deleted]
-    return deleted[skip : skip + limit]
+    return [build_user_read(db, row) for row in deleted[skip : skip + limit]]
 
 
 @router.get("/{record_id}", response_model=UserRead)
 def get_user(record_id: UUID, db: Session = Depends(get_db)):
-    return get_object_or_404(user_crud, db, record_id)
+    db_user = user_crud.get(db, record_id)
+    if db_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return build_user_read(db, db_user)
 
 
 @router.get("/{record_id}/delete-check", response_model=UserDeleteCheck)
@@ -129,7 +133,11 @@ def check_user_delete(
 
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def create_user(obj_in: UserCreate, db: Session = Depends(get_db)):
-    return user_crud.create(db, obj_in=obj_in)
+    try:
+        created = user_crud.create(db, obj_in=obj_in)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return build_user_read(db, created)
 
 
 @router.patch("/{record_id}", response_model=UserRead)
@@ -139,7 +147,11 @@ def update_user(
     db: Session = Depends(get_db),
 ):
     db_obj = get_object_or_404(user_crud, db, record_id)
-    return user_crud.update(db, db_obj=db_obj, obj_in=obj_in)
+    try:
+        updated = user_crud.update(db, db_obj=db_obj, obj_in=obj_in)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return build_user_read(db, updated)
 
 
 @router.post("/{record_id}/reset-password", response_model=ResetPasswordResponse)

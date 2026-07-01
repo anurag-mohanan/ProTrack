@@ -89,7 +89,7 @@ def delete_team(
     _user: User = write_access,
 ):
     db_obj = get_object_or_404(db, Team, record_id)
-    team.delete(db, id=db_obj.id)
+    team.delete(db, record_id=db_obj.id)
 
 
 @router.get("/{record_id}/members", response_model=list[TeamMemberRead])

@@ -19,6 +19,7 @@ interface ConfirmDialogProps {
   onClose: () => void;
   loading?: boolean;
   danger?: boolean;
+  icon?: typeof WarningAmberOutlinedIcon;
 }
 
 export function ConfirmDialog({
@@ -30,6 +31,7 @@ export function ConfirmDialog({
   onClose,
   loading = false,
   danger = false,
+  icon: IconComponent = WarningAmberOutlinedIcon,
 }: ConfirmDialogProps) {
   const theme = useTheme();
 
@@ -50,21 +52,19 @@ export function ConfirmDialog({
       }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
-        {danger ? (
-          <Box
-            sx={{
-              width: 36,
-              height: 36,
-              borderRadius: 2,
-              display: 'grid',
-              placeItems: 'center',
-              bgcolor: 'error.main',
-              color: 'error.contrastText',
-            }}
-          >
-            <WarningAmberOutlinedIcon fontSize="small" />
-          </Box>
-        ) : null}
+        <Box
+          sx={{
+            width: 36,
+            height: 36,
+            borderRadius: 2,
+            display: 'grid',
+            placeItems: 'center',
+            bgcolor: danger ? 'error.main' : 'primary.main',
+            color: danger ? 'error.contrastText' : 'primary.contrastText',
+          }}
+        >
+          <IconComponent fontSize="small" />
+        </Box>
         {title}
       </DialogTitle>
       <DialogContent sx={{ pt: 0 }}>

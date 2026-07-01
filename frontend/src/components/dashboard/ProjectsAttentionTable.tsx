@@ -16,7 +16,7 @@ import { formatDate } from '../../utils/format';
 const REASON_LABELS: Record<ProjectAttentionRow['attention_reason'], string> = {
   overdue: 'Overdue',
   blocked: 'Blocked',
-  due_soon: 'Due soon',
+  due_soon: 'Due within 7 days',
   on_hold: 'On hold',
 };
 
@@ -38,7 +38,14 @@ export function ProjectsAttentionTable({ rows }: ProjectsAttentionTableProps) {
   }
 
   return (
-    <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 3 }}>
+    <TableContainer
+      component={Paper}
+      variant="outlined"
+      sx={{
+        borderRadius: 3,
+        boxShadow: (theme) => theme.palette.prosohm.shadowCard,
+      }}
+    >
       <Table size="small">
         <TableHead>
           <TableRow>

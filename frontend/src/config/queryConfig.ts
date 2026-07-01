@@ -5,4 +5,6 @@ export const QUERY_STALE_TIMES = {
   /** Lookups are stable within a session. */
   lookups: 5 * 60_000,
   notifications: 30_000,
+  /** Dashboard summary is cached briefly to avoid duplicate calls on remount. */
+  dashboard: 60_000,
 } as const;

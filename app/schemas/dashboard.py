@@ -66,6 +66,18 @@ class DashboardKpis(BaseModel):
     archived_projects: int = 0
     total_quoted_hours_active: Decimal = Decimal("0")
     total_actual_hours_productive: Decimal = Decimal("0")
+    np_hours_this_month: Decimal = Decimal("0")
+
+
+class DashboardNpCodeRow(BaseModel):
+    code: str
+    description: str
+    hours_this_month: Decimal = Decimal("0")
+
+
+class DashboardNpPanel(BaseModel):
+    total_np_hours_this_month: Decimal = Decimal("0")
+    codes: list[DashboardNpCodeRow] = Field(default_factory=list)
 
 
 class ProjectAttentionRow(BaseModel):
@@ -94,6 +106,7 @@ class DashboardTaskItem(BaseModel):
 class DashboardMyTasks(BaseModel):
     pending_approvals: list[DashboardTaskItem] = Field(default_factory=list)
     upcoming_milestones: list[DashboardTaskItem] = Field(default_factory=list)
+    pending_reviews: list[DashboardTaskItem] = Field(default_factory=list)
 
 
 class DashboardSummary(BaseModel):
@@ -126,6 +139,8 @@ class DashboardSummary(BaseModel):
     attention_projects: list[ProjectAttentionRow] = Field(default_factory=list)
     my_tasks: DashboardMyTasks = Field(default_factory=DashboardMyTasks)
     recent_activity: list[ActivityRead] = Field(default_factory=list)
+    np_hours_this_month: Decimal = Decimal("0")
+    np_hours_panel: DashboardNpPanel = Field(default_factory=DashboardNpPanel)
 
 
 class DashboardFuturePlaceholders(BaseModel):

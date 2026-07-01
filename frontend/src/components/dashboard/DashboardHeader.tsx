@@ -29,7 +29,6 @@ export function DashboardHeader({
 }: DashboardHeaderProps) {
   const { user, displayName } = useAuth();
   const roleName = user?.role_name ?? '';
-  const firstName = displayName.split(' ')[0] ?? displayName;
   const showAdminActions = canAccessAdministration(roleName);
   const showNewProject = canEditProject(roleName);
 
@@ -41,15 +40,21 @@ export function DashboardHeader({
         alignItems: { xs: 'flex-start', md: 'center' },
         flexDirection: { xs: 'column', md: 'row' },
         gap: 2.5,
-        mb: 3.5,
+        mb: 4,
+        p: 3,
+        borderRadius: 3,
+        bgcolor: 'background.paper',
+        border: '1px solid',
+        borderColor: 'divider',
+        boxShadow: (theme) => theme.palette.prosohm.shadowCard,
       }}
     >
       <Box>
         <Typography
-          variant="h5"
-          sx={{ fontWeight: 650, letterSpacing: '-0.02em', mb: 0.5 }}
+          variant="h4"
+          sx={{ fontWeight: 700, letterSpacing: '-0.03em', mb: 0.5 }}
         >
-          {getGreeting()}, {firstName}
+          {getGreeting()}, {displayName}
         </Typography>
         <Typography variant="body2" color="text.secondary">
           {formatDate(new Date().toISOString().slice(0, 10))}

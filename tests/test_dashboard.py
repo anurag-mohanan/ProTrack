@@ -10,9 +10,8 @@ def test_dashboard_summary(client, auth_headers):
     assert Decimal(str(body["total_quoted_hours"])) == Decimal("120.00")
     assert "projects_due_this_week" in body
     assert "attention_projects" in body
-    assert "my_tasks" in body
-    assert "recent_activity" in body
-    assert len(body["recent_activity"]) <= 20
+    assert "np_hours_panel" in body
+    assert len(body["attention_projects"]) <= 10
 
 
 def test_dashboard_workload(client, auth_headers):
@@ -48,17 +47,15 @@ def test_dashboard_granular_endpoints(client, auth_headers):
         assert response.status_code == 200, path
 
     kpis = client.get("/api/v1/dashboard/kpis", headers=auth_headers).json()
-    assert "in_progress_projects" in kpis
-    assert "total_quoted_hours_active" in kpis
-    assert "total_actual_hours_productive" in kpis
+    assert "np_hours_this_month" in kpis
 
-    activity = client.get("/api/v1/dashboard/recent-activity", headers=auth_headers).json()
-    assert len(activity) <= 20
+    summary = client.get("/api/v1/dashboard/summary", headers=auth_headers).json()
+    assert "np_hours_panel" in summary
+    assert "codes" in summary["np_hours_panel"]
+    assert len(summary["attention_projects"]) <= 10
 
     tasks = client.get("/api/v1/dashboard/my-tasks", headers=auth_headers).json()
-    assert "pending_approvals" in tasks
-    assert "upcoming_milestones" in tasks
-    assert "assigned_projects" not in tasks
+    assert "pending_reviews" in tasks
 
 
 def test_np_code_seed_includes_c506(client, auth_headers):

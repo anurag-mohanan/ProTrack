@@ -17,10 +17,21 @@ from app.core.permissions import (
     project_assignment_filter,
 )
 from app.models.enums import ActivityAction, MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
-from app.models.models import Activity, Customer, Milestone, Project, Timesheet, TimesheetEntry, User
+from app.models.models import (
+    Activity,
+    Customer,
+    Milestone,
+    NonProductiveCode,
+    Project,
+    Timesheet,
+    TimesheetEntry,
+    User,
+)
 from app.schemas.dashboard import (
     DashboardKpis,
     DashboardMyTasks,
+    DashboardNpCodeRow,
+    DashboardNpPanel,
     DashboardTaskItem,
     ProjectAttentionRow,
 )
@@ -37,9 +48,6 @@ _DASHBOARD_ACTIVITY_ACTIONS = (
     ActivityAction.timesheet_submitted,
     ActivityAction.project_archived,
     ActivityAction.project_restored,
-    ActivityAction.user_archived,
-    ActivityAction.user_restored,
-    ActivityAction.user_restored_from_deleted,
     ActivityAction.project_restored_from_deleted,
 )
 
@@ -76,7 +84,7 @@ def _attention_reason(project: Project, today: date) -> str | None:
         return "overdue"
     if project.health == ProjectHealth.red:
         return "blocked"
-    if project.due_date is not None and project.due_date <= today + timedelta(days=5):
+    if project.due_date is not None and project.due_date <= today + timedelta(days=7):
         return "due_soon"
     if project.status == ProjectStatus.waiting_for_customer:
         return "on_hold"
@@ -106,8 +114,8 @@ def _activity_to_read(db: Session, activity: Activity) -> ActivityRead:
 def get_dashboard_kpis(db: Session) -> DashboardKpis:
     """Reliable engineering KPIs from aggregate SQL — no user-specific estimates."""
     today = date.today()
-    week_start, week_end = _current_week_bounds(today)
     month_start = today.replace(day=1)
+    due_cutoff = today + timedelta(days=7)
     visible = _visible_projects_clause()
     active = _active_project_clause()
     not_completed = Project.status != ProjectStatus.completed
@@ -120,11 +128,11 @@ def get_dashboard_kpis(db: Session) -> DashboardKpis:
         func.date(Project.completed_at) >= month_start,
         func.date(Project.completed_at) <= today,
     )
-    due_this_week = and_(
+    due_next_7_days = and_(
         *visible,
         not_completed,
-        Project.due_date >= week_start,
-        Project.due_date <= week_end,
+        Project.due_date >= today,
+        Project.due_date <= due_cutoff,
     )
     overdue = and_(*visible, not_completed, Project.due_date < today)
     archived = and_(Project.is_deleted.is_(False), Project.is_archived.is_(True))
@@ -134,7 +142,7 @@ def get_dashboard_kpis(db: Session) -> DashboardKpis:
             func.count().filter(in_progress),
             func.count().filter(on_hold),
             func.count().filter(completed_month),
-            func.count().filter(due_this_week),
+            func.count().filter(due_next_7_days),
             func.count().filter(overdue),
             func.count().filter(archived),
             func.coalesce(func.sum(Project.quoted_hours).filter(and_(*active)), 0),
@@ -154,6 +162,21 @@ def get_dashboard_kpis(db: Session) -> DashboardKpis:
         )
     )
 
+    np_hours_this_month = _round_hours(
+        _decimal(
+            db.scalar(
+                select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
+                .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+                .where(
+                    Timesheet.status == TimesheetStatus.approved,
+                    TimesheetEntry.entry_date >= month_start,
+                    TimesheetEntry.entry_date <= today,
+                    TimesheetEntry.work_category == WorkCategory.non_productive,
+                )
+            )
+        )
+    )
+
     return DashboardKpis(
         in_progress_projects=int(project_row[0] or 0),
         on_hold_projects=int(project_row[1] or 0),
@@ -163,6 +186,7 @@ def get_dashboard_kpis(db: Session) -> DashboardKpis:
         archived_projects=int(project_row[5] or 0),
         total_quoted_hours_active=_round_hours(_decimal(project_row[6])),
         total_actual_hours_productive=total_actual_hours,
+        np_hours_this_month=np_hours_this_month,
     )
 
 
@@ -207,9 +231,53 @@ def _batch_designer_names(db: Session, projects: list[Project]) -> dict[UUID, st
     }
 
 
-def get_attention_projects(db: Session, *, limit: int = 25) -> list[ProjectAttentionRow]:
+def get_np_hours_panel(db: Session) -> DashboardNpPanel:
     today = date.today()
-    due_soon_cutoff = today + timedelta(days=5)
+    month_start = today.replace(day=1)
+
+    codes = db.scalars(
+        select(NonProductiveCode)
+        .where(NonProductiveCode.is_archived.is_(False))
+        .order_by(NonProductiveCode.sort_order, NonProductiveCode.code)
+    ).all()
+
+    hour_rows = db.execute(
+        select(
+            NonProductiveCode.code,
+            func.coalesce(func.sum(TimesheetEntry.hours), 0),
+        )
+        .join(TimesheetEntry, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(
+            Timesheet.status == TimesheetStatus.approved,
+            TimesheetEntry.work_category == WorkCategory.non_productive,
+            TimesheetEntry.entry_date >= month_start,
+            TimesheetEntry.entry_date <= today,
+        )
+        .group_by(NonProductiveCode.code)
+    ).all()
+    hours_by_code = {row[0]: _decimal(row[1]) for row in hour_rows}
+
+    panel_rows = [
+        DashboardNpCodeRow(
+            code=code.code,
+            description=code.description,
+            hours_this_month=_round_hours(hours_by_code.get(code.code, Decimal("0"))),
+        )
+        for code in codes
+    ]
+    total = _round_hours(
+        sum((row.hours_this_month for row in panel_rows), Decimal("0"))
+    )
+    return DashboardNpPanel(
+        total_np_hours_this_month=total,
+        codes=panel_rows,
+    )
+
+
+def get_attention_projects(db: Session, *, limit: int = 10) -> list[ProjectAttentionRow]:
+    today = date.today()
+    due_soon_cutoff = today + timedelta(days=7)
     visibility = _visible_projects_clause()
 
     candidates = db.scalars(
@@ -302,9 +370,9 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
     pending_approvals = [
         DashboardTaskItem(
             id=ts.id,
-            title="Timesheet approval",
+            title="Pending approval",
             task_type="approval",
-            subtitle=f"Week of {ts.week_start.isoformat()}",
+            subtitle=f"Timesheet week of {ts.week_start.isoformat()}",
             due_date=ts.week_start,
             href="/timesheets",
         )
@@ -322,7 +390,7 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
                 Milestone.status != MilestoneStatus.completed,
                 Milestone.due_date.is_not(None),
                 Milestone.due_date >= today,
-                Milestone.due_date <= today + timedelta(days=14),
+                Milestone.due_date <= today + timedelta(days=21),
             )
             .order_by(Milestone.due_date.asc())
             .limit(10)
@@ -343,9 +411,34 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
                 )
             )
 
+    pending_reviews: list[DashboardTaskItem] = []
+    for project in user_projects:
+        if project.status not in (
+            ProjectStatus.in_progress,
+            ProjectStatus.waiting_for_customer,
+        ):
+            continue
+        if project.health != ProjectHealth.yellow:
+            continue
+        pending_reviews.append(
+            DashboardTaskItem(
+                id=project.id,
+                title=project.tool_number or project.code,
+                task_type="review",
+                subtitle="Pending review",
+                due_date=project.due_date,
+                project_code=project.code,
+                project_id=project.id,
+                href=f"/projects/{project.id}",
+            )
+        )
+    pending_reviews.sort(key=lambda item: item.due_date or today)
+    pending_reviews = pending_reviews[:5]
+
     return DashboardMyTasks(
         pending_approvals=pending_approvals,
         upcoming_milestones=upcoming_milestones,
+        pending_reviews=pending_reviews,
     )
 
 

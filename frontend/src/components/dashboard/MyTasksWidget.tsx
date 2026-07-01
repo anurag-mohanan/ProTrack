@@ -1,58 +1,17 @@
-import { Box, List, ListItemButton, ListItemText, Paper, Typography } from '@mui/material';
+import { List, ListItemButton, ListItemText, Paper, Typography } from '@mui/material';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { DashboardMyTasks, DashboardTaskItem } from '../../types';
 import { formatDate } from '../../utils/format';
 
-function TaskList({
-  title,
-  items,
-}: {
-  title: string;
-  items: DashboardTaskItem[];
-}) {
-  const navigate = useNavigate();
+const TASK_TYPE_LABELS: Record<string, string> = {
+  milestone: 'Pending milestone',
+  approval: 'Pending approval',
+  review: 'Pending review',
+};
 
-  return (
-    <Paper variant="outlined" sx={{ borderRadius: 3, height: '100%' }}>
-      <Box sx={{ px: 2, pt: 2, pb: 1 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 650 }}>
-          {title}
-        </Typography>
-      </Box>
-      {items.length === 0 ? (
-        <Box sx={{ px: 2, pb: 2 }}>
-          <Typography variant="body2" color="text.secondary">
-            No data available
-          </Typography>
-        </Box>
-      ) : (
-        <List dense disablePadding sx={{ pb: 1 }}>
-          {items.map((item) => (
-            <ListItemButton
-              key={`${item.task_type}-${item.id}`}
-              onClick={() => {
-                if (item.href) navigate(item.href);
-              }}
-              sx={{ px: 2, py: 0.75 }}
-            >
-              <ListItemText
-                primary={item.title}
-                secondary={
-                  [item.subtitle, item.due_date ? `Due ${formatDate(item.due_date)}` : null]
-                    .filter(Boolean)
-                    .join(' · ') || undefined
-                }
-                slotProps={{
-                  primary: { variant: 'body2', sx: { fontWeight: 600 } },
-                  secondary: { variant: 'caption' },
-                }}
-              />
-            </ListItemButton>
-          ))}
-        </List>
-      )}
-    </Paper>
-  );
+function taskLabel(item: DashboardTaskItem): string {
+  return TASK_TYPE_LABELS[item.task_type] ?? item.title;
 }
 
 interface MyTasksWidgetProps {
@@ -60,12 +19,31 @@ interface MyTasksWidgetProps {
 }
 
 export function MyTasksWidget({ tasks }: MyTasksWidgetProps) {
-  const hasAny =
-    tasks.pending_approvals.length > 0 || tasks.upcoming_milestones.length > 0;
+  const navigate = useNavigate();
 
-  if (!hasAny) {
+  const items = useMemo(() => {
+    const merged = [
+      ...tasks.pending_approvals,
+      ...tasks.upcoming_milestones,
+      ...(tasks.pending_reviews ?? []),
+    ];
+    return merged.sort((a, b) => {
+      const aDate = a.due_date ?? '9999-12-31';
+      const bDate = b.due_date ?? '9999-12-31';
+      return aDate.localeCompare(bDate);
+    });
+  }, [tasks]);
+
+  if (!items.length) {
     return (
-      <Paper variant="outlined" sx={{ borderRadius: 3, p: 2 }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          borderRadius: 3,
+          p: 2.5,
+          boxShadow: (theme) => theme.palette.prosohm.shadowCard,
+        }}
+      >
         <Typography variant="body2" color="text.secondary">
           No data available
         </Typography>
@@ -74,15 +52,47 @@ export function MyTasksWidget({ tasks }: MyTasksWidgetProps) {
   }
 
   return (
-    <Box
+    <Paper
+      variant="outlined"
       sx={{
-        display: 'grid',
-        gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' },
-        gap: 2,
+        borderRadius: 3,
+        overflow: 'hidden',
+        boxShadow: (theme) => theme.palette.prosohm.shadowCard,
       }}
     >
-      <TaskList title="Pending Approvals" items={tasks.pending_approvals} />
-      <TaskList title="Upcoming Milestones" items={tasks.upcoming_milestones} />
-    </Box>
+      <List dense disablePadding>
+        {items.map((item) => (
+          <ListItemButton
+            key={`${item.task_type}-${item.id}`}
+            onClick={() => {
+              if (item.href) navigate(item.href);
+            }}
+            sx={{
+              px: 2.5,
+              py: 1.25,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+            }}
+          >
+            <ListItemText
+              primary={item.title}
+              secondary={
+                [
+                  taskLabel(item),
+                  item.subtitle,
+                  item.due_date ? `Due ${formatDate(item.due_date)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || undefined
+              }
+              slotProps={{
+                primary: { variant: 'body2', sx: { fontWeight: 600 } },
+                secondary: { variant: 'caption' },
+              }}
+            />
+          </ListItemButton>
+        ))}
+      </List>
+    </Paper>
   );
 }

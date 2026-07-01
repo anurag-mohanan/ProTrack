@@ -32,6 +32,19 @@ export interface DashboardSummary {
   attention_projects: ProjectAttentionRow[];
   my_tasks: DashboardMyTasks;
   recent_activity: import('./Workflow').Activity[];
+  np_hours_this_month: number;
+  np_hours_panel: DashboardNpPanel;
+}
+
+export interface DashboardNpCodeRow {
+  code: string;
+  description: string;
+  hours_this_month: number;
+}
+
+export interface DashboardNpPanel {
+  total_np_hours_this_month: number;
+  codes: DashboardNpCodeRow[];
 }
 
 export interface DashboardOverview {
@@ -51,6 +64,7 @@ export interface DashboardKpis {
   archived_projects: number;
   total_quoted_hours_active: number;
   total_actual_hours_productive: number;
+  np_hours_this_month: number;
 }
 
 export interface ProjectAttentionRow {
@@ -79,6 +93,7 @@ export interface DashboardTaskItem {
 export interface DashboardMyTasks {
   pending_approvals: DashboardTaskItem[];
   upcoming_milestones: DashboardTaskItem[];
+  pending_reviews: DashboardTaskItem[];
 }
 
 export interface DashboardFuturePlaceholders {

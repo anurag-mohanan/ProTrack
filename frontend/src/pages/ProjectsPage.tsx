@@ -130,18 +130,22 @@ export function ProjectsPage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (dueFilter === 'week') {
-      const weekStart = new Date(today);
-      const day = weekStart.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      weekStart.setDate(weekStart.getDate() + diff);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
+    if (dueFilter === 'week' || dueFilter === '7days') {
+      const rangeStart = new Date(today);
+      if (dueFilter === 'week') {
+        const day = rangeStart.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        rangeStart.setDate(rangeStart.getDate() + diff);
+      }
+      const rangeEnd = new Date(rangeStart);
+      rangeEnd.setDate(
+        rangeEnd.getDate() + (dueFilter === 'week' ? 6 : 7),
+      );
 
       rows = rows.filter((project) => {
         if (!project.due_date || project.status === 'completed') return false;
         const due = new Date(`${project.due_date}T00:00:00`);
-        return due >= weekStart && due <= weekEnd;
+        return due >= rangeStart && due <= rangeEnd;
       });
     }
 

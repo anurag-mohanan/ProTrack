@@ -19,6 +19,7 @@ from app.schemas.dashboard import (
     DashboardFuturePlaceholders,
     DashboardKpis,
     DashboardMyTasks,
+    DashboardNpPanel,
     DashboardOverview,
     DashboardSummary,
     DashboardTaskItem,
@@ -36,6 +37,7 @@ from app.services.dashboard_service import (
     get_dashboard_kpis,
     get_dashboard_my_tasks,
     get_dashboard_recent_activity,
+    get_np_hours_panel,
     safe_dashboard_call,
 )
 from app.services.notification_service import count_unread_notifications
@@ -86,7 +88,7 @@ def get_dashboard_overview(db: Session, user: User) -> DashboardOverview:
     )
     projects_requiring_attention = safe_dashboard_call(
         "attention_projects",
-        lambda: get_attention_projects(db, limit=25),
+        lambda: get_attention_projects(db, limit=10),
         [],
     )
     my_tasks = safe_dashboard_call(
@@ -237,7 +239,7 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
 
     attention_projects = safe_dashboard_call(
         "attention_projects",
-        lambda: get_attention_projects(db, limit=25),
+        lambda: get_attention_projects(db, limit=10),
         [],
     )
     my_tasks = safe_dashboard_call(
@@ -250,6 +252,13 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
         lambda: get_dashboard_recent_activity(db, limit=20),
         [],
     )
+    np_hours_panel = safe_dashboard_call(
+        "np_hours_panel",
+        lambda: get_np_hours_panel(db),
+        None,
+    )
+    if np_hours_panel is None:
+        np_hours_panel = DashboardNpPanel()
 
     return DashboardSummary(
         total_projects=total_projects,
@@ -281,6 +290,8 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
         attention_projects=attention_projects,
         my_tasks=my_tasks,
         recent_activity=recent_activity,
+        np_hours_this_month=engineering_kpis.np_hours_this_month,
+        np_hours_panel=np_hours_panel,
     )
 
 

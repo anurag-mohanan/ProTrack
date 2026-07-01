@@ -15,7 +15,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,6 +24,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { TimesheetStatusChip } from '../components/common/StatusChip';
+import { PageHeader } from '../components/common/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import {
   approveTimesheet,
@@ -142,24 +142,20 @@ export function TimesheetsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
-            Timesheets
-          </Typography>
-          <Typography color="text.secondary">
-            Weekly timesheets, submissions, and approvals
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setCreateOpen(true)}
-          disabled={!user}
-        >
-          Create Timesheet
-        </Button>
-      </Box>
+      <PageHeader
+        title="Timesheets"
+        subtitle="Weekly engineering timesheets"
+        action={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateOpen(true)}
+            disabled={!user}
+          >
+            Create Timesheet
+          </Button>
+        }
+      />
 
       {actionError ? (
         <Box sx={{ mb: 2 }}>

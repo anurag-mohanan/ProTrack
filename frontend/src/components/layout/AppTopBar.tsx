@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   AppBar,
   Avatar,
@@ -11,39 +11,11 @@ import {
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
-import { useLocation } from 'react-router-dom';
 import { NotificationBell } from '../common/NotificationBell';
 import { ProsohmLogo } from '../branding/ProsohmLogo';
 import { ProsohmButton } from '../ui/ProsohmButton';
+import { AppBreadcrumbs } from './AppBreadcrumbs';
 import { DRAWER_WIDTH } from './AppSidebar';
-
-const pageTitles: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/projects': 'Projects',
-  '/projects/archived': 'Archived Projects',
-  '/admin/deleted-projects': 'Deleted Projects',
-  '/timesheets': 'Timesheets',
-  '/workload': 'Workload',
-  '/reports': 'Reports',
-  '/admin/users': 'Users',
-  '/admin/customers': 'Customers',
-  '/admin/contacts': 'Contacts',
-  '/admin/streams': 'Streams',
-  '/admin/task-types': 'Task Types',
-  '/admin/project-types': 'Project Types',
-  '/admin/project-templates': 'Project Templates',
-  '/admin/roles': 'Roles',
-  '/admin/settings': 'System Settings',
-  '/admin/import-historical-projects': 'Historical Import',
-};
-
-function resolvePageTitle(pathname: string): string {
-  if (pageTitles[pathname]) return pageTitles[pathname];
-  if (pathname.startsWith('/projects/')) return 'Project Details';
-  if (pathname.startsWith('/admin/project-templates/')) return 'Template Editor';
-  if (pathname.startsWith('/timesheets/')) return 'Timesheet Entry';
-  return 'ProTrack';
-}
 
 interface AppTopBarProps {
   displayName: string;
@@ -52,12 +24,7 @@ interface AppTopBarProps {
 }
 
 export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
-  const location = useLocation();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const pageTitle = useMemo(
-    () => resolvePageTitle(location.pathname),
-    [location.pathname],
-  );
 
   const initials = displayName
     .split(' ')
@@ -77,20 +44,16 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
         boxShadow: (theme) => theme.palette.prosohm.shadowHeader,
       }}
     >
-      <Toolbar sx={{ minHeight: '72px !important', px: { xs: 2, md: 3 } }}>
-        <Box sx={{ display: { xs: 'flex', sm: 'none' }, mr: 1 }}>
+      <Toolbar sx={{ minHeight: '72px !important', px: { xs: 2, md: 3 }, gap: 2 }}>
+        <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexShrink: 0 }}>
           <ProsohmLogo size="sm" />
         </Box>
+
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          <Typography variant="pageTitle" noWrap>
-            {pageTitle}
-          </Typography>
-          <Typography variant="captionLabel" color="text.secondary" noWrap>
-            ProTrack · Prosohm Engineering Management
-          </Typography>
+          <AppBreadcrumbs />
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
           <NotificationBell />
           <Box
             sx={{

@@ -117,7 +117,7 @@ export function ReportsPage() {
     <Box>
       <PageHeader
         title="Reports"
-        subtitle="Productive and non-productive hours, utilization, and portfolio summaries"
+        subtitle="Business intelligence"
       />
 
       <Box sx={{ mb: 3 }}>

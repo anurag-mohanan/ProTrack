@@ -38,6 +38,7 @@ import {
   uploadImportFile,
 } from '../services/importService';
 import { getErrorMessage } from '../api/client';
+import { PageHeader } from '../components/common/PageHeader';
 
 function statusColor(status: ImportRowPreview['status_label']): string {
   if (status === 'ready' || status === 'imported' || status === 'updated') return 'success.main';
@@ -134,14 +135,10 @@ export function HistoricalImportPage() {
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700 }}>
-          Import Historical Projects
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Upload a Prosohm Tool Tracking workbook (.xlsx / .xlsm) to import historical project data.
-        </Typography>
-      </Box>
+      <PageHeader
+        title="Import Historical Projects"
+        subtitle="Upload a Prosohm Tool Tracking workbook to import historical project data"
+      />
 
       {error && <Alert severity="error">{error}</Alert>}
 

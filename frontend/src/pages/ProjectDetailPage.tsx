@@ -22,6 +22,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { HealthChip, StatusChip } from '../components/common/StatusChip';
 import { LoadingState } from '../components/common/LoadingState';
+import { PageHeader } from '../components/common/PageHeader';
 import { getProjectDetail, invalidateProjectCalculationQueries, projectQueryKeys, archiveProject } from '../services/projectService';
 import { activityQueryKeys, getProjectActivities } from '../services/notificationService';
 import { formatDate, formatDateTime, formatNumber, userDisplayName } from '../utils/format';
@@ -109,43 +110,39 @@ export function ProjectDetailPage() {
 
   return (
     <Box>
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: 2,
-          mb: 3,
-          flexWrap: 'wrap',
-        }}
-      >
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
-            {project.tool_number}
-          </Typography>
-          <Typography color="text.secondary">{project.part_description}</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {!project.is_archived &&
-          !project.is_deleted &&
-          canArchiveProject(user?.role_name ?? '') ? (
-            <Button
-              variant="outlined"
-              color="secondary"
-              startIcon={<ArchiveIcon />}
-              onClick={() => setArchiveOpen(true)}
-            >
-              Archive Project
-            </Button>
-          ) : null}
-          <Button
-            variant="outlined"
-            startIcon={<EditIcon />}
-            onClick={() => setEditOpen(true)}
-          >
-            Edit Project
-          </Button>
-        </Box>
+      <PageHeader
+        title={project.tool_number}
+        subtitle={project.part_description}
+        action={
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {!project.is_archived &&
+            !project.is_deleted &&
+            canArchiveProject(user?.role_name ?? '') ? (
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<ArchiveIcon />}
+                onClick={() => setArchiveOpen(true)}
+              >
+                Archive Project
+              </Button>
+            ) : null}
+            {!project.is_archived && !project.is_deleted ? (
+              <Button
+                variant="contained"
+                startIcon={<EditIcon />}
+                onClick={() => setEditOpen(true)}
+              >
+                Edit Project
+              </Button>
+            ) : null}
+          </Box>
+        }
+      />
+
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        <HealthChip health={health} />
+        <StatusChip status={project.status} />
       </Box>
 
       <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 3 }}>

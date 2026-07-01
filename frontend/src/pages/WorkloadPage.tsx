@@ -6,13 +6,13 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { fetchDesignerWorkload } from '../api/dashboard';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
+import { PageHeader } from '../components/common/PageHeader';
 import { formatNumber } from '../utils/format';
 
 export function WorkloadPage() {
@@ -26,12 +26,10 @@ export function WorkloadPage() {
 
   return (
     <>
-      <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
-        Workload
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Designer capacity and hour allocation
-      </Typography>
+      <PageHeader
+        title="Workload"
+        subtitle="Designer capacity and hour allocation"
+      />
 
       {!data?.length ? (
         <EmptyState title="No workload data" description="Designers will appear here once projects are assigned." />

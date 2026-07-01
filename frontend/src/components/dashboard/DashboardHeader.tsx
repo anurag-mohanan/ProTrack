@@ -46,13 +46,10 @@ export function DashboardHeader({
     >
       <Box>
         <Typography
-          variant="h4"
-          sx={{ fontWeight: 700, letterSpacing: '-0.03em', mb: 0.5 }}
+          variant="h5"
+          sx={{ fontWeight: 650, letterSpacing: '-0.02em', mb: 0.5 }}
         >
           {getGreeting()}, {firstName}
-        </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 0.25 }}>
-          {roleName || 'Team Member'}
         </Typography>
         <Typography variant="body2" color="text.secondary">
           {formatDate(new Date().toISOString().slice(0, 10))}

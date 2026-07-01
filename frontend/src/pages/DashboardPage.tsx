@@ -16,6 +16,7 @@ import { ProjectsAttentionTable } from '../components/dashboard/ProjectsAttentio
 import { RecentActivityWidget } from '../components/dashboard/RecentActivityWidget';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
+import { PageHeader } from '../components/common/PageHeader';
 import { formatNumber } from '../utils/format';
 
 export function DashboardPage() {
@@ -81,6 +82,8 @@ export function DashboardPage() {
 
   return (
     <Box sx={{ maxWidth: 1280, mx: 'auto' }}>
+      <PageHeader title="Dashboard" subtitle="Engineering overview" />
+
       <DashboardHeader
         onNewProject={() => navigate('/projects')}
         onTimesheet={() => navigate('/timesheets')}

@@ -9,7 +9,6 @@ import {
   Select,
   Stack,
   TextField,
-  Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -18,6 +17,7 @@ import { fetchMilestones } from '../api/milestones';
 import { createTimesheetEntry } from '../api/timesheets';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
+import { PageHeader } from '../components/common/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import { getProjects } from '../services/projectService';
 import type { WorkCategory } from '../types';
@@ -227,12 +227,10 @@ export function TimesheetEntryPage() {
 
   return (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
-        New Timesheet Entry
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Log productive project work or non-productive time
-      </Typography>
+      <PageHeader
+        title="New Timesheet Entry"
+        subtitle="Log productive project work or non-productive time"
+      />
 
       <Paper sx={{ p: 3, maxWidth: 640 }}>
         <Stack component="form" spacing={2} onSubmit={handleSubmit}>

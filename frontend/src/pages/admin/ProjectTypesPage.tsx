@@ -30,6 +30,7 @@ import {
   updateProjectType,
 } from '../../api/projectTemplates';
 import type { ProjectType } from '../../types/ProjectTemplate';
+import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 
 interface ProjectTypeFormState {
   name: string;
@@ -84,6 +85,8 @@ export default function ProjectTypesPage() {
     setForm(emptyForm);
     setFormOpen(true);
   };
+
+  useOpenCreateFromQuery(openCreate);
 
   const openEdit = (projectType: ProjectType) => {
     setEditingType(projectType);

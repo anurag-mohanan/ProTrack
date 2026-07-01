@@ -31,6 +31,7 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { contactsApi, customersApi } from '../../api/resources';
 import type { Contact, Customer } from '../../types';
+import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 
 interface ContactFormState {
   customer_id: string;
@@ -134,6 +135,8 @@ export default function ContactsPage() {
     });
     setFormOpen(true);
   };
+
+  useOpenCreateFromQuery(openCreate);
 
   const openEdit = (contact: Contact) => {
     setEditingContact(contact);

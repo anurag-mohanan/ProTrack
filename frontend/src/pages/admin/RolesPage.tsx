@@ -25,6 +25,7 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { rolesApi } from '../../api/resources';
 import type { Role } from '../../types';
+import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 
 const SYSTEM_ROLE_NAMES = new Set([
   'Admin',
@@ -103,6 +104,8 @@ export default function RolesPage() {
     setForm(emptyForm);
     setFormOpen(true);
   };
+
+  useOpenCreateFromQuery(openCreate);
 
   const openEdit = (role: Role) => {
     setEditingRole(role);

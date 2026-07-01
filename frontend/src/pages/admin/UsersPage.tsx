@@ -38,6 +38,7 @@ import {
   SearchToolbar,
   EmptyState,
 } from '../../components/ui/design-system';
+import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
 
 interface UserFormState {
@@ -160,6 +161,8 @@ export default function UsersPage() {
     });
     setFormOpen(true);
   };
+
+  useOpenCreateFromQuery(openCreate);
 
   const openEdit = (user: User) => {
     setEditingUser(user);

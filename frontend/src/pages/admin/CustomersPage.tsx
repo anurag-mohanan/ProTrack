@@ -35,6 +35,7 @@ import {
   SearchToolbar,
 } from '../../components/ui/design-system';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
+import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 
 interface CustomerFormState {
   name: string;
@@ -111,6 +112,8 @@ export default function CustomersPage() {
     setForm(emptyForm);
     setFormOpen(true);
   };
+
+  useOpenCreateFromQuery(openCreate);
 
   const openEdit = (customer: Customer) => {
     setEditingCustomer(customer);

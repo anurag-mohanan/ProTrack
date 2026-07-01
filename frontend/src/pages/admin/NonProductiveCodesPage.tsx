@@ -29,6 +29,7 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { nonProductiveCodesApi } from '../../api/resources';
 import type { NonProductiveCode } from '../../types';
+import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 
 interface NpCodeFormState {
   code: string;
@@ -229,6 +230,8 @@ export default function NonProductiveCodesPage() {
     setForm(emptyForm);
     setFormOpen(true);
   };
+
+  useOpenCreateFromQuery(openCreate);
 
   const handleSave = async () => {
     setSaving(true);

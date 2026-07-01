@@ -13,28 +13,15 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import FolderIcon from '@mui/icons-material/Folder';
 import ArchiveIcon from '@mui/icons-material/Archive';
-import DeleteIcon from '@mui/icons-material/Delete';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import GroupsIcon from '@mui/icons-material/Groups';
-import UploadFileIcon from '@mui/icons-material/UploadFile';
-import PeopleIcon from '@mui/icons-material/People';
-import BusinessIcon from '@mui/icons-material/Business';
-import ContactPhoneIcon from '@mui/icons-material/ContactPhone';
-import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import CategoryIcon from '@mui/icons-material/Category';
-import SecurityIcon from '@mui/icons-material/Security';
-import SettingsIcon from '@mui/icons-material/Settings';
-import ViewTimelineIcon from '@mui/icons-material/ViewTimeline';
-import TypeSpecimenIcon from '@mui/icons-material/TypeSpecimen';
-import BlockIcon from '@mui/icons-material/Block';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { NavLink } from 'react-router-dom';
 import { ProsohmLogo } from '../branding/ProsohmLogo';
+import { AdminNavigation } from './AdminNavigation';
+import { getAdminNavSections } from '../../config/adminNavigation';
 import {
   canAccessAdministration,
-  canImportHistoricalProjects,
-  canImportHistoricalTimesheets,
-  canViewDeletedProjects,
   canViewReports,
   canViewWorkload,
 } from '../../utils/permissions';
@@ -49,38 +36,6 @@ const navItems = [
   { label: 'Workload', path: '/workload', icon: GroupsIcon },
   { label: 'Resource Planning', path: '/resource-planning', icon: GroupsIcon },
   { label: 'Reports', path: '/reports', icon: AssessmentIcon },
-];
-
-const adminNavItems = [
-  { label: 'Users', path: '/admin/users', icon: PeopleIcon },
-  { label: 'Teams', path: '/admin/teams', icon: GroupsIcon },
-  { label: 'Customers', path: '/admin/customers', icon: BusinessIcon },
-  { label: 'Contacts', path: '/admin/contacts', icon: ContactPhoneIcon },
-  { label: 'Streams', path: '/admin/streams', icon: AccountTreeIcon },
-  { label: 'Task Types', path: '/admin/task-types', icon: CategoryIcon },
-  { label: 'NP Codes', path: '/admin/non-productive-codes', icon: BlockIcon },
-  { label: 'Project Types', path: '/admin/project-types', icon: TypeSpecimenIcon },
-  { label: 'Project Templates', path: '/admin/project-templates', icon: ViewTimelineIcon },
-  { label: 'Roles', path: '/admin/roles', icon: SecurityIcon },
-  { label: 'System Settings', path: '/admin/settings', icon: SettingsIcon },
-  {
-    label: 'Deleted Projects',
-    path: '/admin/deleted-projects',
-    icon: DeleteIcon,
-    adminOnly: true,
-  },
-  {
-    label: 'Import Historical Projects',
-    path: '/admin/import-historical-projects',
-    icon: UploadFileIcon,
-    importProjects: true,
-  },
-  {
-    label: 'Import Historical Timesheets',
-    path: '/admin/import-historical-timesheets',
-    icon: UploadFileIcon,
-    importTimesheets: true,
-  },
 ];
 
 interface AppSidebarProps {
@@ -137,6 +92,8 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
     return true;
   });
 
+  const adminSections = getAdminNavSections(roleName);
+
   return (
     <Drawer
       variant="permanent"
@@ -178,24 +135,7 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
                 Administration
               </Typography>
             </Box>
-            <List disablePadding>
-              {adminNavItems
-                .filter((item) => {
-                  if (item.path === '/admin/deleted-projects') {
-                    return canViewDeletedProjects(roleName);
-                  }
-                  if ('importProjects' in item && item.importProjects) {
-                    return canImportHistoricalProjects(roleName);
-                  }
-                  if ('importTimesheets' in item && item.importTimesheets) {
-                    return canImportHistoricalTimesheets(roleName);
-                  }
-                  return true;
-                })
-                .map((item) => (
-                  <NavButton key={item.path} {...item} />
-                ))}
-            </List>
+            <AdminNavigation sections={adminSections} />
           </>
         ) : null}
       </Box>

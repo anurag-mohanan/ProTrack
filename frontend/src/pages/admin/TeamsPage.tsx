@@ -32,6 +32,7 @@ import {
 } from '../../components/ui/design-system';
 import { useToast } from '../../context/ToastContext';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
+import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import type { Team, TeamCreate, TeamMember, TeamMemberCreate } from '../../types/Team';
 import { getErrorMessage } from '../../api/client';
 import { userDisplayName } from '../../utils/format';
@@ -103,6 +104,8 @@ export default function TeamsPage() {
     setForm(emptyForm);
     setFormOpen(true);
   };
+
+  useOpenCreateFromQuery(openCreate);
 
   const openEdit = (team: Team) => {
     setEditingTeam(team);

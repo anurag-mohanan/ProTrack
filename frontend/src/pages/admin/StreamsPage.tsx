@@ -26,6 +26,7 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { streamsApi } from '../../api/resources';
 import type { Stream } from '../../types';
+import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 
 interface StreamFormState {
   name: string;
@@ -81,6 +82,8 @@ export default function StreamsPage() {
     setForm(emptyForm);
     setFormOpen(true);
   };
+
+  useOpenCreateFromQuery(openCreate);
 
   const openEdit = (stream: Stream) => {
     setEditingStream(stream);

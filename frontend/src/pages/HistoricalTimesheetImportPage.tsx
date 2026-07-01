@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -74,6 +75,7 @@ function SummaryCard({ label, value }: { label: string; value: number | string }
 }
 
 export function HistoricalTimesheetImportPage() {
+  const location = useLocation();
   const [activeStep, setActiveStep] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [uploadResult, setUploadResult] = useState<TimesheetImportUploadResponse | null>(null);
@@ -103,6 +105,17 @@ export function HistoricalTimesheetImportPage() {
       .then(setHistory)
       .catch(() => undefined);
   }, [job]);
+
+  useEffect(() => {
+    if (location.hash !== '#history') return;
+    const timer = window.setTimeout(() => {
+      document.getElementById('import-history')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [location.hash, history.length]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setFile(event.target.files?.[0] ?? null);
@@ -522,7 +535,7 @@ export function HistoricalTimesheetImportPage() {
         </Card>
       )}
 
-      <Card>
+      <Card id="import-history">
         <CardContent>
           <Stack direction="row" spacing={1} sx={{ mb: 2, alignItems: 'center' }}>
             <HistoryIcon color="primary" />

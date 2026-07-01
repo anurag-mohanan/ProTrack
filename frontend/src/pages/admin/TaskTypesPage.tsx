@@ -30,6 +30,7 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { streamsApi, taskTypesApi } from '../../api/resources';
 import type { Stream, TaskType } from '../../types';
+import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 
 interface TaskTypeFormState {
   name: string;
@@ -106,6 +107,8 @@ export default function TaskTypesPage() {
     });
     setFormOpen(true);
   };
+
+  useOpenCreateFromQuery(openCreate);
 
   const openEdit = (taskType: TaskType) => {
     setEditingTaskType(taskType);

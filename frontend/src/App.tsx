@@ -4,6 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { MainLayout } from './layouts/MainLayout';
+import AdminCreatePage from './pages/admin/AdminCreatePage';
+import AdminDashboardPage from './pages/admin/AdminDashboardPage';
+import AdminImportsPage from './pages/admin/AdminImportsPage';
+import AdminManageHubPage from './pages/admin/AdminManageHubPage';
+import AdminReportsPage from './pages/admin/AdminReportsPage';
+import AdminSettingsHubPage from './pages/admin/AdminSettingsHubPage';
+import AdminSystemPage from './pages/admin/AdminSystemPage';
 import ContactsAdminPage from './pages/admin/ContactsPage';
 import CustomersAdminPage from './pages/admin/CustomersPage';
 import DeletedProjectsAdminPage from './pages/admin/DeletedProjectsPage';
@@ -12,7 +19,6 @@ import ProjectTemplateEditorPage from './pages/admin/ProjectTemplateEditorPage';
 import ProjectTypesAdminPage from './pages/admin/ProjectTypesPage';
 import RolesAdminPage from './pages/admin/RolesPage';
 import StreamsAdminPage from './pages/admin/StreamsPage';
-import SystemSettingsPage from './pages/admin/SystemSettingsPage';
 import TeamsAdminPage from './pages/admin/TeamsPage';
 import TaskTypesAdminPage from './pages/admin/TaskTypesPage';
 import NonProductiveCodesAdminPage from './pages/admin/NonProductiveCodesPage';
@@ -33,12 +39,16 @@ import { AdminRoute } from './routes/AdminRoute';
 import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
 import { theme } from './theme/theme';
 import { useAuth } from './context/AuthContext';
-import { canImportHistoricalProjects, canImportHistoricalTimesheets } from './utils/permissions';
+import {
+  canImportHistoricalProjects,
+  canImportHistoricalTimesheets,
+  ROLES,
+} from './utils/permissions';
 
 function AdminHistoricalImportRoute() {
   const { user } = useAuth();
   if (!canImportHistoricalProjects(user?.role_name ?? '')) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/admin/dashboard" replace />;
   }
   return <HistoricalImportPage />;
 }
@@ -46,9 +56,17 @@ function AdminHistoricalImportRoute() {
 function AdminHistoricalTimesheetImportRoute() {
   const { user } = useAuth();
   if (!canImportHistoricalTimesheets(user?.role_name ?? '')) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/admin/dashboard" replace />;
   }
   return <HistoricalTimesheetImportPage />;
+}
+
+function AdminSystemRoute() {
+  const { user } = useAuth();
+  if (user?.role_name !== ROLES.ADMIN) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+  return <AdminSystemPage />;
 }
 
 const queryClient = new QueryClient({
@@ -89,6 +107,15 @@ export default function App() {
                     <Route path="/reports" element={<ReportsPage />} />
 
                     <Route element={<AdminRoute />}>
+                      <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+                      <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+                      <Route path="/admin/create" element={<AdminCreatePage />} />
+                      <Route path="/admin/manage" element={<AdminManageHubPage />} />
+                      <Route path="/admin/imports" element={<AdminImportsPage />} />
+                      <Route path="/admin/reports" element={<AdminReportsPage />} />
+                      <Route path="/admin/settings" element={<AdminSettingsHubPage />} />
+                      <Route path="/admin/system" element={<AdminSystemRoute />} />
+
                       <Route path="/admin/users" element={<UsersAdminPage />} />
                       <Route path="/admin/customers" element={<CustomersAdminPage />} />
                       <Route path="/admin/contacts" element={<ContactsAdminPage />} />
@@ -105,14 +132,26 @@ export default function App() {
                         element={<ProjectTemplatesAdminPage />}
                       />
                       <Route
+                        path="/admin/project-templates/new"
+                        element={<ProjectTemplateEditorPage />}
+                      />
+                      <Route
                         path="/admin/project-templates/:templateId"
                         element={<ProjectTemplateEditorPage />}
                       />
                       <Route path="/admin/roles" element={<RolesAdminPage />} />
-                      <Route path="/admin/settings" element={<SystemSettingsPage />} />
                       <Route
                         path="/admin/deleted-projects"
                         element={<DeletedProjectsAdminPage />}
+                      />
+
+                      <Route
+                        path="/admin/imports/historical-projects"
+                        element={<AdminHistoricalImportRoute />}
+                      />
+                      <Route
+                        path="/admin/imports/historical-timesheets"
+                        element={<AdminHistoricalTimesheetImportRoute />}
                       />
                       <Route
                         path="/admin/import-historical-projects"

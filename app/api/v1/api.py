@@ -17,6 +17,7 @@ from app.api.v1 import (
     roles,
     timesheet_entries,
     timesheets,
+    teams,
     users,
 )
 from app.api.v1.router_factory import (
@@ -58,6 +59,7 @@ delivery_write = ("Admin", "Engineering Manager", "Design Leader")
 api_router.include_router(lookups.router)
 api_router.include_router(roles.router)
 api_router.include_router(users.router)
+api_router.include_router(teams.router)
 api_router.include_router(
     build_crud_router(
         prefix="/streams",

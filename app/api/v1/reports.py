@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
 from app.core.permissions import can_view_deleted_projects
@@ -19,6 +21,16 @@ from app.crud.reports import (
     get_reports_bundle,
     get_timesheet_approval_report,
     get_top_np_activities_report,
+)
+from app.crud.team_reports import (
+    get_customer_by_team_report,
+    get_designer_by_team_report,
+    get_hours_by_team_report,
+    get_monthly_team_summary_report,
+    get_projects_by_team_report,
+    get_quoted_vs_actual_by_team_report,
+    get_team_profitability_report,
+    get_team_utilization_report,
 )
 from app.models.enums import ProjectStage
 from app.crud.dashboard import get_designer_workload
@@ -42,6 +54,14 @@ from app.schemas.reports import (
     ReportsBundle,
     TimesheetApprovalReportRow,
     TopNpActivityReportRow,
+    ProjectsByTeamReportRow,
+    HoursByTeamReportRow,
+    QuotedVsActualByTeamReportRow,
+    TeamUtilizationReportRow,
+    CustomerByTeamReportRow,
+    DesignerByTeamReportRow,
+    TeamProfitabilityReportRow,
+    MonthlyTeamSummaryRow,
 )
 
 router = APIRouter(
@@ -177,3 +197,83 @@ def execution_status_summary_report(
     options: dict[str, bool] = Depends(_report_options),
 ):
     return get_execution_status_summary_report(db, **options)
+
+
+def _team_report_options(
+    team_id: UUID | None = None,
+    include_archived: bool = Query(True),
+    include_deleted: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    if include_deleted and not can_view_deleted_projects(db, current_user):
+        include_deleted = False
+    return {
+        "team_id": team_id,
+        "include_archived": include_archived,
+        "include_deleted": include_deleted,
+    }
+
+
+@router.get("/projects-by-team", response_model=list[ProjectsByTeamReportRow])
+def projects_by_team_report(
+    db: Session = Depends(get_db),
+    options: dict[str, object] = Depends(_team_report_options),
+):
+    return get_projects_by_team_report(db, **options)
+
+
+@router.get("/hours-by-team", response_model=list[HoursByTeamReportRow])
+def hours_by_team_report(
+    db: Session = Depends(get_db),
+    options: dict[str, object] = Depends(_team_report_options),
+):
+    return get_hours_by_team_report(db, **options)
+
+
+@router.get("/quoted-vs-actual-by-team", response_model=list[QuotedVsActualByTeamReportRow])
+def quoted_vs_actual_by_team_report(
+    db: Session = Depends(get_db),
+    options: dict[str, object] = Depends(_team_report_options),
+):
+    return get_quoted_vs_actual_by_team_report(db, **options)
+
+
+@router.get("/team-utilization", response_model=list[TeamUtilizationReportRow])
+def team_utilization_report(
+    db: Session = Depends(get_db),
+    team_id: UUID | None = None,
+):
+    return get_team_utilization_report(db, team_id=team_id)
+
+
+@router.get("/customer-by-team", response_model=list[CustomerByTeamReportRow])
+def customer_by_team_report(
+    db: Session = Depends(get_db),
+    options: dict[str, object] = Depends(_team_report_options),
+):
+    return get_customer_by_team_report(db, **options)
+
+
+@router.get("/designer-by-team", response_model=list[DesignerByTeamReportRow])
+def designer_by_team_report(
+    db: Session = Depends(get_db),
+    team_id: UUID | None = None,
+):
+    return get_designer_by_team_report(db, team_id=team_id)
+
+
+@router.get("/team-profitability", response_model=list[TeamProfitabilityReportRow])
+def team_profitability_report(
+    db: Session = Depends(get_db),
+    options: dict[str, object] = Depends(_team_report_options),
+):
+    return get_team_profitability_report(db, **options)
+
+
+@router.get("/monthly-team-summary", response_model=list[MonthlyTeamSummaryRow])
+def monthly_team_summary_report(
+    db: Session = Depends(get_db),
+    team_id: UUID | None = None,
+):
+    return get_monthly_team_summary_report(db, team_id=team_id)

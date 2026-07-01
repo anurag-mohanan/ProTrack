@@ -4,13 +4,14 @@ import ArchiveIcon from '@mui/icons-material/Archive';
 import RestoreIcon from '@mui/icons-material/Restore';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
-import type { Customer, Project, Stream, User } from '../../types';
+import type { Customer, Project, Stream, Team, User } from '../../types';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
 import { ProjectStageChip, ExecutionStatusChip } from '../common/StatusChip';
 import { formatDate, formatNumber, userDisplayName } from '../../utils/format';
 
 export interface ProjectTableRow extends Project {
   customerName: string;
+  teamName: string;
   designLeaderName: string;
   designerName: string;
   surfacerName: string;
@@ -22,6 +23,7 @@ interface ProjectTableProps {
   customers: Customer[];
   users: User[];
   streams: Stream[];
+  teams: Team[];
   onArchive?: (projectId: string) => void;
   onRestore?: (projectId: string) => void;
 }
@@ -40,14 +42,17 @@ export function buildProjectTableRows(
   customers: Customer[],
   users: User[],
   streams: Stream[],
+  teams: Team[],
 ): ProjectTableRow[] {
   const customerMap = buildNameMap(customers, (item) => item.name);
   const userMap = buildNameMap(users, (item) => userDisplayName(item));
   const streamMap = buildNameMap(streams, (item) => item.name);
+  const teamMap = buildNameMap(teams, (item) => item.name);
 
   return projects.map((project) => ({
     ...project,
     customerName: customerMap.get(project.customer_id) ?? '—',
+    teamName: project.team_id ? (teamMap.get(project.team_id) ?? '—') : 'Unassigned',
     designLeaderName: userMap.get(project.design_leader_id) ?? '—',
     designerName: project.designer_id
       ? (userMap.get(project.designer_id) ?? '—')
@@ -68,6 +73,7 @@ const PROJECT_TABLE_COLUMNS: GridColDef<ProjectTableRow>[] = [
     minWidth: 180,
   },
   { field: 'customerName', headerName: 'Customer', flex: 1, minWidth: 140 },
+  { field: 'teamName', headerName: 'Team', flex: 1, minWidth: 130 },
   {
     field: 'designLeaderName',
     headerName: 'Design Leader',
@@ -110,6 +116,7 @@ function ProjectTableComponent({
   customers,
   users,
   streams,
+  teams,
   onArchive,
   onRestore,
 }: ProjectTableProps) {
@@ -159,8 +166,8 @@ function ProjectTableComponent({
   }, [onArchive, onRestore]);
 
   const rows = useMemo(
-    () => buildProjectTableRows(projects, customers, users, streams),
-    [projects, customers, users, streams],
+    () => buildProjectTableRows(projects, customers, users, streams, teams),
+    [projects, customers, users, streams, teams],
   );
 
   const handleRowClick = useMemo(

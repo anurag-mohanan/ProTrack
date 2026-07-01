@@ -39,6 +39,7 @@ export interface ProjectTemplateMatch {
   customer_id: string | null;
   is_default: boolean;
   is_customer_specific: boolean;
+  default_team_id: string | null;
   milestone_count: number;
 }
 

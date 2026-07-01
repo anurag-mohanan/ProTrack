@@ -2,17 +2,24 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   FormControl,
+  FormControlLabel,
   InputLabel,
   MenuItem,
   Select,
+  Switch,
   TextField,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchCustomers, fetchStreams, fetchUsers } from '../api/lookups';
+import { fetchCustomers, fetchStreams, fetchTeams, fetchUsers } from '../api/lookups';
+import { fetchProjectTypes } from '../api/projectTemplates';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
+import {
+  ProjectFiltersBar,
+  type ProjectFilterValues,
+} from '../components/projects/ProjectFiltersBar';
 import { ProjectTable } from '../components/projects/ProjectTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -31,10 +38,6 @@ import {
   updateProject,
 } from '../services/projectService';
 import type { ExecutionStatus, ProjectLifecycleFilter, ProjectStage } from '../types';
-import {
-  EXECUTION_STATUS_LABELS,
-  PROJECT_STAGE_LABELS,
-} from '../types/common';
 import { canArchiveProject } from '../utils/permissions';
 
 const lifecycleOptions: Array<{ value: ProjectLifecycleFilter; label: string }> = [
@@ -45,19 +48,16 @@ const lifecycleOptions: Array<{ value: ProjectLifecycleFilter; label: string }> 
   { value: 'deleted', label: 'Deleted' },
 ];
 
-const executionStatusOptions: Array<{ value: ExecutionStatus | 'all'; label: string }> = [
-  { value: 'all', label: 'All Execution Statuses' },
-  ...(
-    Object.entries(EXECUTION_STATUS_LABELS) as Array<[ExecutionStatus, string]>
-  ).map(([value, label]) => ({ value, label })),
-];
-
-const projectStageOptions: Array<{ value: ProjectStage | 'all'; label: string }> = [
-  { value: 'all', label: 'All Stages' },
-  ...(
-    Object.entries(PROJECT_STAGE_LABELS) as Array<[ProjectStage, string]>
-  ).map(([value, label]) => ({ value, label })),
-];
+const defaultFilters: ProjectFilterValues = {
+  customerIds: [],
+  projectTypeId: 'all',
+  teamIds: [],
+  projectStage: 'all',
+  executionStatus: 'all',
+  designLeaderId: 'all',
+  designerId: 'all',
+  surfacerId: 'all',
+};
 
 export function ProjectsPage() {
   const navigate = useNavigate();
@@ -66,12 +66,8 @@ export function ProjectsPage() {
   const { showSuccess, showError } = useToast();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
-  const [executionStatusFilter, setExecutionStatusFilter] = useState<
-    ExecutionStatus | 'all'
-  >('all');
-  const [projectStageFilter, setProjectStageFilter] = useState<ProjectStage | 'all'>(
-    'all',
-  );
+  const [filterValues, setFilterValues] = useState<ProjectFilterValues>(defaultFilters);
+  const [groupByTeam, setGroupByTeam] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
@@ -83,44 +79,58 @@ export function ProjectsPage() {
 
   useEffect(() => {
     const executionStatus = searchParams.get('execution_status');
-    if (
-      executionStatus &&
-      executionStatusOptions.some((option) => option.value === executionStatus)
-    ) {
-      setExecutionStatusFilter(executionStatus as ExecutionStatus);
-    } else if (!executionStatus) {
-      setExecutionStatusFilter('all');
+    if (executionStatus) {
+      setFilterValues((current) => ({
+        ...current,
+        executionStatus: executionStatus as ExecutionStatus,
+      }));
     }
 
     const projectStage = searchParams.get('project_stage');
-    if (
-      projectStage &&
-      projectStageOptions.some((option) => option.value === projectStage)
-    ) {
-      setProjectStageFilter(projectStage as ProjectStage);
-    } else if (!projectStage) {
-      setProjectStageFilter('all');
+    if (projectStage) {
+      setFilterValues((current) => ({
+        ...current,
+        projectStage: projectStage as ProjectStage,
+      }));
+    }
+
+    const teamId = searchParams.get('team_id');
+    if (teamId) {
+      setFilterValues((current) => ({
+        ...current,
+        teamIds: [teamId],
+      }));
     }
   }, [searchParams]);
 
-  const executionStatusParam =
-    executionStatusFilter === 'all' ? undefined : executionStatusFilter;
-  const projectStageParam =
-    projectStageFilter === 'all' ? undefined : projectStageFilter;
+  const listParams = useMemo(
+    () => ({
+      lifecycle,
+      execution_status:
+        filterValues.executionStatus === 'all'
+          ? undefined
+          : filterValues.executionStatus,
+      project_stage:
+        filterValues.projectStage === 'all' ? undefined : filterValues.projectStage,
+      customer_ids:
+        filterValues.customerIds.length > 0 ? filterValues.customerIds : undefined,
+      team_ids: filterValues.teamIds.length > 0 ? filterValues.teamIds : undefined,
+      project_type_id:
+        filterValues.projectTypeId === 'all' ? undefined : filterValues.projectTypeId,
+      design_leader_id:
+        filterValues.designLeaderId === 'all' ? undefined : filterValues.designLeaderId,
+      designer_id:
+        filterValues.designerId === 'all' ? undefined : filterValues.designerId,
+      surfacer_id:
+        filterValues.surfacerId === 'all' ? undefined : filterValues.surfacerId,
+      limit: 500,
+    }),
+    [lifecycle, filterValues],
+  );
 
   const projectsQuery = useQuery({
-    queryKey: projectQueryKeys.list({
-      lifecycle,
-      execution_status: executionStatusParam,
-      project_stage: projectStageParam,
-    }),
-    queryFn: () =>
-      getProjects({
-        lifecycle,
-        execution_status: executionStatusParam,
-        project_stage: projectStageParam,
-        limit: 500,
-      }),
+    queryKey: projectQueryKeys.list(listParams),
+    queryFn: () => getProjects(listParams),
     staleTime: QUERY_STALE_TIMES.projects,
   });
 
@@ -162,6 +172,18 @@ export function ProjectsPage() {
   const streamsQuery = useQuery({
     queryKey: ['lookups', 'streams'],
     queryFn: fetchStreams,
+    staleTime: QUERY_STALE_TIMES.lookups,
+  });
+
+  const teamsQuery = useQuery({
+    queryKey: ['lookups', 'teams'],
+    queryFn: fetchTeams,
+    staleTime: QUERY_STALE_TIMES.lookups,
+  });
+
+  const projectTypesQuery = useQuery({
+    queryKey: ['project-types'],
+    queryFn: fetchProjectTypes,
     staleTime: QUERY_STALE_TIMES.lookups,
   });
 
@@ -218,11 +240,24 @@ export function ProjectsPage() {
     return rows;
   }, [projectsQuery.data, search, dueFilter, completedFilter]);
 
+  const sortedProjects = useMemo(() => {
+    const rows = filteredProjects;
+    if (!groupByTeam) return rows;
+    const teamMap = new Map((teamsQuery.data ?? []).map((team) => [team.id, team.name]));
+    return [...rows].sort((a, b) => {
+      const teamA = a.team_id ? (teamMap.get(a.team_id) ?? 'Unassigned') : 'Unassigned';
+      const teamB = b.team_id ? (teamMap.get(b.team_id) ?? 'Unassigned') : 'Unassigned';
+      return teamA.localeCompare(teamB) || a.tool_number.localeCompare(b.tool_number);
+    });
+  }, [filteredProjects, groupByTeam, teamsQuery.data]);
+
   const tableLoading =
     projectsQuery.isPending ||
     customersQuery.isPending ||
     usersQuery.isPending ||
-    streamsQuery.isPending;
+    streamsQuery.isPending ||
+    teamsQuery.isPending ||
+    projectTypesQuery.isPending;
 
   const showArchiveActions =
     lifecycle !== 'archived' &&
@@ -243,6 +278,8 @@ export function ProjectsPage() {
   if (customersQuery.error) return <ErrorState error={customersQuery.error} />;
   if (usersQuery.error) return <ErrorState error={usersQuery.error} />;
   if (streamsQuery.error) return <ErrorState error={streamsQuery.error} />;
+  if (teamsQuery.error) return <ErrorState error={teamsQuery.error} />;
+  if (projectTypesQuery.error) return <ErrorState error={projectTypesQuery.error} />;
 
   return (
     <Box>
@@ -273,90 +310,64 @@ export function ProjectsPage() {
       />
 
       <SearchToolbar>
-            <TextField
-              label="Search tool number or description"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              sx={{ minWidth: 280, flex: 1 }}
+        <TextField
+          label="Search tool number or description"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          sx={{ minWidth: 280, flex: 1 }}
+        />
+        <FormControl sx={{ minWidth: 180 }}>
+          <InputLabel>Lifecycle</InputLabel>
+          <Select
+            label="Lifecycle"
+            value={lifecycle}
+            onChange={(event) => {
+              const value = event.target.value as ProjectLifecycleFilter;
+              const next = new URLSearchParams(searchParams);
+              if (value === 'active') {
+                next.delete('lifecycle');
+              } else {
+                next.set('lifecycle', value);
+              }
+              setSearchParams(next);
+            }}
+          >
+            {lifecycleOptions.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={groupByTeam}
+              onChange={(event) => setGroupByTeam(event.target.checked)}
             />
-            <FormControl sx={{ minWidth: 180 }}>
-              <InputLabel>Lifecycle</InputLabel>
-              <Select
-                label="Lifecycle"
-                value={lifecycle}
-                onChange={(event) => {
-                  const value = event.target.value as ProjectLifecycleFilter;
-                  const next = new URLSearchParams(searchParams);
-                  if (value === 'active') {
-                    next.delete('lifecycle');
-                  } else {
-                    next.set('lifecycle', value);
-                  }
-                  setSearchParams(next);
-                }}
-              >
-                {lifecycleOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl sx={{ minWidth: 220 }}>
-              <InputLabel>Project Stage</InputLabel>
-              <Select
-                label="Project Stage"
-                value={projectStageFilter}
-                onChange={(event) => {
-                  const value = event.target.value as ProjectStage | 'all';
-                  setProjectStageFilter(value);
-                  const next = new URLSearchParams(searchParams);
-                  if (value === 'all') {
-                    next.delete('project_stage');
-                  } else {
-                    next.set('project_stage', value);
-                  }
-                  setSearchParams(next);
-                }}
-              >
-                {projectStageOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl sx={{ minWidth: 240 }}>
-              <InputLabel>Execution Status</InputLabel>
-              <Select
-                label="Execution Status"
-                value={executionStatusFilter}
-                onChange={(event) => {
-                  const value = event.target.value as ExecutionStatus | 'all';
-                  setExecutionStatusFilter(value);
-                  const next = new URLSearchParams(searchParams);
-                  if (value === 'all') {
-                    next.delete('execution_status');
-                  } else {
-                    next.set('execution_status', value);
-                  }
-                  setSearchParams(next);
-                }}
-              >
-                {executionStatusOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+          }
+          label="Group by Team"
+        />
       </SearchToolbar>
+
+      <Box sx={{ mb: 2.5 }}>
+        <ContentCard>
+          <ProjectFiltersBar
+            customers={customersQuery.data ?? []}
+            teams={teamsQuery.data ?? []}
+            projectTypes={projectTypesQuery.data ?? []}
+            users={usersQuery.data ?? []}
+            values={filterValues}
+            onChange={setFilterValues}
+          />
+        </ContentCard>
+      </Box>
 
       {tableLoading ? (
         <ContentCard noPadding>
           <TableSkeleton rows={10} columns={8} />
         </ContentCard>
-      ) : !filteredProjects.length ? (
+      ) : !sortedProjects.length ? (
         <EmptyState
           title="No projects found"
           description="Try adjusting your search or filters, or create a new project."
@@ -364,10 +375,11 @@ export function ProjectsPage() {
       ) : (
         <ContentCard noPadding>
           <ProjectTable
-            projects={filteredProjects}
+            projects={sortedProjects}
             customers={customersQuery.data ?? []}
             users={usersQuery.data ?? []}
             streams={streamsQuery.data ?? []}
+            teams={teamsQuery.data ?? []}
             onArchive={
               showArchiveActions ? (projectId) => setArchiveId(projectId) : undefined
             }

@@ -105,14 +105,40 @@ def get_customer_summary_report(
     for row in rows:
         quoted = _round_hours(_decimal(row[3]))
         actual = _round_hours(_decimal(row[4]))
+        customer_id = row[0]
+        project_filter = Project.customer_id == customer_id
+        if not include_deleted:
+            project_filter = project_filter & Project.is_deleted.is_(False)
+        if not include_archived:
+            project_filter = project_filter & Project.is_archived.is_(False)
+        designers_used = int(
+            db.scalar(
+                select(func.count(func.distinct(Project.designer_id))).where(
+                    project_filter,
+                    Project.designer_id.is_not(None),
+                )
+            )
+            or 0
+        )
+        teams_used = int(
+            db.scalar(
+                select(func.count(func.distinct(Project.team_id))).where(
+                    project_filter,
+                    Project.team_id.is_not(None),
+                )
+            )
+            or 0
+        )
         report.append(
             CustomerSummaryReportRow(
-                customer_id=row[0],
+                customer_id=customer_id,
                 customer_name=row[1],
                 project_count=int(row[2] or 0),
                 total_quoted_hours=quoted,
                 total_actual_hours=actual,
                 hours_variance=_round_hours(actual - quoted),
+                designers_used=designers_used,
+                teams_used=teams_used,
             )
         )
     return report

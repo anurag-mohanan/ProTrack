@@ -39,6 +39,11 @@ export function createResourceApi<
 export const rolesApi = createResourceApi<Role>('roles');
 export const usersApi = createResourceApi<User>('users');
 export const streamsApi = createResourceApi<Stream>('streams');
+export const teamsApi = createResourceApi<
+  import('../types/Team').Team,
+  import('../types/Team').TeamCreate,
+  import('../types/Team').TeamUpdate
+>('teams');
 export const customersApi = createResourceApi<Customer>('customers');
 export const contactsApi = createResourceApi<Contact>('contacts');
 export const taskTypesApi = createResourceApi<TaskType>('task-types');

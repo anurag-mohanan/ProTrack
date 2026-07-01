@@ -46,11 +46,13 @@ const navItems = [
   { label: 'Archived Projects', path: '/projects/archived', icon: ArchiveIcon },
   { label: 'Timesheets', path: '/timesheets', icon: ScheduleIcon },
   { label: 'Workload', path: '/workload', icon: GroupsIcon },
+  { label: 'Resource Planning', path: '/resource-planning', icon: GroupsIcon },
   { label: 'Reports', path: '/reports', icon: AssessmentIcon },
 ];
 
 const adminNavItems = [
   { label: 'Users', path: '/admin/users', icon: PeopleIcon },
+  { label: 'Teams', path: '/admin/teams', icon: GroupsIcon },
   { label: 'Customers', path: '/admin/customers', icon: BusinessIcon },
   { label: 'Contacts', path: '/admin/contacts', icon: ContactPhoneIcon },
   { label: 'Streams', path: '/admin/streams', icon: AccountTreeIcon },

@@ -6,9 +6,10 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
 from app.crud.base import select
-from app.models.models import Contact, Customer, NonProductiveCode, ProjectType, Role, Stream, TaskType, User
+from app.models.models import Contact, Customer, NonProductiveCode, ProjectType, Role, Stream, TaskType, Team, User
 from app.schemas.identity import RoleRead
 from app.schemas.organization import ContactRead, CustomerRead, NonProductiveCodeRead, StreamRead, TaskTypeRead
+from app.schemas.team import TeamRead
 from app.schemas.templates import ProjectTypeRead
 
 router = APIRouter(prefix="/lookups", tags=["lookups"])
@@ -118,3 +119,16 @@ def list_lookup_project_types(
         .where(ProjectType.is_active.is_(True))
         .order_by(ProjectType.name)
     ).all()
+
+
+@router.get("/teams", response_model=list[TeamRead])
+def list_lookup_teams(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    from app.crud.team import build_team_read
+
+    teams = db.scalars(
+        select(Team).where(Team.is_active.is_(True)).order_by(Team.name)
+    ).all()
+    return [build_team_read(db, team) for team in teams]

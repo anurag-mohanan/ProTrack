@@ -38,9 +38,20 @@ export async function fetchDashboardOverview(): Promise<DashboardOverview> {
 
 export async function fetchDashboardSummary(
   projectStage?: ProjectStage,
+  teamId?: string,
 ): Promise<DashboardSummary> {
   const { data } = await apiClient.get<DashboardSummary>(
-    `/dashboard/summary${buildQuery({ project_stage: projectStage })}`,
+    `/dashboard/summary${buildQuery({
+      project_stage: projectStage,
+      team_id: teamId,
+    })}`,
+  );
+  return data;
+}
+
+export async function fetchTeamResourcePlanning(teamId?: string) {
+  const { data } = await apiClient.get<import('../types/Team').TeamResourcePlanningRow[]>(
+    `/dashboard/resource-planning${buildQuery({ team_id: teamId })}`,
   );
   return data;
 }
@@ -61,9 +72,9 @@ export async function fetchProjectDashboard(
 
 export const dashboardQueryKeys = {
   all: ['dashboard'] as const,
-  summary: (projectStage?: ProjectStage) =>
-    projectStage
-      ? (['dashboard', 'summary', projectStage] as const)
+  summary: (projectStage?: ProjectStage, teamId?: string) =>
+    projectStage || teamId
+      ? (['dashboard', 'summary', projectStage, teamId] as const)
       : (['dashboard', 'summary'] as const),
   kpis: ['dashboard', 'kpis'] as const,
   attentionProjects: ['dashboard', 'attention-projects'] as const,

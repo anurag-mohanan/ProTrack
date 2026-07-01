@@ -167,6 +167,8 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             template_id=obj_in.project_template_id,
         )
         db_obj.project_template_id = template.id
+        if db_obj.team_id is None and template.default_team_id is not None:
+            db_obj.team_id = template.default_team_id
         create_milestones_from_template(
             db,
             project=db_obj,
@@ -241,8 +243,19 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         if assignment_clause is not None:
             stmt = stmt.where(assignment_clause)
         if filters:
+            multi_map = {
+                "customer_ids": Project.customer_id,
+                "team_ids": Project.team_id,
+            }
             for field, value in filters.items():
                 if field == "lifecycle" or value is None:
+                    continue
+                if field in multi_map and isinstance(value, list) and value:
+                    stmt = stmt.where(multi_map[field].in_(value))
+                    continue
+                if field.endswith("_ids"):
+                    continue
+                if not hasattr(Project, field):
                     continue
                 stmt = stmt.where(getattr(Project, field) == value)
         stmt = apply_lifecycle_sort(stmt, lifecycle).offset(skip).limit(limit)

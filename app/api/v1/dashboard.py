@@ -22,6 +22,8 @@ from app.schemas.dashboard import (
     WorkflowDashboard,
 )
 from app.schemas.timesheet import ActivityRead
+from app.schemas.reports import TeamResourcePlanningRow
+from app.crud.team_reports import get_team_resource_planning
 from app.services.dashboard_service import (
     get_attention_projects,
     get_dashboard_kpis,
@@ -40,10 +42,13 @@ router = APIRouter(
 @router.get("/summary", response_model=DashboardSummary)
 def dashboard_summary(
     project_stage: ProjectStage | None = None,
+    team_id: UUID | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_dashboard_summary(db, current_user, project_stage=project_stage)
+    return get_dashboard_summary(
+        db, current_user, project_stage=project_stage, team_id=team_id
+    )
 
 
 @router.get("/kpis", response_model=DashboardKpis)
@@ -96,6 +101,14 @@ def dashboard_overview(
 @router.get("/workload", response_model=list[DesignerWorkload])
 def dashboard_workload(db: Session = Depends(get_db)):
     return get_designer_workload(db)
+
+
+@router.get("/resource-planning", response_model=list[TeamResourcePlanningRow])
+def dashboard_resource_planning(
+    team_id: UUID | None = None,
+    db: Session = Depends(get_db),
+):
+    return get_team_resource_planning(db, team_id=team_id)
 
 
 @router.get("/workflow", response_model=WorkflowDashboard)

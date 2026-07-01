@@ -9,6 +9,7 @@ export * from './Auth';
 
 export * from './Reports';
 export * from './ProjectTemplate';
+export * from './Team';
 
 export interface Role {
   id: string;

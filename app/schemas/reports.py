@@ -27,6 +27,86 @@ class CustomerSummaryReportRow(BaseModel):
     total_quoted_hours: Decimal
     total_actual_hours: Decimal
     hours_variance: Decimal
+    designers_used: int = 0
+    teams_used: int = 0
+
+
+class ProjectsByTeamReportRow(BaseModel):
+    team_id: UUID
+    team_name: str
+    team_colour: str
+    project_count: int
+
+
+class HoursByTeamReportRow(BaseModel):
+    team_id: UUID
+    team_name: str
+    quoted_hours: Decimal
+    actual_hours: Decimal
+    hours_variance: Decimal
+
+
+class QuotedVsActualByTeamReportRow(BaseModel):
+    team_id: UUID
+    team_name: str
+    quoted_hours: Decimal
+    actual_hours: Decimal
+    variance_hours: Decimal
+    variance_percent: Decimal
+
+
+class TeamUtilizationReportRow(BaseModel):
+    team_id: UUID | None = None
+    team_name: str
+    member_count: int
+    allocated_hours: Decimal
+    actual_hours: Decimal
+    utilization_percent: Decimal
+
+
+class CustomerByTeamReportRow(BaseModel):
+    team_id: UUID
+    team_name: str
+    customer_id: UUID
+    customer_name: str
+    project_count: int
+
+
+class DesignerByTeamReportRow(BaseModel):
+    team_id: UUID
+    team_name: str
+    user_id: UUID
+    user_name: str
+    role_within_team: str | None = None
+
+
+class TeamProfitabilityReportRow(BaseModel):
+    team_id: UUID
+    team_name: str
+    quoted_hours: Decimal
+    actual_hours: Decimal
+    margin_hours: Decimal
+    margin_percent: Decimal
+
+
+class MonthlyTeamSummaryRow(BaseModel):
+    team_id: UUID
+    team_name: str
+    year: int
+    month: int
+    actual_hours: Decimal
+
+
+class TeamResourcePlanningRow(BaseModel):
+    team_id: UUID
+    team_name: str
+    team_colour: str
+    member_count: int
+    capacity_hours: Decimal
+    allocated_hours: Decimal
+    actual_hours: Decimal
+    remaining_capacity_hours: Decimal
+    utilization_percent: Decimal
 
 
 class ReportsBundle(BaseModel):

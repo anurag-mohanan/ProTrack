@@ -72,16 +72,21 @@ export { setAccessToken, clearAccessToken, getAccessToken };
 export interface ListParams {
   skip?: number;
   limit?: number;
-  [key: string]: string | number | boolean | undefined;
+  [key: string]: string | number | boolean | string[] | undefined;
 }
 
 export function buildQuery(params?: ListParams): string {
   if (!params) return '';
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== '') {
-      search.set(key, String(value));
+    if (value === undefined || value === '') return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item) search.append(key, String(item));
+      });
+      return;
     }
+    search.set(key, String(value));
   });
   const query = search.toString();
   return query ? `?${query}` : '';

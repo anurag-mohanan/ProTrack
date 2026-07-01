@@ -11,6 +11,7 @@ import TimelapseIcon from '@mui/icons-material/Timelapse';
 import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { fetchTeams } from '../api/lookups';
 import { useNavigate } from 'react-router-dom';
 import { dashboardQueryKeys, fetchDashboardSummary } from '../api/dashboard';
 import { ContentCard } from '../components/ui/cards';
@@ -38,12 +39,20 @@ export function DashboardPage() {
   const [projectStageFilter, setProjectStageFilter] = useState<ProjectStage | 'all'>(
     'all',
   );
+  const [teamFilter, setTeamFilter] = useState<string>('all');
 
   const stageParam = projectStageFilter === 'all' ? undefined : projectStageFilter;
+  const teamParam = teamFilter === 'all' ? undefined : teamFilter;
+
+  const teamsQuery = useQuery({
+    queryKey: ['lookups', 'teams'],
+    queryFn: fetchTeams,
+    staleTime: QUERY_STALE_TIMES.lookups,
+  });
 
   const dashboardQuery = useQuery({
-    queryKey: dashboardQueryKeys.summary(stageParam),
-    queryFn: () => fetchDashboardSummary(stageParam),
+    queryKey: dashboardQueryKeys.summary(stageParam, teamParam),
+    queryFn: () => fetchDashboardSummary(stageParam, teamParam),
     staleTime: QUERY_STALE_TIMES.dashboard,
     retry: 1,
   });
@@ -160,25 +169,42 @@ export function DashboardPage() {
 
       <Box sx={{ mb: 2.5 }}>
         <ContentCard>
-          <FormControl sx={{ minWidth: 220 }}>
-            <InputLabel>Project Stage</InputLabel>
-            <Select
-              label="Project Stage"
-              value={projectStageFilter}
-              onChange={(event) =>
-                setProjectStageFilter(event.target.value as ProjectStage | 'all')
-              }
-            >
-              <MenuItem value="all">All Stages</MenuItem>
-              {(
-                Object.entries(PROJECT_STAGE_LABELS) as Array<[ProjectStage, string]>
-              ).map(([value, label]) => (
-                <MenuItem key={value} value={value}>
-                  {label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <FormControl sx={{ minWidth: 220 }}>
+              <InputLabel>Project Stage</InputLabel>
+              <Select
+                label="Project Stage"
+                value={projectStageFilter}
+                onChange={(event) =>
+                  setProjectStageFilter(event.target.value as ProjectStage | 'all')
+                }
+              >
+                <MenuItem value="all">All Stages</MenuItem>
+                {(
+                  Object.entries(PROJECT_STAGE_LABELS) as Array<[ProjectStage, string]>
+                ).map(([value, label]) => (
+                  <MenuItem key={value} value={value}>
+                    {label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl sx={{ minWidth: 220 }}>
+              <InputLabel>Team</InputLabel>
+              <Select
+                label="Team"
+                value={teamFilter}
+                onChange={(event) => setTeamFilter(String(event.target.value))}
+              >
+                <MenuItem value="all">All Teams</MenuItem>
+                {(teamsQuery.data ?? []).map((team) => (
+                  <MenuItem key={team.id} value={team.id}>
+                    {team.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
         </ContentCard>
       </Box>
 

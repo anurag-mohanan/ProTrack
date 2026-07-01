@@ -75,6 +75,7 @@ def match_project_templates(
             customer_id=template.customer_id,
             is_default=template.is_default,
             is_customer_specific=template.customer_id is not None,
+            default_team_id=template.default_team_id,
             milestone_count=len(template.milestones),
         )
         for template in templates

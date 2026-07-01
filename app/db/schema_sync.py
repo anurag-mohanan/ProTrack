@@ -599,3 +599,34 @@ def ensure_timesheet_entry_work_category(engine: Engine) -> None:
                     """
                 )
             )
+
+
+def ensure_team_schema(engine: Engine) -> None:
+    """Add team tables and project/template team foreign keys."""
+    dialect = engine.dialect.name
+
+    if dialect == "sqlite":
+        if not _sqlite_has_column(engine, "projects", "team_id"):
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE projects ADD COLUMN team_id BLOB"))
+        if not _sqlite_has_column(engine, "project_templates", "default_team_id"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE project_templates ADD COLUMN default_team_id BLOB")
+                )
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE project_templates "
+                    "ADD COLUMN IF NOT EXISTS default_team_id UUID REFERENCES teams(id)"
+                )
+            )

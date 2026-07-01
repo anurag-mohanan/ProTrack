@@ -28,11 +28,15 @@ class TaskTypeFilters(BaseModel):
 
 class ProjectFilters(BaseModel):
     customer_id: UUID | None = None
+    customer_ids: list[UUID] | None = None
     customer_contact_id: UUID | None = None
     design_leader_id: UUID | None = None
     designer_id: UUID | None = None
     surfacer_id: UUID | None = None
     stream_id: UUID | None = None
+    team_id: UUID | None = None
+    team_ids: list[UUID] | None = None
+    project_type_id: UUID | None = None
     execution_status: ExecutionStatus | None = None
     project_stage: ProjectStage | None = None
     lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active

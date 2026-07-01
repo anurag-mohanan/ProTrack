@@ -54,6 +54,7 @@ class ProjectTemplateBase(BaseModel):
     description: str | None = None
     project_type_id: UUID
     customer_id: UUID | None = None
+    default_team_id: UUID | None = None
     is_default: bool = False
     is_active: bool = True
 
@@ -67,6 +68,7 @@ class ProjectTemplateUpdate(BaseModel):
     description: str | None = None
     project_type_id: UUID | None = None
     customer_id: UUID | None = None
+    default_team_id: UUID | None = None
     is_default: bool | None = None
     is_active: bool | None = None
     milestones: list[ProjectTemplateMilestoneCreate] | None = None
@@ -90,4 +92,5 @@ class ProjectTemplateMatchRead(BaseModel):
     customer_id: UUID | None = None
     is_default: bool
     is_customer_specific: bool = False
+    default_team_id: UUID | None = None
     milestone_count: int = 0

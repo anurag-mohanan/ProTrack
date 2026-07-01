@@ -115,16 +115,20 @@ def get_dashboard_summary(
     user: User,
     *,
     project_stage: ProjectStage | None = None,
+    team_id: UUID | None = None,
 ) -> DashboardSummary:
     visible = _visible_projects_clause()
     stage = ()
     if project_stage is not None:
         stage = (Project.project_stage == project_stage,)
+    team = ()
+    if team_id is not None:
+        team = (Project.team_id == team_id,)
     total_projects = int(
         db.scalar(
             select(func.count())
             .select_from(Project)
-            .where(*visible, *stage)
+            .where(*visible, *stage, *team)
         )
         or 0
     )
@@ -135,6 +139,7 @@ def get_dashboard_summary(
             .where(
                 *visible,
                 *stage,
+                *team,
                 Project.execution_status == ExecutionStatus.currently_being_worked_on,
             )
         )
@@ -147,6 +152,7 @@ def get_dashboard_summary(
             .where(
                 *visible,
                 *stage,
+                *team,
                 Project.execution_status == ExecutionStatus.on_hold,
             )
         )
@@ -159,6 +165,7 @@ def get_dashboard_summary(
             .where(
                 *visible,
                 *stage,
+                *team,
                 Project.execution_status == ExecutionStatus.cancelled,
             )
         )
@@ -171,6 +178,7 @@ def get_dashboard_summary(
             .where(
                 *visible,
                 *stage,
+                *team,
                 Project.execution_status == ExecutionStatus.completed,
             )
         )

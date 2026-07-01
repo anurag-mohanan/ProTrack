@@ -26,7 +26,7 @@ from app.core.permissions import (
 )
 from app.crud import project
 from app.crud.dashboard import get_project_dashboard
-from app.models.enums import ActivityAction, EntityType, ProjectLifecycleFilter
+from app.models.enums import ActivityAction, EntityType, ExecutionStatus, ProjectLifecycleFilter, ProjectStage
 from app.models.models import User
 from app.schemas.dashboard import ProjectDashboard
 from app.schemas.project import (
@@ -60,6 +60,34 @@ def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
     )
 
 
+def _normalize_project_filters(filters: ProjectFilters) -> tuple[ProjectLifecycleFilter, dict[str, object]]:
+    data = filters.model_dump()
+    lifecycle = data.pop("lifecycle", ProjectLifecycleFilter.active)
+
+    customer_ids = list(data.pop("customer_ids") or [])
+    if data.get("customer_id"):
+        cid = data.pop("customer_id")
+        if cid not in customer_ids:
+            customer_ids.append(cid)
+    else:
+        data.pop("customer_id", None)
+    if customer_ids:
+        data["customer_ids"] = customer_ids
+
+    team_ids = list(data.pop("team_ids") or [])
+    if data.get("team_id"):
+        tid = data.pop("team_id")
+        if tid not in team_ids:
+            team_ids.append(tid)
+    else:
+        data.pop("team_id", None)
+    if team_ids:
+        data["team_ids"] = team_ids
+
+    active_filters = {key: value for key, value in data.items() if value is not None}
+    return lifecycle, active_filters
+
+
 def _list_projects(
     db: Session,
     current_user: User,
@@ -75,12 +103,7 @@ def _list_projects(
                 detail="Insufficient permissions",
             )
 
-    active_filters = {
-        key: value
-        for key, value in filters.model_dump().items()
-        if value is not None
-    }
-    lifecycle = filters.lifecycle
+    lifecycle, active_filters = _normalize_project_filters(filters)
     role_name = get_role_name(db, current_user)
     assignment_clause = None
     if role_name not in READ_ALL_PROJECT_ROLES:
@@ -107,10 +130,37 @@ def _list_projects(
 def list_projects(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    filters: ProjectFilters = Depends(),
+    customer_id: UUID | None = None,
+    customer_ids: list[UUID] | None = Query(None),
+    customer_contact_id: UUID | None = None,
+    design_leader_id: UUID | None = None,
+    designer_id: UUID | None = None,
+    surfacer_id: UUID | None = None,
+    stream_id: UUID | None = None,
+    team_id: UUID | None = None,
+    team_ids: list[UUID] | None = Query(None),
+    project_type_id: UUID | None = None,
+    execution_status: ExecutionStatus | None = None,
+    project_stage: ProjectStage | None = None,
+    lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    filters = ProjectFilters(
+        customer_id=customer_id,
+        customer_ids=customer_ids,
+        customer_contact_id=customer_contact_id,
+        design_leader_id=design_leader_id,
+        designer_id=designer_id,
+        surfacer_id=surfacer_id,
+        stream_id=stream_id,
+        team_id=team_id,
+        team_ids=team_ids,
+        project_type_id=project_type_id,
+        execution_status=execution_status,
+        project_stage=project_stage,
+        lifecycle=lifecycle,
+    )
     return _list_projects(db, current_user, skip=skip, limit=limit, filters=filters)
 
 

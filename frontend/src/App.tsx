@@ -13,6 +13,7 @@ import ProjectTypesAdminPage from './pages/admin/ProjectTypesPage';
 import RolesAdminPage from './pages/admin/RolesPage';
 import StreamsAdminPage from './pages/admin/StreamsPage';
 import SystemSettingsPage from './pages/admin/SystemSettingsPage';
+import TeamsAdminPage from './pages/admin/TeamsPage';
 import TaskTypesAdminPage from './pages/admin/TaskTypesPage';
 import NonProductiveCodesAdminPage from './pages/admin/NonProductiveCodesPage';
 import UsersAdminPage from './pages/admin/UsersPage';
@@ -25,6 +26,7 @@ import { ProjectsPage } from './pages/ProjectsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TimesheetEntryPage } from './pages/TimesheetEntryPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
+import { ResourcePlanningPage } from './pages/ResourcePlanningPage';
 import { WorkloadPage } from './pages/WorkloadPage';
 import { AdminRoute } from './routes/AdminRoute';
 import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
@@ -74,12 +76,14 @@ export default function App() {
                       element={<TimesheetEntryPage />}
                     />
                     <Route path="/workload" element={<WorkloadPage />} />
+                    <Route path="/resource-planning" element={<ResourcePlanningPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
 
                     <Route element={<AdminRoute />}>
                       <Route path="/admin/users" element={<UsersAdminPage />} />
                       <Route path="/admin/customers" element={<CustomersAdminPage />} />
                       <Route path="/admin/contacts" element={<ContactsAdminPage />} />
+                      <Route path="/admin/teams" element={<TeamsAdminPage />} />
                       <Route path="/admin/streams" element={<StreamsAdminPage />} />
                       <Route path="/admin/task-types" element={<TaskTypesAdminPage />} />
                       <Route

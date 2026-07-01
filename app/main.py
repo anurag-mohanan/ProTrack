@@ -22,6 +22,7 @@ from app.db.schema_sync import (
     ensure_standard_task_types,
     ensure_timesheet_entry_work_category,
     ensure_timesheet_approval_comments,
+    ensure_team_schema,
     ensure_user_lifecycle_schema,
 )
 from app.db.session import engine, sessionmaker
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
     ensure_project_template_schema(engine)
     ensure_project_lifecycle_schema(engine)
     ensure_project_stage_and_execution_status(engine)
+    ensure_team_schema(engine)
     ensure_user_lifecycle_schema(engine)
     ensure_timesheet_entry_work_category(engine)
     ensure_non_productive_codes(engine)

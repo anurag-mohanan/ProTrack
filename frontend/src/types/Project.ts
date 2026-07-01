@@ -21,6 +21,7 @@ export interface Project extends Timestamped {
   designer_id: string | null;
   surfacer_id: string | null;
   stream_id: string;
+  team_id: string | null;
   project_type_id?: string | null;
   project_template_id?: string | null;
   code: string;
@@ -61,6 +62,7 @@ export interface ProjectCreate {
   designer_id?: string | null;
   surfacer_id?: string | null;
   stream_id: string;
+  team_id?: string | null;
   project_type_id: string;
   project_template_id?: string | null;
   code: string;
@@ -80,6 +82,8 @@ export interface ProjectUpdate {
   designer_id?: string | null;
   surfacer_id?: string | null;
   stream_id?: string;
+  team_id?: string | null;
+  project_type_id?: string;
   code?: string;
   quoted_hours?: number;
   due_date?: string;

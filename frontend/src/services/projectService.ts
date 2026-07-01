@@ -15,6 +15,13 @@ export interface ProjectListParams extends ListParams {
   execution_status?: ExecutionStatus;
   project_stage?: ProjectStage;
   lifecycle?: ProjectLifecycleFilter;
+  customer_ids?: string[];
+  team_ids?: string[];
+  team_id?: string;
+  project_type_id?: string;
+  design_leader_id?: string;
+  designer_id?: string;
+  surfacer_id?: string;
 }
 
 export async function getProjects(params?: ProjectListParams): Promise<Project[]> {
@@ -93,11 +100,7 @@ export async function permanentDeleteProject(projectId: string): Promise<void> {
 
 export const projectQueryKeys = {
   all: ['projects'] as const,
-  list: (params?: {
-    execution_status?: ExecutionStatus;
-    project_stage?: ProjectStage;
-    lifecycle?: ProjectLifecycleFilter;
-  }) =>
+  list: (params?: ProjectListParams) =>
     params ? (['projects', params] as const) : (['projects'] as const),
   archived: ['projects', 'archived'] as const,
   deleted: ['projects', 'deleted'] as const,

@@ -8,7 +8,7 @@ import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
 import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchContacts, fetchCustomers, fetchStreams, fetchUsers } from '../../api/lookups';
+import { fetchContacts, fetchCustomers, fetchStreams, fetchTeams, fetchUsers } from '../../api/lookups';
 import { fetchMatchingProjectTemplates, fetchProjectTypes } from '../../api/projectTemplates';
 import {
   createProject,
@@ -45,6 +45,7 @@ const emptyForm: ProjectFormValues = {
   stream_id: '',
   project_type_id: '',
   project_template_id: '',
+  team_id: '',
   code: '',
   quoted_hours: 40,
   due_date: '',
@@ -65,6 +66,7 @@ function projectToForm(project: Project): ProjectFormValues {
     stream_id: project.stream_id,
     project_type_id: project.project_type_id ?? '',
     project_template_id: project.project_template_id ?? '',
+    team_id: project.team_id ?? '',
     code: project.code,
     quoted_hours: project.quoted_hours,
     due_date: project.due_date,
@@ -117,6 +119,12 @@ export function ProjectFormDialog({
     enabled: open,
   });
 
+  const teamsQuery = useQuery({
+    queryKey: ['teams'],
+    queryFn: fetchTeams,
+    enabled: open,
+  });
+
   const projectTypesQuery = useQuery({
     queryKey: ['project-types'],
     queryFn: fetchProjectTypes,
@@ -163,6 +171,7 @@ export function ProjectFormDialog({
           designer_id: payload.designer_id,
           surfacer_id: payload.surfacer_id,
           stream_id: payload.stream_id,
+          team_id: payload.team_id || null,
           quoted_hours: payload.quoted_hours,
           due_date: payload.due_date,
           notes: payload.notes,
@@ -172,7 +181,10 @@ export function ProjectFormDialog({
         return updateProject(project.id, updatePayload);
       }
 
-      return createProject(payload);
+      return createProject({
+        ...payload,
+        team_id: payload.team_id || null,
+      });
     },
     onSuccess: (savedProject) => {
       invalidateProjectCalculationQueries(queryClient, savedProject.id);
@@ -346,44 +358,71 @@ export function ProjectFormDialog({
         </FormSection>
 
         {!isEdit ? (
-          <FormSection
-            title="Project Template"
-            subtitle="Milestone template applied at creation"
-            icon={ViewListOutlinedIcon}
-          >
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormSelect
-                label="Project Type"
-                required
-                value={form.project_type_id}
-                options={(projectTypesQuery.data ?? []).map((projectType) => ({
-                  value: projectType.id,
-                  label: projectType.name,
-                }))}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    project_type_id: String(event.target.value),
-                    project_template_id: '',
-                  })
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormSelect
-                label="Template"
-                required
-                disabled={!form.customer_id || !form.project_type_id}
-                value={form.project_template_id ?? ''}
-                options={matchingTemplates.map((template) => ({
-                  value: template.id,
-                  label: `${template.name}${template.is_customer_specific ? ' (Customer)' : ''}${template.is_default ? ' (Default)' : ''}`,
-                }))}
-                onChange={(event) =>
-                  setForm({ ...form, project_template_id: String(event.target.value) })
-                }
-              />
-            </Grid>
+          <>
+            <FormSection title="Project Type" icon={ViewListOutlinedIcon}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormSelect
+                  label="Project Type"
+                  required
+                  value={form.project_type_id}
+                  options={(projectTypesQuery.data ?? []).map((projectType) => ({
+                    value: projectType.id,
+                    label: projectType.name,
+                  }))}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      project_type_id: String(event.target.value),
+                      project_template_id: '',
+                    })
+                  }
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormSelect
+                  label="Team"
+                  searchable
+                  value={form.team_id ?? ''}
+                  options={(teamsQuery.data ?? []).map((team) => ({
+                    value: team.id,
+                    label: team.name,
+                  }))}
+                  onChange={(event) =>
+                    setForm({ ...form, team_id: String(event.target.value) })
+                  }
+                />
+              </Grid>
+            </FormSection>
+
+            <FormSection
+              title="Project Template"
+              subtitle="Milestone template applied at creation"
+              icon={ViewListOutlinedIcon}
+            >
+              <Grid size={{ xs: 12 }}>
+                <FormSelect
+                  label="Template"
+                  required
+                  disabled={!form.customer_id || !form.project_type_id}
+                  value={form.project_template_id ?? ''}
+                  options={matchingTemplates.map((template) => ({
+                    value: template.id,
+                    label: `${template.name}${template.is_customer_specific ? ' (Customer)' : ''}${template.is_default ? ' (Default)' : ''}`,
+                  }))}
+                  onChange={(event) => {
+                    const templateId = String(event.target.value);
+                    const template = matchingTemplates.find((item) => item.id === templateId);
+                    setForm({
+                      ...form,
+                      project_template_id: templateId,
+                      team_id:
+                        form.team_id ||
+                        template?.default_team_id ||
+                        form.team_id,
+                    });
+                  }}
+                />
+              </Grid>
             {selectedTemplate ? (
               <Grid size={{ xs: 12 }}>
                 <Typography variant="body2" color="text.secondary">
@@ -392,7 +431,8 @@ export function ProjectFormDialog({
                 </Typography>
               </Grid>
             ) : null}
-          </FormSection>
+            </FormSection>
+          </>
         ) : null}
 
         <FormSection title="Team" subtitle="Design leadership and assignments" icon={GroupsOutlinedIcon}>

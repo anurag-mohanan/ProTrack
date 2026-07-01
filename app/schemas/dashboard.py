@@ -88,6 +88,7 @@ class DashboardKpis(BaseModel):
     pending_timesheets: int = 0
     designer_utilization_percent: Decimal = Decimal("0.00")
     billable_hours_this_month: Decimal = Decimal("0")
+    np_hours_this_month: Decimal = Decimal("0")
 
 
 class ProjectAttentionRow(BaseModel):

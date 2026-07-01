@@ -3,32 +3,38 @@ from app.api.deps import APIRouter, Depends, Query, Session, get_db
 from app.core.permissions import can_view_deleted_projects
 from app.crud.reports import (
     get_billable_utilization_report,
+    get_billable_vs_non_billable_report,
     get_customer_summary_report,
     get_designer_productivity_report,
     get_milestone_completion_report,
     get_monthly_np_trends_report,
     get_non_productive_hours_report,
+    get_np_hours_by_designer_report,
     get_productive_hours_report,
     get_project_delay_report,
     get_project_hours_report,
     get_reports_bundle,
     get_timesheet_approval_report,
+    get_top_np_activities_report,
 )
 from app.crud.dashboard import get_designer_workload
 from app.models.models import User
 from app.schemas.dashboard import DesignerWorkload
 from app.schemas.reports import (
     BillableUtilizationReportRow,
+    BillableVsNonBillableReportRow,
     CustomerSummaryReportRow,
     DesignerProductivityReportRow,
     MilestoneCompletionReportRow,
     MonthlyNpTrendReportRow,
     NonProductiveHoursReportRow,
+    NpHoursByDesignerReportRow,
     ProductiveHoursReportRow,
     ProjectDelayReportRow,
     ProjectHoursReportRow,
     ReportsBundle,
     TimesheetApprovalReportRow,
+    TopNpActivityReportRow,
 )
 
 router = APIRouter(
@@ -125,3 +131,18 @@ def billable_utilization_report(db: Session = Depends(get_db)):
 @router.get("/monthly-np-trends", response_model=list[MonthlyNpTrendReportRow])
 def monthly_np_trends_report(db: Session = Depends(get_db)):
     return get_monthly_np_trends_report(db)
+
+
+@router.get("/np-hours-by-designer", response_model=list[NpHoursByDesignerReportRow])
+def np_hours_by_designer_report(db: Session = Depends(get_db)):
+    return get_np_hours_by_designer_report(db)
+
+
+@router.get("/billable-vs-non-billable", response_model=BillableVsNonBillableReportRow)
+def billable_vs_non_billable_report(db: Session = Depends(get_db)):
+    return get_billable_vs_non_billable_report(db)
+
+
+@router.get("/top-np-activities", response_model=list[TopNpActivityReportRow])
+def top_np_activities_report(db: Session = Depends(get_db)):
+    return get_top_np_activities_report(db)

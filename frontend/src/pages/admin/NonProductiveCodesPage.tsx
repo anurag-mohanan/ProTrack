@@ -10,12 +10,18 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
+  Stack,
   Switch,
   TextField,
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingState } from '../../components/common/LoadingState';
@@ -46,24 +52,74 @@ export default function NonProductiveCodesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<NonProductiveCode | null>(null);
   const [form, setForm] = useState<NpCodeFormState>(emptyForm);
+  const [showArchived, setShowArchived] = useState(true);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await nonProductiveCodesApi.list({ limit: 500 });
+      const data = await nonProductiveCodesApi.list({ limit: 500, include_archived: showArchived });
       setRows(
-        [...data].sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code)),
+        [...data]
+          .filter((row) => showArchived || !row.is_archived)
+          .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code)),
       );
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [showArchived, showError]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const updateRow = async (
+    row: NonProductiveCode,
+    patch: Partial<NonProductiveCode>,
+    successMessage: string,
+  ) => {
+    try {
+      await nonProductiveCodesApi.update(row.id, patch);
+      showSuccess(successMessage);
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    }
+  };
+
+  const moveRow = async (row: NonProductiveCode, direction: 'up' | 'down') => {
+    const sorted = [...rows].sort(
+      (a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code),
+    );
+    const index = sorted.findIndex((item) => item.id === row.id);
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    const neighbor = sorted[swapIndex];
+    if (neighbor == null) return;
+
+    setSaving(true);
+    try {
+      await nonProductiveCodesApi.update(row.id, { sort_order: neighbor.sort_order });
+      await nonProductiveCodesApi.update(neighbor.id, { sort_order: row.sort_order });
+      showSuccess('Sort order updated');
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (row: NonProductiveCode) => {
+    if (!window.confirm(`Delete NP code ${row.code}? This cannot be undone.`)) return;
+    try {
+      await nonProductiveCodesApi.remove(row.id);
+      showSuccess('NP code deleted');
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    }
+  };
 
   const columns = useMemo<GridColDef<NonProductiveCode>[]>(
     () => [
@@ -83,33 +139,89 @@ export default function NonProductiveCodesPage() {
         ),
       },
       {
+        field: 'is_archived',
+        headerName: 'Archived',
+        width: 110,
+        renderCell: (params) => (
+          <Chip
+            size="small"
+            label={params.value ? 'Archived' : 'Current'}
+            color={params.value ? 'warning' : 'default'}
+          />
+        ),
+      },
+      {
         field: 'actions',
         headerName: '',
-        width: 70,
+        width: 220,
         sortable: false,
         filterable: false,
         renderCell: (params) => (
-          <Tooltip title="Edit">
-            <IconButton
-              size="small"
-              onClick={() => {
-                setEditing(params.row);
-                setForm({
-                  code: params.row.code,
-                  description: params.row.description,
-                  sort_order: String(params.row.sort_order),
-                  is_active: params.row.is_active,
-                });
-                setFormOpen(true);
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <Stack direction="row" spacing={0.5}>
+            <Tooltip title="Move up">
+              <span>
+                <IconButton size="small" disabled={saving} onClick={() => void moveRow(params.row, 'up')}>
+                  <ArrowUpwardIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Move down">
+              <span>
+                <IconButton size="small" disabled={saving} onClick={() => void moveRow(params.row, 'down')}>
+                  <ArrowDownwardIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Edit">
+              <IconButton
+                size="small"
+                onClick={() => {
+                  setEditing(params.row);
+                  setForm({
+                    code: params.row.code,
+                    description: params.row.description,
+                    sort_order: String(params.row.sort_order),
+                    is_active: params.row.is_active,
+                  });
+                  setFormOpen(true);
+                }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            {params.row.is_archived ? (
+              <Tooltip title="Restore">
+                <IconButton
+                  size="small"
+                  onClick={() =>
+                    void updateRow(params.row, { is_archived: false }, 'NP code restored')
+                  }
+                >
+                  <UnarchiveIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <Tooltip title="Archive">
+                <IconButton
+                  size="small"
+                  onClick={() =>
+                    void updateRow(params.row, { is_archived: true }, 'NP code archived')
+                  }
+                >
+                  <ArchiveIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip title="Delete">
+              <IconButton size="small" color="error" onClick={() => void handleDelete(params.row)}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
         ),
       },
     ],
-    [],
+    [saving],
   );
 
   const openCreate = () => {
@@ -156,6 +268,18 @@ export default function NonProductiveCodesPage() {
           </Button>
         }
       />
+
+      <Box sx={{ mb: 2 }}>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={showArchived}
+              onChange={(event) => setShowArchived(event.target.checked)}
+            />
+          }
+          label="Show archived codes"
+        />
+      </Box>
 
       <Card sx={{ p: 2 }}>
         <DataGrid

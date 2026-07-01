@@ -9,16 +9,19 @@ from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, Time
 from app.models.models import Customer, Milestone, NonProductiveCode, Project, TaskType, Timesheet, TimesheetEntry, User
 from app.schemas.reports import (
     BillableUtilizationReportRow,
+    BillableVsNonBillableReportRow,
     CustomerSummaryReportRow,
     DesignerProductivityReportRow,
     MilestoneCompletionReportRow,
     MonthlyNpTrendReportRow,
     NonProductiveHoursReportRow,
+    NpHoursByDesignerReportRow,
     ProductiveHoursReportRow,
     ProjectDelayReportRow,
     ProjectHoursReportRow,
     ReportsBundle,
     TimesheetApprovalReportRow,
+    TopNpActivityReportRow,
 )
 from app.services.project_calculation_service import calculate_hours
 
@@ -372,6 +375,86 @@ def get_monthly_np_trends_report(db: Session) -> list[MonthlyNpTrendReportRow]:
             total_np_hours=_round_hours(total),
         )
         for month, total in sorted(grouped.items())
+    ]
+
+
+def get_np_hours_by_designer_report(db: Session) -> list[NpHoursByDesignerReportRow]:
+    rows = db.execute(
+        select(User.id, User.first_name, User.last_name, func.coalesce(func.sum(TimesheetEntry.hours), 0))
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .join(User, Timesheet.user_id == User.id)
+        .where(
+            TimesheetEntry.work_category == WorkCategory.non_productive,
+            Timesheet.status == TimesheetStatus.approved,
+        )
+        .group_by(User.id, User.first_name, User.last_name)
+    ).all()
+    return [
+        NpHoursByDesignerReportRow(
+            user_id=row[0],
+            designer_name=f"{row[1]} {row[2]}",
+            total_np_hours=_round_hours(_decimal(row[3])),
+        )
+        for row in rows
+        if _decimal(row[3]) > 0
+    ]
+
+
+def get_billable_vs_non_billable_report(db: Session) -> BillableVsNonBillableReportRow:
+    entries = db.scalars(
+        select(TimesheetEntry)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(Timesheet.status == TimesheetStatus.approved)
+    ).all()
+    billable = non_billable = np_hours = Decimal("0")
+    for entry in entries:
+        hours = _decimal(entry.hours)
+        if entry.work_category == WorkCategory.non_productive:
+            np_hours += hours
+        elif entry.is_billable:
+            billable += hours
+        else:
+            non_billable += hours
+    total = billable + non_billable + np_hours
+    if total == 0:
+        return BillableVsNonBillableReportRow(
+            billable_hours=Decimal("0"),
+            non_billable_hours=Decimal("0"),
+            np_hours=Decimal("0"),
+            billable_percent=Decimal("0.00"),
+            non_billable_percent=Decimal("0.00"),
+        )
+    return BillableVsNonBillableReportRow(
+        billable_hours=_round_hours(billable),
+        non_billable_hours=_round_hours(non_billable),
+        np_hours=_round_hours(np_hours),
+        billable_percent=_round_hours((billable / total) * Decimal("100")),
+        non_billable_percent=_round_hours(((non_billable + np_hours) / total) * Decimal("100")),
+    )
+
+
+def get_top_np_activities_report(db: Session, *, limit: int = 10) -> list[TopNpActivityReportRow]:
+    rows = db.execute(
+        select(
+            NonProductiveCode.code,
+            NonProductiveCode.description,
+            func.coalesce(func.sum(TimesheetEntry.hours), 0),
+            func.count(TimesheetEntry.id),
+        )
+        .join(TimesheetEntry, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
+        .where(TimesheetEntry.work_category == WorkCategory.non_productive)
+        .group_by(NonProductiveCode.code, NonProductiveCode.description)
+        .order_by(func.sum(TimesheetEntry.hours).desc())
+        .limit(limit)
+    ).all()
+    return [
+        TopNpActivityReportRow(
+            non_productive_code=row[0],
+            description=row[1],
+            total_hours=_round_hours(_decimal(row[2])),
+            entry_count=int(row[3]),
+        )
+        for row in rows
     ]
 
 

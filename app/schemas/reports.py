@@ -101,3 +101,24 @@ class BillableUtilizationReportRow(BaseModel):
 class MonthlyNpTrendReportRow(BaseModel):
     month: str
     total_np_hours: Decimal
+
+
+class NpHoursByDesignerReportRow(BaseModel):
+    user_id: UUID
+    designer_name: str
+    total_np_hours: Decimal
+
+
+class BillableVsNonBillableReportRow(BaseModel):
+    billable_hours: Decimal
+    non_billable_hours: Decimal
+    np_hours: Decimal
+    billable_percent: Decimal
+    non_billable_percent: Decimal
+
+
+class TopNpActivityReportRow(BaseModel):
+    non_productive_code: str
+    description: str
+    total_hours: Decimal
+    entry_count: int

@@ -66,6 +66,7 @@ class ImportSummary(BaseModel):
     projects_imported: int = 0
     projects_updated: int = 0
     projects_skipped: int = 0
+    np_entries_imported: int = 0
     customers_created: int = 0
     users_created: int = 0
     milestones_created: int = 0

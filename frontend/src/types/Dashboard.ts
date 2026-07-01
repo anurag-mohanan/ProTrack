@@ -41,6 +41,7 @@ export interface DashboardKpis {
   pending_timesheets: number;
   designer_utilization_percent: number;
   billable_hours_this_month: number;
+  np_hours_this_month: number;
 }
 
 export interface ProjectAttentionRow {

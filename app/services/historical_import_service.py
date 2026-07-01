@@ -20,8 +20,20 @@ from sqlalchemy.orm import Session
 from app.core.permissions import DESIGNER, PROJECT_STAFF_ROLES
 from app.core.security import hash_password
 from app.crud.project import DEFAULT_PROJECT_MILESTONES
-from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus
-from app.models.models import Contact, Customer, Milestone, Project, ProjectType, Role, Stream, User
+from app.models.enums import MilestoneStatus, ProjectHealth, ProjectStatus, TimesheetStatus, WorkCategory
+from app.models.models import (
+    Contact,
+    Customer,
+    Milestone,
+    NonProductiveCode,
+    Project,
+    ProjectType,
+    Role,
+    Stream,
+    Timesheet,
+    TimesheetEntry,
+    User,
+)
 from app.services.project_template_service import (
     create_milestones_from_template,
     resolve_template_for_import,
@@ -57,6 +69,10 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "due_date": ("due date", "due", "target date"),
     "design_leader": ("design leader", "design lead", "leader"),
     "code": ("project code", "code", "job code"),
+    "np_code": ("np code", "non productive code", "non-productive code", "np"),
+    "hours": ("hours", "np hours", "time", "logged hours"),
+    "entry_date": ("entry date", "work date", "timesheet date", "date"),
+    "notes": ("notes", "comments"),
 }
 
 STATUS_MAP: dict[str, ProjectStatus] = {
@@ -80,6 +96,10 @@ STATUS_MAP: dict[str, ProjectStatus] = {
 }
 
 DEFAULT_IMPORT_ARCHIVE_DAYS = 365
+
+KNOWN_NP_CODES = frozenset(
+    {"C500", "C501", "C502", "C503", "C504", "C505", "C506", "EST001"}
+)
 
 
 def _should_import_as_archived(
@@ -147,8 +167,20 @@ class ParsedImportRow:
     due_date: date | None = None
     design_leader: str | None = None
     code: str | None = None
+    np_code: str | None = None
+    entry_date: date | None = None
+    hours: Decimal | None = None
+    notes: str | None = None
+    is_np_row: bool = False
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+
+
+def _normalize_np_code(value: str | None) -> str | None:
+    if not value:
+        return None
+    code = value.strip().upper()
+    return code if code in KNOWN_NP_CODES else None
 
 
 def _normalize_header(value: Any) -> str:
@@ -236,10 +268,13 @@ def _detect_header_map(sheet) -> tuple[int, dict[str, int]]:
                 if header in aliases or any(alias in header for alias in aliases):
                     header_map[field_name] = col_idx
                     break
-        if "tool_number" in header_map and "customer" in header_map:
+        if ("tool_number" in header_map and "customer" in header_map) or (
+            "np_code" in header_map and "designer" in header_map
+        ):
             return row_idx, header_map
     raise ValueError(
-        "Could not locate a header row. Expected columns such as Tool No. and Customer."
+        "Could not locate a header row. Expected project columns (Tool No., Customer) "
+        "or NP columns (NP Code, Designer)."
     )
 
 
@@ -256,6 +291,37 @@ def _is_blank_row(sheet, row_idx: int, header_map: dict[str, int]) -> bool:
         if value is not None and str(value).strip():
             return False
     return True
+
+
+def _week_start(entry_date: date) -> date:
+    return entry_date - timedelta(days=entry_date.weekday())
+
+
+def _validate_np_row(row: ParsedImportRow) -> None:
+    row.errors = [message for message in row.errors if message not in {
+        "Tool Number is required.",
+        "Customer is required.",
+        "Quoted Hours is missing or invalid.",
+    }]
+
+    if not row.designer:
+        row.errors.append("Designer is required for non-productive entries.")
+
+    hours = row.hours or row.actual_hours or row.quoted_hours
+    if hours is None or hours <= 0:
+        row.errors.append("Hours are missing or invalid for non-productive entries.")
+    else:
+        row.hours = hours
+
+    if row.entry_date is None:
+        row.entry_date = row.due_date or date.today()
+
+
+def _validate_project_row(row: ParsedImportRow) -> None:
+    if not row.tool_number:
+        row.errors.append("Tool Number is required.")
+    if not row.customer:
+        row.errors.append("Customer is required.")
 
 
 def parse_workbook(file_path: Path) -> list[ParsedImportRow]:
@@ -287,12 +353,35 @@ def parse_workbook(file_path: Path) -> list[ParsedImportRow]:
                 _read_cell(sheet, row_idx, header_map, "design_leader")
             )
             row.code = _cell_text(_read_cell(sheet, row_idx, header_map, "code"))
+            row.np_code = _normalize_np_code(
+                _cell_text(_read_cell(sheet, row_idx, header_map, "np_code"))
+            )
+            row.notes = _cell_text(_read_cell(sheet, row_idx, header_map, "notes"))
 
             quoted = _parse_decimal(_read_cell(sheet, row_idx, header_map, "quoted_hours"))
             actual = _parse_decimal(_read_cell(sheet, row_idx, header_map, "actual_hours"))
+            row.hours = _parse_decimal(_read_cell(sheet, row_idx, header_map, "hours"))
             progress = _parse_decimal(_read_cell(sheet, row_idx, header_map, "progress"))
             due_date = _parse_date(_read_cell(sheet, row_idx, header_map, "due_date"))
+            row.entry_date = _parse_date(_read_cell(sheet, row_idx, header_map, "entry_date"))
             status = _parse_status(_read_cell(sheet, row_idx, header_map, "status"))
+
+            if row.np_code is None and row.tool_number:
+                row.np_code = _normalize_np_code(row.tool_number)
+
+            if row.np_code:
+                row.is_np_row = True
+                if actual is not None and row.hours is None:
+                    row.hours = actual
+                if quoted is not None and row.hours is None:
+                    row.hours = quoted
+                if row.entry_date is None and due_date is not None:
+                    row.entry_date = due_date
+                if row.due_date is None and due_date is not None:
+                    row.due_date = due_date
+                _validate_np_row(row)
+                parsed_rows.append(row)
+                continue
 
             if quoted is None:
                 row.errors.append("Quoted Hours is missing or invalid.")
@@ -307,19 +396,13 @@ def parse_workbook(file_path: Path) -> list[ParsedImportRow]:
 
             if due_date is not None:
                 row.due_date = due_date
-            elif due_date is False:
-                row.errors.append("Due Date is invalid.")
 
             invalid_date = _read_cell(sheet, row_idx, header_map, "due_date")
             if invalid_date not in (None, "") and row.due_date is None:
                 row.errors.append("Due Date is invalid.")
 
             row.status = status
-
-            if not row.tool_number:
-                row.errors.append("Tool Number is required.")
-            if not row.customer:
-                row.errors.append("Customer is required.")
+            _validate_project_row(row)
 
             parsed_rows.append(row)
         return parsed_rows
@@ -361,6 +444,8 @@ def _preview_from_row(
 
     messages = list(row.errors)
     messages.extend(row.warnings)
+    if row.is_np_row and row.np_code:
+        messages.insert(0, f"Non-productive entry ({row.np_code})")
 
     return ImportRowPreview(
         row_number=row.row_number,
@@ -397,11 +482,13 @@ def analyze_upload(db: Session, upload_id: str) -> ImportUploadResponse:
     missing_customer_rows = missing_designer_rows = 0
 
     for row in rows:
-        existing = (
-            _find_project_by_tool_number(db, row.tool_number)
-            if row.tool_number and not row.errors
-            else None
-        )
+        existing = None
+        if not row.is_np_row:
+            existing = (
+                _find_project_by_tool_number(db, row.tool_number)
+                if row.tool_number and not row.errors
+                else None
+            )
         item = _preview_from_row(row, existing_project_id=existing.id if existing else None)
         preview.append(item)
 
@@ -624,6 +711,89 @@ def _apply_milestone_history(
         db.add(milestone)
 
 
+def _resolve_np_code(db: Session, code: str) -> NonProductiveCode:
+    np_code = db.scalar(select(NonProductiveCode).where(NonProductiveCode.code == code))
+    if np_code is None:
+        raise ValueError(f"NP code {code} is not configured.")
+    return np_code
+
+
+def _get_or_create_approved_timesheet(db: Session, user_id: uuid.UUID, week_start: date) -> Timesheet:
+    timesheet = db.scalar(
+        select(Timesheet).where(
+            Timesheet.user_id == user_id,
+            Timesheet.week_start == week_start,
+        )
+    )
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if timesheet is None:
+        timesheet = Timesheet(
+            user_id=user_id,
+            week_start=week_start,
+            status=TimesheetStatus.approved,
+            approved_at=now,
+        )
+        db.add(timesheet)
+        db.flush()
+        return timesheet
+
+    if timesheet.status != TimesheetStatus.approved:
+        timesheet.status = TimesheetStatus.approved
+        timesheet.approved_at = now
+        db.add(timesheet)
+        db.flush()
+    return timesheet
+
+
+def _create_np_entry_from_row(
+    db: Session,
+    row: ParsedImportRow,
+    *,
+    summary: ImportSummary,
+) -> tuple[str, ImportRowPreview]:
+    if row.errors:
+        return "error", _preview_from_row(row)
+
+    assert row.np_code is not None
+    assert row.hours is not None
+    assert row.entry_date is not None
+
+    designer = _resolve_or_create_user(db, row.designer, summary=summary)
+    if designer is None:
+        preview = _preview_from_row(row)
+        preview.status_label = ImportRowStatus.error
+        preview.messages.append("Designer could not be resolved.")
+        return "error", preview
+
+    np_code = _resolve_np_code(db, row.np_code)
+    customer = None
+    if row.customer:
+        customer = _resolve_or_create_customer(db, row.customer, summary)
+
+    week_start = _week_start(row.entry_date)
+    timesheet = _get_or_create_approved_timesheet(db, designer.id, week_start)
+    entry = TimesheetEntry(
+        timesheet_id=timesheet.id,
+        work_category=WorkCategory.non_productive,
+        non_productive_code_id=np_code.id,
+        project_id=None,
+        milestone_id=None,
+        customer_id=customer.id if customer else None,
+        task_type_id=None,
+        is_billable=False,
+        entry_date=row.entry_date,
+        hours=row.hours,
+        description=row.notes or row.part_description,
+    )
+    db.add(entry)
+    db.commit()
+
+    preview = _preview_from_row(row)
+    preview.status_label = ImportRowStatus.imported
+    preview.messages.append(f"Imported {row.hours} NP hours for {row.np_code}.")
+    return "imported", preview
+
+
 def _create_project_from_row(
     db: Session,
     row: ParsedImportRow,
@@ -767,6 +937,39 @@ def run_import(
     error_log: list[ImportRowPreview] = []
 
     for index, row in enumerate(rows, start=1):
+        if row.is_np_row:
+            if dry_run:
+                preview = _preview_from_row(row)
+                if preview.status_label == ImportRowStatus.error:
+                    summary.errors += 1
+                    error_log.append(preview)
+                else:
+                    summary.np_entries_imported += 1
+                    preview.status_label = ImportRowStatus.imported
+                    preview.messages.append("Non-productive entry would be imported.")
+                if progress_callback:
+                    progress_callback(index, len(rows))
+                continue
+
+            try:
+                result, preview = _create_np_entry_from_row(db, row, summary=summary)
+                if result == "imported":
+                    summary.np_entries_imported += 1
+                elif result == "error":
+                    summary.errors += 1
+                    error_log.append(preview)
+            except Exception as exc:
+                db.rollback()
+                summary.errors += 1
+                preview = _preview_from_row(row)
+                preview.status_label = ImportRowStatus.error
+                preview.messages.append(str(exc))
+                error_log.append(preview)
+
+            if progress_callback:
+                progress_callback(index, len(rows))
+            continue
+
         existing = (
             _find_project_by_tool_number(db, row.tool_number)
             if row.tool_number and not row.errors

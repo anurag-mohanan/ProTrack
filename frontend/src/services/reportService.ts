@@ -1,11 +1,14 @@
 import type {
   BillableUtilizationReportRow,
+  BillableVsNonBillableReportRow,
   CustomerSummaryReportRow,
   DesignerWorkload,
   MonthlyNpTrendReportRow,
   NonProductiveHoursReportRow,
+  NpHoursByDesignerReportRow,
   ProductiveHoursReportRow,
   ProjectHoursReportRow,
+  TopNpActivityReportRow,
 } from '../types';
 import { apiClient, buildQuery } from '../api/client';
 
@@ -72,6 +75,27 @@ export async function getMonthlyNpTrendsReport(): Promise<MonthlyNpTrendReportRo
   return data;
 }
 
+export async function getNpHoursByDesignerReport(): Promise<NpHoursByDesignerReportRow[]> {
+  const { data } = await apiClient.get<NpHoursByDesignerReportRow[]>(
+    '/reports/np-hours-by-designer',
+  );
+  return data;
+}
+
+export async function getBillableVsNonBillableReport(): Promise<BillableVsNonBillableReportRow> {
+  const { data } = await apiClient.get<BillableVsNonBillableReportRow>(
+    '/reports/billable-vs-non-billable',
+  );
+  return data;
+}
+
+export async function getTopNpActivitiesReport(): Promise<TopNpActivityReportRow[]> {
+  const { data } = await apiClient.get<TopNpActivityReportRow[]>(
+    '/reports/top-np-activities',
+  );
+  return data;
+}
+
 export const reportQueryKeys = {
   all: ['reports'] as const,
   projectHours: (options?: ReportOptions) =>
@@ -83,4 +107,7 @@ export const reportQueryKeys = {
   nonProductiveHours: ['reports', 'non-productive-hours'] as const,
   billableUtilization: ['reports', 'billable-utilization'] as const,
   monthlyNpTrends: ['reports', 'monthly-np-trends'] as const,
+  npHoursByDesigner: ['reports', 'np-hours-by-designer'] as const,
+  billableVsNonBillable: ['reports', 'billable-vs-non-billable'] as const,
+  topNpActivities: ['reports', 'top-np-activities'] as const,
 };

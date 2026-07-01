@@ -52,4 +52,25 @@ export interface MonthlyNpTrendReportRow {
   total_np_hours: number;
 }
 
+export interface NpHoursByDesignerReportRow {
+  user_id: string;
+  designer_name: string;
+  total_np_hours: number;
+}
+
+export interface BillableVsNonBillableReportRow {
+  billable_hours: number;
+  non_billable_hours: number;
+  np_hours: number;
+  billable_percent: number;
+  non_billable_percent: number;
+}
+
+export interface TopNpActivityReportRow {
+  non_productive_code: string;
+  description: string;
+  total_hours: number;
+  entry_count: number;
+}
+
 export type { DesignerWorkload };

@@ -329,13 +329,14 @@ def ensure_user_lifecycle_schema(engine: Engine) -> None:
 
 
 NP_CODE_SEED: tuple[tuple[str, str, int], ...] = (
-    ("C500", "Lack of Work", 1),
-    ("C501", "IT / Software Issues", 2),
+    ("C500", "Lack of Work / Leave / Holiday", 1),
+    ("C501", "IT Issues", 2),
     ("C502", "Meetings", 3),
-    ("C503", "File Upload / Download", 4),
+    ("C503", "Upload / Download", 4),
     ("C504", "Training", 5),
-    ("C505", "Administration", 6),
-    ("EST001", "Estimation", 7),
+    ("C505", "Infra Issues", 6),
+    ("C506", "Internal Work", 7),
+    ("EST001", "Estimation", 8),
 )
 
 STANDARD_TASK_TYPE_NAMES: tuple[tuple[str, str], ...] = (
@@ -350,17 +351,42 @@ STANDARD_TASK_TYPE_NAMES: tuple[tuple[str, str], ...] = (
 def ensure_non_productive_codes(engine: Engine) -> None:
     session = sessionmaker(bind=engine)()
     try:
-        existing = session.scalar(select(func.count()).select_from(NonProductiveCode)) or 0
-        if int(existing) == 0:
-            for code, description, sort_order in NP_CODE_SEED:
+        if engine.dialect.name == "sqlite":
+            with engine.begin() as connection:
+                columns = {
+                    row[1]
+                    for row in connection.execute(text("PRAGMA table_info(non_productive_codes)")).fetchall()
+                }
+                if "is_archived" not in columns:
+                    connection.execute(
+                        text(
+                            "ALTER TABLE non_productive_codes "
+                            "ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0"
+                        )
+                    )
+        existing_by_code = {
+            row.code: row
+            for row in session.scalars(select(NonProductiveCode)).all()
+        }
+        changed = False
+        for code, description, sort_order in NP_CODE_SEED:
+            row = existing_by_code.get(code)
+            if row is None:
                 session.add(
                     NonProductiveCode(
                         code=code,
                         description=description,
                         sort_order=sort_order,
                         is_active=True,
+                        is_archived=False,
                     )
                 )
+                changed = True
+            elif row.description != description or row.sort_order != sort_order:
+                row.description = description
+                row.sort_order = sort_order
+                changed = True
+        if changed:
             session.commit()
     finally:
         session.close()

@@ -41,6 +41,7 @@ export interface NonProductiveCode extends Timestamped {
   code: string;
   description: string;
   is_active: boolean;
+  is_archived: boolean;
   sort_order: number;
 }
 
@@ -55,5 +56,6 @@ export interface NonProductiveCodeUpdate {
   code?: string;
   description?: string;
   is_active?: boolean;
+  is_archived?: boolean;
   sort_order?: number;
 }

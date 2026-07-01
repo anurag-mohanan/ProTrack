@@ -11,11 +11,22 @@ from app.crud.dashboard import (
 )
 from app.models.models import User
 from app.schemas.dashboard import (
+    DashboardKpis,
+    DashboardMyTasks,
     DashboardOverview,
     DashboardSummary,
     DesignerWorkload,
+    ProjectAttentionRow,
     ProjectDashboard,
     WorkflowDashboard,
+)
+from app.schemas.timesheet import ActivityRead
+from app.services.dashboard_service import (
+    get_attention_projects,
+    get_dashboard_kpis,
+    get_dashboard_my_tasks,
+    get_dashboard_recent_activity,
+    safe_dashboard_call,
 )
 
 router = APIRouter(
@@ -28,6 +39,48 @@ router = APIRouter(
 @router.get("/summary", response_model=DashboardSummary)
 def dashboard_summary(db: Session = Depends(get_db)):
     return get_dashboard_summary(db)
+
+
+@router.get("/kpis", response_model=DashboardKpis)
+def dashboard_kpis(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return safe_dashboard_call(
+        "kpis",
+        lambda: get_dashboard_kpis(db, current_user),
+        DashboardKpis(),
+    )
+
+
+@router.get("/attention-projects", response_model=list[ProjectAttentionRow])
+def dashboard_attention_projects(db: Session = Depends(get_db)):
+    return safe_dashboard_call(
+        "attention_projects",
+        lambda: get_attention_projects(db, limit=10),
+        [],
+    )
+
+
+@router.get("/recent-activity", response_model=list[ActivityRead])
+def dashboard_recent_activity(db: Session = Depends(get_db)):
+    return safe_dashboard_call(
+        "recent_activity",
+        lambda: get_dashboard_recent_activity(db, limit=15),
+        [],
+    )
+
+
+@router.get("/my-tasks", response_model=DashboardMyTasks)
+def dashboard_my_tasks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return safe_dashboard_call(
+        "my_tasks",
+        lambda: get_dashboard_my_tasks(db, current_user),
+        DashboardMyTasks(),
+    )
 
 
 @router.get("/overview", response_model=DashboardOverview)

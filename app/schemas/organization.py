@@ -107,6 +107,7 @@ class NonProductiveCodeBase(BaseModel):
     code: str = Field(max_length=20)
     description: str = Field(max_length=255)
     is_active: bool = True
+    is_archived: bool = False
     sort_order: int = 0
 
 
@@ -118,6 +119,7 @@ class NonProductiveCodeUpdate(BaseModel):
     code: str | None = Field(default=None, max_length=20)
     description: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
+    is_archived: bool | None = None
     sort_order: int | None = None
 
 

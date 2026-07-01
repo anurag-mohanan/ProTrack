@@ -92,7 +92,10 @@ def list_lookup_non_productive_codes(
 ):
     return db.scalars(
         select(NonProductiveCode)
-        .where(NonProductiveCode.is_active.is_(True))
+        .where(
+            NonProductiveCode.is_active.is_(True),
+            NonProductiveCode.is_archived.is_(False),
+        )
         .order_by(NonProductiveCode.sort_order, NonProductiveCode.code)
     ).all()
 

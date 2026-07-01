@@ -9,6 +9,9 @@ export function prosohmDataGridSx(theme: Theme) {
       backgroundColor: theme.palette.background.default,
       borderBottom: `1px solid ${theme.palette.prosohm.border}`,
       minHeight: '48px !important',
+      position: 'sticky',
+      top: 0,
+      zIndex: 1,
     },
     '& .MuiDataGrid-columnHeaderTitle': {
       fontWeight: 700,

@@ -5,7 +5,12 @@ import type {
   Timestamped,
 } from './common';
 
-export type ProjectLifecycleFilter = 'active' | 'completed' | 'archived' | 'deleted';
+export type ProjectLifecycleFilter =
+  | 'active'
+  | 'completed'
+  | 'cancelled'
+  | 'archived'
+  | 'deleted';
 
 export interface Project extends Timestamped {
   tool_number: string;

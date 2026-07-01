@@ -18,6 +18,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PageHeader } from '../components/common/PageHeader';
 import { TableSkeleton } from '../components/common/TableSkeleton';
+import { SearchToolbar } from '../components/ui/design-system';
 import { ContentCard } from '../components/ui/cards';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
@@ -27,6 +28,7 @@ import {
   archiveProject,
   getProjects,
   projectQueryKeys,
+  updateProject,
 } from '../services/projectService';
 import type { ExecutionStatus, ProjectLifecycleFilter, ProjectStage } from '../types';
 import {
@@ -38,6 +40,7 @@ import { canArchiveProject } from '../utils/permissions';
 const lifecycleOptions: Array<{ value: ProjectLifecycleFilter; label: string }> = [
   { value: 'active', label: 'Active' },
   { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
   { value: 'archived', label: 'Archived' },
   { value: 'deleted', label: 'Deleted' },
 ];
@@ -71,6 +74,7 @@ export function ProjectsPage() {
   );
   const [createOpen, setCreateOpen] = useState(false);
   const [archiveId, setArchiveId] = useState<string | null>(null);
+  const [restoreId, setRestoreId] = useState<string | null>(null);
 
   const lifecycle =
     (searchParams.get('lifecycle') as ProjectLifecycleFilter | null) ?? 'active';
@@ -126,6 +130,19 @@ export function ProjectsPage() {
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
       showSuccess('Project archived');
       setArchiveId(null);
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (projectId: string) =>
+      updateProject(projectId, {
+        execution_status: 'currently_being_worked_on',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      showSuccess('Project restored to active');
+      setRestoreId(null);
     },
     onError: (error: Error) => showError(error.message),
   });
@@ -212,6 +229,16 @@ export function ProjectsPage() {
     lifecycle !== 'deleted' &&
     canArchiveProject(user?.role_name ?? '');
 
+  const showRestoreActions = lifecycle === 'cancelled';
+
+  const lifecycleSubtitle: Record<ProjectLifecycleFilter, string> = {
+    active: 'Manage engineering projects and assignments',
+    completed: 'Review completed projects and delivery history',
+    cancelled: 'Cancelled projects are excluded from workload and active KPIs',
+    archived: 'Browse archived projects with full history preserved',
+    deleted: 'Soft-deleted projects — permanent deletion requires admin approval',
+  };
+
   if (projectsQuery.error) return <ErrorState error={projectsQuery.error} />;
   if (customersQuery.error) return <ErrorState error={customersQuery.error} />;
   if (usersQuery.error) return <ErrorState error={usersQuery.error} />;
@@ -220,8 +247,18 @@ export function ProjectsPage() {
   return (
     <Box>
       <PageHeader
-        title="Projects"
-        subtitle="Manage engineering projects and assignments"
+        title={
+          lifecycle === 'cancelled'
+            ? 'Cancelled Projects'
+            : lifecycle === 'completed'
+              ? 'Completed Projects'
+              : lifecycle === 'archived'
+                ? 'Archived Projects'
+                : lifecycle === 'deleted'
+                  ? 'Deleted Projects'
+                  : 'Projects'
+        }
+        subtitle={lifecycleSubtitle[lifecycle]}
         action={
           lifecycle === 'active' ? (
             <ProsohmButton
@@ -235,9 +272,7 @@ export function ProjectsPage() {
         }
       />
 
-      <Box sx={{ mb: 2.5 }}>
-        <ContentCard>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+      <SearchToolbar>
             <TextField
               label="Search tool number or description"
               value={search}
@@ -315,9 +350,7 @@ export function ProjectsPage() {
                 ))}
               </Select>
             </FormControl>
-          </Box>
-        </ContentCard>
-      </Box>
+      </SearchToolbar>
 
       {tableLoading ? (
         <ContentCard noPadding>
@@ -338,6 +371,9 @@ export function ProjectsPage() {
             onArchive={
               showArchiveActions ? (projectId) => setArchiveId(projectId) : undefined
             }
+            onRestore={
+              showRestoreActions ? (projectId) => setRestoreId(projectId) : undefined
+            }
           />
         </ContentCard>
       )}
@@ -346,6 +382,16 @@ export function ProjectsPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={(projectId) => navigate(`/projects/${projectId}`)}
+      />
+
+      <ConfirmDialog
+        open={restoreId !== null}
+        title="Restore project?"
+        message="The project will return to Active Projects as Currently Being Worked On."
+        confirmLabel="Restore"
+        loading={restoreMutation.isPending}
+        onClose={() => setRestoreId(null)}
+        onConfirm={() => restoreId && restoreMutation.mutate(restoreId)}
       />
 
       <ConfirmDialog

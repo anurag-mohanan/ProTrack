@@ -1,22 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Button,
-  Card,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
   FormControlLabel,
+  Grid,
   IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
   Switch,
-  TextField,
   Tooltip,
+  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -24,6 +15,8 @@ import LockResetIcon from '@mui/icons-material/LockReset';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import PersonIcon from '@mui/icons-material/Person';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
+import ContactMailOutlinedIcon from '@mui/icons-material/ContactMailOutlined';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
@@ -32,6 +25,17 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { resetUserPassword, rolesApi, usersApi } from '../../api/resources';
 import type { Role, User } from '../../types';
+import { ContentCard } from '../../components/ui/cards';
+import { ProsohmButton } from '../../components/ui/ProsohmButton';
+import {
+  FormDrawer,
+  FormField,
+  FormSection,
+  FormSelect,
+  ModernDrawer,
+  SearchToolbar,
+} from '../../components/ui/design-system';
+import { prosohmDataGridSx } from '../../theme/componentStyles';
 
 interface UserFormState {
   first_name: string;
@@ -57,6 +61,8 @@ function formatDate(value: string | undefined): string {
 }
 
 export default function UsersPage() {
+  const theme = useTheme();
+  const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
   const { showSuccess, showError } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -76,6 +82,22 @@ export default function UsersPage() {
   const roleMap = useMemo(
     () => new Map(roles.map((role) => [role.id, role.name])),
     [roles],
+  );
+
+  const roleOptions = useMemo(
+    () => roles.map((role) => ({ value: role.id, label: role.name })),
+    [roles],
+  );
+
+  const activeFilterOptions = [
+    { value: 'all', label: 'All' },
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' },
+  ];
+
+  const roleFilterOptions = useMemo(
+    () => [{ value: 'all', label: 'All Roles' }, ...roleOptions],
+    [roleOptions],
   );
 
   const loadData = useCallback(async () => {
@@ -295,51 +317,36 @@ export default function UsersPage() {
         title="Users"
         subtitle="Manage user accounts, roles, and access"
         action={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Create User
-          </Button>
+          </ProsohmButton>
         }
       />
 
-      <Card sx={{ p: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <TextField
-            label="Search by name or email"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            sx={{ minWidth: 260, flex: 1 }}
-          />
-          <FormControl sx={{ minWidth: 200 }}>
-            <InputLabel>Role</InputLabel>
-            <Select
-              label="Role"
-              value={roleFilter}
-              onChange={(event) => setRoleFilter(event.target.value)}
-            >
-              <MenuItem value="all">All Roles</MenuItem>
-              {roles.map((role) => (
-                <MenuItem key={role.id} value={role.id}>
-                  {role.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl sx={{ minWidth: 160 }}>
-            <InputLabel>Status</InputLabel>
-            <Select
-              label="Status"
-              value={activeFilter}
-              onChange={(event) => setActiveFilter(event.target.value)}
-            >
-              <MenuItem value="all">All</MenuItem>
-              <MenuItem value="active">Active</MenuItem>
-              <MenuItem value="inactive">Inactive</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
-      </Card>
+      <SearchToolbar>
+        <FormField
+          label="Search by name or email"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          sx={{ minWidth: 260, flex: 1 }}
+        />
+        <FormSelect
+          label="Role"
+          value={roleFilter}
+          options={roleFilterOptions}
+          onChange={(event) => setRoleFilter(String(event.target.value))}
+          sx={{ minWidth: 200 }}
+        />
+        <FormSelect
+          label="Status"
+          value={activeFilter}
+          options={activeFilterOptions}
+          onChange={(event) => setActiveFilter(String(event.target.value))}
+          sx={{ minWidth: 160 }}
+        />
+      </SearchToolbar>
 
-      <Card sx={{ p: 1 }}>
+      <ContentCard noPadding>
         <DataGrid
           rows={filteredUsers}
           columns={columns}
@@ -349,135 +356,162 @@ export default function UsersPage() {
           initialState={{
             pagination: { paginationModel: { pageSize: 10 } },
           }}
-          sx={{ border: 0 }}
+          sx={gridSx}
         />
-      </Card>
+      </ContentCard>
 
-      <Dialog
+      <FormDrawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        maxWidth="sm"
-        fullWidth
+        title={editingUser ? 'Edit User' : 'Create User'}
+        subtitle="Manage profile, role, and account status."
+        icon={PersonIcon}
+        formId="user-form"
+        width={560}
+        submitLabel={editingUser ? 'Save Changes' : 'Create User'}
+        loading={saving}
       >
-        <DialogTitle>{editingUser ? 'Edit User' : 'Create User'}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          <TextField
-            label="First Name"
-            value={form.first_name}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, first_name: event.target.value }))
-            }
-            required
-            fullWidth
-          />
-          <TextField
-            label="Last Name"
-            value={form.last_name}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, last_name: event.target.value }))
-            }
-            required
-            fullWidth
-          />
-          <TextField
-            label="Email"
-            type="email"
-            value={form.email}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, email: event.target.value }))
-            }
-            required
-            fullWidth
-          />
-          <FormControl fullWidth required>
-            <InputLabel>Role</InputLabel>
-            <Select
-              label="Role"
-              value={form.role_id}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, role_id: event.target.value }))
-              }
-            >
-              {roles.map((role) => (
-                <MenuItem key={role.id} value={role.id}>
-                  {role.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          {!editingUser && (
-            <TextField
-              label="Temporary Password"
-              type="password"
-              value={form.password}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, password: event.target.value }))
-              }
-              required
-              fullWidth
-              helperText="Minimum 8 characters. User must change on first login."
-            />
-          )}
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.is_active}
+        <Box
+          component="form"
+          id="user-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSave();
+          }}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+        >
+          <FormSection title="Contact Details" icon={ContactMailOutlinedIcon}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="First Name"
+                required
+                value={form.first_name}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, is_active: event.target.checked }))
+                  setForm((current) => ({ ...current, first_name: event.target.value }))
                 }
               />
-            }
-            label="Active"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFormOpen(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
-            {editingUser ? 'Save' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Last Name"
+                required
+                value={form.last_name}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, last_name: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Email"
+                type="email"
+                required
+                value={form.email}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, email: event.target.value }))
+                }
+              />
+            </Grid>
+          </FormSection>
 
-      <Dialog
+          <FormSection title="Role & Access" icon={BadgeOutlinedIcon}>
+            <Grid size={{ xs: 12 }}>
+              <FormSelect
+                label="Role"
+                required
+                value={form.role_id}
+                options={roleOptions}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    role_id: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            {!editingUser ? (
+              <Grid size={{ xs: 12 }}>
+                <FormField
+                  label="Temporary Password"
+                  type="password"
+                  required
+                  value={form.password}
+                  helper="Minimum 8 characters. User must change on first login."
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, password: event.target.value }))
+                  }
+                />
+              </Grid>
+            ) : null}
+            <Grid size={{ xs: 12 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={form.is_active}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, is_active: event.target.checked }))
+                    }
+                  />
+                }
+                label="Active account"
+              />
+            </Grid>
+          </FormSection>
+        </Box>
+      </FormDrawer>
+
+      <ModernDrawer
         open={Boolean(viewUser)}
         onClose={() => setViewUser(null)}
-        maxWidth="sm"
-        fullWidth
+        title="User Profile"
+        subtitle={viewUser ? `${viewUser.first_name} ${viewUser.last_name}` : undefined}
+        icon={PersonIcon}
+        width={520}
+        footer={
+          <ProsohmButton buttonVariant="outlined" onClick={() => setViewUser(null)}>
+            Close
+          </ProsohmButton>
+        }
       >
-        <DialogTitle>User Details</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {viewUser && (
-            <>
-              <TextField label="First Name" value={viewUser.first_name} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField label="Last Name" value={viewUser.last_name} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField label="Email" value={viewUser.email} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField
-                label="Role"
-                value={roleMap.get(viewUser.role_id) ?? '—'}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-              <TextField
-                label="Status"
-                value={viewUser.is_active ? 'Active' : 'Inactive'}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-              <TextField
-                label="Created Date"
-                value={formatDate(viewUser.created_at)}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewUser(null)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+        {viewUser ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <FormSection title="Contact Details" icon={ContactMailOutlinedIcon}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormField label="First Name" value={viewUser.first_name} slotProps={{ input: { readOnly: true } }} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormField label="Last Name" value={viewUser.last_name} slotProps={{ input: { readOnly: true } }} />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormField label="Email" value={viewUser.email} slotProps={{ input: { readOnly: true } }} />
+              </Grid>
+            </FormSection>
+            <FormSection title="Employment" icon={BadgeOutlinedIcon}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormField
+                  label="Role"
+                  value={roleMap.get(viewUser.role_id) ?? '—'}
+                  slotProps={{ input: { readOnly: true } }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormField
+                  label="Status"
+                  value={viewUser.is_active ? 'Active' : 'Inactive'}
+                  slotProps={{ input: { readOnly: true } }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormField
+                  label="Created Date"
+                  value={formatDate(viewUser.created_at)}
+                  slotProps={{ input: { readOnly: true } }}
+                />
+              </Grid>
+            </FormSection>
+          </Box>
+        ) : null}
+      </ModernDrawer>
 
       <ConfirmDialog
         open={Boolean(resetTarget)}

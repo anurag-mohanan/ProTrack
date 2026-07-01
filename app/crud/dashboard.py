@@ -187,7 +187,7 @@ def get_dashboard_summary(
         )
         or 0
     )
-    active = being_worked_on + on_hold + cancelled
+    active = being_worked_on + on_hold
 
     portfolio_hours = aggregate_portfolio_hours(db)
 
@@ -344,14 +344,22 @@ def get_designer_workload(db: Session) -> list[DesignerWorkload]:
             in (
                 ExecutionStatus.currently_being_worked_on,
                 ExecutionStatus.on_hold,
-                ExecutionStatus.cancelled,
             )
         )
+        active_assigned = [
+            p
+            for p in assigned_projects
+            if p.execution_status
+            in (
+                ExecutionStatus.currently_being_worked_on,
+                ExecutionStatus.on_hold,
+            )
+        ]
         quoted_hours_assigned = _round_hours(
-            sum((_decimal(p.quoted_hours) for p in assigned_projects), Decimal("0"))
+            sum((_decimal(p.quoted_hours) for p in active_assigned), Decimal("0"))
         )
         actual_hours_logged = _round_hours(
-            sum((_decimal(p.actual_hours) for p in assigned_projects), Decimal("0"))
+            sum((_decimal(p.actual_hours) for p in active_assigned), Decimal("0"))
         )
 
         hours_this_week = db.scalar(

@@ -89,7 +89,7 @@ export function DashboardPage() {
       value: unavailable ? '—' : formatNumber(cancelledProjects, 0),
       subtitle: unavailable ? 'No data available' : 'Cancelled portfolio',
       icon: CancelIcon,
-      onClick: () => navigate('/projects?execution_status=cancelled'),
+      onClick: () => navigate('/projects?lifecycle=cancelled'),
     },
     {
       title: 'Projects Due Next 7 Days',

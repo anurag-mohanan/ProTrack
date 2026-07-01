@@ -141,7 +141,68 @@ def test_dashboard_lifecycle_counts(client):
     assert summary_after["active_projects"] == summary_before["active_projects"] - 1
 
 
-def test_non_admin_cannot_list_deleted_projects(client):
+def test_cancelled_projects_lifecycle_and_restore(client):
+    project_id = client.project_id
+
+    patch = client.patch(
+        f"/api/v1/projects/{project_id}",
+        json={"execution_status": "cancelled"},
+        headers=client.auth_headers,
+    )
+    assert patch.status_code == 200
+    assert patch.json()["execution_status"] == "cancelled"
+
+    active = client.get(
+        "/api/v1/projects?lifecycle=active",
+        headers=client.auth_headers,
+    )
+    assert active.status_code == 200
+    assert active.json() == []
+
+    cancelled = client.get(
+        "/api/v1/projects?lifecycle=cancelled",
+        headers=client.auth_headers,
+    )
+    assert cancelled.status_code == 200
+    assert len(cancelled.json()) == 1
+    assert cancelled.json()[0]["execution_status"] == "cancelled"
+
+    restore = client.patch(
+        f"/api/v1/projects/{project_id}",
+        json={"execution_status": "currently_being_worked_on"},
+        headers=client.auth_headers,
+    )
+    assert restore.status_code == 200
+
+    active_after = client.get(
+        "/api/v1/projects?lifecycle=active",
+        headers=client.auth_headers,
+    )
+    assert len(active_after.json()) == 1
+
+
+def test_cancelled_projects_excluded_from_dashboard_active_count(client):
+    project_id = client.project_id
+    summary_before = client.get(
+        "/api/v1/dashboard/summary",
+        headers=client.auth_headers,
+    ).json()
+    active_before = summary_before["active_projects"]
+
+    client.patch(
+        f"/api/v1/projects/{project_id}",
+        json={"execution_status": "cancelled"},
+        headers=client.auth_headers,
+    )
+
+    summary_after = client.get(
+        "/api/v1/dashboard/summary",
+        headers=client.auth_headers,
+    ).json()
+    assert summary_after["cancelled_projects"] >= 1
+    assert summary_after["active_projects"] == active_before - 1
+
+
     headers = login(client, "anurag@prosohm.com")
     response = client.get("/api/v1/projects/deleted", headers=headers)
     assert response.status_code == 403

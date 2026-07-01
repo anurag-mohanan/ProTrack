@@ -3,10 +3,6 @@ import {
   Box,
   Button,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   IconButton,
   Paper,
   Stack,
@@ -27,6 +23,7 @@ import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getErrorMessage } from '../../api/client';
 import { MilestoneFormDialog } from './MilestoneFormDialog';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { EmptyState } from '../common/EmptyState';
 import { ErrorState } from '../common/ErrorState';
 import { MilestoneStatusChip } from '../common/StatusChip';
@@ -267,31 +264,20 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
         milestone={editingMilestone}
       />
 
-      <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>
-        <DialogTitle>Delete Milestone</DialogTitle>
-        <DialogContent>
-          Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This
-          action cannot be undone.
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)} disabled={deleteMutation.isPending}>
-            Cancel
-          </Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={deleteMutation.isPending}
-            startIcon={
-              deleteMutation.isPending ? (
-                <CircularProgress size={16} color="inherit" />
-              ) : undefined
-            }
-            onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-          >
-            {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete Milestone"
+        message={
+          deleteTarget
+            ? `Are you sure you want to delete "${deleteTarget.name}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        danger
+        loading={deleteMutation.isPending}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+      />
     </Box>
   );
 }

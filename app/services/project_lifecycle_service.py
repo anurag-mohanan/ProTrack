@@ -180,13 +180,14 @@ def apply_lifecycle_filter(stmt, lifecycle: ProjectLifecycleFilter):
     stmt = stmt.where(Project.is_archived.is_(False))
     if lifecycle == ProjectLifecycleFilter.completed:
         return stmt.where(Project.execution_status == ExecutionStatus.completed)
+    if lifecycle == ProjectLifecycleFilter.cancelled:
+        return stmt.where(Project.execution_status == ExecutionStatus.cancelled)
     if lifecycle == ProjectLifecycleFilter.active:
         return stmt.where(
             Project.execution_status.in_(
                 (
                     ExecutionStatus.currently_being_worked_on,
                     ExecutionStatus.on_hold,
-                    ExecutionStatus.cancelled,
                 )
             )
         )
@@ -217,6 +218,8 @@ def apply_lifecycle_sort(stmt, lifecycle: ProjectLifecycleFilter):
             Project.completed_at.desc(),
             Project.updated_at.desc(),
         )
+    if lifecycle == ProjectLifecycleFilter.cancelled:
+        return stmt.order_by(Project.updated_at.desc(), Project.tool_number.asc())
     if lifecycle == ProjectLifecycleFilter.deleted:
         return stmt.order_by(Project.deleted_at.desc())
     return stmt.order_by(

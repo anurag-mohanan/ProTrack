@@ -1,23 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Button,
-  Card,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControlLabel,
+  Grid,
   IconButton,
   Link,
   Switch,
-  TextField,
   Tooltip,
+  Typography,
+  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined';
+import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
+import BarChartOutlinedIcon from '@mui/icons-material/BarChartOutlined';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Link as RouterLink } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -26,6 +25,16 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { contactsApi, customersApi } from '../../api/resources';
 import type { Contact, Customer } from '../../types';
+import { ContentCard } from '../../components/ui/cards';
+import { ProsohmButton } from '../../components/ui/ProsohmButton';
+import {
+  FormDrawer,
+  FormField,
+  FormSection,
+  ModernDrawer,
+  SearchToolbar,
+} from '../../components/ui/design-system';
+import { prosohmDataGridSx } from '../../theme/componentStyles';
 
 interface CustomerFormState {
   name: string;
@@ -47,6 +56,8 @@ function formatDate(value: string | undefined): string {
 }
 
 export default function CustomersPage() {
+  const theme = useTheme();
+  const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
   const { showSuccess, showError } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -214,22 +225,22 @@ export default function CustomersPage() {
         title="Customers"
         subtitle="Manage customer records and relationships"
         action={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Create Customer
-          </Button>
+          </ProsohmButton>
         }
       />
 
-      <Card sx={{ p: 2, mb: 2 }}>
-        <TextField
+      <SearchToolbar>
+        <FormField
           label="Search by name or code"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 280, width: '100%', maxWidth: 480 }}
+          sx={{ minWidth: 280, flex: 1, maxWidth: 480 }}
         />
-      </Card>
+      </SearchToolbar>
 
-      <Card sx={{ p: 1 }}>
+      <ContentCard noPadding>
         <DataGrid
           rows={filteredCustomers}
           columns={columns}
@@ -239,117 +250,156 @@ export default function CustomersPage() {
           initialState={{
             pagination: { paginationModel: { pageSize: 10 } },
           }}
-          sx={{ border: 0 }}
+          sx={gridSx}
         />
-      </Card>
+      </ContentCard>
 
-      <Dialog
+      <FormDrawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        maxWidth="sm"
-        fullWidth
+        title={editingCustomer ? 'Edit Customer' : 'Create Customer'}
+        subtitle="Manage customer profile and account status."
+        icon={BusinessOutlinedIcon}
+        formId="customer-form"
+        width={560}
+        submitLabel={editingCustomer ? 'Save Changes' : 'Create Customer'}
+        loading={saving}
       >
-        <DialogTitle>{editingCustomer ? 'Edit Customer' : 'Create Customer'}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          <TextField
-            label="Name"
-            value={form.name}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, name: event.target.value }))
-            }
-            required
-            fullWidth
-          />
-          <TextField
-            label="Code"
-            value={form.code}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, code: event.target.value }))
-            }
-            fullWidth
-          />
-          <TextField
-            label="Notes"
-            value={form.notes}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, notes: event.target.value }))
-            }
-            multiline
-            minRows={3}
-            fullWidth
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.is_active}
+        <Box
+          component="form"
+          id="customer-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSave();
+          }}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+        >
+          <FormSection title="General Information" icon={BusinessOutlinedIcon}>
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Name"
+                required
+                value={form.name}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, is_active: event.target.checked }))
+                  setForm((current) => ({ ...current, name: event.target.value }))
                 }
               />
-            }
-            label="Active"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFormOpen(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
-            {editingCustomer ? 'Save' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Code"
+                value={form.code}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, code: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={form.is_active}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        is_active: event.target.checked,
+                      }))
+                    }
+                  />
+                }
+                label="Active customer"
+              />
+            </Grid>
+          </FormSection>
 
-      <Dialog
+          <FormSection title="Notes" icon={NotesOutlinedIcon}>
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Notes"
+                multiline
+                rows={4}
+                maxLength={2000}
+                value={form.notes}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, notes: event.target.value }))
+                }
+              />
+            </Grid>
+          </FormSection>
+        </Box>
+      </FormDrawer>
+
+      <ModernDrawer
         open={Boolean(viewCustomer)}
         onClose={() => setViewCustomer(null)}
-        maxWidth="sm"
-        fullWidth
+        title="Customer Profile"
+        subtitle={viewCustomer?.name}
+        icon={BusinessOutlinedIcon}
+        width={560}
+        footer={
+          <ProsohmButton buttonVariant="outlined" onClick={() => setViewCustomer(null)}>
+            Close
+          </ProsohmButton>
+        }
       >
-        <DialogTitle>Customer Details</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {viewCustomer && (
-            <>
-              <TextField label="Name" value={viewCustomer.name} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField
-                label="Code"
-                value={viewCustomer.code ?? '—'}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-              <TextField
-                label="Notes"
-                value={viewCustomer.notes ?? '—'}
-                slotProps={{ input: { readOnly: true } }}
-                multiline
-                minRows={2}
-                fullWidth
-              />
-              <TextField
-                label="Status"
-                value={viewCustomer.is_active ? 'Active' : 'Inactive'}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-              <TextField
-                label="Contacts"
-                value={String(contactCounts.get(viewCustomer.id) ?? 0)}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-              <TextField
-                label="Created Date"
-                value={formatDate(viewCustomer.created_at)}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewCustomer(null)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+        {viewCustomer ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <FormSection title="General Information" icon={BusinessOutlinedIcon}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormField label="Name" value={viewCustomer.name} slotProps={{ input: { readOnly: true } }} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormField
+                  label="Code"
+                  value={viewCustomer.code ?? '—'}
+                  slotProps={{ input: { readOnly: true } }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormField
+                  label="Status"
+                  value={viewCustomer.is_active ? 'Active' : 'Inactive'}
+                  slotProps={{ input: { readOnly: true } }}
+                />
+              </Grid>
+            </FormSection>
+
+            <FormSection title="Contacts" icon={BusinessOutlinedIcon}>
+              <Grid size={{ xs: 12 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Linked contacts for this customer
+                </Typography>
+                <Link
+                  component={RouterLink}
+                  to={`/admin/contacts?customer_id=${viewCustomer.id}`}
+                  underline="hover"
+                >
+                  View {contactCounts.get(viewCustomer.id) ?? 0} contact(s)
+                </Link>
+              </Grid>
+            </FormSection>
+
+            <FormSection title="Statistics" icon={BarChartOutlinedIcon}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormField
+                  label="Created Date"
+                  value={formatDate(viewCustomer.created_at)}
+                  slotProps={{ input: { readOnly: true } }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormField
+                  label="Notes"
+                  value={viewCustomer.notes ?? '—'}
+                  multiline
+                  rows={3}
+                  slotProps={{ input: { readOnly: true } }}
+                />
+              </Grid>
+            </FormSection>
+          </Box>
+        ) : null}
+      </ModernDrawer>
     </Box>
   );
 }

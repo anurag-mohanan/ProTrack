@@ -1,18 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  Grid,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Box, Grid, Typography } from '@mui/material';
+import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
+import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
+import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
+import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
+import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
+import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchContacts, fetchCustomers, fetchStreams, fetchUsers } from '../../api/lookups';
 import { fetchMatchingProjectTemplates, fetchProjectTypes } from '../../api/projectTemplates';
@@ -27,6 +21,12 @@ import {
   PROJECT_STAGE_LABELS,
 } from '../../types/common';
 import { ErrorState } from '../common/ErrorState';
+import {
+  FormDrawer,
+  FormField,
+  FormSection,
+  FormSelect,
+} from '../ui/design-system';
 import { userDisplayName } from '../../utils/format';
 
 interface ProjectFormValues extends ProjectCreate {
@@ -195,11 +195,6 @@ export function ProjectFormDialog({
     [customersQuery.data],
   );
 
-  const activeProjectTypes = useMemo(
-    () => projectTypesQuery.data ?? [],
-    [projectTypesQuery.data],
-  );
-
   const matchingTemplates = useMemo(
     () => matchingTemplatesQuery.data ?? [],
     [matchingTemplatesQuery.data],
@@ -253,31 +248,42 @@ export function ProjectFormDialog({
     }));
   };
 
-  const handleProjectTypeChange = (projectTypeId: string) => {
-    setForm((current) => ({
-      ...current,
-      project_type_id: projectTypeId,
-      project_template_id: '',
-    }));
-  };
+  const userOptions = (usersQuery.data ?? []).map((user) => ({
+    value: user.id,
+    label: userDisplayName(user),
+  }));
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{isEdit ? 'Edit Project' : 'Create Project'}</DialogTitle>
-      <DialogContent>
-        <Grid
-          container
-          spacing={2}
-          component="form"
-          id="project-form"
-          onSubmit={handleSubmit}
-          sx={{ mt: 0.5 }}
+    <FormDrawer
+      open={open}
+      onClose={onClose}
+      title={isEdit ? 'Edit Project' : 'Create Project'}
+      subtitle={
+        isEdit
+          ? 'Update project details, team assignments, and execution status.'
+          : 'Set up a new engineering project with customer, team, and template.'
+      }
+      icon={AssignmentOutlinedIcon}
+      formId="project-form"
+      width={640}
+      submitLabel={isEdit ? 'Save Changes' : 'Create Project'}
+      loading={saveMutation.isPending}
+    >
+      <Box
+        component="form"
+        id="project-form"
+        onSubmit={handleSubmit}
+        sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+      >
+        <FormSection
+          title="General Information"
+          subtitle="Tool identification and description"
+          icon={AssignmentOutlinedIcon}
         >
           <Grid size={{ xs: 12, sm: 6 }}>
-            <TextField
+            <FormField
               label="Tool Number"
               required
-              fullWidth
               value={form.tool_number}
               onChange={(event) =>
                 setForm({ ...form, tool_number: event.target.value })
@@ -285,206 +291,167 @@ export function ProjectFormDialog({
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <TextField
+            <FormField
               label="Project Code"
               required
-              fullWidth
               value={form.code}
               onChange={(event) => setForm({ ...form, code: event.target.value })}
             />
           </Grid>
           {!isEdit ? (
             <Grid size={{ xs: 12 }}>
-              <TextField
+              <FormField
                 label="Part Description"
                 required
-                fullWidth
                 value={form.part_description}
+                maxLength={255}
                 onChange={(event) =>
                   setForm({ ...form, part_description: event.target.value })
                 }
               />
             </Grid>
           ) : null}
+        </FormSection>
+
+        <FormSection title="Customer" subtitle="Customer and primary contact" icon={BusinessOutlinedIcon}>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <FormControl fullWidth required>
-              <InputLabel>Customer</InputLabel>
-              <Select
-                label="Customer"
-                value={form.customer_id}
-                onChange={(event) => handleCustomerChange(event.target.value)}
-              >
-                {activeCustomers.map((customer) => (
-                  <MenuItem key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <FormControl fullWidth required disabled={!form.customer_id}>
-              <InputLabel>Customer Contact</InputLabel>
-              <Select
-                label="Customer Contact"
-                value={form.customer_contact_id}
-                onChange={(event) =>
-                  setForm({ ...form, customer_contact_id: event.target.value })
-                }
-              >
-                {(contactsQuery.data ?? []).map((contact) => (
-                  <MenuItem key={contact.id} value={contact.id}>
-                    {userDisplayName(contact)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          {!isEdit ? (
-            <>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormControl fullWidth required>
-                  <InputLabel>Project Type</InputLabel>
-                  <Select
-                    label="Project Type"
-                    value={form.project_type_id}
-                    onChange={(event) => handleProjectTypeChange(event.target.value)}
-                  >
-                    {activeProjectTypes.map((projectType) => (
-                      <MenuItem key={projectType.id} value={projectType.id}>
-                        {projectType.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormControl
-                  fullWidth
-                  required
-                  disabled={!form.customer_id || !form.project_type_id}
-                >
-                  <InputLabel>Project Template</InputLabel>
-                  <Select
-                    label="Project Template"
-                    value={form.project_template_id}
-                    onChange={(event) =>
-                      setForm({ ...form, project_template_id: event.target.value })
-                    }
-                  >
-                    {matchingTemplates.map((template) => (
-                      <MenuItem key={template.id} value={template.id}>
-                        {template.name}
-                        {template.is_customer_specific ? ' (Customer)' : ''}
-                        {template.is_default ? ' (Default)' : ''}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              {selectedTemplate ? (
-                <Grid size={{ xs: 12 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {selectedTemplate.milestone_count} milestones will be created from this
-                    template.
-                  </Typography>
-                </Grid>
-              ) : null}
-            </>
-          ) : null}
-          <Grid size={{ xs: 12, sm: 4 }}>
-            <FormControl fullWidth required>
-              <InputLabel>Design Leader</InputLabel>
-              <Select
-                label="Design Leader"
-                value={form.design_leader_id}
-                onChange={(event) =>
-                  setForm({ ...form, design_leader_id: event.target.value })
-                }
-              >
-                {(usersQuery.data ?? []).map((user) => (
-                  <MenuItem key={user.id} value={user.id}>
-                    {userDisplayName(user)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 4 }}>
-            <FormControl fullWidth>
-              <InputLabel>Designer</InputLabel>
-              <Select
-                label="Designer"
-                value={form.designer_id ?? ''}
-                onChange={(event) =>
-                  setForm({ ...form, designer_id: event.target.value })
-                }
-              >
-                <MenuItem value="">None</MenuItem>
-                {(usersQuery.data ?? []).map((user) => (
-                  <MenuItem key={user.id} value={user.id}>
-                    {userDisplayName(user)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 4 }}>
-            <FormControl fullWidth>
-              <InputLabel>Surfacer</InputLabel>
-              <Select
-                label="Surfacer"
-                value={form.surfacer_id ?? ''}
-                onChange={(event) =>
-                  setForm({ ...form, surfacer_id: event.target.value })
-                }
-              >
-                <MenuItem value="">None</MenuItem>
-                {(usersQuery.data ?? []).map((user) => (
-                  <MenuItem key={user.id} value={user.id}>
-                    {userDisplayName(user)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <FormControl fullWidth required>
-              <InputLabel>Stream</InputLabel>
-              <Select
-                label="Stream"
-                value={form.stream_id}
-                onChange={(event) =>
-                  setForm({ ...form, stream_id: event.target.value })
-                }
-              >
-                {activeStreams.map((stream) => (
-                  <MenuItem key={stream.id} value={stream.id}>
-                    {stream.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 3 }}>
-            <TextField
-              label="Quoted Hours"
-              type="number"
+            <FormSelect
+              label="Customer"
               required
-              fullWidth
-              slotProps={{ htmlInput: { min: 0.25, step: 0.25 } }}
-              value={form.quoted_hours}
+              searchable
+              value={form.customer_id}
+              options={activeCustomers.map((customer) => ({
+                value: customer.id,
+                label: customer.name,
+              }))}
+              onChange={(event) => handleCustomerChange(String(event.target.value))}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormSelect
+              label="Customer Contact"
+              required
+              searchable
+              disabled={!form.customer_id}
+              value={form.customer_contact_id}
+              options={(contactsQuery.data ?? []).map((contact) => ({
+                value: contact.id,
+                label: userDisplayName(contact),
+              }))}
               onChange={(event) =>
-                setForm({ ...form, quoted_hours: Number(event.target.value) })
+                setForm({ ...form, customer_contact_id: String(event.target.value) })
               }
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 3 }}>
-            <TextField
+        </FormSection>
+
+        {!isEdit ? (
+          <FormSection
+            title="Project Template"
+            subtitle="Milestone template applied at creation"
+            icon={ViewListOutlinedIcon}
+          >
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Project Type"
+                required
+                value={form.project_type_id}
+                options={(projectTypesQuery.data ?? []).map((projectType) => ({
+                  value: projectType.id,
+                  label: projectType.name,
+                }))}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    project_type_id: String(event.target.value),
+                    project_template_id: '',
+                  })
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Template"
+                required
+                disabled={!form.customer_id || !form.project_type_id}
+                value={form.project_template_id ?? ''}
+                options={matchingTemplates.map((template) => ({
+                  value: template.id,
+                  label: `${template.name}${template.is_customer_specific ? ' (Customer)' : ''}${template.is_default ? ' (Default)' : ''}`,
+                }))}
+                onChange={(event) =>
+                  setForm({ ...form, project_template_id: String(event.target.value) })
+                }
+              />
+            </Grid>
+            {selectedTemplate ? (
+              <Grid size={{ xs: 12 }}>
+                <Typography variant="body2" color="text.secondary">
+                  {selectedTemplate.milestone_count} milestones will be created from this
+                  template.
+                </Typography>
+              </Grid>
+            ) : null}
+          </FormSection>
+        ) : null}
+
+        <FormSection title="Team" subtitle="Design leadership and assignments" icon={GroupsOutlinedIcon}>
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <FormSelect
+              label="Design Leader"
+              required
+              searchable
+              value={form.design_leader_id}
+              options={userOptions}
+              onChange={(event) =>
+                setForm({ ...form, design_leader_id: String(event.target.value) })
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <FormSelect
+              label="Designer"
+              searchable
+              value={form.designer_id ?? ''}
+              options={[{ value: '', label: 'None' }, ...userOptions]}
+              onChange={(event) =>
+                setForm({ ...form, designer_id: String(event.target.value) })
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <FormSelect
+              label="Surfacer"
+              searchable
+              value={form.surfacer_id ?? ''}
+              options={[{ value: '', label: 'None' }, ...userOptions]}
+              onChange={(event) =>
+                setForm({ ...form, surfacer_id: String(event.target.value) })
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <FormSelect
+              label="Stream"
+              required
+              value={form.stream_id}
+              options={activeStreams.map((stream) => ({
+                value: stream.id,
+                label: stream.name,
+              }))}
+              onChange={(event) =>
+                setForm({ ...form, stream_id: String(event.target.value) })
+              }
+            />
+          </Grid>
+        </FormSection>
+
+        <FormSection title="Schedule & Hours" subtitle="Due date and quoted effort" icon={ScheduleOutlinedIcon}>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormField
               label="Due Date"
               type="date"
               required
-              fullWidth
               slotProps={{ inputLabel: { shrink: true } }}
               value={form.due_date}
               onChange={(event) =>
@@ -492,71 +459,75 @@ export function ProjectFormDialog({
               }
             />
           </Grid>
-          {isEdit ? (
-            <>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormControl fullWidth required>
-                  <InputLabel>Project Stage</InputLabel>
-                  <Select
-                    label="Project Stage"
-                    value={form.project_stage}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        project_stage: event.target.value as ProjectStage,
-                      })
-                    }
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormField
+              label="Quoted Hours"
+              type="number"
+              required
+              slotProps={{ htmlInput: { min: 0.25, step: 0.25 } }}
+              value={form.quoted_hours}
+              onChange={(event) =>
+                setForm({ ...form, quoted_hours: Number(event.target.value) })
+              }
+            />
+          </Grid>
+        </FormSection>
+
+        {isEdit ? (
+          <FormSection
+            title="Project Status"
+            subtitle="Engineering stage and execution status"
+            icon={FlagOutlinedIcon}
+          >
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Project Stage"
+                required
+                value={form.project_stage}
+                options={(
+                  Object.entries(PROJECT_STAGE_LABELS) as Array<[ProjectStage, string]>
+                ).map(([value, label]) => ({ value, label }))}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    project_stage: event.target.value as ProjectStage,
+                  })
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Execution Status"
+                required
+                value={form.execution_status}
+                options={(
+                  Object.entries(EXECUTION_STATUS_LABELS) as Array<
+                    [ExecutionStatus, string]
                   >
-                    {(
-                      Object.entries(PROJECT_STAGE_LABELS) as Array<
-                        [ProjectStage, string]
-                      >
-                    ).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormControl fullWidth required>
-                  <InputLabel>Execution Status</InputLabel>
-                  <Select
-                    label="Execution Status"
-                    value={form.execution_status}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        execution_status: event.target.value as ExecutionStatus,
-                      })
-                    }
-                  >
-                    {(
-                      Object.entries(EXECUTION_STATUS_LABELS) as Array<
-                        [ExecutionStatus, string]
-                      >
-                    ).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-            </>
-          ) : null}
+                ).map(([value, label]) => ({ value, label }))}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    execution_status: event.target.value as ExecutionStatus,
+                  })
+                }
+              />
+            </Grid>
+          </FormSection>
+        ) : null}
+
+        <FormSection title="Notes" subtitle="Additional project context" icon={NotesOutlinedIcon}>
           <Grid size={{ xs: 12 }}>
-            <TextField
+            <FormField
               label="Notes"
-              fullWidth
               multiline
-              rows={2}
+              rows={4}
+              maxLength={2000}
               value={form.notes ?? ''}
               onChange={(event) => setForm({ ...form, notes: event.target.value })}
             />
           </Grid>
-        </Grid>
+        </FormSection>
 
         {saveMutation.error ? (
           <ErrorState
@@ -564,24 +535,7 @@ export function ProjectFormDialog({
             title={isEdit ? 'Update failed' : 'Create failed'}
           />
         ) : null}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          type="submit"
-          form="project-form"
-          variant="contained"
-          disabled={saveMutation.isPending}
-        >
-          {saveMutation.isPending
-            ? isEdit
-              ? 'Saving…'
-              : 'Creating…'
-            : isEdit
-              ? 'Save Changes'
-              : 'Create Project'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+      </Box>
+    </FormDrawer>
   );
 }

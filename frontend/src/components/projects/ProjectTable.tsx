@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Box, IconButton, useTheme } from '@mui/material';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import RestoreIcon from '@mui/icons-material/Restore';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
 import type { Customer, Project, Stream, User } from '../../types';
@@ -22,6 +23,7 @@ interface ProjectTableProps {
   users: User[];
   streams: Stream[];
   onArchive?: (projectId: string) => void;
+  onRestore?: (projectId: string) => void;
 }
 
 function buildNameMap<T extends { id: string }>(
@@ -109,34 +111,52 @@ function ProjectTableComponent({
   users,
   streams,
   onArchive,
+  onRestore,
 }: ProjectTableProps) {
   const navigate = useNavigate();
   const theme = useTheme();
   const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
 
   const columns = useMemo(() => {
-    if (!onArchive) return PROJECT_TABLE_COLUMNS;
-    const archiveColumn: GridColDef<ProjectTableRow> = {
+    if (!onArchive && !onRestore) return PROJECT_TABLE_COLUMNS;
+
+    const actionColumn: GridColDef<ProjectTableRow> = {
       field: 'actions',
       headerName: 'Actions',
-      width: 90,
+      width: onArchive && onRestore ? 110 : 90,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <IconButton
-          size="small"
-          aria-label="Archive project"
-          onClick={(event) => {
-            event.stopPropagation();
-            onArchive(String(params.id));
-          }}
-        >
-          <ArchiveIcon fontSize="small" />
-        </IconButton>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          {onRestore ? (
+            <IconButton
+              size="small"
+              aria-label="Restore project"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRestore(String(params.id));
+              }}
+            >
+              <RestoreIcon fontSize="small" />
+            </IconButton>
+          ) : null}
+          {onArchive ? (
+            <IconButton
+              size="small"
+              aria-label="Archive project"
+              onClick={(event) => {
+                event.stopPropagation();
+                onArchive(String(params.id));
+              }}
+            >
+              <ArchiveIcon fontSize="small" />
+            </IconButton>
+          ) : null}
+        </Box>
       ),
     };
-    return [...PROJECT_TABLE_COLUMNS, archiveColumn];
-  }, [onArchive]);
+    return [...PROJECT_TABLE_COLUMNS, actionColumn];
+  }, [onArchive, onRestore]);
 
   const rows = useMemo(
     () => buildProjectTableRows(projects, customers, users, streams),

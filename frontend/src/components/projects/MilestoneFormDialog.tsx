@@ -1,28 +1,27 @@
 import { useEffect, useState } from 'react';
-import {
-  Button,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  Grid,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
-} from '@mui/material';
+import { Box, Grid } from '@mui/material';
+import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
+import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
+import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { getErrorMessage } from '../../api/client';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import {
   createMilestone,
+  deleteMilestone,
   updateMilestone,
 } from '../../services/milestoneService';
 import { invalidateMilestoneRelatedQueries } from '../../utils/queryInvalidation';
 import type { Milestone, MilestoneStatus } from '../../types';
 import { formatDateTime } from '../../utils/format';
+import { ProsohmButton } from '../ui/ProsohmButton';
+import {
+  FormDrawer,
+  FormField,
+  FormSection,
+  FormSelect,
+} from '../ui/design-system';
 
 interface MilestoneFormValues {
   name: string;
@@ -40,7 +39,7 @@ const emptyForm: MilestoneFormValues = {
   completed_at: '',
 };
 
-const milestoneStatusOptions: Array<{ value: MilestoneStatus; label: string }> = [
+const milestoneStatusOptions = [
   { value: 'not_started', label: 'Not Started' },
   { value: 'in_progress', label: 'In Progress' },
   { value: 'completed', label: 'Completed' },
@@ -64,6 +63,7 @@ export function MilestoneFormDialog({
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
   const [form, setForm] = useState<MilestoneFormValues>(emptyForm);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -122,37 +122,66 @@ export function MilestoneFormDialog({
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteMilestone(milestone!.id),
+    onSuccess: () => {
+      invalidateMilestoneRelatedQueries(queryClient, projectId);
+      showSuccess('Milestone deleted');
+      onClose();
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     saveMutation.mutate();
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{isEdit ? 'Edit Milestone' : 'Add Milestone'}</DialogTitle>
-      <DialogContent>
-        <Grid
-          container
-          spacing={2}
-          component="form"
-          id="milestone-form"
-          onSubmit={handleSubmit}
-          sx={{ mt: 0.5 }}
-        >
+    <>
+    <FormDrawer
+      open={open}
+      onClose={onClose}
+      title={isEdit ? 'Edit Milestone' : 'Add Milestone'}
+      subtitle="Track delivery milestones, due dates, and completion status."
+      icon={TimelineOutlinedIcon}
+      formId="milestone-form"
+      width={520}
+      submitLabel={isEdit ? 'Save Changes' : 'Add Milestone'}
+      loading={saveMutation.isPending || deleteMutation.isPending}
+      destructiveAction={
+        isEdit ? (
+          <ProsohmButton
+            buttonVariant="danger"
+            onClick={() => setDeleteConfirmOpen(true)}
+            loading={deleteMutation.isPending}
+            disabled={saveMutation.isPending}
+          >
+            Delete
+          </ProsohmButton>
+        ) : undefined
+      }
+    >
+      <Box
+        component="form"
+        id="milestone-form"
+        onSubmit={handleSubmit}
+        sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+      >
+        <FormSection title="Milestone Details" icon={TimelineOutlinedIcon}>
           <Grid size={{ xs: 12 }}>
-            <TextField
-              label="Name"
+            <FormField
+              label="Milestone Name"
               required
-              fullWidth
+              maxLength={200}
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <TextField
+            <FormField
               label="Due Date"
               type="date"
-              fullWidth
               slotProps={{ inputLabel: { shrink: true } }}
               value={form.due_date}
               onChange={(event) =>
@@ -161,88 +190,82 @@ export function MilestoneFormDialog({
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
-              <Select
-                label="Status"
-                value={form.status}
-                onChange={(event) => {
-                  const status = event.target.value as MilestoneStatus;
-                  setForm({
-                    ...form,
-                    status,
-                    completed_at:
-                      status === 'completed' && !form.completed_at
-                        ? new Date().toISOString().slice(0, 16)
-                        : status === 'completed'
-                          ? form.completed_at
-                          : '',
-                  });
-                }}
-              >
-                {milestoneStatusOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <FormSelect
+              label="Status"
+              value={form.status}
+              options={milestoneStatusOptions}
+              onChange={(event) => {
+                const status = event.target.value as MilestoneStatus;
+                setForm({
+                  ...form,
+                  status,
+                  completed_at:
+                    status === 'completed' && !form.completed_at
+                      ? new Date().toISOString().slice(0, 16)
+                      : status === 'completed'
+                        ? form.completed_at
+                        : '',
+                });
+              }}
+            />
           </Grid>
           {form.status === 'completed' ? (
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                label="Completion Date"
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Completed Date"
                 type="datetime-local"
-                fullWidth
                 slotProps={{ inputLabel: { shrink: true } }}
                 value={form.completed_at}
+                helper={
+                  milestone?.completed_at
+                    ? `Previous: ${formatDateTime(milestone.completed_at)}`
+                    : undefined
+                }
                 onChange={(event) =>
                   setForm({ ...form, completed_at: event.target.value })
-                }
-                helperText={
-                  milestone?.completed_at
-                    ? `Current: ${formatDateTime(milestone.completed_at)}`
-                    : undefined
                 }
               />
             </Grid>
           ) : null}
+        </FormSection>
+
+        <FormSection title="Description" icon={NotesOutlinedIcon}>
           <Grid size={{ xs: 12 }}>
-            <TextField
+            <FormField
               label="Description"
-              fullWidth
               multiline
-              rows={3}
+              rows={4}
+              maxLength={1000}
               value={form.description}
               onChange={(event) =>
                 setForm({ ...form, description: event.target.value })
               }
             />
           </Grid>
-        </Grid>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={saveMutation.isPending}>
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          form="milestone-form"
-          variant="contained"
-          disabled={saveMutation.isPending || !form.name.trim()}
-          startIcon={
-            saveMutation.isPending ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : undefined
-          }
-        >
-          {saveMutation.isPending
-            ? 'Saving…'
-            : isEdit
-              ? 'Save Changes'
-              : 'Add Milestone'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+        </FormSection>
+
+        {isEdit ? (
+          <FormSection title="History" subtitle="Audit trail coming soon" icon={FlagOutlinedIcon}>
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
+                Milestone change history will appear here in a future release.
+              </Box>
+            </Grid>
+          </FormSection>
+        ) : null}
+      </Box>
+    </FormDrawer>
+
+    <ConfirmDialog
+      open={deleteConfirmOpen}
+      title="Delete Milestone"
+      message={`Are you sure you want to delete "${milestone?.name ?? 'this milestone'}"? This action cannot be undone.`}
+      confirmLabel="Delete"
+      danger
+      loading={deleteMutation.isPending}
+      onClose={() => setDeleteConfirmOpen(false)}
+      onConfirm={() => deleteMutation.mutate()}
+    />
+  </>
   );
 }

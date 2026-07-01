@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   FormControl,
   FormControlLabel,
@@ -260,13 +261,15 @@ export function ProjectsPage() {
     });
   }, [filteredProjects, groupByTeam, teamsQuery.data]);
 
-  const tableLoading =
-    projectsQuery.isPending ||
-    customersQuery.isPending ||
-    usersQuery.isPending ||
-    streamsQuery.isPending ||
-    teamsQuery.isPending ||
-    projectTypesQuery.isPending;
+  const tableLoading = projectsQuery.isPending;
+
+  const lookupLoadIssues = [
+    customersQuery.error ? 'customers' : null,
+    usersQuery.error ? 'users' : null,
+    streamsQuery.error ? 'streams' : null,
+    teamsQuery.error ? 'teams' : null,
+    projectTypesQuery.error ? 'project types' : null,
+  ].filter((value): value is string => value !== null);
 
   const showArchiveActions =
     lifecycle !== 'archived' &&
@@ -284,15 +287,18 @@ export function ProjectsPage() {
     deleted: 'Soft-deleted projects — permanent deletion requires admin approval',
   };
 
-  if (projectsQuery.error) return <ErrorState error={projectsQuery.error} />;
-  if (customersQuery.error) return <ErrorState error={customersQuery.error} />;
-  if (usersQuery.error) return <ErrorState error={usersQuery.error} />;
-  if (streamsQuery.error) return <ErrorState error={streamsQuery.error} />;
-  if (teamsQuery.error) return <ErrorState error={teamsQuery.error} />;
-  if (projectTypesQuery.error) return <ErrorState error={projectTypesQuery.error} />;
+  if (projectsQuery.error) {
+    return <ErrorState error={projectsQuery.error} title="Unable to load projects" />;
+  }
 
   return (
     <Box>
+      {lookupLoadIssues.length > 0 ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Some filter options could not be loaded ({lookupLoadIssues.join(', ')}). Project
+          data is still shown below.
+        </Alert>
+      ) : null}
       <PageHeader
         title={
           lifecycle === 'all'

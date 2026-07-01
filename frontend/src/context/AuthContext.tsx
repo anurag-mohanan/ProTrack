@@ -14,6 +14,7 @@ import {
   getAccessToken,
   setAccessToken,
 } from '../services/authStorage';
+import { resetQueryCache } from '../lib/queryClient';
 import { userDisplayName } from '../utils/format';
 
 interface AuthContextValue {
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (credentials: LoginRequest) => {
     const tokenResponse = await loginApi(credentials);
+    resetQueryCache();
     setAccessToken(tokenResponse.access_token);
     const currentUser = await fetchCurrentUser();
     setUser(currentUser);
@@ -63,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     clearAccessToken();
+    resetQueryCache();
     setUser(null);
   }, []);
 

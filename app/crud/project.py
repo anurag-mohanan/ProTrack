@@ -305,7 +305,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         self,
         db: Session,
         *,
-        lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active,
+        lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all,
         skip: int = 0,
         limit: int = 100,
         filters: dict[str, Any] | None = None,
@@ -341,7 +341,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         skip: int = 0,
         limit: int = 100,
         filters: dict[str, object] | None = None,
-        lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active,
+        lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all,
         assignment_clause=None,
     ) -> list[ProjectRead]:
         active_filters = {

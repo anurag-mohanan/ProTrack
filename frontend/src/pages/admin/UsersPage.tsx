@@ -137,7 +137,7 @@ export default function UsersPage() {
       if (activeFilter === 'inactive') params.is_active = false;
 
       const [usersData, rolesData, teamsData, departmentsData] = await Promise.all([
-        usersApi.list(params),
+        usersApi.list({ ...params, limit: 500 }),
         rolesApi.list(),
         fetchTeams(),
         fetchDepartments(),

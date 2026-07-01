@@ -3,12 +3,22 @@
 from tests.conftest import IDS, login
 
 
-def test_list_projects_defaults_to_active(client):
+def test_list_projects_defaults_to_all_non_deleted(client):
     response = client.get("/api/v1/projects", headers=client.auth_headers)
     assert response.status_code == 200
     projects = response.json()
     assert len(projects) == 1
     assert projects[0]["tool_number"] == "T-100"
+
+
+def test_list_projects_lifecycle_active_filters_in_progress(client):
+    response = client.get(
+        "/api/v1/projects?lifecycle=active",
+        headers=client.auth_headers,
+    )
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["tool_number"] == "T-100"
 
 
 def test_list_projects_lifecycle_all_with_limit_500(client):

@@ -1,8 +1,9 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { CssBaseline, ThemeProvider } from '@mui/material';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { queryClient } from './lib/queryClient';
 import { MainLayout } from './layouts/MainLayout';
 import AdminCreatePage from './pages/admin/AdminCreatePage';
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
@@ -76,15 +77,6 @@ function AdminSystemRoute() {
   }
   return <AdminSystemPage />;
 }
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 export default function App() {
   return (

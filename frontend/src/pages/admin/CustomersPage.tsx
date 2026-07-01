@@ -105,7 +105,7 @@ export default function CustomersPage() {
     try {
       const [customersData, contactsData, teamsData, typesData, templatesData] =
         await Promise.all([
-          customersApi.list(),
+          customersApi.list({ limit: 500 }),
           contactsApi.list(),
           fetchTeams(),
           fetchProjectTypes(),

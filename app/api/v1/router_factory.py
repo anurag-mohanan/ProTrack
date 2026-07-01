@@ -39,7 +39,7 @@ class ProjectFilters(BaseModel):
     project_type_id: UUID | None = None
     execution_status: ExecutionStatus | None = None
     project_stage: ProjectStage | None = None
-    lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active
+    lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all
 
 
 class MilestoneFilters(BaseModel):

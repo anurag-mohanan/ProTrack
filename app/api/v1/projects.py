@@ -80,7 +80,7 @@ def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
 
 def _normalize_project_filters(filters: ProjectFilters) -> tuple[ProjectLifecycleFilter, dict[str, object]]:
     data = filters.model_dump()
-    lifecycle = data.pop("lifecycle", ProjectLifecycleFilter.active)
+    lifecycle = data.pop("lifecycle", ProjectLifecycleFilter.all)
 
     customer_ids = list(data.pop("customer_ids") or [])
     if data.get("customer_id"):
@@ -160,7 +160,7 @@ def list_projects(
     project_type_id: UUID | None = None,
     execution_status: ExecutionStatus | None = None,
     project_stage: ProjectStage | None = None,
-    lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active,
+    lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

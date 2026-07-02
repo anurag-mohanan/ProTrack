@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Avatar,
   Box,
   Chip,
   FormControlLabel,
   Grid,
+  IconButton,
   Switch,
+  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 import PersonIcon from '@mui/icons-material/Person';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import ContactMailOutlinedIcon from '@mui/icons-material/ContactMailOutlined';
 import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
+import { UserDetailsDrawer } from '../../components/admin/UserDetailsDrawer';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -28,20 +33,18 @@ import type { Team } from '../../types/Team';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
-  DrawerQuickActions,
   FormDrawer,
   FormField,
   FormSection,
   FormSelect,
   ProsohmDataGrid,
-  RecordDetailDrawer,
   SearchToolbar,
   EmptyState,
   TableRowActions,
 } from '../../components/ui/design-system';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
-import { formatDate, formatCellValue } from '../../utils/format';
+import { formatCellValue, formatEmploymentType, formatUserWorkload, userDisplayName, userInitials } from '../../utils/format';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
 
 interface UserFormState {
@@ -104,6 +107,8 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [teamFilter, setTeamFilter] = useState<string>('all');
+  const [employmentFilter, setEmploymentFilter] = useState<string>('all');
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -126,6 +131,22 @@ export default function UsersPage() {
     () => roles.map((role) => ({ value: role.id, label: role.name })),
     [roles],
   );
+
+  const teamFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Teams' },
+      ...teams.map((team) => ({ value: team.id, label: team.name })),
+    ],
+    [teams],
+  );
+
+  const employmentFilterOptions = [
+    { value: 'all', label: 'All Employment Types' },
+    { value: 'full_time', label: 'Full Time' },
+    { value: 'part_time', label: 'Part Time' },
+    { value: 'contract', label: 'Contract' },
+    { value: 'intern', label: 'Intern' },
+  ];
 
   const activeFilterOptions = [
     { value: 'all', label: 'All' },
@@ -169,14 +190,18 @@ export default function UsersPage() {
 
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return users;
     return users.filter((user) => {
-      const haystack = [user.first_name, user.last_name, user.email]
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(term);
+      if (term) {
+        const haystack = [user.first_name, user.last_name, user.email, userDisplayName(user)]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(term)) return false;
+      }
+      if (teamFilter !== 'all' && user.team_id !== teamFilter) return false;
+      if (employmentFilter !== 'all' && user.employment_type !== employmentFilter) return false;
+      return true;
     });
-  }, [search, users]);
+  }, [employmentFilter, search, teamFilter, users]);
 
   const teamOptions = useMemo(
     () => [
@@ -264,20 +289,19 @@ export default function UsersPage() {
   });
 
   const handleSave = async () => {
-    const validationError = validateRequiredFields(
-      {
-        first_name: form.first_name,
-        last_name: form.last_name,
-        email: form.email,
-        role_id: form.role_id,
-      },
-      [
-        { key: 'first_name', label: 'First name' },
-        { key: 'last_name', label: 'Last name' },
-        { key: 'email', label: 'Email' },
-        { key: 'role_id', label: 'Role' },
-      ],
-    );
+    const requiredFields = [
+      { key: 'first_name', label: 'First name' },
+      { key: 'last_name', label: 'Last name' },
+      { key: 'email', label: 'Email' },
+      { key: 'role_id', label: 'Role' },
+    ];
+    if (!editingUser) {
+      requiredFields.push(
+        { key: 'team_id', label: 'Team' },
+        { key: 'employment_type', label: 'Employment type' },
+      );
+    }
+    const validationError = validateRequiredFields(form, requiredFields);
     if (validationError) {
       showError(validationError);
       return;
@@ -445,17 +469,34 @@ export default function UsersPage() {
   };
 
   const columns: GridColDef<User>[] = [
-    { field: 'first_name', headerName: 'First Name', flex: 1, minWidth: 120 },
-    { field: 'last_name', headerName: 'Last Name', flex: 1, minWidth: 120 },
-    { field: 'email', headerName: 'Email', flex: 1.5, minWidth: 180 },
+    {
+      field: 'avatar',
+      headerName: '',
+      width: 56,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.main', fontSize: '0.875rem' }}>
+          {userInitials(params.row)}
+        </Avatar>
+      ),
+    },
+    {
+      field: 'full_name',
+      headerName: 'Full Name',
+      flex: 1.2,
+      minWidth: 160,
+      valueGetter: (_value, row) => userDisplayName(row),
+    },
+    { field: 'email', headerName: 'Email', flex: 1.5, minWidth: 200 },
     {
       field: 'role_id',
       headerName: 'Role',
       flex: 1,
-      minWidth: 140,
+      minWidth: 130,
       renderCell: (params) => (
         <Chip
-          label={formatCellValue(roleMap.get(params.value as string))}
+          label={formatCellValue(roleMap.get(params.value as string)) || '—'}
           size="small"
           color="primary"
           variant="outlined"
@@ -463,49 +504,28 @@ export default function UsersPage() {
       ),
     },
     {
-      field: 'department_name',
-      headerName: 'Department',
-      flex: 1,
-      minWidth: 130,
-      valueGetter: (_value, row) => formatCellValue(row.department_name),
-    },
-    {
       field: 'team_name',
       headerName: 'Team',
       flex: 1,
-      minWidth: 130,
+      minWidth: 120,
       valueGetter: (_value, row) => formatCellValue(row.team_name),
     },
     {
       field: 'employment_type',
-      headerName: 'Employment',
-      width: 120,
-      valueGetter: (_value, row) =>
-        row.employment_type ? row.employment_type.replace('_', ' ') : '',
+      headerName: 'Employment Status',
+      width: 150,
+      valueGetter: (_value, row) => formatEmploymentType(row.employment_type) || '—',
     },
     {
-      field: 'password_changed',
-      headerName: 'Password Changed',
-      width: 150,
-      valueGetter: (_value, row) => !(row.must_change_password ?? false),
-      renderCell: (params) => (
-        <Chip
-          label={params.value ? 'Yes' : 'No'}
-          size="small"
-          color={params.value ? 'success' : 'warning'}
-        />
-      ),
-    },
-    {
-      field: 'last_login',
-      headerName: 'Last Login',
-      width: 150,
-      valueFormatter: (value) => formatDate(value as string | undefined),
+      field: 'active_projects_count',
+      headerName: 'Current Workload',
+      width: 140,
+      valueGetter: (_value, row) => formatUserWorkload(row.active_projects_count),
     },
     {
       field: 'is_active',
-      headerName: 'Active',
-      width: 100,
+      headerName: 'Status',
+      width: 110,
       renderCell: (params) => (
         <Chip
           label={params.value ? 'Active' : 'Inactive'}
@@ -515,19 +535,31 @@ export default function UsersPage() {
       ),
     },
     {
-      field: 'created_at',
-      headerName: 'Created Date',
-      width: 130,
-      valueFormatter: (value) => formatDate(value as string | undefined),
-    },
-    {
       field: 'actions',
       headerName: '',
-      width: DATA_GRID_ACTIONS_COLUMN_WIDTH,
+      width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <TableRowActions onEdit={() => openEdit(params.row)} />
+        <TableRowActions
+          onEdit={() => openEdit(params.row)}
+          deleteAction={
+            isAdmin ? (
+              <Tooltip title="Delete">
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setDeleteTarget(params.row);
+                  }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : undefined
+          }
+        />
       ),
     },
   ];
@@ -538,7 +570,7 @@ export default function UsersPage() {
     <PageContainer>
       <PageHeader
         title="Users"
-        subtitle="Manage user accounts, roles, and access"
+        subtitle="Identify team members quickly and manage accounts from the details panel."
         action={
           <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Create User
@@ -548,7 +580,7 @@ export default function UsersPage() {
 
       <SearchToolbar>
         <FormField
-          label="Search by name or email"
+          label="Search users"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           sx={{ minWidth: 260, flex: 1 }}
@@ -558,10 +590,24 @@ export default function UsersPage() {
           value={roleFilter}
           options={roleFilterOptions}
           onChange={(event) => setRoleFilter(String(event.target.value))}
+          sx={{ minWidth: 180 }}
+        />
+        <FormSelect
+          label="Team"
+          value={teamFilter}
+          options={teamFilterOptions}
+          onChange={(event) => setTeamFilter(String(event.target.value))}
+          sx={{ minWidth: 180 }}
+        />
+        <FormSelect
+          label="Employment Status"
+          value={employmentFilter}
+          options={employmentFilterOptions}
+          onChange={(event) => setEmploymentFilter(String(event.target.value))}
           sx={{ minWidth: 200 }}
         />
         <FormSelect
-          label="Status"
+          label="Active / Inactive"
           value={activeFilter}
           options={activeFilterOptions}
           onChange={(event) => setActiveFilter(String(event.target.value))}
@@ -593,7 +639,11 @@ export default function UsersPage() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title={editingUser ? 'Edit User' : 'Create User'}
-        subtitle="Manage profile, role, and account status."
+        subtitle={
+          editingUser
+            ? 'Update profile, role, and account settings.'
+            : 'Add a team member with the essential details.'
+        }
         icon={PersonIcon}
         formId="user-form"
         width={560}
@@ -609,7 +659,7 @@ export default function UsersPage() {
           }}
           sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
         >
-          <FormSection title="Contact Details" icon={ContactMailOutlinedIcon}>
+          <FormSection title="Basic Information" icon={ContactMailOutlinedIcon}>
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormField
                 label="First Name"
@@ -642,41 +692,6 @@ export default function UsersPage() {
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <FormField
-                label="Phone"
-                value={form.phone}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, phone: event.target.value }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormField
-                label="Designation"
-                value={form.designation}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, designation: event.target.value }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <FormSelect
-                label="Manager"
-                searchable
-                value={form.manager_id}
-                options={managerOptions}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    manager_id: String(event.target.value),
-                  }))
-                }
-              />
-            </Grid>
-          </FormSection>
-
-          <FormSection title="Role & Access" icon={BadgeOutlinedIcon}>
-            <Grid size={{ xs: 12 }}>
               <FormSelect
                 label="Role"
                 required
@@ -690,9 +705,10 @@ export default function UsersPage() {
                 }
               />
             </Grid>
-            <Grid size={{ xs: 12 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormSelect
                 label="Team"
+                required={!editingUser}
                 searchable
                 value={form.team_id}
                 options={teamOptions}
@@ -700,6 +716,49 @@ export default function UsersPage() {
                   setForm((current) => ({
                     ...current,
                     team_id: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Department"
+                searchable
+                value={form.department_id}
+                options={departmentOptions}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    department_id: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Phone"
+                value={form.phone}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, phone: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Employment Type"
+                required={!editingUser}
+                value={form.employment_type}
+                options={[
+                  { value: '', label: 'Not set' },
+                  { value: 'full_time', label: 'Full Time' },
+                  { value: 'part_time', label: 'Part Time' },
+                  { value: 'contract', label: 'Contract' },
+                  { value: 'intern', label: 'Intern' },
+                ]}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    employment_type: String(event.target.value),
                   }))
                 }
               />
@@ -728,7 +787,7 @@ export default function UsersPage() {
                   <>
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <FormField
-                        label="Password"
+                        label="Temporary Password"
                         type="password"
                         required
                         value={form.password}
@@ -756,309 +815,171 @@ export default function UsersPage() {
                 ) : null}
               </>
             ) : null}
-            <Grid size={{ xs: 12 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.is_active}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, is_active: event.target.checked }))
-                    }
-                  />
-                }
-                label="Active account"
-              />
-            </Grid>
           </FormSection>
 
-          <FormSection title="Designer Capacity" icon={BadgeOutlinedIcon}>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormSelect
-                label="Department"
-                searchable
-                value={form.department_id}
-                options={departmentOptions}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    department_id: String(event.target.value),
-                  }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormSelect
-                label="Employment Type"
-                value={form.employment_type}
-                options={[
-                  { value: '', label: 'Not set' },
-                  { value: 'full_time', label: 'Full Time' },
-                  { value: 'part_time', label: 'Part Time' },
-                  { value: 'contract', label: 'Contract' },
-                  { value: 'intern', label: 'Intern' },
-                ]}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    employment_type: String(event.target.value),
-                  }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormField
-                label="Working Hours / Day"
-                type="number"
-                value={form.working_hours_per_day}
-                slotProps={{ htmlInput: { min: 1, max: 24, step: 0.5 } }}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    working_hours_per_day: Number(event.target.value),
-                  }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormField
-                label="Working Days"
-                value={form.working_days}
-                helper="Comma-separated, e.g. Mon,Tue,Wed,Thu,Fri"
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, working_days: event.target.value }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormField
-                label="Max Allocation %"
-                type="number"
-                value={form.max_allocation_percent}
-                slotProps={{ htmlInput: { min: 0, max: 100 } }}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    max_allocation_percent: Number(event.target.value),
-                  }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormSelect
-                label="Skill Level"
-                value={form.skill_level}
-                options={[
-                  { value: '', label: 'Not set' },
-                  { value: 'beginner', label: 'Beginner' },
-                  { value: 'intermediate', label: 'Intermediate' },
-                  { value: 'advanced', label: 'Advanced' },
-                  { value: 'expert', label: 'Expert' },
-                ]}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    skill_level: String(event.target.value),
-                  }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormSelect
-                label="Availability"
-                value={form.availability_status}
-                options={[
-                  { value: 'available', label: 'Available' },
-                  { value: 'allocated', label: 'Allocated' },
-                  { value: 'on_leave', label: 'On Leave' },
-                  { value: 'unavailable', label: 'Unavailable' },
-                ]}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    availability_status: String(event.target.value),
-                  }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormField
-                label="Joining Date"
-                type="date"
-                slotProps={{ inputLabel: { shrink: true } }}
-                value={form.joining_date}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, joining_date: event.target.value }))
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormField
-                label="Leaving Date"
-                type="date"
-                slotProps={{ inputLabel: { shrink: true } }}
-                value={form.leaving_date}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, leaving_date: event.target.value }))
-                }
-              />
-            </Grid>
-          </FormSection>
+          {editingUser ? (
+            <>
+              <FormSection title="Additional Details" icon={BadgeOutlinedIcon}>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormField
+                    label="Designation"
+                    value={form.designation}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, designation: event.target.value }))
+                    }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect
+                    label="Manager"
+                    searchable
+                    value={form.manager_id}
+                    options={managerOptions}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        manager_id: String(event.target.value),
+                      }))
+                    }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={form.is_active}
+                        onChange={(event) =>
+                          setForm((current) => ({ ...current, is_active: event.target.checked }))
+                        }
+                      />
+                    }
+                    label="Active account"
+                  />
+                </Grid>
+              </FormSection>
+
+              <FormSection title="Capacity & Scheduling" icon={BadgeOutlinedIcon}>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormField
+                    label="Working Hours / Day"
+                    type="number"
+                    value={form.working_hours_per_day}
+                    slotProps={{ htmlInput: { min: 1, max: 24, step: 0.5 } }}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        working_hours_per_day: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormField
+                    label="Working Days"
+                    value={form.working_days}
+                    helper="Comma-separated, e.g. Mon,Tue,Wed,Thu,Fri"
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, working_days: event.target.value }))
+                    }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormField
+                    label="Max Allocation %"
+                    type="number"
+                    value={form.max_allocation_percent}
+                    slotProps={{ htmlInput: { min: 0, max: 100 } }}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        max_allocation_percent: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormSelect
+                    label="Skill Level"
+                    value={form.skill_level}
+                    options={[
+                      { value: '', label: 'Not set' },
+                      { value: 'beginner', label: 'Beginner' },
+                      { value: 'intermediate', label: 'Intermediate' },
+                      { value: 'advanced', label: 'Advanced' },
+                      { value: 'expert', label: 'Expert' },
+                    ]}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        skill_level: String(event.target.value),
+                      }))
+                    }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormSelect
+                    label="Availability"
+                    value={form.availability_status}
+                    options={[
+                      { value: 'available', label: 'Available' },
+                      { value: 'allocated', label: 'Allocated' },
+                      { value: 'on_leave', label: 'On Leave' },
+                      { value: 'unavailable', label: 'Unavailable' },
+                    ]}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        availability_status: String(event.target.value),
+                      }))
+                    }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormField
+                    label="Joining Date"
+                    type="date"
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    value={form.joining_date}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, joining_date: event.target.value }))
+                    }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormField
+                    label="Leaving Date"
+                    type="date"
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    value={form.leaving_date}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, leaving_date: event.target.value }))
+                    }
+                  />
+                </Grid>
+              </FormSection>
+            </>
+          ) : null}
         </Box>
       </FormDrawer>
 
-      <RecordDetailDrawer
+      <UserDetailsDrawer
+        user={selectedUser}
         open={Boolean(selectedUser)}
         onClose={() => setSelectedUser(null)}
-        title={
-          selectedUser ? `${selectedUser.first_name} ${selectedUser.last_name}` : 'User'
-        }
-        subtitle="User profile"
-        icon={PersonIcon}
-        width={520}
-        status={
-          selectedUser ? (
-            <>
-              <Chip
-                label={selectedUser.is_active ? 'Active' : 'Inactive'}
-                size="small"
-                color={selectedUser.is_active ? 'success' : 'default'}
-              />
-              <Chip
-                label={formatCellValue(roleMap.get(selectedUser.role_id))}
-                size="small"
-                color="primary"
-                variant="outlined"
-              />
-              {selectedUser.must_change_password ? (
-                <Chip label="Password change required" size="small" color="warning" />
-              ) : null}
-            </>
-          ) : null
-        }
-        quickActions={
-          selectedUser ? (
-            <DrawerQuickActions>
-              <ProsohmButton
-                buttonVariant="outlined"
-                size="small"
-                onClick={() => {
-                  openEdit(selectedUser);
-                  setSelectedUser(null);
-                }}
-              >
-                Edit
-              </ProsohmButton>
-              <ProsohmButton
-                buttonVariant="outlined"
-                size="small"
-                onClick={() => setResetTarget(selectedUser)}
-              >
-                Reset Password
-              </ProsohmButton>
-              <ProsohmButton
-                buttonVariant="outlined"
-                size="small"
-                onClick={() => setForceChangeTarget(selectedUser)}
-              >
-                Force Password Change
-              </ProsohmButton>
-              {isAdmin ? (
-                <ProsohmButton
-                  buttonVariant="outlined"
-                  size="small"
-                  disabled={selectedUser.id === currentUser?.id}
-                  onClick={() => setImpersonateTarget(selectedUser)}
-                >
-                  Login As
-                </ProsohmButton>
-              ) : null}
-              <ProsohmButton
-                buttonVariant="outlined"
-                size="small"
-                onClick={() => setToggleTarget(selectedUser)}
-              >
-                {selectedUser.is_active ? 'Deactivate' : 'Activate'}
-              </ProsohmButton>
-              {isAdmin ? (
-                <>
-                  <ProsohmButton
-                    buttonVariant="outlined"
-                    size="small"
-                    onClick={() => setArchiveTarget(selectedUser)}
-                  >
-                    Archive
-                  </ProsohmButton>
-                  <ProsohmButton
-                    buttonVariant="danger"
-                    size="small"
-                    onClick={() => setDeleteTarget(selectedUser)}
-                  >
-                    Delete
-                  </ProsohmButton>
-                </>
-              ) : null}
-            </DrawerQuickActions>
-          ) : null
-        }
-      >
-        {selectedUser ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <FormSection title="Contact Details" icon={ContactMailOutlinedIcon}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField
-                  label="First Name"
-                  value={selectedUser.first_name}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField
-                  label="Last Name"
-                  value={selectedUser.last_name}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <FormField
-                  label="Email"
-                  value={selectedUser.email}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
-            </FormSection>
-            <FormSection title="Employment" icon={BadgeOutlinedIcon}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField
-                  label="Role"
-                  value={formatCellValue(roleMap.get(selectedUser.role_id))}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField
-                  label="Status"
-                  value={selectedUser.is_active ? 'Active' : 'Inactive'}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField
-                  label="Team"
-                  value={selectedUser.team_name ?? 'No Team'}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <FormField
-                  label="Created Date"
-                  value={formatDate(selectedUser.created_at)}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
-            </FormSection>
-          </Box>
-        ) : null}
-      </RecordDetailDrawer>
+        roleLabel={selectedUser ? formatCellValue(roleMap.get(selectedUser.role_id)) || '—' : '—'}
+        isAdmin={isAdmin}
+        canImpersonate={isAdmin && selectedUser?.id !== currentUser?.id}
+        onEdit={(user) => {
+          openEdit(user);
+          setSelectedUser(null);
+        }}
+        onDelete={setDeleteTarget}
+        onResetPassword={setResetTarget}
+        onForcePasswordChange={setForceChangeTarget}
+        onToggleActive={setToggleTarget}
+        onArchive={setArchiveTarget}
+        onImpersonate={setImpersonateTarget}
+      />
 
       <ConfirmDialog
         open={Boolean(resetTarget)}

@@ -42,6 +42,7 @@ export interface User {
   manager_name?: string | null;
   availability_status?: 'available' | 'allocated' | 'on_leave' | 'unavailable';
   max_allocation_percent?: number;
+  active_projects_count?: number;
   is_active: boolean;
   must_change_password?: boolean;
   password_changed?: boolean;

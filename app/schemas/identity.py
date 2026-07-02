@@ -102,6 +102,7 @@ class UserRead(UserBase, TimestampSchema):
     team_name: str | None = None
     department_name: str | None = None
     manager_name: str | None = None
+    active_projects_count: int = 0
     last_login: datetime | None = None
     is_archived: bool = False
     archived_at: datetime | None = None

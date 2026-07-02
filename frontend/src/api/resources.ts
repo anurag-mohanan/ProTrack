@@ -88,3 +88,10 @@ export async function softDeleteUser(userId: string): Promise<User> {
   const { data } = await apiClient.post<User>(`/users/${userId}/soft-delete`);
   return data;
 }
+
+export async function fetchUserProfileDetail(userId: string): Promise<import('./preferences').UserProfile> {
+  const { data } = await apiClient.get<import('./preferences').UserProfile>(
+    `/users/${userId}/profile`,
+  );
+  return data;
+}

@@ -1,14 +1,35 @@
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.permissions import get_role_name, project_assignment_filter
 from app.core.security import hash_password
 from app.crud.base import CRUDBase
 from app.crud.team import sync_user_team_membership
-from app.models.models import Team, User
+from app.models.models import Project, Team, User
 from app.models.foundation import Department
 from app.schemas.identity import UserCreate, UserRead, UserUpdate
+
+
+def count_user_active_projects(db: Session, user: User) -> int:
+    role_name = get_role_name(db, user)
+    assignment_filter = project_assignment_filter(user, role_name)
+    base_filters = (
+        Project.is_deleted.is_(False),
+        Project.is_archived.is_(False),
+    )
+    if assignment_filter is not None:
+        condition = assignment_filter
+    else:
+        condition = (Project.designer_id == user.id) | (Project.design_leader_id == user.id)
+    return int(
+        db.scalar(
+            select(func.count()).select_from(Project).where(condition, *base_filters)
+        )
+        or 0
+    )
 
 
 def build_user_read(db: Session, user: User) -> UserRead:
@@ -30,6 +51,7 @@ def build_user_read(db: Session, user: User) -> UserRead:
             "team_name": team_name,
             "department_name": department_name,
             "manager_name": manager_name,
+            "active_projects_count": count_user_active_projects(db, user),
         }
     )
 

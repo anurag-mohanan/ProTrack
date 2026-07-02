@@ -23,6 +23,8 @@ from app.schemas.identity import (
     UserRead,
     UserUpdate,
 )
+from app.schemas.auth import UserProfileRead
+from app.services.user_profile_service import get_user_profile
 from app.services.activity_service import log_activity
 from app.services.user_lifecycle_service import (
     archive_user,
@@ -106,6 +108,17 @@ def get_user(record_id: UUID, db: Session = Depends(get_db)):
     if db_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     return build_user_read(db, db_user)
+
+
+@router.get("/{record_id}/profile", response_model=UserProfileRead)
+def get_user_profile_detail(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+):
+    db_user = user_crud.get(db, record_id)
+    if db_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return get_user_profile(db, db_user)
 
 
 @router.get("/{record_id}/delete-check", response_model=UserDeleteCheck)

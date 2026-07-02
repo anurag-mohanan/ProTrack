@@ -54,12 +54,19 @@ def _project_activity_query(db: Session, project_id: UUID):
 @router.get("", response_model=list[ActivityRead])
 def list_activities(
     project_id: UUID | None = None,
+    user_id: UUID | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
     if project_id is not None:
         query = _project_activity_query(db, project_id)
+    elif user_id is not None:
+        query = (
+            select(Activity)
+            .where(Activity.user_id == user_id)
+            .order_by(Activity.created_at.desc())
+        )
     else:
         query = select(Activity).order_by(Activity.created_at.desc())
     rows = db.scalars(query.offset(skip).limit(limit)).all()

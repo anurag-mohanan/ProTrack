@@ -37,4 +37,25 @@ export function userDisplayName(user: {
   return name || '';
 }
 
+export function formatUserWorkload(projectCount: number | null | undefined): string {
+  const count = projectCount ?? 0;
+  if (count <= 0) return 'Free';
+  if (count === 1) return '1 Project';
+  return `${count} Projects`;
+}
+
+export function formatEmploymentType(value: string | null | undefined): string {
+  if (isBlankDisplayValue(value)) return '';
+  return formatStatus(value!);
+}
+
+export function userInitials(user: {
+  first_name: string;
+  last_name: string;
+}): string {
+  const first = user.first_name?.trim()?.[0] ?? '';
+  const last = user.last_name?.trim()?.[0] ?? '';
+  return `${first}${last}`.toUpperCase() || '?';
+}
+
 export { formatCellValue, isBlankDisplayValue };

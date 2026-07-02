@@ -15,12 +15,6 @@ const FONT_SCALE = {
   large: 1.08,
 } as const;
 
-const DENSITY_SPACING = {
-  compact: 6,
-  comfortable: 8,
-  default: 8,
-} as const;
-
 function contrastText(hex: string): string {
   const value = hex.replace('#', '');
   const r = parseInt(value.slice(0, 2), 16);
@@ -37,7 +31,6 @@ export function createAppTheme({
 }: AppThemeOptions): Theme {
   const base = createProsohmTheme(mode);
   const fontScale = FONT_SCALE[preferences?.font_size ?? 'medium'];
-  const spacingUnit = DENSITY_SPACING[preferences?.table_density === 'compact' ? 'compact' : 'default'];
   const radius = branding.border_radius ?? 12;
   const buttonRadius =
     branding.button_style === 'pill' ? 999 : branding.button_style === 'sharp' ? 4 : radius;
@@ -81,7 +74,6 @@ export function createAppTheme({
 
   return createTheme(base, {
     palette: paletteOverrides,
-    spacing: spacingUnit,
     shape: { borderRadius: radius },
     typography: {
       fontSize: Math.round(14 * fontScale),

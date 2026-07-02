@@ -1,8 +1,8 @@
 import { Suspense, lazy, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { CssBaseline, ThemeProvider } from '@mui/material';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { AppThemeProvider } from './context/AppThemeProvider';
 import { ToastProvider } from './context/ToastContext';
 import { LoadingState } from './components/common/LoadingState';
 import { queryClient } from './lib/queryClient';
@@ -21,7 +21,6 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { AdminRoute } from './routes/AdminRoute';
 import { RoleRoute } from './routes/RoleRoute';
 import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
-import { theme } from './theme/theme';
 import {
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
@@ -53,6 +52,8 @@ const TeamsAdminPage = lazy(() => import('./pages/admin/TeamsPage'));
 const TaskTypesAdminPage = lazy(() => import('./pages/admin/TaskTypesPage'));
 const NonProductiveCodesAdminPage = lazy(() => import('./pages/admin/NonProductiveCodesPage'));
 const UsersAdminPage = lazy(() => import('./pages/admin/UsersPage'));
+const BrandingPage = lazy(() => import('./pages/admin/BrandingPage'));
+const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
 const HistoricalImportPage = lazy(() =>
   import('./pages/HistoricalImportPage').then((module) => ({
     default: module.HistoricalImportPage,
@@ -115,9 +116,8 @@ function LazyAdminPage({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <AuthProvider>
+      <AuthProvider>
+        <AppThemeProvider>
           <ToastProvider>
             <BrowserRouter>
               <Routes>
@@ -132,6 +132,14 @@ export default function App() {
                     <Route path="/projects/archived" element={<ArchivedProjectsPage />} />
                     <Route path="/projects/:id" element={<ProjectDetailPage />} />
                     <Route path="/timesheets" element={<TimesheetsPage />} />
+                    <Route
+                      path="/profile"
+                      element={
+                        <Suspense fallback={<LoadingState message="Loading profile…" />}>
+                          <UserProfilePage />
+                        </Suspense>
+                      }
+                    />
                     <Route
                       path="/timesheets/:timesheetId/entries/new"
                       element={<TimesheetEntryPage />}
@@ -197,6 +205,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <CompanyProfilePage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/branding"
+                        element={
+                          <LazyAdminPage>
+                            <BrandingPage />
                           </LazyAdminPage>
                         }
                       />
@@ -364,8 +380,8 @@ export default function App() {
               </Routes>
             </BrowserRouter>
           </ToastProvider>
-        </AuthProvider>
-      </ThemeProvider>
+        </AppThemeProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

@@ -3,15 +3,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401 — register all models with Base.metadata
 from app.api.v1.api import api_router
-from app.core.config import ENABLE_DEMO_SEED
+from app.core.config import ENABLE_DEMO_SEED, UPLOAD_DIR
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
 from app.db.project_template_seed import ensure_project_types_and_templates
 from app.db.phase7_schema_sync import ensure_phase7_foundation
 from app.db.phase8_schema_sync import ensure_phase8_foundation
+from app.db.phase9_schema_sync import ensure_phase9_foundation
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -54,6 +56,7 @@ async def lifespan(app: FastAPI):
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
     ensure_phase8_foundation(engine)
+    ensure_phase9_foundation(engine)
     ensure_performance_indexes(engine)
     if ENABLE_DEMO_SEED:
         ensure_design_team(engine)
@@ -108,6 +111,9 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api/v1")
+
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 
 @app.get("/health")

@@ -20,8 +20,17 @@ def build_user_read(db: Session, user: User) -> UserRead:
     if user.department_id is not None:
         department = db.get(Department, user.department_id)
         department_name = department.name if department else None
+    manager_name = None
+    if user.manager_id is not None:
+        manager = db.get(User, user.manager_id)
+        if manager is not None:
+            manager_name = f"{manager.first_name} {manager.last_name}"
     return UserRead.model_validate(user, from_attributes=True).model_copy(
-        update={"team_name": team_name, "department_name": department_name}
+        update={
+            "team_name": team_name,
+            "department_name": department_name,
+            "manager_name": manager_name,
+        }
     )
 
 

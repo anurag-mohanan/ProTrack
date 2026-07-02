@@ -14,6 +14,7 @@ import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import PeopleIcon from '@mui/icons-material/People';
 import SecurityIcon from '@mui/icons-material/Security';
 import SettingsIcon from '@mui/icons-material/Settings';
+import PaletteIcon from '@mui/icons-material/Palette';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import TypeSpecimenIcon from '@mui/icons-material/TypeSpecimen';
@@ -291,7 +292,8 @@ export const ADMIN_REPORT_ITEMS: AdminHubItem[] = [
 
 export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = [
   { id: 'general', title: 'General Settings', description: 'Core application options.', icon: SettingsIcon, path: '/admin/settings' },
-  { id: 'company', title: 'Company Profile', description: 'Organisation profile.', icon: BusinessIcon, path: '/admin/settings/company' },
+  { id: 'company', title: 'Company Information', description: 'Organisation profile and logo.', icon: BusinessIcon, path: '/admin/settings/company' },
+  { id: 'branding', title: 'Branding', description: 'Colours, density, and theme presets.', icon: PaletteIcon, path: '/admin/settings/branding' },
   { id: 'working-hours', title: 'Working Hours', description: 'Standard working hours.', icon: SettingsIcon, path: '/admin/settings/company' },
   { id: 'holidays', title: 'Holiday Calendar', description: 'Non-working days.', icon: SettingsIcon, path: '/admin/settings/holidays' },
   { id: 'departments', title: 'Departments', description: 'Organisation departments.', icon: GroupsIcon, path: '/admin/settings/departments' },

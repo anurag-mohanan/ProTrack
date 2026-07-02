@@ -11,6 +11,7 @@ from app.api.v1 import (
     milestones,
     non_productive_codes,
     notifications,
+    preferences,
     project_templates,
     project_types,
     projects,
@@ -120,6 +121,7 @@ api_router.include_router(timesheets.router)
 api_router.include_router(timesheet_entries.router)
 api_router.include_router(non_productive_codes.router)
 api_router.include_router(settings.router)
+api_router.include_router(preferences.router)
 api_router.include_router(notifications.router)
 api_router.include_router(activities.router)
 api_router.include_router(dashboard.router)

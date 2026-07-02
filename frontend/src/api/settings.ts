@@ -1,4 +1,5 @@
 import type {
+  BrandingSettings,
   CompanySettings,
   ContactType,
   Department,
@@ -6,9 +7,15 @@ import type {
   FilePathSettings,
   Holiday,
   NotificationSettings,
+  PublicSettings,
   Skill,
 } from '../types/Settings';
 import { apiClient } from './client';
+
+export async function fetchPublicSettings(): Promise<PublicSettings> {
+  const { data } = await apiClient.get<PublicSettings>('/settings/public');
+  return data;
+}
 
 export async function fetchCompanySettings(): Promise<CompanySettings> {
   const { data } = await apiClient.get<CompanySettings>('/settings/company');
@@ -19,6 +26,32 @@ export async function updateCompanySettings(
   payload: Partial<CompanySettings>,
 ): Promise<CompanySettings> {
   const { data } = await apiClient.patch<CompanySettings>('/settings/company', payload);
+  return data;
+}
+
+export async function uploadCompanyLogo(file: File): Promise<CompanySettings> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await apiClient.post<CompanySettings>('/settings/company/logo', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export async function fetchBrandingSettings(): Promise<BrandingSettings> {
+  const { data } = await apiClient.get<BrandingSettings>('/settings/branding');
+  return data;
+}
+
+export async function updateBrandingSettings(
+  payload: Partial<BrandingSettings>,
+): Promise<BrandingSettings> {
+  const { data } = await apiClient.patch<BrandingSettings>('/settings/branding', payload);
+  return data;
+}
+
+export async function restoreBrandingDefaults(): Promise<BrandingSettings> {
+  const { data } = await apiClient.post<BrandingSettings>('/settings/branding/restore-defaults');
   return data;
 }
 

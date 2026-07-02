@@ -35,6 +35,10 @@ export interface User {
   skill_level?: 'beginner' | 'intermediate' | 'advanced' | 'expert' | null;
   joining_date?: string | null;
   leaving_date?: string | null;
+  phone?: string | null;
+  designation?: string | null;
+  manager_id?: string | null;
+  manager_name?: string | null;
   availability_status?: 'available' | 'allocated' | 'on_leave' | 'unavailable';
   max_allocation_percent?: number;
   is_active: boolean;

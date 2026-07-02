@@ -1,0 +1,31 @@
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+from app.schemas.common import TimestampSchema
+
+
+class UserPreferencesRead(TimestampSchema):
+    id: UUID
+    user_id: UUID
+    theme_mode: str = "company_default"
+    sidebar_expanded: bool = True
+    sidebar_auto_collapse: bool = False
+    dashboard_layout: str = "default"
+    table_density: str = "comfortable"
+    font_size: str = "medium"
+    animations_enabled: bool = True
+    reduced_motion: bool = False
+    default_landing_page: str = "dashboard"
+
+
+class UserPreferencesUpdate(BaseModel):
+    theme_mode: str | None = Field(default=None, max_length=32)
+    sidebar_expanded: bool | None = None
+    sidebar_auto_collapse: bool | None = None
+    dashboard_layout: str | None = Field(default=None, max_length=20)
+    table_density: str | None = Field(default=None, max_length=20)
+    font_size: str | None = Field(default=None, max_length=20)
+    animations_enabled: bool | None = None
+    reduced_motion: bool | None = None
+    default_landing_page: str | None = Field(default=None, max_length=32)

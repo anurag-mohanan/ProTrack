@@ -35,6 +35,9 @@ class UserBase(BaseModel):
     email: EmailStr
     first_name: str = Field(max_length=100)
     last_name: str = Field(max_length=100)
+    phone: str | None = Field(default=None, max_length=50)
+    designation: str | None = Field(default=None, max_length=100)
+    manager_id: UUID | None = None
     is_active: bool = True
     must_change_password: bool = False
     team_id: UUID | None = None
@@ -59,6 +62,9 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     first_name: str | None = Field(default=None, max_length=100)
     last_name: str | None = Field(default=None, max_length=100)
+    phone: str | None = Field(default=None, max_length=50)
+    designation: str | None = Field(default=None, max_length=100)
+    manager_id: UUID | None = None
     is_active: bool | None = None
     team_id: UUID | None = None
     department_id: UUID | None = None
@@ -86,6 +92,7 @@ class UserRead(UserBase, TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
     team_name: str | None = None
     department_name: str | None = None
+    manager_name: str | None = None
     is_archived: bool = False
     archived_at: datetime | None = None
     is_deleted: bool = False

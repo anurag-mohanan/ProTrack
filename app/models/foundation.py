@@ -34,8 +34,10 @@ class CompanySettings(Base, TimestampMixin):
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     company_name: Mapped[str] = mapped_column(String(200), nullable=False, default="Prosohm")
+    company_short_name: Mapped[Optional[str]] = mapped_column(String(80))
     logo_url: Mapped[Optional[str]] = mapped_column(String(500))
     address: Mapped[Optional[str]] = mapped_column(Text)
+    email: Mapped[Optional[str]] = mapped_column(String(255))
     phone: Mapped[Optional[str]] = mapped_column(String(50))
     website: Mapped[Optional[str]] = mapped_column(String(255))
     gst_number: Mapped[Optional[str]] = mapped_column(String(50))
@@ -48,6 +50,56 @@ class CompanySettings(Base, TimestampMixin):
     default_working_days: Mapped[str] = mapped_column(
         String(50), nullable=False, default="Mon,Tue,Wed,Thu,Fri"
     )
+
+
+class BrandingSettings(Base, TimestampMixin):
+    __tablename__ = "branding_settings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    theme_preset: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="prosohm_professional"
+    )
+    primary_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#0066B3")
+    secondary_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#1E293B")
+    accent_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#0EA5E9")
+    success_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#16A34A")
+    warning_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#D97706")
+    danger_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#DC2626")
+    sidebar_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#0F172A")
+    header_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#FFFFFF")
+    button_style: Mapped[str] = mapped_column(String(20), nullable=False, default="rounded")
+    border_radius: Mapped[int] = mapped_column(Integer, nullable=False, default=12)
+    card_style: Mapped[str] = mapped_column(String(20), nullable=False, default="elevated")
+    density: Mapped[str] = mapped_column(String(20), nullable=False, default="default")
+
+
+class UserPreferences(Base, TimestampMixin):
+    __tablename__ = "user_preferences"
+    __table_args__ = (UniqueConstraint("user_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    theme_mode: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="company_default"
+    )
+    sidebar_expanded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sidebar_auto_collapse: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    dashboard_layout: Mapped[str] = mapped_column(String(20), nullable=False, default="default")
+    table_density: Mapped[str] = mapped_column(String(20), nullable=False, default="comfortable")
+    font_size: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+    animations_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    reduced_motion: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    default_landing_page: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="dashboard"
+    )
+
+    user: Mapped["User"] = relationship(back_populates="preferences")
 
 
 class Holiday(Base, TimestampMixin):

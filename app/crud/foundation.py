@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.foundation import (
+    BrandingSettings,
     CompanySettings,
     ContactType,
     Department,
@@ -17,6 +18,7 @@ from app.models.foundation import (
     UserSkill,
 )
 from app.schemas.settings import (
+    BrandingSettingsUpdate,
     CompanySettingsUpdate,
     DepartmentCreate,
     DepartmentUpdate,
@@ -200,3 +202,39 @@ def replace_user_skills(
 
 holiday = CRUDHoliday()
 department = CRUDDepartment()
+
+
+def get_or_create_branding_settings(db: Session) -> BrandingSettings:
+    settings = db.scalar(select(BrandingSettings).limit(1))
+    if settings is None:
+        from app.db.phase9_schema_sync import DEFAULT_BRANDING
+
+        settings = BrandingSettings(**DEFAULT_BRANDING)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
+def update_branding_settings(
+    db: Session, payload: BrandingSettingsUpdate
+) -> BrandingSettings:
+    settings = get_or_create_branding_settings(db)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(settings, key, value)
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return settings
+
+
+def restore_default_branding_settings(db: Session) -> BrandingSettings:
+    from app.db.phase9_schema_sync import DEFAULT_BRANDING
+
+    settings = get_or_create_branding_settings(db)
+    for key, value in DEFAULT_BRANDING.items():
+        setattr(settings, key, value)
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return settings

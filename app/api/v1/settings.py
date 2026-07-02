@@ -1,9 +1,14 @@
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy.orm import Session
+
 from app.api.auth_deps import require_roles
-from app.api.deps import APIRouter, Depends, HTTPException, Session, get_db, status
+from app.api.deps import get_db
+from app.core.config import COMPANY_LOGO_DIR
 from app.crud.foundation import (
     department,
+    get_or_create_branding_settings,
     get_or_create_company_settings,
     get_or_create_file_path_settings,
     get_or_create_notification_settings,
@@ -13,11 +18,15 @@ from app.crud.foundation import (
     list_skills,
     list_user_skills,
     replace_user_skills,
+    restore_default_branding_settings,
+    update_branding_settings,
     update_company_settings,
     update_file_path_settings,
     update_notification_settings,
 )
 from app.schemas.settings import (
+    BrandingSettingsRead,
+    BrandingSettingsUpdate,
     CompanySettingsRead,
     CompanySettingsUpdate,
     ContactTypeRead,
@@ -32,6 +41,9 @@ from app.schemas.settings import (
     HolidayUpdate,
     NotificationSettingsRead,
     NotificationSettingsUpdate,
+    PublicBrandingRead,
+    PublicCompanySettingsRead,
+    PublicSettingsRead,
     SkillRead,
     UserSkillCreate,
     UserSkillRead,
@@ -39,6 +51,28 @@ from app.schemas.settings import (
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 admin_access = [Depends(require_roles("Admin", "Engineering Manager"))]
+
+ALLOWED_LOGO_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/svg+xml": ".svg",
+}
+
+
+@router.get("/public", response_model=PublicSettingsRead)
+def get_public_settings(db: Session = Depends(get_db)):
+    company = get_or_create_company_settings(db)
+    branding = get_or_create_branding_settings(db)
+    return PublicSettingsRead(
+        company=PublicCompanySettingsRead(
+            company_name=company.company_name,
+            company_short_name=company.company_short_name,
+            logo_url=company.logo_url,
+            website=company.website,
+        ),
+        branding=PublicBrandingRead.model_validate(branding, from_attributes=True),
+    )
 
 
 @router.get("/company", response_model=CompanySettingsRead)
@@ -49,6 +83,53 @@ def get_company_settings(db: Session = Depends(get_db)):
 @router.patch("/company", response_model=CompanySettingsRead, dependencies=admin_access)
 def patch_company_settings(payload: CompanySettingsUpdate, db: Session = Depends(get_db)):
     return update_company_settings(db, payload)
+
+
+@router.post("/company/logo", response_model=CompanySettingsRead, dependencies=admin_access)
+async def upload_company_logo(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_LOGO_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Logo must be PNG, JPG, or SVG.",
+        )
+    extension = ALLOWED_LOGO_TYPES[content_type]
+    COMPANY_LOGO_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"company-logo{extension}"
+    destination = COMPANY_LOGO_DIR / filename
+    data = await file.read()
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Logo must be smaller than 2 MB.",
+        )
+    destination.write_bytes(data)
+    return update_company_settings(
+        db,
+        CompanySettingsUpdate(logo_url=f"/uploads/company/{filename}"),
+    )
+
+
+@router.get("/branding", response_model=BrandingSettingsRead)
+def get_branding_settings(db: Session = Depends(get_db)):
+    return get_or_create_branding_settings(db)
+
+
+@router.patch("/branding", response_model=BrandingSettingsRead, dependencies=admin_access)
+def patch_branding_settings(payload: BrandingSettingsUpdate, db: Session = Depends(get_db)):
+    return update_branding_settings(db, payload)
+
+
+@router.post(
+    "/branding/restore-defaults",
+    response_model=BrandingSettingsRead,
+    dependencies=admin_access,
+)
+def restore_branding_defaults(db: Session = Depends(get_db)):
+    return restore_default_branding_settings(db)
 
 
 @router.get("/file-paths", response_model=FilePathSettingsRead)

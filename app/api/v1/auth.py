@@ -10,8 +10,9 @@ from app.crud.auth import authenticate_user
 from app.models.enums import ActivityAction, EntityType
 from app.models.models import User
 from app.core.security import hash_password, verify_password
-from app.schemas.auth import ChangePasswordRequest, CurrentUserRead, LoginRequest, Token
+from app.schemas.auth import ChangePasswordRequest, CurrentUserRead, LoginRequest, Token, UserProfileRead
 from app.services.activity_service import log_activity
+from app.services.user_profile_service import get_user_profile
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -72,6 +73,14 @@ def read_current_user(
         is_active=current_user.is_active,
         must_change_password=current_user.must_change_password,
     )
+
+
+@router.get("/me/profile", response_model=UserProfileRead)
+def read_current_user_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return get_user_profile(db, current_user)
 
 
 @router.post("/change-password")

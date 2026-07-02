@@ -18,8 +18,10 @@ from app.schemas.common import TimestampSchema
 class CompanySettingsRead(BaseModel):
     id: UUID
     company_name: str
+    company_short_name: str | None = None
     logo_url: str | None = None
     address: str | None = None
+    email: str | None = None
     phone: str | None = None
     website: str | None = None
     gst_number: str | None = None
@@ -32,8 +34,10 @@ class CompanySettingsRead(BaseModel):
 
 class CompanySettingsUpdate(BaseModel):
     company_name: str | None = Field(default=None, max_length=200)
+    company_short_name: str | None = Field(default=None, max_length=80)
     logo_url: str | None = Field(default=None, max_length=500)
     address: str | None = None
+    email: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
     website: str | None = Field(default=None, max_length=255)
     gst_number: str | None = Field(default=None, max_length=50)
@@ -42,6 +46,67 @@ class CompanySettingsUpdate(BaseModel):
     financial_year_start_month: int | None = Field(default=None, ge=1, le=12)
     default_working_hours_per_day: Decimal | None = Field(default=None, gt=0, le=24)
     default_working_days: str | None = Field(default=None, max_length=50)
+
+
+class PublicCompanySettingsRead(BaseModel):
+    company_name: str
+    company_short_name: str | None = None
+    logo_url: str | None = None
+    website: str | None = None
+
+
+class BrandingSettingsRead(BaseModel):
+    id: UUID
+    theme_preset: str = "prosohm_professional"
+    primary_color: str = "#0066B3"
+    secondary_color: str = "#1E293B"
+    accent_color: str = "#0EA5E9"
+    success_color: str = "#16A34A"
+    warning_color: str = "#D97706"
+    danger_color: str = "#DC2626"
+    sidebar_color: str = "#0F172A"
+    header_color: str = "#FFFFFF"
+    button_style: str = "rounded"
+    border_radius: int = 12
+    card_style: str = "elevated"
+    density: str = "default"
+
+
+class BrandingSettingsUpdate(BaseModel):
+    theme_preset: str | None = Field(default=None, max_length=64)
+    primary_color: str | None = Field(default=None, max_length=20)
+    secondary_color: str | None = Field(default=None, max_length=20)
+    accent_color: str | None = Field(default=None, max_length=20)
+    success_color: str | None = Field(default=None, max_length=20)
+    warning_color: str | None = Field(default=None, max_length=20)
+    danger_color: str | None = Field(default=None, max_length=20)
+    sidebar_color: str | None = Field(default=None, max_length=20)
+    header_color: str | None = Field(default=None, max_length=20)
+    button_style: str | None = Field(default=None, max_length=20)
+    border_radius: int | None = Field(default=None, ge=0, le=32)
+    card_style: str | None = Field(default=None, max_length=20)
+    density: str | None = Field(default=None, max_length=20)
+
+
+class PublicBrandingRead(BaseModel):
+    theme_preset: str
+    primary_color: str
+    secondary_color: str
+    accent_color: str
+    success_color: str
+    warning_color: str
+    danger_color: str
+    sidebar_color: str
+    header_color: str
+    button_style: str
+    border_radius: int
+    card_style: str
+    density: str
+
+
+class PublicSettingsRead(BaseModel):
+    company: PublicCompanySettingsRead
+    branding: PublicBrandingRead
 
 
 class HolidayBase(BaseModel):

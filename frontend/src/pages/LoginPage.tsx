@@ -11,13 +11,16 @@ import {
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import { useNavigate } from 'react-router-dom';
 import { getErrorMessage } from '../api/client';
-import { ProsohmLogo } from '../components/branding/ProsohmLogo';
+import { useCompany } from '../context/CompanyContext';
+import { CompanyLogo } from '../components/branding/CompanyLogo';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const { company } = useCompany();
   const navigate = useNavigate();
+  const companyName = company?.company_name ?? 'your organisation';
   const [email, setEmail] = useState('admin@prosohm.com');
   const [password, setPassword] = useState('Password@123');
   const [error, setError] = useState<string | null>(null);
@@ -57,14 +60,14 @@ export function LoginPage() {
           background: (theme) => theme.palette.prosohm.gradientLogin,
         }}
       >
-        <ProsohmLogo light size="lg" />
+        <CompanyLogo light size="lg" />
         <Box>
           <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, maxWidth: 480 }}>
             Engineering excellence, delivered.
           </Typography>
           <Typography variant="body1" sx={{ color: 'prosohm.sidebarTextMuted', maxWidth: 520 }}>
-            ProTrack connects project delivery, milestones, timesheets, and administration
-            in one professional workspace aligned with Prosohm&apos;s engineering standards.
+            ProTrack connects project delivery, milestones, timesheets, and administration in
+            one professional workspace for {companyName}.
           </Typography>
         </Box>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
@@ -87,14 +90,14 @@ export function LoginPage() {
           <CardContent sx={{ p: { xs: 3, md: 4 } }}>
             <Stack spacing={3} component="form" onSubmit={handleSubmit}>
               <Box sx={{ display: { xs: 'flex', lg: 'none' }, justifyContent: 'center' }}>
-                <ProsohmLogo size="lg" />
+                <CompanyLogo size="lg" />
               </Box>
               <Box sx={{ textAlign: { xs: 'center', lg: 'left' } }}>
                 <Typography variant="pageTitle" gutterBottom>
                   Welcome back
                 </Typography>
                 <Typography color="text.secondary">
-                  Sign in to ProTrack — Prosohm&apos;s engineering management platform.
+                  Sign in to ProTrack — {companyName}&apos;s engineering management platform.
                 </Typography>
               </Box>
 

@@ -48,6 +48,9 @@ interface UserFormState {
   first_name: string;
   last_name: string;
   email: string;
+  phone: string;
+  designation: string;
+  manager_id: string;
   role_id: string;
   team_id: string;
   department_id: string;
@@ -60,6 +63,8 @@ interface UserFormState {
   availability_status: string;
   max_allocation_percent: number;
   password: string;
+  confirm_password: string;
+  generate_temporary_password: boolean;
   is_active: boolean;
 }
 
@@ -67,6 +72,9 @@ const emptyForm: UserFormState = {
   first_name: '',
   last_name: '',
   email: '',
+  phone: '',
+  designation: '',
+  manager_id: '',
   role_id: '',
   team_id: '',
   department_id: '',
@@ -79,6 +87,8 @@ const emptyForm: UserFormState = {
   availability_status: 'available',
   max_allocation_percent: 100,
   password: '',
+  confirm_password: '',
+  generate_temporary_password: false,
   is_active: true,
 };
 
@@ -177,6 +187,24 @@ export default function UsersPage() {
     [teams],
   );
 
+  const managerOptions = useMemo(
+    () => [
+      { value: '', label: 'No Manager' },
+      ...users
+        .filter((row) => row.id !== editingUser?.id)
+        .map((row) => ({
+          value: row.id,
+          label: `${row.first_name} ${row.last_name}`,
+        })),
+    ],
+    [users, editingUser?.id],
+  );
+
+  const generateTempPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
+    return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  };
+
   const departmentOptions = useMemo(
     () => [
       { value: '', label: 'No Department' },
@@ -202,6 +230,9 @@ export default function UsersPage() {
       first_name: user.first_name,
       last_name: user.last_name,
       email: user.email,
+      phone: user.phone ?? '',
+      designation: user.designation ?? '',
+      manager_id: user.manager_id ?? '',
       role_id: user.role_id,
       team_id: user.team_id ?? '',
       department_id: user.department_id ?? '',
@@ -214,6 +245,8 @@ export default function UsersPage() {
       availability_status: user.availability_status ?? 'available',
       max_allocation_percent: user.max_allocation_percent ?? 100,
       password: '',
+      confirm_password: '',
+      generate_temporary_password: false,
       is_active: user.is_active,
     });
     setFormOpen(true);
@@ -232,8 +265,24 @@ export default function UsersPage() {
   });
 
   const handleSave = async () => {
+    if (!editingUser) {
+      if (form.password !== form.confirm_password) {
+        showError('Password and confirmation do not match.');
+        return;
+      }
+      if (!form.generate_temporary_password && form.password.length < 8) {
+        showError('Password must be at least 8 characters.');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
+      const identityPayload = {
+        phone: form.phone || null,
+        designation: form.designation || null,
+        manager_id: form.manager_id || null,
+      };
       if (editingUser) {
         await usersApi.update(editingUser.id, {
           first_name: form.first_name,
@@ -242,21 +291,31 @@ export default function UsersPage() {
           role_id: form.role_id,
           team_id: form.team_id || null,
           is_active: form.is_active,
+          ...identityPayload,
           ...buildCapacityPayload(),
         });
         showSuccess('User updated successfully.');
       } else {
+        const password = form.generate_temporary_password
+          ? generateTempPassword()
+          : form.password;
         await usersApi.create({
           first_name: form.first_name,
           last_name: form.last_name,
           email: form.email,
           role_id: form.role_id,
           team_id: form.team_id || null,
-          password: form.password,
+          password,
+          must_change_password: form.generate_temporary_password,
           is_active: form.is_active,
+          ...identityPayload,
           ...buildCapacityPayload(),
-        } as Partial<User> & { password: string });
-        showSuccess('User created successfully.');
+        } as Partial<User> & { password: string; must_change_password?: boolean });
+        showSuccess(
+          form.generate_temporary_password
+            ? `User created. Temporary password: ${password}`
+            : 'User created successfully.',
+        );
       }
       setFormOpen(false);
       await loadData();
@@ -500,6 +559,38 @@ export default function UsersPage() {
                 }
               />
             </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Phone"
+                value={form.phone}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, phone: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Designation"
+                value={form.designation}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, designation: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormSelect
+                label="Manager"
+                searchable
+                value={form.manager_id}
+                options={managerOptions}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    manager_id: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
           </FormSection>
 
           <FormSection title="Role & Access" icon={BadgeOutlinedIcon}>
@@ -532,18 +623,56 @@ export default function UsersPage() {
               />
             </Grid>
             {!editingUser ? (
-              <Grid size={{ xs: 12 }}>
-                <FormField
-                  label="Temporary Password"
-                  type="password"
-                  required
-                  value={form.password}
-                  helper="Minimum 8 characters. User must change on first login."
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, password: event.target.value }))
-                  }
-                />
-              </Grid>
+              <>
+                <Grid size={{ xs: 12 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={form.generate_temporary_password}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            generate_temporary_password: event.target.checked,
+                            password: event.target.checked ? generateTempPassword() : '',
+                            confirm_password: event.target.checked ? current.password : '',
+                          }))
+                        }
+                      />
+                    }
+                    label="Generate temporary password"
+                  />
+                </Grid>
+                {!form.generate_temporary_password ? (
+                  <>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <FormField
+                        label="Password"
+                        type="password"
+                        required
+                        value={form.password}
+                        helper="Minimum 8 characters."
+                        onChange={(event) =>
+                          setForm((current) => ({ ...current, password: event.target.value }))
+                        }
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <FormField
+                        label="Confirm Password"
+                        type="password"
+                        required
+                        value={form.confirm_password}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            confirm_password: event.target.value,
+                          }))
+                        }
+                      />
+                    </Grid>
+                  </>
+                ) : null}
+              </>
             ) : null}
             <Grid size={{ xs: 12 }}>
               <FormControlLabel

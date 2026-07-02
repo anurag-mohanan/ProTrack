@@ -1,8 +1,10 @@
 export interface CompanySettings {
   id: string;
   company_name: string;
+  company_short_name?: string | null;
   logo_url?: string | null;
   address?: string | null;
+  email?: string | null;
   phone?: string | null;
   website?: string | null;
   gst_number?: string | null;
@@ -13,6 +15,42 @@ export interface CompanySettings {
   default_working_days: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export type ThemePresetId =
+  | 'prosohm_professional'
+  | 'modern_light'
+  | 'modern_dark'
+  | 'ocean_blue'
+  | 'slate_grey'
+  | 'emerald'
+  | 'high_contrast';
+
+export interface BrandingSettings {
+  id: string;
+  theme_preset: ThemePresetId;
+  primary_color: string;
+  secondary_color: string;
+  accent_color: string;
+  success_color: string;
+  warning_color: string;
+  danger_color: string;
+  sidebar_color: string;
+  header_color: string;
+  button_style: 'rounded' | 'sharp' | 'pill';
+  border_radius: number;
+  card_style: 'elevated' | 'flat' | 'bordered';
+  density: 'default' | 'comfortable' | 'compact';
+}
+
+export interface PublicSettings {
+  company: {
+    company_name: string;
+    company_short_name?: string | null;
+    logo_url?: string | null;
+    website?: string | null;
+  };
+  branding: BrandingSettings;
 }
 
 export interface Holiday {

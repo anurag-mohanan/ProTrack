@@ -11,7 +11,7 @@ from app.models.enums import (
     SkillLevel,
     UserAvailabilityStatus,
 )
-from app.schemas.common import TimestampSchema
+from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
 class RoleBase(BaseModel):
@@ -19,11 +19,11 @@ class RoleBase(BaseModel):
     description: str | None = None
 
 
-class RoleCreate(RoleBase):
+class RoleCreate(BlankOptionalFieldsMixin, RoleBase):
     pass
 
 
-class RoleUpdate(BaseModel):
+class RoleUpdate(BlankOptionalFieldsMixin, BaseModel):
     name: str | None = Field(default=None, max_length=50)
     description: str | None = None
 
@@ -54,12 +54,12 @@ class UserBase(BaseModel):
     max_allocation_percent: int = 100
 
 
-class UserCreate(UserBase):
+class UserCreate(BlankOptionalFieldsMixin, UserBase):
     password: str = Field(min_length=8, max_length=128)
     must_change_password: bool = True
 
 
-class UserUpdate(BaseModel):
+class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     role_id: UUID | None = None
     email: EmailStr | None = None
     first_name: str | None = Field(default=None, max_length=100)

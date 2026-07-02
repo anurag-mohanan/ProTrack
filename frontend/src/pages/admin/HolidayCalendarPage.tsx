@@ -20,6 +20,7 @@ import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { createHoliday, deleteHoliday, fetchHolidays } from '../../api/settings';
 import { useToast } from '../../context/ToastContext';
+import { formatCellValue } from '../../utils/format';
 
 export default function HolidayCalendarPage() {
   const { showSuccess, showError } = useToast();
@@ -103,7 +104,7 @@ export default function HolidayCalendarPage() {
               <TableRow key={row.id}>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>{row.holiday_date}</TableCell>
-                <TableCell>{row.region ?? '—'}</TableCell>
+                <TableCell>{formatCellValue(row.region)}</TableCell>
                 <TableCell>{row.is_recurring ? 'Yes' : 'No'}</TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={() => deleteMutation.mutate(row.id)}>

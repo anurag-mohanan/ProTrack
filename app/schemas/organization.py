@@ -3,7 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.enums import DueDateCalculationMode
-from app.schemas.common import TimestampSchema
+from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
 class StreamBase(BaseModel):
@@ -12,11 +12,11 @@ class StreamBase(BaseModel):
     is_active: bool = True
 
 
-class StreamCreate(StreamBase):
+class StreamCreate(BlankOptionalFieldsMixin, StreamBase):
     pass
 
 
-class StreamUpdate(BaseModel):
+class StreamUpdate(BlankOptionalFieldsMixin, BaseModel):
     name: str | None = Field(default=None, max_length=100)
     description: str | None = None
     is_active: bool | None = None
@@ -41,11 +41,11 @@ class CustomerBase(BaseModel):
     project_number_prefix: str | None = Field(default=None, max_length=50)
 
 
-class CustomerCreate(CustomerBase):
+class CustomerCreate(BlankOptionalFieldsMixin, CustomerBase):
     pass
 
 
-class CustomerUpdate(BaseModel):
+class CustomerUpdate(BlankOptionalFieldsMixin, BaseModel):
     name: str | None = Field(default=None, max_length=200)
     code: str | None = Field(default=None, max_length=20)
     address: str | None = None
@@ -76,11 +76,11 @@ class ContactBase(BaseModel):
     is_active: bool = True
 
 
-class ContactCreate(ContactBase):
+class ContactCreate(BlankOptionalFieldsMixin, ContactBase):
     pass
 
 
-class ContactUpdate(BaseModel):
+class ContactUpdate(BlankOptionalFieldsMixin, BaseModel):
     customer_id: UUID | None = None
     first_name: str | None = Field(default=None, max_length=100)
     last_name: str | None = Field(default=None, max_length=100)
@@ -104,11 +104,11 @@ class TaskTypeBase(BaseModel):
     is_active: bool = True
 
 
-class TaskTypeCreate(TaskTypeBase):
+class TaskTypeCreate(BlankOptionalFieldsMixin, TaskTypeBase):
     pass
 
 
-class TaskTypeUpdate(BaseModel):
+class TaskTypeUpdate(BlankOptionalFieldsMixin, BaseModel):
     stream_id: UUID | None = None
     name: str | None = Field(default=None, max_length=100)
     description: str | None = None
@@ -121,18 +121,18 @@ class TaskTypeRead(TaskTypeBase, TimestampSchema):
 
 
 class NonProductiveCodeBase(BaseModel):
-    code: str = Field(max_length=20)
-    description: str = Field(max_length=255)
+    code: str = Field(min_length=1, max_length=20)
+    description: str | None = Field(default=None, max_length=255)
     is_active: bool = True
     is_archived: bool = False
     sort_order: int = 0
 
 
-class NonProductiveCodeCreate(NonProductiveCodeBase):
+class NonProductiveCodeCreate(BlankOptionalFieldsMixin, NonProductiveCodeBase):
     pass
 
 
-class NonProductiveCodeUpdate(BaseModel):
+class NonProductiveCodeUpdate(BlankOptionalFieldsMixin, BaseModel):
     code: str | None = Field(default=None, max_length=20)
     description: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None

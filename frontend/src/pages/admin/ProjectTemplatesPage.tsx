@@ -24,6 +24,7 @@ import {
   fetchProjectTemplates,
 } from '../../api/projectTemplates';
 import type { ProjectTemplate } from '../../types/ProjectTemplate';
+import { formatCellValue } from '../../utils/format';
 
 export default function ProjectTemplatesPage() {
   const navigate = useNavigate();
@@ -84,7 +85,7 @@ export default function ProjectTemplatesPage() {
       headerName: 'Project Type',
       flex: 1,
       minWidth: 140,
-      valueGetter: (_value, row) => row.project_type_name ?? '—',
+      valueGetter: (_value, row) => formatCellValue(row.project_type_name),
     },
     {
       field: 'customer_name',
@@ -103,7 +104,7 @@ export default function ProjectTemplatesPage() {
       headerName: 'Default',
       width: 90,
       renderCell: (params) =>
-        params.value ? <Chip label="Default" size="small" color="primary" /> : '—',
+        params.value ? <Chip label="Default" size="small" color="primary" /> : null,
     },
     {
       field: 'is_active',

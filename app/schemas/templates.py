@@ -4,7 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.enums import ProjectStage
-from app.schemas.common import TimestampSchema
+from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
 class ProjectTypeBase(BaseModel):
@@ -13,11 +13,11 @@ class ProjectTypeBase(BaseModel):
     is_active: bool = True
 
 
-class ProjectTypeCreate(ProjectTypeBase):
+class ProjectTypeCreate(BlankOptionalFieldsMixin, ProjectTypeBase):
     pass
 
 
-class ProjectTypeUpdate(BaseModel):
+class ProjectTypeUpdate(BlankOptionalFieldsMixin, BaseModel):
     name: str | None = Field(default=None, max_length=100)
     description: str | None = None
     is_active: bool | None = None
@@ -37,11 +37,11 @@ class ProjectTemplateMilestoneBase(BaseModel):
     estimated_hours: Decimal | None = None
 
 
-class ProjectTemplateMilestoneCreate(ProjectTemplateMilestoneBase):
+class ProjectTemplateMilestoneCreate(BlankOptionalFieldsMixin, ProjectTemplateMilestoneBase):
     pass
 
 
-class ProjectTemplateMilestoneUpdate(BaseModel):
+class ProjectTemplateMilestoneUpdate(BlankOptionalFieldsMixin, BaseModel):
     milestone_name: str | None = Field(default=None, max_length=200)
     description: str | None = None
     sort_order: int | None = None
@@ -65,11 +65,11 @@ class ProjectTemplateBase(BaseModel):
     is_active: bool = True
 
 
-class ProjectTemplateCreate(ProjectTemplateBase):
+class ProjectTemplateCreate(BlankOptionalFieldsMixin, ProjectTemplateBase):
     milestones: list[ProjectTemplateMilestoneCreate] = Field(default_factory=list)
 
 
-class ProjectTemplateUpdate(BaseModel):
+class ProjectTemplateUpdate(BlankOptionalFieldsMixin, BaseModel):
     name: str | None = Field(default=None, max_length=200)
     description: str | None = None
     project_type_id: UUID | None = None

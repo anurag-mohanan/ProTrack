@@ -1,4 +1,9 @@
-export function formatNumber(value: number, digits = 2): string {
+import { formatCellValue, isBlankDisplayValue } from './formValues';
+
+export function formatNumber(value: number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return '';
+  }
   return Number(value).toLocaleString(undefined, {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
@@ -6,17 +11,21 @@ export function formatNumber(value: number, digits = 2): string {
 }
 
 export function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const [year, month, day] = value.split('-').map(Number);
+  if (isBlankDisplayValue(value)) return '';
+  const [year, month, day] = value!.split('-').map(Number);
+  if (!year || !month || !day) return '';
   return new Date(year, month - 1, day).toLocaleDateString();
 }
 
 export function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  return new Date(value).toLocaleString();
+  if (isBlankDisplayValue(value)) return '';
+  const parsed = new Date(value!);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleString();
 }
 
 export function formatStatus(value: string): string {
+  if (isBlankDisplayValue(value)) return '';
   return value.replace(/_/g, ' ');
 }
 
@@ -24,5 +33,8 @@ export function userDisplayName(user: {
   first_name: string;
   last_name: string;
 }): string {
-  return `${user.first_name} ${user.last_name}`;
+  const name = `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim();
+  return name || '';
 }
+
+export { formatCellValue, isBlankDisplayValue };

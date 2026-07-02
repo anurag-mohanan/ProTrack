@@ -25,6 +25,8 @@ import { getErrorMessage } from '../../api/client';
 import { rolesApi } from '../../api/resources';
 import type { Role } from '../../types';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { formatCellValue, formatDateTime } from '../../utils/format';
+import { optionalString, validateRequiredFields } from '../../utils/formValues';
 
 const SYSTEM_ROLE_NAMES = new Set([
   'Admin',
@@ -47,11 +49,6 @@ const emptyForm: RoleFormState = {
   name: '',
   description: '',
 };
-
-function formatDate(value: string | undefined): string {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString();
-}
 
 function isSystemRole(role: Role): boolean {
   return SYSTEM_ROLE_NAMES.has(role.name);
@@ -115,12 +112,19 @@ export default function RolesPage() {
   };
 
   const handleSave = async () => {
+    if (!editingRole) {
+      const validationError = validateRequiredFields(form, [{ key: 'name', label: 'Name' }]);
+      if (validationError) {
+        showError(validationError);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const payload = {
-        description: form.description || null,
+        description: optionalString(form.description),
         ...(editingRole && !isSystemRole(editingRole) ? { name: form.name } : {}),
-        ...(!editingRole ? { name: form.name, description: form.description || null } : {}),
+        ...(!editingRole ? { name: form.name.trim(), description: optionalString(form.description) } : {}),
       };
 
       if (editingRole) {
@@ -128,8 +132,8 @@ export default function RolesPage() {
         showSuccess('Role updated successfully.');
       } else {
         await rolesApi.create({
-          name: form.name,
-          description: form.description || null,
+          name: form.name.trim(),
+          description: optionalString(form.description),
         });
         showSuccess('Role created successfully.');
       }
@@ -162,13 +166,13 @@ export default function RolesPage() {
       headerName: 'Description',
       flex: 2,
       minWidth: 200,
-      valueFormatter: (value) => (value as string | null) || '—',
+      valueFormatter: (value) => formatCellValue(value as string | null),
     },
     {
       field: 'created_at',
       headerName: 'Created Date',
       width: 130,
-      valueFormatter: (value) => formatDate(value as string | undefined),
+      valueFormatter: (value) => formatDateTime(value as string | undefined),
     },
     {
       field: 'actions',
@@ -309,7 +313,7 @@ export default function RolesPage() {
               <TextField label="Name" value={viewRole.name} slotProps={{ input: { readOnly: true } }} fullWidth />
               <TextField
                 label="Description"
-                value={viewRole.description ?? '—'}
+                value={formatCellValue(viewRole.description)}
                 slotProps={{ input: { readOnly: true } }}
                 multiline
                 minRows={2}
@@ -323,7 +327,7 @@ export default function RolesPage() {
               />
               <TextField
                 label="Created Date"
-                value={formatDate(viewRole.created_at)}
+                value={formatDateTime(viewRole.created_at)}
                 slotProps={{ input: { readOnly: true } }}
                 fullWidth
               />

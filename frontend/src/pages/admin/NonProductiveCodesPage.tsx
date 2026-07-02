@@ -30,6 +30,8 @@ import { getErrorMessage } from '../../api/client';
 import { nonProductiveCodesApi } from '../../api/resources';
 import type { NonProductiveCode } from '../../types';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { formatCellValue } from '../../utils/format';
+import { optionalString, validateRequiredFields } from '../../utils/formValues';
 
 interface NpCodeFormState {
   code: string;
@@ -114,7 +116,13 @@ export default function NonProductiveCodesPage() {
   const columns = useMemo<GridColDef<NonProductiveCode>[]>(
     () => [
       { field: 'code', headerName: 'Code', flex: 1, minWidth: 120 },
-      { field: 'description', headerName: 'Description', flex: 2, minWidth: 220 },
+      {
+        field: 'description',
+        headerName: 'Description',
+        flex: 2,
+        minWidth: 220,
+        valueFormatter: (value) => formatCellValue(value as string | null),
+      },
       { field: 'sort_order', headerName: 'Sort', width: 90 },
       {
         field: 'is_active',
@@ -169,7 +177,7 @@ export default function NonProductiveCodesPage() {
                   setEditing(params.row);
                   setForm({
                     code: params.row.code,
-                    description: params.row.description,
+                    description: params.row.description ?? '',
                     sort_order: String(params.row.sort_order),
                     is_active: params.row.is_active,
                   });
@@ -235,11 +243,16 @@ export default function NonProductiveCodesPage() {
   useOpenCreateFromQuery(openCreate);
 
   const handleSave = async () => {
+    const validationError = validateRequiredFields(form, [{ key: 'code', label: 'Code' }]);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
         code: form.code.trim(),
-        description: form.description.trim(),
+        description: optionalString(form.description),
         sort_order: Number(form.sort_order) || 0,
         is_active: form.is_active,
       };
@@ -311,7 +324,6 @@ export default function NonProductiveCodesPage() {
             label="Description"
             fullWidth
             margin="normal"
-            required
             value={form.description}
             onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
           />
@@ -339,7 +351,7 @@ export default function NonProductiveCodesPage() {
           <Button onClick={() => setFormOpen(false)}>Cancel</Button>
           <Button
             variant="contained"
-            disabled={saving || !form.code.trim() || !form.description.trim()}
+            disabled={saving || !form.code.trim()}
             onClick={() => void handleSave()}
           >
             {saving ? 'Saving…' : 'Save'}

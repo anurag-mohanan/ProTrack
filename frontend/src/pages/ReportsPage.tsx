@@ -44,7 +44,7 @@ import {
 import type { ExecutionStatus } from '../types';
 import { EXECUTION_STATUS_LABELS, PROJECT_STAGE_LABELS } from '../types/common';
 import { canViewDeletedProjects } from '../utils/permissions';
-import { formatNumber } from '../utils/format';
+import { formatCellValue, formatNumber } from '../utils/format';
 
 const TAB_CONFIG = [
   { label: 'Project Hours', slug: 'project-hours' },
@@ -310,9 +310,9 @@ export function ReportsPage() {
             <TableBody>
               {(productiveQuery.data ?? []).map((row, index) => (
                 <TableRow key={`${row.project_id ?? 'none'}-${row.task_type_name}-${index}`} hover>
-                  <TableCell>{row.tool_number ?? '—'}</TableCell>
-                  <TableCell>{row.customer_name ?? '—'}</TableCell>
-                  <TableCell>{row.task_type_name ?? '—'}</TableCell>
+                  <TableCell>{formatCellValue(row.tool_number)}</TableCell>
+                  <TableCell>{formatCellValue(row.customer_name)}</TableCell>
+                  <TableCell>{formatCellValue(row.task_type_name)}</TableCell>
                   <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.billable_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.non_billable_hours)}</TableCell>
@@ -338,8 +338,8 @@ export function ReportsPage() {
               {(npHoursQuery.data ?? []).map((row) => (
                 <TableRow key={row.non_productive_code} hover>
                   <TableCell>{row.non_productive_code}</TableCell>
-                  <TableCell>{row.description}</TableCell>
-                  <TableCell>{row.customer_name ?? '—'}</TableCell>
+                  <TableCell>{formatCellValue(row.description)}</TableCell>
+                  <TableCell>{formatCellValue(row.customer_name)}</TableCell>
                   <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
                 </TableRow>
               ))}

@@ -26,7 +26,7 @@ import {
   reportQueryKeys,
   type ReportOptions,
 } from '../../services/reportService';
-import { formatNumber } from '../../utils/format';
+import { formatCellValue, formatNumber } from '../../utils/format';
 
 const TEAM_TABS = [
   { label: 'Quoted vs Actual', key: 'quoted-vs-actual' },
@@ -253,7 +253,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
                 <TableRow key={`${row.team_id}-${row.user_id}`} hover>
                   <TableCell>{row.team_name}</TableCell>
                   <TableCell>{row.user_name}</TableCell>
-                  <TableCell>{row.role_within_team ?? '—'}</TableCell>
+                  <TableCell>{formatCellValue(row.role_within_team)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

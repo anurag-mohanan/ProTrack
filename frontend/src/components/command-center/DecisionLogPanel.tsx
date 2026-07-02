@@ -15,7 +15,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import { useMemo, useState } from 'react';
 import type { DecisionCategory, ProjectDecision } from '../../types/CommandCenter';
-import { formatDateTime } from '../../utils/format';
+import { formatCellValue, formatDateTime } from '../../utils/format';
 import { EmptyState } from '../common/EmptyState';
 
 const CATEGORIES: { value: DecisionCategory; label: string }[] = [
@@ -148,11 +148,11 @@ export function DecisionLogPanel({
             {filtered.map((row) => (
               <TableRow key={row.id} hover>
                 <TableCell>{formatDateTime(row.created_at)}</TableCell>
-                <TableCell>{row.user_name ?? '—'}</TableCell>
+                <TableCell>{formatCellValue(row.user_name)}</TableCell>
                 <TableCell>
                   <Chip size="small" label={row.category} variant="outlined" />
                 </TableCell>
-                <TableCell>{row.milestone_name ?? '—'}</TableCell>
+                <TableCell>{formatCellValue(row.milestone_name)}</TableCell>
                 <TableCell sx={{ maxWidth: 320 }}>
                   {editingId === row.id ? (
                     <TextField

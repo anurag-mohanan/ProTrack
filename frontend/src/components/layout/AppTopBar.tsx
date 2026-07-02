@@ -18,6 +18,7 @@ import { AdminSearchBar } from '../admin/AdminSearchBar';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { AppBreadcrumbs, useBreadcrumbTitle } from './AppBreadcrumbs';
 import { DRAWER_WIDTH } from './AppSidebar';
+import { formatCellValue } from '../../utils/format';
 
 interface AppTopBarProps {
   displayName: string;
@@ -85,7 +86,7 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
               {displayName}
             </Typography>
             <Typography variant="captionLabel" color="text.secondary">
-              {roleName || '—'}
+              {formatCellValue(roleName)}
             </Typography>
           </Box>
           <IconButton onClick={(event) => setAnchorEl(event.currentTarget)} size="small">

@@ -135,10 +135,9 @@ class ImportContext:
 
 
 def _cell_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
+    from app.core.field_normalization import normalize_optional_text
+
+    return normalize_optional_text(value)
 
 
 def _parse_decimal(value: Any) -> Decimal | None:

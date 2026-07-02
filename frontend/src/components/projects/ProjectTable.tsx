@@ -8,7 +8,7 @@ import type { Customer, Project, Stream, Team, User } from '../../types';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
 import { ProjectStageChip, ExecutionStatusChip } from '../common/StatusChip';
 import { PriorityBadge } from '../ui/design-system';
-import { formatDate, formatNumber, userDisplayName } from '../../utils/format';
+import { formatCellValue, formatDate, formatNumber, userDisplayName } from '../../utils/format';
 
 export interface ProjectTableRow extends Project {
   customerName: string;
@@ -52,16 +52,12 @@ export function buildProjectTableRows(
 
   return projects.map((project) => ({
     ...project,
-    customerName: customerMap.get(project.customer_id) ?? '—',
-    teamName: project.team_id ? (teamMap.get(project.team_id) ?? '—') : 'Unassigned',
-    designLeaderName: userMap.get(project.design_leader_id) ?? '—',
-    designerName: project.designer_id
-      ? (userMap.get(project.designer_id) ?? '—')
-      : '—',
-    surfacerName: project.surfacer_id
-      ? (userMap.get(project.surfacer_id) ?? '—')
-      : '—',
-    streamName: streamMap.get(project.stream_id) ?? '—',
+    customerName: formatCellValue(customerMap.get(project.customer_id)),
+    teamName: project.team_id ? formatCellValue(teamMap.get(project.team_id)) : '',
+    designLeaderName: formatCellValue(userMap.get(project.design_leader_id)),
+    designerName: project.designer_id ? formatCellValue(userMap.get(project.designer_id)) : '',
+    surfacerName: project.surfacer_id ? formatCellValue(userMap.get(project.surfacer_id)) : '',
+    streamName: formatCellValue(streamMap.get(project.stream_id)),
   }));
 }
 

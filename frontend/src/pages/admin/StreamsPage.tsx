@@ -29,6 +29,8 @@ import {
   SearchToolbar,
 } from '../../components/ui/design-system';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
+import { formatCellValue } from '../../utils/format';
+import { optionalString, validateRequiredFields } from '../../utils/formValues';
 
 interface StreamFormState {
   name: string;
@@ -97,11 +99,16 @@ export default function StreamsPage() {
 
   const handleSave = async (event?: FormEvent) => {
     event?.preventDefault();
+    const validationError = validateRequiredFields(form, [{ key: 'name', label: 'Name' }]);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
-        name: form.name,
-        description: form.description || null,
+        name: form.name.trim(),
+        description: optionalString(form.description),
         is_active: form.is_active,
       };
       if (editingStream) {
@@ -127,7 +134,7 @@ export default function StreamsPage() {
       headerName: 'Description',
       flex: 2,
       minWidth: 180,
-      valueFormatter: (value) => (value as string | null) || '—',
+      valueFormatter: (value) => formatCellValue(value as string | null),
     },
     {
       field: 'is_active',
@@ -277,7 +284,7 @@ export default function StreamsPage() {
             <FormField label="Name" value={viewStream.name} slotProps={{ input: { readOnly: true } }} />
             <FormField
               label="Description"
-              value={viewStream.description ?? '—'}
+              value={formatCellValue(viewStream.description)}
               multiline
               minRows={2}
               slotProps={{ input: { readOnly: true } }}

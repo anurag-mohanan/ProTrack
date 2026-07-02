@@ -29,6 +29,8 @@ import {
 } from '../../api/projectTemplates';
 import type { ProjectType } from '../../types/ProjectTemplate';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { formatCellValue } from '../../utils/format';
+import { optionalString, validateRequiredFields } from '../../utils/formValues';
 
 interface ProjectTypeFormState {
   name: string;
@@ -95,11 +97,16 @@ export default function ProjectTypesPage() {
   };
 
   const handleSave = async () => {
+    const validationError = validateRequiredFields(form, [{ key: 'name', label: 'Name' }]);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
-        name: form.name,
-        description: form.description || null,
+        name: form.name.trim(),
+        description: optionalString(form.description),
         is_active: form.is_active,
       };
       if (editingType) {
@@ -125,7 +132,7 @@ export default function ProjectTypesPage() {
       headerName: 'Description',
       flex: 2,
       minWidth: 180,
-      valueFormatter: (value) => (value as string | null) || '—',
+      valueFormatter: (value) => formatCellValue(value as string | null),
     },
     {
       field: 'is_active',

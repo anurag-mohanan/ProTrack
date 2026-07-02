@@ -28,6 +28,8 @@ import {
   FormSelect,
 } from '../ui/design-system';
 import { userDisplayName } from '../../utils/format';
+import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
+import { useToast } from '../../context/ToastContext';
 
 interface ProjectFormValues extends ProjectCreate {
   project_stage: ProjectStage;
@@ -95,6 +97,7 @@ export function ProjectFormDialog({
 }: ProjectFormDialogProps) {
   const isEdit = Boolean(project);
   const queryClient = useQueryClient();
+  const { showError } = useToast();
   const [form, setForm] = useState<ProjectFormValues>(emptyForm);
 
   const customersQuery = useQuery({
@@ -157,10 +160,10 @@ export function ProjectFormDialog({
     mutationFn: async () => {
       const payload = {
         ...form,
-        designer_id: form.designer_id || null,
-        surfacer_id: form.surfacer_id || null,
-        project_template_id: form.project_template_id || null,
-        notes: form.notes || null,
+        designer_id: optionalUuid(form.designer_id),
+        surfacer_id: optionalUuid(form.surfacer_id),
+        project_template_id: optionalUuid(form.project_template_id),
+        notes: optionalString(form.notes),
       };
 
       if (isEdit && project) {
@@ -173,7 +176,7 @@ export function ProjectFormDialog({
           designer_id: payload.designer_id,
           surfacer_id: payload.surfacer_id,
           stream_id: payload.stream_id,
-          team_id: payload.team_id || null,
+          team_id: optionalUuid(form.team_id),
           quoted_hours: payload.quoted_hours,
           due_date: payload.due_date,
           notes: payload.notes,
@@ -186,7 +189,7 @@ export function ProjectFormDialog({
 
       return createProject({
         ...payload,
-        team_id: payload.team_id || null,
+        team_id: optionalUuid(form.team_id),
       });
     },
     onSuccess: (savedProject) => {
@@ -248,6 +251,58 @@ export function ProjectFormDialog({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+
+    const validationError = isEdit
+      ? validateRequiredFields(
+          {
+            tool_number: form.tool_number,
+            code: form.code,
+            customer_id: form.customer_id,
+            customer_contact_id: form.customer_contact_id,
+            design_leader_id: form.design_leader_id,
+            stream_id: form.stream_id,
+            due_date: form.due_date,
+          },
+          [
+            { key: 'tool_number', label: 'Tool number' },
+            { key: 'code', label: 'Project code' },
+            { key: 'customer_id', label: 'Customer' },
+            { key: 'customer_contact_id', label: 'Customer contact' },
+            { key: 'design_leader_id', label: 'Design leader' },
+            { key: 'stream_id', label: 'Stream' },
+            { key: 'due_date', label: 'Due date' },
+          ],
+        )
+      : validateRequiredFields(
+          {
+            tool_number: form.tool_number,
+            code: form.code,
+            part_description: form.part_description,
+            customer_id: form.customer_id,
+            customer_contact_id: form.customer_contact_id,
+            project_type_id: form.project_type_id,
+            design_leader_id: form.design_leader_id,
+            stream_id: form.stream_id,
+            due_date: form.due_date,
+          },
+          [
+            { key: 'tool_number', label: 'Tool number' },
+            { key: 'code', label: 'Project code' },
+            { key: 'part_description', label: 'Part description' },
+            { key: 'customer_id', label: 'Customer' },
+            { key: 'customer_contact_id', label: 'Customer contact' },
+            { key: 'project_type_id', label: 'Project type' },
+            { key: 'design_leader_id', label: 'Design leader' },
+            { key: 'stream_id', label: 'Stream' },
+            { key: 'due_date', label: 'Due date' },
+          ],
+        );
+
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
+
     saveMutation.mutate();
   };
 
@@ -408,7 +463,6 @@ export function ProjectFormDialog({
               <Grid size={{ xs: 12 }}>
                 <FormSelect
                   label="Template"
-                  required
                   disabled={!form.customer_id || !form.project_type_id}
                   value={form.project_template_id ?? ''}
                   options={matchingTemplates.map((template) => ({

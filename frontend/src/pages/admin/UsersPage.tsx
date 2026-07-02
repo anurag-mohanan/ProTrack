@@ -49,6 +49,8 @@ import {
 } from '../../components/ui/design-system';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
+import { formatDate, formatCellValue } from '../../utils/format';
+import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
 
 interface UserFormState {
   first_name: string;
@@ -97,11 +99,6 @@ const emptyForm: UserFormState = {
   generate_temporary_password: false,
   is_active: true,
 };
-
-function formatDate(value: string | undefined): string {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString();
-}
 
 export default function UsersPage() {
   const theme = useTheme();
@@ -265,18 +262,37 @@ export default function UsersPage() {
   };
 
   const buildCapacityPayload = () => ({
-    department_id: form.department_id || null,
+    department_id: optionalUuid(form.department_id),
     working_hours_per_day: form.working_hours_per_day,
     working_days: form.working_days,
-    employment_type: (form.employment_type || null) as User['employment_type'],
-    skill_level: (form.skill_level || null) as User['skill_level'],
-    joining_date: form.joining_date || null,
-    leaving_date: form.leaving_date || null,
+    employment_type: (optionalString(form.employment_type) || null) as User['employment_type'],
+    skill_level: (optionalString(form.skill_level) || null) as User['skill_level'],
+    joining_date: optionalString(form.joining_date),
+    leaving_date: optionalString(form.leaving_date),
     availability_status: form.availability_status as User['availability_status'],
     max_allocation_percent: form.max_allocation_percent,
   });
 
   const handleSave = async () => {
+    const validationError = validateRequiredFields(
+      {
+        first_name: form.first_name,
+        last_name: form.last_name,
+        email: form.email,
+        role_id: form.role_id,
+      },
+      [
+        { key: 'first_name', label: 'First name' },
+        { key: 'last_name', label: 'Last name' },
+        { key: 'email', label: 'Email' },
+        { key: 'role_id', label: 'Role' },
+      ],
+    );
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
+
     if (!editingUser) {
       if (form.password !== form.confirm_password) {
         showError('Password and confirmation do not match.');
@@ -291,9 +307,9 @@ export default function UsersPage() {
     setSaving(true);
     try {
       const identityPayload = {
-        phone: form.phone || null,
-        designation: form.designation || null,
-        manager_id: form.manager_id || null,
+        phone: optionalString(form.phone),
+        designation: optionalString(form.designation),
+        manager_id: optionalUuid(form.manager_id),
       };
       if (editingUser) {
         await usersApi.update(editingUser.id, {
@@ -301,7 +317,7 @@ export default function UsersPage() {
           last_name: form.last_name,
           email: form.email,
           role_id: form.role_id,
-          team_id: form.team_id || null,
+          team_id: optionalUuid(form.team_id),
           is_active: form.is_active,
           ...identityPayload,
           ...buildCapacityPayload(),
@@ -316,7 +332,7 @@ export default function UsersPage() {
           last_name: form.last_name,
           email: form.email,
           role_id: form.role_id,
-          team_id: form.team_id || null,
+          team_id: optionalUuid(form.team_id),
           password,
           must_change_password: form.generate_temporary_password,
           is_active: form.is_active,
@@ -449,7 +465,7 @@ export default function UsersPage() {
       minWidth: 140,
       renderCell: (params) => (
         <Chip
-          label={roleMap.get(params.value as string) ?? '—'}
+          label={formatCellValue(roleMap.get(params.value as string))}
           size="small"
           color="primary"
           variant="outlined"
@@ -461,20 +477,21 @@ export default function UsersPage() {
       headerName: 'Department',
       flex: 1,
       minWidth: 130,
-      valueGetter: (_value, row) => row.department_name ?? '—',
+      valueGetter: (_value, row) => formatCellValue(row.department_name),
     },
     {
       field: 'team_name',
       headerName: 'Team',
       flex: 1,
       minWidth: 130,
-      valueGetter: (_value, row) => row.team_name ?? '—',
+      valueGetter: (_value, row) => formatCellValue(row.team_name),
     },
     {
       field: 'employment_type',
       headerName: 'Employment',
       width: 120,
-      valueGetter: (_value, row) => row.employment_type?.replace('_', ' ') ?? '—',
+      valueGetter: (_value, row) =>
+        row.employment_type ? row.employment_type.replace('_', ' ') : '',
     },
     {
       field: 'password_changed',
@@ -982,7 +999,7 @@ export default function UsersPage() {
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormField
                   label="Role"
-                  value={roleMap.get(viewUser.role_id) ?? '—'}
+                  value={formatCellValue(roleMap.get(viewUser.role_id))}
                   slotProps={{ input: { readOnly: true } }}
                 />
               </Grid>

@@ -23,7 +23,7 @@ import {
   updateMyPreferences,
 } from '../api/preferences';
 import { useToast } from '../context/ToastContext';
-import { formatNumber } from '../utils/format';
+import { formatCellValue, formatNumber } from '../utils/format';
 import type { UserPreferences } from '../types/Preferences';
 
 function MetricTile({ label, value }: { label: string; value: string }) {
@@ -148,16 +148,16 @@ export default function UserProfilePage() {
                 <FormSection title="Profile Details">
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <FormField label="Department" value={profile.department_name ?? '—'} slotProps={{ input: { readOnly: true } }} />
+                      <FormField label="Department" value={formatCellValue(profile.department_name)} slotProps={{ input: { readOnly: true } }} />
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <FormField label="Team" value={profile.team_name ?? '—'} slotProps={{ input: { readOnly: true } }} />
+                      <FormField label="Team" value={formatCellValue(profile.team_name)} slotProps={{ input: { readOnly: true } }} />
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <FormField label="Manager" value={profile.manager_name ?? '—'} slotProps={{ input: { readOnly: true } }} />
+                      <FormField label="Manager" value={formatCellValue(profile.manager_name)} slotProps={{ input: { readOnly: true } }} />
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <FormField label="Phone" value={profile.phone ?? '—'} slotProps={{ input: { readOnly: true } }} />
+                      <FormField label="Phone" value={formatCellValue(profile.phone)} slotProps={{ input: { readOnly: true } }} />
                     </Grid>
                     <Grid size={{ xs: 12 }}>
                       <Typography variant="captionLabel" color="text.secondary" sx={{ mb: 1, display: 'block' }}>

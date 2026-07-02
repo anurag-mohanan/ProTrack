@@ -33,6 +33,8 @@ import { fetchContactTypes } from '../../api/settings';
 import type { Contact, Customer } from '../../types';
 import type { ContactType } from '../../types/Settings';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { formatCellValue, formatDateTime } from '../../utils/format';
+import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
 
 interface ContactFormState {
   customer_id: string;
@@ -57,11 +59,6 @@ const emptyForm: ContactFormState = {
   is_primary: false,
   is_active: true,
 };
-
-function formatDate(value: string | undefined): string {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString();
-}
 
 export default function ContactsPage() {
   const { showSuccess, showError } = useToast();
@@ -161,16 +158,33 @@ export default function ContactsPage() {
   };
 
   const handleSave = async () => {
+    const validationError = validateRequiredFields(
+      {
+        customer_id: form.customer_id,
+        first_name: form.first_name,
+        last_name: form.last_name,
+      },
+      [
+        { key: 'customer_id', label: 'Customer' },
+        { key: 'first_name', label: 'First name' },
+        { key: 'last_name', label: 'Last name' },
+      ],
+    );
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
         customer_id: form.customer_id,
         first_name: form.first_name,
         last_name: form.last_name,
-        email: form.email || null,
-        phone: form.phone || null,
-        job_title: form.job_title || null,
-        contact_type_id: form.contact_type_id || null,
+        email: optionalString(form.email),
+        phone: optionalString(form.phone),
+        job_title: optionalString(form.job_title),
+        contact_type_id: optionalUuid(form.contact_type_id),
         is_primary: form.is_primary,
         is_active: form.is_active,
       };
@@ -196,7 +210,7 @@ export default function ContactsPage() {
       headerName: 'Customer',
       flex: 1.2,
       minWidth: 140,
-      valueFormatter: (value) => customerMap.get(value as string) ?? '—',
+      valueFormatter: (value) => formatCellValue(customerMap.get(value as string)),
     },
     { field: 'first_name', headerName: 'First Name', flex: 1, minWidth: 120 },
     { field: 'last_name', headerName: 'Last Name', flex: 1, minWidth: 120 },
@@ -205,21 +219,21 @@ export default function ContactsPage() {
       headerName: 'Email',
       flex: 1.2,
       minWidth: 160,
-      valueFormatter: (value) => (value as string | null) || '—',
+      valueFormatter: (value) => formatCellValue(value as string | null),
     },
     {
       field: 'phone',
       headerName: 'Phone',
       flex: 1,
       minWidth: 120,
-      valueFormatter: (value) => (value as string | null) || '—',
+      valueFormatter: (value) => formatCellValue(value as string | null),
     },
     {
       field: 'job_title',
       headerName: 'Title',
       flex: 1,
       minWidth: 120,
-      valueFormatter: (value) => (value as string | null) || '—',
+      valueFormatter: (value) => formatCellValue(value as string | null),
     },
     {
       field: 'is_active',
@@ -237,7 +251,7 @@ export default function ContactsPage() {
       field: 'created_at',
       headerName: 'Created Date',
       width: 130,
-      valueFormatter: (value) => formatDate(value as string | undefined),
+      valueFormatter: (value) => formatDateTime(value as string | undefined),
     },
     {
       field: 'actions',
@@ -459,15 +473,15 @@ export default function ContactsPage() {
             <>
               <TextField
                 label="Customer"
-                value={customerMap.get(viewContact.customer_id) ?? '—'}
+                value={formatCellValue(customerMap.get(viewContact.customer_id))}
                 slotProps={{ input: { readOnly: true } }}
                 fullWidth
               />
               <TextField label="First Name" value={viewContact.first_name} slotProps={{ input: { readOnly: true } }} fullWidth />
               <TextField label="Last Name" value={viewContact.last_name} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField label="Email" value={viewContact.email ?? '—'} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField label="Phone" value={viewContact.phone ?? '—'} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField label="Title" value={viewContact.job_title ?? '—'} slotProps={{ input: { readOnly: true } }} fullWidth />
+              <TextField label="Email" value={formatCellValue(viewContact.email)} slotProps={{ input: { readOnly: true } }} fullWidth />
+              <TextField label="Phone" value={formatCellValue(viewContact.phone)} slotProps={{ input: { readOnly: true } }} fullWidth />
+              <TextField label="Title" value={formatCellValue(viewContact.job_title)} slotProps={{ input: { readOnly: true } }} fullWidth />
               <TextField
                 label="Status"
                 value={viewContact.is_active ? 'Active' : 'Inactive'}
@@ -476,7 +490,7 @@ export default function ContactsPage() {
               />
               <TextField
                 label="Created Date"
-                value={formatDate(viewContact.created_at)}
+                value={formatDateTime(viewContact.created_at)}
                 slotProps={{ input: { readOnly: true } }}
                 fullWidth
               />

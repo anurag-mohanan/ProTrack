@@ -51,6 +51,7 @@ import {
 } from '../api/timesheetImport';
 import { getErrorMessage } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
+import { formatCellValue } from '../utils/format';
 
 const STEPS = ['Upload', 'Preview', 'Validate', 'Resolve', 'Import', 'Summary'];
 
@@ -327,10 +328,10 @@ export function HistoricalTimesheetImportPage() {
                   {previewRows.slice(0, 100).map((row) => (
                     <TableRow key={row.row_number}>
                       <TableCell>{row.row_number}</TableCell>
-                      <TableCell>{row.entry_date ?? '—'}</TableCell>
-                      <TableCell>{row.tool_number ?? row.project_code ?? '—'}</TableCell>
-                      <TableCell>{row.task_type ?? row.np_code ?? '—'}</TableCell>
-                      <TableCell>{row.hours ?? '—'}</TableCell>
+                      <TableCell>{formatCellValue(row.entry_date)}</TableCell>
+                      <TableCell>{formatCellValue(row.tool_number) || formatCellValue(row.project_code)}</TableCell>
+                      <TableCell>{formatCellValue(row.task_type) || formatCellValue(row.np_code)}</TableCell>
+                      <TableCell>{formatCellValue(row.hours)}</TableCell>
                       <TableCell sx={{ color: statusColor(row.status_label) }}>
                         {row.status_label}
                       </TableCell>
@@ -373,7 +374,7 @@ export function HistoricalTimesheetImportPage() {
                   <TableBody>
                     {validation.issues.map((issue, idx) => (
                       <TableRow key={`${issue.code}-${idx}`}>
-                        <TableCell>{issue.row_number ?? '—'}</TableCell>
+                        <TableCell>{formatCellValue(issue.row_number)}</TableCell>
                         <TableCell>{issue.severity}</TableCell>
                         <TableCell>{issue.message}</TableCell>
                       </TableRow>
@@ -563,7 +564,7 @@ export function HistoricalTimesheetImportPage() {
                     <TableRow key={record.id}>
                       <TableCell>{record.filename}</TableCell>
                       <TableCell>{record.designer_name}</TableCell>
-                      <TableCell>{record.date_range_label ?? '—'}</TableCell>
+                      <TableCell>{formatCellValue(record.date_range_label)}</TableCell>
                       <TableCell>{record.rows_imported}</TableCell>
                       <TableCell>{record.status}</TableCell>
                       <TableCell align="right">

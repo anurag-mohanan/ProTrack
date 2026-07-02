@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import TimestampSchema
+from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
 class TeamBase(BaseModel):
@@ -15,11 +15,11 @@ class TeamBase(BaseModel):
     organization_id: UUID | None = None
 
 
-class TeamCreate(TeamBase):
+class TeamCreate(BlankOptionalFieldsMixin, TeamBase):
     pass
 
 
-class TeamUpdate(BaseModel):
+class TeamUpdate(BlankOptionalFieldsMixin, BaseModel):
     name: str | None = Field(default=None, max_length=100)
     description: str | None = None
     team_lead_id: UUID | None = None
@@ -38,11 +38,11 @@ class TeamMemberBase(BaseModel):
     role_within_team: str | None = Field(default=None, max_length=100)
 
 
-class TeamMemberCreate(TeamMemberBase):
+class TeamMemberCreate(BlankOptionalFieldsMixin, TeamMemberBase):
     pass
 
 
-class TeamMemberUpdate(BaseModel):
+class TeamMemberUpdate(BlankOptionalFieldsMixin, BaseModel):
     role_within_team: str | None = Field(default=None, max_length=100)
 
 

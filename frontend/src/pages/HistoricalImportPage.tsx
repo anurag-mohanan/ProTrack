@@ -39,6 +39,7 @@ import {
 } from '../services/importService';
 import { getErrorMessage } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
+import { formatCellValue } from '../utils/format';
 
 function statusColor(status: ImportRowPreview['status_label']): string {
   if (status === 'ready' || status === 'imported' || status === 'updated') return 'success.main';
@@ -347,17 +348,17 @@ export function HistoricalImportPage() {
                     {previewRows.map((row) => (
                       <TableRow key={row.row_number}>
                         <TableCell>{row.row_number}</TableCell>
-                        <TableCell>{row.tool_number ?? '—'}</TableCell>
-                        <TableCell>{row.customer ?? '—'}</TableCell>
-                        <TableCell>{row.designer ?? '—'}</TableCell>
-                        <TableCell>{row.design_phase ?? '—'}</TableCell>
-                        <TableCell>{row.status ?? '—'}</TableCell>
+                        <TableCell>{formatCellValue(row.tool_number)}</TableCell>
+                        <TableCell>{formatCellValue(row.customer)}</TableCell>
+                        <TableCell>{formatCellValue(row.designer)}</TableCell>
+                        <TableCell>{formatCellValue(row.design_phase)}</TableCell>
+                        <TableCell>{formatCellValue(row.status)}</TableCell>
                         <TableCell>
                           <Typography variant="body2" color={statusColor(row.status_label)}>
                             {row.status_label}
                           </Typography>
                         </TableCell>
-                        <TableCell>{row.messages.join('; ') || '—'}</TableCell>
+                        <TableCell>{formatCellValue(row.messages.join('; '))}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

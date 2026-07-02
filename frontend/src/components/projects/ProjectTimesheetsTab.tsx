@@ -12,7 +12,7 @@ import {
 import { Link } from 'react-router-dom';
 import { EmptyState } from '../common/EmptyState';
 import type { TimesheetEntry } from '../../types';
-import { formatDate, formatNumber } from '../../utils/format';
+import { formatCellValue, formatDate, formatNumber } from '../../utils/format';
 
 interface ProjectTimesheetsTabProps {
   entries: TimesheetEntry[];
@@ -47,7 +47,7 @@ export function ProjectTimesheetsTab({ entries }: ProjectTimesheetsTabProps) {
               <TableRow key={entry.id} hover>
                 <TableCell>{formatDate(entry.entry_date)}</TableCell>
                 <TableCell align="right">{formatNumber(entry.hours)}</TableCell>
-                <TableCell>{entry.description ?? '—'}</TableCell>
+                <TableCell>{formatCellValue(entry.description)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

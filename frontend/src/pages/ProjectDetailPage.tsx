@@ -52,17 +52,17 @@ import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { archiveProject, invalidateProjectCalculationQueries } from '../services/projectService';
-import { formatDate, formatNumber } from '../utils/format';
+import { formatCellValue, formatDate, formatNumber } from '../utils/format';
 import { canArchiveProject } from '../utils/permissions';
 
-function InfoLine({ label, value }: { label: string; value: string }) {
+function InfoLine({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.75, gap: 2 }}>
       <Typography variant="body2" color="text.secondary">
         {label}
       </Typography>
       <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'right' }}>
-        {value}
+        {formatCellValue(value)}
       </Typography>
     </Box>
   );
@@ -244,9 +244,9 @@ export function ProjectDetailPage() {
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
           { label: 'Customer', value: header.customer_name },
-          { label: 'Team', value: header.team_name ?? '—' },
-          { label: 'Designer', value: header.designer_name ?? '—' },
-          { label: 'Current Milestone', value: header.current_milestone ?? '—' },
+          { label: 'Team', value: formatCellValue(header.team_name) },
+          { label: 'Designer', value: formatCellValue(header.designer_name) },
+          { label: 'Current Milestone', value: formatCellValue(header.current_milestone) },
           { label: 'Completion', value: `${formatNumber(header.completion_percent)}%` },
           { label: 'Days Remaining', value: String(header.days_remaining) },
         ].map((item) => (
@@ -316,11 +316,11 @@ export function ProjectDetailPage() {
 
         <Grid size={{ xs: 12, md: 6 }}>
           <AppCard title="Project Team" subtitle="Capacity and availability">
-            <InfoLine label="Engineering Manager" value={data.team.engineering_manager_name ?? '—'} />
-            <InfoLine label="Design Leader" value={data.team.design_leader_name ?? '—'} />
-            <InfoLine label="Designer" value={data.team.designer_name ?? '—'} />
-            <InfoLine label="Surfacer" value={data.team.surfacer_name ?? '—'} />
-            <InfoLine label="Team" value={data.team.team_name ?? '—'} />
+            <InfoLine label="Engineering Manager" value={data.team.engineering_manager_name} />
+            <InfoLine label="Design Leader" value={data.team.design_leader_name} />
+            <InfoLine label="Designer" value={data.team.designer_name} />
+            <InfoLine label="Surfacer" value={data.team.surfacer_name} />
+            <InfoLine label="Team" value={data.team.team_name} />
             {data.team.members.map((member) => (
               <Box key={member.user_id} sx={{ mt: 2, p: 1.5, borderRadius: 2, bgcolor: 'action.hover' }}>
                 <Typography sx={{ fontWeight: 600 }}>
@@ -341,7 +341,7 @@ export function ProjectDetailPage() {
             <InfoLine label="Customer" value={data.customer_summary.customer_name} />
             <InfoLine
               label="Primary Contact"
-              value={data.customer_summary.primary_contact_name ?? '—'}
+              value={data.customer_summary.primary_contact_name}
             />
             <InfoLine label="Active Projects" value={String(data.customer_summary.active_projects)} />
             <InfoLine
@@ -405,7 +405,7 @@ export function ProjectDetailPage() {
                       <TableCell>{formatDate(row.entry_date)}</TableCell>
                       <TableCell>{formatNumber(row.hours)}</TableCell>
                       <TableCell>{row.is_billable ? 'Yes' : 'No'}</TableCell>
-                      <TableCell>{row.description ?? '—'}</TableCell>
+                      <TableCell>{formatCellValue(row.description)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -416,14 +416,14 @@ export function ProjectDetailPage() {
 
         <Grid size={{ xs: 12, md: 6 }}>
           <AppCard title="Project Folder" subtitle="Paths only — no file storage">
-            <InfoLine label="Project Folder" value={displayFolder || '—'} />
+            <InfoLine label="Project Folder" value={displayFolder} />
             <InfoLine
               label="CAD Folder"
-              value={folders.cad_folder_path ?? folders.suggested_cad_folder ?? '—'}
+              value={formatCellValue(folders.cad_folder_path) || formatCellValue(folders.suggested_cad_folder)}
             />
             <InfoLine
               label="Released Folder"
-              value={folders.released_folder_path ?? folders.suggested_released_folder ?? '—'}
+              value={formatCellValue(folders.released_folder_path) || formatCellValue(folders.suggested_released_folder)}
             />
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
               <Button

@@ -45,7 +45,7 @@ import {
   isReadOnlyRole,
 } from '../utils/permissions';
 import type { Timesheet } from '../types';
-import { formatDate, formatNumber } from '../utils/format';
+import { formatCellValue, formatDate, formatNumber } from '../utils/format';
 
 function weekStartMonday(date = new Date()): string {
   const copy = new Date(date);
@@ -331,15 +331,15 @@ export function TimesheetsPage() {
                                     </TableCell>
                                     <TableCell>
                                       {entry.work_category === 'non_productive'
-                                        ? entry.non_productive_code ?? '—'
-                                        : entry.project_tool_number ?? '—'}
+                                        ? formatCellValue(entry.non_productive_code)
+                                        : formatCellValue(entry.project_tool_number)}
                                     </TableCell>
-                                    <TableCell>{entry.task_type_name ?? '—'}</TableCell>
+                                    <TableCell>{formatCellValue(entry.task_type_name)}</TableCell>
                                     <TableCell>{entry.is_billable ? 'Yes' : 'No'}</TableCell>
                                     <TableCell align="right">
                                       {formatNumber(entry.hours)}
                                     </TableCell>
-                                    <TableCell>{entry.description ?? '—'}</TableCell>
+                                    <TableCell>{formatCellValue(entry.description)}</TableCell>
                                   </TableRow>
                                 ))}
                                 <TableRow>

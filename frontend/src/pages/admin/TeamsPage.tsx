@@ -36,7 +36,8 @@ import { prosohmDataGridSx } from '../../theme/componentStyles';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import type { Team, TeamCreate, TeamMember, TeamMemberCreate } from '../../types/Team';
 import { getErrorMessage } from '../../api/client';
-import { userDisplayName } from '../../utils/format';
+import { formatCellValue, userDisplayName } from '../../utils/format';
+import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
 import type { User } from '../../types';
 
 interface TeamFormState {
@@ -120,16 +121,17 @@ export default function TeamsPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) {
-      showError('Team name is required.');
+    const validationError = validateRequiredFields(form, [{ key: 'name', label: 'Team name' }]);
+    if (validationError) {
+      showError(validationError);
       return;
     }
     setSaving(true);
     try {
       const payload: TeamCreate = {
         name: form.name.trim(),
-        description: form.description.trim() || null,
-        team_lead_id: form.team_lead_id || null,
+        description: optionalString(form.description),
+        team_lead_id: optionalUuid(form.team_lead_id),
         colour: form.colour,
         is_active: form.is_active,
       };
@@ -204,7 +206,7 @@ export default function TeamsPage() {
         </Box>
       ),
     },
-    { field: 'description', headerName: 'Description', flex: 1.5, minWidth: 180 },
+    { field: 'description', headerName: 'Description', flex: 1.5, minWidth: 180, valueFormatter: (value) => formatCellValue(value as string | null) },
     { field: 'team_lead_name', headerName: 'Team Lead', flex: 1, minWidth: 140 },
     { field: 'member_count', headerName: 'Members', width: 100 },
     {

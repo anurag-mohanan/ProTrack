@@ -42,6 +42,7 @@ import type {
   ProjectType,
 } from '../../types/ProjectTemplate';
 import type { Customer } from '../../types';
+import { formatCellValue } from '../../utils/format';
 
 interface MilestoneRow extends ProjectTemplateMilestoneInput {
   key: string;
@@ -396,10 +397,10 @@ export default function ProjectTemplateEditorPage() {
                 </TableCell>
                 <TableCell>{row.sort_order}</TableCell>
                 <TableCell>{row.milestone_name}</TableCell>
-                <TableCell>{row.description || '—'}</TableCell>
-                <TableCell>{row.default_due_offset_days ?? '—'}</TableCell>
-                <TableCell>{row.project_stage || '—'}</TableCell>
-                <TableCell>{row.estimated_hours ?? '—'}</TableCell>
+                <TableCell>{formatCellValue(row.description)}</TableCell>
+                <TableCell>{formatCellValue(row.default_due_offset_days)}</TableCell>
+                <TableCell>{formatCellValue(row.project_stage)}</TableCell>
+                <TableCell>{formatCellValue(row.estimated_hours)}</TableCell>
                 <TableCell>{row.is_required ? 'Yes' : 'No'}</TableCell>
                 <TableCell>
                   <Tooltip title="Edit">

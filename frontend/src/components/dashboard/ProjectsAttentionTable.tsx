@@ -13,7 +13,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useNavigate } from 'react-router-dom';
 import { HealthChip, StatusChip } from '../common/StatusChip';
 import type { ProjectAttentionRow } from '../../types';
-import { formatDate } from '../../utils/format';
+import { formatCellValue, formatDate } from '../../utils/format';
 
 const REASON_LABELS: Record<ProjectAttentionRow['attention_reason'], string> = {
   overdue: 'Overdue',
@@ -66,8 +66,8 @@ export function ProjectsAttentionTable({ rows }: ProjectsAttentionTableProps) {
             <TableRow key={row.project_id} hover>
               <TableCell sx={{ fontWeight: 600 }}>{row.tool_number}</TableCell>
               <TableCell>{row.customer_name}</TableCell>
-              <TableCell>{row.designer_name ?? '—'}</TableCell>
-              <TableCell>{row.current_milestone ?? '—'}</TableCell>
+              <TableCell>{formatCellValue(row.designer_name)}</TableCell>
+              <TableCell>{formatCellValue(row.current_milestone)}</TableCell>
               <TableCell>
                 <Typography variant="body2">{formatDate(row.due_date)}</Typography>
                 <Typography variant="caption" color="text.secondary">

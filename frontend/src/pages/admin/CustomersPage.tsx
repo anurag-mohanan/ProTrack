@@ -43,6 +43,8 @@ import {
 } from '../../components/ui/design-system';
 import { prosohmDataGridSx } from '../../theme/componentStyles';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { formatCellValue, formatDateTime } from '../../utils/format';
+import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
 
 interface CustomerFormState {
   name: string;
@@ -71,11 +73,6 @@ const emptyForm: CustomerFormState = {
   project_number_format: '',
   project_number_prefix: '',
 };
-
-function formatDate(value: string | undefined): string {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString();
-}
 
 export default function CustomersPage() {
   const theme = useTheme();
@@ -165,20 +162,29 @@ export default function CustomersPage() {
   };
 
   const handleSave = async () => {
+    const validationError = validateRequiredFields(
+      { name: form.name },
+      [{ key: 'name', label: 'Name' }],
+    );
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
         name: form.name,
-        code: form.code || null,
-        notes: form.notes || null,
+        code: optionalString(form.code),
+        notes: optionalString(form.notes),
         is_active: form.is_active,
-        default_project_template_id: form.default_project_template_id || null,
-        default_team_id: form.default_team_id || null,
-        default_project_type_id: form.default_project_type_id || null,
-        default_folder_structure: form.default_folder_structure || null,
+        default_project_template_id: optionalUuid(form.default_project_template_id),
+        default_team_id: optionalUuid(form.default_team_id),
+        default_project_type_id: optionalUuid(form.default_project_type_id),
+        default_folder_structure: optionalString(form.default_folder_structure),
         due_date_calculation: form.due_date_calculation as Customer['due_date_calculation'],
-        project_number_format: form.project_number_format || null,
-        project_number_prefix: form.project_number_prefix || null,
+        project_number_format: optionalString(form.project_number_format),
+        project_number_prefix: optionalString(form.project_number_prefix),
       };
       if (editingCustomer) {
         await customersApi.update(editingCustomer.id, payload);
@@ -204,7 +210,7 @@ export default function CustomersPage() {
       headerName: 'Notes',
       flex: 1.5,
       minWidth: 160,
-      valueFormatter: (value) => (value as string | null) || '—',
+      valueFormatter: (value) => formatCellValue(value as string | null),
     },
     {
       field: 'is_active',
@@ -240,7 +246,7 @@ export default function CustomersPage() {
       field: 'created_at',
       headerName: 'Created Date',
       width: 130,
-      valueFormatter: (value) => formatDate(value as string | undefined),
+      valueFormatter: (value) => formatDateTime(value as string | undefined),
     },
     {
       field: 'actions',
@@ -524,7 +530,7 @@ export default function CustomersPage() {
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormField
                   label="Code"
-                  value={viewCustomer.code ?? '—'}
+                  value={formatCellValue(viewCustomer.code)}
                   slotProps={{ input: { readOnly: true } }}
                 />
               </Grid>
@@ -556,14 +562,14 @@ export default function CustomersPage() {
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormField
                   label="Created Date"
-                  value={formatDate(viewCustomer.created_at)}
+                  value={formatDateTime(viewCustomer.created_at)}
                   slotProps={{ input: { readOnly: true } }}
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>
                 <FormField
                   label="Notes"
-                  value={viewCustomer.notes ?? '—'}
+                  value={formatCellValue(viewCustomer.notes)}
                   multiline
                   rows={3}
                   slotProps={{ input: { readOnly: true } }}

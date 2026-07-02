@@ -39,7 +39,7 @@ export interface TimesheetEntryCreate {
 
 export interface NonProductiveCode extends Timestamped {
   code: string;
-  description: string;
+  description: string | null;
   is_active: boolean;
   is_archived: boolean;
   sort_order: number;
@@ -47,14 +47,14 @@ export interface NonProductiveCode extends Timestamped {
 
 export interface NonProductiveCodeCreate {
   code: string;
-  description: string;
+  description?: string | null;
   is_active?: boolean;
   sort_order?: number;
 }
 
 export interface NonProductiveCodeUpdate {
   code?: string;
-  description?: string;
+  description?: string | null;
   is_active?: boolean;
   is_archived?: boolean;
   sort_order?: number;

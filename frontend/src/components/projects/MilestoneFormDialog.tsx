@@ -14,6 +14,7 @@ import {
 import { invalidateMilestoneRelatedQueries } from '../../utils/queryInvalidation';
 import type { Milestone, MilestoneStatus } from '../../types';
 import { formatDateTime } from '../../utils/format';
+import { optionalString, validateRequiredFields } from '../../utils/formValues';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import {
   FormDrawer,
@@ -90,8 +91,8 @@ export function MilestoneFormDialog({
     mutationFn: async () => {
       const payload = {
         name: form.name.trim(),
-        description: form.description.trim() || null,
-        due_date: form.due_date || null,
+        description: optionalString(form.description),
+        due_date: optionalString(form.due_date),
         status: form.status,
         completed_at:
           form.status === 'completed' && form.completed_at
@@ -137,6 +138,11 @@ export function MilestoneFormDialog({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    const validationError = validateRequiredFields(form, [{ key: 'name', label: 'Milestone name' }]);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
     saveMutation.mutate();
   };
 

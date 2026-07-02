@@ -31,7 +31,7 @@ import {
   softDeleteProject,
 } from '../services/projectService';
 import { canSoftDeleteProject } from '../utils/permissions';
-import { formatDate } from '../utils/format';
+import { formatCellValue, formatDate } from '../utils/format';
 
 export function ArchivedProjectsPage() {
   const queryClient = useQueryClient();
@@ -104,7 +104,7 @@ export function ArchivedProjectsPage() {
                   <TableRow key={project.id} hover>
                     <TableCell>{project.tool_number}</TableCell>
                     <TableCell>{project.customer_name}</TableCell>
-                    <TableCell>{project.project_type_name ?? '—'}</TableCell>
+                    <TableCell>{formatCellValue(project.project_type_name)}</TableCell>
                     <TableCell>
                       {project.completed_at ? formatDate(project.completed_at) : '—'}
                     </TableCell>

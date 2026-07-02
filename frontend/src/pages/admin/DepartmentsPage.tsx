@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { ContentCard } from '../../components/ui/cards';
 import { LoadingState } from '../../components/common/LoadingState';
 import { fetchDepartments } from '../../api/settings';
+import { formatCellValue } from '../../utils/format';
 
 export default function DepartmentsPage() {
   const query = useQuery({
@@ -29,7 +30,7 @@ export default function DepartmentsPage() {
             {(query.data ?? []).map((row) => (
               <TableRow key={row.id}>
                 <TableCell>{row.name}</TableCell>
-                <TableCell>{row.code ?? '—'}</TableCell>
+                <TableCell>{formatCellValue(row.code)}</TableCell>
                 <TableCell>
                   <Chip
                     size="small"

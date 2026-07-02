@@ -29,6 +29,7 @@ import {
 } from '../../api/deleteCheck';
 import type { DeleteCheckResult } from '../../components/ui/design-system/DeleteRecordDialog';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { formatCellValue } from '../../utils/format';
 
 export default function DeletedUsersPage() {
   const queryClient = useQueryClient();
@@ -120,7 +121,7 @@ export default function DeletedUsersPage() {
                     <TableRow key={user.id} hover>
                       <TableCell>{name}</TableCell>
                       <TableCell>{user.email}</TableCell>
-                      <TableCell>{user.role_name ?? '—'}</TableCell>
+                      <TableCell>{formatCellValue(user.role_name)}</TableCell>
                       <TableCell align="right">
                         <Tooltip title="Restore">
                           <IconButton size="small" onClick={() => setRestoreId(user.id)}>

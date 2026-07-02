@@ -30,6 +30,8 @@ import { getErrorMessage } from '../../api/client';
 import { streamsApi, taskTypesApi } from '../../api/resources';
 import type { Stream, TaskType } from '../../types';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { formatCellValue } from '../../utils/format';
+import { optionalString, validateRequiredFields } from '../../utils/formValues';
 
 interface TaskTypeFormState {
   name: string;
@@ -120,12 +122,20 @@ export default function TaskTypesPage() {
   };
 
   const handleSave = async () => {
+    const validationError = validateRequiredFields(form, [
+      { key: 'name', label: 'Name' },
+      { key: 'stream_id', label: 'Stream' },
+    ]);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
-        name: form.name,
+        name: form.name.trim(),
         stream_id: form.stream_id,
-        description: form.description || null,
+        description: optionalString(form.description),
         is_billable: form.is_billable,
         is_active: form.is_active,
       };
@@ -154,7 +164,7 @@ export default function TaskTypesPage() {
       minWidth: 120,
       renderCell: (params) => (
         <Chip
-          label={streamMap.get(params.value as string) ?? '—'}
+          label={formatCellValue(streamMap.get(params.value as string))}
           size="small"
           variant="outlined"
         />
@@ -177,7 +187,7 @@ export default function TaskTypesPage() {
       headerName: 'Description',
       flex: 1.5,
       minWidth: 160,
-      valueFormatter: (value) => (value as string | null) || '—',
+      valueFormatter: (value) => formatCellValue(value as string | null),
     },
     {
       field: 'is_active',
@@ -351,7 +361,7 @@ export default function TaskTypesPage() {
               <TextField label="Name" value={viewTaskType.name} slotProps={{ input: { readOnly: true } }} fullWidth />
               <TextField
                 label="Stream"
-                value={streamMap.get(viewTaskType.stream_id) ?? '—'}
+                value={formatCellValue(streamMap.get(viewTaskType.stream_id))}
                 slotProps={{ input: { readOnly: true } }}
                 fullWidth
               />
@@ -363,7 +373,7 @@ export default function TaskTypesPage() {
               />
               <TextField
                 label="Description"
-                value={viewTaskType.description ?? '—'}
+                value={formatCellValue(viewTaskType.description)}
                 slotProps={{ input: { readOnly: true } }}
                 multiline
                 minRows={2}

@@ -18,7 +18,7 @@ import type {
   ResourceStatusColor,
   UnassignedProjectBlock,
 } from '../../types/ResourcePlanning';
-import { formatNumber } from '../../utils/format';
+import { formatCellValue, formatNumber } from '../../utils/format';
 
 const COLOR_MAP: Record<ResourceStatusColor, string> = {
   green: 'success.main',
@@ -179,7 +179,7 @@ export function ResourcePlanningGridView({ grid, onAssign }: ResourcePlanningGri
                 <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', zIndex: 2 }}>
                   <Typography sx={{ fontWeight: 600 }}>{designer.designer_name}</Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {designer.team_name ?? '—'} · {designer.availability_status}
+                    {formatCellValue(designer.team_name)} · {designer.availability_status}
                   </Typography>
                 </TableCell>
                 <TableCell>

@@ -1,11 +1,7 @@
-import { Box, Button, Typography } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
-import BusinessIcon from '@mui/icons-material/Business';
-import ScheduleIcon from '@mui/icons-material/Schedule';
+import { Box, Typography } from '@mui/material';
 import { useAuth } from '../../context/AuthContext';
-import { canAccessAdministration, canEditProject, isReadOnlyRole, ROLES } from '../../utils/permissions';
 import { formatDate } from '../../utils/format';
+import { DashboardQuickActions } from './DashboardQuickActions';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -19,6 +15,12 @@ interface DashboardHeaderProps {
   onTimesheet: () => void;
   onCustomer: () => void;
   onUser: () => void;
+  onReports: () => void;
+  onAdministration: () => void;
+  onImportTimesheets: () => void;
+  onApproveTimesheets: () => void;
+  onAssignDesigners: () => void;
+  onOpenCurrentProject: () => void;
 }
 
 export function DashboardHeader({
@@ -26,13 +28,14 @@ export function DashboardHeader({
   onTimesheet,
   onCustomer,
   onUser,
+  onReports,
+  onAdministration,
+  onImportTimesheets,
+  onApproveTimesheets,
+  onAssignDesigners,
+  onOpenCurrentProject,
 }: DashboardHeaderProps) {
-  const { user, displayName } = useAuth();
-  const roleName = user?.role_name ?? '';
-  const showAdminActions = canAccessAdministration(roleName);
-  const showNewUser = roleName === ROLES.ADMIN;
-  const showNewProject = canEditProject(roleName);
-  const showNewTimesheet = !isReadOnlyRole(roleName);
+  const { displayName } = useAuth();
 
   return (
     <Box
@@ -52,10 +55,7 @@ export function DashboardHeader({
       }}
     >
       <Box>
-        <Typography
-          variant="h4"
-          sx={{ fontWeight: 700, letterSpacing: '-0.03em', mb: 0.5 }}
-        >
+        <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: '-0.03em', mb: 0.5 }}>
           {getGreeting()}, {displayName}
         </Typography>
         <Typography variant="body2" color="text.secondary">
@@ -63,52 +63,18 @@ export function DashboardHeader({
         </Typography>
       </Box>
 
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-        {showNewProject ? (
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={onNewProject}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-          >
-            New Project
-          </Button>
-        ) : null}
-        {showNewTimesheet ? (
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<ScheduleIcon />}
-            onClick={onTimesheet}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-          >
-            New Timesheet
-          </Button>
-        ) : null}
-        {showAdminActions ? (
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<BusinessIcon />}
-            onClick={onCustomer}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-          >
-            New Customer
-          </Button>
-        ) : null}
-        {showNewUser ? (
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<PersonAddIcon />}
-            onClick={onUser}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-          >
-            New User
-          </Button>
-        ) : null}
-      </Box>
+      <DashboardQuickActions
+        onNewProject={onNewProject}
+        onTimesheet={onTimesheet}
+        onCustomer={onCustomer}
+        onUser={onUser}
+        onReports={onReports}
+        onAdministration={onAdministration}
+        onImportTimesheets={onImportTimesheets}
+        onApproveTimesheets={onApproveTimesheets}
+        onAssignDesigners={onAssignDesigners}
+        onOpenCurrentProject={onOpenCurrentProject}
+      />
     </Box>
   );
 }

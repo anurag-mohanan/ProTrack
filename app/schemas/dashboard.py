@@ -160,6 +160,23 @@ class DashboardActivityItem(BaseModel):
     href: str | None = None
 
 
+class DashboardOperationalMetrics(BaseModel):
+    pending_timesheet_approvals: int = 0
+    pending_project_approvals: int = 0
+    pending_import_jobs: int = 0
+
+
+class StaffDashboardMetrics(BaseModel):
+    my_projects: int = 0
+    current_tool_number: str | None = None
+    current_part_description: str | None = None
+    assigned_milestones: int = 0
+    hours_logged_this_week: Decimal = Decimal("0")
+    pending_timesheet_submissions: int = 0
+    upcoming_due_dates: int = 0
+    task_label: str = "Design Tasks"
+
+
 class DashboardMyTasks(BaseModel):
     pending_approvals: list[DashboardTaskItem] = Field(default_factory=list)
     upcoming_milestones: list[DashboardTaskItem] = Field(default_factory=list)
@@ -210,6 +227,10 @@ class DashboardSummary(BaseModel):
     team_summary: list[DashboardTeamSummaryRow] = Field(default_factory=list)
     np_hours_this_month: Decimal = Decimal("0")
     np_hours_panel: DashboardNpPanel = Field(default_factory=DashboardNpPanel)
+    operational_metrics: DashboardOperationalMetrics = Field(
+        default_factory=DashboardOperationalMetrics
+    )
+    staff_metrics: StaffDashboardMetrics | None = None
 
 
 class DashboardFuturePlaceholders(BaseModel):

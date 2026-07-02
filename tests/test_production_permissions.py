@@ -29,10 +29,10 @@ def test_read_only_can_view_reports(client):
     assert client.get("/api/v1/reports/project-hours", headers=headers).status_code == 200
 
 
-def test_read_only_can_view_resource_planning(client):
+def test_read_only_forbidden_from_resource_planning(client):
     headers = login(client, "readonly@prosohm.com")
     response = client.get("/api/v1/dashboard/resource-planning/grid", headers=headers)
-    assert response.status_code == 200
+    assert response.status_code == 403
 
 
 def test_read_only_forbidden_from_admin_users(client):

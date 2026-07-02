@@ -23,8 +23,10 @@ ASSIGNED_PROJECT_ROLES = PROJECT_STAFF_ROLES
 FULL_ACCESS_ROLES = {ADMIN, ENGINEERING_MANAGER}
 READ_ALL_PROJECT_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER, READ_ONLY}
 REPORT_VIEWER_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER, READ_ONLY}
-RESOURCE_PLANNING_ROLES = REPORT_VIEWER_ROLES
+RESOURCE_PLANNING_ROLES = FULL_ACCESS_ROLES
+WORKLOAD_VIEWER_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER}
 TIMESHEET_APPROVER_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER}
+PROJECT_CREATE_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER}
 TIMESHEET_ENTRY_WRITE_ROLES = FULL_ACCESS_ROLES | {
     DESIGN_LEADER,
     SENIOR_DESIGNER,
@@ -64,34 +66,38 @@ def can_view_reports(db: Session, user: User) -> bool:
 
 
 def can_view_resource_planning(db: Session, user: User) -> bool:
-    return can_view_reports(db, user)
+    return has_role(db, user, *RESOURCE_PLANNING_ROLES)
+
+
+def can_view_workload(db: Session, user: User) -> bool:
+    return has_role(db, user, *WORKLOAD_VIEWER_ROLES)
 
 
 def is_admin(db: Session, user: User) -> bool:
     return has_role(db, user, ADMIN)
 
 
-ADMINISTRATION_ROLES = FULL_ACCESS_ROLES
+ADMINISTRATION_ROLES = {ADMIN}
 
 
 def can_access_administration(db: Session, user: User) -> bool:
-    return has_role(db, user, *ADMINISTRATION_ROLES)
+    return has_role(db, user, ADMIN)
 
 
 def can_manage_users(db: Session, user: User) -> bool:
-    return can_access_administration(db, user)
+    return is_admin(db, user)
+
+
+def can_write_master_data(db: Session, user: User) -> bool:
+    return is_admin(db, user)
 
 
 def can_delete_records(db: Session, user: User) -> bool:
     return is_admin(db, user)
 
 
-def can_write_master_data(db: Session, user: User) -> bool:
-    return has_role(db, user, ADMIN, ENGINEERING_MANAGER)
-
-
 def can_create_project(db: Session, user: User) -> bool:
-    return has_role(db, user, ADMIN, ENGINEERING_MANAGER)
+    return has_role(db, user, *PROJECT_CREATE_ROLES)
 
 
 def can_delete_project(db: Session, user: User) -> bool:
@@ -103,7 +109,12 @@ def can_view_deleted_projects(db: Session, user: User) -> bool:
 
 
 def can_archive_project(db: Session, user: User, project: Project) -> bool:
-    return can_update_project(db, user, project)
+    role_name = get_role_name(db, user)
+    if role_name in FULL_ACCESS_ROLES:
+        return True
+    if role_name == DESIGN_LEADER:
+        return project.design_leader_id == user.id
+    return False
 
 
 def can_soft_delete_project(db: Session, user: User) -> bool:

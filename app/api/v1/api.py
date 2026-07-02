@@ -55,8 +55,8 @@ api_router = APIRouter()
 
 api_router.include_router(auth.router)
 
-admin_access = [Depends(require_roles("Admin", "Engineering Manager"))]
-master_data_write = ("Admin", "Engineering Manager")
+admin_access = [Depends(require_roles("Admin"))]
+master_data_write = ("Admin",)
 delivery_write = ("Admin", "Engineering Manager", "Design Leader")
 
 api_router.include_router(lookups.router)

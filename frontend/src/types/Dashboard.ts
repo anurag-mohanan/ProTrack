@@ -41,6 +41,25 @@ export interface DashboardSummary {
   team_summary: DashboardTeamSummaryRow[];
   np_hours_this_month: number;
   np_hours_panel: DashboardNpPanel;
+  operational_metrics: DashboardOperationalMetrics;
+  staff_metrics?: StaffDashboardMetrics | null;
+}
+
+export interface DashboardOperationalMetrics {
+  pending_timesheet_approvals: number;
+  pending_project_approvals: number;
+  pending_import_jobs: number;
+}
+
+export interface StaffDashboardMetrics {
+  my_projects: number;
+  current_tool_number?: string | null;
+  current_part_description?: string | null;
+  assigned_milestones: number;
+  hours_logged_this_week: number;
+  pending_timesheet_submissions: number;
+  upcoming_due_dates: number;
+  task_label: string;
 }
 
 export interface DashboardNpCodeRow {

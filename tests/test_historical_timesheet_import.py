@@ -79,14 +79,14 @@ def test_upload_and_analyze(client, sample_csv_bytes):
     assert body["designer"]["matched_user_id"] is not None
 
 
-def test_engineering_manager_can_upload(client, sample_csv_bytes):
+def test_engineering_manager_forbidden_from_timesheet_import(client, sample_csv_bytes):
     headers = login(client, "pm@prosohm.com")
     response = client.post(
         "/api/v1/imports/historical-timesheets/upload",
         headers=headers,
         files={"file": ("timesheet.csv", sample_csv_bytes, "text/csv")},
     )
-    assert response.status_code == 200
+    assert response.status_code == 403
 
 
 def test_validate_upload(client, sample_csv_bytes):

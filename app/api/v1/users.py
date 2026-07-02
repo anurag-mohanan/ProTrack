@@ -38,7 +38,7 @@ from app.services.user_lifecycle_service import (
 router = APIRouter(
     prefix="/users",
     tags=["users"],
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 
 

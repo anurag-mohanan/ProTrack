@@ -7,20 +7,24 @@ from sqlalchemy import func, select
 from app.crud.base import Session
 from app.crud.project_metrics import build_project_read
 from app.core.permissions import (
+    ASSIGNED_PROJECT_ROLES,
     FULL_ACCESS_ROLES,
     READ_ALL_PROJECT_ROLES,
+    SURFACER,
     can_approve_timesheet,
-    project_assignment_filter,
     get_role_name,
+    normalize_role_name,
+    project_assignment_filter,
 )
 from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
-from app.models.models import Activity, Customer, Milestone, Project, Role, Timesheet, TimesheetEntry, User
+from app.models.models import Activity, Customer, Milestone, Project, Role, Timesheet, TimesheetEntry, TimesheetImportHistory, User
 from app.schemas.dashboard import (
     DashboardFuturePlaceholders,
     DashboardDesignerAvailabilitySummary,
     DashboardKpis,
     DashboardMyTasks,
     DashboardNpPanel,
+    DashboardOperationalMetrics,
     DashboardOverview,
     DashboardSummary,
     DashboardTaskItem,
@@ -30,6 +34,7 @@ from app.schemas.dashboard import (
     ProjectAttentionRow,
     ProjectDashboard,
     ProjectHoursSummary,
+    StaffDashboardMetrics,
     WorkflowDashboard,
 )
 from app.schemas.timesheet import ActivityRead, TimesheetEntryRead
@@ -318,6 +323,9 @@ def get_dashboard_summary(
     if np_hours_panel is None:
         np_hours_panel = DashboardNpPanel()
 
+    operational_metrics = _get_operational_metrics(db, user)
+    staff_metrics = _get_staff_metrics(db, user)
+
     return DashboardSummary(
         total_projects=total_projects,
         active_projects=active,
@@ -357,6 +365,128 @@ def get_dashboard_summary(
         team_summary=team_summary,
         np_hours_this_month=engineering_kpis.np_hours_this_month,
         np_hours_panel=np_hours_panel,
+        operational_metrics=operational_metrics,
+        staff_metrics=staff_metrics,
+    )
+
+
+def _get_operational_metrics(db: Session, user: User) -> DashboardOperationalMetrics:
+    role_name = normalize_role_name(get_role_name(db, user))
+    if role_name not in FULL_ACCESS_ROLES:
+        return DashboardOperationalMetrics()
+
+    submitted = db.scalars(
+        select(Timesheet).where(Timesheet.status == TimesheetStatus.submitted)
+    ).all()
+    pending_timesheets = sum(
+        1 for timesheet in submitted if can_approve_timesheet(db, user, timesheet)
+    )
+    pending_imports = int(
+        db.scalar(
+            select(func.count())
+            .select_from(TimesheetImportHistory)
+            .where(TimesheetImportHistory.status != "completed")
+        )
+        or 0
+    )
+    pending_projects = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(
+                Project.is_deleted.is_(False),
+                Project.is_archived.is_(False),
+                Project.execution_status == ExecutionStatus.on_hold,
+            )
+        )
+        or 0
+    )
+    return DashboardOperationalMetrics(
+        pending_timesheet_approvals=pending_timesheets,
+        pending_project_approvals=pending_projects,
+        pending_import_jobs=pending_imports,
+    )
+
+
+def _get_staff_metrics(db: Session, user: User) -> StaffDashboardMetrics | None:
+    role_name = normalize_role_name(get_role_name(db, user))
+    if role_name not in ASSIGNED_PROJECT_ROLES:
+        return None
+
+    assignment = project_assignment_filter(user, role_name)
+    if assignment is None:
+        return None
+
+    week_start, week_end = _current_week_bounds()
+    today = date.today()
+    projects = db.scalars(
+        select(Project)
+        .where(
+            assignment,
+            Project.is_deleted.is_(False),
+            Project.is_archived.is_(False),
+            Project.execution_status != ExecutionStatus.completed,
+        )
+        .order_by(Project.due_date.asc().nullslast())
+    ).all()
+
+    current = next(
+        (
+            project
+            for project in projects
+            if project.execution_status == ExecutionStatus.currently_being_worked_on
+        ),
+        projects[0] if projects else None,
+    )
+
+    project_ids = [project.id for project in projects]
+    assigned_milestones = 0
+    upcoming_due = 0
+    if project_ids:
+        milestones = db.scalars(
+            select(Milestone).where(
+                Milestone.project_id.in_(project_ids),
+                Milestone.status != MilestoneStatus.completed,
+            )
+        ).all()
+        assigned_milestones = len(milestones)
+        upcoming_due = sum(
+            1
+            for milestone in milestones
+            if milestone.due_date is not None
+            and today <= milestone.due_date <= today + timedelta(days=7)
+        )
+
+    hours_week = db.scalar(
+        select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(
+            Timesheet.user_id == user.id,
+            TimesheetEntry.entry_date >= week_start,
+            TimesheetEntry.entry_date <= week_end,
+        )
+    )
+    pending_drafts = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Timesheet)
+            .where(
+                Timesheet.user_id == user.id,
+                Timesheet.status == TimesheetStatus.draft,
+            )
+        )
+        or 0
+    )
+
+    return StaffDashboardMetrics(
+        my_projects=len(projects),
+        current_tool_number=current.tool_number if current else None,
+        current_part_description=current.part_description if current else None,
+        assigned_milestones=assigned_milestones,
+        hours_logged_this_week=_round_hours(_decimal(hours_week)),
+        pending_timesheet_submissions=pending_drafts,
+        upcoming_due_dates=upcoming_due,
+        task_label="Surfacing Tasks" if role_name == SURFACER else "Design Tasks",
     )
 
 

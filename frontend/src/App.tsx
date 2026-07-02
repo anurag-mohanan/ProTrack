@@ -25,7 +25,10 @@ import { ProtectedRoute, PublicRoute, RequirePasswordChangedRoute } from './rout
 import {
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
+  canViewArchivedProjects,
   canViewReports,
+  canViewResourcePlanning,
+  canViewWorkload,
   ROLES,
 } from './utils/permissions';
 
@@ -87,10 +90,18 @@ function AdminHistoricalImportRoute() {
   );
 }
 
+function ArchivedProjectsRoute() {
+  const { user } = useAuth();
+  if (!canViewArchivedProjects(user?.role_name ?? '')) {
+    return <Navigate to="/projects" replace />;
+  }
+  return <ArchivedProjectsPage />;
+}
+
 function AdminHistoricalTimesheetImportRoute() {
   const { user } = useAuth();
   if (!canImportHistoricalTimesheets(user?.role_name ?? '')) {
-    return <Navigate to="/admin/dashboard" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   return (
     <LazyAdmin>
@@ -133,7 +144,7 @@ export default function App() {
                     <Route element={<MainLayout />}>
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/projects" element={<ProjectsPage />} />
-                    <Route path="/projects/archived" element={<ArchivedProjectsPage />} />
+                    <Route path="/projects/archived" element={<ArchivedProjectsRoute />} />
                     <Route path="/projects/:id" element={<ProjectDetailPage />} />
                     <Route path="/timesheets" element={<TimesheetsPage />} />
                     <Route
@@ -149,9 +160,13 @@ export default function App() {
                       element={<TimesheetEntryPage />}
                     />
                     <Route element={<RoleRoute allowed={canViewReports} />}>
-                      <Route path="/workload" element={<WorkloadPage />} />
-                      <Route path="/resource-planning" element={<ResourcePlanningPage />} />
                       <Route path="/reports" element={<ReportsPage />} />
+                    </Route>
+                    <Route element={<RoleRoute allowed={canViewWorkload} />}>
+                      <Route path="/workload" element={<WorkloadPage />} />
+                    </Route>
+                    <Route element={<RoleRoute allowed={canViewResourcePlanning} />}>
+                      <Route path="/resource-planning" element={<ResourcePlanningPage />} />
                     </Route>
 
                     <Route element={<AdminRoute />}>

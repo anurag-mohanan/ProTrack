@@ -43,12 +43,19 @@ from app.services.dashboard_service import (
     safe_dashboard_call,
 )
 
-_planning_access = Depends(
+_workload_access = Depends(
     require_roles(
         "Admin",
         "Engineering Manager",
         "Design Leader",
-        "Read Only",
+        "Project Manager",
+    )
+)
+
+_planning_access = Depends(
+    require_roles(
+        "Admin",
+        "Engineering Manager",
         "Project Manager",
     )
 )
@@ -122,7 +129,7 @@ def dashboard_overview(
 @router.get(
     "/workload",
     response_model=list[DesignerWorkload],
-    dependencies=[_planning_access],
+    dependencies=[_workload_access],
 )
 def dashboard_workload(db: Session = Depends(get_db)):
     return get_designer_workload(db)

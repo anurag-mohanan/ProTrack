@@ -10,10 +10,10 @@ def test_admin_can_list_users(client):
     assert len(response.json()) >= 1
 
 
-def test_engineering_manager_can_list_users(client):
+def test_engineering_manager_forbidden_from_admin_users(client):
     headers = login(client, "pm@prosohm.com")
     response = client.get("/api/v1/users", headers=headers)
-    assert response.status_code == 200
+    assert response.status_code == 403
 
 
 def test_designer_forbidden_from_admin_users(client):

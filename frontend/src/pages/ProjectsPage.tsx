@@ -40,7 +40,7 @@ import {
   updateProject,
 } from '../services/projectService';
 import type { ProjectStage } from '../types';
-import { canArchiveProject, canDeleteRecords } from '../utils/permissions';
+import { canArchiveProject, canCreateProject, canDeleteRecords } from '../utils/permissions';
 import {
   countByExecutionStatus,
   countDueThisWeekProjects,
@@ -355,6 +355,7 @@ export function ProjectsPage() {
   );
 
   const showArchiveActions = canArchiveProject(user?.role_name ?? '');
+  const showCreateProject = canCreateProject(user?.role_name ?? '');
   const tableLoading = projectsQuery.isPending;
   const summary = dashboardQuery.data;
 
@@ -414,14 +415,16 @@ export function ProjectsPage() {
                 {subtitle}
               </Typography>
             </Box>
-            <ProsohmButton
-              buttonVariant="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateOpen(true)}
-              sx={{ flexShrink: 0 }}
-            >
-              Create Project
-            </ProsohmButton>
+            {showCreateProject ? (
+              <ProsohmButton
+                buttonVariant="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setCreateOpen(true)}
+                sx={{ flexShrink: 0 }}
+              >
+                Create Project
+              </ProsohmButton>
+            ) : null}
           </Box>
 
           <TextField

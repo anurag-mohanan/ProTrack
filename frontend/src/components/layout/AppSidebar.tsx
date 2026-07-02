@@ -9,36 +9,14 @@ import {
   Toolbar,
   Typography,
 } from '@mui/material';
-import AssessmentIcon from '@mui/icons-material/Assessment';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import FolderIcon from '@mui/icons-material/Folder';
-import ArchiveIcon from '@mui/icons-material/Archive';
-import ScheduleIcon from '@mui/icons-material/Schedule';
-import GroupsIcon from '@mui/icons-material/Groups';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { NavLink } from 'react-router-dom';
 import { LogoHomeLink } from '../branding/LogoHomeLink';
 import { AdminNavigation } from './AdminNavigation';
 import { getAdminNavSections } from '../../config/adminNavigation';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import {
-  canAccessAdministration,
-  canViewReports,
-  canViewResourcePlanning,
-  canViewWorkload,
-} from '../../utils/permissions';
+import { canAccessAdministration, getMainNavItems } from '../../utils/permissions';
 
 export const DRAWER_WIDTH = 272;
-
-const navItems = [
-  { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
-  { label: 'Projects', path: '/projects', icon: FolderIcon },
-  { label: 'Archived Projects', path: '/projects/archived', icon: ArchiveIcon },
-  { label: 'Timesheets', path: '/timesheets', icon: ScheduleIcon },
-  { label: 'Workload', path: '/workload', icon: GroupsIcon },
-  { label: 'Resource Planning', path: '/resource-planning', icon: CalendarMonthIcon },
-  { label: 'Reports', path: '/reports', icon: AssessmentIcon },
-];
 
 interface AppSidebarProps {
   roleName: string;
@@ -51,7 +29,7 @@ function NavButton({
 }: {
   path: string;
   label: string;
-  icon: typeof DashboardIcon;
+  icon: React.ComponentType<{ fontSize?: 'small' | 'inherit' | 'large' | 'medium' }>;
 }) {
   return (
     <ListItemButton
@@ -88,13 +66,7 @@ function NavButton({
 }
 
 export function AppSidebar({ roleName }: AppSidebarProps) {
-  const visibleNavItems = navItems.filter((item) => {
-    if (item.path === '/reports') return canViewReports(roleName);
-    if (item.path === '/workload') return canViewWorkload(roleName);
-    if (item.path === '/resource-planning') return canViewResourcePlanning(roleName);
-    return true;
-  });
-
+  const visibleNavItems = getMainNavItems(roleName);
   const adminSections = getAdminNavSections(roleName);
 
   return (
@@ -125,7 +97,7 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
         </Typography>
         <List disablePadding>
           {visibleNavItems.map((item) => (
-            <NavButton key={item.path} {...item} />
+            <NavButton key={item.path} path={item.path} label={item.label} icon={item.icon} />
           ))}
         </List>
 

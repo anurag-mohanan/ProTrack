@@ -34,7 +34,7 @@ from app.services.timesheet_import_job_store import timesheet_import_job_store
 router = APIRouter(
     prefix="/imports/historical-timesheets",
     tags=["imports"],
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 
 

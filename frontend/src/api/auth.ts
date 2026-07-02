@@ -7,7 +7,7 @@ export async function login(credentials: LoginRequest): Promise<TokenResponse> {
 }
 
 export async function fetchCurrentUser(): Promise<CurrentUser> {
-  const { data } = await apiClient.get<CurrentUser>('/auth/me');
+  const { data } = await apiClient.get<CurrentUser>('/auth/me', { timeout: 15_000 });
   return data;
 }
 

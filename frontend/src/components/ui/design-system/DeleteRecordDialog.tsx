@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { ModernDrawer } from './ModernDrawer';
 import { ProsohmButton } from '../ProsohmButton';
+import { formatDisplayValue } from '../../../utils/format';
 
 export interface DeleteCheckResult {
   can_delete: boolean;
@@ -33,6 +34,10 @@ interface DeleteRecordDialogProps {
   showArchive?: boolean;
 }
 
+function hasProjectBlockers(related: string[]): boolean {
+  return related.some((item) => /project/i.test(item));
+}
+
 export function DeleteRecordDialog({
   open,
   check,
@@ -44,16 +49,18 @@ export function DeleteRecordDialog({
   showDeactivate = true,
   showArchive = false,
 }: DeleteRecordDialogProps) {
-  const recordName = check?.record_name ?? 'this record';
+  const recordName = formatDisplayValue(check?.record_name, 'this record');
   const recordType = check?.record_type ?? 'Record';
   const blocked = Boolean(check && !check.can_delete);
   const related = check?.related_records ?? check?.blockers ?? [];
+  const customerProjectBlock =
+    blocked && recordType === 'Customer' && hasProjectBlockers(related);
 
   return (
     <ModernDrawer
       open={open}
       onClose={onClose}
-      title={blocked ? 'Record In Use' : 'Permanent Delete'}
+      title={blocked ? `Delete ${recordType}` : `Delete ${recordType}`}
       subtitle={blocked ? 'Deletion is blocked by related data' : 'This action cannot be undone'}
       icon={blocked ? WarningAmberOutlinedIcon : DeleteForeverOutlinedIcon}
       width={520}
@@ -64,7 +71,7 @@ export function DeleteRecordDialog({
           </ProsohmButton>
           {blocked && showArchive && onArchive ? (
             <ProsohmButton buttonVariant="secondary" onClick={onArchive} disabled={loading}>
-              Archive
+              Archive {recordType}
             </ProsohmButton>
           ) : null}
           {blocked && showDeactivate && onDeactivate ? (
@@ -79,7 +86,7 @@ export function DeleteRecordDialog({
               onClick={onConfirm}
               startIcon={<DeleteForeverOutlinedIcon />}
             >
-              Delete Permanently
+              Delete
             </ProsohmButton>
           ) : null}
         </>
@@ -92,54 +99,57 @@ export function DeleteRecordDialog({
           </Typography>
         ) : (
           <>
-        <Box>
-          <Typography variant="captionLabel" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Record Type
-          </Typography>
-          <Chip label={recordType} size="small" color="default" />
-        </Box>
+            <Box>
+              <Typography variant="captionLabel" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Record Type
+              </Typography>
+              <Chip label={recordType} size="small" color="default" />
+            </Box>
 
-        <Box>
-          <Typography variant="captionLabel" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Record Name
-          </Typography>
-          <Typography variant="body1" sx={{ fontWeight: 700 }}>
-            {recordName}
-          </Typography>
-        </Box>
+            <Box>
+              <Typography variant="captionLabel" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Record Name
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                {recordName}
+              </Typography>
+            </Box>
 
-        <Divider />
+            <Divider />
 
-        {blocked ? (
-          <>
-            <Alert severity="warning" icon={<WarningAmberOutlinedIcon fontSize="inherit" />}>
-              This record is currently in use.
-            </Alert>
-            {related.length ? (
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Related Records
+            {blocked ? (
+              <>
+                <Alert severity="warning" icon={<WarningAmberOutlinedIcon fontSize="inherit" />}>
+                  {customerProjectBlock
+                    ? 'This customer has active projects and cannot be deleted.'
+                    : 'This record is currently in use and cannot be deleted.'}
+                </Alert>
+                {related.length ? (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Related Records
+                    </Typography>
+                    <List dense disablePadding>
+                      {related.map((item) => (
+                        <ListItem key={item} disableGutters sx={{ py: 0.25 }}>
+                          <ListItemText primary={item} slotProps={{ primary: { variant: 'body2' } }} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                ) : null}
+                <Typography variant="body2" color="text.secondary">
+                  {customerProjectBlock
+                    ? 'Reassign or complete active projects before deleting this customer, or archive the customer instead.'
+                    : 'Remove or reassign dependencies before permanent deletion. You can deactivate or archive this record instead.'}
                 </Typography>
-                <List dense disablePadding>
-                  {related.map((item) => (
-                    <ListItem key={item} disableGutters sx={{ py: 0.25 }}>
-                      <ListItemText primary={item} slotProps={{ primary: { variant: 'body2' } }} />
-                    </ListItem>
-                  ))}
-                </List>
-              </Box>
-            ) : null}
-            <Typography variant="body2" color="text.secondary">
-              Remove or reassign dependencies before permanent deletion. You can deactivate or archive
-              this record instead.
-            </Typography>
-          </>
-        ) : (
-          <Alert severity="error">
-            You are about to permanently delete {recordType} &apos;{recordName}&apos;. This action
-            cannot be undone.
-          </Alert>
-        )}
+              </>
+            ) : (
+              <Alert severity="error" icon={<WarningAmberOutlinedIcon fontSize="inherit" />}>
+                You are about to permanently delete{' '}
+                <strong>{recordName}</strong>. This action cannot be undone.
+              </Alert>
+            )}
           </>
         )}
       </Box>

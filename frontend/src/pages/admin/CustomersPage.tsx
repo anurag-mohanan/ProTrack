@@ -264,9 +264,11 @@ export default function CustomersPage() {
                 recordId={params.row.id}
                 recordName={params.row.name}
                 onDeleted={() => void loadData()}
-                onDeactivate={async () => {
+                showArchive
+                showDeactivate={false}
+                onArchive={async () => {
                   await customersApi.update(params.row.id, { is_active: false });
-                  showSuccess('Customer deactivated.');
+                  showSuccess('Customer archived.');
                   await loadData();
                 }}
               />
@@ -540,13 +542,15 @@ export default function CustomersPage() {
                   resource="customers"
                   recordId={selectedCustomer.id}
                   recordName={selectedCustomer.name}
+                  showArchive
+                  showDeactivate={false}
                   onDeleted={() => {
                     setSelectedCustomer(null);
                     void loadData();
                   }}
-                  onDeactivate={async () => {
+                  onArchive={async () => {
                     await customersApi.update(selectedCustomer.id, { is_active: false });
-                    showSuccess('Customer deactivated.');
+                    showSuccess('Customer archived.');
                     setSelectedCustomer(null);
                     await loadData();
                   }}

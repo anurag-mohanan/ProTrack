@@ -38,7 +38,7 @@ import { cloneProject, commandCenterQueryKeys, fetchProjectCommandCenter } from 
 import { getProjectDetail } from '../../services/projectService';
 import { QUERY_STALE_TIMES } from '../../config/queryConfig';
 import { useToast } from '../../context/ToastContext';
-import { formatCellValue, formatDate, formatDateTime, formatNumber, formatStatus } from '../../utils/format';
+import { formatCellValue, formatDate, formatDateTime, formatDisplayValue, formatNumber, formatStatus } from '../../utils/format';
 import { formatProjectStageDisplay } from '../../utils/projectCommandCenter';
 import { projectQueryKeys } from '../../services/projectService';
 
@@ -246,7 +246,7 @@ export function ProjectRecordDrawer({
                   <TableBody>
                     {cc.timeline.slice(0, 8).map((step) => (
                       <TableRow key={step.milestone_id ?? step.name}>
-                        <TableCell>{step.name}</TableCell>
+                        <TableCell>{formatDisplayValue(step.name)}</TableCell>
                         <TableCell>{formatStatus(step.status)}</TableCell>
                         <TableCell>{formatDate(step.due_date) || '—'}</TableCell>
                       </TableRow>

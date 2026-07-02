@@ -1,4 +1,4 @@
-import { formatCellValue, isBlankDisplayValue } from './formValues';
+import { formatCellValue, formatDisplayValue, isBlankDisplayValue } from './formValues';
 
 export function formatNumber(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
@@ -58,4 +58,4 @@ export function userInitials(user: {
   return `${first}${last}`.toUpperCase() || '?';
 }
 
-export { formatCellValue, isBlankDisplayValue };
+export { formatCellValue, formatDisplayValue, isBlankDisplayValue };

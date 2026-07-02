@@ -14,6 +14,7 @@ import type { GridColDef } from '@mui/x-data-grid';
 import { apiClient } from '../../api/client';
 import { fetchUsers } from '../../api/lookups';
 import { teamsApi } from '../../api/resources';
+import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
@@ -77,6 +78,7 @@ export default function TeamsPage() {
     user_id: '',
     role_within_team: '',
   });
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<TeamMember | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -437,7 +439,8 @@ export default function TeamsPage() {
                   <IconButton
                     size="small"
                     color="error"
-                    onClick={() => void handleRemoveMember(member.id)}
+                    aria-label={`Remove ${member.user_name}`}
+                    onClick={() => setRemoveMemberTarget(member)}
                   >
                     <DeleteIcon fontSize="small" />
                   </IconButton>
@@ -531,6 +534,22 @@ export default function TeamsPage() {
           </FormSection>
         ) : null}
       </RecordDetailDrawer>
+
+      <ConfirmDialog
+        open={Boolean(removeMemberTarget)}
+        title="Remove Team Member"
+        recordName={removeMemberTarget?.user_name ?? undefined}
+        message="This member will be removed from the team. They will not be deleted from ProTrack."
+        confirmLabel="Remove"
+        danger
+        onClose={() => setRemoveMemberTarget(null)}
+        onConfirm={() => {
+          if (removeMemberTarget) {
+            void handleRemoveMember(removeMemberTarget.id);
+            setRemoveMemberTarget(null);
+          }
+        }}
+      />
     </PageContainer>
   );
 }

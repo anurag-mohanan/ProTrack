@@ -11,7 +11,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import type { DashboardCustomerWorkloadRow } from '../../types';
-import { formatNumber } from '../../utils/format';
+import { formatDisplayValue, formatNumber } from '../../utils/format';
 
 interface CustomerWorkloadWidgetProps {
   rows: DashboardCustomerWorkloadRow[];
@@ -57,7 +57,7 @@ export function CustomerWorkloadWidget({ rows }: CustomerWorkloadWidgetProps) {
               <TableCell>
                 <Box>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    {row.customer_name}
+                    {formatDisplayValue(row.customer_name)}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     {formatNumber(row.active_tools, 0)} tools

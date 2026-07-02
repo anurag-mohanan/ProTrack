@@ -5,6 +5,7 @@ import type {
   DesignerAvailabilityStatus,
 } from '../../types';
 import { PROJECT_STAGE_LABELS } from '../../types/common';
+import { formatDisplayValue } from '../../utils/format';
 
 const STATUS_CONFIG: Record<
   DesignerAvailabilityStatus,
@@ -105,19 +106,24 @@ export function DesignerAvailabilityWidget({
               >
                 <Box>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    {designer.designer_name}
+                    {formatDisplayValue(designer.designer_name)}
                   </Typography>
                   {designer.current_tool_number ? (
                     <Typography variant="body2" color="text.secondary">
-                      {designer.current_tool_number}
+                      {formatDisplayValue(designer.current_tool_number)}
                       {designer.current_customer_name
-                        ? ` · ${designer.current_customer_name}`
+                        ? ` · ${formatDisplayValue(designer.current_customer_name)}`
                         : ''}
                     </Typography>
                   ) : null}
                   {designer.current_stage || designer.current_milestone ? (
                     <Typography variant="caption" color="text.secondary">
-                      {[designer.current_stage ? PROJECT_STAGE_LABELS[designer.current_stage] : null, designer.current_milestone]
+                      {[
+                        designer.current_stage ? PROJECT_STAGE_LABELS[designer.current_stage] : null,
+                        formatDisplayValue(designer.current_milestone) !== '—'
+                          ? formatDisplayValue(designer.current_milestone)
+                          : null,
+                      ]
                         .filter(Boolean)
                         .join(' · ')}
                     </Typography>

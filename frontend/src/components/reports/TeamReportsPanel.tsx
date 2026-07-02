@@ -26,7 +26,7 @@ import {
   reportQueryKeys,
   type ReportOptions,
 } from '../../services/reportService';
-import { formatCellValue, formatNumber } from '../../utils/format';
+import { formatDisplayValue, formatNumber } from '../../utils/format';
 
 const TEAM_TABS = [
   { label: 'Quoted vs Actual', key: 'quoted-vs-actual' },
@@ -130,7 +130,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
             <TableBody>
               {(quotedQuery.data ?? []).map((row) => (
                 <TableRow key={row.team_id} hover>
-                  <TableCell>{row.team_name}</TableCell>
+                  <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.variance_hours)}</TableCell>
@@ -157,7 +157,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
             <TableBody>
               {(utilizationQuery.data ?? []).map((row) => (
                 <TableRow key={row.team_id ?? row.team_name} hover>
-                  <TableCell>{row.team_name}</TableCell>
+                  <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{row.member_count}</TableCell>
                   <TableCell align="right">{formatNumber(row.allocated_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
@@ -181,7 +181,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
             <TableBody>
               {(projectsQuery.data ?? []).map((row) => (
                 <TableRow key={row.team_id} hover>
-                  <TableCell>{row.team_name}</TableCell>
+                  <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{row.project_count}</TableCell>
                 </TableRow>
               ))}
@@ -204,7 +204,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
             <TableBody>
               {(hoursQuery.data ?? []).map((row) => (
                 <TableRow key={row.team_id} hover>
-                  <TableCell>{row.team_name}</TableCell>
+                  <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.hours_variance)}</TableCell>
@@ -228,8 +228,8 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
             <TableBody>
               {(customersQuery.data ?? []).map((row) => (
                 <TableRow key={`${row.team_id}-${row.customer_id}`} hover>
-                  <TableCell>{row.team_name}</TableCell>
-                  <TableCell>{row.customer_name}</TableCell>
+                  <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
+                  <TableCell>{formatDisplayValue(row.customer_name)}</TableCell>
                   <TableCell align="right">{row.project_count}</TableCell>
                 </TableRow>
               ))}
@@ -251,9 +251,9 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
             <TableBody>
               {(designersQuery.data ?? []).map((row) => (
                 <TableRow key={`${row.team_id}-${row.user_id}`} hover>
-                  <TableCell>{row.team_name}</TableCell>
-                  <TableCell>{row.user_name}</TableCell>
-                  <TableCell>{formatCellValue(row.role_within_team)}</TableCell>
+                  <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
+                  <TableCell>{formatDisplayValue(row.user_name)}</TableCell>
+                  <TableCell>{formatDisplayValue(row.role_within_team)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -276,7 +276,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
             <TableBody>
               {(profitabilityQuery.data ?? []).map((row) => (
                 <TableRow key={row.team_id} hover>
-                  <TableCell>{row.team_name}</TableCell>
+                  <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
                   <TableCell align="right">{formatNumber(row.margin_hours)}</TableCell>
@@ -301,7 +301,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
             <TableBody>
               {(monthlyQuery.data ?? []).map((row) => (
                 <TableRow key={`${row.team_id}-${row.year}-${row.month}`} hover>
-                  <TableCell>{row.team_name}</TableCell>
+                  <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell>
                     {row.year}-{String(row.month).padStart(2, '0')}
                   </TableCell>

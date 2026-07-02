@@ -15,7 +15,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import { useMemo, useState } from 'react';
 import type { DecisionCategory, ProjectDecision } from '../../types/CommandCenter';
-import { formatCellValue, formatDateTime } from '../../utils/format';
+import { formatCellValue, formatDisplayValue, formatDateTime } from '../../utils/format';
 import { EmptyState } from '../common/EmptyState';
 
 const CATEGORIES: { value: DecisionCategory; label: string }[] = [
@@ -162,7 +162,7 @@ export function DecisionLogPanel({
                       onChange={(event) => setEditComment(event.target.value)}
                     />
                   ) : (
-                    row.comment
+                    formatDisplayValue(row.comment)
                   )}
                 </TableCell>
                 <TableCell align="right">

@@ -1055,12 +1055,12 @@ export default function UsersPage() {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Delete User"
-        message={
-          deleteTarget
-            ? `Delete ${deleteTarget.first_name} ${deleteTarget.last_name}?`
-            : ''
+        recordName={
+          deleteTarget ? `${deleteTarget.first_name} ${deleteTarget.last_name}`.trim() : undefined
         }
+        message="This user will be removed from active lists. You can restore them from Deleted Users."
         confirmLabel="Delete"
+        danger
         onConfirm={() => void handleDeleteUser()}
         onClose={() => setDeleteTarget(null)}
         loading={actionLoading}

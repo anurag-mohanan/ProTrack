@@ -52,7 +52,7 @@ import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { archiveProject, invalidateProjectCalculationQueries } from '../services/projectService';
-import { formatCellValue, formatDate, formatNumber } from '../utils/format';
+import { formatCellValue, formatDisplayValue, formatDate, formatNumber } from '../utils/format';
 import { canArchiveProject } from '../utils/permissions';
 
 function InfoLine({ label, value }: { label: string; value: string | null | undefined }) {
@@ -90,6 +90,7 @@ export function ProjectDetailPage() {
     released_folder_path: '',
   });
   const [ecForm, setEcForm] = useState({ ec_number: '', title: '', hours: 0 });
+  const [deleteDecisionTarget, setDeleteDecisionTarget] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: commandCenterQueryKeys.detail(id),
@@ -374,9 +375,9 @@ export function ProjectDetailPage() {
               <TableBody>
                 {data.engineering_changes.items.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell>{row.ec_number}</TableCell>
-                    <TableCell>{row.title}</TableCell>
-                    <TableCell>{row.status}</TableCell>
+                    <TableCell>{formatDisplayValue(row.ec_number)}</TableCell>
+                    <TableCell>{formatDisplayValue(row.title)}</TableCell>
+                    <TableCell>{formatDisplayValue(row.status)}</TableCell>
                     <TableCell align="right">{formatNumber(row.hours)}</TableCell>
                   </TableRow>
                 ))}
@@ -483,12 +484,7 @@ export function ProjectDetailPage() {
                   invalidate();
                 })
               }
-              onDelete={(decisionId) =>
-                void deleteProjectDecision(id, decisionId).then(() => {
-                  showSuccess('Decision deleted');
-                  invalidate();
-                })
-              }
+              onDelete={(decisionId) => setDeleteDecisionTarget(decisionId)}
             />
           </AppCard>
         </Grid>
@@ -573,6 +569,23 @@ export function ProjectDetailPage() {
           />
         </Box>
       </FormDrawer>
+
+      <ConfirmDialog
+        open={Boolean(deleteDecisionTarget)}
+        title="Delete Decision"
+        message="This decision log entry will be permanently removed."
+        confirmLabel="Delete"
+        danger
+        onClose={() => setDeleteDecisionTarget(null)}
+        onConfirm={() => {
+          if (!deleteDecisionTarget) return;
+          void deleteProjectDecision(id, deleteDecisionTarget).then(() => {
+            showSuccess('Decision deleted');
+            setDeleteDecisionTarget(null);
+            invalidate();
+          });
+        }}
+      />
 
       <ConfirmDialog
         open={archiveOpen}

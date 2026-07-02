@@ -78,12 +78,21 @@ def check_customer_delete(db: Session, customer_id: UUID) -> DeleteCheckResponse
         )
     )
     if projects:
-        blockers.append(f"{projects} project{'s' if projects != 1 else ''}")
+        blockers.append(f"{projects} active project{'s' if projects != 1 else ''}")
     contacts = _count(
         db.scalar(select(func.count()).select_from(Contact).where(Contact.customer_id == customer_id))
     )
     if contacts:
         blockers.append(f"{contacts} contact{'s' if contacts != 1 else ''}")
+    templates = _count(
+        db.scalar(
+            select(func.count())
+            .select_from(ProjectTemplate)
+            .where(ProjectTemplate.customer_id == customer_id)
+        )
+    )
+    if templates:
+        blockers.append(f"{templates} project template{'s' if templates != 1 else ''}")
     entries = _count(
         db.scalar(
             select(func.count())
@@ -133,6 +142,24 @@ def check_team_delete(db: Session, team_id: UUID) -> DeleteCheckResponse:
     )
     if projects:
         blockers.append(f"{projects} project{'s' if projects != 1 else ''}")
+    default_customers = _count(
+        db.scalar(
+            select(func.count())
+            .select_from(Customer)
+            .where(Customer.default_team_id == team_id)
+        )
+    )
+    if default_customers:
+        blockers.append(f"{default_customers} customer default team reference{'s' if default_customers != 1 else ''}")
+    default_templates = _count(
+        db.scalar(
+            select(func.count())
+            .select_from(ProjectTemplate)
+            .where(ProjectTemplate.default_team_id == team_id)
+        )
+    )
+    if default_templates:
+        blockers.append(f"{default_templates} template default team reference{'s' if default_templates != 1 else ''}")
     return _CheckResult(team.name, "Team", blockers).to_response()
 
 
@@ -204,6 +231,17 @@ def check_project_template_delete(db: Session, template_id: UUID) -> DeleteCheck
     )
     if projects:
         blockers.append(f"{projects} project{'s' if projects != 1 else ''}")
+    default_customers = _count(
+        db.scalar(
+            select(func.count())
+            .select_from(Customer)
+            .where(Customer.default_project_template_id == template_id)
+        )
+    )
+    if default_customers:
+        blockers.append(
+            f"{default_customers} customer default template reference{'s' if default_customers != 1 else ''}"
+        )
     return _CheckResult(template.name, "Project Template", blockers).to_response()
 
 
@@ -230,6 +268,17 @@ def check_project_type_delete(db: Session, project_type_id: UUID) -> DeleteCheck
     )
     if templates:
         blockers.append(f"{templates} template{'s' if templates != 1 else ''}")
+    default_customers = _count(
+        db.scalar(
+            select(func.count())
+            .select_from(Customer)
+            .where(Customer.default_project_type_id == project_type_id)
+        )
+    )
+    if default_customers:
+        blockers.append(
+            f"{default_customers} customer default type reference{'s' if default_customers != 1 else ''}"
+        )
     return _CheckResult(project_type.name, "Project Type", blockers).to_response()
 
 

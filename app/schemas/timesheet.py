@@ -5,10 +5,10 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import ActivityAction, EntityType, NotificationType, TimesheetStatus, WorkCategory
-from app.schemas.common import TimestampSchema
+from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
-class TimesheetApprovalRequest(BaseModel):
+class TimesheetApprovalRequest(BlankOptionalFieldsMixin, BaseModel):
     comments: str | None = None
 
 
@@ -61,11 +61,11 @@ class TimesheetEntryBase(BaseModel):
         return value
 
 
-class TimesheetEntryCreate(TimesheetEntryBase):
+class TimesheetEntryCreate(BlankOptionalFieldsMixin, TimesheetEntryBase):
     pass
 
 
-class TimesheetEntryUpdate(BaseModel):
+class TimesheetEntryUpdate(BlankOptionalFieldsMixin, BaseModel):
     timesheet_id: UUID | None = None
     work_category: WorkCategory | None = None
     project_id: UUID | None = None

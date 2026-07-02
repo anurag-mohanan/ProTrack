@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Typography,
   useTheme,
 } from '@mui/material';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
@@ -14,6 +15,7 @@ interface ConfirmDialogProps {
   open: boolean;
   title: string;
   message: string;
+  recordName?: string;
   confirmLabel?: string;
   onConfirm: () => void;
   onClose: () => void;
@@ -26,6 +28,7 @@ export function ConfirmDialog({
   open,
   title,
   message,
+  recordName,
   confirmLabel = 'Confirm',
   onConfirm,
   onClose,
@@ -68,6 +71,22 @@ export function ConfirmDialog({
         {title}
       </DialogTitle>
       <DialogContent sx={{ pt: 0 }}>
+        {recordName ? (
+          <Box
+            sx={{
+              mb: 2,
+              p: 1.5,
+              borderRadius: 2,
+              bgcolor: 'grey.50',
+              border: 1,
+              borderColor: 'divider',
+            }}
+          >
+            <Typography variant="body1" sx={{ fontWeight: 700 }}>
+              {recordName}
+            </Typography>
+          </Box>
+        ) : null}
         <DialogContentText sx={{ color: 'text.secondary' }}>{message}</DialogContentText>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>

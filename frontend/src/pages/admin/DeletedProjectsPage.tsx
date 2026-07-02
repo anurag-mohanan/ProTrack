@@ -29,7 +29,7 @@ import {
   restoreDeletedProject,
 } from '../../services/projectService';
 import type { Project } from '../../types';
-import { formatDate } from '../../utils/format';
+import { formatDate, formatDisplayValue } from '../../utils/format';
 import { EXECUTION_STATUS_LABELS } from '../../types/common';
 
 export default function DeletedProjectsPage() {
@@ -120,8 +120,8 @@ export default function DeletedProjectsPage() {
                 selected={selectedProject?.id === project.id}
                 onClick={() => setSelectedProject(project)}
               >
-                <TableCell>{project.tool_number}</TableCell>
-                <TableCell>{project.code}</TableCell>
+                <TableCell>{formatDisplayValue(project.tool_number)}</TableCell>
+                <TableCell>{formatDisplayValue(project.code)}</TableCell>
                 <TableCell>
                   {project.deleted_at ? formatDate(project.deleted_at) : '—'}
                 </TableCell>

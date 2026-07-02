@@ -12,6 +12,7 @@ from app.schemas.organization import ContactUpdate, CustomerUpdate
         ("", None),
         ("   ", None),
         ("#VALUE", None),
+        ("#VALUE!", None),
         ("#N/A", None),
         ("undefined", None),
         ("null", None),

@@ -1,5 +1,6 @@
 const INVALID_DISPLAY_VALUES = new Set([
   '#value',
+  '#value!',
   '#n/a',
   '#ref!',
   '#name?',
@@ -41,6 +42,12 @@ export function formatCellValue(value: unknown): string {
     return String(value);
   }
   return '';
+}
+
+/** Display value or em dash for empty/invalid cells. */
+export function formatDisplayValue(value: unknown, fallback = '—'): string {
+  const formatted = formatCellValue(value);
+  return formatted || fallback;
 }
 
 export function optionalString(value: string | null | undefined): string | null {

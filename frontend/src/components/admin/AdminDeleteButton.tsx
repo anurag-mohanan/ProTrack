@@ -14,6 +14,7 @@ interface AdminDeleteButtonProps {
   onDeactivate?: () => void | Promise<void>;
   onArchive?: () => void | Promise<void>;
   showArchive?: boolean;
+  showDeactivate?: boolean;
   mode?: 'icon' | 'button';
   onClick?: (event: React.MouseEvent) => void;
 }
@@ -26,6 +27,7 @@ export function AdminDeleteButton({
   onDeactivate,
   onArchive,
   showArchive = false,
+  showDeactivate = true,
   mode = 'icon',
   onClick,
 }: AdminDeleteButtonProps) {
@@ -79,6 +81,7 @@ export function AdminDeleteButton({
             : undefined
         }
         showArchive={showArchive}
+        showDeactivate={showDeactivate}
       />
     </>
   );

@@ -8,6 +8,7 @@ from typing import Any, get_args, get_origin
 INVALID_TEXT_VALUES = frozenset(
     {
         "#value",
+        "#value!",
         "#n/a",
         "#ref!",
         "#name?",

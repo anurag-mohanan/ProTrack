@@ -14,7 +14,7 @@ import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
 import { ContentCard } from '../components/ui/cards';
-import { formatNumber } from '../utils/format';
+import { formatDisplayValue, formatNumber } from '../utils/format';
 
 export function WorkloadPage() {
   const { data, isLoading, error } = useQuery({
@@ -51,8 +51,8 @@ export function WorkloadPage() {
             <TableBody>
               {data.map((row) => (
                 <TableRow key={row.user_id} hover>
-                  <TableCell>{row.designer_name}</TableCell>
-                  <TableCell>{row.role}</TableCell>
+                  <TableCell>{formatDisplayValue(row.designer_name)}</TableCell>
+                  <TableCell>{formatDisplayValue(row.role)}</TableCell>
                   <TableCell align="right">{row.active_projects}</TableCell>
                   <TableCell align="right">{formatNumber(row.hours_this_week)}</TableCell>
                   <TableCell align="right">{formatNumber(row.quoted_hours_assigned)}</TableCell>

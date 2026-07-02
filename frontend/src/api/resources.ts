@@ -93,6 +93,16 @@ export async function setUserTemporaryPassword(
   return data;
 }
 
+export async function setUserMustChangePassword(
+  userId: string,
+  required: boolean,
+): Promise<User> {
+  const { data } = await apiClient.post<User>(`/users/${userId}/must-change-password`, {
+    required,
+  });
+  return data;
+}
+
 export async function archiveUser(userId: string): Promise<User> {
   const { data } = await apiClient.post<User>(`/users/${userId}/archive`);
   return data;

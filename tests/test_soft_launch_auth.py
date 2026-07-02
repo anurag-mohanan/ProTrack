@@ -94,7 +94,7 @@ def test_admin_impersonation_flow(client):
     assert admin_me.json()["email"] == "admin@prosohm.com"
 
 
-def test_soft_launch_password_login(client):
+def test_soft_launch_password_login(client, production_release):
     admin_headers = login(client, "admin@prosohm.com")
     client.post(
         f"/api/v1/users/{IDS['user_binil']}/reset-password",

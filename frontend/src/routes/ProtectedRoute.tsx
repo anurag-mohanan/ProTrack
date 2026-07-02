@@ -1,6 +1,11 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { LoadingState } from '../components/common/LoadingState';
+import { requiresForcedPasswordChange } from '../config/env';
 import { useAuth } from '../context/AuthContext';
+
+function requiresPasswordChange(mustChangePassword: boolean | undefined): boolean {
+  return requiresForcedPasswordChange(mustChangePassword);
+}
 
 export function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -20,7 +25,7 @@ export function RequirePasswordChangedRoute() {
   const { user } = useAuth();
   const location = useLocation();
 
-  if (user?.must_change_password && location.pathname !== '/change-password') {
+  if (requiresPasswordChange(user?.must_change_password) && location.pathname !== '/change-password') {
     return <Navigate to="/change-password" replace />;
   }
 
@@ -34,7 +39,7 @@ export function ChangePasswordGate() {
     return <LoadingState message="Checking session…" />;
   }
 
-  if (!user?.must_change_password) {
+  if (!requiresPasswordChange(user?.must_change_password)) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -49,7 +54,7 @@ export function PublicRoute() {
   }
 
   if (isAuthenticated) {
-    if (user?.must_change_password) {
+    if (requiresPasswordChange(user?.must_change_password)) {
       return <Navigate to="/change-password" replace />;
     }
     return <Navigate to="/dashboard" replace />;

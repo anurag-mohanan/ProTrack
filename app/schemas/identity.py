@@ -97,6 +97,10 @@ class ResetPasswordResponse(BaseModel):
     message: str
 
 
+class MustChangePasswordRequest(BaseModel):
+    required: bool
+
+
 class UserRead(UserBase, TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
     team_name: str | None = None

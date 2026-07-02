@@ -11,6 +11,7 @@ from app.api.deps import get_db, get_object_or_404
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import can_view_deleted_projects, is_admin
 from app.core.auth_constants import SOFT_LAUNCH_PASSWORD
+from app.core.release_mode import is_internal_release
 from app.core.security import hash_password
 from app.crud.auth import reset_login_lock
 from app.crud import user as user_crud
@@ -18,6 +19,7 @@ from app.crud.user import build_user_read
 from app.models.enums import ActivityAction, EntityType
 from app.models.models import User
 from app.schemas.identity import (
+    MustChangePasswordRequest,
     ResetPasswordRequest,
     ResetPasswordResponse,
     UserCreate,
@@ -200,7 +202,11 @@ def reset_password(
     )
     return ResetPasswordResponse(
         temporary_password=temporary_password,
-        message="Password reset successfully. User must change password on next login.",
+        message=(
+            "Password reset successfully. User must change password on next login."
+            if not is_internal_release()
+            else "Password reset successfully. Forced password change is deferred while Internal Release mode is enabled."
+        ),
     )
 
 
@@ -223,6 +229,31 @@ def force_password_change(
         entity_id=updated.id,
         action=ActivityAction.password_reset,
         new_value=f"force_change:{updated.email}",
+    )
+    return build_user_read(db, updated)
+
+
+@router.post("/{record_id}/must-change-password", response_model=UserRead)
+def set_must_change_password(
+    record_id: UUID,
+    body: MustChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_obj = get_object_or_404(user_crud, db, record_id)
+    updated = user_crud.update(
+        db,
+        db_obj=db_obj,
+        obj_in={"must_change_password": body.required},
+    )
+    action_label = "require" if body.required else "clear"
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.user,
+        entity_id=updated.id,
+        action=ActivityAction.password_reset,
+        new_value=f"{action_label}_must_change:{updated.email}",
     )
     return build_user_read(db, updated)
 
@@ -272,7 +303,11 @@ def set_temporary_password(
     )
     return ResetPasswordResponse(
         temporary_password=SOFT_LAUNCH_PASSWORD,
-        message="Temporary password set. User must change password on next login.",
+        message=(
+            "Temporary password set. User must change password on next login."
+            if not is_internal_release()
+            else f"Temporary password set to {SOFT_LAUNCH_PASSWORD}. Forced password change is deferred while Internal Release mode is enabled."
+        ),
     )
 
 

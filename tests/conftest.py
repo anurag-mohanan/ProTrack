@@ -360,3 +360,10 @@ def project_type_mold_id(test_session_factory, seeded_db):
 @pytest.fixture
 def auth_headers(client):
     return client.auth_headers
+
+
+@pytest.fixture
+def production_release(monkeypatch):
+    """Disable internal release bypass so forced password change behavior can be tested."""
+    monkeypatch.setattr("app.core.config.INTERNAL_RELEASE", False)
+    monkeypatch.setattr("app.core.release_mode.INTERNAL_RELEASE", False)

@@ -58,6 +58,7 @@ interface UserDetailsDrawerProps {
   onResetPassword: (user: User) => void;
   onSetTemporaryPassword: (user: User) => void;
   onForcePasswordChange: (user: User) => void;
+  onToggleMustChangePassword: (user: User) => void;
   onUnlockUser: (user: User) => void;
   onToggleActive: (user: User) => void;
   onArchive: (user: User) => void;
@@ -81,6 +82,7 @@ export function UserDetailsDrawer({
   onResetPassword,
   onSetTemporaryPassword,
   onForcePasswordChange,
+  onToggleMustChangePassword,
   onUnlockUser,
   onToggleActive,
   onArchive,
@@ -392,6 +394,13 @@ export function UserDetailsDrawer({
               </ProsohmButton>
               <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onForcePasswordChange(user)}>
                 Force Password Change
+              </ProsohmButton>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => onToggleMustChangePassword(user)}
+              >
+                {user.must_change_password ? 'Disable Must Change Password' : 'Enable Must Change Password'}
               </ProsohmButton>
               {user.is_locked ? (
                 <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onUnlockUser(user)}>

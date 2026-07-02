@@ -28,7 +28,7 @@ def test_designer_can_use_lookup_users(client):
     assert response.status_code == 200
 
 
-def test_create_user_and_login(client):
+def test_create_user_and_login(client, production_release):
     headers = login(client, "admin@prosohm.com")
     roles = client.get("/api/v1/roles", headers=headers)
     designer_role = next(r for r in roles.json() if r["name"] == "Designer")

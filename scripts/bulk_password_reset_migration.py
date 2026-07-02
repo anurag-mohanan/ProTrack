@@ -39,6 +39,9 @@ def run_migration(*, dry_run: bool = False) -> dict[str, int | list[str]]:
             reset_login_lock(db, user)
             updated_emails.append(user.email)
 
+        if not dry_run:
+            db.commit()
+
         if dry_run:
             return {
                 "updated": len(updated_emails),
@@ -61,7 +64,10 @@ def main() -> None:
     action = "Would update" if dry_run else "Updated"
     print(f"{action} {result['updated']} active user(s) with temporary password.")
     print(f"Password: {SOFT_LAUNCH_PASSWORD}")
-    print("Users must change password on first login.")
+    print(
+        "Users must change password on first login when INTERNAL_RELEASE=false. "
+        "While Internal Release mode is enabled, forced password change is bypassed."
+    )
     for email in result["emails"]:
         print(f"  - {email}")
 

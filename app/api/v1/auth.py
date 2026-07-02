@@ -31,6 +31,7 @@ from app.schemas.auth import (
     TokenPayload,
     UserProfileRead,
 )
+from app.core.release_mode import effective_must_change_password
 from app.services.activity_service import log_activity
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -158,7 +159,7 @@ def _build_current_user_read(
         role_id=user.role_id,
         role_name=get_role_name(db, user),
         is_active=user.is_active,
-        must_change_password=user.must_change_password,
+        must_change_password=effective_must_change_password(user.must_change_password),
         last_login=user.last_login,
         impersonator_id=impersonator_id,
         impersonator_name=impersonator_name,

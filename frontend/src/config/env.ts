@@ -36,3 +36,16 @@ export function resolveAssetUrl(path: string | null | undefined): string | null 
 
 export const IS_PRODUCTION = import.meta.env.PROD;
 export const IS_DEVELOPMENT = import.meta.env.DEV;
+
+/** When true, forced password change redirects are bypassed (internal soft launch). */
+export function isInternalRelease(): boolean {
+  const value = import.meta.env.VITE_INTERNAL_RELEASE;
+  if (value === undefined || value === '') {
+    return true;
+  }
+  return String(value).toLowerCase() === 'true' || value === '1';
+}
+
+export function requiresForcedPasswordChange(mustChangePassword: boolean | undefined): boolean {
+  return Boolean(mustChangePassword) && !isInternalRelease();
+}

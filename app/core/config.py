@@ -30,3 +30,7 @@ COMPANY_LOGO_DIR = UPLOAD_DIR / "company"
 
 # Demo design-team users are for local development only; keep disabled for production imports.
 ENABLE_DEMO_SEED = os.getenv("PROTRACK_ENABLE_DEMO_SEED", "").lower() in ("1", "true", "yes")
+
+# Internal Release (soft launch): skip forced password change redirects while testing.
+# Set INTERNAL_RELEASE=false before production deployment.
+INTERNAL_RELEASE = os.getenv("INTERNAL_RELEASE", "true").lower() in ("1", "true", "yes")

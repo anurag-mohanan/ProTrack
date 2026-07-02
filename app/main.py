@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401 — register all models with Base.metadata
 from app.api.v1.api import api_router
-from app.core.config import APP_VERSION, CORS_ORIGINS, ENABLE_DEMO_SEED, UPLOAD_DIR
+from app.core.config import APP_VERSION, CORS_ORIGINS, ENABLE_DEMO_SEED, INTERNAL_RELEASE, UPLOAD_DIR
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -124,4 +124,5 @@ def health_check():
         "app": "ProTrack",
         "version": APP_VERSION,
         "release": "RC3",
+        "internal_release": INTERNAL_RELEASE,
     }

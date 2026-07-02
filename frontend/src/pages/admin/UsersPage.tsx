@@ -22,7 +22,7 @@ import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
-import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser, setUserTemporaryPassword, unlockUser } from '../../api/resources';
+import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser, setUserTemporaryPassword, setUserMustChangePassword, unlockUser } from '../../api/resources';
 import { fetchDepartments } from '../../api/settings';
 import { fetchTeams } from '../../api/lookups';
 import { useAuth } from '../../context/AuthContext';
@@ -119,6 +119,7 @@ export default function UsersPage() {
   const [tempPasswordTarget, setTempPasswordTarget] = useState<User | null>(null);
   const [unlockTarget, setUnlockTarget] = useState<User | null>(null);
   const [forceChangeTarget, setForceChangeTarget] = useState<User | null>(null);
+  const [mustChangeTarget, setMustChangeTarget] = useState<User | null>(null);
   const [impersonateTarget, setImpersonateTarget] = useState<User | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<User | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
@@ -452,6 +453,26 @@ export default function UsersPage() {
       await forceUserPasswordChange(forceChangeTarget.id);
       showSuccess(`${forceChangeTarget.email} must change password on next login.`);
       setForceChangeTarget(null);
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleToggleMustChangePassword = async () => {
+    if (!mustChangeTarget) return;
+    setActionLoading(true);
+    try {
+      const required = !mustChangeTarget.must_change_password;
+      await setUserMustChangePassword(mustChangeTarget.id, required);
+      showSuccess(
+        required
+          ? `${mustChangeTarget.email} will be required to change password when production mode is enabled.`
+          : `${mustChangeTarget.email} no longer requires a password change.`,
+      );
+      setMustChangeTarget(null);
       await loadData();
     } catch (error) {
       showError(getErrorMessage(error));
@@ -1006,6 +1027,7 @@ export default function UsersPage() {
         onResetPassword={setResetTarget}
         onSetTemporaryPassword={setTempPasswordTarget}
         onForcePasswordChange={setForceChangeTarget}
+        onToggleMustChangePassword={setMustChangeTarget}
         onUnlockUser={setUnlockTarget}
         onToggleActive={setToggleTarget}
         onArchive={setArchiveTarget}
@@ -1081,6 +1103,28 @@ export default function UsersPage() {
         confirmLabel="Force Change"
         onConfirm={() => void handleForcePasswordChange()}
         onClose={() => setForceChangeTarget(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={Boolean(mustChangeTarget)}
+        title={
+          mustChangeTarget?.must_change_password
+            ? 'Disable Must Change Password'
+            : 'Enable Must Change Password'
+        }
+        message={
+          mustChangeTarget
+            ? mustChangeTarget.must_change_password
+              ? `Clear the must-change-password flag for ${mustChangeTarget.first_name} ${mustChangeTarget.last_name}?`
+              : `Require ${mustChangeTarget.first_name} ${mustChangeTarget.last_name} to change password when production mode is enabled?`
+            : ''
+        }
+        confirmLabel={
+          mustChangeTarget?.must_change_password ? 'Disable Requirement' : 'Enable Requirement'
+        }
+        onConfirm={() => void handleToggleMustChangePassword()}
+        onClose={() => setMustChangeTarget(null)}
         loading={actionLoading}
       />
 

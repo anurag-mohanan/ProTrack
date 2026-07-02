@@ -47,7 +47,7 @@ def test_password_policy_message_matches_validation():
     )
 
 
-def test_change_password_rejects_weak_password_with_exact_message(client):
+def test_change_password_rejects_weak_password_with_exact_message(client, production_release):
     headers = login(client, "admin@prosohm.com")
     response = client.post(
         "/api/v1/auth/change-password",
@@ -62,7 +62,7 @@ def test_change_password_rejects_weak_password_with_exact_message(client):
     assert PASSWORD_REQUIREMENTS_MESSAGE in _validation_detail(response)
 
 
-def test_change_password_rejects_incorrect_current_password(client):
+def test_change_password_rejects_incorrect_current_password(client, production_release):
     headers = login(client, "admin@prosohm.com")
     response = client.post(
         "/api/v1/auth/change-password",
@@ -77,7 +77,7 @@ def test_change_password_rejects_incorrect_current_password(client):
     assert response.json()["detail"] == "Current password is incorrect."
 
 
-def test_change_password_rejects_mismatch(client):
+def test_change_password_rejects_mismatch(client, production_release):
     headers = login(client, "admin@prosohm.com")
     response = client.post(
         "/api/v1/auth/change-password",
@@ -92,7 +92,7 @@ def test_change_password_rejects_mismatch(client):
     assert response.json()["detail"] == "New password and confirmation do not match."
 
 
-def test_change_password_rejects_same_as_current(client):
+def test_change_password_rejects_same_as_current(client, production_release):
     headers = login(client, "admin@prosohm.com")
     response = client.post(
         "/api/v1/auth/change-password",
@@ -107,7 +107,7 @@ def test_change_password_rejects_same_as_current(client):
     assert response.json()["detail"] == "New password must be different from your current password."
 
 
-def test_change_password_updates_hash_and_clears_flag(client, session):
+def test_change_password_updates_hash_and_clears_flag(client, session, production_release):
     headers = login(client, "admin@prosohm.com")
     new_password = "AdminReset@2026"
     response = client.post(
@@ -134,7 +134,7 @@ def test_change_password_updates_hash_and_clears_flag(client, session):
 
 
 @pytest.mark.parametrize("email,role_name,new_password", ROLE_FLOW_CASES)
-def test_role_forced_password_change_flow(client, session, email, role_name, new_password):
+def test_role_forced_password_change_flow(client, session, email, role_name, new_password, production_release):
     _prepare_forced_change(session, email)
 
     login_response = client.post(
@@ -173,7 +173,7 @@ def test_role_forced_password_change_flow(client, session, email, role_name, new
     assert user.must_change_password is False
 
 
-def test_password_change_flow_report(client, session, capsys):
+def test_password_change_flow_report(client, session, production_release, capsys):
     """Print a role-by-role report for manual review in CI output."""
     rows: list[tuple[str, str, str, str, str]] = []
 

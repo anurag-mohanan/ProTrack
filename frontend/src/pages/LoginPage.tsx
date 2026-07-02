@@ -21,7 +21,7 @@ import {
   RELEASE_LABEL,
   VERSION_DISPLAY,
 } from '../config/appMeta';
-import { IS_DEVELOPMENT } from '../config/env';
+import { IS_DEVELOPMENT, requiresForcedPasswordChange } from '../config/env';
 import { useAuth } from '../context/AuthContext';
 
 export function LoginPage() {
@@ -39,7 +39,11 @@ export function LoginPage() {
 
     try {
       const currentUser = await login({ email, password });
-      navigate(currentUser.must_change_password ? '/change-password' : '/dashboard');
+      navigate(
+        requiresForcedPasswordChange(currentUser.must_change_password)
+          ? '/change-password'
+          : '/dashboard',
+      );
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

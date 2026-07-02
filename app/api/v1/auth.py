@@ -24,6 +24,7 @@ from app.models.enums import ActivityAction, EntityType
 from app.models.models import Team, User
 from app.schemas.auth import (
     ChangePasswordRequest,
+    ChangePasswordResponse,
     CurrentUserRead,
     LoginRequest,
     Token,
@@ -234,7 +235,7 @@ def read_current_user_profile(
     return get_user_profile(db, current_user)
 
 
-@router.post("/change-password")
+@router.post("/change-password", response_model=ChangePasswordResponse)
 def change_password(
     body: ChangePasswordRequest,
     db: Session = Depends(get_db),
@@ -250,10 +251,16 @@ def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect.",
         )
+    if verify_password(body.new_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="New password must be different from your current password.",
+        )
     current_user.password_hash = hash_password(body.new_password)
     current_user.must_change_password = False
     db.add(current_user)
     db.commit()
+    db.refresh(current_user)
     log_activity(
         db,
         user=current_user,
@@ -262,7 +269,10 @@ def change_password(
         action=ActivityAction.password_changed,
         new_value=current_user.email,
     )
-    return {"message": "Password updated successfully."}
+    return ChangePasswordResponse(
+        message="Password updated successfully.",
+        must_change_password=False,
+    )
 
 
 @router.post("/impersonate/{user_id}", response_model=Token)

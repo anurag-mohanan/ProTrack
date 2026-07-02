@@ -22,7 +22,7 @@ import { WorkloadPage } from './pages/WorkloadPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { AdminRoute } from './routes/AdminRoute';
 import { RoleRoute } from './routes/RoleRoute';
-import { ProtectedRoute, PublicRoute, RequirePasswordChangedRoute } from './routes/ProtectedRoute';
+import { ProtectedRoute, PublicRoute, RequirePasswordChangedRoute, ChangePasswordGate } from './routes/ProtectedRoute';
 import {
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
@@ -141,7 +141,9 @@ export default function App() {
                 </Route>
 
                 <Route element={<ProtectedRoute />}>
-                  <Route path="/change-password" element={<ChangePasswordPage />} />
+                  <Route element={<ChangePasswordGate />}>
+                    <Route path="/change-password" element={<ChangePasswordPage />} />
+                  </Route>
                   <Route element={<RequirePasswordChangedRoute />}>
                     <Route element={<MainLayout />}>
                     <Route path="/dashboard" element={<DashboardPage />} />

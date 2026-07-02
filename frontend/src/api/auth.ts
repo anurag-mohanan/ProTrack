@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { ChangePasswordRequest, CurrentUser, LoginRequest, TokenResponse } from '../types';
+import type { ChangePasswordRequest, ChangePasswordResponse, CurrentUser, LoginRequest, TokenResponse } from '../types';
 
 export async function login(credentials: LoginRequest): Promise<TokenResponse> {
   const { data } = await apiClient.post<TokenResponse>('/auth/login', credentials);
@@ -11,8 +11,9 @@ export async function fetchCurrentUser(): Promise<CurrentUser> {
   return data;
 }
 
-export async function changePassword(payload: ChangePasswordRequest): Promise<void> {
-  await apiClient.post('/auth/change-password', payload);
+export async function changePassword(payload: ChangePasswordRequest): Promise<ChangePasswordResponse> {
+  const { data } = await apiClient.post<ChangePasswordResponse>('/auth/change-password', payload);
+  return data;
 }
 
 export async function logoutSession(): Promise<void> {

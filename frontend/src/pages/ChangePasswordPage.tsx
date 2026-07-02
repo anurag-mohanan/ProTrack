@@ -37,8 +37,11 @@ export function ChangePasswordPage() {
 
     setSubmitting(true);
     try {
-      await changePassword(form);
-      await refreshUser();
+      const result = await changePassword(form);
+      const updatedUser = await refreshUser();
+      if (result.must_change_password || updatedUser?.must_change_password) {
+        throw new Error('Password was updated but your session still requires a password change.');
+      }
       showSuccess('Password updated successfully.');
       navigate('/dashboard', { replace: true });
     } catch (err) {

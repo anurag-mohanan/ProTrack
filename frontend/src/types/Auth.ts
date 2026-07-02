@@ -14,6 +14,11 @@ export interface ChangePasswordRequest {
   confirm_password: string;
 }
 
+export interface ChangePasswordResponse {
+  message: string;
+  must_change_password: boolean;
+}
+
 export interface CurrentUser {
   id: string;
   email: string;

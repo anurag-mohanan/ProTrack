@@ -24,7 +24,17 @@ export function RequirePasswordChangedRoute() {
     return <Navigate to="/change-password" replace />;
   }
 
-  if (!user?.must_change_password && location.pathname === '/change-password') {
+  return <Outlet />;
+}
+
+export function ChangePasswordGate() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingState message="Checking session…" />;
+  }
+
+  if (!user?.must_change_password) {
     return <Navigate to="/dashboard" replace />;
   }
 

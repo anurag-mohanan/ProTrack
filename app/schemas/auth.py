@@ -60,6 +60,11 @@ class ChangePasswordRequest(BaseModel):
         return value
 
 
+class ChangePasswordResponse(BaseModel):
+    message: str
+    must_change_password: bool = False
+
+
 class UserProfileSkill(BaseModel):
     skill_id: UUID
     skill_name: str | None = None

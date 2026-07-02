@@ -73,3 +73,18 @@ export async function resetUserPassword(
   );
   return data;
 }
+
+export async function forceUserPasswordChange(userId: string): Promise<User> {
+  const { data } = await apiClient.post<User>(`/users/${userId}/force-password-change`);
+  return data;
+}
+
+export async function archiveUser(userId: string): Promise<User> {
+  const { data } = await apiClient.post<User>(`/users/${userId}/archive`);
+  return data;
+}
+
+export async function softDeleteUser(userId: string): Promise<User> {
+  const { data } = await apiClient.post<User>(`/users/${userId}/soft-delete`);
+  return data;
+}

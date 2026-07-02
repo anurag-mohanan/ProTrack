@@ -2,7 +2,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+
+from app.core.password_policy import validate_password_strength
 
 from app.models.enums import (
     EmploymentType,
@@ -82,6 +84,13 @@ class ResetPasswordRequest(BaseModel):
     password: str | None = Field(default=None, min_length=8, max_length=128)
     generate_temporary: bool = False
 
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str | None) -> str | None:
+        if value is not None:
+            validate_password_strength(value)
+        return value
+
 
 class ResetPasswordResponse(BaseModel):
     temporary_password: str | None = None
@@ -93,11 +102,17 @@ class UserRead(UserBase, TimestampSchema):
     team_name: str | None = None
     department_name: str | None = None
     manager_name: str | None = None
+    last_login: datetime | None = None
     is_archived: bool = False
     archived_at: datetime | None = None
     is_deleted: bool = False
     deleted_at: datetime | None = None
     deleted_by_id: UUID | None = None
+
+    @computed_field
+    @property
+    def password_changed(self) -> bool:
+        return not self.must_change_password
 
 
 class UserDeleteCheck(BaseModel):

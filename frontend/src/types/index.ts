@@ -43,6 +43,9 @@ export interface User {
   max_allocation_percent?: number;
   is_active: boolean;
   must_change_password?: boolean;
+  password_changed?: boolean;
+  last_login?: string | null;
+  is_archived?: boolean;
   created_at?: string;
   updated_at?: string;
 }

@@ -337,6 +337,7 @@ export default function UserProfilePage() {
                         passwordMutation.mutate({
                           current_password: passwordForm.current_password,
                           new_password: passwordForm.new_password,
+                          confirm_password: passwordForm.confirm_password,
                         });
                       }}
                     >

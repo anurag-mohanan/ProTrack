@@ -587,6 +587,12 @@ def _activity_title(action: ActivityAction) -> str:
         ActivityAction.project_restored: "Project restored",
         ActivityAction.project_restored_from_deleted: "Project restored",
         ActivityAction.user_logged_in: "User signed in",
+        ActivityAction.user_logged_out: "User signed out",
+        ActivityAction.login_failed: "Failed login attempt",
+        ActivityAction.password_changed: "Password changed",
+        ActivityAction.password_reset: "Password reset",
+        ActivityAction.admin_impersonation_started: "Administrator impersonation started",
+        ActivityAction.admin_impersonation_stopped: "Administrator impersonation ended",
         ActivityAction.user_archived: "User archived",
         ActivityAction.user_restored: "User restored",
     }

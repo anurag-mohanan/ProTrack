@@ -159,6 +159,7 @@ def reset_password(
     record_id: UUID,
     body: ResetPasswordRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     db_obj = get_object_or_404(user_crud, db, record_id)
     if body.generate_temporary or not body.password:
@@ -174,10 +175,41 @@ def reset_password(
             "must_change_password": True,
         },
     )
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.user,
+        entity_id=db_obj.id,
+        action=ActivityAction.password_reset,
+        new_value=db_obj.email,
+    )
     return ResetPasswordResponse(
         temporary_password=temporary_password,
         message="Password reset successfully. User must change password on next login.",
     )
+
+
+@router.post("/{record_id}/force-password-change", response_model=UserRead)
+def force_password_change(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_obj = get_object_or_404(user_crud, db, record_id)
+    updated = user_crud.update(
+        db,
+        db_obj=db_obj,
+        obj_in={"must_change_password": True},
+    )
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.user,
+        entity_id=updated.id,
+        action=ActivityAction.password_reset,
+        new_value=f"force_change:{updated.email}",
+    )
+    return build_user_read(db, updated)
 
 
 @router.post("/{record_id}/archive", response_model=UserRead)

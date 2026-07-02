@@ -52,6 +52,7 @@ export async function fetchMyProfile(): Promise<UserProfile> {
 export async function changePassword(payload: {
   current_password: string;
   new_password: string;
+  confirm_password: string;
 }): Promise<void> {
   await apiClient.post('/auth/change-password', payload);
 }

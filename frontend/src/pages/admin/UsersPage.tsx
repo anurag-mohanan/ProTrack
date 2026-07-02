@@ -10,11 +10,15 @@ import {
   useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import LockResetIcon from '@mui/icons-material/LockReset';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import PersonIcon from '@mui/icons-material/Person';
+import SwitchAccountIcon from '@mui/icons-material/SwitchAccount';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import ContactMailOutlinedIcon from '@mui/icons-material/ContactMailOutlined';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
@@ -24,9 +28,11 @@ import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
-import { resetUserPassword, rolesApi, usersApi } from '../../api/resources';
+import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser } from '../../api/resources';
 import { fetchDepartments } from '../../api/settings';
 import { fetchTeams } from '../../api/lookups';
+import { useAuth } from '../../context/AuthContext';
+import { ROLES } from '../../utils/permissions';
 import type { Role, User } from '../../types';
 import type { Department } from '../../types/Settings';
 import type { Team } from '../../types/Team';
@@ -101,6 +107,8 @@ export default function UsersPage() {
   const theme = useTheme();
   const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
   const { showSuccess, showError } = useToast();
+  const { user: currentUser, impersonateUser } = useAuth();
+  const isAdmin = currentUser?.role_name === ROLES.ADMIN;
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -115,6 +123,10 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState<UserFormState>(emptyForm);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [forceChangeTarget, setForceChangeTarget] = useState<User | null>(null);
+  const [impersonateTarget, setImpersonateTarget] = useState<User | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<User | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [toggleTarget, setToggleTarget] = useState<User | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -366,6 +378,66 @@ export default function UsersPage() {
     }
   };
 
+  const handleForcePasswordChange = async () => {
+    if (!forceChangeTarget) return;
+    setActionLoading(true);
+    try {
+      await forceUserPasswordChange(forceChangeTarget.id);
+      showSuccess(`${forceChangeTarget.email} must change password on next login.`);
+      setForceChangeTarget(null);
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleImpersonate = async () => {
+    if (!impersonateTarget) return;
+    setActionLoading(true);
+    try {
+      await impersonateUser(impersonateTarget.id);
+      showSuccess(`Now impersonating ${impersonateTarget.email}.`);
+      setImpersonateTarget(null);
+      window.location.href = '/dashboard';
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleArchiveUser = async () => {
+    if (!archiveTarget) return;
+    setActionLoading(true);
+    try {
+      await archiveUser(archiveTarget.id);
+      showSuccess(`${archiveTarget.email} archived.`);
+      setArchiveTarget(null);
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) return;
+    setActionLoading(true);
+    try {
+      await softDeleteUser(deleteTarget.id);
+      showSuccess(`${deleteTarget.email} deleted.`);
+      setDeleteTarget(null);
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const columns: GridColDef<User>[] = [
     { field: 'first_name', headerName: 'First Name', flex: 1, minWidth: 120 },
     { field: 'last_name', headerName: 'Last Name', flex: 1, minWidth: 120 },
@@ -385,11 +457,43 @@ export default function UsersPage() {
       ),
     },
     {
+      field: 'department_name',
+      headerName: 'Department',
+      flex: 1,
+      minWidth: 130,
+      valueGetter: (_value, row) => row.department_name ?? '—',
+    },
+    {
       field: 'team_name',
       headerName: 'Team',
       flex: 1,
       minWidth: 130,
       valueGetter: (_value, row) => row.team_name ?? '—',
+    },
+    {
+      field: 'employment_type',
+      headerName: 'Employment',
+      width: 120,
+      valueGetter: (_value, row) => row.employment_type?.replace('_', ' ') ?? '—',
+    },
+    {
+      field: 'password_changed',
+      headerName: 'Password Changed',
+      width: 150,
+      valueGetter: (_value, row) => !(row.must_change_password ?? false),
+      renderCell: (params) => (
+        <Chip
+          label={params.value ? 'Yes' : 'No'}
+          size="small"
+          color={params.value ? 'success' : 'warning'}
+        />
+      ),
+    },
+    {
+      field: 'last_login',
+      headerName: 'Last Login',
+      width: 150,
+      valueFormatter: (value) => formatDate(value as string | undefined),
     },
     {
       field: 'is_active',
@@ -412,12 +516,12 @@ export default function UsersPage() {
     {
       field: 'actions',
       headerName: 'Actions',
-      width: 180,
+      width: isAdmin ? 320 : 220,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="View">
+          <Tooltip title="View Profile">
             <IconButton size="small" onClick={() => setViewUser(params.row)}>
               <VisibilityIcon fontSize="small" />
             </IconButton>
@@ -428,18 +532,28 @@ export default function UsersPage() {
             </IconButton>
           </Tooltip>
           <Tooltip title="Reset Password">
-            <IconButton
-              size="small"
-              onClick={() => setResetTarget(params.row)}
-            >
+            <IconButton size="small" onClick={() => setResetTarget(params.row)}>
               <LockResetIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          <Tooltip title="Force Password Change">
+            <IconButton size="small" onClick={() => setForceChangeTarget(params.row)}>
+              <VpnKeyIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          {isAdmin ? (
+            <Tooltip title="Login As User">
+              <IconButton
+                size="small"
+                disabled={params.row.id === currentUser?.id}
+                onClick={() => setImpersonateTarget(params.row)}
+              >
+                <SwitchAccountIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : null}
           <Tooltip title={params.row.is_active ? 'Deactivate' : 'Activate'}>
-            <IconButton
-              size="small"
-              onClick={() => setToggleTarget(params.row)}
-            >
+            <IconButton size="small" onClick={() => setToggleTarget(params.row)}>
               {params.row.is_active ? (
                 <PersonOffIcon fontSize="small" />
               ) : (
@@ -447,6 +561,20 @@ export default function UsersPage() {
               )}
             </IconButton>
           </Tooltip>
+          {isAdmin ? (
+            <>
+              <Tooltip title="Archive">
+                <IconButton size="small" onClick={() => setArchiveTarget(params.row)}>
+                  <ArchiveIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete">
+                <IconButton size="small" onClick={() => setDeleteTarget(params.row)}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </>
+          ) : null}
         </Box>
       ),
     },
@@ -911,6 +1039,62 @@ export default function UsersPage() {
         confirmLabel={toggleTarget?.is_active ? 'Deactivate' : 'Activate'}
         onConfirm={() => void handleToggleActive()}
         onClose={() => setToggleTarget(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={Boolean(forceChangeTarget)}
+        title="Force Password Change"
+        message={
+          forceChangeTarget
+            ? `Require ${forceChangeTarget.first_name} ${forceChangeTarget.last_name} to change password on next login?`
+            : ''
+        }
+        confirmLabel="Force Change"
+        onConfirm={() => void handleForcePasswordChange()}
+        onClose={() => setForceChangeTarget(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={Boolean(impersonateTarget)}
+        title="Login As User"
+        message={
+          impersonateTarget
+            ? `Sign in as ${impersonateTarget.first_name} ${impersonateTarget.last_name}?`
+            : ''
+        }
+        confirmLabel="Login As User"
+        onConfirm={() => void handleImpersonate()}
+        onClose={() => setImpersonateTarget(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        title="Archive User"
+        message={
+          archiveTarget
+            ? `Archive ${archiveTarget.first_name} ${archiveTarget.last_name}?`
+            : ''
+        }
+        confirmLabel="Archive"
+        onConfirm={() => void handleArchiveUser()}
+        onClose={() => setArchiveTarget(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete User"
+        message={
+          deleteTarget
+            ? `Delete ${deleteTarget.first_name} ${deleteTarget.last_name}?`
+            : ''
+        }
+        confirmLabel="Delete"
+        onConfirm={() => void handleDeleteUser()}
+        onClose={() => setDeleteTarget(null)}
         loading={actionLoading}
       />
     </PageContainer>

@@ -1,36 +1,77 @@
+from datetime import UTC, datetime
+from typing import Annotated
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy.orm import Session
 
-from app.api.auth_deps import get_current_user
+from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
-from app.core.auth import create_access_token
+from app.core.auth import create_access_token, decode_access_token
 from app.core.permissions import get_role_name
-from app.crud.auth import authenticate_user
+from app.core.security import hash_password, verify_password
+from app.crud.auth import authenticate_user, get_user_by_email
+from app.crud import user as user_crud
 from app.models.enums import ActivityAction, EntityType
 from app.models.models import User
-from app.core.security import hash_password, verify_password
-from app.schemas.auth import ChangePasswordRequest, CurrentUserRead, LoginRequest, Token, UserProfileRead
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    CurrentUserRead,
+    LoginRequest,
+    Token,
+    TokenPayload,
+    UserProfileRead,
+)
 from app.services.activity_service import log_activity
-from app.services.user_profile_service import get_user_profile
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
-def _issue_token(user: User) -> Token:
-    access_token = create_access_token(user_id=user.id, email=user.email)
+FAILED_LOGIN_ENTITY_ID = UUID("00000000-0000-0000-0000-000000000001")
+
+
+def get_token_payload(
+    token: Annotated[str, Depends(oauth2_scheme)],
+) -> TokenPayload:
+    try:
+        return decode_access_token(token)
+    except InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+
+def _issue_token(user: User, *, impersonator_id: UUID | None = None) -> Token:
+    access_token = create_access_token(
+        user_id=user.id,
+        email=user.email,
+        impersonator_id=impersonator_id,
+    )
     return Token(access_token=access_token)
 
 
-@router.post("/login", response_model=Token)
-def login_json(body: LoginRequest, db: Session = Depends(get_db)):
-    user = authenticate_user(db, email=body.email, password=body.password)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+def _log_failed_login(db: Session, email: str) -> None:
+    existing = get_user_by_email(db, email)
+    log_activity(
+        db,
+        user=existing,
+        entity_type=EntityType.user,
+        entity_id=existing.id if existing is not None else FAILED_LOGIN_ENTITY_ID,
+        action=ActivityAction.login_failed,
+        new_value=email,
+    )
+
+
+def _complete_login(db: Session, user: User) -> Token:
+    user.last_login = datetime.now(UTC)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     log_activity(
         db,
         user=user,
@@ -42,6 +83,45 @@ def login_json(body: LoginRequest, db: Session = Depends(get_db)):
     return _issue_token(user)
 
 
+def _build_current_user_read(
+    db: Session,
+    user: User,
+    token_payload: TokenPayload | None = None,
+) -> CurrentUserRead:
+    impersonator_name = None
+    impersonator_id = token_payload.impersonator_id if token_payload else None
+    if impersonator_id is not None:
+        impersonator = db.get(User, impersonator_id)
+        if impersonator is not None:
+            impersonator_name = f"{impersonator.first_name} {impersonator.last_name}"
+    return CurrentUserRead(
+        id=user.id,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        role_id=user.role_id,
+        role_name=get_role_name(db, user),
+        is_active=user.is_active,
+        must_change_password=user.must_change_password,
+        last_login=user.last_login,
+        impersonator_id=impersonator_id,
+        impersonator_name=impersonator_name,
+    )
+
+
+@router.post("/login", response_model=Token)
+def login_json(body: LoginRequest, db: Session = Depends(get_db)):
+    user = authenticate_user(db, email=body.email, password=body.password)
+    if user is None:
+        _log_failed_login(db, body.email)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return _complete_login(db, user)
+
+
 @router.post("/token", response_model=Token)
 def login_form(
     form: OAuth2PasswordRequestForm = Depends(),
@@ -50,29 +130,38 @@ def login_form(
     """OAuth2-compatible token endpoint for Swagger Authorize (username = email)."""
     user = authenticate_user(db, email=form.username, password=form.password)
     if user is None:
+        _log_failed_login(db, form.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return _issue_token(user)
+    return _complete_login(db, user)
+
+
+@router.post("/logout")
+def logout(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.user,
+        entity_id=current_user.id,
+        action=ActivityAction.user_logged_out,
+        new_value=current_user.email,
+    )
+    return {"message": "Logged out successfully."}
 
 
 @router.get("/me", response_model=CurrentUserRead)
 def read_current_user(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    token_payload: TokenPayload = Depends(get_token_payload),
 ):
-    return CurrentUserRead(
-        id=current_user.id,
-        email=current_user.email,
-        first_name=current_user.first_name,
-        last_name=current_user.last_name,
-        role_id=current_user.role_id,
-        role_name=get_role_name(db, current_user),
-        is_active=current_user.is_active,
-        must_change_password=current_user.must_change_password,
-    )
+    return _build_current_user_read(db, current_user, token_payload)
 
 
 @router.get("/me/profile", response_model=UserProfileRead)
@@ -80,6 +169,8 @@ def read_current_user_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from app.services.user_profile_service import get_user_profile
+
     return get_user_profile(db, current_user)
 
 
@@ -89,6 +180,11 @@ def change_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if body.new_password != body.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="New password and confirmation do not match.",
+        )
     if not verify_password(body.current_password, current_user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -98,4 +194,68 @@ def change_password(
     current_user.must_change_password = False
     db.add(current_user)
     db.commit()
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.user,
+        entity_id=current_user.id,
+        action=ActivityAction.password_changed,
+        new_value=current_user.email,
+    )
     return {"message": "Password updated successfully."}
+
+
+@router.post("/impersonate/{user_id}", response_model=Token)
+def impersonate_user(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("Admin")),
+):
+    if admin.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Administrators cannot impersonate themselves.",
+        )
+    target = user_crud.get(db, user_id)
+    if target is None or not target.is_active or target.is_archived or target.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not available for impersonation.",
+        )
+    log_activity(
+        db,
+        user=admin,
+        entity_type=EntityType.user,
+        entity_id=target.id,
+        action=ActivityAction.admin_impersonation_started,
+        new_value=target.email,
+    )
+    return _issue_token(target, impersonator_id=admin.id)
+
+
+@router.post("/stop-impersonation", response_model=Token)
+def stop_impersonation(
+    db: Session = Depends(get_db),
+    token_payload: TokenPayload = Depends(get_token_payload),
+):
+    if token_payload.impersonator_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Not currently impersonating a user.",
+        )
+    admin = db.get(User, token_payload.impersonator_id)
+    if admin is None or not admin.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator session is no longer valid.",
+        )
+    impersonated = db.get(User, token_payload.sub)
+    log_activity(
+        db,
+        user=admin,
+        entity_type=EntityType.user,
+        entity_id=token_payload.sub,
+        action=ActivityAction.admin_impersonation_stopped,
+        new_value=impersonated.email if impersonated is not None else str(token_payload.sub),
+    )
+    return _issue_token(admin)

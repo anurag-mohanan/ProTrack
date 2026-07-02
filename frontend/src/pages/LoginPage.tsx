@@ -32,8 +32,8 @@ export function LoginPage() {
     setSubmitting(true);
 
     try {
-      await login({ email, password });
-      navigate('/dashboard');
+      const currentUser = await login({ email, password });
+      navigate(currentUser.must_change_password ? '/change-password' : '/dashboard');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

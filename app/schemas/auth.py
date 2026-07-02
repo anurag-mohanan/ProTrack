@@ -1,7 +1,10 @@
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.core.password_policy import validate_password_strength
 
 
 class LoginRequest(BaseModel):
@@ -17,6 +20,7 @@ class Token(BaseModel):
 class TokenPayload(BaseModel):
     sub: UUID
     email: EmailStr
+    impersonator_id: UUID | None = None
 
 
 class CurrentUserRead(BaseModel):
@@ -30,11 +34,25 @@ class CurrentUserRead(BaseModel):
     role_name: str
     is_active: bool
     must_change_password: bool
+    last_login: datetime | None = None
+    impersonator_id: UUID | None = None
+    impersonator_name: str | None = None
+
+    @property
+    def password_changed(self) -> bool:
+        return not self.must_change_password
 
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=8, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        validate_password_strength(value)
+        return value
 
 
 class UserProfileSkill(BaseModel):

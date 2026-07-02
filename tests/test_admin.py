@@ -107,7 +107,11 @@ def test_reset_password_and_change_password(client):
     change = client.post(
         "/api/v1/auth/change-password",
         headers=user_headers,
-        json={"current_password": "ResetPass@123", "new_password": "NewPass@1234"},
+        json={
+            "current_password": "ResetPass@123",
+            "new_password": "NewPass@1234",
+            "confirm_password": "NewPass@1234",
+        },
     )
     assert change.status_code == 200
 

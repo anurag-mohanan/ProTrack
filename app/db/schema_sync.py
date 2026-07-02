@@ -229,6 +229,7 @@ def ensure_admin_schema(engine: Engine) -> None:
             "must_change_password",
             "must_change_password BOOLEAN NOT NULL DEFAULT 0",
         )
+        _ensure_column_sqlite("users", "last_login", "last_login DATETIME")
         _ensure_column_sqlite("customers", "notes", "notes TEXT")
         _ensure_column_sqlite(
             "contacts",
@@ -244,6 +245,9 @@ def ensure_admin_schema(engine: Engine) -> None:
                     "ALTER TABLE users "
                     "ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE"
                 )
+            )
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
             )
             connection.execute(
                 text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS notes TEXT")

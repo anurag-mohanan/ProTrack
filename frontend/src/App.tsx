@@ -8,6 +8,7 @@ import { LoadingState } from './components/common/LoadingState';
 import { queryClient } from './lib/queryClient';
 import { MainLayout } from './layouts/MainLayout';
 import { DashboardPage } from './pages/DashboardPage';
+import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ArchivedProjectsPage } from './pages/ArchivedProjectsPage';
@@ -20,7 +21,7 @@ import { WorkloadPage } from './pages/WorkloadPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { AdminRoute } from './routes/AdminRoute';
 import { RoleRoute } from './routes/RoleRoute';
-import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
+import { ProtectedRoute, PublicRoute, RequirePasswordChangedRoute } from './routes/ProtectedRoute';
 import {
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
@@ -126,7 +127,9 @@ export default function App() {
                 </Route>
 
                 <Route element={<ProtectedRoute />}>
-                  <Route element={<MainLayout />}>
+                  <Route path="/change-password" element={<ChangePasswordPage />} />
+                  <Route element={<RequirePasswordChangedRoute />}>
+                    <Route element={<MainLayout />}>
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/projects" element={<ProjectsPage />} />
                     <Route path="/projects/archived" element={<ArchivedProjectsPage />} />
@@ -371,6 +374,7 @@ export default function App() {
                         path="/admin/import-historical-timesheets"
                         element={<AdminHistoricalTimesheetImportRoute />}
                       />
+                    </Route>
                     </Route>
                   </Route>
                 </Route>

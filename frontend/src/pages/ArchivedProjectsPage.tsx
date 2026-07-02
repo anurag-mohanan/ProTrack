@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  Box,
   IconButton,
   Table,
   TableBody,
@@ -19,6 +18,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PageHeader } from '../components/common/PageHeader';
+import { PageContainer } from '../components/common/PageContainer';
 import { TableSkeleton } from '../components/common/TableSkeleton';
 import { ContentCard } from '../components/ui/cards';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
@@ -72,7 +72,7 @@ export function ArchivedProjectsPage() {
   if (archivedQuery.error) return <ErrorState error={archivedQuery.error} />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Archived Projects"
         subtitle="Completed or closed projects kept for history and reporting"
@@ -169,6 +169,6 @@ export function ArchivedProjectsPage() {
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
       />
-    </Box>
+    </PageContainer>
   );
 }

@@ -1,37 +1,13 @@
+import { Suspense, lazy, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { LoadingState } from './components/common/LoadingState';
 import { queryClient } from './lib/queryClient';
 import { MainLayout } from './layouts/MainLayout';
-import AdminCreatePage from './pages/admin/AdminCreatePage';
-import AdminDashboardPage from './pages/admin/AdminDashboardPage';
-import AdminImportsPage from './pages/admin/AdminImportsPage';
-import AdminManageHubPage from './pages/admin/AdminManageHubPage';
-import AdminReportsPage from './pages/admin/AdminReportsPage';
-import AdminSettingsHubPage from './pages/admin/AdminSettingsHubPage';
-import CompanyProfilePage from './pages/admin/CompanyProfilePage';
-import HolidayCalendarPage from './pages/admin/HolidayCalendarPage';
-import DepartmentsPage from './pages/admin/DepartmentsPage';
-import FilePathSettingsPage from './pages/admin/FilePathSettingsPage';
-import NotificationSettingsPage from './pages/admin/NotificationSettingsPage';
-import AdminSystemPage from './pages/admin/AdminSystemPage';
-import ContactsAdminPage from './pages/admin/ContactsPage';
-import CustomersAdminPage from './pages/admin/CustomersPage';
-import DeletedProjectsAdminPage from './pages/admin/DeletedProjectsPage';
-import ProjectTemplatesAdminPage from './pages/admin/ProjectTemplatesPage';
-import ProjectTemplateEditorPage from './pages/admin/ProjectTemplateEditorPage';
-import ProjectTypesAdminPage from './pages/admin/ProjectTypesPage';
-import RolesAdminPage from './pages/admin/RolesPage';
-import StreamsAdminPage from './pages/admin/StreamsPage';
-import TeamsAdminPage from './pages/admin/TeamsPage';
-import TaskTypesAdminPage from './pages/admin/TaskTypesPage';
-import NonProductiveCodesAdminPage from './pages/admin/NonProductiveCodesPage';
-import UsersAdminPage from './pages/admin/UsersPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { HistoricalImportPage } from './pages/HistoricalImportPage';
-import { HistoricalTimesheetImportPage } from './pages/HistoricalTimesheetImportPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ArchivedProjectsPage } from './pages/ArchivedProjectsPage';
@@ -46,7 +22,6 @@ import { AdminRoute } from './routes/AdminRoute';
 import { RoleRoute } from './routes/RoleRoute';
 import { ProtectedRoute, PublicRoute } from './routes/ProtectedRoute';
 import { theme } from './theme/theme';
-import { useAuth } from './context/AuthContext';
 import {
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
@@ -54,12 +29,59 @@ import {
   ROLES,
 } from './utils/permissions';
 
+const AdminCreatePage = lazy(() => import('./pages/admin/AdminCreatePage'));
+const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
+const AdminImportsPage = lazy(() => import('./pages/admin/AdminImportsPage'));
+const AdminManageHubPage = lazy(() => import('./pages/admin/AdminManageHubPage'));
+const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage'));
+const AdminSettingsHubPage = lazy(() => import('./pages/admin/AdminSettingsHubPage'));
+const CompanyProfilePage = lazy(() => import('./pages/admin/CompanyProfilePage'));
+const HolidayCalendarPage = lazy(() => import('./pages/admin/HolidayCalendarPage'));
+const DepartmentsPage = lazy(() => import('./pages/admin/DepartmentsPage'));
+const FilePathSettingsPage = lazy(() => import('./pages/admin/FilePathSettingsPage'));
+const NotificationSettingsPage = lazy(() => import('./pages/admin/NotificationSettingsPage'));
+const AdminSystemPage = lazy(() => import('./pages/admin/AdminSystemPage'));
+const ContactsAdminPage = lazy(() => import('./pages/admin/ContactsPage'));
+const CustomersAdminPage = lazy(() => import('./pages/admin/CustomersPage'));
+const DeletedProjectsAdminPage = lazy(() => import('./pages/admin/DeletedProjectsPage'));
+const ProjectTemplatesAdminPage = lazy(() => import('./pages/admin/ProjectTemplatesPage'));
+const ProjectTemplateEditorPage = lazy(() => import('./pages/admin/ProjectTemplateEditorPage'));
+const ProjectTypesAdminPage = lazy(() => import('./pages/admin/ProjectTypesPage'));
+const RolesAdminPage = lazy(() => import('./pages/admin/RolesPage'));
+const StreamsAdminPage = lazy(() => import('./pages/admin/StreamsPage'));
+const TeamsAdminPage = lazy(() => import('./pages/admin/TeamsPage'));
+const TaskTypesAdminPage = lazy(() => import('./pages/admin/TaskTypesPage'));
+const NonProductiveCodesAdminPage = lazy(() => import('./pages/admin/NonProductiveCodesPage'));
+const UsersAdminPage = lazy(() => import('./pages/admin/UsersPage'));
+const HistoricalImportPage = lazy(() =>
+  import('./pages/HistoricalImportPage').then((module) => ({
+    default: module.HistoricalImportPage,
+  })),
+);
+const HistoricalTimesheetImportPage = lazy(() =>
+  import('./pages/HistoricalTimesheetImportPage').then((module) => ({
+    default: module.HistoricalTimesheetImportPage,
+  })),
+);
+
+function LazyAdmin({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<LoadingState message="Loading administration…" variant="skeleton" />}>
+      {children}
+    </Suspense>
+  );
+}
+
 function AdminHistoricalImportRoute() {
   const { user } = useAuth();
   if (!canImportHistoricalProjects(user?.role_name ?? '')) {
     return <Navigate to="/admin/dashboard" replace />;
   }
-  return <HistoricalImportPage />;
+  return (
+    <LazyAdmin>
+      <HistoricalImportPage />
+    </LazyAdmin>
+  );
 }
 
 function AdminHistoricalTimesheetImportRoute() {
@@ -67,7 +89,11 @@ function AdminHistoricalTimesheetImportRoute() {
   if (!canImportHistoricalTimesheets(user?.role_name ?? '')) {
     return <Navigate to="/admin/dashboard" replace />;
   }
-  return <HistoricalTimesheetImportPage />;
+  return (
+    <LazyAdmin>
+      <HistoricalTimesheetImportPage />
+    </LazyAdmin>
+  );
 }
 
 function AdminSystemRoute() {
@@ -75,7 +101,15 @@ function AdminSystemRoute() {
   if (user?.role_name !== ROLES.ADMIN) {
     return <Navigate to="/admin/dashboard" replace />;
   }
-  return <AdminSystemPage />;
+  return (
+    <LazyAdmin>
+      <AdminSystemPage />
+    </LazyAdmin>
+  );
+}
+
+function LazyAdminPage({ children }: { children: ReactNode }) {
+  return <LazyAdmin>{children}</LazyAdmin>;
 }
 
 export default function App() {
@@ -110,46 +144,199 @@ export default function App() {
 
                     <Route element={<AdminRoute />}>
                       <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-                      <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-                      <Route path="/admin/create" element={<AdminCreatePage />} />
-                      <Route path="/admin/manage" element={<AdminManageHubPage />} />
-                      <Route path="/admin/imports" element={<AdminImportsPage />} />
-                      <Route path="/admin/reports" element={<AdminReportsPage />} />
-                      <Route path="/admin/settings" element={<AdminSettingsHubPage />} />
-                      <Route path="/admin/settings/company" element={<CompanyProfilePage />} />
-                      <Route path="/admin/settings/holidays" element={<HolidayCalendarPage />} />
-                      <Route path="/admin/settings/departments" element={<DepartmentsPage />} />
-                      <Route path="/admin/settings/paths" element={<FilePathSettingsPage />} />
-                      <Route path="/admin/settings/notifications" element={<NotificationSettingsPage />} />
+                      <Route
+                        path="/admin/dashboard"
+                        element={
+                          <LazyAdminPage>
+                            <AdminDashboardPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/create"
+                        element={
+                          <LazyAdminPage>
+                            <AdminCreatePage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/manage"
+                        element={
+                          <LazyAdminPage>
+                            <AdminManageHubPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/imports"
+                        element={
+                          <LazyAdminPage>
+                            <AdminImportsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/reports"
+                        element={
+                          <LazyAdminPage>
+                            <AdminReportsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings"
+                        element={
+                          <LazyAdminPage>
+                            <AdminSettingsHubPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/company"
+                        element={
+                          <LazyAdminPage>
+                            <CompanyProfilePage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/holidays"
+                        element={
+                          <LazyAdminPage>
+                            <HolidayCalendarPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/departments"
+                        element={
+                          <LazyAdminPage>
+                            <DepartmentsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/paths"
+                        element={
+                          <LazyAdminPage>
+                            <FilePathSettingsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/notifications"
+                        element={
+                          <LazyAdminPage>
+                            <NotificationSettingsPage />
+                          </LazyAdminPage>
+                        }
+                      />
                       <Route path="/admin/system" element={<AdminSystemRoute />} />
 
-                      <Route path="/admin/users" element={<UsersAdminPage />} />
-                      <Route path="/admin/customers" element={<CustomersAdminPage />} />
-                      <Route path="/admin/contacts" element={<ContactsAdminPage />} />
-                      <Route path="/admin/teams" element={<TeamsAdminPage />} />
-                      <Route path="/admin/streams" element={<StreamsAdminPage />} />
-                      <Route path="/admin/task-types" element={<TaskTypesAdminPage />} />
+                      <Route
+                        path="/admin/users"
+                        element={
+                          <LazyAdminPage>
+                            <UsersAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/customers"
+                        element={
+                          <LazyAdminPage>
+                            <CustomersAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/contacts"
+                        element={
+                          <LazyAdminPage>
+                            <ContactsAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/teams"
+                        element={
+                          <LazyAdminPage>
+                            <TeamsAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/streams"
+                        element={
+                          <LazyAdminPage>
+                            <StreamsAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/task-types"
+                        element={
+                          <LazyAdminPage>
+                            <TaskTypesAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
                       <Route
                         path="/admin/non-productive-codes"
-                        element={<NonProductiveCodesAdminPage />}
+                        element={
+                          <LazyAdminPage>
+                            <NonProductiveCodesAdminPage />
+                          </LazyAdminPage>
+                        }
                       />
-                      <Route path="/admin/project-types" element={<ProjectTypesAdminPage />} />
+                      <Route
+                        path="/admin/project-types"
+                        element={
+                          <LazyAdminPage>
+                            <ProjectTypesAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
                       <Route
                         path="/admin/project-templates"
-                        element={<ProjectTemplatesAdminPage />}
+                        element={
+                          <LazyAdminPage>
+                            <ProjectTemplatesAdminPage />
+                          </LazyAdminPage>
+                        }
                       />
                       <Route
                         path="/admin/project-templates/new"
-                        element={<ProjectTemplateEditorPage />}
+                        element={
+                          <LazyAdminPage>
+                            <ProjectTemplateEditorPage />
+                          </LazyAdminPage>
+                        }
                       />
                       <Route
                         path="/admin/project-templates/:templateId"
-                        element={<ProjectTemplateEditorPage />}
+                        element={
+                          <LazyAdminPage>
+                            <ProjectTemplateEditorPage />
+                          </LazyAdminPage>
+                        }
                       />
-                      <Route path="/admin/roles" element={<RolesAdminPage />} />
+                      <Route
+                        path="/admin/roles"
+                        element={
+                          <LazyAdminPage>
+                            <RolesAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
                       <Route
                         path="/admin/deleted-projects"
-                        element={<DeletedProjectsAdminPage />}
+                        element={
+                          <LazyAdminPage>
+                            <DeletedProjectsAdminPage />
+                          </LazyAdminPage>
+                        }
                       />
 
                       <Route

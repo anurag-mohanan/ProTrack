@@ -19,6 +19,7 @@ import {
 } from '../api/resourcePlanning';
 import { fetchTeams } from '../api/lookups';
 import { ResourcePlanningGridView } from '../components/resource-planning/ResourcePlanningGridView';
+import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
@@ -125,7 +126,7 @@ export function ResourcePlanningPage() {
   const data = planningQuery.data;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Resource Planning"
         subtitle="Designer capacity across daily, weekly, and monthly horizons"
@@ -198,6 +199,6 @@ export function ResourcePlanningPage() {
           assignMutation.mutate({ project_id: projectId, designer_id: designerId })
         }
       />
-    </Box>
+    </PageContainer>
   );
 }

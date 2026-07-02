@@ -19,6 +19,7 @@ import { fetchUsers } from '../../api/lookups';
 import { teamsApi } from '../../api/resources';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PageContainer } from '../../components/common/PageContainer';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
@@ -257,7 +258,7 @@ export default function TeamsPage() {
   if (loading) return <LoadingState message="Loading teams…" />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Teams"
         subtitle="Manage engineering teams, leads, and membership"
@@ -457,6 +458,6 @@ export default function TeamsPage() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => void handleDelete()}
       />
-    </Box>
+    </PageContainer>
   );
 }

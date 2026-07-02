@@ -34,6 +34,7 @@ import {
 import { DecisionLogPanel } from '../components/command-center/DecisionLogPanel';
 import { KpiPanel } from '../components/command-center/KpiPanel';
 import { WorkflowTimeline } from '../components/command-center/WorkflowTimeline';
+import { PageContainer } from '../components/common/PageContainer';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -191,7 +192,7 @@ export function ProjectDetailPage() {
   };
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title={header.tool_number}
         subtitle={header.part_description}
@@ -582,6 +583,6 @@ export function ProjectDetailPage() {
         onClose={() => setArchiveOpen(false)}
         onConfirm={() => archiveMutation.mutate()}
       />
-    </Box>
+    </PageContainer>
   );
 }

@@ -20,6 +20,7 @@ import BarChartOutlinedIcon from '@mui/icons-material/BarChartOutlined';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Link as RouterLink } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PageContainer } from '../../components/common/PageContainer';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
@@ -266,7 +267,7 @@ export default function CustomersPage() {
   if (loading) return <LoadingState message="Loading customers…" />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Customers"
         subtitle="Manage customer records and relationships"
@@ -560,6 +561,6 @@ export default function CustomersPage() {
           </Box>
         ) : null}
       </ModernDrawer>
-    </Box>
+    </PageContainer>
   );
 }

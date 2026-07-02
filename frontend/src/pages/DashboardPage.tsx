@@ -25,6 +25,7 @@ import { ProjectsAttentionTable } from '../components/dashboard/ProjectsAttentio
 import { RecentActivityWidget } from '../components/dashboard/RecentActivityWidget';
 import { TeamSummaryWidget } from '../components/dashboard/TeamSummaryWidget';
 import { WidgetErrorBoundary } from '../components/dashboard/WidgetErrorBoundary';
+import { PageContainer } from '../components/common/PageContainer';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { formatNumber } from '../utils/format';
 
@@ -145,7 +146,7 @@ export function DashboardPage() {
   };
 
   return (
-    <Box sx={{ maxWidth: 1360, mx: 'auto' }}>
+    <PageContainer>
       <DashboardHeader
         onNewProject={() => navigate('/projects')}
         onTimesheet={() => navigate('/timesheets')}
@@ -297,6 +298,6 @@ export function DashboardPage() {
           </DashboardSection>
         </WidgetErrorBoundary>
       </Box>
-    </Box>
+    </PageContainer>
   );
 }

@@ -25,6 +25,7 @@ import { ProjectTable } from '../components/projects/ProjectTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PageHeader } from '../components/common/PageHeader';
+import { PageContainer } from '../components/common/PageContainer';
 import { TableSkeleton } from '../components/common/TableSkeleton';
 import { SearchToolbar } from '../components/ui/design-system';
 import { ContentCard } from '../components/ui/cards';
@@ -292,7 +293,7 @@ export function ProjectsPage() {
   }
 
   return (
-    <Box>
+    <PageContainer>
       {lookupLoadIssues.length > 0 ? (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Some filter options could not be loaded ({lookupLoadIssues.join(', ')}). Project
@@ -433,6 +434,6 @@ export function ProjectsPage() {
         onClose={() => setArchiveId(null)}
         onConfirm={() => archiveId && archiveMutation.mutate(archiveId)}
       />
-    </Box>
+    </PageContainer>
   );
 }

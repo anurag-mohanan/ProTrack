@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -214,7 +214,7 @@ def _seed_database(session) -> Milestone:
             code="TEST-001",
             quoted_hours=Decimal("120.00"),
             actual_hours=Decimal("0"),
-            due_date=date(2026, 7, 1),
+            due_date=date.today() + timedelta(days=60),
             execution_status=ExecutionStatus.currently_being_worked_on,
         )
     )

@@ -2,10 +2,6 @@ import { Fragment, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Paper,
   Stack,
   Table,
@@ -14,17 +10,22 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
+import CommentOutlinedIcon from '@mui/icons-material/CommentOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { fetchTimesheetEntries } from '../api/timesheets';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
+import { PageContainer } from '../components/common/PageContainer';
 import { TimesheetStatusChip } from '../components/common/StatusChip';
 import { PageHeader } from '../components/common/PageHeader';
+import { ProsohmButton } from '../components/ui/ProsohmButton';
+import { ContentCard } from '../components/ui/cards';
+import { FormDrawer, FormField } from '../components/ui/design-system';
 import { useAuth } from '../context/AuthContext';
 import {
   approveTimesheet,
@@ -142,20 +143,20 @@ export function TimesheetsPage() {
   const roleName = user?.role_name ?? '';
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Timesheets"
         subtitle="Weekly engineering timesheets"
         action={
           !isReadOnlyRole(roleName) ? (
-            <Button
-              variant="contained"
+            <ProsohmButton
+              buttonVariant="primary"
               startIcon={<AddIcon />}
               onClick={() => setCreateOpen(true)}
               disabled={!user}
             >
               Create Timesheet
-            </Button>
+            </ProsohmButton>
           ) : undefined
         }
       />
@@ -172,7 +173,8 @@ export function TimesheetsPage() {
           description="Create a weekly timesheet to start logging time."
         />
       ) : (
-        <TableContainer component={Paper}>
+        <ContentCard noPadding>
+        <TableContainer component={Paper} elevation={0} sx={{ boxShadow: 'none' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -365,81 +367,92 @@ export function TimesheetsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ContentCard>
       )}
 
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Create Timesheet</DialogTitle>
-        <DialogContent>
-          <TextField
+      <FormDrawer
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Create Timesheet"
+        subtitle="Start a new weekly timesheet"
+        icon={CalendarMonthOutlinedIcon}
+        formId="create-timesheet-form"
+        submitLabel={createMutation.isPending ? 'Creating…' : 'Create Timesheet'}
+        loading={createMutation.isPending}
+        onSubmit={() => {
+          if (!user) return;
+          createMutation.mutate({
+            user_id: user.id,
+            week_start: weekStart,
+          });
+        }}
+      >
+        <Box
+          component="form"
+          id="create-timesheet-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!user) return;
+            createMutation.mutate({
+              user_id: user.id,
+              week_start: weekStart,
+            });
+          }}
+        >
+          <FormField
             label="Week Start"
             type="date"
-            fullWidth
-            margin="normal"
-            slotProps={{ inputLabel: { shrink: true } }}
             value={weekStart}
             onChange={(event) => setWeekStart(event.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           {createMutation.error ? (
             <ErrorState error={createMutation.error} title="Create failed" />
           ) : null}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={!user || createMutation.isPending}
-            onClick={() => {
-              if (!user) return;
-              createMutation.mutate({
-                user_id: user.id,
-                week_start: weekStart,
-              });
-            }}
-          >
-            {createMutation.isPending ? 'Creating…' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </Box>
+      </FormDrawer>
 
-      <Dialog
+      <FormDrawer
         open={Boolean(rejectTarget)}
         onClose={() => setRejectTarget(null)}
-        maxWidth="sm"
-        fullWidth
+        title="Reject Timesheet"
+        subtitle="Explain what needs to change before resubmission"
+        icon={CommentOutlinedIcon}
+        formId="reject-timesheet-form"
+        submitLabel="Reject Timesheet"
+        loading={workflowMutation.isPending}
+        onSubmit={() => {
+          if (!rejectTarget || !rejectComments.trim()) return;
+          workflowMutation.mutate({
+            action: 'reject',
+            timesheetId: rejectTarget.id,
+            comments: rejectComments,
+          });
+        }}
       >
-        <DialogTitle>Reject Timesheet</DialogTitle>
-        <DialogContent>
-          <TextField
+        <Box
+          component="form"
+          id="reject-timesheet-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!rejectTarget || !rejectComments.trim()) return;
+            workflowMutation.mutate({
+              action: 'reject',
+              timesheetId: rejectTarget.id,
+              comments: rejectComments,
+            });
+          }}
+        >
+          <FormField
             label="Approval Comments"
-            fullWidth
-            multiline
-            rows={3}
-            margin="normal"
-            required
             value={rejectComments}
             onChange={(event) => setRejectComments(event.target.value)}
-            helperText="Explain what needs to change before resubmission."
+            multiline
+            rows={4}
+            helperText="Required when rejecting a timesheet."
           />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRejectTarget(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={!rejectComments.trim() || workflowMutation.isPending}
-            onClick={() => {
-              if (!rejectTarget) return;
-              workflowMutation.mutate({
-                action: 'reject',
-                timesheetId: rejectTarget.id,
-                comments: rejectComments,
-              });
-            }}
-          >
-            Reject
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+        </Box>
+      </FormDrawer>
+    </PageContainer>
   );
 }

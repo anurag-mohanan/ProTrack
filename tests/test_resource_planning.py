@@ -54,16 +54,30 @@ def test_resource_planning_grid_performance(client, auth_headers):
 
 
 def test_resource_planning_assign_designer(client, auth_headers, test_session_factory):
+    from datetime import timedelta
+
+    from app.models.enums import ExecutionStatus
     from app.models.models import Project, User
     from sqlalchemy import select
 
     with test_session_factory() as db:
-        project = db.scalar(select(Project).limit(1))
+        project = db.scalar(
+            select(Project)
+            .where(
+                Project.execution_status == ExecutionStatus.currently_being_worked_on,
+                Project.is_deleted.is_(False),
+                Project.is_archived.is_(False),
+            )
+            .limit(1)
+        )
         designer = db.scalar(
             select(User).where(User.email == "binil@prosohm.com").limit(1)
         )
         assert project is not None
         assert designer is not None
+        project.due_date = date.today() + timedelta(days=30)
+        project.designer_id = None
+        db.commit()
         project_id = str(project.id)
         designer_id = str(designer.id)
 

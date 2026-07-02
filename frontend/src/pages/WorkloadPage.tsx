@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { fetchDesignerWorkload } from '../api/dashboard';
+import { PageContainer } from '../components/common/PageContainer';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
@@ -25,7 +26,7 @@ export function WorkloadPage() {
   if (error) return <ErrorState error={error} />;
 
   return (
-    <>
+    <PageContainer>
       <PageHeader
         title="Workload"
         subtitle="Designer capacity and hour allocation"
@@ -63,6 +64,6 @@ export function WorkloadPage() {
         </TableContainer>
         </ContentCard>
       )}
-    </>
+    </PageContainer>
   );
 }

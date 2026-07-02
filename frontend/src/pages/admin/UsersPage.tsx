@@ -19,6 +19,7 @@ import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import ContactMailOutlinedIcon from '@mui/icons-material/ContactMailOutlined';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PageContainer } from '../../components/common/PageContainer';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -395,7 +396,7 @@ export default function UsersPage() {
   if (loading) return <LoadingState message="Loading users…" />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Users"
         subtitle="Manage user accounts, roles, and access"
@@ -783,6 +784,6 @@ export default function UsersPage() {
         onClose={() => setToggleTarget(null)}
         loading={actionLoading}
       />
-    </Box>
+    </PageContainer>
   );
 }

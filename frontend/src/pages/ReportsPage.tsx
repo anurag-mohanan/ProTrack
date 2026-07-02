@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
@@ -208,7 +209,7 @@ export function ReportsPage() {
   };
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Reports"
         subtitle="Business intelligence"
@@ -593,6 +594,6 @@ export function ReportsPage() {
       ) : null}
 
       {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}
-    </Box>
+    </PageContainer>
   );
 }

@@ -1,25 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   Box,
-  Button,
-  Card,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControlLabel,
   IconButton,
   Switch,
-  TextField,
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import StreamOutlinedIcon from '@mui/icons-material/StreamOutlined';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PageContainer } from '../../components/common/PageContainer';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -27,6 +22,14 @@ import { getErrorMessage } from '../../api/client';
 import { streamsApi } from '../../api/resources';
 import type { Stream } from '../../types';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { ContentCard } from '../../components/ui/cards';
+import {
+  FormDrawer,
+  FormField,
+  ModernDrawer,
+  SearchToolbar,
+} from '../../components/ui/design-system';
+import { ProsohmButton } from '../../components/ui/ProsohmButton';
 
 interface StreamFormState {
   name: string;
@@ -95,7 +98,8 @@ export default function StreamsPage() {
     setFormOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (event?: FormEvent) => {
+    event?.preventDefault();
     setSaving(true);
     try {
       const payload = {
@@ -186,27 +190,27 @@ export default function StreamsPage() {
   if (loading) return <LoadingState message="Loading streams…" />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Streams"
         subtitle="Manage engineering streams"
         action={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Create Stream
-          </Button>
+          </ProsohmButton>
         }
       />
 
-      <Card sx={{ p: 2, mb: 2 }}>
-        <TextField
+      <SearchToolbar>
+        <FormField
           label="Search by name or description"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 280, width: '100%', maxWidth: 480 }}
+          sx={{ minWidth: 280, flex: 1, maxWidth: 480 }}
         />
-      </Card>
+      </SearchToolbar>
 
-      <Card sx={{ p: 1 }}>
+      <ContentCard noPadding>
         <DataGrid
           rows={filteredStreams}
           columns={columns}
@@ -218,26 +222,34 @@ export default function StreamsPage() {
           }}
           sx={{ border: 0 }}
         />
-      </Card>
+      </ContentCard>
 
-      <Dialog
+      <FormDrawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        maxWidth="sm"
-        fullWidth
+        title={editingStream ? 'Edit Stream' : 'Create Stream'}
+        subtitle="Engineering stream configuration"
+        icon={StreamOutlinedIcon}
+        formId="stream-form"
+        submitLabel={editingStream ? 'Save Changes' : 'Create Stream'}
+        loading={saving}
+        onSubmit={() => void handleSave()}
       >
-        <DialogTitle>{editingStream ? 'Edit Stream' : 'Create Stream'}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          <TextField
+        <Box
+          id="stream-form"
+          component="form"
+          onSubmit={(event) => void handleSave(event)}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+        >
+          <FormField
             label="Name"
             value={form.name}
             onChange={(event) =>
               setForm((current) => ({ ...current, name: event.target.value }))
             }
             required
-            fullWidth
           />
-          <TextField
+          <FormField
             label="Description"
             value={form.description}
             onChange={(event) =>
@@ -245,7 +257,6 @@ export default function StreamsPage() {
             }
             multiline
             minRows={3}
-            fullWidth
           />
           <FormControlLabel
             control={
@@ -258,49 +269,39 @@ export default function StreamsPage() {
             }
             label="Active"
           />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFormOpen(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
-            {editingStream ? 'Save' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </Box>
+      </FormDrawer>
 
-      <Dialog
+      <ModernDrawer
         open={Boolean(viewStream)}
         onClose={() => setViewStream(null)}
-        maxWidth="sm"
-        fullWidth
+        title="Stream Details"
+        subtitle={viewStream?.name}
+        icon={StreamOutlinedIcon}
+        footer={
+          <ProsohmButton buttonVariant="outlined" onClick={() => setViewStream(null)}>
+            Close
+          </ProsohmButton>
+        }
       >
-        <DialogTitle>Stream Details</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {viewStream && (
-            <>
-              <TextField label="Name" value={viewStream.name} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField
-                label="Description"
-                value={viewStream.description ?? '—'}
-                slotProps={{ input: { readOnly: true } }}
-                multiline
-                minRows={2}
-                fullWidth
-              />
-              <TextField
-                label="Status"
-                value={viewStream.is_active ? 'Active' : 'Inactive'}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewStream(null)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+        {viewStream ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <FormField label="Name" value={viewStream.name} slotProps={{ input: { readOnly: true } }} />
+            <FormField
+              label="Description"
+              value={viewStream.description ?? '—'}
+              multiline
+              minRows={2}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Status"
+              value={viewStream.is_active ? 'Active' : 'Inactive'}
+              slotProps={{ input: { readOnly: true } }}
+            />
+          </Box>
+        ) : null}
+      </ModernDrawer>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
@@ -315,6 +316,6 @@ export default function StreamsPage() {
         onClose={() => setDeleteTarget(null)}
         loading={actionLoading}
       />
-    </Box>
+    </PageContainer>
   );
 }

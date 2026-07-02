@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -5,6 +6,12 @@ from sqlalchemy.orm import Session
 from app.models.models import Customer, Milestone, NonProductiveCode, Project, TaskType, TimesheetEntry
 from app.schemas.timesheet import TimesheetEntryRead
 
+
+def _entry_timestamp(entry: TimesheetEntry, field: str) -> datetime:
+    value = getattr(entry, field)
+    if value is not None:
+        return value
+    return datetime.combine(entry.entry_date, datetime.min.time(), tzinfo=timezone.utc)
 
 def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetEntryRead:
     project_tool_number = None
@@ -40,8 +47,8 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
 
     return TimesheetEntryRead(
         id=entry.id,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
+        created_at=_entry_timestamp(entry, "created_at"),
+        updated_at=_entry_timestamp(entry, "updated_at"),
         timesheet_id=entry.timesheet_id,
         work_category=entry.work_category,
         project_id=entry.project_id,

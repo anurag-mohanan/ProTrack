@@ -655,6 +655,21 @@ def ensure_timesheet_entry_work_category(engine: Engine) -> None:
             )
 
 
+def ensure_timesheet_entry_timestamps(engine: Engine) -> None:
+    """Backfill NULL created_at/updated_at on imported timesheet entries."""
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE timesheet_entries
+                SET created_at = COALESCE(created_at, datetime(entry_date)),
+                    updated_at = COALESCE(updated_at, COALESCE(created_at, datetime(entry_date)))
+                WHERE created_at IS NULL OR updated_at IS NULL
+                """
+            )
+        )
+
+
 def ensure_team_schema(engine: Engine) -> None:
     """Add team tables and project/template team foreign keys."""
     dialect = engine.dialect.name

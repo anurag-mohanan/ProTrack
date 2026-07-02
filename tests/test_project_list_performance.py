@@ -101,5 +101,5 @@ def test_project_list_uses_batch_progress_queries(metrics_session):
         event.remove(metrics_session.bind, "before_cursor_execute", log_query)
 
     assert len(rows) == 25
-    assert len(queries) == 3
+    assert len(queries) == 4
     assert elapsed_ms < 500

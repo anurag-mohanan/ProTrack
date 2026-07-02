@@ -1,35 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  FormControl,
-  FormControlLabel,
-  InputLabel,
-  MenuItem,
-  Select,
-  Switch,
-  TextField,
-} from '@mui/material';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Box, TextField, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { fetchCustomers, fetchStreams, fetchTeams, fetchUsers } from '../api/lookups';
+import { dashboardQueryKeys, fetchDashboardSummary } from '../api/dashboard';
 import { fetchProjectTypes } from '../api/projectTemplates';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
-import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
-import { ProjectRecordDrawer } from '../components/projects/ProjectRecordDrawer';
-import {
-  ProjectFiltersBar,
-  type ProjectFilterValues,
-} from '../components/projects/ProjectFiltersBar';
-import { ProjectTable, type ProjectTableRow } from '../components/projects/ProjectTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PageHeader } from '../components/common/PageHeader';
 import { PageContainer } from '../components/common/PageContainer';
 import { TableSkeleton } from '../components/common/TableSkeleton';
-import { SearchToolbar } from '../components/ui/design-system';
-import { ContentCard } from '../components/ui/cards';
+import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
+import { ProjectRecordDrawer } from '../components/projects/ProjectRecordDrawer';
+import type { ProjectTableRow } from '../components/projects/ProjectTable';
+import { ProjectCustomerWorkloadStrip } from '../components/projects/command-center/ProjectCustomerWorkloadStrip';
+import { ProjectDesignerAvailabilityStrip } from '../components/projects/command-center/ProjectDesignerAvailabilityStrip';
+import { ProjectFilterSidebar } from '../components/projects/command-center/ProjectFilterSidebar';
+import { ProjectKpiBar } from '../components/projects/command-center/ProjectKpiBar';
+import { ProjectListSection } from '../components/projects/command-center/ProjectListSection';
+import { ProjectQuickFilterStrip } from '../components/projects/command-center/ProjectQuickFilterStrip';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../context/AuthContext';
@@ -40,105 +31,147 @@ import {
   projectQueryKeys,
   updateProject,
 } from '../services/projectService';
-import type { ExecutionStatus, ProjectLifecycleFilter, ProjectStage } from '../types';
+import type { ExecutionStatus, ProjectStage } from '../types';
 import { canArchiveProject } from '../utils/permissions';
-
-const lifecycleOptions: Array<{ value: ProjectLifecycleFilter; label: string }> = [
-  { value: 'all', label: 'All Projects' },
-  { value: 'active', label: 'Active' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'archived', label: 'Archived' },
-  { value: 'deleted', label: 'Deleted' },
-];
-
-const defaultFilters: ProjectFilterValues = {
-  customerIds: [],
-  projectTypeId: 'all',
-  teamIds: [],
-  projectStage: 'all',
-  executionStatus: 'all',
-  designLeaderId: 'all',
-  designerId: 'all',
-  surfacerId: 'all',
-};
+import {
+  countByExecutionStatus,
+  countDueThisWeekProjects,
+  countNotStartedProjects,
+  countOverdueProjects,
+  defaultProjectCommandCenterFilters,
+  filterProjectsForCommandCenter,
+  isArchivedProject,
+  isCompletedProject,
+  isLiveProject,
+  sortCompletedProjects,
+  sortLiveProjects,
+  sortProjectsByTeam,
+  type ProjectCommandCenterFilters,
+  type ProjectQuickFilter,
+} from '../utils/projectCommandCenter';
 
 export function ProjectsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
   const { user } = useAuth();
-  const [search, setSearch] = useState('');
-  const [filterValues, setFilterValues] = useState<ProjectFilterValues>(defaultFilters);
-  const [groupByTeam, setGroupByTeam] = useState(false);
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<ProjectCommandCenterFilters>(
+    defaultProjectCommandCenterFilters,
+  );
+  const [appliedFilters, setAppliedFilters] = useState<ProjectCommandCenterFilters>(
+    defaultProjectCommandCenterFilters,
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [editProject, setEditProject] = useState<ProjectTableRow | null>(null);
   const [selectedProject, setSelectedProject] = useState<ProjectTableRow | null>(null);
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
 
-  const lifecycle =
-    (searchParams.get('lifecycle') as ProjectLifecycleFilter | null) ?? 'all';
-  const dueFilter = searchParams.get('due');
-  const completedFilter = searchParams.get('completed');
-
   useEffect(() => {
     const executionStatus = searchParams.get('execution_status');
-    if (executionStatus) {
-      setFilterValues((current) => ({
-        ...current,
-        executionStatus: executionStatus as ExecutionStatus,
-      }));
-    }
-
     const projectStage = searchParams.get('project_stage');
-    if (projectStage) {
-      setFilterValues((current) => ({
-        ...current,
-        projectStage: projectStage as ProjectStage,
-      }));
-    }
-
     const teamId = searchParams.get('team_id');
-    if (teamId) {
-      setFilterValues((current) => ({
-        ...current,
-        teamIds: [teamId],
-      }));
+    const customerId = searchParams.get('customer_id');
+    const due = searchParams.get('due');
+    const completed = searchParams.get('completed');
+    const lifecycle = searchParams.get('lifecycle');
+
+    if (
+      !executionStatus &&
+      !projectStage &&
+      !teamId &&
+      !customerId &&
+      !due &&
+      !completed &&
+      !lifecycle
+    ) {
+      return;
     }
 
-    const customerId = searchParams.get('customer_id');
-    if (customerId) {
-      setFilterValues((current) => ({
-        ...current,
-        customerIds: [customerId],
-      }));
-    }
+    setDraftFilters((current) => ({
+      ...current,
+      executionStatus: (executionStatus as ExecutionStatus) || current.executionStatus,
+      projectStage: (projectStage as ProjectStage) || current.projectStage,
+      teamIds: teamId ? [teamId] : current.teamIds,
+      customerIds: customerId ? [customerId] : current.customerIds,
+      customerId: customerId ?? current.customerId,
+      dueDate:
+        due === 'overdue'
+          ? 'overdue'
+          : due === 'week' || due === '7days'
+            ? due
+            : current.dueDate,
+      quickFilter:
+        lifecycle === 'archived'
+          ? 'archived'
+          : completed === 'month'
+            ? 'completed_month'
+            : due === 'overdue'
+              ? 'overdue'
+              : due === 'week' || due === '7days'
+                ? 'due_week'
+                : executionStatus === 'currently_being_worked_on'
+                  ? 'in_progress'
+                  : executionStatus === 'on_hold'
+                    ? 'on_hold'
+                    : current.quickFilter,
+      showArchived: lifecycle === 'archived' ? true : current.showArchived,
+    }));
+    setAppliedFilters((current) => ({
+      ...current,
+      executionStatus: (executionStatus as ExecutionStatus) || current.executionStatus,
+      projectStage: (projectStage as ProjectStage) || current.projectStage,
+      teamIds: teamId ? [teamId] : current.teamIds,
+      customerIds: customerId ? [customerId] : current.customerIds,
+      customerId: customerId ?? current.customerId,
+      dueDate:
+        due === 'overdue'
+          ? 'overdue'
+          : due === 'week' || due === '7days'
+            ? due
+            : current.dueDate,
+      quickFilter:
+        lifecycle === 'archived'
+          ? 'archived'
+          : completed === 'month'
+            ? 'completed_month'
+            : due === 'overdue'
+              ? 'overdue'
+              : due === 'week' || due === '7days'
+                ? 'due_week'
+                : executionStatus === 'currently_being_worked_on'
+                  ? 'in_progress'
+                  : executionStatus === 'on_hold'
+                    ? 'on_hold'
+                    : current.quickFilter,
+      showArchived: lifecycle === 'archived' ? true : current.showArchived,
+    }));
   }, [searchParams]);
 
   const listParams = useMemo(
     () => ({
-      lifecycle,
       execution_status:
-        filterValues.executionStatus === 'all'
+        appliedFilters.executionStatus === 'all'
           ? undefined
-          : filterValues.executionStatus,
+          : appliedFilters.executionStatus,
       project_stage:
-        filterValues.projectStage === 'all' ? undefined : filterValues.projectStage,
+        appliedFilters.projectStage === 'all' ? undefined : appliedFilters.projectStage,
       customer_ids:
-        filterValues.customerIds.length > 0 ? filterValues.customerIds : undefined,
-      team_ids: filterValues.teamIds.length > 0 ? filterValues.teamIds : undefined,
+        appliedFilters.customerIds.length > 0 ? appliedFilters.customerIds : undefined,
+      team_ids: appliedFilters.teamIds.length > 0 ? appliedFilters.teamIds : undefined,
       project_type_id:
-        filterValues.projectTypeId === 'all' ? undefined : filterValues.projectTypeId,
+        appliedFilters.projectTypeId === 'all' ? undefined : appliedFilters.projectTypeId,
       design_leader_id:
-        filterValues.designLeaderId === 'all' ? undefined : filterValues.designLeaderId,
+        appliedFilters.designLeaderId === 'all' ? undefined : appliedFilters.designLeaderId,
       designer_id:
-        filterValues.designerId === 'all' ? undefined : filterValues.designerId,
+        appliedFilters.designerId === 'all' ? undefined : appliedFilters.designerId,
       surfacer_id:
-        filterValues.surfacerId === 'all' ? undefined : filterValues.surfacerId,
+        appliedFilters.surfacerId === 'all' ? undefined : appliedFilters.surfacerId,
       limit: 500,
     }),
-    [lifecycle, filterValues],
+    [appliedFilters],
   );
 
   const projectsQuery = useQuery({
@@ -147,27 +180,10 @@ export function ProjectsPage() {
     staleTime: QUERY_STALE_TIMES.projects,
   });
 
-  const archiveMutation = useMutation({
-    mutationFn: archiveProject,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
-      showSuccess('Project archived');
-      setArchiveId(null);
-    },
-    onError: (error: Error) => showError(error.message),
-  });
-
-  const restoreMutation = useMutation({
-    mutationFn: (projectId: string) =>
-      updateProject(projectId, {
-        execution_status: 'currently_being_worked_on',
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
-      showSuccess('Project restored to active');
-      setRestoreId(null);
-    },
-    onError: (error: Error) => showError(error.message),
+  const dashboardQuery = useQuery({
+    queryKey: dashboardQueryKeys.summary(undefined, undefined),
+    queryFn: () => fetchDashboardSummary(),
+    staleTime: QUERY_STALE_TIMES.dashboard,
   });
 
   const customersQuery = useQuery({
@@ -200,95 +216,150 @@ export function ProjectsPage() {
     staleTime: QUERY_STALE_TIMES.lookups,
   });
 
+  const archiveMutation = useMutation({
+    mutationFn: archiveProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.all });
+      showSuccess('Project archived');
+      setArchiveId(null);
+      setSelectedProject(null);
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (projectId: string) =>
+      updateProject(projectId, {
+        execution_status: 'currently_being_worked_on',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      showSuccess('Project restored to active');
+      setRestoreId(null);
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const lookup = useMemo(
+    () => ({
+      customers: customersQuery.data ?? [],
+      teams: teamsQuery.data ?? [],
+      users: usersQuery.data ?? [],
+    }),
+    [customersQuery.data, teamsQuery.data, usersQuery.data],
+  );
+
   const filteredProjects = useMemo(() => {
-    let rows = projectsQuery.data ?? [];
-    const term = search.trim().toLowerCase();
-    if (term) {
-      rows = rows.filter((project) => {
-        const haystack = [project.tool_number, project.part_description]
-          .join(' ')
-          .toLowerCase();
-        return haystack.includes(term);
-      });
-    }
+    return filterProjectsForCommandCenter(projectsQuery.data ?? [], appliedFilters, lookup);
+  }, [appliedFilters, lookup, projectsQuery.data]);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  const liveProjects = useMemo(() => {
+    const live = filteredProjects.filter(isLiveProject);
+    const sorted = sortLiveProjects(live);
+    return appliedFilters.groupByTeam
+      ? sortProjectsByTeam(sorted, teamsQuery.data ?? [])
+      : sorted;
+  }, [appliedFilters.groupByTeam, filteredProjects, teamsQuery.data]);
 
-    if (dueFilter === 'week' || dueFilter === '7days') {
-      const rangeStart = new Date(today);
-      if (dueFilter === 'week') {
-        const day = rangeStart.getDay();
-        const diff = day === 0 ? -6 : 1 - day;
-        rangeStart.setDate(rangeStart.getDate() + diff);
-      }
-      const rangeEnd = new Date(rangeStart);
-      rangeEnd.setDate(
-        rangeEnd.getDate() + (dueFilter === 'week' ? 6 : 7),
-      );
+  const completedProjects = useMemo(() => {
+    const completed = filteredProjects.filter(isCompletedProject);
+    const sorted = sortCompletedProjects(completed);
+    return appliedFilters.groupByTeam
+      ? sortProjectsByTeam(sorted, teamsQuery.data ?? [])
+      : sorted;
+  }, [appliedFilters.groupByTeam, filteredProjects, teamsQuery.data]);
 
-      rows = rows.filter((project) => {
-        if (!project.due_date || project.execution_status === 'completed') return false;
-        const due = new Date(`${project.due_date}T00:00:00`);
-        return due >= rangeStart && due <= rangeEnd;
-      });
-    }
+  const archivedProjects = useMemo(
+    () => filteredProjects.filter(isArchivedProject),
+    [filteredProjects],
+  );
 
-    if (dueFilter === 'overdue') {
-      rows = rows.filter((project) => {
-        if (!project.due_date || project.execution_status === 'completed') return false;
-        return new Date(`${project.due_date}T00:00:00`) < today;
-      });
-    }
+  const displayLiveProjects = appliedFilters.showArchived || appliedFilters.quickFilter === 'archived'
+    ? archivedProjects
+    : liveProjects;
 
-    if (completedFilter === 'month') {
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      rows = rows.filter((project) => {
-        if (project.execution_status !== 'completed' || !project.completed_at) return false;
-        const completed = new Date(project.completed_at);
-        return completed >= monthStart && completed <= today;
-      });
-    }
+  const allProjectsForCounts = projectsQuery.data ?? [];
+  const quickCounts = useMemo(
+    () => ({
+      inProgress: countByExecutionStatus(allProjectsForCounts, 'currently_being_worked_on'),
+      onHold: countByExecutionStatus(allProjectsForCounts, 'on_hold'),
+      overdue: countOverdueProjects(allProjectsForCounts),
+      dueWeek: countDueThisWeekProjects(allProjectsForCounts),
+      notStarted: countNotStartedProjects(allProjectsForCounts),
+    }),
+    [allProjectsForCounts],
+  );
 
-    return rows;
-  }, [projectsQuery.data, search, dueFilter, completedFilter]);
-
-  const sortedProjects = useMemo(() => {
-    const rows = filteredProjects;
-    if (!groupByTeam) return rows;
-    const teamMap = new Map((teamsQuery.data ?? []).map((team) => [team.id, team.name]));
-    return [...rows].sort((a, b) => {
-      const teamA = a.team_id ? (teamMap.get(a.team_id) ?? 'Unassigned') : 'Unassigned';
-      const teamB = b.team_id ? (teamMap.get(b.team_id) ?? 'Unassigned') : 'Unassigned';
-      return teamA.localeCompare(teamB) || a.tool_number.localeCompare(b.tool_number);
+  const applyFilters = useCallback(() => {
+    setAppliedFilters({
+      ...draftFilters,
+      customerId: draftFilters.customerIds.length === 1 ? draftFilters.customerIds[0] : draftFilters.customerId,
     });
-  }, [filteredProjects, groupByTeam, teamsQuery.data]);
+    setSearchParams({});
+  }, [draftFilters, setSearchParams]);
 
+  const clearFilters = useCallback(() => {
+    setDraftFilters(defaultProjectCommandCenterFilters);
+    setAppliedFilters(defaultProjectCommandCenterFilters);
+    setSearchParams({});
+  }, [setSearchParams]);
+
+  const handleQuickFilter = useCallback((filter: ProjectQuickFilter) => {
+    setAppliedFilters((current) => ({
+      ...current,
+      quickFilter: filter,
+      showArchived: filter === 'archived',
+      dueDate:
+        filter === 'overdue'
+          ? 'overdue'
+          : filter === 'due_week'
+            ? 'week'
+            : filter === 'none'
+              ? 'all'
+              : current.dueDate,
+    }));
+    setDraftFilters((current) => ({
+      ...current,
+      quickFilter: filter,
+      showArchived: filter === 'archived',
+    }));
+    setSearchParams({});
+  }, [setSearchParams]);
+
+  const handleCustomerSelect = useCallback((customerId: string | undefined) => {
+    setAppliedFilters((current) => ({
+      ...current,
+      customerId,
+      customerIds: customerId ? [customerId] : [],
+      quickFilter: 'none',
+    }));
+    setDraftFilters((current) => ({
+      ...current,
+      customerId,
+      customerIds: customerId ? [customerId] : [],
+    }));
+  }, []);
+
+  const handleDesignerSelect = useCallback((designerUserId: string | undefined) => {
+    setAppliedFilters((current) => ({
+      ...current,
+      designerUserId,
+      designerId: designerUserId ?? 'all',
+      quickFilter: 'none',
+    }));
+    setDraftFilters((current) => ({
+      ...current,
+      designerUserId,
+      designerId: designerUserId ?? 'all',
+    }));
+  }, []);
+
+  const showArchiveActions = canArchiveProject(user?.role_name ?? '');
   const tableLoading = projectsQuery.isPending;
-
-  const lookupLoadIssues = [
-    customersQuery.error ? 'customers' : null,
-    usersQuery.error ? 'users' : null,
-    streamsQuery.error ? 'streams' : null,
-    teamsQuery.error ? 'teams' : null,
-    projectTypesQuery.error ? 'project types' : null,
-  ].filter((value): value is string => value !== null);
-
-  const showArchiveActions =
-    lifecycle !== 'archived' &&
-    lifecycle !== 'deleted' &&
-    canArchiveProject(user?.role_name ?? '');
-
-  const showRestoreActions = lifecycle === 'cancelled';
-
-  const lifecycleSubtitle: Record<ProjectLifecycleFilter, string> = {
-    all: 'Browse all projects including active, completed, and archived',
-    active: 'Manage engineering projects and assignments',
-    completed: 'Review completed projects and delivery history',
-    cancelled: 'Cancelled projects are excluded from workload and active KPIs',
-    archived: 'Browse archived projects with full history preserved',
-    deleted: 'Soft-deleted projects — permanent deletion requires admin approval',
-  };
+  const summary = dashboardQuery.data;
+  const liveCount = displayLiveProjects.length;
+  const completedCount = completedProjects.length;
 
   if (projectsQuery.error) {
     return <ErrorState error={projectsQuery.error} title="Unable to load projects" />;
@@ -296,122 +367,140 @@ export function ProjectsPage() {
 
   return (
     <PageContainer>
-      {lookupLoadIssues.length > 0 ? (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Some filter options could not be loaded ({lookupLoadIssues.join(', ')}). Project
-          data is still shown below.
-        </Alert>
-      ) : null}
       <PageHeader
-        title={
-          lifecycle === 'all'
-            ? 'All Projects'
-            : lifecycle === 'cancelled'
-              ? 'Cancelled Projects'
-              : lifecycle === 'completed'
-                ? 'Completed Projects'
-                : lifecycle === 'archived'
-                  ? 'Archived Projects'
-                  : lifecycle === 'deleted'
-                    ? 'Deleted Projects'
-                    : 'Projects'
+        title="Project Command Center"
+        subtitle={
+          summary
+            ? `${summary.active_projects} active · ${summary.overdue_projects} overdue · ${summary.projects_due_this_week} due this week`
+            : 'Operational hub for live engineering projects'
         }
-        subtitle={lifecycleSubtitle[lifecycle]}
         action={
-          lifecycle === 'active' || lifecycle === 'all' ? (
-            <ProsohmButton
-              buttonVariant="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateOpen(true)}
-            >
-              Create Project
-            </ProsohmButton>
-          ) : undefined
+          <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+            Create Project
+          </ProsohmButton>
         }
       />
 
-      <SearchToolbar>
+      <Box sx={{ mb: 2, maxWidth: 480 }}>
         <TextField
-          label="Search tool number or description"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 280, flex: 1 }}
+          fullWidth
+          label="Search projects"
+          placeholder="Tool number, customer, designer, team, description…"
+          value={appliedFilters.search}
+          onChange={(event) => {
+            const search = event.target.value;
+            setAppliedFilters((current) => ({ ...current, search }));
+            setDraftFilters((current) => ({ ...current, search }));
+          }}
         />
-        <FormControl sx={{ minWidth: 180 }}>
-          <InputLabel>Lifecycle</InputLabel>
-          <Select
-            label="Lifecycle"
-            value={lifecycle}
-            onChange={(event) => {
-              const value = event.target.value as ProjectLifecycleFilter;
-              const next = new URLSearchParams(searchParams);
-              if (value === 'all') {
-                next.delete('lifecycle');
-              } else {
-                next.set('lifecycle', value);
-              }
-              setSearchParams(next);
-            }}
-          >
-            {lifecycleOptions.map((option) => (
-              <MenuItem key={option.value} value={option.value}>
-                {option.label}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={groupByTeam}
-              onChange={(event) => setGroupByTeam(event.target.checked)}
-            />
-          }
-          label="Group by Team"
-        />
-      </SearchToolbar>
-
-      <Box sx={{ mb: 2.5 }}>
-        <ContentCard>
-          <ProjectFiltersBar
-            customers={customersQuery.data ?? []}
-            teams={teamsQuery.data ?? []}
-            projectTypes={projectTypesQuery.data ?? []}
-            users={usersQuery.data ?? []}
-            values={filterValues}
-            onChange={setFilterValues}
-          />
-        </ContentCard>
       </Box>
 
-      {tableLoading ? (
-        <ContentCard noPadding>
-          <TableSkeleton rows={10} columns={8} />
-        </ContentCard>
-      ) : !sortedProjects.length ? (
-        <EmptyState
-          title="No projects found"
-          description="Try adjusting your search or filters, or create a new project."
+      <ProjectKpiBar
+        summary={summary}
+        loading={dashboardQuery.isLoading}
+        onFilter={handleQuickFilter}
+      />
+
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+        <ProjectFilterSidebar
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
+          draft={draftFilters}
+          onDraftChange={setDraftFilters}
+          onApply={applyFilters}
+          onReset={() => setDraftFilters(defaultProjectCommandCenterFilters)}
+          onClear={clearFilters}
+          customers={customersQuery.data ?? []}
+          teams={teamsQuery.data ?? []}
+          projectTypes={projectTypesQuery.data ?? []}
+          users={usersQuery.data ?? []}
         />
-      ) : (
-        <ContentCard noPadding>
-          <ProjectTable
-            projects={sortedProjects}
-            customers={customersQuery.data ?? []}
-            users={usersQuery.data ?? []}
-            streams={streamsQuery.data ?? []}
-            teams={teamsQuery.data ?? []}
-            onRowOpen={setSelectedProject}
-            onEdit={setEditProject}
-            onArchive={
-              showArchiveActions ? (projectId) => setArchiveId(projectId) : undefined
-            }
-            onRestore={
-              showRestoreActions ? (projectId) => setRestoreId(projectId) : undefined
-            }
-          />
-        </ContentCard>
-      )}
+
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {dashboardQuery.data ? (
+            <>
+              <ProjectQuickFilterStrip
+                counts={quickCounts}
+                activeFilter={appliedFilters.quickFilter}
+                onSelect={handleQuickFilter}
+              />
+              <ProjectCustomerWorkloadStrip
+                rows={dashboardQuery.data.customer_workload}
+                selectedCustomerId={appliedFilters.customerId}
+                onSelect={handleCustomerSelect}
+              />
+              <ProjectDesignerAvailabilityStrip
+                summary={dashboardQuery.data.designer_availability_summary}
+                designers={dashboardQuery.data.designer_availability}
+                selectedDesignerId={appliedFilters.designerUserId}
+                onSelect={handleDesignerSelect}
+              />
+            </>
+          ) : null}
+
+          {tableLoading ? (
+            <TableSkeleton rows={10} columns={8} />
+          ) : !displayLiveProjects.length && !completedProjects.length ? (
+            <EmptyState
+              title="No projects found"
+              description="Try adjusting your search or filters, or create a new project."
+            />
+          ) : (
+            <>
+              {displayLiveProjects.length ? (
+                <ProjectListSection
+                  title={
+                    appliedFilters.showArchived || appliedFilters.quickFilter === 'archived'
+                      ? 'Archived Projects'
+                      : 'Live Projects'
+                  }
+                  count={liveCount}
+                  projects={displayLiveProjects}
+                  customers={customersQuery.data ?? []}
+                  users={usersQuery.data ?? []}
+                  streams={streamsQuery.data ?? []}
+                  teams={teamsQuery.data ?? []}
+                  onRowOpen={setSelectedProject}
+                  onEdit={setEditProject}
+                  onArchive={showArchiveActions ? setArchiveId : undefined}
+                />
+              ) : null}
+
+              {completedProjects.length &&
+              !appliedFilters.showArchived &&
+              appliedFilters.quickFilter !== 'archived' ? (
+                <ProjectListSection
+                  title="Completed Projects"
+                  count={completedCount}
+                  projects={completedProjects}
+                  customers={customersQuery.data ?? []}
+                  users={usersQuery.data ?? []}
+                  streams={streamsQuery.data ?? []}
+                  teams={teamsQuery.data ?? []}
+                  defaultExpanded={false}
+                  collapsible
+                  onRowOpen={setSelectedProject}
+                  onEdit={setEditProject}
+                />
+              ) : null}
+            </>
+          )}
+
+          {appliedFilters.quickFilter !== 'none' ? (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Showing filtered results.
+              <Typography
+                component="button"
+                variant="body2"
+                sx={{ ml: 1, border: 0, background: 'none', cursor: 'pointer', color: 'primary.main' }}
+                onClick={() => handleQuickFilter('none')}
+              >
+                Clear quick filter
+              </Typography>
+            </Alert>
+          ) : null}
+        </Box>
+      </Box>
 
       <ProjectFormDialog
         open={createOpen}
@@ -419,6 +508,7 @@ export function ProjectsPage() {
         onCreated={() => {
           setCreateOpen(false);
           void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+          void queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.all });
         }}
       />
 
@@ -430,6 +520,7 @@ export function ProjectsPage() {
           setEditProject(null);
           setSelectedProject(null);
           void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+          void queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.all });
         }}
       />
 
@@ -439,7 +530,6 @@ export function ProjectsPage() {
         onClose={() => setSelectedProject(null)}
         onEdit={(project) => {
           setEditProject(project);
-          setSelectedProject(null);
         }}
         onArchive={(projectId) => setArchiveId(projectId)}
         canArchive={showArchiveActions}

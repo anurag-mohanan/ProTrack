@@ -30,6 +30,7 @@ export interface Project extends Timestamped {
   actual_hours: number;
   progress_percent: number;
   health: ProjectHealth;
+  current_milestone?: string | null;
   priority?: 'critical' | 'high' | 'medium' | 'low';
   due_date: string;
   project_stage: ProjectStage;

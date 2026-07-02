@@ -98,9 +98,9 @@ export function HealthBadge({
   variant?: BadgeVariant;
 }) {
   const labels: Record<ProjectHealth, string> = {
-    green: 'Green',
-    yellow: 'Yellow',
-    red: 'Red',
+    green: 'Healthy',
+    yellow: 'At Risk',
+    red: 'Critical',
   };
   return (
     <BadgeShell label={labels[health]} color={healthColors[health]} variant={variant} />

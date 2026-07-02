@@ -1,11 +1,14 @@
 import { memo, useMemo } from 'react';
-import { Box, IconButton, Tooltip } from '@mui/material';
+import { Box, Chip, IconButton, Tooltip } from '@mui/material';
 import RestoreIcon from '@mui/icons-material/Restore';
 import type { GridColDef } from '@mui/x-data-grid';
 import type { Customer, Project, Stream, Team, User } from '../../types';
-import { ProjectStageChip, ExecutionStatusChip } from '../common/StatusChip';
-import { PriorityBadge, ProsohmDataGrid, TableRowActions } from '../ui/design-system';
+import { PriorityBadge, ProsohmDataGrid, TableRowActions, HealthBadge } from '../ui/design-system';
 import { formatCellValue, formatDate, formatNumber, userDisplayName } from '../../utils/format';
+import {
+  formatExecutionStatusShort,
+  formatProjectStageDisplay,
+} from '../../utils/projectCommandCenter';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 
 export interface ProjectTableRow extends Project {
@@ -23,6 +26,7 @@ interface ProjectTableProps {
   users: User[];
   streams: Stream[];
   teams: Team[];
+  compact?: boolean;
   onRowOpen?: (row: ProjectTableRow) => void;
   onEdit?: (row: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
@@ -61,58 +65,156 @@ export function buildProjectTableRows(
   }));
 }
 
-const PROJECT_TABLE_COLUMNS: GridColDef<ProjectTableRow>[] = [
-  { field: 'tool_number', headerName: 'Tool Number', flex: 1, minWidth: 130 },
-  {
-    field: 'part_description',
-    headerName: 'Part Description',
-    flex: 1.5,
-    minWidth: 180,
-  },
-  { field: 'customerName', headerName: 'Customer', flex: 1, minWidth: 140 },
-  { field: 'teamName', headerName: 'Team', flex: 1, minWidth: 130 },
-  {
-    field: 'designLeaderName',
-    headerName: 'Design Leader',
-    flex: 1,
-    minWidth: 140,
-  },
-  { field: 'designerName', headerName: 'Designer', flex: 1, minWidth: 120 },
-  { field: 'surfacerName', headerName: 'Surfacer', flex: 1, minWidth: 120 },
-  { field: 'streamName', headerName: 'Stream', flex: 1, minWidth: 120 },
-  {
-    field: 'priority',
-    headerName: 'Priority',
-    width: 110,
-    renderCell: (params) => <PriorityBadge priority={params.value as string | null} />,
-  },
-  {
-    field: 'due_date',
-    headerName: 'Due Date',
-    width: 120,
-    valueFormatter: (value) => formatDate(String(value)),
-  },
-  {
-    field: 'project_stage',
-    headerName: 'Project Stage',
-    width: 140,
-    renderCell: (params) => <ProjectStageChip stage={params.value} />,
-  },
-  {
-    field: 'execution_status',
-    headerName: 'Execution Status',
-    width: 190,
-    renderCell: (params) => <ExecutionStatusChip status={params.value} />,
-  },
-  {
-    field: 'quoted_hours',
-    headerName: 'Quoted Hours',
-    width: 130,
-    align: 'right',
-    headerAlign: 'right',
-    valueFormatter: (value) => formatNumber(Number(value)),
-  },
-];
+function buildColumns(
+  onEdit?: (row: ProjectTableRow) => void,
+  onArchive?: (projectId: string) => void,
+  onRestore?: (projectId: string) => void,
+): GridColDef<ProjectTableRow>[] {
+  const baseColumns: GridColDef<ProjectTableRow>[] = [
+    { field: 'tool_number', headerName: 'Tool Number', flex: 0.9, minWidth: 120 },
+    {
+      field: 'part_description',
+      headerName: 'Part Description',
+      flex: 1.4,
+      minWidth: 180,
+      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+    },
+    {
+      field: 'customerName',
+      headerName: 'Customer',
+      flex: 1,
+      minWidth: 130,
+      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+    },
+    {
+      field: 'teamName',
+      headerName: 'Team',
+      flex: 0.9,
+      minWidth: 110,
+      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+    },
+    {
+      field: 'designLeaderName',
+      headerName: 'Design Leader',
+      flex: 1,
+      minWidth: 130,
+      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+    },
+    {
+      field: 'designerName',
+      headerName: 'Designer',
+      flex: 0.9,
+      minWidth: 110,
+      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+    },
+    {
+      field: 'current_milestone',
+      headerName: 'Current Milestone',
+      flex: 1,
+      minWidth: 140,
+      valueFormatter: (value) => formatCellValue(value ? String(value) : null) || '—',
+    },
+    {
+      field: 'project_stage',
+      headerName: 'Project Stage',
+      width: 130,
+      valueGetter: (_value, row) => formatProjectStageDisplay(row),
+    },
+    {
+      field: 'execution_status',
+      headerName: 'Execution Status',
+      width: 130,
+      renderCell: (params) => (
+        <Chip
+          size="small"
+          label={formatExecutionStatusShort(params.value)}
+          color={
+            params.value === 'currently_being_worked_on'
+              ? 'info'
+              : params.value === 'on_hold'
+                ? 'warning'
+                : params.value === 'completed'
+                  ? 'success'
+                  : 'default'
+          }
+          sx={{ fontWeight: 600 }}
+        />
+      ),
+    },
+    {
+      field: 'priority',
+      headerName: 'Priority',
+      width: 100,
+      renderCell: (params) => <PriorityBadge priority={params.value as string | null} />,
+    },
+    {
+      field: 'due_date',
+      headerName: 'Due Date',
+      width: 110,
+      valueFormatter: (value) => formatDate(String(value)) || '—',
+    },
+    {
+      field: 'health',
+      headerName: 'Project Health',
+      width: 120,
+      renderCell: (params) => <HealthBadge health={params.value} />,
+    },
+    {
+      field: 'quoted_hours',
+      headerName: 'Quoted Hours',
+      width: 115,
+      align: 'right',
+      headerAlign: 'right',
+      valueFormatter: (value) => formatNumber(Number(value)),
+    },
+    {
+      field: 'actual_hours',
+      headerName: 'Actual Hours',
+      width: 115,
+      align: 'right',
+      headerAlign: 'right',
+      valueFormatter: (value) => formatNumber(Number(value)),
+    },
+  ];
+
+  if (!onEdit && !onArchive && !onRestore) return baseColumns;
+
+  const actionColumn: GridColDef<ProjectTableRow> = {
+    field: 'actions',
+    headerName: '',
+    width: onArchive && onRestore ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
+    sortable: false,
+    filterable: false,
+    renderCell: (params) => (
+      <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
+        {onEdit ? (
+          <TableRowActions
+            onEdit={() => onEdit(params.row)}
+            onArchive={
+              onArchive && !onRestore ? () => onArchive(String(params.id)) : undefined
+            }
+          />
+        ) : null}
+        {onRestore ? (
+          <Tooltip title="Restore">
+            <IconButton
+              size="small"
+              aria-label="Restore project"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRestore(String(params.id));
+              }}
+            >
+              <RestoreIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        ) : null}
+      </Box>
+    ),
+  };
+
+  return [...baseColumns, actionColumn];
+}
 
 function ProjectTableComponent({
   projects,
@@ -120,6 +222,7 @@ function ProjectTableComponent({
   users,
   streams,
   teams,
+  compact = false,
   onRowOpen,
   onEdit,
   onArchive,
@@ -132,56 +235,20 @@ function ProjectTableComponent({
 
   const rowMap = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
 
-  const columns = useMemo(() => {
-    if (!onEdit && !onArchive && !onRestore) return PROJECT_TABLE_COLUMNS;
+  const columns = useMemo(
+    () => buildColumns(onEdit, onArchive, onRestore),
+    [onArchive, onEdit, onRestore],
+  );
 
-    const actionColumn: GridColDef<ProjectTableRow> = {
-      field: 'actions',
-      headerName: '',
-      width: onArchive && onRestore ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
-      sortable: false,
-      filterable: false,
-      renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
-          {onEdit ? (
-            <TableRowActions
-              onEdit={() => onEdit(params.row)}
-              onArchive={
-                onArchive && !onRestore
-                  ? () => onArchive(String(params.id))
-                  : undefined
-              }
-            />
-          ) : null}
-          {onRestore ? (
-            <Tooltip title="Restore">
-              <IconButton
-                size="small"
-                aria-label="Restore project"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onRestore(String(params.id));
-                }}
-              >
-                <RestoreIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          ) : null}
-        </Box>
-      ),
-    };
-    return [...PROJECT_TABLE_COLUMNS, actionColumn];
-  }, [onArchive, onEdit, onRestore]);
-
-  const needsPagination = rows.length > 100;
+  const pageSize = compact ? 25 : 100;
 
   return (
     <ProsohmDataGrid
       rows={rows}
       columns={columns}
-      autoHeight
-      hideFooter={!needsPagination}
-      paginationModel={{ pageSize: 100, page: 0 }}
+      autoHeight={rows.length <= pageSize}
+      hideFooter={rows.length <= pageSize}
+      paginationModel={{ pageSize, page: 0 }}
       pageSizeOptions={[25, 50, 100]}
       onRowOpen={(rowId) => {
         const row = rowMap.get(rowId);

@@ -1,29 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  FormControlLabel,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
-  Switch,
-  TextField,
-  Tooltip,
-} from '@mui/material';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Box, Chip, FormControlLabel, Switch } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import ContactPageOutlinedIcon from '@mui/icons-material/ContactPageOutlined';
+import type { GridColDef } from '@mui/x-data-grid';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PageContainer } from '../../components/common/PageContainer';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -33,8 +15,24 @@ import { fetchContactTypes } from '../../api/settings';
 import type { Contact, Customer } from '../../types';
 import type { ContactType } from '../../types/Settings';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { ContentCard } from '../../components/ui/cards';
+import { ProsohmButton } from '../../components/ui/ProsohmButton';
+import {
+  DrawerQuickActions,
+  FormDrawer,
+  FormField,
+  FormSection,
+  FormSelect,
+  ProsohmDataGrid,
+  RecordDetailDrawer,
+  SearchToolbar,
+  TableRowActions,
+} from '../../components/ui/design-system';
 import { formatCellValue, formatDateTime } from '../../utils/format';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
+import { canDeleteRecords } from '../../utils/permissions';
+import { useAuth } from '../../context/AuthContext';
+import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 
 interface ContactFormState {
   customer_id: string;
@@ -61,6 +59,8 @@ const emptyForm: ContactFormState = {
 };
 
 export default function ContactsPage() {
+  const { user } = useAuth();
+  const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
   const [searchParams] = useSearchParams();
   const customerFilterParam = searchParams.get('customer_id') ?? 'all';
@@ -73,7 +73,7 @@ export default function ContactsPage() {
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState(customerFilterParam);
   const [formOpen, setFormOpen] = useState(false);
-  const [viewContact, setViewContact] = useState<Contact | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [form, setForm] = useState<ContactFormState>(emptyForm);
 
@@ -157,7 +157,8 @@ export default function ContactsPage() {
     setFormOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (event?: FormEvent) => {
+    event?.preventDefault();
     const validationError = validateRequiredFields(
       {
         customer_id: form.customer_id,
@@ -203,6 +204,9 @@ export default function ContactsPage() {
       setSaving(false);
     }
   };
+
+  const contactDisplayName = (contact: Contact) =>
+    `${contact.first_name} ${contact.last_name}`;
 
   const columns: GridColDef<Contact>[] = [
     {
@@ -255,34 +259,29 @@ export default function ContactsPage() {
     },
     {
       field: 'actions',
-      headerName: 'Actions',
-      width: 130,
+      headerName: '',
+      width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="View">
-            <IconButton size="small" onClick={() => setViewContact(params.row)}>
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => openEdit(params.row)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <AdminDeleteButton
-            resource="contacts"
-            recordId={params.row.id}
-            recordName={`${params.row.first_name} ${params.row.last_name}`}
-            onDeleted={() => void loadData()}
-            onDeactivate={async () => {
-              await contactsApi.update(params.row.id, { is_active: false });
-              showSuccess('Contact deactivated.');
-              await loadData();
-            }}
-          />
-        </Box>
+        <TableRowActions
+          onEdit={() => openEdit(params.row)}
+          deleteAction={
+            isAdmin ? (
+              <AdminDeleteButton
+                resource="contacts"
+                recordId={params.row.id}
+                recordName={contactDisplayName(params.row)}
+                onDeleted={() => void loadData()}
+                onDeactivate={async () => {
+                  await contactsApi.update(params.row.id, { is_active: false });
+                  showSuccess('Contact deactivated.');
+                  await loadData();
+                }}
+              />
+            ) : undefined
+          }
+        />
       ),
     },
   ];
@@ -290,218 +289,238 @@ export default function ContactsPage() {
   if (loading) return <LoadingState message="Loading contacts…" />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Contacts"
         subtitle="Manage customer contacts"
         action={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Create Contact
-          </Button>
+          </ProsohmButton>
         }
       />
 
-      <Card sx={{ p: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <TextField
-            label="Search contacts"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            sx={{ minWidth: 260, flex: 1 }}
-          />
-          <FormControl sx={{ minWidth: 220 }}>
-            <InputLabel>Customer</InputLabel>
-            <Select
-              label="Customer"
-              value={customerFilter}
-              onChange={(event) => setCustomerFilter(event.target.value)}
-            >
-              <MenuItem value="all">All Customers</MenuItem>
-              {customers.map((customer) => (
-                <MenuItem key={customer.id} value={customer.id}>
-                  {customer.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
-      </Card>
+      <SearchToolbar>
+        <FormField
+          label="Search contacts"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          sx={{ minWidth: 260, flex: 1 }}
+        />
+        <FormSelect
+          label="Customer"
+          value={customerFilter}
+          options={[
+            { value: 'all', label: 'All Customers' },
+            ...customers.map((customer) => ({ value: customer.id, label: customer.name })),
+          ]}
+          onChange={(event) => setCustomerFilter(String(event.target.value))}
+          sx={{ minWidth: 220 }}
+        />
+      </SearchToolbar>
 
-      <Card sx={{ p: 1 }}>
-        <DataGrid
+      <ContentCard noPadding>
+        <ProsohmDataGrid
           rows={filteredContacts}
           columns={columns}
           autoHeight
-          disableRowSelectionOnClick
           pageSizeOptions={[10, 25, 50]}
           initialState={{
             pagination: { paginationModel: { pageSize: 10 } },
           }}
-          sx={{ border: 0 }}
+          onRowOpen={(rowId) => {
+            const contact = filteredContacts.find((item) => item.id === rowId);
+            if (contact) setSelectedContact(contact);
+          }}
         />
-      </Card>
+      </ContentCard>
 
-      <Dialog
+      <FormDrawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        maxWidth="sm"
-        fullWidth
+        title={editingContact ? 'Edit Contact' : 'Create Contact'}
+        subtitle="Customer contact details"
+        icon={ContactPageOutlinedIcon}
+        formId="contact-form"
+        submitLabel={editingContact ? 'Save Changes' : 'Create Contact'}
+        loading={saving}
       >
-        <DialogTitle>{editingContact ? 'Edit Contact' : 'Create Contact'}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          <FormControl fullWidth required>
-            <InputLabel>Customer</InputLabel>
-            <Select
+        <Box
+          component="form"
+          id="contact-form"
+          onSubmit={(event) => void handleSave(event)}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+        >
+          <FormSection title="Contact Details" icon={ContactPageOutlinedIcon}>
+            <FormSelect
               label="Customer"
+              required
               value={form.customer_id}
+              options={customers.map((customer) => ({ value: customer.id, label: customer.name }))}
               onChange={(event) =>
-                setForm((current) => ({ ...current, customer_id: event.target.value }))
+                setForm((current) => ({ ...current, customer_id: String(event.target.value) }))
               }
-            >
-              {customers.map((customer) => (
-                <MenuItem key={customer.id} value={customer.id}>
-                  {customer.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            label="First Name"
-            value={form.first_name}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, first_name: event.target.value }))
-            }
-            required
-            fullWidth
-          />
-          <TextField
-            label="Last Name"
-            value={form.last_name}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, last_name: event.target.value }))
-            }
-            required
-            fullWidth
-          />
-          <TextField
-            label="Email"
-            type="email"
-            value={form.email}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, email: event.target.value }))
-            }
-            fullWidth
-          />
-          <TextField
-            label="Phone"
-            value={form.phone}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, phone: event.target.value }))
-            }
-            fullWidth
-          />
-          <TextField
-            label="Title"
-            value={form.job_title}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, job_title: event.target.value }))
-            }
-            fullWidth
-          />
-          <FormControl fullWidth>
-            <InputLabel>Contact Type</InputLabel>
-            <Select
+            />
+            <FormField
+              label="First Name"
+              required
+              value={form.first_name}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, first_name: event.target.value }))
+              }
+            />
+            <FormField
+              label="Last Name"
+              required
+              value={form.last_name}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, last_name: event.target.value }))
+              }
+            />
+            <FormField
+              label="Email"
+              type="email"
+              value={form.email}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, email: event.target.value }))
+              }
+            />
+            <FormField
+              label="Phone"
+              value={form.phone}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, phone: event.target.value }))
+              }
+            />
+            <FormField
+              label="Title"
+              value={form.job_title}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, job_title: event.target.value }))
+              }
+            />
+            <FormSelect
               label="Contact Type"
               value={form.contact_type_id}
+              options={[
+                { value: '', label: 'Not set' },
+                ...contactTypes.map((type) => ({ value: type.id, label: type.name })),
+              ]}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
                   contact_type_id: String(event.target.value),
                 }))
               }
-            >
-              <MenuItem value="">Not set</MenuItem>
-              {contactTypes.map((type) => (
-                <MenuItem key={type.id} value={type.id}>
-                  {type.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.is_primary}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, is_primary: event.target.checked }))
-                }
-              />
-            }
-            label="Primary contact"
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.is_active}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, is_active: event.target.checked }))
-                }
-              />
-            }
-            label="Active"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFormOpen(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
-            {editingContact ? 'Save' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.is_primary}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, is_primary: event.target.checked }))
+                  }
+                />
+              }
+              label="Primary contact"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.is_active}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, is_active: event.target.checked }))
+                  }
+                />
+              }
+              label="Active"
+            />
+          </FormSection>
+        </Box>
+      </FormDrawer>
 
-      <Dialog
-        open={Boolean(viewContact)}
-        onClose={() => setViewContact(null)}
-        maxWidth="sm"
-        fullWidth
+      <RecordDetailDrawer
+        open={Boolean(selectedContact)}
+        onClose={() => setSelectedContact(null)}
+        title={selectedContact ? contactDisplayName(selectedContact) : 'Contact'}
+        subtitle="Customer contact"
+        icon={ContactPageOutlinedIcon}
+        status={
+          selectedContact ? (
+            <Chip
+              label={selectedContact.is_active ? 'Active' : 'Inactive'}
+              size="small"
+              color={selectedContact.is_active ? 'success' : 'default'}
+            />
+          ) : null
+        }
+        quickActions={
+          selectedContact ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => {
+                  openEdit(selectedContact);
+                  setSelectedContact(null);
+                }}
+              >
+                Edit
+              </ProsohmButton>
+              {isAdmin ? (
+                <AdminDeleteButton
+                  mode="button"
+                  resource="contacts"
+                  recordId={selectedContact.id}
+                  recordName={contactDisplayName(selectedContact)}
+                  onDeleted={() => {
+                    setSelectedContact(null);
+                    void loadData();
+                  }}
+                  onDeactivate={async () => {
+                    await contactsApi.update(selectedContact.id, { is_active: false });
+                    showSuccess('Contact deactivated.');
+                    setSelectedContact(null);
+                    await loadData();
+                  }}
+                />
+              ) : null}
+            </DrawerQuickActions>
+          ) : null
+        }
       >
-        <DialogTitle>Contact Details</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {viewContact && (
-            <>
-              <TextField
-                label="Customer"
-                value={formatCellValue(customerMap.get(viewContact.customer_id))}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-              <TextField label="First Name" value={viewContact.first_name} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField label="Last Name" value={viewContact.last_name} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField label="Email" value={formatCellValue(viewContact.email)} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField label="Phone" value={formatCellValue(viewContact.phone)} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField label="Title" value={formatCellValue(viewContact.job_title)} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField
-                label="Status"
-                value={viewContact.is_active ? 'Active' : 'Inactive'}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-              <TextField
-                label="Created Date"
-                value={formatDateTime(viewContact.created_at)}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewContact(null)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-    </Box>
+        {selectedContact ? (
+          <FormSection title="Overview" icon={ContactPageOutlinedIcon}>
+            <FormField
+              label="Customer"
+              value={formatCellValue(customerMap.get(selectedContact.customer_id)) || '—'}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField label="First Name" value={selectedContact.first_name} slotProps={{ input: { readOnly: true } }} />
+            <FormField label="Last Name" value={selectedContact.last_name} slotProps={{ input: { readOnly: true } }} />
+            <FormField
+              label="Email"
+              value={formatCellValue(selectedContact.email) || '—'}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Phone"
+              value={formatCellValue(selectedContact.phone) || '—'}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Title"
+              value={formatCellValue(selectedContact.job_title) || '—'}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Created Date"
+              value={formatDateTime(selectedContact.created_at) || '—'}
+              slotProps={{ input: { readOnly: true } }}
+            />
+          </FormSection>
+        ) : null}
+      </RecordDetailDrawer>
+    </PageContainer>
   );
 }

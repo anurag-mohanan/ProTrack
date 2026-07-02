@@ -1,17 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import {
-  Box,
-  Chip,
-  FormControlLabel,
-  IconButton,
-  Switch,
-  Tooltip,
-} from '@mui/material';
+import { Box, Chip, FormControlLabel, Switch } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
 import StreamOutlinedIcon from '@mui/icons-material/StreamOutlined';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
 import { LoadingState } from '../../components/common/LoadingState';
@@ -23,14 +14,21 @@ import type { Stream } from '../../types';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { ContentCard } from '../../components/ui/cards';
 import {
+  DrawerQuickActions,
   FormDrawer,
   FormField,
-  ModernDrawer,
+  FormSection,
+  ProsohmDataGrid,
+  RecordDetailDrawer,
   SearchToolbar,
+  TableRowActions,
 } from '../../components/ui/design-system';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { formatCellValue } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
+import { canDeleteRecords } from '../../utils/permissions';
+import { useAuth } from '../../context/AuthContext';
+import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 
 interface StreamFormState {
   name: string;
@@ -45,13 +43,15 @@ const emptyForm: StreamFormState = {
 };
 
 export default function StreamsPage() {
+  const { user } = useAuth();
+  const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
   const [streams, setStreams] = useState<Stream[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
-  const [viewStream, setViewStream] = useState<Stream | null>(null);
+  const [selectedStream, setSelectedStream] = useState<Stream | null>(null);
   const [editingStream, setEditingStream] = useState<Stream | null>(null);
   const [form, setForm] = useState<StreamFormState>(emptyForm);
 
@@ -150,34 +150,29 @@ export default function StreamsPage() {
     },
     {
       field: 'actions',
-      headerName: 'Actions',
-      width: 130,
+      headerName: '',
+      width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="View">
-            <IconButton size="small" onClick={() => setViewStream(params.row)}>
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => openEdit(params.row)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <AdminDeleteButton
-            resource="streams"
-            recordId={params.row.id}
-            recordName={params.row.name}
-            onDeleted={() => void loadData()}
-            onDeactivate={async () => {
-              await streamsApi.update(params.row.id, { is_active: false });
-              showSuccess('Stream deactivated.');
-              await loadData();
-            }}
-          />
-        </Box>
+        <TableRowActions
+          onEdit={() => openEdit(params.row)}
+          deleteAction={
+            isAdmin ? (
+              <AdminDeleteButton
+                resource="streams"
+                recordId={params.row.id}
+                recordName={params.row.name}
+                onDeleted={() => void loadData()}
+                onDeactivate={async () => {
+                  await streamsApi.update(params.row.id, { is_active: false });
+                  showSuccess('Stream deactivated.');
+                  await loadData();
+                }}
+              />
+            ) : undefined
+          }
+        />
       ),
     },
   ];
@@ -206,16 +201,18 @@ export default function StreamsPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <DataGrid
+        <ProsohmDataGrid
           rows={filteredStreams}
           columns={columns}
           autoHeight
-          disableRowSelectionOnClick
           pageSizeOptions={[10, 25, 50]}
           initialState={{
             pagination: { paginationModel: { pageSize: 10 } },
           }}
-          sx={{ border: 0 }}
+          onRowOpen={(rowId) => {
+            const stream = filteredStreams.find((item) => item.id === rowId);
+            if (stream) setSelectedStream(stream);
+          }}
         />
       </ContentCard>
 
@@ -228,75 +225,107 @@ export default function StreamsPage() {
         formId="stream-form"
         submitLabel={editingStream ? 'Save Changes' : 'Create Stream'}
         loading={saving}
-        onSubmit={() => void handleSave()}
       >
         <Box
-          id="stream-form"
           component="form"
+          id="stream-form"
           onSubmit={(event) => void handleSave(event)}
-          sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
         >
-          <FormField
-            label="Name"
-            value={form.name}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, name: event.target.value }))
-            }
-            required
-          />
-          <FormField
-            label="Description"
-            value={form.description}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, description: event.target.value }))
-            }
-            multiline
-            minRows={3}
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.is_active}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, is_active: event.target.checked }))
-                }
-              />
-            }
-            label="Active"
-          />
+          <FormSection title="Stream Details" icon={StreamOutlinedIcon}>
+            <FormField
+              label="Name"
+              required
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            />
+            <FormField
+              label="Description"
+              value={form.description}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, description: event.target.value }))
+              }
+              multiline
+              minRows={3}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.is_active}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, is_active: event.target.checked }))
+                  }
+                />
+              }
+              label="Active"
+            />
+          </FormSection>
         </Box>
       </FormDrawer>
 
-      <ModernDrawer
-        open={Boolean(viewStream)}
-        onClose={() => setViewStream(null)}
-        title="Stream Details"
-        subtitle={viewStream?.name}
+      <RecordDetailDrawer
+        open={Boolean(selectedStream)}
+        onClose={() => setSelectedStream(null)}
+        title={selectedStream?.name ?? 'Stream'}
+        subtitle="Engineering stream"
         icon={StreamOutlinedIcon}
-        footer={
-          <ProsohmButton buttonVariant="outlined" onClick={() => setViewStream(null)}>
-            Close
-          </ProsohmButton>
+        status={
+          selectedStream ? (
+            <Chip
+              label={selectedStream.is_active ? 'Active' : 'Inactive'}
+              size="small"
+              color={selectedStream.is_active ? 'success' : 'default'}
+            />
+          ) : null
+        }
+        quickActions={
+          selectedStream ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => {
+                  openEdit(selectedStream);
+                  setSelectedStream(null);
+                }}
+              >
+                Edit
+              </ProsohmButton>
+              {isAdmin ? (
+                <AdminDeleteButton
+                  mode="button"
+                  resource="streams"
+                  recordId={selectedStream.id}
+                  recordName={selectedStream.name}
+                  onDeleted={() => {
+                    setSelectedStream(null);
+                    void loadData();
+                  }}
+                  onDeactivate={async () => {
+                    await streamsApi.update(selectedStream.id, { is_active: false });
+                    showSuccess('Stream deactivated.');
+                    setSelectedStream(null);
+                    await loadData();
+                  }}
+                />
+              ) : null}
+            </DrawerQuickActions>
+          ) : null
         }
       >
-        {viewStream ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormField label="Name" value={viewStream.name} slotProps={{ input: { readOnly: true } }} />
+        {selectedStream ? (
+          <FormSection title="Overview" icon={StreamOutlinedIcon}>
+            <FormField label="Name" value={selectedStream.name} slotProps={{ input: { readOnly: true } }} />
             <FormField
               label="Description"
-              value={formatCellValue(viewStream.description)}
+              value={formatCellValue(selectedStream.description) || '—'}
               multiline
               minRows={2}
               slotProps={{ input: { readOnly: true } }}
             />
-            <FormField
-              label="Status"
-              value={viewStream.is_active ? 'Active' : 'Inactive'}
-              slotProps={{ input: { readOnly: true } }}
-            />
-          </Box>
+          </FormSection>
         ) : null}
-      </ModernDrawer>
+      </RecordDetailDrawer>
     </PageContainer>
   );
 }

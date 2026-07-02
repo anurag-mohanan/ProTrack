@@ -1,28 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   Box,
-  Button,
-  Card,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControlLabel,
   IconButton,
   Stack,
   Switch,
-  TextField,
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import EditIcon from '@mui/icons-material/Edit';
+import TimerOffOutlinedIcon from '@mui/icons-material/TimerOffOutlined';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PageContainer } from '../../components/common/PageContainer';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -30,8 +24,22 @@ import { getErrorMessage } from '../../api/client';
 import { nonProductiveCodesApi } from '../../api/resources';
 import type { NonProductiveCode } from '../../types';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { ContentCard } from '../../components/ui/cards';
+import { ProsohmButton } from '../../components/ui/ProsohmButton';
+import {
+  DrawerQuickActions,
+  FormDrawer,
+  FormField,
+  FormSection,
+  ProsohmDataGrid,
+  RecordDetailDrawer,
+  TableRowActions,
+} from '../../components/ui/design-system';
 import { formatCellValue } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
+import { canDeleteRecords } from '../../utils/permissions';
+import { useAuth } from '../../context/AuthContext';
+import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 
 interface NpCodeFormState {
   code: string;
@@ -48,11 +56,14 @@ const emptyForm: NpCodeFormState = {
 };
 
 export default function NonProductiveCodesPage() {
+  const { user } = useAuth();
+  const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
   const [rows, setRows] = useState<NonProductiveCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [selectedCode, setSelectedCode] = useState<NonProductiveCode | null>(null);
   const [editing, setEditing] = useState<NonProductiveCode | null>(null);
   const [form, setForm] = useState<NpCodeFormState>(emptyForm);
   const [showArchived, setShowArchived] = useState(true);
@@ -113,6 +124,60 @@ export default function NonProductiveCodesPage() {
     }
   };
 
+  const openEdit = (row: NonProductiveCode) => {
+    setEditing(row);
+    setForm({
+      code: row.code,
+      description: row.description ?? '',
+      sort_order: String(row.sort_order),
+      is_active: row.is_active,
+    });
+    setFormOpen(true);
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setFormOpen(true);
+  };
+
+  useOpenCreateFromQuery(openCreate);
+
+  const handleSave = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const validationError = validateRequiredFields(form, [{ key: 'code', label: 'Code' }]);
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        code: form.code.trim(),
+        description: optionalString(form.description),
+        sort_order: Number(form.sort_order) || 0,
+        is_active: form.is_active,
+      };
+      if (editing) {
+        await nonProductiveCodesApi.update(editing.id, payload);
+        showSuccess('NP code updated');
+      } else {
+        await nonProductiveCodesApi.create(payload);
+        showSuccess('NP code created');
+      }
+      setFormOpen(false);
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const actionsColumnWidth = isAdmin
+    ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 160
+    : DATA_GRID_ACTIONS_COLUMN_WIDTH + 120;
+
   const columns = useMemo<GridColDef<NonProductiveCode>[]>(
     () => [
       { field: 'code', headerName: 'Code', flex: 1, minWidth: 120 },
@@ -151,49 +216,47 @@ export default function NonProductiveCodesPage() {
       {
         field: 'actions',
         headerName: '',
-        width: 220,
+        width: actionsColumnWidth,
         sortable: false,
         filterable: false,
         renderCell: (params) => (
-          <Stack direction="row" spacing={0.5}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
             <Tooltip title="Move up">
               <span>
-                <IconButton size="small" disabled={saving} onClick={() => void moveRow(params.row, 'up')}>
+                <IconButton
+                  size="small"
+                  disabled={saving}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void moveRow(params.row, 'up');
+                  }}
+                >
                   <ArrowUpwardIcon fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
             <Tooltip title="Move down">
               <span>
-                <IconButton size="small" disabled={saving} onClick={() => void moveRow(params.row, 'down')}>
+                <IconButton
+                  size="small"
+                  disabled={saving}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void moveRow(params.row, 'down');
+                  }}
+                >
                   <ArrowDownwardIcon fontSize="small" />
                 </IconButton>
               </span>
-            </Tooltip>
-            <Tooltip title="Edit">
-              <IconButton
-                size="small"
-                onClick={() => {
-                  setEditing(params.row);
-                  setForm({
-                    code: params.row.code,
-                    description: params.row.description ?? '',
-                    sort_order: String(params.row.sort_order),
-                    is_active: params.row.is_active,
-                  });
-                  setFormOpen(true);
-                }}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
             </Tooltip>
             {params.row.is_archived ? (
               <Tooltip title="Restore">
                 <IconButton
                   size="small"
-                  onClick={() =>
-                    void updateRow(params.row, { is_archived: false }, 'NP code restored')
-                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void updateRow(params.row, { is_archived: false }, 'NP code restored');
+                  }}
                 >
                   <UnarchiveIcon fontSize="small" />
                 </IconButton>
@@ -202,87 +265,57 @@ export default function NonProductiveCodesPage() {
               <Tooltip title="Archive">
                 <IconButton
                   size="small"
-                  onClick={() =>
-                    void updateRow(params.row, { is_archived: true }, 'NP code archived')
-                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void updateRow(params.row, { is_archived: true }, 'NP code archived');
+                  }}
                 >
                   <ArchiveIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             )}
-            <AdminDeleteButton
-              resource="non-productive-codes"
-              recordId={params.row.id}
-              recordName={params.row.code}
-              onDeleted={() => void loadData()}
-              showArchive
-              onArchive={async () => {
-                await nonProductiveCodesApi.update(params.row.id, { is_archived: true });
-                showSuccess('NP code archived.');
-                await loadData();
-              }}
-              onDeactivate={async () => {
-                await nonProductiveCodesApi.update(params.row.id, { is_active: false });
-                showSuccess('NP code deactivated.');
-                await loadData();
-              }}
+            <TableRowActions
+              onEdit={() => openEdit(params.row)}
+              deleteAction={
+                isAdmin ? (
+                  <AdminDeleteButton
+                    resource="non-productive-codes"
+                    recordId={params.row.id}
+                    recordName={params.row.code}
+                    onDeleted={() => void loadData()}
+                    showArchive
+                    onArchive={async () => {
+                      await nonProductiveCodesApi.update(params.row.id, { is_archived: true });
+                      showSuccess('NP code archived.');
+                      await loadData();
+                    }}
+                    onDeactivate={async () => {
+                      await nonProductiveCodesApi.update(params.row.id, { is_active: false });
+                      showSuccess('NP code deactivated.');
+                      await loadData();
+                    }}
+                  />
+                ) : undefined
+              }
             />
-          </Stack>
+          </Box>
         ),
       },
     ],
-    [loadData, saving, showSuccess],
+    [actionsColumnWidth, isAdmin, loadData, saving, showSuccess],
   );
-
-  const openCreate = () => {
-    setEditing(null);
-    setForm(emptyForm);
-    setFormOpen(true);
-  };
-
-  useOpenCreateFromQuery(openCreate);
-
-  const handleSave = async () => {
-    const validationError = validateRequiredFields(form, [{ key: 'code', label: 'Code' }]);
-    if (validationError) {
-      showError(validationError);
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        code: form.code.trim(),
-        description: optionalString(form.description),
-        sort_order: Number(form.sort_order) || 0,
-        is_active: form.is_active,
-      };
-      if (editing) {
-        await nonProductiveCodesApi.update(editing.id, payload);
-        showSuccess('NP code updated');
-      } else {
-        await nonProductiveCodesApi.create(payload);
-        showSuccess('NP code created');
-      }
-      setFormOpen(false);
-      await loadData();
-    } catch (error) {
-      showError(getErrorMessage(error));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (loading) return <LoadingState />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Non-Productive Codes"
         subtitle="Manage NP codes used for non-productive timesheet entries"
         action={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Add Code
-          </Button>
+          </ProsohmButton>
         }
       />
 
@@ -298,66 +331,149 @@ export default function NonProductiveCodesPage() {
         />
       </Box>
 
-      <Card sx={{ p: 2 }}>
-        <DataGrid
+      <ContentCard noPadding>
+        <ProsohmDataGrid
           rows={rows}
           columns={columns}
           autoHeight
-          disableRowSelectionOnClick
           pageSizeOptions={[25, 50, 100]}
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+          onRowOpen={(rowId) => {
+            const code = rows.find((item) => item.id === rowId);
+            if (code) setSelectedCode(code);
+          }}
         />
-      </Card>
+      </ContentCard>
 
-      <Dialog open={formOpen} onClose={() => setFormOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editing ? 'Edit NP Code' : 'New NP Code'}</DialogTitle>
-        <DialogContent>
-          <TextField
-            label="Code"
-            fullWidth
-            margin="normal"
-            required
-            value={form.code}
-            onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))}
-          />
-          <TextField
-            label="Description"
-            fullWidth
-            margin="normal"
-            value={form.description}
-            onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-          />
-          <TextField
-            label="Sort Order"
-            type="number"
-            fullWidth
-            margin="normal"
-            value={form.sort_order}
-            onChange={(event) => setForm((prev) => ({ ...prev, sort_order: event.target.value }))}
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.is_active}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, is_active: event.target.checked }))
-                }
+      <FormDrawer
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editing ? 'Edit NP Code' : 'New NP Code'}
+        subtitle="Non-productive timesheet code"
+        icon={TimerOffOutlinedIcon}
+        formId="np-code-form"
+        submitLabel={editing ? 'Save Changes' : 'Save'}
+        loading={saving}
+      >
+        <Box
+          component="form"
+          id="np-code-form"
+          onSubmit={(event) => void handleSave(event)}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+        >
+          <FormSection title="Code Details" icon={TimerOffOutlinedIcon}>
+            <FormField
+              label="Code"
+              required
+              value={form.code}
+              onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))}
+            />
+            <FormField
+              label="Description"
+              value={form.description}
+              onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+            />
+            <FormField
+              label="Sort Order"
+              type="number"
+              value={form.sort_order}
+              onChange={(event) => setForm((prev) => ({ ...prev, sort_order: event.target.value }))}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.is_active}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, is_active: event.target.checked }))
+                  }
+                />
+              }
+              label="Active"
+            />
+          </FormSection>
+        </Box>
+      </FormDrawer>
+
+      <RecordDetailDrawer
+        open={Boolean(selectedCode)}
+        onClose={() => setSelectedCode(null)}
+        title={selectedCode?.code ?? 'NP Code'}
+        subtitle="Non-productive code"
+        icon={TimerOffOutlinedIcon}
+        status={
+          selectedCode ? (
+            <Stack direction="row" spacing={1}>
+              <Chip
+                label={selectedCode.is_active ? 'Active' : 'Inactive'}
+                size="small"
+                color={selectedCode.is_active ? 'success' : 'default'}
               />
-            }
-            label="Active"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFormOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={saving || !form.code.trim()}
-            onClick={() => void handleSave()}
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+              {selectedCode.is_archived ? (
+                <Chip label="Archived" size="small" color="warning" />
+              ) : null}
+            </Stack>
+          ) : null
+        }
+        quickActions={
+          selectedCode ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => {
+                  openEdit(selectedCode);
+                  setSelectedCode(null);
+                }}
+              >
+                Edit
+              </ProsohmButton>
+              {isAdmin ? (
+                <AdminDeleteButton
+                  mode="button"
+                  resource="non-productive-codes"
+                  recordId={selectedCode.id}
+                  recordName={selectedCode.code}
+                  showArchive
+                  onDeleted={() => {
+                    setSelectedCode(null);
+                    void loadData();
+                  }}
+                  onArchive={async () => {
+                    await nonProductiveCodesApi.update(selectedCode.id, { is_archived: true });
+                    showSuccess('NP code archived.');
+                    setSelectedCode(null);
+                    await loadData();
+                  }}
+                  onDeactivate={async () => {
+                    await nonProductiveCodesApi.update(selectedCode.id, { is_active: false });
+                    showSuccess('NP code deactivated.');
+                    setSelectedCode(null);
+                    await loadData();
+                  }}
+                />
+              ) : null}
+            </DrawerQuickActions>
+          ) : null
+        }
+      >
+        {selectedCode ? (
+          <FormSection title="Overview" icon={TimerOffOutlinedIcon}>
+            <FormField label="Code" value={selectedCode.code} slotProps={{ input: { readOnly: true } }} />
+            <FormField
+              label="Description"
+              value={formatCellValue(selectedCode.description) || '—'}
+              multiline
+              minRows={2}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Sort Order"
+              value={String(selectedCode.sort_order)}
+              slotProps={{ input: { readOnly: true } }}
+            />
+          </FormSection>
+        ) : null}
+      </RecordDetailDrawer>
+    </PageContainer>
   );
 }

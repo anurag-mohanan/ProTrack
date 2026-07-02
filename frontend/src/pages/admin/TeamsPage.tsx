@@ -6,14 +6,11 @@ import {
   Grid,
   IconButton,
   Switch,
-  Tooltip,
-  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
 import GroupsIcon from '@mui/icons-material/Groups';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import type { GridColDef } from '@mui/x-data-grid';
 import { apiClient } from '../../api/client';
 import { fetchUsers } from '../../api/lookups';
 import { teamsApi } from '../../api/resources';
@@ -24,20 +21,25 @@ import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
+  DrawerQuickActions,
   FormDrawer,
   FormField,
   FormSection,
   FormSelect,
+  ProsohmDataGrid,
+  RecordDetailDrawer,
   SearchToolbar,
-  EmptyState,
+  TableRowActions,
 } from '../../components/ui/design-system';
 import { useToast } from '../../context/ToastContext';
-import { prosohmDataGridSx } from '../../theme/componentStyles';
+import { useAuth } from '../../context/AuthContext';
+import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import type { Team, TeamCreate, TeamMember, TeamMemberCreate } from '../../types/Team';
 import { getErrorMessage } from '../../api/client';
 import { formatCellValue, userDisplayName } from '../../utils/format';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
+import { canDeleteRecords } from '../../utils/permissions';
 import type { User } from '../../types';
 
 interface TeamFormState {
@@ -57,8 +59,8 @@ const emptyForm: TeamFormState = {
 };
 
 export default function TeamsPage() {
-  const theme = useTheme();
-  const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
+  const { user } = useAuth();
+  const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -66,6 +68,7 @@ export default function TeamsPage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [form, setForm] = useState<TeamFormState>(emptyForm);
   const [memberTeam, setMemberTeam] = useState<Team | null>(null);
@@ -223,31 +226,29 @@ export default function TeamsPage() {
     },
     {
       field: 'actions',
-      headerName: 'Actions',
-      width: 130,
+      headerName: '',
+      width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
       sortable: false,
+      filterable: false,
       renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="Manage members">
-            <IconButton size="small" onClick={() => void openMembers(params.row)}>
-              <GroupsIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <IconButton size="small" onClick={() => openEdit(params.row)}>
-            <EditIcon fontSize="small" />
-          </IconButton>
-          <AdminDeleteButton
-            resource="teams"
-            recordId={params.row.id}
-            recordName={params.row.name}
-            onDeleted={() => void loadData()}
-            onDeactivate={async () => {
-              await teamsApi.update(params.row.id, { is_active: false });
-              showSuccess('Team deactivated.');
-              await loadData();
-            }}
-          />
-        </Box>
+        <TableRowActions
+          onEdit={() => openEdit(params.row)}
+          deleteAction={
+            isAdmin ? (
+              <AdminDeleteButton
+                resource="teams"
+                recordId={params.row.id}
+                recordName={params.row.name}
+                onDeleted={() => void loadData()}
+                onDeactivate={async () => {
+                  await teamsApi.update(params.row.id, { is_active: false });
+                  showSuccess('Team deactivated.');
+                  await loadData();
+                }}
+              />
+            ) : undefined
+          }
+        />
       ),
     },
   ];
@@ -276,19 +277,19 @@ export default function TeamsPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        {filteredTeams.length === 0 ? (
-          <EmptyState
-            title="No teams found"
-            description="Create a team to organize designers and projects."
-            action={
-              <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
-                Create Team
-              </ProsohmButton>
-            }
-          />
-        ) : (
-          <DataGrid rows={filteredTeams} columns={columns} autoHeight sx={gridSx} />
-        )}
+        <ProsohmDataGrid
+          rows={filteredTeams}
+          columns={columns}
+          autoHeight
+          pageSizeOptions={[10, 25, 50]}
+          initialState={{
+            pagination: { paginationModel: { pageSize: 10 } },
+          }}
+          onRowOpen={(rowId) => {
+            const team = filteredTeams.find((item) => item.id === rowId);
+            if (team) setSelectedTeam(team);
+          }}
+        />
       </ContentCard>
 
       <FormDrawer
@@ -447,6 +448,89 @@ export default function TeamsPage() {
         </Box>
       </FormDrawer>
 
+      <RecordDetailDrawer
+        open={Boolean(selectedTeam)}
+        onClose={() => setSelectedTeam(null)}
+        title={selectedTeam?.name ?? 'Team'}
+        subtitle="Engineering team"
+        icon={GroupsIcon}
+        status={
+          selectedTeam ? (
+            <Chip
+              label={selectedTeam.is_active ? 'Active' : 'Inactive'}
+              size="small"
+              color={selectedTeam.is_active ? 'success' : 'default'}
+            />
+          ) : null
+        }
+        quickActions={
+          selectedTeam ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => {
+                  openEdit(selectedTeam);
+                  setSelectedTeam(null);
+                }}
+              >
+                Edit
+              </ProsohmButton>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => {
+                  void openMembers(selectedTeam);
+                  setSelectedTeam(null);
+                }}
+              >
+                Manage Members
+              </ProsohmButton>
+              {isAdmin ? (
+                <AdminDeleteButton
+                  mode="button"
+                  resource="teams"
+                  recordId={selectedTeam.id}
+                  recordName={selectedTeam.name}
+                  onDeleted={() => {
+                    setSelectedTeam(null);
+                    void loadData();
+                  }}
+                  onDeactivate={async () => {
+                    await teamsApi.update(selectedTeam.id, { is_active: false });
+                    showSuccess('Team deactivated.');
+                    setSelectedTeam(null);
+                    await loadData();
+                  }}
+                />
+              ) : null}
+            </DrawerQuickActions>
+          ) : null
+        }
+      >
+        {selectedTeam ? (
+          <FormSection title="Overview" icon={GroupsIcon}>
+            <FormField label="Team Name" value={selectedTeam.name} slotProps={{ input: { readOnly: true } }} />
+            <FormField
+              label="Description"
+              value={formatCellValue(selectedTeam.description) || '—'}
+              multiline
+              minRows={2}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Team Lead"
+              value={formatCellValue(selectedTeam.team_lead_name) || '—'}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Members"
+              value={String(selectedTeam.member_count ?? 0)}
+              slotProps={{ input: { readOnly: true } }}
+            />
+          </FormSection>
+        ) : null}
+      </RecordDetailDrawer>
     </PageContainer>
   );
 }

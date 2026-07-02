@@ -1,23 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
-  IconButton,
-  Switch,
-  TextField,
-  Tooltip,
-} from '@mui/material';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Box, Chip, FormControlLabel, Switch } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined';
+import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PageContainer } from '../../components/common/PageContainer';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -29,8 +16,23 @@ import {
 } from '../../api/projectTemplates';
 import type { ProjectType } from '../../types/ProjectTemplate';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { ContentCard } from '../../components/ui/cards';
+import { ProsohmButton } from '../../components/ui/ProsohmButton';
+import {
+  DrawerQuickActions,
+  FormDrawer,
+  FormField,
+  FormSection,
+  ProsohmDataGrid,
+  RecordDetailDrawer,
+  SearchToolbar,
+  TableRowActions,
+} from '../../components/ui/design-system';
 import { formatCellValue } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
+import { canDeleteRecords } from '../../utils/permissions';
+import { useAuth } from '../../context/AuthContext';
+import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 
 interface ProjectTypeFormState {
   name: string;
@@ -45,12 +47,15 @@ const emptyForm: ProjectTypeFormState = {
 };
 
 export default function ProjectTypesPage() {
+  const { user } = useAuth();
+  const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [selectedType, setSelectedType] = useState<ProjectType | null>(null);
   const [editingType, setEditingType] = useState<ProjectType | null>(null);
   const [form, setForm] = useState<ProjectTypeFormState>(emptyForm);
 
@@ -96,7 +101,8 @@ export default function ProjectTypesPage() {
     setFormOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (event?: FormEvent) => {
+    event?.preventDefault();
     const validationError = validateRequiredFields(form, [{ key: 'name', label: 'Name' }]);
     if (validationError) {
       showError(validationError);
@@ -148,29 +154,29 @@ export default function ProjectTypesPage() {
     },
     {
       field: 'actions',
-      headerName: 'Actions',
-      width: 130,
+      headerName: '',
+      width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => openEdit(params.row)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <AdminDeleteButton
-            resource="project-types"
-            recordId={params.row.id}
-            recordName={params.row.name}
-            onDeleted={() => void loadData()}
-            onDeactivate={async () => {
-              await updateProjectType(params.row.id, { is_active: false });
-              showSuccess('Project type deactivated.');
-              await loadData();
-            }}
-          />
-        </Box>
+        <TableRowActions
+          onEdit={() => openEdit(params.row)}
+          deleteAction={
+            isAdmin ? (
+              <AdminDeleteButton
+                resource="project-types"
+                recordId={params.row.id}
+                recordName={params.row.name}
+                onDeleted={() => void loadData()}
+                onDeactivate={async () => {
+                  await updateProjectType(params.row.id, { is_active: false });
+                  showSuccess('Project type deactivated.');
+                  await loadData();
+                }}
+              />
+            ) : undefined
+          }
+        />
       ),
     },
   ];
@@ -178,80 +184,150 @@ export default function ProjectTypesPage() {
   if (loading) return <LoadingState message="Loading project types…" />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Project Types"
         subtitle="Manage project classification types used by templates"
         action={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Create Project Type
-          </Button>
+          </ProsohmButton>
         }
       />
 
-      <Card sx={{ p: 2, mb: 2 }}>
-        <TextField
+      <SearchToolbar>
+        <FormField
           label="Search by name or description"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 280, width: '100%', maxWidth: 480 }}
+          sx={{ minWidth: 280, flex: 1, maxWidth: 480 }}
         />
-      </Card>
+      </SearchToolbar>
 
-      <Card sx={{ p: 1 }}>
-        <DataGrid
+      <ContentCard noPadding>
+        <ProsohmDataGrid
           rows={filteredTypes}
           columns={columns}
           autoHeight
-          disableRowSelectionOnClick
           pageSizeOptions={[10, 25, 50]}
           initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-          sx={{ border: 0 }}
+          onRowOpen={(rowId) => {
+            const projectType = filteredTypes.find((item) => item.id === rowId);
+            if (projectType) setSelectedType(projectType);
+          }}
         />
-      </Card>
+      </ContentCard>
 
-      <Dialog open={formOpen} onClose={() => setFormOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingType ? 'Edit Project Type' : 'Create Project Type'}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          <TextField
-            label="Name"
-            value={form.name}
-            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-            required
-            fullWidth
-          />
-          <TextField
-            label="Description"
-            value={form.description}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, description: event.target.value }))
-            }
-            multiline
-            minRows={3}
-            fullWidth
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.is_active}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, is_active: event.target.checked }))
-                }
-              />
-            }
-            label="Active"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFormOpen(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
-            {editingType ? 'Save' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <FormDrawer
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editingType ? 'Edit Project Type' : 'Create Project Type'}
+        subtitle="Project classification configuration"
+        icon={CategoryOutlinedIcon}
+        formId="project-type-form"
+        submitLabel={editingType ? 'Save Changes' : 'Create Project Type'}
+        loading={saving}
+      >
+        <Box
+          component="form"
+          id="project-type-form"
+          onSubmit={(event) => void handleSave(event)}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+        >
+          <FormSection title="Project Type Details" icon={CategoryOutlinedIcon}>
+            <FormField
+              label="Name"
+              required
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            />
+            <FormField
+              label="Description"
+              value={form.description}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, description: event.target.value }))
+              }
+              multiline
+              minRows={3}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.is_active}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, is_active: event.target.checked }))
+                  }
+                />
+              }
+              label="Active"
+            />
+          </FormSection>
+        </Box>
+      </FormDrawer>
 
-    </Box>
+      <RecordDetailDrawer
+        open={Boolean(selectedType)}
+        onClose={() => setSelectedType(null)}
+        title={selectedType?.name ?? 'Project Type'}
+        subtitle="Project classification"
+        icon={CategoryOutlinedIcon}
+        status={
+          selectedType ? (
+            <Chip
+              label={selectedType.is_active ? 'Active' : 'Inactive'}
+              size="small"
+              color={selectedType.is_active ? 'success' : 'default'}
+            />
+          ) : null
+        }
+        quickActions={
+          selectedType ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => {
+                  openEdit(selectedType);
+                  setSelectedType(null);
+                }}
+              >
+                Edit
+              </ProsohmButton>
+              {isAdmin ? (
+                <AdminDeleteButton
+                  mode="button"
+                  resource="project-types"
+                  recordId={selectedType.id}
+                  recordName={selectedType.name}
+                  onDeleted={() => {
+                    setSelectedType(null);
+                    void loadData();
+                  }}
+                  onDeactivate={async () => {
+                    await updateProjectType(selectedType.id, { is_active: false });
+                    showSuccess('Project type deactivated.');
+                    setSelectedType(null);
+                    await loadData();
+                  }}
+                />
+              ) : null}
+            </DrawerQuickActions>
+          ) : null
+        }
+      >
+        {selectedType ? (
+          <FormSection title="Overview" icon={CategoryOutlinedIcon}>
+            <FormField label="Name" value={selectedType.name} slotProps={{ input: { readOnly: true } }} />
+            <FormField
+              label="Description"
+              value={formatCellValue(selectedType.description) || '—'}
+              multiline
+              minRows={2}
+              slotProps={{ input: { readOnly: true } }}
+            />
+          </FormSection>
+        ) : null}
+      </RecordDetailDrawer>
+    </PageContainer>
   );
 }

@@ -4,24 +4,13 @@ import {
   Chip,
   FormControlLabel,
   Grid,
-  IconButton,
   Switch,
-  Tooltip,
-  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import ArchiveIcon from '@mui/icons-material/Archive';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
-import LockResetIcon from '@mui/icons-material/LockReset';
-import PersonOffIcon from '@mui/icons-material/PersonOff';
 import PersonIcon from '@mui/icons-material/Person';
-import SwitchAccountIcon from '@mui/icons-material/SwitchAccount';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import ContactMailOutlinedIcon from '@mui/icons-material/ContactMailOutlined';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
@@ -39,16 +28,19 @@ import type { Team } from '../../types/Team';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
+  DrawerQuickActions,
   FormDrawer,
   FormField,
   FormSection,
   FormSelect,
-  ModernDrawer,
+  ProsohmDataGrid,
+  RecordDetailDrawer,
   SearchToolbar,
   EmptyState,
+  TableRowActions,
 } from '../../components/ui/design-system';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
-import { prosohmDataGridSx } from '../../theme/componentStyles';
+import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 import { formatDate, formatCellValue } from '../../utils/format';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
 
@@ -101,8 +93,6 @@ const emptyForm: UserFormState = {
 };
 
 export default function UsersPage() {
-  const theme = useTheme();
-  const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
   const { showSuccess, showError } = useToast();
   const { user: currentUser, impersonateUser } = useAuth();
   const isAdmin = currentUser?.role_name === ROLES.ADMIN;
@@ -116,7 +106,7 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [formOpen, setFormOpen] = useState(false);
-  const [viewUser, setViewUser] = useState<User | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState<UserFormState>(emptyForm);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
@@ -532,67 +522,12 @@ export default function UsersPage() {
     },
     {
       field: 'actions',
-      headerName: 'Actions',
-      width: isAdmin ? 320 : 220,
+      headerName: '',
+      width: DATA_GRID_ACTIONS_COLUMN_WIDTH,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="View Profile">
-            <IconButton size="small" onClick={() => setViewUser(params.row)}>
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => openEdit(params.row)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Reset Password">
-            <IconButton size="small" onClick={() => setResetTarget(params.row)}>
-              <LockResetIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Force Password Change">
-            <IconButton size="small" onClick={() => setForceChangeTarget(params.row)}>
-              <VpnKeyIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          {isAdmin ? (
-            <Tooltip title="Login As User">
-              <IconButton
-                size="small"
-                disabled={params.row.id === currentUser?.id}
-                onClick={() => setImpersonateTarget(params.row)}
-              >
-                <SwitchAccountIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          ) : null}
-          <Tooltip title={params.row.is_active ? 'Deactivate' : 'Activate'}>
-            <IconButton size="small" onClick={() => setToggleTarget(params.row)}>
-              {params.row.is_active ? (
-                <PersonOffIcon fontSize="small" />
-              ) : (
-                <PersonIcon fontSize="small" />
-              )}
-            </IconButton>
-          </Tooltip>
-          {isAdmin ? (
-            <>
-              <Tooltip title="Archive">
-                <IconButton size="small" onClick={() => setArchiveTarget(params.row)}>
-                  <ArchiveIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Delete">
-                <IconButton size="small" onClick={() => setDeleteTarget(params.row)}>
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </>
-          ) : null}
-        </Box>
+        <TableRowActions onEdit={() => openEdit(params.row)} />
       ),
     },
   ];
@@ -638,16 +573,18 @@ export default function UsersPage() {
         {filteredUsers.length === 0 ? (
           <EmptyState title="No users found" description="Try adjusting your search or filters." />
         ) : (
-          <DataGrid
+          <ProsohmDataGrid
             rows={filteredUsers}
             columns={columns}
             autoHeight
-            disableRowSelectionOnClick
             pageSizeOptions={[10, 25, 50]}
             initialState={{
               pagination: { paginationModel: { pageSize: 10 } },
             }}
-            sx={gridSx}
+            onRowOpen={(rowId) => {
+              const user = filteredUsers.find((item) => item.id === rowId);
+              if (user) setSelectedUser(user);
+            }}
           />
         )}
       </ContentCard>
@@ -969,65 +906,159 @@ export default function UsersPage() {
         </Box>
       </FormDrawer>
 
-      <ModernDrawer
-        open={Boolean(viewUser)}
-        onClose={() => setViewUser(null)}
-        title="User Profile"
-        subtitle={viewUser ? `${viewUser.first_name} ${viewUser.last_name}` : undefined}
+      <RecordDetailDrawer
+        open={Boolean(selectedUser)}
+        onClose={() => setSelectedUser(null)}
+        title={
+          selectedUser ? `${selectedUser.first_name} ${selectedUser.last_name}` : 'User'
+        }
+        subtitle="User profile"
         icon={PersonIcon}
         width={520}
-        footer={
-          <ProsohmButton buttonVariant="outlined" onClick={() => setViewUser(null)}>
-            Close
-          </ProsohmButton>
+        status={
+          selectedUser ? (
+            <>
+              <Chip
+                label={selectedUser.is_active ? 'Active' : 'Inactive'}
+                size="small"
+                color={selectedUser.is_active ? 'success' : 'default'}
+              />
+              <Chip
+                label={formatCellValue(roleMap.get(selectedUser.role_id))}
+                size="small"
+                color="primary"
+                variant="outlined"
+              />
+              {selectedUser.must_change_password ? (
+                <Chip label="Password change required" size="small" color="warning" />
+              ) : null}
+            </>
+          ) : null
+        }
+        quickActions={
+          selectedUser ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => {
+                  openEdit(selectedUser);
+                  setSelectedUser(null);
+                }}
+              >
+                Edit
+              </ProsohmButton>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => setResetTarget(selectedUser)}
+              >
+                Reset Password
+              </ProsohmButton>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => setForceChangeTarget(selectedUser)}
+              >
+                Force Password Change
+              </ProsohmButton>
+              {isAdmin ? (
+                <ProsohmButton
+                  buttonVariant="outlined"
+                  size="small"
+                  disabled={selectedUser.id === currentUser?.id}
+                  onClick={() => setImpersonateTarget(selectedUser)}
+                >
+                  Login As
+                </ProsohmButton>
+              ) : null}
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => setToggleTarget(selectedUser)}
+              >
+                {selectedUser.is_active ? 'Deactivate' : 'Activate'}
+              </ProsohmButton>
+              {isAdmin ? (
+                <>
+                  <ProsohmButton
+                    buttonVariant="outlined"
+                    size="small"
+                    onClick={() => setArchiveTarget(selectedUser)}
+                  >
+                    Archive
+                  </ProsohmButton>
+                  <ProsohmButton
+                    buttonVariant="danger"
+                    size="small"
+                    onClick={() => setDeleteTarget(selectedUser)}
+                  >
+                    Delete
+                  </ProsohmButton>
+                </>
+              ) : null}
+            </DrawerQuickActions>
+          ) : null
         }
       >
-        {viewUser ? (
+        {selectedUser ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <FormSection title="Contact Details" icon={ContactMailOutlinedIcon}>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField label="First Name" value={viewUser.first_name} slotProps={{ input: { readOnly: true } }} />
+                <FormField
+                  label="First Name"
+                  value={selectedUser.first_name}
+                  slotProps={{ input: { readOnly: true } }}
+                />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField label="Last Name" value={viewUser.last_name} slotProps={{ input: { readOnly: true } }} />
+                <FormField
+                  label="Last Name"
+                  value={selectedUser.last_name}
+                  slotProps={{ input: { readOnly: true } }}
+                />
               </Grid>
               <Grid size={{ xs: 12 }}>
-                <FormField label="Email" value={viewUser.email} slotProps={{ input: { readOnly: true } }} />
+                <FormField
+                  label="Email"
+                  value={selectedUser.email}
+                  slotProps={{ input: { readOnly: true } }}
+                />
               </Grid>
             </FormSection>
             <FormSection title="Employment" icon={BadgeOutlinedIcon}>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormField
                   label="Role"
-                  value={formatCellValue(roleMap.get(viewUser.role_id))}
+                  value={formatCellValue(roleMap.get(selectedUser.role_id))}
                   slotProps={{ input: { readOnly: true } }}
                 />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormField
                   label="Status"
-                  value={viewUser.is_active ? 'Active' : 'Inactive'}
+                  value={selectedUser.is_active ? 'Active' : 'Inactive'}
                   slotProps={{ input: { readOnly: true } }}
                 />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormField
                   label="Team"
-                  value={viewUser.team_name ?? 'No Team'}
+                  value={selectedUser.team_name ?? 'No Team'}
                   slotProps={{ input: { readOnly: true } }}
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>
                 <FormField
                   label="Created Date"
-                  value={formatDate(viewUser.created_at)}
+                  value={formatDate(selectedUser.created_at)}
                   slotProps={{ input: { readOnly: true } }}
                 />
               </Grid>
             </FormSection>
           </Box>
         ) : null}
-      </ModernDrawer>
+      </RecordDetailDrawer>
 
       <ConfirmDialog
         open={Boolean(resetTarget)}

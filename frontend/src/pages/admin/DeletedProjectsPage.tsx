@@ -1,27 +1,24 @@
 import { useState } from 'react';
-import {
-  Box,
-  IconButton,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tooltip,
-} from '@mui/material';
-import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
-import RestoreIcon from '@mui/icons-material/Restore';
-import VisibilityIcon from '@mui/icons-material/Visibility';
+import { Grid, TableCell, TableRow } from '@mui/material';
+import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link as RouterLink } from 'react-router-dom';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { DeleteRecordDialog, type DeleteCheckResult } from '../../components/ui/design-system/DeleteRecordDialog';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PageContainer } from '../../components/common/PageContainer';
 import { TableSkeleton } from '../../components/common/TableSkeleton';
 import { ContentCard } from '../../components/ui/cards';
+import {
+  ClickableTableRow,
+  DrawerQuickActions,
+  FormField,
+  FormSection,
+  ProsohmTable,
+  RecordDetailDrawer,
+} from '../../components/ui/design-system';
+import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { QUERY_STALE_TIMES } from '../../config/queryConfig';
 import { useToast } from '../../context/ToastContext';
 import {
@@ -31,12 +28,14 @@ import {
   projectQueryKeys,
   restoreDeletedProject,
 } from '../../services/projectService';
+import type { Project } from '../../types';
 import { formatDate } from '../../utils/format';
 import { EXECUTION_STATUS_LABELS } from '../../types/common';
 
 export default function DeletedProjectsPage() {
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [permanentId, setPermanentId] = useState<string | null>(null);
   const [permanentCheck, setPermanentCheck] = useState<DeleteCheckResult | null>(null);
@@ -53,6 +52,7 @@ export default function DeletedProjectsPage() {
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
       showSuccess('Project restored');
       setRestoreId(null);
+      setSelectedProject(null);
     },
     onError: (error: Error) => showError(error.message),
   });
@@ -64,6 +64,7 @@ export default function DeletedProjectsPage() {
       showSuccess('Project permanently deleted');
       setPermanentId(null);
       setPermanentCheck(null);
+      setSelectedProject(null);
     },
     onError: (error: Error) => showError(error.message),
   });
@@ -89,7 +90,7 @@ export default function DeletedProjectsPage() {
   if (deletedQuery.error) return <ErrorState error={deletedQuery.error} />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Deleted Projects"
         subtitle="Admin-only recovery and permanent deletion for soft-deleted projects"
@@ -103,63 +104,89 @@ export default function DeletedProjectsPage() {
         <EmptyState title="No deleted projects" />
       ) : (
         <ContentCard noPadding>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Tool Number</TableCell>
-                  <TableCell>Code</TableCell>
-                  <TableCell>Deleted Date</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {deletedQuery.data.map((project) => (
-                  <TableRow key={project.id} hover>
-                    <TableCell>{project.tool_number}</TableCell>
-                    <TableCell>{project.code}</TableCell>
-                    <TableCell>
-                      {project.deleted_at ? formatDate(project.deleted_at) : '—'}
-                    </TableCell>
-                    <TableCell>
-                      {EXECUTION_STATUS_LABELS[project.execution_status]}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="View">
-                        <IconButton
-                          size="small"
-                          component={RouterLink}
-                          to={`/projects/${project.id}`}
-                        >
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Restore">
-                        <IconButton
-                          size="small"
-                          onClick={() => setRestoreId(project.id)}
-                        >
-                          <RestoreIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Permanent delete">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => openPermanentDelete(project.id, project.code)}
-                        >
-                          <DeleteForeverIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+          <ProsohmTable
+            head={
+              <TableRow>
+                <TableCell>Tool Number</TableCell>
+                <TableCell>Code</TableCell>
+                <TableCell>Deleted Date</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            }
+          >
+            {deletedQuery.data.map((project) => (
+              <ClickableTableRow
+                key={project.id}
+                selected={selectedProject?.id === project.id}
+                onClick={() => setSelectedProject(project)}
+              >
+                <TableCell>{project.tool_number}</TableCell>
+                <TableCell>{project.code}</TableCell>
+                <TableCell>
+                  {project.deleted_at ? formatDate(project.deleted_at) : '—'}
+                </TableCell>
+                <TableCell>
+                  {EXECUTION_STATUS_LABELS[project.execution_status]}
+                </TableCell>
+              </ClickableTableRow>
+            ))}
+          </ProsohmTable>
         </ContentCard>
       )}
+
+      <RecordDetailDrawer
+        open={Boolean(selectedProject)}
+        onClose={() => setSelectedProject(null)}
+        title={selectedProject?.tool_number ?? 'Deleted Project'}
+        subtitle={selectedProject?.part_description}
+        icon={FolderOutlinedIcon}
+        quickActions={
+          selectedProject ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => setRestoreId(selectedProject.id)}
+              >
+                Restore
+              </ProsohmButton>
+              <ProsohmButton
+                buttonVariant="danger"
+                size="small"
+                onClick={() => openPermanentDelete(selectedProject.id, selectedProject.code)}
+              >
+                Delete Permanently
+              </ProsohmButton>
+            </DrawerQuickActions>
+          ) : null
+        }
+      >
+        {selectedProject ? (
+          <FormSection title="Overview" icon={FolderOutlinedIcon}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Project Code"
+                value={selectedProject.code}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Deleted Date"
+                value={selectedProject.deleted_at ? formatDate(selectedProject.deleted_at) : '—'}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Status"
+                value={EXECUTION_STATUS_LABELS[selectedProject.execution_status]}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+          </FormSection>
+        ) : null}
+      </RecordDetailDrawer>
 
       <ConfirmDialog
         open={restoreId !== null}
@@ -188,6 +215,6 @@ export default function DeletedProjectsPage() {
         }}
         showDeactivate={false}
       />
-    </Box>
+    </PageContainer>
   );
 }

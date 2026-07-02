@@ -1,28 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  FormControlLabel,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
-  Switch,
-  TextField,
-  Tooltip,
-} from '@mui/material';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Box, Chip, FormControlLabel, Switch } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
+import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
+import { PageContainer } from '../../components/common/PageContainer';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -30,8 +12,24 @@ import { getErrorMessage } from '../../api/client';
 import { streamsApi, taskTypesApi } from '../../api/resources';
 import type { Stream, TaskType } from '../../types';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
+import { ContentCard } from '../../components/ui/cards';
+import { ProsohmButton } from '../../components/ui/ProsohmButton';
+import {
+  DrawerQuickActions,
+  FormDrawer,
+  FormField,
+  FormSection,
+  FormSelect,
+  ProsohmDataGrid,
+  RecordDetailDrawer,
+  SearchToolbar,
+  TableRowActions,
+} from '../../components/ui/design-system';
 import { formatCellValue } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
+import { canDeleteRecords } from '../../utils/permissions';
+import { useAuth } from '../../context/AuthContext';
+import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 
 interface TaskTypeFormState {
   name: string;
@@ -50,6 +48,8 @@ const emptyForm: TaskTypeFormState = {
 };
 
 export default function TaskTypesPage() {
+  const { user } = useAuth();
+  const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [streams, setStreams] = useState<Stream[]>([]);
@@ -57,7 +57,7 @@ export default function TaskTypesPage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
-  const [viewTaskType, setViewTaskType] = useState<TaskType | null>(null);
+  const [selectedTaskType, setSelectedTaskType] = useState<TaskType | null>(null);
   const [editingTaskType, setEditingTaskType] = useState<TaskType | null>(null);
   const [form, setForm] = useState<TaskTypeFormState>(emptyForm);
 
@@ -121,7 +121,8 @@ export default function TaskTypesPage() {
     setFormOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (event?: FormEvent) => {
+    event?.preventDefault();
     const validationError = validateRequiredFields(form, [
       { key: 'name', label: 'Name' },
       { key: 'stream_id', label: 'Stream' },
@@ -203,34 +204,29 @@ export default function TaskTypesPage() {
     },
     {
       field: 'actions',
-      headerName: 'Actions',
-      width: 130,
+      headerName: '',
+      width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="View">
-            <IconButton size="small" onClick={() => setViewTaskType(params.row)}>
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => openEdit(params.row)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <AdminDeleteButton
-            resource="task-types"
-            recordId={params.row.id}
-            recordName={params.row.name}
-            onDeleted={() => void loadData()}
-            onDeactivate={async () => {
-              await taskTypesApi.update(params.row.id, { is_active: false });
-              showSuccess('Task type deactivated.');
-              await loadData();
-            }}
-          />
-        </Box>
+        <TableRowActions
+          onEdit={() => openEdit(params.row)}
+          deleteAction={
+            isAdmin ? (
+              <AdminDeleteButton
+                resource="task-types"
+                recordId={params.row.id}
+                recordName={params.row.name}
+                onDeleted={() => void loadData()}
+                onDeactivate={async () => {
+                  await taskTypesApi.update(params.row.id, { is_active: false });
+                  showSuccess('Task type deactivated.');
+                  await loadData();
+                }}
+              />
+            ) : undefined
+          }
+        />
       ),
     },
   ];
@@ -238,161 +234,184 @@ export default function TaskTypesPage() {
   if (loading) return <LoadingState message="Loading task types…" />;
 
   return (
-    <Box>
+    <PageContainer>
       <PageHeader
         title="Task Types"
         subtitle="Manage billable task types by stream"
         action={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Create Task Type
-          </Button>
+          </ProsohmButton>
         }
       />
 
-      <Card sx={{ p: 2, mb: 2 }}>
-        <TextField
+      <SearchToolbar>
+        <FormField
           label="Search by name, stream, or description"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 280, width: '100%', maxWidth: 480 }}
+          sx={{ minWidth: 280, flex: 1, maxWidth: 480 }}
         />
-      </Card>
+      </SearchToolbar>
 
-      <Card sx={{ p: 1 }}>
-        <DataGrid
+      <ContentCard noPadding>
+        <ProsohmDataGrid
           rows={filteredTaskTypes}
           columns={columns}
           autoHeight
-          disableRowSelectionOnClick
           pageSizeOptions={[10, 25, 50]}
           initialState={{
             pagination: { paginationModel: { pageSize: 10 } },
           }}
-          sx={{ border: 0 }}
+          onRowOpen={(rowId) => {
+            const taskType = filteredTaskTypes.find((item) => item.id === rowId);
+            if (taskType) setSelectedTaskType(taskType);
+          }}
         />
-      </Card>
+      </ContentCard>
 
-      <Dialog
+      <FormDrawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        maxWidth="sm"
-        fullWidth
+        title={editingTaskType ? 'Edit Task Type' : 'Create Task Type'}
+        subtitle="Billable task type configuration"
+        icon={AssignmentOutlinedIcon}
+        formId="task-type-form"
+        submitLabel={editingTaskType ? 'Save Changes' : 'Create Task Type'}
+        loading={saving}
       >
-        <DialogTitle>{editingTaskType ? 'Edit Task Type' : 'Create Task Type'}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          <TextField
-            label="Name"
-            value={form.name}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, name: event.target.value }))
-            }
-            required
-            fullWidth
-          />
-          <FormControl fullWidth required>
-            <InputLabel>Stream</InputLabel>
-            <Select
-              label="Stream"
-              value={form.stream_id}
+        <Box
+          component="form"
+          id="task-type-form"
+          onSubmit={(event) => void handleSave(event)}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+        >
+          <FormSection title="Task Type Details" icon={AssignmentOutlinedIcon}>
+            <FormField
+              label="Name"
+              required
+              value={form.name}
               onChange={(event) =>
-                setForm((current) => ({ ...current, stream_id: event.target.value }))
+                setForm((current) => ({ ...current, name: event.target.value }))
               }
-            >
-              {streams.map((stream) => (
-                <MenuItem key={stream.id} value={stream.id}>
-                  {stream.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            label="Description"
-            value={form.description}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, description: event.target.value }))
-            }
-            multiline
-            minRows={3}
-            fullWidth
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.is_billable}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, is_billable: event.target.checked }))
-                }
-              />
-            }
-            label="Billable"
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.is_active}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, is_active: event.target.checked }))
-                }
-              />
-            }
-            label="Active"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFormOpen(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
-            {editingTaskType ? 'Save' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            />
+            <FormSelect
+              label="Stream"
+              required
+              value={form.stream_id}
+              options={streams.map((stream) => ({ value: stream.id, label: stream.name }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, stream_id: String(event.target.value) }))
+              }
+            />
+            <FormField
+              label="Description"
+              value={form.description}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, description: event.target.value }))
+              }
+              multiline
+              minRows={3}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.is_billable}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, is_billable: event.target.checked }))
+                  }
+                />
+              }
+              label="Billable"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.is_active}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, is_active: event.target.checked }))
+                  }
+                />
+              }
+              label="Active"
+            />
+          </FormSection>
+        </Box>
+      </FormDrawer>
 
-      <Dialog
-        open={Boolean(viewTaskType)}
-        onClose={() => setViewTaskType(null)}
-        maxWidth="sm"
-        fullWidth
+      <RecordDetailDrawer
+        open={Boolean(selectedTaskType)}
+        onClose={() => setSelectedTaskType(null)}
+        title={selectedTaskType?.name ?? 'Task Type'}
+        subtitle="Billable task type"
+        icon={AssignmentOutlinedIcon}
+        status={
+          selectedTaskType ? (
+            <Chip
+              label={selectedTaskType.is_active ? 'Active' : 'Inactive'}
+              size="small"
+              color={selectedTaskType.is_active ? 'success' : 'default'}
+            />
+          ) : null
+        }
+        quickActions={
+          selectedTaskType ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => {
+                  openEdit(selectedTaskType);
+                  setSelectedTaskType(null);
+                }}
+              >
+                Edit
+              </ProsohmButton>
+              {isAdmin ? (
+                <AdminDeleteButton
+                  mode="button"
+                  resource="task-types"
+                  recordId={selectedTaskType.id}
+                  recordName={selectedTaskType.name}
+                  onDeleted={() => {
+                    setSelectedTaskType(null);
+                    void loadData();
+                  }}
+                  onDeactivate={async () => {
+                    await taskTypesApi.update(selectedTaskType.id, { is_active: false });
+                    showSuccess('Task type deactivated.');
+                    setSelectedTaskType(null);
+                    await loadData();
+                  }}
+                />
+              ) : null}
+            </DrawerQuickActions>
+          ) : null
+        }
       >
-        <DialogTitle>Task Type Details</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {viewTaskType && (
-            <>
-              <TextField label="Name" value={viewTaskType.name} slotProps={{ input: { readOnly: true } }} fullWidth />
-              <TextField
-                label="Stream"
-                value={formatCellValue(streamMap.get(viewTaskType.stream_id))}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-              <TextField
-                label="Billable"
-                value={viewTaskType.is_billable ? 'Yes' : 'No'}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-              <TextField
-                label="Description"
-                value={formatCellValue(viewTaskType.description)}
-                slotProps={{ input: { readOnly: true } }}
-                multiline
-                minRows={2}
-                fullWidth
-              />
-              <TextField
-                label="Status"
-                value={viewTaskType.is_active ? 'Active' : 'Inactive'}
-                slotProps={{ input: { readOnly: true } }}
-                fullWidth
-              />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewTaskType(null)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-    </Box>
+        {selectedTaskType ? (
+          <FormSection title="Overview" icon={AssignmentOutlinedIcon}>
+            <FormField label="Name" value={selectedTaskType.name} slotProps={{ input: { readOnly: true } }} />
+            <FormField
+              label="Stream"
+              value={formatCellValue(streamMap.get(selectedTaskType.stream_id)) || '—'}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Billable"
+              value={selectedTaskType.is_billable ? 'Yes' : 'No'}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Description"
+              value={formatCellValue(selectedTaskType.description) || '—'}
+              multiline
+              minRows={2}
+              slotProps={{ input: { readOnly: true } }}
+            />
+          </FormSection>
+        ) : null}
+      </RecordDetailDrawer>
+    </PageContainer>
   );
 }

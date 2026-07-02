@@ -1,6 +1,7 @@
 import { IconButton, Tooltip } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { DeleteRecordDialog } from '../ui/design-system/DeleteRecordDialog';
+import { ProsohmButton } from '../ui/ProsohmButton';
 import { useAuth } from '../../context/AuthContext';
 import { useAdminPermanentDelete } from '../../hooks/useAdminPermanentDelete';
 import { canDeleteRecords } from '../../utils/permissions';
@@ -13,6 +14,8 @@ interface AdminDeleteButtonProps {
   onDeactivate?: () => void | Promise<void>;
   onArchive?: () => void | Promise<void>;
   showArchive?: boolean;
+  mode?: 'icon' | 'button';
+  onClick?: (event: React.MouseEvent) => void;
 }
 
 export function AdminDeleteButton({
@@ -23,6 +26,8 @@ export function AdminDeleteButton({
   onDeactivate,
   onArchive,
   showArchive = false,
+  mode = 'icon',
+  onClick,
 }: AdminDeleteButtonProps) {
   const { user } = useAuth();
   const isAdmin = canDeleteRecords(user?.role_name ?? '');
@@ -33,17 +38,24 @@ export function AdminDeleteButton({
 
   if (!isAdmin) return null;
 
+  const handleOpen = (event: React.MouseEvent) => {
+    onClick?.(event);
+    void openDelete(recordId, recordName);
+  };
+
   return (
     <>
-      <Tooltip title="Delete permanently">
-        <IconButton
-          size="small"
-          color="error"
-          onClick={() => void openDelete(recordId, recordName)}
-        >
-          <DeleteIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
+      {mode === 'button' ? (
+        <ProsohmButton buttonVariant="danger" size="small" onClick={handleOpen}>
+          Delete
+        </ProsohmButton>
+      ) : (
+        <Tooltip title="Delete permanently">
+          <IconButton size="small" color="error" onClick={handleOpen}>
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
       <DeleteRecordDialog
         open={isOpen}
         check={check}

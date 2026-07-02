@@ -4,20 +4,14 @@ import {
   Chip,
   FormControlLabel,
   Grid,
-  IconButton,
   Link,
   Switch,
-  Tooltip,
-  Typography,
-  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import VisibilityIcon from '@mui/icons-material/Visibility';
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined';
 import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
 import BarChartOutlinedIcon from '@mui/icons-material/BarChartOutlined';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import type { GridColDef } from '@mui/x-data-grid';
 import { Link as RouterLink } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
@@ -34,17 +28,22 @@ import type { Team } from '../../types/Team';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
+  DrawerQuickActions,
   FormDrawer,
   FormField,
   FormSection,
   FormSelect,
-  ModernDrawer,
+  ProsohmDataGrid,
+  RecordDetailDrawer,
   SearchToolbar,
+  TableRowActions,
 } from '../../components/ui/design-system';
-import { prosohmDataGridSx } from '../../theme/componentStyles';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { formatCellValue, formatDateTime } from '../../utils/format';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
+import { canDeleteRecords } from '../../utils/permissions';
+import { useAuth } from '../../context/AuthContext';
+import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 
 interface CustomerFormState {
   name: string;
@@ -75,8 +74,8 @@ const emptyForm: CustomerFormState = {
 };
 
 export default function CustomersPage() {
-  const theme = useTheme();
-  const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
+  const { user } = useAuth();
+  const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -87,7 +86,7 @@ export default function CustomersPage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
-  const [viewCustomer, setViewCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [form, setForm] = useState<CustomerFormState>(emptyForm);
 
@@ -236,6 +235,7 @@ export default function CustomersPage() {
             component={RouterLink}
             to={`/admin/contacts?customer_id=${params.row.id}`}
             underline="hover"
+            onClick={(event) => event.stopPropagation()}
           >
             {count}
           </Link>
@@ -250,34 +250,29 @@ export default function CustomersPage() {
     },
     {
       field: 'actions',
-      headerName: 'Actions',
-      width: 130,
+      headerName: '',
+      width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="View">
-            <IconButton size="small" onClick={() => setViewCustomer(params.row)}>
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={() => openEdit(params.row)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <AdminDeleteButton
-            resource="customers"
-            recordId={params.row.id}
-            recordName={params.row.name}
-            onDeleted={() => void loadData()}
-            onDeactivate={async () => {
-              await customersApi.update(params.row.id, { is_active: false });
-              showSuccess('Customer deactivated.');
-              await loadData();
-            }}
-          />
-        </Box>
+        <TableRowActions
+          onEdit={() => openEdit(params.row)}
+          deleteAction={
+            isAdmin ? (
+              <AdminDeleteButton
+                resource="customers"
+                recordId={params.row.id}
+                recordName={params.row.name}
+                onDeleted={() => void loadData()}
+                onDeactivate={async () => {
+                  await customersApi.update(params.row.id, { is_active: false });
+                  showSuccess('Customer deactivated.');
+                  await loadData();
+                }}
+              />
+            ) : undefined
+          }
+        />
       ),
     },
   ];
@@ -306,16 +301,18 @@ export default function CustomersPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <DataGrid
+        <ProsohmDataGrid
           rows={filteredCustomers}
           columns={columns}
           autoHeight
-          disableRowSelectionOnClick
           pageSizeOptions={[10, 25, 50]}
           initialState={{
             pagination: { paginationModel: { pageSize: 10 } },
           }}
-          sx={gridSx}
+          onRowOpen={(rowId) => {
+            const customer = filteredCustomers.find((item) => item.id === rowId);
+            if (customer) setSelectedCustomer(customer);
+          }}
         />
       </ContentCard>
 
@@ -508,77 +505,95 @@ export default function CustomersPage() {
         </Box>
       </FormDrawer>
 
-      <ModernDrawer
-        open={Boolean(viewCustomer)}
-        onClose={() => setViewCustomer(null)}
-        title="Customer Profile"
-        subtitle={viewCustomer?.name}
+      <RecordDetailDrawer
+        open={Boolean(selectedCustomer)}
+        onClose={() => setSelectedCustomer(null)}
+        title={selectedCustomer?.name ?? 'Customer'}
+        subtitle="Customer profile"
         icon={BusinessOutlinedIcon}
         width={560}
-        footer={
-          <ProsohmButton buttonVariant="outlined" onClick={() => setViewCustomer(null)}>
-            Close
-          </ProsohmButton>
+        status={
+          selectedCustomer ? (
+            <Chip
+              label={selectedCustomer.is_active ? 'Active' : 'Inactive'}
+              size="small"
+              color={selectedCustomer.is_active ? 'success' : 'default'}
+            />
+          ) : null
+        }
+        quickActions={
+          selectedCustomer ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => {
+                  openEdit(selectedCustomer);
+                  setSelectedCustomer(null);
+                }}
+              >
+                Edit
+              </ProsohmButton>
+              {isAdmin ? (
+                <AdminDeleteButton
+                  mode="button"
+                  resource="customers"
+                  recordId={selectedCustomer.id}
+                  recordName={selectedCustomer.name}
+                  onDeleted={() => {
+                    setSelectedCustomer(null);
+                    void loadData();
+                  }}
+                  onDeactivate={async () => {
+                    await customersApi.update(selectedCustomer.id, { is_active: false });
+                    showSuccess('Customer deactivated.');
+                    setSelectedCustomer(null);
+                    await loadData();
+                  }}
+                />
+              ) : null}
+            </DrawerQuickActions>
+          ) : null
         }
       >
-        {viewCustomer ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <FormSection title="General Information" icon={BusinessOutlinedIcon}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField label="Name" value={viewCustomer.name} slotProps={{ input: { readOnly: true } }} />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField
-                  label="Code"
-                  value={formatCellValue(viewCustomer.code)}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <FormField
-                  label="Status"
-                  value={viewCustomer.is_active ? 'Active' : 'Inactive'}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
+        {selectedCustomer ? (
+          <>
+            <FormSection title="Overview" icon={BusinessOutlinedIcon}>
+              <FormField label="Name" value={selectedCustomer.name} slotProps={{ input: { readOnly: true } }} />
+              <FormField
+                label="Code"
+                value={formatCellValue(selectedCustomer.code) || '—'}
+                slotProps={{ input: { readOnly: true } }}
+              />
             </FormSection>
 
             <FormSection title="Contacts" icon={BusinessOutlinedIcon}>
-              <Grid size={{ xs: 12 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Linked contacts for this customer
-                </Typography>
-                <Link
-                  component={RouterLink}
-                  to={`/admin/contacts?customer_id=${viewCustomer.id}`}
-                  underline="hover"
-                >
-                  View {contactCounts.get(viewCustomer.id) ?? 0} contact(s)
-                </Link>
-              </Grid>
+              <Link
+                component={RouterLink}
+                to={`/admin/contacts?customer_id=${selectedCustomer.id}`}
+                underline="hover"
+              >
+                View {contactCounts.get(selectedCustomer.id) ?? 0} contact(s)
+              </Link>
             </FormSection>
 
-            <FormSection title="Statistics" icon={BarChartOutlinedIcon}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormField
-                  label="Created Date"
-                  value={formatDateTime(viewCustomer.created_at)}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <FormField
-                  label="Notes"
-                  value={formatCellValue(viewCustomer.notes)}
-                  multiline
-                  rows={3}
-                  slotProps={{ input: { readOnly: true } }}
-                />
-              </Grid>
+            <FormSection title="Details" icon={BarChartOutlinedIcon}>
+              <FormField
+                label="Created Date"
+                value={formatDateTime(selectedCustomer.created_at) || '—'}
+                slotProps={{ input: { readOnly: true } }}
+              />
+              <FormField
+                label="Notes"
+                value={formatCellValue(selectedCustomer.notes) || '—'}
+                multiline
+                minRows={3}
+                slotProps={{ input: { readOnly: true } }}
+              />
             </FormSection>
-          </Box>
+          </>
         ) : null}
-      </ModernDrawer>
+      </RecordDetailDrawer>
     </PageContainer>
   );
 }

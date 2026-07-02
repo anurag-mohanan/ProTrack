@@ -19,32 +19,39 @@ function resolveDrawerWidth(
   if (customWidth !== undefined) {
     return typeof customWidth === 'number' ? `${customWidth}px` : customWidth;
   }
-  return preset === 'form' ? 'min(560px, 100vw)' : '38vw';
+  if (preset === 'form') {
+    return 'min(560px, 100vw)';
+  }
+  return '38vw';
 }
 
-interface ModernDrawerProps {
+interface RecordDetailDrawerProps {
   open: boolean;
   onClose: () => void;
   title: string;
   subtitle?: string;
   icon?: SvgIconComponent;
+  status?: ReactNode;
+  quickActions?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
   width?: number | string;
   widthPreset?: DrawerWidthPreset;
 }
 
-export function ModernDrawer({
+export function RecordDetailDrawer({
   open,
   onClose,
   title,
   subtitle,
   icon: Icon,
+  status,
+  quickActions,
   children,
   footer,
   width,
   widthPreset = 'detail',
-}: ModernDrawerProps) {
+}: RecordDetailDrawerProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
@@ -105,7 +112,7 @@ export function ModernDrawer({
           zIndex: 2,
         }}
       >
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', minWidth: 0 }}>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', minWidth: 0, flex: 1 }}>
           {Icon ? (
             <Box
               sx={{
@@ -122,10 +129,13 @@ export function ModernDrawer({
               <Icon fontSize="small" />
             </Box>
           ) : null}
-          <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-              {title}
-            </Typography>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+                {title}
+              </Typography>
+              {status}
+            </Box>
             {subtitle ? (
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 {subtitle}
@@ -137,6 +147,22 @@ export function ModernDrawer({
           <CloseIcon />
         </IconButton>
       </Box>
+
+      {quickActions ? (
+        <Box
+          sx={{
+            px: 3,
+            py: 1.5,
+            borderBottom: `1px solid ${theme.palette.prosohm.border}`,
+            bgcolor: 'background.paper',
+            display: 'flex',
+            gap: 1,
+            flexWrap: 'wrap',
+          }}
+        >
+          {quickActions}
+        </Box>
+      ) : null}
 
       <Box
         sx={{

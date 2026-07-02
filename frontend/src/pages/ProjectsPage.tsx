@@ -12,16 +12,17 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { fetchCustomers, fetchStreams, fetchTeams, fetchUsers } from '../api/lookups';
 import { fetchProjectTypes } from '../api/projectTemplates';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
+import { ProjectRecordDrawer } from '../components/projects/ProjectRecordDrawer';
 import {
   ProjectFiltersBar,
   type ProjectFilterValues,
 } from '../components/projects/ProjectFiltersBar';
-import { ProjectTable } from '../components/projects/ProjectTable';
+import { ProjectTable, type ProjectTableRow } from '../components/projects/ProjectTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PageHeader } from '../components/common/PageHeader';
@@ -63,7 +64,6 @@ const defaultFilters: ProjectFilterValues = {
 };
 
 export function ProjectsPage() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
@@ -72,6 +72,8 @@ export function ProjectsPage() {
   const [filterValues, setFilterValues] = useState<ProjectFilterValues>(defaultFilters);
   const [groupByTeam, setGroupByTeam] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editProject, setEditProject] = useState<ProjectTableRow | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectTableRow | null>(null);
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
 
@@ -399,6 +401,8 @@ export function ProjectsPage() {
             users={usersQuery.data ?? []}
             streams={streamsQuery.data ?? []}
             teams={teamsQuery.data ?? []}
+            onRowOpen={setSelectedProject}
+            onEdit={setEditProject}
             onArchive={
               showArchiveActions ? (projectId) => setArchiveId(projectId) : undefined
             }
@@ -412,7 +416,33 @@ export function ProjectsPage() {
       <ProjectFormDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(projectId) => navigate(`/projects/${projectId}`)}
+        onCreated={() => {
+          setCreateOpen(false);
+          void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+        }}
+      />
+
+      <ProjectFormDialog
+        open={Boolean(editProject)}
+        onClose={() => setEditProject(null)}
+        project={editProject ?? undefined}
+        onUpdated={() => {
+          setEditProject(null);
+          setSelectedProject(null);
+          void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+        }}
+      />
+
+      <ProjectRecordDrawer
+        project={selectedProject}
+        open={Boolean(selectedProject)}
+        onClose={() => setSelectedProject(null)}
+        onEdit={(project) => {
+          setEditProject(project);
+          setSelectedProject(null);
+        }}
+        onArchive={(projectId) => setArchiveId(projectId)}
+        canArchive={showArchiveActions}
       />
 
       <ConfirmDialog

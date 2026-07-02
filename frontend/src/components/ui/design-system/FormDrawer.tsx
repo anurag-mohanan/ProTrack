@@ -42,6 +42,7 @@ export function FormDrawer({
       subtitle={subtitle}
       icon={icon}
       width={width}
+      widthPreset="form"
       footer={
         <>
           {destructiveAction}

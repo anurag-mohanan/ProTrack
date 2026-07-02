@@ -1,14 +1,12 @@
 import { memo, useMemo } from 'react';
-import { Box, IconButton, useTheme } from '@mui/material';
-import ArchiveIcon from '@mui/icons-material/Archive';
+import { Box, IconButton, Tooltip } from '@mui/material';
 import RestoreIcon from '@mui/icons-material/Restore';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
-import { useNavigate } from 'react-router-dom';
+import type { GridColDef } from '@mui/x-data-grid';
 import type { Customer, Project, Stream, Team, User } from '../../types';
-import { prosohmDataGridSx } from '../../theme/componentStyles';
 import { ProjectStageChip, ExecutionStatusChip } from '../common/StatusChip';
-import { PriorityBadge } from '../ui/design-system';
+import { PriorityBadge, ProsohmDataGrid, TableRowActions } from '../ui/design-system';
 import { formatCellValue, formatDate, formatNumber, userDisplayName } from '../../utils/format';
+import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 
 export interface ProjectTableRow extends Project {
   customerName: string;
@@ -25,6 +23,8 @@ interface ProjectTableProps {
   users: User[];
   streams: Stream[];
   teams: Team[];
+  onRowOpen?: (row: ProjectTableRow) => void;
+  onEdit?: (row: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
   onRestore?: (projectId: string) => void;
 }
@@ -120,81 +120,74 @@ function ProjectTableComponent({
   users,
   streams,
   teams,
+  onRowOpen,
+  onEdit,
   onArchive,
   onRestore,
 }: ProjectTableProps) {
-  const navigate = useNavigate();
-  const theme = useTheme();
-  const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
-
-  const columns = useMemo(() => {
-    if (!onArchive && !onRestore) return PROJECT_TABLE_COLUMNS;
-
-    const actionColumn: GridColDef<ProjectTableRow> = {
-      field: 'actions',
-      headerName: 'Actions',
-      width: onArchive && onRestore ? 110 : 90,
-      sortable: false,
-      filterable: false,
-      renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          {onRestore ? (
-            <IconButton
-              size="small"
-              aria-label="Restore project"
-              onClick={(event) => {
-                event.stopPropagation();
-                onRestore(String(params.id));
-              }}
-            >
-              <RestoreIcon fontSize="small" />
-            </IconButton>
-          ) : null}
-          {onArchive ? (
-            <IconButton
-              size="small"
-              aria-label="Archive project"
-              onClick={(event) => {
-                event.stopPropagation();
-                onArchive(String(params.id));
-              }}
-            >
-              <ArchiveIcon fontSize="small" />
-            </IconButton>
-          ) : null}
-        </Box>
-      ),
-    };
-    return [...PROJECT_TABLE_COLUMNS, actionColumn];
-  }, [onArchive, onRestore]);
-
   const rows = useMemo(
     () => buildProjectTableRows(projects, customers, users, streams, teams),
     [projects, customers, users, streams, teams],
   );
 
-  const handleRowClick = useMemo(
-    () => (params: { id: string | number }) => navigate(`/projects/${params.id}`),
-    [navigate],
-  );
+  const rowMap = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
 
-  // MIT DataGrid caps pageSize at 100; use footer pagination when the list is larger.
+  const columns = useMemo(() => {
+    if (!onEdit && !onArchive && !onRestore) return PROJECT_TABLE_COLUMNS;
+
+    const actionColumn: GridColDef<ProjectTableRow> = {
+      field: 'actions',
+      headerName: '',
+      width: onArchive && onRestore ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
+          {onEdit ? (
+            <TableRowActions
+              onEdit={() => onEdit(params.row)}
+              onArchive={
+                onArchive && !onRestore
+                  ? () => onArchive(String(params.id))
+                  : undefined
+              }
+            />
+          ) : null}
+          {onRestore ? (
+            <Tooltip title="Restore">
+              <IconButton
+                size="small"
+                aria-label="Restore project"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRestore(String(params.id));
+                }}
+              >
+                <RestoreIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : null}
+        </Box>
+      ),
+    };
+    return [...PROJECT_TABLE_COLUMNS, actionColumn];
+  }, [onArchive, onEdit, onRestore]);
+
   const needsPagination = rows.length > 100;
 
   return (
-    <Box sx={{ width: '100%' }}>
-      <DataGrid
-        rows={rows}
-        columns={columns}
-        autoHeight
-        hideFooter={!needsPagination}
-        disableRowSelectionOnClick
-        paginationModel={{ pageSize: 100, page: 0 }}
-        pageSizeOptions={[25, 50, 100]}
-        onRowClick={handleRowClick}
-        sx={gridSx}
-      />
-    </Box>
+    <ProsohmDataGrid
+      rows={rows}
+      columns={columns}
+      autoHeight
+      hideFooter={!needsPagination}
+      paginationModel={{ pageSize: 100, page: 0 }}
+      pageSizeOptions={[25, 50, 100]}
+      onRowOpen={(rowId) => {
+        const row = rowMap.get(rowId);
+        if (row) onRowOpen?.(row);
+      }}
+    />
   );
 }
 

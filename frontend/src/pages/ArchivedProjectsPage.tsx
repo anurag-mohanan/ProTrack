@@ -1,19 +1,7 @@
 import { useMemo, useState } from 'react';
-import {
-  IconButton,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tooltip,
-} from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
-import RestoreIcon from '@mui/icons-material/Restore';
-import VisibilityIcon from '@mui/icons-material/Visibility';
+import { Grid, TableCell, TableRow } from '@mui/material';
+import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link as RouterLink } from 'react-router-dom';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -21,6 +9,15 @@ import { PageHeader } from '../components/common/PageHeader';
 import { PageContainer } from '../components/common/PageContainer';
 import { TableSkeleton } from '../components/common/TableSkeleton';
 import { ContentCard } from '../components/ui/cards';
+import {
+  ClickableTableRow,
+  DrawerQuickActions,
+  FormField,
+  FormSection,
+  ProsohmTable,
+  RecordDetailDrawer,
+} from '../components/ui/design-system';
+import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -30,6 +27,7 @@ import {
   restoreProject,
   softDeleteProject,
 } from '../services/projectService';
+import type { ArchivedProjectListItem } from '../types';
 import { canSoftDeleteProject } from '../utils/permissions';
 import { formatCellValue, formatDate } from '../utils/format';
 
@@ -37,6 +35,7 @@ export function ArchivedProjectsPage() {
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
   const { user } = useAuth();
+  const [selectedProject, setSelectedProject] = useState<ArchivedProjectListItem | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -52,6 +51,7 @@ export function ArchivedProjectsPage() {
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
       showSuccess('Project restored to active list');
       setRestoreId(null);
+      setSelectedProject(null);
     },
     onError: (error: Error) => showError(error.message),
   });
@@ -62,6 +62,7 @@ export function ArchivedProjectsPage() {
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
       showSuccess('Project moved to Deleted Projects');
       setDeleteId(null);
+      setSelectedProject(null);
     },
     onError: (error: Error) => showError(error.message),
   });
@@ -86,69 +87,109 @@ export function ArchivedProjectsPage() {
         <EmptyState title="No archived projects" />
       ) : (
         <ContentCard noPadding>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Tool Number</TableCell>
-                  <TableCell>Customer</TableCell>
-                  <TableCell>Project Type</TableCell>
-                  <TableCell>Completed Date</TableCell>
-                  <TableCell>Archived Date</TableCell>
-                  <TableCell>Design Leader</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((project) => (
-                  <TableRow key={project.id} hover>
-                    <TableCell>{project.tool_number}</TableCell>
-                    <TableCell>{project.customer_name}</TableCell>
-                    <TableCell>{formatCellValue(project.project_type_name)}</TableCell>
-                    <TableCell>
-                      {project.completed_at ? formatDate(project.completed_at) : '—'}
-                    </TableCell>
-                    <TableCell>
-                      {project.archived_at ? formatDate(project.archived_at) : '—'}
-                    </TableCell>
-                    <TableCell>{project.design_leader_name}</TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="View">
-                        <IconButton
-                          size="small"
-                          component={RouterLink}
-                          to={`/projects/${project.id}`}
-                        >
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Restore">
-                        <IconButton
-                          size="small"
-                          onClick={() => setRestoreId(project.id)}
-                        >
-                          <RestoreIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      {canDelete ? (
-                        <Tooltip title="Delete">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => setDeleteId(project.id)}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+          <ProsohmTable
+            head={
+              <TableRow>
+                <TableCell>Tool Number</TableCell>
+                <TableCell>Customer</TableCell>
+                <TableCell>Project Type</TableCell>
+                <TableCell>Completed Date</TableCell>
+                <TableCell>Archived Date</TableCell>
+                <TableCell>Design Leader</TableCell>
+              </TableRow>
+            }
+          >
+            {rows.map((project) => (
+              <ClickableTableRow
+                key={project.id}
+                selected={selectedProject?.id === project.id}
+                onClick={() => setSelectedProject(project)}
+              >
+                <TableCell>{project.tool_number}</TableCell>
+                <TableCell>{project.customer_name}</TableCell>
+                <TableCell>{formatCellValue(project.project_type_name) || '—'}</TableCell>
+                <TableCell>
+                  {project.completed_at ? formatDate(project.completed_at) : '—'}
+                </TableCell>
+                <TableCell>
+                  {project.archived_at ? formatDate(project.archived_at) : '—'}
+                </TableCell>
+                <TableCell>{project.design_leader_name}</TableCell>
+              </ClickableTableRow>
+            ))}
+          </ProsohmTable>
         </ContentCard>
       )}
+
+      <RecordDetailDrawer
+        open={Boolean(selectedProject)}
+        onClose={() => setSelectedProject(null)}
+        title={selectedProject?.tool_number ?? 'Archived Project'}
+        subtitle={selectedProject?.part_description}
+        icon={FolderOutlinedIcon}
+        quickActions={
+          selectedProject ? (
+            <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => setRestoreId(selectedProject.id)}
+              >
+                Restore
+              </ProsohmButton>
+              {canDelete ? (
+                <ProsohmButton
+                  buttonVariant="danger"
+                  size="small"
+                  onClick={() => setDeleteId(selectedProject.id)}
+                >
+                  Delete
+                </ProsohmButton>
+              ) : null}
+            </DrawerQuickActions>
+          ) : null
+        }
+      >
+        {selectedProject ? (
+          <FormSection title="Overview" icon={FolderOutlinedIcon}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Customer"
+                value={selectedProject.customer_name}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Project Type"
+                value={formatCellValue(selectedProject.project_type_name) || '—'}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Completed Date"
+                value={selectedProject.completed_at ? formatDate(selectedProject.completed_at) : '—'}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Archived Date"
+                value={selectedProject.archived_at ? formatDate(selectedProject.archived_at) : '—'}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Design Leader"
+                value={selectedProject.design_leader_name}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+          </FormSection>
+        ) : null}
+      </RecordDetailDrawer>
 
       <ConfirmDialog
         open={restoreId !== null}

@@ -40,7 +40,7 @@ function CompactKpiCard({ title, value, subtitle, icon: Icon, onClick, accent }:
     <Card
       onClick={onClick}
       sx={{
-        height: 72,
+        height: 64,
         cursor: onClick ? 'pointer' : 'default',
         borderRadius: 2.5,
         boxShadow: (theme) => theme.palette.prosohm.shadowCard,
@@ -116,7 +116,7 @@ export function ProjectKpiBar({ summary, loading, onFilter }: ProjectKpiBarProps
       onClick: () => onFilter('due_week'),
     },
     {
-      title: 'Overdue Projects',
+      title: 'Overdue',
       value: unavailable ? '—' : formatNumber(summary!.overdue_projects ?? 0, 0),
       subtitle: 'Past due',
       icon: WarningAmberIcon,
@@ -132,13 +132,13 @@ export function ProjectKpiBar({ summary, loading, onFilter }: ProjectKpiBarProps
       onClick: () => onFilter('completed_month'),
     },
     {
-      title: 'Total Quoted Hours',
+      title: 'Quoted Hours',
       value: unavailable ? '—' : formatNumber(summary!.total_quoted_hours_active ?? 0, 1),
       subtitle: 'Active projects',
       icon: ScheduleIcon,
     },
     {
-      title: 'Total Actual Hours',
+      title: 'Actual Hours',
       value: unavailable ? '—' : formatNumber(summary!.total_actual_hours_productive ?? 0, 1),
       subtitle: 'Approved hours',
       icon: TimerIcon,

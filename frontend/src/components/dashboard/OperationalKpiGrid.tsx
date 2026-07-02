@@ -5,9 +5,6 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import TimerIcon from '@mui/icons-material/Timer';
-import ArchiveIcon from '@mui/icons-material/Archive';
-import PendingActionsIcon from '@mui/icons-material/PendingActions';
-import UploadFileIcon from '@mui/icons-material/UploadFile';
 import type { NavigateFunction } from 'react-router-dom';
 import type { DashboardSummary } from '../../types';
 import { formatNumber } from '../../utils/format';
@@ -18,25 +15,20 @@ const kpiGridSx = {
   gridTemplateColumns: {
     xs: '1fr',
     sm: 'repeat(2, 1fr)',
-    lg: 'repeat(4, 1fr)',
+    md: 'repeat(4, 1fr)',
   },
   gap: 2,
+  mb: 3,
 };
 
 interface BuildOperationalKpisOptions {
   summary: DashboardSummary | undefined;
   unavailable: boolean;
   navigate: NavigateFunction;
-  includeOperationalRow?: boolean;
 }
 
-export function buildOperationalKpis({
-  summary,
-  unavailable,
-  navigate,
-  includeOperationalRow = true,
-}: BuildOperationalKpisOptions) {
-  const rowOne = [
+export function buildOperationalKpis({ summary, unavailable, navigate }: BuildOperationalKpisOptions) {
+  return [
     {
       title: 'Active Projects',
       value: unavailable
@@ -70,9 +62,6 @@ export function buildOperationalKpis({
       statusColor: !unavailable && (summary!.overdue_projects ?? 0) > 0 ? ('error' as const) : undefined,
       onClick: () => navigate('/projects?due=overdue'),
     },
-  ];
-
-  const rowTwo = [
     {
       title: 'Completed This Month',
       value: unavailable ? '—' : formatNumber(summary!.completed_this_month ?? 0, 0),
@@ -95,73 +84,19 @@ export function buildOperationalKpis({
       icon: TimerIcon,
       onClick: () => navigate('/reports'),
     },
-    {
-      title: 'Archived Projects',
-      value: unavailable ? '—' : formatNumber(summary!.archived_projects ?? 0, 0),
-      subtitle: 'Archived portfolio',
-      icon: ArchiveIcon,
-      onClick: () => navigate('/projects?lifecycle=archived'),
-    },
   ];
-
-  const metrics = summary?.operational_metrics;
-  const rowThree = includeOperationalRow
-    ? [
-        {
-          title: 'Pending Timesheets',
-          value: unavailable ? '—' : formatNumber(metrics?.pending_timesheet_approvals ?? 0, 0),
-          subtitle: 'Awaiting approval',
-          icon: PendingActionsIcon,
-          onClick: () => navigate('/timesheets'),
-        },
-        {
-          title: 'Pending Project Approvals',
-          value: unavailable ? '—' : formatNumber(metrics?.pending_project_approvals ?? 0, 0),
-          subtitle: 'Projects on hold',
-          icon: PauseCircleIcon,
-          onClick: () => navigate('/projects?execution_status=on_hold'),
-        },
-        {
-          title: 'Pending Imports',
-          value: unavailable ? '—' : formatNumber(metrics?.pending_import_jobs ?? 0, 0),
-          subtitle: 'Import jobs in progress',
-          icon: UploadFileIcon,
-          onClick: () => navigate('/admin/imports/historical-timesheets'),
-        },
-      ]
-    : [];
-
-  return { rowOne, rowTwo, rowThree, kpiGridSx };
 }
 
 export function OperationalKpiGrid({
-  rowOne,
-  rowTwo,
-  rowThree,
+  cards,
 }: {
-  rowOne: Parameters<typeof ActionKpiCard>[0][];
-  rowTwo: Parameters<typeof ActionKpiCard>[0][];
-  rowThree: Parameters<typeof ActionKpiCard>[0][];
+  cards: Parameters<typeof ActionKpiCard>[0][];
 }) {
   return (
-    <>
-      <Box sx={{ ...kpiGridSx, mb: 2 }}>
-        {rowOne.map((card) => (
-          <ActionKpiCard key={card.title} {...card} />
-        ))}
-      </Box>
-      <Box sx={{ ...kpiGridSx, mb: rowThree.length ? 2 : 3 }}>
-        {rowTwo.map((card) => (
-          <ActionKpiCard key={card.title} {...card} />
-        ))}
-      </Box>
-      {rowThree.length ? (
-        <Box sx={{ ...kpiGridSx, mb: 3 }}>
-          {rowThree.map((card) => (
-            <ActionKpiCard key={card.title} {...card} />
-          ))}
-        </Box>
-      ) : null}
-    </>
+    <Box sx={kpiGridSx}>
+      {cards.map((card) => (
+        <ActionKpiCard key={card.title} {...card} />
+      ))}
+    </Box>
   );
 }

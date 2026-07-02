@@ -22,8 +22,8 @@ export function LoginPage() {
   const { company } = useCompany();
   const navigate = useNavigate();
   const companyName = company?.company_name ?? 'your organisation';
-  const [email, setEmail] = useState('admin@prosohm.com');
-  const [password, setPassword] = useState('Password@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -120,6 +120,9 @@ export function LoginPage() {
                 required
                 autoComplete="current-password"
               />
+              <Typography variant="caption" color="text.secondary">
+                First-time users may sign in with the temporary password Prosohm@2026, then set a new password.
+              </Typography>
               <ProsohmButton
                 type="submit"
                 buttonVariant="primary"

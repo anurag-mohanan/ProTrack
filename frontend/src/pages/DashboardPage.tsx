@@ -1,4 +1,4 @@
-import { Box, Typography } from '@mui/material';
+import { Box } from '@mui/material';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -12,15 +12,13 @@ import { DesignLeaderDashboardView } from '../components/dashboard/DesignLeaderD
 import { MyTasksWidget } from '../components/dashboard/MyTasksWidget';
 import { buildOperationalKpis, OperationalKpiGrid } from '../components/dashboard/OperationalKpiGrid';
 import { ProjectsAttentionTable } from '../components/dashboard/ProjectsAttentionTable';
+import { ResourcePlanningSummary } from '../components/dashboard/ResourcePlanningSummary';
 import { StaffDashboardView } from '../components/dashboard/StaffDashboardView';
-import { SystemNotificationsWidget } from '../components/dashboard/SystemNotificationsWidget';
-import { TeamSummaryWidget } from '../components/dashboard/TeamSummaryWidget';
 import { WidgetErrorBoundary } from '../components/dashboard/WidgetErrorBoundary';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../context/AuthContext';
 import {
   getDashboardRoleGroup,
-  isAdminRole,
   isReadOnlyRole,
 } from '../utils/permissions';
 
@@ -48,23 +46,17 @@ export function DashboardPage() {
   const unavailable = dashboardQuery.isError || !summary;
 
   const operationalKpis = useMemo(
-    () =>
-      buildOperationalKpis({
-        summary,
-        unavailable,
-        navigate,
-        includeOperationalRow: roleGroup === 'admin' || roleGroup === 'engineering_manager',
-      }),
-    [navigate, roleGroup, summary, unavailable],
+    () => buildOperationalKpis({ summary, unavailable, navigate }),
+    [navigate, summary, unavailable],
   );
 
   if (dashboardQuery.error) {
     return <ErrorState error={dashboardQuery.error} title="Unable to load dashboard" />;
   }
 
+  const showOperationalLayout = roleGroup === 'admin' || roleGroup === 'engineering_manager' || roleGroup === 'read_only';
   const showAttention = roleGroup !== 'staff';
-  const showTeamSummary = roleGroup === 'admin' || roleGroup === 'engineering_manager';
-  const showSystemNotifications = isAdminRole(roleName);
+  const showResourcePlanning = roleGroup === 'admin' || roleGroup === 'engineering_manager';
   const showMyTasks = roleGroup !== 'read_only';
 
   return (
@@ -84,24 +76,14 @@ export function DashboardPage() {
 
       <WidgetErrorBoundary title="KPI cards">
         {loading ? (
-          <DashboardKpiSkeleton count={roleGroup === 'staff' ? 4 : 8} />
+          <DashboardKpiSkeleton count={7} />
         ) : roleGroup === 'staff' ? (
           <StaffDashboardView summary={summary} unavailable={unavailable} navigate={navigate} />
         ) : roleGroup === 'design_leader' ? (
           <DesignLeaderDashboardView summary={summary} unavailable={unavailable} navigate={navigate} />
-        ) : roleGroup === 'read_only' ? (
-          <OperationalKpiGrid
-            rowOne={operationalKpis.rowOne.slice(0, 4)}
-            rowTwo={operationalKpis.rowTwo.slice(0, 2)}
-            rowThree={[]}
-          />
-        ) : (
-          <OperationalKpiGrid
-            rowOne={operationalKpis.rowOne}
-            rowTwo={operationalKpis.rowTwo}
-            rowThree={operationalKpis.rowThree}
-          />
-        )}
+        ) : showOperationalLayout ? (
+          <OperationalKpiGrid cards={operationalKpis} />
+        ) : null}
       </WidgetErrorBoundary>
 
       {showAttention ? (
@@ -116,7 +98,7 @@ export function DashboardPage() {
               }
             >
               {loading ? (
-                <DashboardPanelSkeleton height={260} />
+                <DashboardPanelSkeleton height={220} />
               ) : (
                 <ProjectsAttentionTable rows={summary?.attention_projects ?? []} />
               )}
@@ -125,64 +107,41 @@ export function DashboardPage() {
         </Box>
       ) : null}
 
-      {showTeamSummary ? (
+      {showResourcePlanning ? (
         <Box sx={{ mb: 3 }}>
-          <WidgetErrorBoundary title="team summary">
-            <DashboardSection title="Team Summary" subtitle="Projects, hours, and capacity by team">
+          <WidgetErrorBoundary title="resource planning summary">
+            <DashboardSection
+              title="Resource Planning Summary"
+              subtitle="Team capacity and utilization at a glance"
+            >
               {loading ? (
-                <DashboardPanelSkeleton height={220} />
+                <DashboardPanelSkeleton height={200} />
               ) : (
-                <TeamSummaryWidget rows={summary?.team_summary ?? []} />
+                <ResourcePlanningSummary rows={summary?.team_summary ?? []} />
               )}
             </DashboardSection>
           </WidgetErrorBoundary>
         </Box>
       ) : null}
 
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: showSystemNotifications && showMyTasks ? '1fr 1fr' : '1fr' },
-          gap: 2.5,
-        }}
-      >
-        {showSystemNotifications ? (
-          <WidgetErrorBoundary title="system notifications">
-            <DashboardSection title="System Notifications" subtitle="Recent user and import activity">
-              {loading ? (
-                <DashboardPanelSkeleton height={280} />
-              ) : (
-                <SystemNotificationsWidget activities={summary?.activity_feed ?? []} />
-              )}
-            </DashboardSection>
-          </WidgetErrorBoundary>
-        ) : null}
-
-        {showMyTasks ? (
+      {showMyTasks ? (
+        <Box sx={{ mb: 3 }}>
           <WidgetErrorBoundary title="my tasks">
             <DashboardSection
               title="My Tasks"
               subtitle={
                 roleGroup === 'staff'
                   ? 'Your milestones, reviews, and timesheets'
-                  : 'Milestones, reviews, and approvals assigned to you'
+                  : 'Approvals, reviews, and milestones assigned to you'
               }
             >
               {loading ? (
-                <DashboardPanelSkeleton height={280} />
+                <DashboardPanelSkeleton height={220} />
               ) : (
                 <MyTasksWidget tasks={summary?.my_tasks ?? EMPTY_TASKS} />
               )}
             </DashboardSection>
           </WidgetErrorBoundary>
-        ) : null}
-      </Box>
-
-      {roleGroup === 'staff' && !loading && summary?.my_tasks ? (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="body2" color="text.secondary">
-            Use quick actions above to submit timesheets, update milestones, or open your current project.
-          </Typography>
         </Box>
       ) : null}
     </PageContainer>

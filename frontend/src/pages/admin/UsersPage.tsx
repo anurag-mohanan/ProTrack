@@ -26,7 +26,9 @@ import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archive
 import { fetchDepartments } from '../../api/settings';
 import { fetchTeams } from '../../api/lookups';
 import { useAuth } from '../../context/AuthContext';
-import { ROLES } from '../../utils/permissions';
+import { UserAccessControlSection } from '../../components/admin/UserAccessControlSection';
+import type { ModuleKey, SpecialPermissionKey } from '../../config/accessControl';
+import { ROLES, defaultModulesForRole, defaultSpecialPermissionsForRole } from '../../utils/permissions';
 import type { Role, User } from '../../types';
 import type { Department } from '../../types/Settings';
 import type { Team } from '../../types/Team';
@@ -70,6 +72,8 @@ interface UserFormState {
   confirm_password: string;
   generate_temporary_password: boolean;
   is_active: boolean;
+  module_access: ModuleKey[];
+  special_permissions: SpecialPermissionKey[];
 }
 
 const emptyForm: UserFormState = {
@@ -94,6 +98,8 @@ const emptyForm: UserFormState = {
   confirm_password: '',
   generate_temporary_password: false,
   is_active: true,
+  module_access: [],
+  special_permissions: [],
 };
 
 export default function UsersPage() {
@@ -242,10 +248,14 @@ export default function UsersPage() {
   );
 
   const openCreate = () => {
+    const defaultRoleId = roles[0]?.id ?? '';
+    const defaultRoleName = roles[0]?.name ?? ROLES.DESIGNER;
     setEditingUser(null);
     setForm({
       ...emptyForm,
-      role_id: roles[0]?.id ?? '',
+      role_id: defaultRoleId,
+      module_access: defaultModulesForRole(defaultRoleName),
+      special_permissions: defaultSpecialPermissionsForRole(defaultRoleName),
     });
     setFormOpen(true);
   };
@@ -276,6 +286,8 @@ export default function UsersPage() {
       confirm_password: '',
       generate_temporary_password: false,
       is_active: user.is_active,
+      module_access: (user.resolved_modules ?? user.module_access ?? defaultModulesForRole(roleMap.get(user.role_id) ?? '')) as ModuleKey[],
+      special_permissions: (user.resolved_special_permissions ?? user.special_permissions ?? defaultSpecialPermissionsForRole(roleMap.get(user.role_id) ?? '')) as SpecialPermissionKey[],
     });
     setFormOpen(true);
   };
@@ -339,6 +351,8 @@ export default function UsersPage() {
           is_active: form.is_active,
           ...identityPayload,
           ...buildCapacityPayload(),
+          module_access: form.module_access,
+          special_permissions: form.special_permissions,
         });
         showSuccess('User updated successfully.');
       } else {
@@ -356,6 +370,8 @@ export default function UsersPage() {
           is_active: form.is_active,
           ...identityPayload,
           ...buildCapacityPayload(),
+          module_access: form.module_access,
+          special_permissions: form.special_permissions,
         } as Partial<User> & { password: string; must_change_password?: boolean });
         showSuccess(
           form.generate_temporary_password
@@ -749,12 +765,16 @@ export default function UsersPage() {
                 required
                 value={form.role_id}
                 options={roleOptions}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const nextRoleId = String(event.target.value);
+                  const nextRoleName = roleMap.get(nextRoleId) ?? ROLES.DESIGNER;
                   setForm((current) => ({
                     ...current,
-                    role_id: String(event.target.value),
-                  }))
-                }
+                    role_id: nextRoleId,
+                    module_access: defaultModulesForRole(nextRoleName),
+                    special_permissions: defaultSpecialPermissionsForRole(nextRoleName),
+                  }));
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -866,6 +886,16 @@ export default function UsersPage() {
               </>
             ) : null}
           </FormSection>
+
+          <UserAccessControlSection
+            roleName={roleMap.get(form.role_id) ?? ROLES.DESIGNER}
+            moduleAccess={form.module_access}
+            specialPermissions={form.special_permissions}
+            onModuleAccessChange={(module_access) => setForm((current) => ({ ...current, module_access }))}
+            onSpecialPermissionsChange={(special_permissions) =>
+              setForm((current) => ({ ...current, special_permissions }))
+            }
+          />
 
           {editingUser ? (
             <>

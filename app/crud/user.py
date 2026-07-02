@@ -1,9 +1,17 @@
 from typing import Any
 from uuid import UUID
+import json
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.access_control import (
+    parse_access_list,
+    resolve_user_modules,
+    resolve_user_special_permissions,
+    serialize_module_access,
+    serialize_special_permissions,
+)
 from app.core.permissions import get_role_name, project_assignment_filter
 from app.core.security import hash_password
 from app.crud.base import CRUDBase
@@ -33,6 +41,7 @@ def count_user_active_projects(db: Session, user: User) -> int:
 
 
 def build_user_read(db: Session, user: User) -> UserRead:
+    role_name = get_role_name(db, user)
     team_name = None
     if user.team_id is not None:
         team = db.get(Team, user.team_id)
@@ -52,13 +61,28 @@ def build_user_read(db: Session, user: User) -> UserRead:
             "department_name": department_name,
             "manager_name": manager_name,
             "active_projects_count": count_user_active_projects(db, user),
+            "module_access": parse_access_list(user.module_access),
+            "special_permissions": parse_access_list(user.special_permissions),
+            "resolved_modules": resolve_user_modules(user, role_name),
+            "resolved_special_permissions": resolve_user_special_permissions(user, role_name),
         }
     )
 
 
+def _apply_access_payload(data: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(data)
+    if "module_access" in payload:
+        payload["module_access"] = serialize_module_access(payload.pop("module_access"))
+    if "special_permissions" in payload:
+        payload["special_permissions"] = serialize_special_permissions(
+            payload.pop("special_permissions")
+        )
+    return payload
+
+
 class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
     def create(self, db: Session, *, obj_in: UserCreate) -> User:
-        data = obj_in.model_dump(exclude={"password"})
+        data = _apply_access_payload(obj_in.model_dump(exclude={"password"}))
         team_id = data.pop("team_id", None)
         db_obj = User(
             **data,
@@ -89,6 +113,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             update_data["must_change_password"] = True
         team_id_provided = "team_id" in update_data
         team_id = update_data.pop("team_id", None) if team_id_provided else None
+        update_data = _apply_access_payload(update_data)
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
         if team_id_provided:
             sync_user_team_membership(db, updated.id, team_id)

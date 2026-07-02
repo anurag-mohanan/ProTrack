@@ -1,4 +1,5 @@
 from datetime import date, datetime
+import json
 from decimal import Decimal
 from uuid import UUID
 
@@ -57,6 +58,8 @@ class UserBase(BaseModel):
 class UserCreate(BlankOptionalFieldsMixin, UserBase):
     password: str = Field(min_length=8, max_length=128)
     must_change_password: bool = True
+    module_access: list[str] | None = None
+    special_permissions: list[str] | None = None
 
 
 class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
@@ -78,6 +81,8 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     leaving_date: date | None = None
     availability_status: UserAvailabilityStatus | None = None
     max_allocation_percent: int | None = Field(default=None, ge=0, le=100)
+    module_access: list[str] | None = None
+    special_permissions: list[str] | None = None
 
 
 class ResetPasswordRequest(BaseModel):
@@ -115,6 +120,24 @@ class UserRead(UserBase, TimestampSchema):
     deleted_by_id: UUID | None = None
     is_locked: bool = False
     failed_login_count: int = 0
+    module_access: list[str] | None = None
+    special_permissions: list[str] | None = None
+    resolved_modules: list[str] = Field(default_factory=list)
+    resolved_special_permissions: list[str] = Field(default_factory=list)
+
+    @field_validator("module_access", "special_permissions", mode="before")
+    @classmethod
+    def parse_access_json(cls, value: object) -> list[str] | None:
+        if value is None or isinstance(value, list):
+            return value  # type: ignore[return-value]
+        if isinstance(value, str) and value.strip():
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return None
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed if isinstance(item, str)]
+        return None
 
     @computed_field
     @property

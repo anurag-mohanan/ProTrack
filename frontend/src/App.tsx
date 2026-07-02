@@ -25,14 +25,20 @@ import { AdminRoute } from './routes/AdminRoute';
 import { RoleRoute } from './routes/RoleRoute';
 import { ProtectedRoute, PublicRoute, RequirePasswordChangedRoute, ChangePasswordGate } from './routes/ProtectedRoute';
 import {
+  accessContextFromUser,
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
-  canViewArchivedProjects,
   canViewReports,
   canViewResourcePlanning,
   canViewWorkload,
   ROLES,
 } from './utils/permissions';
+import { ModuleRoute } from './routes/ModuleRoute';
+import {
+  MODULE_ARCHIVED_PROJECTS,
+  MODULE_PROJECTS,
+  MODULE_TIMESHEETS,
+} from './config/accessControl';
 
 const AdminCreatePage = lazy(() => import('./pages/admin/AdminCreatePage'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
@@ -83,7 +89,7 @@ function LazyAdmin({ children }: { children: ReactNode }) {
 
 function AdminHistoricalImportRoute() {
   const { user } = useAuth();
-  if (!canImportHistoricalProjects(user?.role_name ?? '')) {
+  if (!canImportHistoricalProjects(accessContextFromUser(user))) {
     return <Navigate to="/admin/dashboard" replace />;
   }
   return (
@@ -93,17 +99,9 @@ function AdminHistoricalImportRoute() {
   );
 }
 
-function ArchivedProjectsRoute() {
-  const { user } = useAuth();
-  if (!canViewArchivedProjects(user?.role_name ?? '')) {
-    return <Navigate to="/projects" replace />;
-  }
-  return <ArchivedProjectsPage />;
-}
-
 function AdminHistoricalTimesheetImportRoute() {
   const { user } = useAuth();
-  if (!canImportHistoricalTimesheets(user?.role_name ?? '')) {
+  if (!canImportHistoricalTimesheets(accessContextFromUser(user))) {
     return <Navigate to="/dashboard" replace />;
   }
   return (
@@ -115,7 +113,7 @@ function AdminHistoricalTimesheetImportRoute() {
 
 function AdminSystemRoute() {
   const { user } = useAuth();
-  if (user?.role_name !== ROLES.ADMIN) {
+  if (!accessContextFromUser(user).role_name || user?.role_name !== ROLES.ADMIN) {
     return <Navigate to="/admin/dashboard" replace />;
   }
   return (
@@ -148,11 +146,21 @@ export default function App() {
                   <Route element={<RequirePasswordChangedRoute />}>
                     <Route element={<MainLayout />}>
                     <Route path="/dashboard" element={<DashboardPage />} />
-                    <Route path="/projects" element={<ProjectsPage />} />
-                    <Route path="/projects/archived" element={<ArchivedProjectsRoute />} />
-                    <Route path="/projects/:id" element={<ProjectDetailPage />} />
-                    <Route path="/timesheets" element={<TimesheetsPage />} />
-                    <Route path="/timesheets/month" element={<TimesheetMonthPage />} />
+                    <Route element={<ModuleRoute module={MODULE_ARCHIVED_PROJECTS} redirectTo="/projects" />}>
+                      <Route path="/projects/archived" element={<ArchivedProjectsPage />} />
+                    </Route>
+                    <Route element={<ModuleRoute module={MODULE_PROJECTS} />}>
+                      <Route path="/projects" element={<ProjectsPage />} />
+                      <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                    </Route>
+                    <Route element={<ModuleRoute module={MODULE_TIMESHEETS} />}>
+                      <Route path="/timesheets" element={<TimesheetsPage />} />
+                      <Route path="/timesheets/month" element={<TimesheetMonthPage />} />
+                      <Route
+                        path="/timesheets/:timesheetId/entries/new"
+                        element={<TimesheetEntryPage />}
+                      />
+                    </Route>
                     <Route
                       path="/profile"
                       element={
@@ -160,10 +168,6 @@ export default function App() {
                           <UserProfilePage />
                         </Suspense>
                       }
-                    />
-                    <Route
-                      path="/timesheets/:timesheetId/entries/new"
-                      element={<TimesheetEntryPage />}
                     />
                     <Route element={<RoleRoute allowed={canViewReports} />}>
                       <Route path="/reports" element={<ReportsPage />} />

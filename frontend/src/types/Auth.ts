@@ -32,4 +32,9 @@ export interface CurrentUser {
   last_login?: string | null;
   impersonator_id?: string | null;
   impersonator_name?: string | null;
+  working_hours_per_day?: number;
+  module_access?: string[];
+  special_permissions?: string[];
+  resolved_modules?: string[];
+  resolved_special_permissions?: string[];
 }

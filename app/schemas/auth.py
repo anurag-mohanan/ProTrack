@@ -42,6 +42,8 @@ class CurrentUserRead(BaseModel):
     last_login: datetime | None = None
     impersonator_id: UUID | None = None
     impersonator_name: str | None = None
+    module_access: list[str] = Field(default_factory=list)
+    special_permissions: list[str] = Field(default_factory=list)
 
     @property
     def password_changed(self) -> bool:

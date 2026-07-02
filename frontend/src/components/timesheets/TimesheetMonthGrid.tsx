@@ -123,7 +123,20 @@ function TimesheetMonthGridComponent({
         const next = nextGridCell(rowIndex, columnIndex, rows.length);
         const key = `${next.row}-${GRID_COLUMNS[next.col]}`;
         cellRefs.current.get(key)?.focus();
+        return;
       }
+
+      let nextRow = rowIndex;
+      let nextCol = columnIndex;
+      if (event.key === 'ArrowDown') nextRow = Math.min(rows.length - 1, rowIndex + 1);
+      else if (event.key === 'ArrowUp') nextRow = Math.max(0, rowIndex - 1);
+      else if (event.key === 'ArrowRight') nextCol = Math.min(GRID_COLUMNS.length - 1, columnIndex + 1);
+      else if (event.key === 'ArrowLeft') nextCol = Math.max(0, columnIndex - 1);
+      else return;
+
+      event.preventDefault();
+      const key = `${nextRow}-${GRID_COLUMNS[nextCol]}`;
+      cellRefs.current.get(key)?.focus();
     },
     [rows.length],
   );
@@ -339,6 +352,49 @@ export function createBlankRow(entryDate: string): TimesheetGridRow {
     isHoliday: false,
     isReadOnly: false,
   };
+}
+
+export function buildMonthGridRows(
+  days: string[],
+  entries: TimesheetEntry[],
+  readOnly: boolean,
+  holidayDates: Set<string>,
+): TimesheetGridRow[] {
+  const entriesByDate = new Map<string, TimesheetEntry[]>();
+  for (const entry of entries) {
+    const list = entriesByDate.get(entry.entry_date) ?? [];
+    list.push(entry);
+    entriesByDate.set(entry.entry_date, list);
+  }
+
+  const rows: TimesheetGridRow[] = [];
+  for (const day of days) {
+    const dayEntries = entriesByDate.get(day);
+    if (dayEntries?.length) {
+      for (const entry of dayEntries) {
+        rows.push({
+          ...entryToGridRow(entry, readOnly),
+          isHoliday: holidayDates.has(day),
+        });
+      }
+      continue;
+    }
+    rows.push({
+      ...createBlankRow(day),
+      isHoliday: holidayDates.has(day),
+    });
+  }
+  return rows;
+}
+
+export function summarizeDailyHours(rows: TimesheetGridRow[]): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    const parsed = Number(row.hours);
+    if (!Number.isFinite(parsed) || parsed <= 0) continue;
+    totals.set(row.entryDate, (totals.get(row.entryDate) ?? 0) + parsed);
+  }
+  return totals;
 }
 
 export const TimesheetMonthGrid = memo(TimesheetMonthGridComponent);

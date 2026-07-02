@@ -12,6 +12,10 @@ from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
 from app.core.auth import create_access_token, decode_access_token
 from app.core.permissions import get_role_name, get_user_permission_keys
+from app.core.access_control import (
+    resolve_user_modules,
+    resolve_user_special_permissions,
+)
 from app.core.security import hash_password, verify_password
 from app.crud.auth import (
     AuthFailureReason,
@@ -151,18 +155,21 @@ def _build_current_user_read(
         impersonator = db.get(User, impersonator_id)
         if impersonator is not None:
             impersonator_name = f"{impersonator.first_name} {impersonator.last_name}"
+    role_name = get_role_name(db, user)
     return CurrentUserRead(
         id=user.id,
         email=user.email,
         first_name=user.first_name,
         last_name=user.last_name,
         role_id=user.role_id,
-        role_name=get_role_name(db, user),
+        role_name=role_name,
         is_active=user.is_active,
         must_change_password=effective_must_change_password(user.must_change_password),
         last_login=user.last_login,
         impersonator_id=impersonator_id,
         impersonator_name=impersonator_name,
+        module_access=resolve_user_modules(user, role_name),
+        special_permissions=resolve_user_special_permissions(user, role_name),
     )
 
 

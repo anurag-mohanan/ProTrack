@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401 — register all models with Base.metadata
 from app.api.v1.api import api_router
-from app.core.config import APP_VERSION, CORS_ORIGINS, ENABLE_DEMO_SEED, INTERNAL_RELEASE, UPLOAD_DIR
+from app.core.config import APP_VERSION, CORS_ORIGINS, ENABLE_DEMO_SEED, INTERNAL_RELEASE, RELEASE_CANDIDATE, UPLOAD_DIR
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -34,6 +34,7 @@ from app.db.schema_sync import (
     ensure_user_team_schema,
     ensure_user_lifecycle_schema,
     ensure_user_auth_schema,
+    ensure_user_access_schema,
 )
 from app.db.session import engine, sessionmaker
 
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
     ensure_user_team_schema(engine)
     ensure_user_lifecycle_schema(engine)
     ensure_user_auth_schema(engine)
+    ensure_user_access_schema(engine)
     ensure_timesheet_entry_work_category(engine)
     ensure_timesheet_entry_timestamps(engine)
     ensure_non_productive_codes(engine)
@@ -123,6 +125,6 @@ def health_check():
         "status": "ok",
         "app": "ProTrack",
         "version": APP_VERSION,
-        "release": "RC4",
+        "release": RELEASE_CANDIDATE,
         "internal_release": INTERNAL_RELEASE,
     }

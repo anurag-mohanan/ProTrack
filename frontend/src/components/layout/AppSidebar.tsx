@@ -12,7 +12,8 @@ import {
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { NavLink } from 'react-router-dom';
 import { LogoHomeLink } from '../branding/LogoHomeLink';
-import { getMainNavItems, canAccessAdministration } from '../../utils/permissions';
+import type { CurrentUser } from '../../types';
+import { accessContextFromUser, canAccessAdministration, getMainNavItems } from '../../utils/permissions';
 
 export const DRAWER_WIDTH = 272;
 
@@ -67,12 +68,13 @@ function NavButton({
 }
 
 interface AppSidebarProps {
-  roleName: string;
+  user: CurrentUser | null;
 }
 
-export function AppSidebar({ roleName }: AppSidebarProps) {
-  const visibleNavItems = getMainNavItems(roleName);
-  const showAdministratorEntry = canAccessAdministration(roleName);
+export function AppSidebar({ user }: AppSidebarProps) {
+  const ctx = accessContextFromUser(user);
+  const visibleNavItems = getMainNavItems(ctx);
+  const showAdministratorEntry = canAccessAdministration(ctx);
 
   return (
     <Drawer

@@ -429,6 +429,28 @@ def ensure_user_auth_schema(engine: Engine) -> None:
             )
 
 
+def ensure_user_access_schema(engine: Engine) -> None:
+    dialect = engine.dialect.name
+    access_columns = (
+        ("module_access", "module_access TEXT"),
+        ("special_permissions", "special_permissions TEXT"),
+    )
+
+    if dialect == "sqlite":
+        for column_name, ddl in access_columns:
+            if not _sqlite_has_column(engine, "users", column_name):
+                with engine.begin() as connection:
+                    connection.execute(text(f"ALTER TABLE users ADD COLUMN {ddl}"))
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS module_access TEXT"))
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN IF NOT EXISTS special_permissions TEXT")
+            )
+
+
 def ensure_user_lifecycle_schema(engine: Engine) -> None:
     dialect = engine.dialect.name
     user_columns = (

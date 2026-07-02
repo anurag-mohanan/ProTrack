@@ -6,6 +6,34 @@ import FolderIcon from '@mui/icons-material/Folder';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import GroupsIcon from '@mui/icons-material/Groups';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import type { CurrentUser } from '../types';
+import {
+  ALL_MODULES,
+  MODULE_ARCHIVED_PROJECTS,
+  MODULE_DASHBOARD,
+  MODULE_PROJECTS,
+  MODULE_REPORTS,
+  MODULE_RESOURCE_PLANNING,
+  MODULE_SYSTEM_ADMINISTRATION,
+  MODULE_TIMESHEETS,
+  MODULE_WORKLOAD,
+  SPECIAL_APPROVE_TIMESHEETS,
+  SPECIAL_ARCHIVE_PROJECTS,
+  SPECIAL_CREATE_PROJECTS,
+  SPECIAL_DELETE_PROJECTS,
+  SPECIAL_EDIT_PROJECTS,
+  SPECIAL_EXPORT_REPORTS,
+  SPECIAL_IMPORT_TIMESHEETS,
+  SPECIAL_MANAGE_COMPANY_SETTINGS,
+  SPECIAL_MANAGE_CONTACTS,
+  SPECIAL_MANAGE_CUSTOMERS,
+  SPECIAL_MANAGE_TEAMS,
+  SPECIAL_MANAGE_USERS,
+  SPECIAL_VIEW_REPORTS,
+  SPECIAL_VIEW_RESOURCE_PLANNING,
+  type ModuleKey,
+  type SpecialPermissionKey,
+} from '../config/accessControl';
 
 export const ROLES = {
   ADMIN: 'Admin',
@@ -30,7 +58,107 @@ export interface MainNavItem {
   label: string;
   path: string;
   icon: SvgIconComponent;
+  module: ModuleKey;
 }
+
+export interface AccessContext {
+  role_name: string;
+  resolved_modules?: string[];
+  resolved_special_permissions?: string[];
+}
+
+const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
+  [ROLES.ADMIN]: [...ALL_MODULES],
+  [ROLES.ENGINEERING_MANAGER]: [
+    MODULE_DASHBOARD,
+    MODULE_PROJECTS,
+    MODULE_ARCHIVED_PROJECTS,
+    MODULE_TIMESHEETS,
+    MODULE_WORKLOAD,
+    MODULE_RESOURCE_PLANNING,
+    MODULE_REPORTS,
+  ],
+  [ROLES.DESIGN_LEADER]: [
+    MODULE_DASHBOARD,
+    MODULE_PROJECTS,
+    MODULE_ARCHIVED_PROJECTS,
+    MODULE_TIMESHEETS,
+    MODULE_WORKLOAD,
+  ],
+  [ROLES.DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
+  [ROLES.SENIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
+  [ROLES.JUNIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
+  [ROLES.SURFACER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
+  [ROLES.READ_ONLY]: [MODULE_DASHBOARD, MODULE_PROJECTS],
+};
+
+const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
+  [ROLES.ADMIN]: [
+    SPECIAL_CREATE_PROJECTS,
+    SPECIAL_EDIT_PROJECTS,
+    SPECIAL_ARCHIVE_PROJECTS,
+    SPECIAL_DELETE_PROJECTS,
+    SPECIAL_APPROVE_TIMESHEETS,
+    SPECIAL_IMPORT_TIMESHEETS,
+    SPECIAL_EXPORT_REPORTS,
+    SPECIAL_MANAGE_CUSTOMERS,
+    SPECIAL_MANAGE_CONTACTS,
+    SPECIAL_MANAGE_TEAMS,
+    SPECIAL_MANAGE_USERS,
+    SPECIAL_MANAGE_COMPANY_SETTINGS,
+    SPECIAL_VIEW_REPORTS,
+    SPECIAL_VIEW_RESOURCE_PLANNING,
+  ],
+  [ROLES.ENGINEERING_MANAGER]: [
+    SPECIAL_CREATE_PROJECTS,
+    SPECIAL_EDIT_PROJECTS,
+    SPECIAL_ARCHIVE_PROJECTS,
+    SPECIAL_APPROVE_TIMESHEETS,
+    SPECIAL_EXPORT_REPORTS,
+    SPECIAL_VIEW_REPORTS,
+    SPECIAL_VIEW_RESOURCE_PLANNING,
+  ],
+  [ROLES.DESIGN_LEADER]: [
+    SPECIAL_CREATE_PROJECTS,
+    SPECIAL_EDIT_PROJECTS,
+    SPECIAL_ARCHIVE_PROJECTS,
+    SPECIAL_APPROVE_TIMESHEETS,
+    SPECIAL_VIEW_REPORTS,
+  ],
+  [ROLES.SENIOR_DESIGNER]: [SPECIAL_CREATE_PROJECTS, SPECIAL_EDIT_PROJECTS],
+  [ROLES.DESIGNER]: [SPECIAL_EDIT_PROJECTS],
+  [ROLES.READ_ONLY]: [],
+};
+
+const NAV_MODULE_CONFIG: Array<{
+  module: ModuleKey;
+  label: string | ((ctx: AccessContext) => string);
+  path: string;
+  icon: SvgIconComponent;
+}> = [
+  { module: MODULE_DASHBOARD, label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
+  {
+    module: MODULE_PROJECTS,
+    label: (ctx) => (getDashboardRoleGroup(ctx.role_name) === 'staff' ? 'My Projects' : 'Projects'),
+    path: '/projects',
+    icon: FolderIcon,
+  },
+  {
+    module: MODULE_ARCHIVED_PROJECTS,
+    label: 'Archived Projects',
+    path: '/projects/archived',
+    icon: ArchiveIcon,
+  },
+  { module: MODULE_TIMESHEETS, label: 'Timesheets', path: '/timesheets', icon: ScheduleIcon },
+  { module: MODULE_WORKLOAD, label: 'Workload', path: '/workload', icon: GroupsIcon },
+  {
+    module: MODULE_RESOURCE_PLANNING,
+    label: 'Resource Planning',
+    path: '/resource-planning',
+    icon: CalendarMonthIcon,
+  },
+  { module: MODULE_REPORTS, label: 'Reports', path: '/reports', icon: AssessmentIcon },
+];
 
 function normalizeRoleName(roleName: string): string {
   if (roleName === ROLES.PROJECT_MANAGER) {
@@ -42,6 +170,55 @@ function normalizeRoleName(roleName: string): string {
 function hasRole(roleName: string, ...roles: string[]): boolean {
   const normalized = normalizeRoleName(roleName);
   return roles.some((role) => normalizeRoleName(role) === normalized);
+}
+
+export function accessContextFromUser(user: CurrentUser | null | undefined): AccessContext {
+  return {
+    role_name: user?.role_name ?? '',
+    resolved_modules: user?.resolved_modules ?? user?.module_access,
+    resolved_special_permissions: user?.resolved_special_permissions ?? user?.special_permissions,
+  };
+}
+
+export function toAccessContext(roleNameOrContext: string | AccessContext): AccessContext {
+  if (typeof roleNameOrContext === 'string') {
+    return { role_name: roleNameOrContext };
+  }
+  return roleNameOrContext;
+}
+
+export function defaultModulesForRole(roleName: string): ModuleKey[] {
+  const normalized = normalizeRoleName(roleName);
+  return DEFAULT_MODULES_BY_ROLE[normalized] ?? DEFAULT_MODULES_BY_ROLE[ROLES.DESIGNER];
+}
+
+export function defaultSpecialPermissionsForRole(roleName: string): SpecialPermissionKey[] {
+  const normalized = normalizeRoleName(roleName);
+  return DEFAULT_SPECIAL_BY_ROLE[normalized] ?? [];
+}
+
+export function resolveModules(ctx: AccessContext): ModuleKey[] {
+  if (ctx.resolved_modules?.length) {
+    return ctx.resolved_modules.filter((module): module is ModuleKey =>
+      ALL_MODULES.includes(module as ModuleKey),
+    );
+  }
+  return defaultModulesForRole(ctx.role_name);
+}
+
+export function resolveSpecialPermissions(ctx: AccessContext): SpecialPermissionKey[] {
+  if (ctx.resolved_special_permissions?.length) {
+    return ctx.resolved_special_permissions as SpecialPermissionKey[];
+  }
+  return defaultSpecialPermissionsForRole(ctx.role_name);
+}
+
+export function userHasModule(ctx: AccessContext, module: ModuleKey): boolean {
+  return resolveModules(ctx).includes(module);
+}
+
+export function userHasSpecial(ctx: AccessContext, permission: SpecialPermissionKey): boolean {
+  return resolveSpecialPermissions(ctx).includes(permission);
 }
 
 export function getDashboardRoleGroup(roleName: string): DashboardRoleGroup {
@@ -99,15 +276,15 @@ export function canSubmitTimesheet(
   return isOperationalManagerRole(roleName);
 }
 
-export function canApproveTimesheet(status: string, roleName: string): boolean {
+export function canApproveTimesheet(status: string, roleNameOrContext: string | AccessContext): boolean {
   if (status !== 'submitted') return false;
-  return (
-    isOperationalManagerRole(roleName) || isDesignLeaderRole(roleName)
-  );
+  const ctx = toAccessContext(roleNameOrContext);
+  if (userHasSpecial(ctx, SPECIAL_APPROVE_TIMESHEETS)) return true;
+  return isOperationalManagerRole(ctx.role_name) || isDesignLeaderRole(ctx.role_name);
 }
 
-export function canRejectTimesheet(status: string, roleName: string): boolean {
-  return canApproveTimesheet(status, roleName);
+export function canRejectTimesheet(status: string, roleNameOrContext: string | AccessContext): boolean {
+  return canApproveTimesheet(status, roleNameOrContext);
 }
 
 export function canReturnToDraft(
@@ -123,131 +300,102 @@ export function canReturnToDraft(
   return false;
 }
 
-export function canImportHistoricalProjects(roleName: string): boolean {
-  return isAdminRole(roleName);
+export function canImportHistoricalProjects(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasModule(ctx, MODULE_SYSTEM_ADMINISTRATION);
 }
 
-export function canImportHistoricalTimesheets(roleName: string): boolean {
-  return isAdminRole(roleName);
+export function canImportHistoricalTimesheets(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_IMPORT_TIMESHEETS);
 }
 
-export function canAccessAdministration(roleName: string): boolean {
-  return isAdminRole(roleName);
+export function canAccessAdministration(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasModule(ctx, MODULE_SYSTEM_ADMINISTRATION);
 }
 
-export function canManageUsers(roleName: string): boolean {
-  return isAdminRole(roleName);
+export function canManageUsers(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_USERS);
 }
 
-export function canCreateCustomer(roleName: string): boolean {
-  return isAdminRole(roleName);
+export function canCreateCustomer(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_CUSTOMERS);
 }
 
-export function canDeleteRecords(roleName: string): boolean {
-  return isAdminRole(roleName);
+export function canDeleteRecords(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_DELETE_PROJECTS);
 }
 
-export function canViewDeletedProjects(roleName: string): boolean {
-  return isAdminRole(roleName);
+export function canViewDeletedProjects(roleNameOrContext: string | AccessContext): boolean {
+  return canAccessAdministration(roleNameOrContext);
 }
 
-export function canCreateProject(roleName: string): boolean {
-  return hasRole(
-    roleName,
-    ROLES.ADMIN,
-    ROLES.ENGINEERING_MANAGER,
-    ROLES.DESIGN_LEADER,
+export function canCreateProject(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_CREATE_PROJECTS);
+}
+
+export function canArchiveProject(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_ARCHIVE_PROJECTS);
+}
+
+export function canSoftDeleteProject(roleNameOrContext: string | AccessContext): boolean {
+  return canDeleteRecords(roleNameOrContext);
+}
+
+export function canEditProject(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_EDIT_PROJECTS);
+}
+
+export function canViewReports(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasModule(ctx, MODULE_REPORTS) || userHasSpecial(ctx, SPECIAL_VIEW_REPORTS);
+}
+
+export function canViewWorkload(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasModule(ctx, MODULE_WORKLOAD);
+}
+
+export function canViewResourcePlanning(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return (
+    userHasModule(ctx, MODULE_RESOURCE_PLANNING) ||
+    userHasSpecial(ctx, SPECIAL_VIEW_RESOURCE_PLANNING)
   );
 }
 
-export function canArchiveProject(roleName: string): boolean {
-  return canCreateProject(roleName);
+export function canViewArchivedProjects(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasModule(ctx, MODULE_ARCHIVED_PROJECTS);
 }
 
-export function canSoftDeleteProject(roleName: string): boolean {
-  return isAdminRole(roleName);
+export function canManageCompanySettings(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_COMPANY_SETTINGS);
 }
 
-export function canEditProject(roleName: string): boolean {
-  return canCreateProject(roleName);
-}
+export function getMainNavItems(roleNameOrContext: string | AccessContext): MainNavItem[] {
+  const ctx = toAccessContext(roleNameOrContext);
+  const modules = new Set(resolveModules(ctx));
 
-export function canViewReports(roleName: string): boolean {
-  return hasRole(
-    roleName,
-    ROLES.ADMIN,
-    ROLES.ENGINEERING_MANAGER,
-    ROLES.DESIGN_LEADER,
-    ROLES.READ_ONLY,
-  );
-}
-
-export function canViewWorkload(roleName: string): boolean {
-  return hasRole(
-    roleName,
-    ROLES.ADMIN,
-    ROLES.ENGINEERING_MANAGER,
-    ROLES.DESIGN_LEADER,
-  );
-}
-
-export function canViewResourcePlanning(roleName: string): boolean {
-  return hasRole(roleName, ROLES.ADMIN, ROLES.ENGINEERING_MANAGER);
-}
-
-export function canViewArchivedProjects(roleName: string): boolean {
-  return isOperationalManagerRole(roleName);
-}
-
-export function getMainNavItems(roleName: string): MainNavItem[] {
-  const group = getDashboardRoleGroup(roleName);
-  const projectsLabel = group === 'staff' ? 'My Projects' : 'Projects';
-
-  if (group === 'read_only') {
-    return [
-      { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
-      { label: 'Projects', path: '/projects', icon: FolderIcon },
-      { label: 'Reports', path: '/reports', icon: AssessmentIcon },
-    ];
-  }
-
-  if (group === 'staff') {
-    return [
-      { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
-      { label: 'My Projects', path: '/projects', icon: FolderIcon },
-      { label: 'Timesheets', path: '/timesheets', icon: ScheduleIcon },
-    ];
-  }
-
-  if (group === 'design_leader') {
-    return [
-      { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
-      { label: projectsLabel, path: '/projects', icon: FolderIcon },
-      { label: 'Timesheets', path: '/timesheets', icon: ScheduleIcon },
-      { label: 'Workload', path: '/workload', icon: GroupsIcon },
-      { label: 'Reports', path: '/reports', icon: AssessmentIcon },
-    ];
-  }
-
-  const items: MainNavItem[] = [
-    { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
-    { label: projectsLabel, path: '/projects', icon: FolderIcon },
-  ];
-
-  if (canViewArchivedProjects(roleName)) {
-    items.push({ label: 'Archived Projects', path: '/projects/archived', icon: ArchiveIcon });
-  }
-
-  items.push(
-    { label: 'Timesheets', path: '/timesheets', icon: ScheduleIcon },
-    { label: 'Workload', path: '/workload', icon: GroupsIcon },
-    { label: 'Resource Planning', path: '/resource-planning', icon: CalendarMonthIcon },
-    { label: 'Reports', path: '/reports', icon: AssessmentIcon },
-  );
-
-  return items;
+  return NAV_MODULE_CONFIG.filter((item) => modules.has(item.module)).map((item) => ({
+    module: item.module,
+    path: item.path,
+    icon: item.icon,
+    label: typeof item.label === 'function' ? item.label(ctx) : item.label,
+  }));
 }
 
 export function canOverrideBillable(roleName: string): boolean {
   return isOperationalManagerRole(roleName);
 }
+
+export { defaultModulesForRole as getDefaultModulesForRole };
+export { defaultSpecialPermissionsForRole as getDefaultSpecialPermissionsForRole };

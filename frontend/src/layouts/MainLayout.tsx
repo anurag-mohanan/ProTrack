@@ -26,7 +26,7 @@ export function MainLayout() {
           onLogout={() => void handleLogout()}
         />
         <Box sx={{ display: 'flex', flexGrow: 1, minWidth: 0 }}>
-          <AppSidebar roleName={roleName} />
+          <AppSidebar user={user} />
           <Box
             component="main"
             sx={{

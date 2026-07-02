@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -26,6 +26,8 @@ import {
   createBlankRow,
   entryToGridRow,
   formatHoursTotal,
+  buildMonthGridRows,
+  summarizeDailyHours,
   summarizeHours,
   TimesheetMonthGrid,
   type TimesheetGridRow,
@@ -72,6 +74,24 @@ export function TimesheetMonthPage() {
   const [monthValue, setMonthValue] = useState(currentMonthValue());
   const [rows, setRows] = useState<TimesheetGridRow[]>([]);
   const [selectedTimesheetId, setSelectedTimesheetId] = useState<string | null>(null);
+  const historyRef = useRef<{ past: TimesheetGridRow[][]; future: TimesheetGridRow[][] }>({
+    past: [],
+    future: [],
+  });
+
+  const setRowsWithHistory = useCallback((updater: TimesheetGridRow[] | ((current: TimesheetGridRow[]) => TimesheetGridRow[])) => {
+    setRows((current) => {
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      if (next !== current) {
+        historyRef.current.past.push(current);
+        if (historyRef.current.past.length > 50) {
+          historyRef.current.past.shift();
+        }
+        historyRef.current.future = [];
+      }
+      return next;
+    });
+  }, []);
 
   const bounds = useMemo(() => monthBounds(monthValue), [monthValue]);
 
@@ -145,21 +165,49 @@ export function TimesheetMonthPage() {
 
   useEffect(() => {
     if (!entriesQuery.data) return;
-    const loaded = entriesQuery.data.map((entry) =>
-      entryToGridRow(entry, primaryTimesheet ? entry.timesheet_id !== primaryTimesheet.id && readOnly : readOnly),
-    );
-    if (loaded.length) {
-      setRows(loaded);
-      return;
-    }
-    const workingDays = bounds.days.filter((day) => !isWeekend(day) && !holidayDates.has(day));
-    setRows(workingDays.slice(0, 1).map((day) => createBlankRow(day)));
-  }, [bounds.days, entriesQuery.data, holidayDates, primaryTimesheet, readOnly]);
+    historyRef.current = { past: [], future: [] };
+    setRows(buildMonthGridRows(bounds.days, entriesQuery.data, readOnly, holidayDates));
+  }, [bounds.days, entriesQuery.data, holidayDates, readOnly, monthValue]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || readOnly) return;
+      if (event.key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        const previous = historyRef.current.past.pop();
+        if (!previous) return;
+        setRows((current) => {
+          historyRef.current.future.push(current);
+          return previous;
+        });
+      }
+      if (event.key === 'y' || (event.key === 'z' && event.shiftKey)) {
+        event.preventDefault();
+        const next = historyRef.current.future.pop();
+        if (!next) return;
+        setRows((current) => {
+          historyRef.current.past.push(current);
+          return next;
+        });
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [readOnly]);
 
   const workingDayCount = countWorkingDays(bounds.days, holidayDates);
-  const expectedHours = workingDayCount * 8;
+  const dailyLimit = user?.working_hours_per_day ?? 8;
+  const expectedHours = workingDayCount * dailyLimit;
   const enteredHours = summarizeHours(rows);
   const remainingHours = expectedHours - enteredHours;
+  const dailyTotals = useMemo(() => summarizeDailyHours(rows), [rows]);
+  const overLimitDays = useMemo(
+    () =>
+      [...dailyTotals.entries()].filter(
+        ([date, total]) => !isWeekend(date) && !holidayDates.has(date) && total > dailyLimit,
+      ),
+    [dailyLimit, dailyTotals, holidayDates],
+  );
 
   const saveRowMutation = useMutation({
     mutationFn: async (row: TimesheetGridRow): Promise<{ saved: TimesheetEntry; source: TimesheetGridRow }> => {
@@ -197,7 +245,7 @@ export function TimesheetMonthPage() {
       return { saved, source: row };
     },
     onSuccess: ({ saved, source }) => {
-      setRows((current) =>
+      setRowsWithHistory((current) =>
         current.map((existing) =>
           existing.clientId === source.clientId
             ? {
@@ -232,7 +280,7 @@ export function TimesheetMonthPage() {
     if (rows.length < 2) return;
     const previous = rows[rows.length - 2];
     const last = rows[rows.length - 1];
-    setRows((current) =>
+    setRowsWithHistory((current) =>
       current.map((row) =>
         row.clientId === last.clientId
           ? {
@@ -247,12 +295,12 @@ export function TimesheetMonthPage() {
           : row,
       ),
     );
-  }, [rows]);
+  }, [rows, setRowsWithHistory]);
 
   const handleAddRow = useCallback(() => {
     const lastDate = rows[rows.length - 1]?.entryDate ?? bounds.start;
-    setRows((current) => [...current, createBlankRow(lastDate)]);
-  }, [bounds.start, rows]);
+    setRowsWithHistory((current) => [...current, createBlankRow(lastDate)]);
+  }, [bounds.start, rows, setRowsWithHistory]);
 
   const roleName = user?.role_name ?? '';
 
@@ -374,13 +422,20 @@ export function TimesheetMonthPage() {
         </Alert>
       ) : null}
 
+      {overLimitDays.length ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Daily hours exceed {dailyLimit} on {overLimitDays.length} day
+          {overLimitDays.length === 1 ? '' : 's'}.
+        </Alert>
+      ) : null}
+
       <TimesheetMonthGrid
         rows={rows}
         projects={activeProjects}
         taskTypes={taskTypesQuery.data ?? []}
         holidayDates={holidayDates}
         readOnly={readOnly}
-        onRowsChange={setRows}
+        onRowsChange={setRowsWithHistory}
         onSaveRow={async (row) => {
           await saveRowMutation.mutateAsync(row);
         }}

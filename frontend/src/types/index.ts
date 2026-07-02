@@ -50,6 +50,10 @@ export interface User {
   is_archived?: boolean;
   is_locked?: boolean;
   failed_login_count?: number;
+  module_access?: string[] | null;
+  special_permissions?: string[] | null;
+  resolved_modules?: string[];
+  resolved_special_permissions?: string[];
   created_at?: string;
   updated_at?: string;
 }

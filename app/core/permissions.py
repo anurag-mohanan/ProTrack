@@ -3,6 +3,20 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.access_control import (
+    MODULE_REPORTS,
+    MODULE_RESOURCE_PLANNING,
+    MODULE_SYSTEM_ADMINISTRATION,
+    MODULE_TIMESHEETS,
+    MODULE_WORKLOAD,
+    SPECIAL_APPROVE_TIMESHEETS,
+    SPECIAL_CREATE_PROJECTS,
+    SPECIAL_EDIT_PROJECTS,
+    SPECIAL_VIEW_REPORTS,
+    SPECIAL_VIEW_RESOURCE_PLANNING,
+    resolve_user_modules,
+    resolve_user_special_permissions,
+)
 from app.models.enums import TimesheetStatus
 from app.models.models import Project, Role, Timesheet, TimesheetEntry, User
 
@@ -274,21 +288,23 @@ def project_assignment_filter(user: User, role_name: str):
 
 def get_user_permission_keys(db: Session, user: User) -> list[str]:
     role_name = normalize_role_name(get_role_name(db, user))
+    modules = set(resolve_user_modules(user, role_name))
+    special = set(resolve_user_special_permissions(user, role_name))
     permissions: list[str] = []
-    if role_name == ADMIN:
+    if MODULE_SYSTEM_ADMINISTRATION in modules:
         permissions.append("administration")
-    if role_name in PROJECT_CREATE_ROLES:
+    if SPECIAL_CREATE_PROJECTS in special:
         permissions.append("create_project")
-    if role_name in REPORT_VIEWER_ROLES:
+    if MODULE_REPORTS in modules or SPECIAL_VIEW_REPORTS in special:
         permissions.append("view_reports")
-    if role_name in RESOURCE_PLANNING_ROLES:
+    if MODULE_RESOURCE_PLANNING in modules or SPECIAL_VIEW_RESOURCE_PLANNING in special:
         permissions.append("resource_planning")
-    if role_name in WORKLOAD_VIEWER_ROLES:
+    if MODULE_WORKLOAD in modules:
         permissions.append("view_workload")
-    if role_name in TIMESHEET_ENTRY_WRITE_ROLES:
+    if MODULE_TIMESHEETS in modules:
         permissions.append("write_timesheet")
-    if role_name in TIMESHEET_APPROVER_ROLES:
+    if SPECIAL_APPROVE_TIMESHEETS in special:
         permissions.append("approve_timesheet")
-    if role_name in PROJECT_EDIT_ROLES:
+    if SPECIAL_EDIT_PROJECTS in special:
         permissions.append("edit_project")
     return permissions

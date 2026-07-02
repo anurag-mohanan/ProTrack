@@ -3,14 +3,16 @@ import { Box, Tooltip } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { CompanyLogo } from './CompanyLogo';
 
-type LogoHomeLinkProps = ComponentProps<typeof CompanyLogo>;
+type LogoHomeLinkProps = ComponentProps<typeof CompanyLogo> & {
+  to?: string;
+};
 
-export function LogoHomeLink(props: LogoHomeLinkProps) {
+export function LogoHomeLink({ to = '/dashboard', ...props }: LogoHomeLinkProps) {
   return (
     <Tooltip title="Go to Dashboard" arrow>
       <Box
         component={RouterLink}
-        to="/dashboard"
+        to={to}
         aria-label="Go to Dashboard"
         sx={{
           display: 'inline-flex',

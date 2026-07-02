@@ -12,39 +12,40 @@ import {
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { NavLink } from 'react-router-dom';
 import { LogoHomeLink } from '../branding/LogoHomeLink';
-import { AdminNavigation } from './AdminNavigation';
-import { getAdminNavSections } from '../../config/adminNavigation';
-import { canAccessAdministration, getMainNavItems } from '../../utils/permissions';
+import { getMainNavItems, canAccessAdministration } from '../../utils/permissions';
 
 export const DRAWER_WIDTH = 272;
-
-interface AppSidebarProps {
-  roleName: string;
-}
 
 function NavButton({
   path,
   label,
   icon: Icon,
+  accent = false,
 }: {
   path: string;
   label: string;
   icon: React.ComponentType<{ fontSize?: 'small' | 'inherit' | 'large' | 'medium' }>;
+  accent?: boolean;
 }) {
   return (
     <ListItemButton
       component={NavLink}
       to={path}
       sx={{
-        color: 'prosohm.sidebarTextMuted',
+        color: accent ? 'secondary.light' : 'prosohm.sidebarTextMuted',
+        bgcolor: accent ? 'rgba(148,163,184,0.08)' : undefined,
+        border: accent ? '1px solid rgba(148,163,184,0.18)' : undefined,
+        borderRadius: accent ? 2 : 0,
+        mx: accent ? 1 : 0,
+        mb: accent ? 0.5 : 0,
         '&.active': {
-          bgcolor: 'prosohm.sidebarActive',
+          bgcolor: accent ? 'rgba(148,163,184,0.16)' : 'prosohm.sidebarActive',
           color: 'prosohm.sidebarText',
-          borderLeft: '3px solid',
+          borderLeft: accent ? undefined : '3px solid',
           borderColor: 'primary.main',
-          pl: 'calc(16px - 3px)',
+          pl: accent ? 2 : 'calc(16px - 3px)',
           '& .MuiListItemIcon-root': {
-            color: 'primary.main',
+            color: accent ? 'secondary.light' : 'primary.main',
           },
         },
       }}
@@ -56,7 +57,7 @@ function NavButton({
         primary={label}
         sx={{
           '& .MuiListItemText-primary': {
-            fontWeight: 600,
+            fontWeight: accent ? 700 : 600,
             fontSize: '0.875rem',
           },
         }}
@@ -65,9 +66,13 @@ function NavButton({
   );
 }
 
+interface AppSidebarProps {
+  roleName: string;
+}
+
 export function AppSidebar({ roleName }: AppSidebarProps) {
   const visibleNavItems = getMainNavItems(roleName);
-  const adminSections = getAdminNavSections(roleName);
+  const showAdministratorEntry = canAccessAdministration(roleName);
 
   return (
     <Drawer
@@ -93,7 +98,7 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
           variant="overline"
           sx={{ px: 2, py: 1, display: 'block', color: 'prosohm.sidebarTextMuted' }}
         >
-          Main
+          Engineering Operations
         </Typography>
         <List disablePadding>
           {visibleNavItems.map((item) => (
@@ -101,16 +106,23 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
           ))}
         </List>
 
-        {canAccessAdministration(roleName) ? (
+        {showAdministratorEntry ? (
           <>
             <Divider sx={{ my: 2, borderColor: 'prosohm.sidebarDivider' }} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1 }}>
-              <AdminPanelSettingsIcon sx={{ fontSize: 16, color: 'primary.main' }} />
+              <AdminPanelSettingsIcon sx={{ fontSize: 16, color: 'secondary.light' }} />
               <Typography variant="overline" sx={{ color: 'prosohm.sidebarTextMuted' }}>
-                Administration
+                Administrator
               </Typography>
             </Box>
-            <AdminNavigation sections={adminSections} />
+            <List disablePadding>
+              <NavButton
+                path="/admin/dashboard"
+                label="Administrator"
+                icon={AdminPanelSettingsIcon}
+                accent
+              />
+            </List>
           </>
         ) : null}
       </Box>

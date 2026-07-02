@@ -1,18 +1,18 @@
 import { Box, Grid } from '@mui/material';
 import { PageHeader } from '../../components/common/PageHeader';
 import { AdminActionCard } from '../../components/admin/AdminActionCard';
-import { ADMIN_IMPORT_ITEMS } from '../../config/adminNavigation';
+import { ADMIN_IMPORT_ALL_ITEMS } from '../../config/adminNavigation';
 import { useAuth } from '../../context/AuthContext';
 
 export default function AdminImportsPage() {
   const { user } = useAuth();
-  const items = ADMIN_IMPORT_ITEMS(user?.role_name ?? '');
+  const items = ADMIN_IMPORT_ALL_ITEMS(user?.role_name ?? '');
 
   return (
     <Box>
       <PageHeader
-        title="Imports"
-        subtitle="Historical data import, logs, and future bulk import tools"
+        title="Import"
+        subtitle="Historical imports, bulk data tools, and export utilities"
       />
 
       <Grid container spacing={2.5}>

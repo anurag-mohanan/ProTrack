@@ -7,6 +7,7 @@ import { ToastProvider } from './context/ToastContext';
 import { LoadingState } from './components/common/LoadingState';
 import { queryClient } from './lib/queryClient';
 import { MainLayout } from './layouts/MainLayout';
+import { AdminLayout } from './layouts/AdminLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { LoginPage } from './pages/LoginPage';
@@ -43,6 +44,7 @@ const HolidayCalendarPage = lazy(() => import('./pages/admin/HolidayCalendarPage
 const DepartmentsPage = lazy(() => import('./pages/admin/DepartmentsPage'));
 const FilePathSettingsPage = lazy(() => import('./pages/admin/FilePathSettingsPage'));
 const NotificationSettingsPage = lazy(() => import('./pages/admin/NotificationSettingsPage'));
+const AdminAuditHubPage = lazy(() => import('./pages/admin/AdminAuditHubPage'));
 const AdminSystemPage = lazy(() => import('./pages/admin/AdminSystemPage'));
 const ContactsAdminPage = lazy(() => import('./pages/admin/ContactsPage'));
 const CustomersAdminPage = lazy(() => import('./pages/admin/CustomersPage'));
@@ -168,8 +170,10 @@ export default function App() {
                     <Route element={<RoleRoute allowed={canViewResourcePlanning} />}>
                       <Route path="/resource-planning" element={<ResourcePlanningPage />} />
                     </Route>
+                    </Route>
 
                     <Route element={<AdminRoute />}>
+                      <Route element={<AdminLayout />}>
                       <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
                       <Route
                         path="/admin/dashboard"
@@ -200,6 +204,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <AdminImportsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/audit"
+                        element={
+                          <LazyAdminPage>
+                            <AdminAuditHubPage />
                           </LazyAdminPage>
                         }
                       />
@@ -398,7 +410,7 @@ export default function App() {
                         path="/admin/import-historical-timesheets"
                         element={<AdminHistoricalTimesheetImportRoute />}
                       />
-                    </Route>
+                      </Route>
                     </Route>
                   </Route>
                 </Route>

@@ -13,8 +13,8 @@ export interface BrandingPreset {
 export const BRANDING_PRESETS: BrandingPreset[] = [
   {
     id: 'prosohm_professional',
-    label: 'Prosohm Professional',
-    description: 'Default engineering workspace palette.',
+    label: 'ProTrack Blue (Default)',
+    description: 'Default ProTrack engineering workspace palette.',
     colors: {
       primary_color: '#0066B3',
       secondary_color: '#1E293B',
@@ -28,7 +28,7 @@ export const BRANDING_PRESETS: BrandingPreset[] = [
   },
   {
     id: 'modern_light',
-    label: 'Modern Light',
+    label: 'Light',
     description: 'Bright, airy interface with soft contrast.',
     colors: {
       primary_color: '#2563EB',
@@ -43,8 +43,8 @@ export const BRANDING_PRESETS: BrandingPreset[] = [
   },
   {
     id: 'modern_dark',
-    label: 'Modern Dark',
-    description: 'Low-glare dark workspace.',
+    label: 'ProTrack Dark',
+    description: 'Low-glare dark ProTrack workspace.',
     colors: {
       primary_color: '#38BDF8',
       secondary_color: '#94A3B8',
@@ -58,7 +58,7 @@ export const BRANDING_PRESETS: BrandingPreset[] = [
   },
   {
     id: 'ocean_blue',
-    label: 'Ocean Blue',
+    label: 'Dark',
     description: 'Cool blues for focused engineering work.',
     colors: {
       primary_color: '#0284C7',
@@ -88,7 +88,7 @@ export const BRANDING_PRESETS: BrandingPreset[] = [
   },
   {
     id: 'emerald',
-    label: 'Emerald',
+    label: 'Sage Green',
     description: 'Fresh green accents with professional contrast.',
     colors: {
       primary_color: '#059669',

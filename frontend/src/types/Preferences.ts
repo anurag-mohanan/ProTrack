@@ -2,7 +2,7 @@ export type ThemeModePreference = 'company_default' | 'system' | 'light' | 'dark
 export type DashboardLayoutPreference = 'compact' | 'comfortable' | 'default';
 export type TableDensityPreference = 'compact' | 'comfortable';
 export type FontSizePreference = 'small' | 'medium' | 'large';
-export type LandingPagePreference = 'dashboard' | 'projects' | 'timesheets';
+export type LandingPagePreference = 'dashboard' | 'projects' | 'timesheets' | 'admin';
 
 export interface UserPreferences {
   id: string;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Avatar,
   Box,
@@ -11,6 +11,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -25,6 +26,7 @@ import {
 import { useToast } from '../context/ToastContext';
 import { formatCellValue, formatNumber } from '../utils/format';
 import type { UserPreferences } from '../types/Preferences';
+import { canAccessAdministration } from '../utils/permissions';
 
 function MetricTile({ label, value }: { label: string; value: string }) {
   return (
@@ -40,13 +42,21 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 export default function UserProfilePage() {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState(0);
+  const [searchParams] = useSearchParams();
+  const tabFromQuery = searchParams.get('tab');
+  const initialTab =
+    tabFromQuery === 'preferences' ? 1 : tabFromQuery === 'security' || tabFromQuery === 'password' ? 2 : 0;
+  const [tab, setTab] = useState(initialTab);
   const [passwordForm, setPasswordForm] = useState({
     current_password: '',
     new_password: '',
     confirm_password: '',
   });
   const [prefsForm, setPrefsForm] = useState<Partial<UserPreferences>>({});
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   const profileQuery = useQuery({
     queryKey: ['auth', 'profile'],
@@ -138,9 +148,9 @@ export default function UserProfilePage() {
         <Grid size={{ xs: 12, md: 8 }}>
           <ContentCard noPadding>
             <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: 2, borderBottom: 1, borderColor: 'divider' }}>
-              <Tab label="Overview" />
+              <Tab label="Profile" />
               <Tab label="Preferences" />
-              <Tab label="Security" />
+              <Tab label="Password" />
             </Tabs>
 
             <Box sx={{ p: 3 }}>
@@ -184,7 +194,8 @@ export default function UserProfilePage() {
               ) : null}
 
               {tab === 1 ? (
-                <FormSection title="Appearance & Workspace">
+                <>
+                <FormSection title="Theme & Appearance">
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, md: 6 }}>
                       <FormField
@@ -219,6 +230,9 @@ export default function UserProfilePage() {
                         <MenuItem value="dashboard">Dashboard</MenuItem>
                         <MenuItem value="projects">Projects</MenuItem>
                         <MenuItem value="timesheets">Timesheets</MenuItem>
+                        {canAccessAdministration(profile.role_name) ? (
+                          <MenuItem value="admin">Administrator Workspace</MenuItem>
+                        ) : null}
                       </FormField>
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
@@ -272,15 +286,24 @@ export default function UserProfilePage() {
                       </FormField>
                     </Grid>
                   </Grid>
-                  <Box sx={{ mt: 3 }}>
-                    <ProsohmButton
-                      loading={preferencesMutation.isPending}
-                      onClick={() => preferencesMutation.mutate(preferences)}
-                    >
-                      Save Preferences
-                    </ProsohmButton>
-                  </Box>
                 </FormSection>
+
+                <FormSection title="Notification Preferences">
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Personal notification preferences will be available in a future release. System
+                    notification rules are managed in the Administrator Workspace.
+                  </Typography>
+                </FormSection>
+
+                <Box sx={{ mt: 3 }}>
+                  <ProsohmButton
+                    loading={preferencesMutation.isPending}
+                    onClick={() => preferencesMutation.mutate(preferences)}
+                  >
+                    Save Preferences
+                  </ProsohmButton>
+                </Box>
+                </>
               ) : null}
 
               {tab === 2 ? (

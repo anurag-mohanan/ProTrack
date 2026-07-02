@@ -14,10 +14,10 @@ const kpiGridSx = {
   display: 'grid',
   gridTemplateColumns: {
     xs: '1fr',
-    sm: 'repeat(2, 1fr)',
-    md: 'repeat(4, 1fr)',
+    sm: 'repeat(2, minmax(0, 1fr))',
+    md: 'repeat(4, minmax(0, 1fr))',
   },
-  gap: 2,
+  gap: 3,
   mb: 3,
 };
 
@@ -55,7 +55,7 @@ export function buildOperationalKpis({ summary, unavailable, navigate }: BuildOp
       onClick: () => navigate('/projects?due=7days'),
     },
     {
-      title: 'Overdue Projects',
+      title: 'Overdue',
       value: unavailable ? '—' : formatNumber(summary!.overdue_projects ?? 0, 0),
       subtitle: 'Past due date',
       icon: WarningAmberIcon,
@@ -71,14 +71,14 @@ export function buildOperationalKpis({ summary, unavailable, navigate }: BuildOp
       onClick: () => navigate('/projects?execution_status=completed&lifecycle=completed&completed=month'),
     },
     {
-      title: 'Total Quoted Hours',
+      title: 'Quoted Hours',
       value: unavailable ? '—' : formatNumber(summary!.total_quoted_hours_active ?? 0, 1),
       subtitle: 'Active projects',
       icon: ScheduleIcon,
       onClick: () => navigate('/projects?lifecycle=active'),
     },
     {
-      title: 'Total Actual Hours',
+      title: 'Actual Hours',
       value: unavailable ? '—' : formatNumber(summary!.total_actual_hours_productive ?? 0, 1),
       subtitle: 'Approved productive hours',
       icon: TimerIcon,

@@ -3,7 +3,6 @@ import {
   Box,
   Drawer,
   IconButton,
-  TextField,
   Typography,
   useMediaQuery,
   useTheme,
@@ -24,6 +23,7 @@ import { TableSkeleton } from '../components/common/TableSkeleton';
 import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
 import { ProjectRecordDrawer } from '../components/projects/ProjectRecordDrawer';
 import type { ProjectTableRow } from '../components/projects/ProjectTable';
+import { ProjectSearchBar } from '../components/projects/command-center/ProjectSearchBar';
 import { ProjectFilterSidebar } from '../components/projects/command-center/ProjectFilterSidebar';
 import { ProjectKpiBar } from '../components/projects/command-center/ProjectKpiBar';
 import { ProjectListSection } from '../components/projects/command-center/ProjectListSection';
@@ -42,6 +42,7 @@ import {
 import type { ProjectStage } from '../types';
 import { canArchiveProject, canCreateProject, canDeleteRecords } from '../utils/permissions';
 import {
+  countActiveSidebarFilters,
   countByExecutionStatus,
   countDueThisWeekProjects,
   countNotStartedProjects,
@@ -363,10 +364,16 @@ export function ProjectsPage() {
     ? `${summary.active_projects} active · ${summary.overdue_projects} overdue · ${summary.projects_due_this_week} due this week`
     : 'Operational hub for live engineering projects';
 
+  const activeFilterCount = useMemo(
+    () => countActiveSidebarFilters(appliedFilters),
+    [appliedFilters],
+  );
+
   const filterSidebarProps = {
     collapsed: sidebarCollapsed,
     onToggleCollapsed: () => setSidebarCollapsed((current) => !current),
     draft: draftFilters,
+    activeFilterCount,
     onDraftChange: setDraftFilters,
     onApply: applyFilters,
     onReset: resetFilters,
@@ -383,7 +390,7 @@ export function ProjectsPage() {
 
   return (
     <PageContainer>
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+      <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
         {!isMobile ? <ProjectFilterSidebar {...filterSidebarProps} /> : null}
 
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -393,7 +400,7 @@ export function ProjectsPage() {
               justifyContent: 'space-between',
               alignItems: 'flex-start',
               gap: 2,
-              mb: 1.5,
+              mb: 3,
             }}
           >
             <Box sx={{ minWidth: 0 }}>
@@ -427,23 +434,18 @@ export function ProjectsPage() {
             ) : null}
           </Box>
 
-          <TextField
-            fullWidth
-            size="small"
-            label="Search projects"
-            placeholder="Tool number, part description, customer, designer, team…"
+          <ProjectSearchBar
             value={appliedFilters.search}
-            onChange={(event) => {
-              const search = event.target.value;
+            onChange={(search) => {
               setAppliedFilters((current) => ({ ...current, search }));
               setDraftFilters((current) => ({ ...current, search }));
             }}
-            sx={{ mb: 2, maxWidth: 560 }}
           />
 
           <ProjectKpiBar
             summary={summary}
             loading={dashboardQuery.isLoading}
+            activeFilter={appliedFilters.quickFilter}
             onFilter={handleQuickFilter}
           />
 

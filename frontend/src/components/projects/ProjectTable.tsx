@@ -1,13 +1,12 @@
 import { memo, useMemo } from 'react';
-import { Box } from '@mui/material';
+import { Box, Chip } from '@mui/material';
 import RestoreIcon from '@mui/icons-material/Restore';
 import { IconButton, Tooltip } from '@mui/material';
 import type { GridColDef } from '@mui/x-data-grid';
 import type { Customer, Project, Stream, Team, User } from '../../types';
-import { ProsohmDataGrid, HealthBadge } from '../ui/design-system';
+import { ProsohmDataGrid, HealthBadge, ProjectStageBadge } from '../ui/design-system';
 import { ProjectRowActions } from './ProjectRowActions';
 import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
-import { formatProjectStageDisplay } from '../../utils/projectCommandCenter';
 
 export interface ProjectTableRow extends Project {
   customerName: string;
@@ -123,13 +122,36 @@ function buildColumns(
       headerName: 'Current Milestone',
       flex: 1,
       minWidth: 130,
-      valueFormatter: (value) => displayOrDash(value),
+      renderCell: (params) => {
+        const label = formatCellValue(params.value);
+        if (!label) return '—';
+        return (
+          <Chip
+            size="small"
+            label={label}
+            variant="outlined"
+            sx={{ fontWeight: 600, maxWidth: '100%' }}
+          />
+        );
+      },
     },
     {
       field: 'project_stage',
       headerName: 'Project Stage',
-      width: 120,
-      valueGetter: (_value, row) => formatProjectStageDisplay(row),
+      width: 130,
+      renderCell: (params) => {
+        const row = params.row;
+        if (row.is_archived) {
+          return <Chip size="small" label="Archived" variant="outlined" />;
+        }
+        if (row.execution_status === 'completed') {
+          return <Chip size="small" label="Completed" color="success" />;
+        }
+        if (row.execution_status === 'cancelled') {
+          return <Chip size="small" label="Cancelled" variant="outlined" />;
+        }
+        return <ProjectStageBadge stage={row.project_stage} />;
+      },
     },
     {
       field: 'due_date',

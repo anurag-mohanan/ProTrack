@@ -33,7 +33,7 @@ export function ProjectQuickFilterStrip({
   ];
 
   return (
-    <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.75, mb: 1.75 }}>
+    <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mb: 3 }}>
       {chips.map((chip) => (
         <Chip
           key={chip.key}

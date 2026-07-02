@@ -100,7 +100,7 @@ export function HealthBadge({
   const labels: Record<ProjectHealth, string> = {
     green: 'Healthy',
     yellow: 'At Risk',
-    red: 'Critical',
+    red: 'Delayed',
   };
   return (
     <BadgeShell label={labels[health]} color={healthColors[health]} variant={variant} />

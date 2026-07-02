@@ -11,6 +11,9 @@ const INVALID_DISPLAY_VALUES = new Set([
   'null',
   'nan',
   '[object object]',
+  'none',
+  'n/a',
+  'na',
 ]);
 
 export function isBlankDisplayValue(value: unknown): boolean {

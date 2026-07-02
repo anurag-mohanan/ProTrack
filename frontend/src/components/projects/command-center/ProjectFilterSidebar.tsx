@@ -1,6 +1,7 @@
 import {
   Autocomplete,
   Box,
+  Chip,
   Divider,
   FormControlLabel,
   IconButton,
@@ -19,15 +20,15 @@ import type { Customer, Team, User } from '../../../types';
 import type { ProjectStage } from '../../../types/common';
 import { PROJECT_STAGE_LABELS } from '../../../types/common';
 import type { ProjectType } from '../../../types/ProjectTemplate';
-import { FormField, FormSelect } from '../../ui/design-system';
+import { FormSelect } from '../../ui/design-system';
 import { ProsohmButton } from '../../ui/ProsohmButton';
-import { userDisplayName } from '../../../utils/format';
 import { type ProjectCommandCenterFilters } from '../../../utils/projectCommandCenter';
 
 interface ProjectFilterSidebarProps {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   draft: ProjectCommandCenterFilters;
+  activeFilterCount: number;
   onDraftChange: (next: ProjectCommandCenterFilters) => void;
   onApply: () => void;
   onReset: () => void;
@@ -41,7 +42,10 @@ interface ProjectFilterSidebarProps {
 
 const allOption = { value: 'all', label: 'All' };
 
-const compactFieldSx = {
+const roundedControlSx = {
+  '& .MuiOutlinedInput-root': {
+    borderRadius: 2,
+  },
   '& .MuiInputBase-root': { minHeight: 40 },
   '& .MuiInputLabel-root': { fontSize: '0.8125rem' },
 };
@@ -50,6 +54,7 @@ export function ProjectFilterSidebar({
   collapsed,
   onToggleCollapsed,
   draft,
+  activeFilterCount,
   onDraftChange,
   onApply,
   onReset,
@@ -69,7 +74,7 @@ export function ProjectFilterSidebar({
   const selectedTeams = teams.filter((team) => draft.teamIds.includes(team.id));
   const userOptions = users.map((user) => ({
     value: user.id,
-    label: userDisplayName(user),
+    label: `${user.first_name} ${user.last_name}`.trim() || user.email,
   }));
 
   if (collapsed && !embedded) {
@@ -90,6 +95,9 @@ export function ProjectFilterSidebar({
           <ChevronRightIcon fontSize="small" />
         </IconButton>
         <FilterListIcon sx={{ fontSize: 16, color: 'text.secondary', mt: 0.5 }} />
+        {activeFilterCount > 0 ? (
+          <Chip label={activeFilterCount} size="small" color="primary" sx={{ mt: 1, minWidth: 24, height: 20 }} />
+        ) : null}
       </Paper>
     );
   }
@@ -99,8 +107,8 @@ export function ProjectFilterSidebar({
       {!embedded ? (
         <Box
           sx={{
-            px: 1.5,
-            py: 1.25,
+            px: 2,
+            py: 1.5,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -108,10 +116,10 @@ export function ProjectFilterSidebar({
             borderColor: 'divider',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <FilterListIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
-              Filters
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <FilterListIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
             </Typography>
           </Box>
           {!isMobile ? (
@@ -122,17 +130,8 @@ export function ProjectFilterSidebar({
         </Box>
       ) : null}
 
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 1.5, py: 1.5 }}>
-        <Stack spacing={1.25}>
-          <FormField
-            label="Search"
-            size="small"
-            value={draft.search}
-            onChange={(event) => onDraftChange({ ...draft, search: event.target.value })}
-            placeholder="Tool, customer, designer…"
-            sx={compactFieldSx}
-          />
-
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 1.5 }}>
+        <Stack spacing={1.5}>
           <Autocomplete
             multiple
             size="small"
@@ -143,7 +142,9 @@ export function ProjectFilterSidebar({
             onChange={(_, next) =>
               onDraftChange({ ...draft, customerIds: next.map((customer) => customer.id) })
             }
-            renderInput={(params) => <TextField {...params} label="Customer" size="small" />}
+            renderInput={(params) => (
+              <TextField {...params} label="Customer" size="small" sx={roundedControlSx} />
+            )}
           />
 
           <FormSelect
@@ -156,7 +157,7 @@ export function ProjectFilterSidebar({
             onChange={(event) =>
               onDraftChange({ ...draft, projectTypeId: String(event.target.value) })
             }
-            sx={compactFieldSx}
+            sx={roundedControlSx}
           />
 
           <Autocomplete
@@ -169,7 +170,9 @@ export function ProjectFilterSidebar({
             onChange={(_, next) =>
               onDraftChange({ ...draft, teamIds: next.map((team) => team.id) })
             }
-            renderInput={(params) => <TextField {...params} label="Team" size="small" />}
+            renderInput={(params) => (
+              <TextField {...params} label="Team" size="small" sx={roundedControlSx} />
+            )}
           />
 
           <FormSelect
@@ -187,7 +190,7 @@ export function ProjectFilterSidebar({
                 projectStage: event.target.value as ProjectStage | 'all',
               })
             }
-            sx={compactFieldSx}
+            sx={roundedControlSx}
           />
 
           <FormSelect
@@ -198,7 +201,7 @@ export function ProjectFilterSidebar({
             onChange={(event) =>
               onDraftChange({ ...draft, designLeaderId: String(event.target.value) })
             }
-            sx={compactFieldSx}
+            sx={roundedControlSx}
           />
 
           <FormSelect
@@ -209,7 +212,7 @@ export function ProjectFilterSidebar({
             onChange={(event) =>
               onDraftChange({ ...draft, designerId: String(event.target.value) })
             }
-            sx={compactFieldSx}
+            sx={roundedControlSx}
           />
 
           <FormSelect
@@ -220,7 +223,7 @@ export function ProjectFilterSidebar({
             onChange={(event) =>
               onDraftChange({ ...draft, surfacerId: String(event.target.value) })
             }
-            sx={compactFieldSx}
+            sx={roundedControlSx}
           />
 
           <FormSelect
@@ -238,7 +241,7 @@ export function ProjectFilterSidebar({
                 dueDate: event.target.value as ProjectCommandCenterFilters['dueDate'],
               })
             }
-            sx={compactFieldSx}
+            sx={roundedControlSx}
           />
 
           <FormControlLabel
@@ -258,7 +261,7 @@ export function ProjectFilterSidebar({
       </Box>
 
       <Divider />
-      <Stack spacing={0.75} sx={{ p: 1.5 }}>
+      <Stack spacing={1} sx={{ p: 2 }}>
         <ProsohmButton buttonVariant="primary" size="small" onClick={onApply}>
           Apply Filters
         </ProsohmButton>
@@ -280,7 +283,7 @@ export function ProjectFilterSidebar({
     <Paper
       variant="outlined"
       sx={{
-        width: { xs: '100%', lg: 290 },
+        width: { xs: '100%', lg: 300 },
         flexShrink: 0,
         borderRadius: 2.5,
         display: { xs: 'none', md: 'flex' },
@@ -288,6 +291,7 @@ export function ProjectFilterSidebar({
         maxHeight: 'calc(100vh - 120px)',
         position: 'sticky',
         top: 12,
+        boxShadow: (t) => t.palette.prosohm.shadowCard,
       }}
     >
       {content}

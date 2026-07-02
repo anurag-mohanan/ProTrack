@@ -333,3 +333,17 @@ export function countDueThisWeekProjects(projects: Project[]): number {
 export function countNotStartedProjects(projects: Project[]): number {
   return projects.filter((project) => isNotStarted(project) && isLiveProject(project)).length;
 }
+
+export function countActiveSidebarFilters(filters: ProjectCommandCenterFilters): number {
+  let count = 0;
+  if (filters.customerIds.length > 0) count += 1;
+  if (filters.projectTypeId !== 'all') count += 1;
+  if (filters.teamIds.length > 0) count += 1;
+  if (filters.projectStage !== 'all') count += 1;
+  if (filters.designLeaderId !== 'all') count += 1;
+  if (filters.designerId !== 'all') count += 1;
+  if (filters.surfacerId !== 'all') count += 1;
+  if (filters.dueDate !== 'all') count += 1;
+  if (filters.showArchived) count += 1;
+  return count;
+}

@@ -45,7 +45,7 @@ import {
 } from '../../components/ui/design-system';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
-import { formatCellValue, formatEmploymentType, formatUserWorkload, userDisplayName, userInitials } from '../../utils/format';
+import { formatCellValue, formatEmploymentType, userDisplayName, userInitials } from '../../utils/format';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
 
 interface UserFormState {
@@ -549,15 +549,9 @@ export default function UsersPage() {
     },
     {
       field: 'employment_type',
-      headerName: 'Employment Status',
-      width: 150,
-      valueGetter: (_value, row) => formatEmploymentType(row.employment_type) || '—',
-    },
-    {
-      field: 'active_projects_count',
-      headerName: 'Current Workload',
+      headerName: 'Employment',
       width: 140,
-      valueGetter: (_value, row) => formatUserWorkload(row.active_projects_count),
+      valueGetter: (_value, row) => formatEmploymentType(row.employment_type) || '—',
     },
     {
       field: 'is_active',

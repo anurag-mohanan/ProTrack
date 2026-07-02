@@ -21,6 +21,7 @@ export { PasswordField } from './PasswordField';
 export { FormSelect, type SelectOption } from './FormSelect';
 export { FormSection } from './FormSection';
 export { SearchToolbar } from './SearchToolbar';
+export { KpiMetricCard } from './KpiMetricCard';
 export { StatisticCard } from './StatisticCard';
 export { DeleteDialog } from './DeleteDialog';
 export { DeleteRecordDialog, type DeleteCheckResult } from './DeleteRecordDialog';

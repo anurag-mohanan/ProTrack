@@ -3,21 +3,30 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { AdminActionCard } from '../../components/admin/AdminActionCard';
 import { ContentCard } from '../../components/ui/cards';
 import { ADMIN_SYSTEM_ITEMS } from '../../config/adminNavigation';
-
-const APP_VERSION = '1.0.0';
+import {
+  PRODUCT_NAME,
+  RELEASE_LABEL,
+  VERSION_DISPLAY,
+} from '../../config/appMeta';
 
 export default function AdminSystemPage() {
   return (
     <Box>
       <PageHeader
-        title="System"
-        subtitle="Developer and system administration tools (Admin only)"
+        title="System Health"
+        subtitle="Release information and platform maintenance tools"
       />
 
       <Box sx={{ mb: 3 }}>
-        <ContentCard title="Version Information">
+        <ContentCard title="Release Information">
+          <Typography variant="body1" sx={{ fontWeight: 700, mb: 0.5 }}>
+            {PRODUCT_NAME} {VERSION_DISPLAY}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {RELEASE_LABEL}
+          </Typography>
           <Typography variant="body2" color="text.secondary">
-            ProTrack {APP_VERSION} · Backend API connected
+            Frontend and API are configured for deployment at protrack.prosohm.com.
           </Typography>
         </ContentCard>
       </Box>

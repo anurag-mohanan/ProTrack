@@ -33,7 +33,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/admin/project-types': 'Project Types',
   '/admin/project-templates': 'Project Templates',
   '/admin/roles': 'Roles',
-  '/admin/settings': 'Company Settings',
+  '/admin/settings': 'System Settings',
   '/admin/settings/company': 'Company Information',
   '/admin/settings/branding': 'Branding',
   '/admin/settings/holidays': 'Holiday Calendar',
@@ -50,7 +50,7 @@ function resolveBreadcrumbs(pathname: string): BreadcrumbItem[] {
   if (ROUTE_LABELS[pathname]) {
     if (pathname.startsWith('/admin/')) {
       return [
-        { label: 'Administration', to: '/admin/dashboard' },
+        { label: 'System Administration', to: '/admin/dashboard' },
         { label: ROUTE_LABELS[pathname] },
       ];
     }
@@ -67,7 +67,7 @@ function resolveBreadcrumbs(pathname: string): BreadcrumbItem[] {
 
   if (pathname.startsWith('/admin/project-templates/')) {
     return [
-      { label: 'Administration', to: '/admin/dashboard' },
+      { label: 'System Administration', to: '/admin/dashboard' },
       { label: 'Project Templates', to: '/admin/project-templates' },
       { label: 'Template Editor' },
     ];
@@ -75,8 +75,8 @@ function resolveBreadcrumbs(pathname: string): BreadcrumbItem[] {
 
   if (pathname.startsWith('/admin/settings/')) {
     return [
-      { label: 'Administration', to: '/admin/dashboard' },
-      { label: 'Company Settings', to: '/admin/settings' },
+      { label: 'System Administration', to: '/admin/dashboard' },
+      { label: 'System Settings', to: '/admin/settings' },
       { label: ROUTE_LABELS[pathname] ?? 'Settings' },
     ];
   }

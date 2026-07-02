@@ -16,10 +16,12 @@ import TuneIcon from '@mui/icons-material/Tune';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { AdminSearchBar } from '../admin/AdminSearchBar';
+import { LogoHomeLink } from '../branding/LogoHomeLink';
 import { NotificationBell } from '../common/NotificationBell';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { AdminBreadcrumbs, useAdminBreadcrumbTitle } from './AdminBreadcrumbs';
 import { ADMIN_DRAWER_WIDTH } from './AdminSidebar';
+import { PRODUCT_TAGLINE } from '../../config/appMeta';
 import { formatCellValue } from '../../utils/format';
 
 interface AdminTopBarProps {
@@ -52,6 +54,10 @@ export function AdminTopBar({ displayName, roleName, onLogout }: AdminTopBarProp
       }}
     >
       <Toolbar sx={{ minHeight: '72px !important', px: { xs: 2, md: 3 }, gap: 2 }}>
+        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+          <LogoHomeLink light size="sm" />
+        </Box>
+
         <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <Typography
@@ -66,7 +72,7 @@ export function AdminTopBar({ displayName, roleName, onLogout }: AdminTopBarProp
               {pageTitle}
             </Typography>
             <Chip
-              label="Administrator"
+              label="System Administration"
               size="small"
               sx={{
                 height: 22,
@@ -76,6 +82,12 @@ export function AdminTopBar({ displayName, roleName, onLogout }: AdminTopBarProp
               }}
             />
           </Box>
+          <Typography
+            variant="caption"
+            sx={{ color: 'grey.400', display: { xs: 'none', lg: 'block' } }}
+          >
+            {PRODUCT_TAGLINE}
+          </Typography>
           <AdminBreadcrumbs />
         </Box>
 

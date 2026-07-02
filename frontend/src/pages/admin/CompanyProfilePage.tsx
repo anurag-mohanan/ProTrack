@@ -107,7 +107,7 @@ export default function CompanyProfilePage() {
     <PageContainer>
       <PageHeader
         title="Company Information"
-        subtitle="Organisation identity, branding inputs, and default working patterns"
+        subtitle="Company name, logo, address, contact details, working hours, timezone, financial year, and holiday calendar"
       />
 
       <Grid container spacing={2.5}>

@@ -89,7 +89,7 @@ export function AdminSidebar() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1 }}>
           <AdminPanelSettingsIcon sx={{ fontSize: 16, color: 'secondary.main' }} />
           <Typography variant="overline" sx={{ color: 'prosohm.sidebarTextMuted' }}>
-            Administrator Workspace
+            System Administration
           </Typography>
         </Box>
 

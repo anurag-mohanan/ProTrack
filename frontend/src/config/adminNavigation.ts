@@ -72,9 +72,9 @@ export const ADMIN_WORKSPACE_NAV: AdminWorkspaceNavItem[] = [
   { label: 'Overview', path: '/admin/dashboard', icon: DashboardIcon },
   { label: 'Create', path: '/admin/create', icon: AddIcon },
   { label: 'Manage', path: '/admin/manage', icon: ManageAccountsIcon },
-  { label: 'Import', path: '/admin/imports', icon: UploadFileIcon },
-  { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
-  { label: 'Audit', path: '/admin/audit', icon: HistoryIcon },
+  { label: 'Import / Export', path: '/admin/imports', icon: UploadFileIcon },
+  { label: 'System Settings', path: '/admin/settings', icon: SettingsIcon },
+  { label: 'Audit & Maintenance', path: '/admin/audit', icon: HistoryIcon },
 ];
 
 export const ADMIN_CREATE_ACTIONS: AdminCreateAction[] = [

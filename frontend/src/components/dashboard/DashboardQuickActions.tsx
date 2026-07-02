@@ -130,7 +130,7 @@ export function DashboardQuickActions({
       </Button>
       {canAccessAdministration(roleName) ? (
         <Button variant="outlined" size="small" startIcon={<AdminPanelSettingsIcon />} onClick={onAdministration} sx={buttonSx}>
-          Administration
+          System Administration
         </Button>
       ) : null}
     </Box>

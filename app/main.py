@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401 — register all models with Base.metadata
 from app.api.v1.api import api_router
-from app.core.config import ENABLE_DEMO_SEED, UPLOAD_DIR
+from app.core.config import APP_VERSION, CORS_ORIGINS, ENABLE_DEMO_SEED, UPLOAD_DIR
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -74,8 +74,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ProTrack API",
-    description="Project tracking and resource planning API for Prosohm",
-    version="0.1.0",
+    description="Engineering management platform API for Prosohm Projects Pvt. Ltd.",
+    version=f"{APP_VERSION}-rc3",
     lifespan=lifespan,
     swagger_ui_parameters={
         "persistAuthorization": True,
@@ -105,10 +105,7 @@ app.openapi = custom_openapi
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -122,4 +119,9 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "app": "ProTrack",
+        "version": APP_VERSION,
+        "release": "RC3",
+    }

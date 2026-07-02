@@ -2,6 +2,7 @@ import { Box, Toolbar } from '@mui/material';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { AdminSidebar, ADMIN_DRAWER_WIDTH } from '../components/layout/AdminSidebar';
 import { AdminTopBar } from '../components/layout/AdminTopBar';
+import { AppFooter } from '../components/layout/AppFooter';
 import { ImpersonationBanner } from '../components/layout/ImpersonationBanner';
 import { useAuth } from '../context/AuthContext';
 
@@ -31,11 +32,16 @@ export function AdminLayout() {
             sx={{
               flexGrow: 1,
               width: { sm: `calc(100% - ${ADMIN_DRAWER_WIDTH}px)` },
-              p: { xs: 2, md: 3 },
+              display: 'flex',
+              flexDirection: 'column',
+              minWidth: 0,
             }}
           >
             <Toolbar sx={{ minHeight: '72px !important' }} />
-            <Outlet />
+            <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, minWidth: 0 }}>
+              <Outlet />
+            </Box>
+            <AppFooter />
           </Box>
         </Box>
       </Box>

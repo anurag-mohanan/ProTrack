@@ -11,14 +11,16 @@ import {
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
+import TuneIcon from '@mui/icons-material/Tune';
 import { Link as RouterLink } from 'react-router-dom';
-import { NotificationBell } from '../common/NotificationBell';
 import { LogoHomeLink } from '../branding/LogoHomeLink';
+import { NotificationBell } from '../common/NotificationBell';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { AppBreadcrumbs, useBreadcrumbTitle } from './AppBreadcrumbs';
+import { AppGlobalSearchBar } from './AppGlobalSearchBar';
 import { DRAWER_WIDTH } from './AppSidebar';
+import { PRODUCT_TAGLINE } from '../../config/appMeta';
 import { formatCellValue } from '../../utils/format';
-import TuneIcon from '@mui/icons-material/Tune';
 
 interface AppTopBarProps {
   displayName: string;
@@ -49,8 +51,25 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
       }}
     >
       <Toolbar sx={{ minHeight: '72px !important', px: { xs: 2, md: 3 }, gap: 2 }}>
-        <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexShrink: 0 }}>
+        <Box sx={{ display: { xs: 'flex', md: 'none' }, flexShrink: 0 }}>
           <LogoHomeLink size="sm" />
+        </Box>
+
+        <Box
+          sx={{
+            display: { xs: 'none', md: 'flex' },
+            alignItems: 'center',
+            gap: 1.5,
+            flexShrink: 0,
+            minWidth: 0,
+          }}
+        >
+          <LogoHomeLink size="sm" />
+          <Box sx={{ display: { xs: 'none', lg: 'block' }, minWidth: 0 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2 }}>
+              {PRODUCT_TAGLINE}
+            </Typography>
+          </Box>
         </Box>
 
         <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
@@ -60,12 +79,15 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
               fontWeight: 800,
               fontSize: { xs: '1rem', md: '1.125rem' },
               lineHeight: 1.2,
-              display: { xs: 'none', md: 'block' },
             }}
           >
             {pageTitle}
           </Typography>
           <AppBreadcrumbs />
+        </Box>
+
+        <Box sx={{ display: { xs: 'none', lg: 'flex' }, flex: 1, justifyContent: 'center', maxWidth: 440 }}>
+          <AppGlobalSearchBar />
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
@@ -136,7 +158,7 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
               Logout
             </MenuItem>
           </Menu>
-          <Box sx={{ display: { xs: 'none', lg: 'block' } }}>
+          <Box sx={{ display: { xs: 'none', xl: 'block' } }}>
             <ProsohmButton
               buttonVariant="outlined"
               size="small"

@@ -1,41 +1,45 @@
 import { Box, Typography, useTheme } from '@mui/material';
 import { useCompany } from '../../context/CompanyContext';
-import { getAssetUrl } from '../../utils/assetUrl';
+import { COMPANY_BYLINE, PRODUCT_NAME, PRODUCT_TAGLINE } from '../../config/appMeta';
+import { resolveAssetUrl } from '../../config/env';
 
 interface CompanyLogoProps {
   variant?: 'full' | 'mark';
   light?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  showByline?: boolean;
 }
 
 const sizeMap = {
-  sm: { mark: 28, title: '1rem', subtitle: '0.625rem' },
-  md: { mark: 36, title: '1.125rem', subtitle: '0.6875rem' },
-  lg: { mark: 48, title: '1.5rem', subtitle: '0.75rem' },
+  sm: { mark: 28, title: '1rem', subtitle: '0.625rem', byline: '0.5625rem' },
+  md: { mark: 36, title: '1.125rem', subtitle: '0.6875rem', byline: '0.625rem' },
+  lg: { mark: 48, title: '1.5rem', subtitle: '0.75rem', byline: '0.6875rem' },
 };
 
 export function CompanyLogo({
   variant = 'full',
   light = false,
   size = 'md',
+  showByline = false,
 }: CompanyLogoProps) {
   const theme = useTheme();
-  const { company, appName } = useCompany();
+  const { company } = useCompany();
   const dimensions = sizeMap[size];
-  const logoUrl = getAssetUrl(company?.logo_url);
+  const logoUrl = resolveAssetUrl(company?.logo_url);
   const primary = theme.palette.primary.main;
   const textColor = light ? theme.palette.prosohm.sidebarText : theme.palette.text.primary;
-  const subtitle = company?.company_name ?? appName;
-  const markLetter = (company?.company_short_name || company?.company_name || 'P').charAt(0).toUpperCase();
+  const mutedColor = light ? theme.palette.prosohm.sidebarTextMuted : 'text.secondary';
+  const markLetter = 'P';
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
       <Box
         sx={{
           width: dimensions.mark,
           height: dimensions.mark,
           borderRadius: '12px',
           overflow: 'hidden',
+          flexShrink: 0,
           background: logoUrl
             ? theme.palette.background.paper
             : `linear-gradient(135deg, ${primary} 0%, ${theme.palette.primary.dark} 100%)`,
@@ -48,7 +52,7 @@ export function CompanyLogo({
           <Box
             component="img"
             src={logoUrl}
-            alt={`${subtitle} logo`}
+            alt={`${company?.company_name ?? PRODUCT_NAME} logo`}
             sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
           />
         ) : (
@@ -65,7 +69,7 @@ export function CompanyLogo({
         )}
       </Box>
       {variant === 'full' ? (
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Typography
             sx={{
               fontWeight: 800,
@@ -73,21 +77,36 @@ export function CompanyLogo({
               lineHeight: 1.1,
               color: textColor,
               letterSpacing: '-0.02em',
+              whiteSpace: 'nowrap',
             }}
           >
-            ProTrack
+            {PRODUCT_NAME}
           </Typography>
           {size !== 'sm' ? (
             <Typography
               sx={{
                 fontSize: dimensions.subtitle,
                 fontWeight: 600,
-                color: light ? theme.palette.prosohm.sidebarTextMuted : 'text.secondary',
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
+                color: mutedColor,
+                letterSpacing: '0.02em',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
-              {subtitle}
+              {PRODUCT_TAGLINE}
+            </Typography>
+          ) : null}
+          {showByline && size === 'lg' ? (
+            <Typography
+              sx={{
+                fontSize: dimensions.byline,
+                fontWeight: 500,
+                color: mutedColor,
+                mt: 0.25,
+              }}
+            >
+              {COMPANY_BYLINE}
             </Typography>
           ) : null}
         </Box>

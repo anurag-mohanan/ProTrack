@@ -112,13 +112,13 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1 }}>
               <AdminPanelSettingsIcon sx={{ fontSize: 16, color: 'secondary.light' }} />
               <Typography variant="overline" sx={{ color: 'prosohm.sidebarTextMuted' }}>
-                Administrator
+                System Administration
               </Typography>
             </Box>
             <List disablePadding>
               <NavButton
                 path="/admin/dashboard"
-                label="Administrator"
+                label="System Administration"
                 icon={AdminPanelSettingsIcon}
                 accent
               />

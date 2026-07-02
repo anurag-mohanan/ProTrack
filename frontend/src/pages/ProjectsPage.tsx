@@ -92,6 +92,14 @@ export function ProjectsPage() {
   }, [isMobile, isTablet]);
 
   useEffect(() => {
+    const urlSearch = searchParams.get('search');
+    if (urlSearch) {
+      setAppliedFilters((current) => ({ ...current, search: urlSearch }));
+      setDraftFilters((current) => ({ ...current, search: urlSearch }));
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     const executionStatus = searchParams.get('execution_status');
     const projectStage = searchParams.get('project_stage');
     const teamId = searchParams.get('team_id');

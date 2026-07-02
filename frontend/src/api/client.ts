@@ -1,13 +1,13 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { getApiBaseUrl } from '../config/env';
 import {
   clearAccessToken,
   getAccessToken,
   setAccessToken,
 } from '../services/authStorage';
 
-/** Override with VITE_API_URL; defaults to backend direct URL per spec. */
-export const API_BASE_URL =
-  import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8002/api/v1';
+/** Resolved from VITE_API_URL; defaults to same-origin /api/v1 in development. */
+export const API_BASE_URL = getApiBaseUrl();
 
 export class ApiError extends Error {
   status: number;

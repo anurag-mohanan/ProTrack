@@ -15,8 +15,6 @@ import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ArchivedProjectsPage } from './pages/ArchivedProjectsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ReportsPage } from './pages/ReportsPage';
-import { TimesheetEntryPage } from './pages/TimesheetEntryPage';
-import { TimesheetMonthPage } from './pages/TimesheetMonthPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
 import { ResourcePlanningPage } from './pages/ResourcePlanningPage';
 import { WorkloadPage } from './pages/WorkloadPage';
@@ -155,10 +153,14 @@ export default function App() {
                     </Route>
                     <Route element={<ModuleRoute module={MODULE_TIMESHEETS} />}>
                       <Route path="/timesheets" element={<TimesheetsPage />} />
-                      <Route path="/timesheets/month" element={<TimesheetMonthPage />} />
+                      <Route path="/timesheets/month" element={<Navigate to="/timesheets" replace />} />
                       <Route
                         path="/timesheets/:timesheetId/entries/new"
-                        element={<TimesheetEntryPage />}
+                        element={<Navigate to="/timesheets" replace />}
+                      />
+                      <Route
+                        path="/timesheets/:timesheetId/entries/:entryId"
+                        element={<Navigate to="/timesheets" replace />}
                       />
                     </Route>
                     <Route

@@ -1,42 +1,19 @@
-import { Fragment, useMemo, useState } from 'react';
-import {
-  Box,
-  Button,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-} from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
-import CommentOutlinedIcon from '@mui/icons-material/CommentOutlined';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link as RouterLink, Link } from 'react-router-dom';
-import { fetchTimesheetEntries } from '../api/timesheets';
-import { EmptyState } from '../components/common/EmptyState';
-import { ErrorState } from '../components/common/ErrorState';
-import { LoadingState } from '../components/common/LoadingState';
+import { useState } from 'react';
+import { Alert, Box, Grid, Stack } from '@mui/material';
 import { PageContainer } from '../components/common/PageContainer';
-import { TimesheetStatusChip } from '../components/common/StatusChip';
 import { PageHeader } from '../components/common/PageHeader';
+import { LoadingState } from '../components/common/LoadingState';
+import { ErrorState } from '../components/common/ErrorState';
+import { TimesheetEntryForm, type TimesheetEntryFormValues } from '../components/timesheets/TimesheetEntryForm';
+import { TimesheetEntriesTable } from '../components/timesheets/TimesheetEntriesTable';
+import { TimesheetMonthNavigation } from '../components/timesheets/TimesheetMonthNavigation';
+import { TimesheetMonthSummaryBar } from '../components/timesheets/TimesheetMonthSummaryBar';
+import { TimesheetNpReferencePanel } from '../components/timesheets/TimesheetNpReferencePanel';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
-import { ContentCard } from '../components/ui/cards';
-import { FormDrawer, FormField } from '../components/ui/design-system';
 import { useAuth } from '../context/AuthContext';
-import {
-  approveTimesheet,
-  createTimesheet,
-  getTimesheets,
-  rejectTimesheet,
-  returnTimesheetToDraft,
-  submitTimesheet,
-  timesheetQueryKeys,
-} from '../services/timesheetService';
-import { invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
+import { useToast } from '../context/ToastContext';
+import { useTimesheetMonthWorkspace } from '../hooks/useTimesheetMonthWorkspace';
+import type { TimesheetEntry } from '../types';
 import {
   canApproveTimesheet,
   canRejectTimesheet,
@@ -44,419 +21,220 @@ import {
   canSubmitTimesheet,
   isReadOnlyRole,
 } from '../utils/permissions';
-import type { Timesheet } from '../types';
-import { formatCellValue, formatDate, formatNumber } from '../utils/format';
-
-function weekStartMonday(date = new Date()): string {
-  const copy = new Date(date);
-  const day = copy.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  copy.setDate(copy.getDate() + diff);
-  return copy.toISOString().slice(0, 10);
-}
+import { currentMonthValue, formatMonthLabel } from '../utils/timesheetMonth';
+import { formatDisplayValue, userDisplayName } from '../utils/format';
 
 export function TimesheetsPage() {
   const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const [createOpen, setCreateOpen] = useState(false);
-  const [weekStart, setWeekStart] = useState(weekStartMonday());
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<Timesheet | null>(null);
-  const [rejectComments, setRejectComments] = useState('');
-  const [actionError, setActionError] = useState<unknown>(null);
+  const { showError, showSuccess } = useToast();
+  const [monthValue, setMonthValue] = useState(currentMonthValue());
+  const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
+  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
 
-  const timesheetsQuery = useQuery({
-    queryKey: timesheetQueryKeys.all,
-    queryFn: () => getTimesheets(),
-  });
+  const workspace = useTimesheetMonthWorkspace(user, monthValue);
+  const monthLabel = formatMonthLabel(monthValue);
+  const roleName = user?.role_name ?? '';
 
-  const entriesQuery = useQuery({
-    queryKey: timesheetQueryKeys.entries(expandedId ?? undefined),
-    queryFn: () => fetchTimesheetEntries({ timesheet_id: expandedId ?? undefined }),
-    enabled: Boolean(expandedId),
-  });
+  const readOnly =
+    isReadOnlyRole(roleName) ||
+    workspace.monthStatus === 'approved' ||
+    workspace.monthStatus === 'submitted';
 
-  const invalidateTimesheets = (projectId?: string) => {
-    invalidateTimesheetRelatedQueries(queryClient, projectId);
-    if (expandedId) {
-      void queryClient.invalidateQueries({
-        queryKey: timesheetQueryKeys.entries(expandedId),
+  const handleSaveEntry = async (values: TimesheetEntryFormValues) => {
+    const hours = Number(values.hours);
+    if (!values.entryDate || !Number.isFinite(hours) || hours <= 0) {
+      showError('Enter a valid date and hours.');
+      return;
+    }
+    if (!values.toolValue) {
+      showError('Select a tool number or NP code.');
+      return;
+    }
+    if (values.toolValue.startsWith('project:') && !values.taskTypeId) {
+      showError('Select a task for project work.');
+      return;
+    }
+
+    try {
+      await workspace.saveEntryMutation.mutateAsync({
+        entryId: editingEntry?.id,
+        entryDate: values.entryDate,
+        toolValue: values.toolValue,
+        taskTypeId: values.taskTypeId || null,
+        hours,
+        notes: values.notes,
       });
+      showSuccess(editingEntry ? 'Entry updated.' : 'Entry added.');
+      setEditingEntry(null);
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Unable to save entry.');
     }
   };
 
-  const createMutation = useMutation({
-    mutationFn: createTimesheet,
-    onSuccess: () => {
-      invalidateTimesheets();
-      setCreateOpen(false);
-      setWeekStart(weekStartMonday());
-    },
-  });
+  const handleDeleteEntry = async (entry: TimesheetEntry) => {
+    setDeletingEntryId(entry.id);
+    try {
+      await workspace.deleteEntryMutation.mutateAsync(entry.id);
+      if (editingEntry?.id === entry.id) setEditingEntry(null);
+      showSuccess('Entry deleted.');
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Unable to delete entry.');
+    } finally {
+      setDeletingEntryId(null);
+    }
+  };
 
-  const workflowMutation = useMutation({
-    mutationFn: async ({
-      action,
-      timesheetId,
-      comments,
-    }: {
-      action: 'submit' | 'approve' | 'reject' | 'return';
-      timesheetId: string;
-      comments?: string;
-    }) => {
-      if (action === 'submit') return submitTimesheet(timesheetId);
-      if (action === 'approve') return approveTimesheet(timesheetId, comments);
-      if (action === 'reject') {
-        if (!comments?.trim()) throw new Error('Comments are required when rejecting');
-        return rejectTimesheet(timesheetId, comments.trim());
-      }
-      return returnTimesheetToDraft(timesheetId);
-    },
-    onSuccess: () => {
-      setActionError(null);
-      setRejectTarget(null);
-      setRejectComments('');
-      invalidateTimesheets();
-    },
-    onError: (error) => setActionError(error),
-  });
+  const handleSubmitMonth = async () => {
+    try {
+      await workspace.submitMonthMutation.mutateAsync();
+      showSuccess('Timesheet submitted for approval.');
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Submit failed.');
+    }
+  };
 
-  const sortedTimesheets = useMemo(
-    () =>
-      [...(timesheetsQuery.data ?? [])].sort((a, b) =>
-        b.week_start.localeCompare(a.week_start),
-      ),
-    [timesheetsQuery.data],
+  if (workspace.isLoading) {
+    return <LoadingState message="Loading timesheet workspace…" />;
+  }
+
+  if (workspace.error) {
+    return <ErrorState error={workspace.error} />;
+  }
+
+  const showSubmit =
+    user &&
+    !readOnly &&
+    workspace.draftTimesheets.some((sheet) =>
+      workspace.entries.some((entry) => entry.timesheet_id === sheet.id),
+    ) &&
+    canSubmitTimesheet('draft', user.id, user.id, roleName);
+
+  const reviewableTimesheets = workspace.timesheets.filter(
+    (sheet) => sheet.status === 'submitted',
   );
-
-  const entryHoursByTimesheet = useMemo(() => {
-    const map = new Map<string, number>();
-    entriesQuery.data?.forEach((entry) => {
-      map.set(entry.timesheet_id, (map.get(entry.timesheet_id) ?? 0) + Number(entry.hours));
-    });
-    return map;
-  }, [entriesQuery.data]);
-
-  if (timesheetsQuery.isLoading) return <LoadingState />;
-  if (timesheetsQuery.error) return <ErrorState error={timesheetsQuery.error} />;
-
-  const roleName = user?.role_name ?? '';
 
   return (
     <PageContainer>
       <PageHeader
-        subtitle="Weekly summaries and monthly Excel-style entry"
+        subtitle={`${formatDisplayValue(user ? userDisplayName(user) : '')} · Monthly timesheet workspace`}
         action={
-          !isReadOnlyRole(roleName) ? (
-            <Stack direction="row" spacing={1}>
-              <RouterLink to="/timesheets/month" style={{ textDecoration: 'none' }}>
-                <ProsohmButton buttonVariant="primary">Monthly Entry</ProsohmButton>
-              </RouterLink>
-              <ProsohmButton
-                buttonVariant="outlined"
-                startIcon={<AddIcon />}
-                onClick={() => setCreateOpen(true)}
-                disabled={!user}
-              >
-                Create Week
-              </ProsohmButton>
-            </Stack>
+          showSubmit ? (
+            <ProsohmButton
+              buttonVariant="primary"
+              loading={workspace.submitMonthMutation.isPending}
+              onClick={() => void handleSubmitMonth()}
+            >
+              Submit Timesheet
+            </ProsohmButton>
           ) : undefined
         }
       />
 
-      {actionError ? (
-        <Box sx={{ mb: 2 }}>
-          <ErrorState error={actionError} title="Timesheet action failed" />
-        </Box>
+      <TimesheetMonthNavigation monthValue={monthValue} onMonthChange={setMonthValue} />
+
+      <TimesheetMonthSummaryBar
+        monthLabel={monthLabel}
+        status={workspace.monthStatus}
+        summary={workspace.summary}
+      />
+
+      {workspace.summary.remainingHours < 0 ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Entered hours exceed expected hours for this month.
+        </Alert>
       ) : null}
 
-      {!sortedTimesheets.length ? (
-        <EmptyState
-          title="No timesheets yet"
-          description="Create a weekly timesheet to start logging time."
-        />
-      ) : (
-        <ContentCard noPadding>
-        <TableContainer component={Paper} elevation={0} sx={{ boxShadow: 'none' }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Week Starting</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {sortedTimesheets.map((timesheet) => {
-                const isExpanded = expandedId === timesheet.id;
-                const showSubmit = user
-                  ? canSubmitTimesheet(
-                      timesheet.status,
-                      timesheet.user_id,
-                      user.id,
-                      roleName,
-                    )
-                  : false;
-                const showReview = canApproveTimesheet(timesheet.status, roleName);
-                const showReject = canRejectTimesheet(timesheet.status, roleName);
-                const showReturn = user
-                  ? canReturnToDraft(
-                      timesheet.status,
-                      timesheet.user_id,
-                      user.id,
-                      roleName,
-                    )
-                  : false;
-
-                return (
-                  <Fragment key={timesheet.id}>
-                    <TableRow hover>
-                      <TableCell>{formatDate(timesheet.week_start)}</TableCell>
-                      <TableCell>
-                        <TimesheetStatusChip status={timesheet.status} />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}
-                        >
-                          {showSubmit ? (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              disabled={workflowMutation.isPending}
-                              onClick={() =>
-                                workflowMutation.mutate({
-                                  action: 'submit',
-                                  timesheetId: timesheet.id,
-                                })
-                              }
-                            >
-                              Submit
-                            </Button>
-                          ) : null}
-                          {showReview ? (
-                            <Button
-                              size="small"
-                              color="success"
-                              variant="outlined"
-                              disabled={workflowMutation.isPending}
-                              onClick={() =>
-                                workflowMutation.mutate({
-                                  action: 'approve',
-                                  timesheetId: timesheet.id,
-                                })
-                              }
-                            >
-                              Approve
-                            </Button>
-                          ) : null}
-                          {showReject ? (
-                            <Button
-                              size="small"
-                              color="error"
-                              variant="outlined"
-                              disabled={workflowMutation.isPending}
-                              onClick={() => setRejectTarget(timesheet)}
-                            >
-                              Reject
-                            </Button>
-                          ) : null}
-                          {showReturn ? (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              disabled={workflowMutation.isPending}
-                              onClick={() =>
-                                workflowMutation.mutate({
-                                  action: 'return',
-                                  timesheetId: timesheet.id,
-                                })
-                              }
-                            >
-                              Return to Draft
-                            </Button>
-                          ) : null}
-                          <Button
-                            size="small"
-                            onClick={() =>
-                              setExpandedId(isExpanded ? null : timesheet.id)
-                            }
-                          >
-                            {isExpanded ? 'Hide Entries' : 'View Entries'}
-                          </Button>
-                          {timesheet.status === 'draft' ? (
-                            <Button
-                              size="small"
-                              component={Link}
-                              to={`/timesheets/${timesheet.id}/entries/new`}
-                            >
-                              Add Entry
-                            </Button>
-                          ) : null}
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                    {isExpanded ? (
-                      <TableRow>
-                        <TableCell colSpan={3} sx={{ bgcolor: 'background.default' }}>
-                          {entriesQuery.isLoading ? (
-                            <LoadingState message="Loading entries…" />
-                          ) : entriesQuery.error ? (
-                            <ErrorState error={entriesQuery.error} />
-                          ) : !entriesQuery.data?.length ? (
-                            <EmptyState
-                              title="No entries"
-                              description="Add a time entry for this week."
-                            />
-                          ) : (
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow>
-                                  <TableCell>Date</TableCell>
-                                  <TableCell>Category</TableCell>
-                                  <TableCell>Project / NP Code</TableCell>
-                                  <TableCell>Task</TableCell>
-                                  <TableCell>Billable</TableCell>
-                                  <TableCell align="right">Hours</TableCell>
-                                  <TableCell>Notes</TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {entriesQuery.data.map((entry) => (
-                                  <TableRow key={entry.id}>
-                                    <TableCell>{formatDate(entry.entry_date)}</TableCell>
-                                    <TableCell>
-                                      {entry.work_category === 'non_productive'
-                                        ? 'Non-Productive'
-                                        : 'Productive'}
-                                    </TableCell>
-                                    <TableCell>
-                                      {entry.work_category === 'non_productive'
-                                        ? formatCellValue(entry.non_productive_code)
-                                        : formatCellValue(entry.project_tool_number)}
-                                    </TableCell>
-                                    <TableCell>{formatCellValue(entry.task_type_name)}</TableCell>
-                                    <TableCell>{entry.is_billable ? 'Yes' : 'No'}</TableCell>
-                                    <TableCell align="right">
-                                      {formatNumber(entry.hours)}
-                                    </TableCell>
-                                    <TableCell>{formatCellValue(entry.description)}</TableCell>
-                                  </TableRow>
-                                ))}
-                                <TableRow>
-                                  <TableCell colSpan={5}>
-                                    <strong>Total</strong>
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    <strong>
-                                      {formatNumber(
-                                        entryHoursByTimesheet.get(timesheet.id) ?? 0,
-                                      )}
-                                    </strong>
-                                  </TableCell>
-                                  <TableCell />
-                                </TableRow>
-                              </TableBody>
-                            </Table>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        </ContentCard>
-      )}
-
-      <FormDrawer
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        title="Create Timesheet"
-        subtitle="Start a new weekly timesheet"
-        icon={CalendarMonthOutlinedIcon}
-        formId="create-timesheet-form"
-        submitLabel={createMutation.isPending ? 'Creating…' : 'Create Timesheet'}
-        loading={createMutation.isPending}
-        onSubmit={() => {
-          if (!user) return;
-          createMutation.mutate({
-            user_id: user.id,
-            week_start: weekStart,
-          });
-        }}
-      >
-        <Box
-          component="form"
-          id="create-timesheet-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!user) return;
-            createMutation.mutate({
-              user_id: user.id,
-              week_start: weekStart,
-            });
-          }}
-        >
-          <FormField
-            label="Week Start"
-            type="date"
-            value={weekStart}
-            onChange={(event) => setWeekStart(event.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, lg: 9 }}>
+          <TimesheetEntryForm
+            monthLabel={monthLabel}
+            projects={workspace.activeProjects}
+            npCodes={workspace.npCodes}
+            taskTypes={workspace.taskTypes}
+            readOnly={readOnly}
+            editingEntry={editingEntry}
+            dailyTotals={workspace.dailyTotals}
+            dailyLimit={workspace.dailyLimit}
+            saving={workspace.saveEntryMutation.isPending}
+            onSubmit={handleSaveEntry}
+            onCancelEdit={() => setEditingEntry(null)}
           />
-          {createMutation.error ? (
-            <ErrorState error={createMutation.error} title="Create failed" />
+
+          <TimesheetEntriesTable
+            monthLabel={monthLabel}
+            entries={workspace.entries}
+            timesheetById={workspace.timesheetById}
+            dailyTotals={workspace.dailyTotals}
+            dailyLimit={workspace.dailyLimit}
+            readOnly={readOnly}
+            deletingId={deletingEntryId}
+            onEdit={setEditingEntry}
+            onDelete={(entry) => void handleDeleteEntry(entry)}
+            isEntryEditable={workspace.isEntryEditable}
+          />
+
+          {reviewableTimesheets.length ? (
+            <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+              {reviewableTimesheets.map((sheet) => (
+                <Box key={sheet.id} sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  {canApproveTimesheet(sheet.status, roleName) ? (
+                    <ProsohmButton
+                      size="small"
+                      onClick={() =>
+                        void workspace.workflowMutation
+                          .mutateAsync({ action: 'approve', timesheetId: sheet.id })
+                          .then(() => showSuccess('Timesheet approved.'))
+                          .catch((error) =>
+                            showError(error instanceof Error ? error.message : 'Approve failed'),
+                          )
+                      }
+                    >
+                      Approve Week {sheet.week_start}
+                    </ProsohmButton>
+                  ) : null}
+                  {canRejectTimesheet(sheet.status, roleName) ? (
+                    <ProsohmButton
+                      buttonVariant="outlined"
+                      size="small"
+                      onClick={() =>
+                        void workspace.workflowMutation
+                          .mutateAsync({ action: 'reject', timesheetId: sheet.id })
+                          .then(() => showSuccess('Timesheet rejected.'))
+                          .catch((error) =>
+                            showError(error instanceof Error ? error.message : 'Reject failed'),
+                          )
+                      }
+                    >
+                      Reject Week {sheet.week_start}
+                    </ProsohmButton>
+                  ) : null}
+                  {user &&
+                  canReturnToDraft(sheet.status, sheet.user_id, user.id, roleName) ? (
+                    <ProsohmButton
+                      buttonVariant="outlined"
+                      size="small"
+                      onClick={() =>
+                        void workspace.workflowMutation
+                          .mutateAsync({ action: 'return', timesheetId: sheet.id })
+                          .then(() => showSuccess('Returned to draft.'))
+                          .catch((error) =>
+                            showError(error instanceof Error ? error.message : 'Return failed'),
+                          )
+                      }
+                    >
+                      Return Week {sheet.week_start}
+                    </ProsohmButton>
+                  ) : null}
+                </Box>
+              ))}
+            </Stack>
           ) : null}
-        </Box>
-      </FormDrawer>
+        </Grid>
 
-      <FormDrawer
-        open={Boolean(rejectTarget)}
-        onClose={() => setRejectTarget(null)}
-        title="Reject Timesheet"
-        subtitle="Explain what needs to change before resubmission"
-        icon={CommentOutlinedIcon}
-        formId="reject-timesheet-form"
-        submitLabel="Reject Timesheet"
-        loading={workflowMutation.isPending}
-        onSubmit={() => {
-          if (!rejectTarget || !rejectComments.trim()) return;
-          workflowMutation.mutate({
-            action: 'reject',
-            timesheetId: rejectTarget.id,
-            comments: rejectComments,
-          });
-        }}
-      >
-        <Box
-          component="form"
-          id="reject-timesheet-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!rejectTarget || !rejectComments.trim()) return;
-            workflowMutation.mutate({
-              action: 'reject',
-              timesheetId: rejectTarget.id,
-              comments: rejectComments,
-            });
-          }}
-        >
-          <FormField
-            label="Approval Comments"
-            value={rejectComments}
-            onChange={(event) => setRejectComments(event.target.value)}
-            multiline
-            rows={4}
-            helperText="Required when rejecting a timesheet."
-          />
-        </Box>
-      </FormDrawer>
+        <Grid size={{ xs: 12, lg: 3 }}>
+          <TimesheetNpReferencePanel codes={workspace.npCodes} />
+        </Grid>
+      </Grid>
     </PageContainer>
   );
 }

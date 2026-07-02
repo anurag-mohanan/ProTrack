@@ -48,6 +48,7 @@ export interface Project extends Timestamped {
   designer_name?: string | null;
   surfacer_name?: string | null;
   team_name?: string | null;
+  project_type_name?: string | null;
 }
 
 export interface ArchivedProjectListItem extends Project {

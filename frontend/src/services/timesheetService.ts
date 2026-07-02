@@ -62,6 +62,9 @@ export async function returnTimesheetToDraft(timesheetId: string): Promise<Times
 
 export const timesheetQueryKeys = {
   all: ['timesheets'] as const,
+  month: (month: string, userId?: string) => ['timesheets', 'month', month, userId] as const,
+  monthEntries: (month: string, userId?: string) =>
+    ['timesheet-entries', 'month', month, userId] as const,
   entries: (timesheetId?: string) =>
     timesheetId
       ? (['timesheet-entries', timesheetId] as const)

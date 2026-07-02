@@ -7,4 +7,6 @@ export const QUERY_STALE_TIMES = {
   notifications: 30_000,
   /** Dashboard summary is cached briefly to avoid duplicate calls on remount. */
   dashboard: 60_000,
+  /** Monthly timesheet entries — cache recent months for quick switching. */
+  timesheetMonth: 5 * 60_000,
 } as const;

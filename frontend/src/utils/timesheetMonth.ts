@@ -46,6 +46,72 @@ export function formatMonthLabel(monthValue: string): string {
   });
 }
 
+export function shiftMonth(monthValue: string, delta: number): string {
+  const [year, month] = monthValue.split('-').map(Number);
+  const date = new Date(year, month - 1 + delta, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function currentMonthValue(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export interface TimesheetMonthSummary {
+  expectedHours: number;
+  enteredHours: number;
+  remainingHours: number;
+  billableHours: number;
+  nonProductiveHours: number;
+  efficiencyPercent: number | null;
+}
+
+export function summarizeMonthEntries(
+  entries: Array<{ hours: number; is_billable: boolean; work_category: string }>,
+  expectedHours: number,
+): TimesheetMonthSummary {
+  let enteredHours = 0;
+  let billableHours = 0;
+  let nonProductiveHours = 0;
+
+  for (const entry of entries) {
+    const hours = Number(entry.hours);
+    if (!Number.isFinite(hours)) continue;
+    enteredHours += hours;
+    if (entry.work_category === 'non_productive') {
+      nonProductiveHours += hours;
+    } else if (entry.is_billable) {
+      billableHours += hours;
+    }
+  }
+
+  return {
+    expectedHours,
+    enteredHours,
+    remainingHours: expectedHours - enteredHours,
+    billableHours,
+    nonProductiveHours,
+    efficiencyPercent:
+      enteredHours > 0 ? Math.round((billableHours / enteredHours) * 100) : null,
+  };
+}
+
+export function summarizeDailyHoursFromEntries(
+  entries: Array<{ entry_date: string; hours: number }>,
+): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const entry of entries) {
+    const parsed = Number(entry.hours);
+    if (!Number.isFinite(parsed) || parsed <= 0) continue;
+    totals.set(entry.entry_date, (totals.get(entry.entry_date) ?? 0) + parsed);
+  }
+  return totals;
+}
+
 export const GRID_COLUMNS = [
   'entryDate',
   'day',

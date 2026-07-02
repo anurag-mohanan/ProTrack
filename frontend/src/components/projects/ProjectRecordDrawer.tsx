@@ -313,7 +313,7 @@ export function ProjectRecordDrawer({
             )}
           </FormSection>
 
-          <FormSection title="Activity Timeline" icon={TimelineOutlinedIcon}>
+          <FormSection title="Timeline" icon={TimelineOutlinedIcon}>
             {!recentActivity.length ? (
               <Typography variant="body2" color="text.secondary">No recent activity.</Typography>
             ) : (
@@ -329,9 +329,9 @@ export function ProjectRecordDrawer({
             )}
           </FormSection>
 
-          <FormSection title="Files" icon={FolderCopyOutlinedIcon}>
+          <FormSection title="Attachments" icon={FolderCopyOutlinedIcon}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              File management will be available in a future release.
+              Attachments will be available in a future release.
             </Typography>
             {cc?.folders.project_folder_path ? (
               <FormField

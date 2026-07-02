@@ -9,20 +9,20 @@ import {
   Switch,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import type { Customer, Team, User } from '../../../types';
-import type { ExecutionStatus, ProjectStage } from '../../../types/common';
-import { EXECUTION_STATUS_LABELS, PROJECT_STAGE_LABELS } from '../../../types/common';
+import type { ProjectStage } from '../../../types/common';
+import { PROJECT_STAGE_LABELS } from '../../../types/common';
 import type { ProjectType } from '../../../types/ProjectTemplate';
 import { FormField, FormSelect } from '../../ui/design-system';
 import { ProsohmButton } from '../../ui/ProsohmButton';
 import { userDisplayName } from '../../../utils/format';
-import {
-  type ProjectCommandCenterFilters,
-} from '../../../utils/projectCommandCenter';
+import { type ProjectCommandCenterFilters } from '../../../utils/projectCommandCenter';
 
 interface ProjectFilterSidebarProps {
   collapsed: boolean;
@@ -36,9 +36,15 @@ interface ProjectFilterSidebarProps {
   teams: Team[];
   projectTypes: ProjectType[];
   users: User[];
+  embedded?: boolean;
 }
 
 const allOption = { value: 'all', label: 'All' };
+
+const compactFieldSx = {
+  '& .MuiInputBase-root': { minHeight: 40 },
+  '& .MuiInputLabel-root': { fontSize: '0.8125rem' },
+};
 
 export function ProjectFilterSidebar({
   collapsed,
@@ -52,7 +58,11 @@ export function ProjectFilterSidebar({
   teams,
   projectTypes,
   users,
+  embedded = false,
 }: ProjectFilterSidebarProps) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const selectedCustomers = customers.filter((customer) =>
     draft.customerIds.includes(customer.id),
   );
@@ -62,14 +72,14 @@ export function ProjectFilterSidebar({
     label: userDisplayName(user),
   }));
 
-  if (collapsed) {
+  if (collapsed && !embedded) {
     return (
       <Paper
         variant="outlined"
         sx={{
-          width: 48,
+          width: 44,
           flexShrink: 0,
-          borderRadius: 3,
+          borderRadius: 2.5,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -77,56 +87,50 @@ export function ProjectFilterSidebar({
         }}
       >
         <IconButton size="small" onClick={onToggleCollapsed} aria-label="Expand filters">
-          <ChevronRightIcon />
+          <ChevronRightIcon fontSize="small" />
         </IconButton>
-        <FilterListIcon sx={{ fontSize: 18, color: 'text.secondary', mt: 1 }} />
+        <FilterListIcon sx={{ fontSize: 16, color: 'text.secondary', mt: 0.5 }} />
       </Paper>
     );
   }
 
-  return (
-    <Paper
-      variant="outlined"
-      sx={{
-        width: 280,
-        flexShrink: 0,
-        borderRadius: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        maxHeight: 'calc(100vh - 220px)',
-        position: 'sticky',
-        top: 16,
-      }}
-    >
-      <Box
-        sx={{
-          px: 2,
-          py: 1.5,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: 1,
-          borderColor: 'divider',
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <FilterListIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-            Filters
-          </Typography>
+  const content = (
+    <>
+      {!embedded ? (
+        <Box
+          sx={{
+            px: 1.5,
+            py: 1.25,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <FilterListIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
+              Filters
+            </Typography>
+          </Box>
+          {!isMobile ? (
+            <IconButton size="small" onClick={onToggleCollapsed} aria-label="Collapse filters">
+              <ChevronLeftIcon fontSize="small" />
+            </IconButton>
+          ) : null}
         </Box>
-        <IconButton size="small" onClick={onToggleCollapsed} aria-label="Collapse filters">
-          <ChevronLeftIcon />
-        </IconButton>
-      </Box>
+      ) : null}
 
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 2 }}>
-        <Stack spacing={2}>
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 1.5, py: 1.5 }}>
+        <Stack spacing={1.25}>
           <FormField
             label="Search"
+            size="small"
             value={draft.search}
             onChange={(event) => onDraftChange({ ...draft, search: event.target.value })}
             placeholder="Tool, customer, designer…"
+            sx={compactFieldSx}
           />
 
           <Autocomplete
@@ -139,7 +143,7 @@ export function ProjectFilterSidebar({
             onChange={(_, next) =>
               onDraftChange({ ...draft, customerIds: next.map((customer) => customer.id) })
             }
-            renderInput={(params) => <TextField {...params} label="Customer" />}
+            renderInput={(params) => <TextField {...params} label="Customer" size="small" />}
           />
 
           <FormSelect
@@ -152,6 +156,7 @@ export function ProjectFilterSidebar({
             onChange={(event) =>
               onDraftChange({ ...draft, projectTypeId: String(event.target.value) })
             }
+            sx={compactFieldSx}
           />
 
           <Autocomplete
@@ -164,11 +169,11 @@ export function ProjectFilterSidebar({
             onChange={(_, next) =>
               onDraftChange({ ...draft, teamIds: next.map((team) => team.id) })
             }
-            renderInput={(params) => <TextField {...params} label="Team" />}
+            renderInput={(params) => <TextField {...params} label="Team" size="small" />}
           />
 
           <FormSelect
-            label="Stage"
+            label="Project Stage"
             value={draft.projectStage}
             options={[
               { value: 'all', label: 'All Stages' },
@@ -182,23 +187,7 @@ export function ProjectFilterSidebar({
                 projectStage: event.target.value as ProjectStage | 'all',
               })
             }
-          />
-
-          <FormSelect
-            label="Execution Status"
-            value={draft.executionStatus}
-            options={[
-              { value: 'all', label: 'All Statuses' },
-              ...(
-                Object.entries(EXECUTION_STATUS_LABELS) as Array<[ExecutionStatus, string]>
-              ).map(([value, label]) => ({ value, label })),
-            ]}
-            onChange={(event) =>
-              onDraftChange({
-                ...draft,
-                executionStatus: event.target.value as ExecutionStatus | 'all',
-              })
-            }
+            sx={compactFieldSx}
           />
 
           <FormSelect
@@ -209,6 +198,7 @@ export function ProjectFilterSidebar({
             onChange={(event) =>
               onDraftChange({ ...draft, designLeaderId: String(event.target.value) })
             }
+            sx={compactFieldSx}
           />
 
           <FormSelect
@@ -219,6 +209,7 @@ export function ProjectFilterSidebar({
             onChange={(event) =>
               onDraftChange({ ...draft, designerId: String(event.target.value) })
             }
+            sx={compactFieldSx}
           />
 
           <FormSelect
@@ -229,24 +220,7 @@ export function ProjectFilterSidebar({
             onChange={(event) =>
               onDraftChange({ ...draft, surfacerId: String(event.target.value) })
             }
-          />
-
-          <FormSelect
-            label="Priority"
-            value={draft.priority}
-            options={[
-              { value: 'all', label: 'All Priorities' },
-              { value: 'critical', label: 'Critical' },
-              { value: 'high', label: 'High' },
-              { value: 'medium', label: 'Medium' },
-              { value: 'low', label: 'Low' },
-            ]}
-            onChange={(event) =>
-              onDraftChange({
-                ...draft,
-                priority: event.target.value as ProjectCommandCenterFilters['priority'],
-              })
-            }
+            sx={compactFieldSx}
           />
 
           <FormSelect
@@ -264,46 +238,59 @@ export function ProjectFilterSidebar({
                 dueDate: event.target.value as ProjectCommandCenterFilters['dueDate'],
               })
             }
+            sx={compactFieldSx}
           />
 
           <FormControlLabel
+            sx={{ ml: 0, mr: 0 }}
             control={
               <Switch
+                size="small"
                 checked={draft.showArchived}
                 onChange={(event) =>
                   onDraftChange({ ...draft, showArchived: event.target.checked })
                 }
               />
             }
-            label="Show Archived"
-          />
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={draft.groupByTeam}
-                onChange={(event) =>
-                  onDraftChange({ ...draft, groupByTeam: event.target.checked })
-                }
-              />
-            }
-            label="Group By Team"
+            label={<Typography variant="body2">Show Archived</Typography>}
           />
         </Stack>
       </Box>
 
       <Divider />
-      <Stack spacing={1} sx={{ p: 2 }}>
+      <Stack spacing={0.75} sx={{ p: 1.5 }}>
         <ProsohmButton buttonVariant="primary" size="small" onClick={onApply}>
-          Apply
-        </ProsohmButton>
-        <ProsohmButton buttonVariant="outlined" size="small" onClick={onReset}>
-          Reset
+          Apply Filters
         </ProsohmButton>
         <ProsohmButton buttonVariant="outlined" size="small" onClick={onClear}>
           Clear Filters
         </ProsohmButton>
+        <ProsohmButton buttonVariant="outlined" size="small" onClick={onReset}>
+          Reset Filters
+        </ProsohmButton>
       </Stack>
+    </>
+  );
+
+  if (embedded) {
+    return <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>{content}</Box>;
+  }
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        width: { xs: '100%', lg: 290 },
+        flexShrink: 0,
+        borderRadius: 2.5,
+        display: { xs: 'none', md: 'flex' },
+        flexDirection: 'column',
+        maxHeight: 'calc(100vh - 120px)',
+        position: 'sticky',
+        top: 12,
+      }}
+    >
+      {content}
     </Paper>
   );
 }

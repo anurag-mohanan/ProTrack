@@ -1,15 +1,13 @@
 import { memo, useMemo } from 'react';
-import { Box, Chip, IconButton, Tooltip } from '@mui/material';
+import { Box } from '@mui/material';
 import RestoreIcon from '@mui/icons-material/Restore';
+import { IconButton, Tooltip } from '@mui/material';
 import type { GridColDef } from '@mui/x-data-grid';
 import type { Customer, Project, Stream, Team, User } from '../../types';
-import { PriorityBadge, ProsohmDataGrid, TableRowActions, HealthBadge } from '../ui/design-system';
-import { formatCellValue, formatDate, formatNumber, userDisplayName } from '../../utils/format';
-import {
-  formatExecutionStatusShort,
-  formatProjectStageDisplay,
-} from '../../utils/projectCommandCenter';
-import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
+import { ProsohmDataGrid, HealthBadge } from '../ui/design-system';
+import { ProjectRowActions } from './ProjectRowActions';
+import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
+import { formatProjectStageDisplay } from '../../utils/projectCommandCenter';
 
 export interface ProjectTableRow extends Project {
   customerName: string;
@@ -26,11 +24,14 @@ interface ProjectTableProps {
   users: User[];
   streams: Stream[];
   teams: Team[];
-  compact?: boolean;
   onRowOpen?: (row: ProjectTableRow) => void;
   onEdit?: (row: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
+  onDuplicate?: (projectId: string) => void;
+  onExport?: (row: ProjectTableRow) => void;
+  onDelete?: (projectId: string) => void;
   onRestore?: (projectId: string) => void;
+  canDelete?: boolean;
 }
 
 function buildNameMap<T extends { id: string }>(
@@ -65,136 +66,96 @@ export function buildProjectTableRows(
   }));
 }
 
+const displayOrDash = (value: unknown) => formatCellValue(value) || '—';
+
 function buildColumns(
-  onEdit?: (row: ProjectTableRow) => void,
-  onArchive?: (projectId: string) => void,
-  onRestore?: (projectId: string) => void,
+  handlers: Pick<
+    ProjectTableProps,
+    'onEdit' | 'onArchive' | 'onDuplicate' | 'onExport' | 'onDelete' | 'onRestore' | 'canDelete'
+  >,
 ): GridColDef<ProjectTableRow>[] {
   const baseColumns: GridColDef<ProjectTableRow>[] = [
-    { field: 'tool_number', headerName: 'Tool Number', flex: 0.9, minWidth: 120 },
+    { field: 'tool_number', headerName: 'Tool Number', flex: 0.85, minWidth: 110 },
     {
       field: 'part_description',
       headerName: 'Part Description',
-      flex: 1.4,
-      minWidth: 180,
-      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+      flex: 1.35,
+      minWidth: 160,
+      valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'customerName',
       headerName: 'Customer',
-      flex: 1,
-      minWidth: 130,
-      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+      flex: 0.95,
+      minWidth: 120,
+      valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'teamName',
       headerName: 'Team',
-      flex: 0.9,
-      minWidth: 110,
-      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+      flex: 0.85,
+      minWidth: 100,
+      valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'designLeaderName',
       headerName: 'Design Leader',
-      flex: 1,
-      minWidth: 130,
-      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+      flex: 0.95,
+      minWidth: 120,
+      valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'designerName',
       headerName: 'Designer',
-      flex: 0.9,
-      minWidth: 110,
-      valueFormatter: (value) => formatCellValue(String(value)) || '—',
+      flex: 0.85,
+      minWidth: 100,
+      valueFormatter: (value) => displayOrDash(value),
+    },
+    {
+      field: 'surfacerName',
+      headerName: 'Surfacer',
+      flex: 0.85,
+      minWidth: 100,
+      valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'current_milestone',
       headerName: 'Current Milestone',
       flex: 1,
-      minWidth: 140,
-      valueFormatter: (value) => formatCellValue(value ? String(value) : null) || '—',
+      minWidth: 130,
+      valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'project_stage',
       headerName: 'Project Stage',
-      width: 130,
+      width: 120,
       valueGetter: (_value, row) => formatProjectStageDisplay(row),
-    },
-    {
-      field: 'execution_status',
-      headerName: 'Execution Status',
-      width: 130,
-      renderCell: (params) => (
-        <Chip
-          size="small"
-          label={formatExecutionStatusShort(params.value)}
-          color={
-            params.value === 'currently_being_worked_on'
-              ? 'info'
-              : params.value === 'on_hold'
-                ? 'warning'
-                : params.value === 'completed'
-                  ? 'success'
-                  : 'default'
-          }
-          sx={{ fontWeight: 600 }}
-        />
-      ),
-    },
-    {
-      field: 'priority',
-      headerName: 'Priority',
-      width: 100,
-      renderCell: (params) => <PriorityBadge priority={params.value as string | null} />,
     },
     {
       field: 'due_date',
       headerName: 'Due Date',
-      width: 110,
+      width: 105,
       valueFormatter: (value) => formatDate(String(value)) || '—',
     },
     {
       field: 'health',
-      headerName: 'Project Health',
-      width: 120,
+      headerName: 'Health',
+      width: 100,
       renderCell: (params) => <HealthBadge health={params.value} />,
-    },
-    {
-      field: 'quoted_hours',
-      headerName: 'Quoted Hours',
-      width: 115,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (value) => formatNumber(Number(value)),
-    },
-    {
-      field: 'actual_hours',
-      headerName: 'Actual Hours',
-      width: 115,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (value) => formatNumber(Number(value)),
     },
   ];
 
+  const { onEdit, onArchive, onDuplicate, onExport, onDelete, onRestore, canDelete } = handlers;
   if (!onEdit && !onArchive && !onRestore) return baseColumns;
 
   const actionColumn: GridColDef<ProjectTableRow> = {
     field: 'actions',
     headerName: '',
-    width: onArchive && onRestore ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
+    width: 96,
     sortable: false,
     filterable: false,
     renderCell: (params) => (
-      <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
-        {onEdit ? (
-          <TableRowActions
-            onEdit={() => onEdit(params.row)}
-            onArchive={
-              onArchive && !onRestore ? () => onArchive(String(params.id)) : undefined
-            }
-          />
-        ) : null}
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
         {onRestore ? (
           <Tooltip title="Restore">
             <IconButton
@@ -208,6 +169,15 @@ function buildColumns(
               <RestoreIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+        ) : onEdit ? (
+          <ProjectRowActions
+            onEdit={() => onEdit(params.row)}
+            onArchive={onArchive ? () => onArchive(String(params.id)) : undefined}
+            onDuplicate={onDuplicate ? () => onDuplicate(String(params.id)) : undefined}
+            onExport={onExport ? () => onExport(params.row) : undefined}
+            onDelete={onDelete ? () => onDelete(String(params.id)) : undefined}
+            showDelete={Boolean(canDelete && params.row.is_archived)}
+          />
         ) : null}
       </Box>
     ),
@@ -216,17 +186,23 @@ function buildColumns(
   return [...baseColumns, actionColumn];
 }
 
+const TABLE_HEIGHT = 520;
+const PAGE_SIZE = 25;
+
 function ProjectTableComponent({
   projects,
   customers,
   users,
   streams,
   teams,
-  compact = false,
   onRowOpen,
   onEdit,
   onArchive,
+  onDuplicate,
+  onExport,
+  onDelete,
   onRestore,
+  canDelete,
 }: ProjectTableProps) {
   const rows = useMemo(
     () => buildProjectTableRows(projects, customers, users, streams, teams),
@@ -236,19 +212,26 @@ function ProjectTableComponent({
   const rowMap = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
 
   const columns = useMemo(
-    () => buildColumns(onEdit, onArchive, onRestore),
-    [onArchive, onEdit, onRestore],
+    () =>
+      buildColumns({
+        onEdit,
+        onArchive,
+        onDuplicate,
+        onExport,
+        onDelete,
+        onRestore,
+        canDelete,
+      }),
+    [canDelete, onArchive, onDelete, onDuplicate, onEdit, onExport, onRestore],
   );
-
-  const pageSize = compact ? 25 : 100;
 
   return (
     <ProsohmDataGrid
       rows={rows}
       columns={columns}
-      autoHeight={rows.length <= pageSize}
-      hideFooter={rows.length <= pageSize}
-      paginationModel={{ pageSize, page: 0 }}
+      autoHeight={rows.length <= PAGE_SIZE}
+      sx={rows.length > PAGE_SIZE ? { height: TABLE_HEIGHT } : undefined}
+      paginationModel={{ pageSize: PAGE_SIZE, page: 0 }}
       pageSizeOptions={[25, 50, 100]}
       onRowOpen={(rowId) => {
         const row = rowMap.get(rowId);

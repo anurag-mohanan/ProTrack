@@ -275,13 +275,13 @@ export function filterProjectsForCommandCenter(
 
 export function sortLiveProjects(projects: Project[]): Project[] {
   return [...projects].sort((a, b) => {
-    const priorityA = PRIORITY_ORDER[a.priority ?? 'medium'] ?? 2;
-    const priorityB = PRIORITY_ORDER[b.priority ?? 'medium'] ?? 2;
-    if (priorityA !== priorityB) return priorityA - priorityB;
-
     const dueA = a.due_date ? new Date(`${a.due_date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
     const dueB = b.due_date ? new Date(`${b.due_date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
     if (dueA !== dueB) return dueA - dueB;
+
+    const priorityA = PRIORITY_ORDER[a.priority ?? 'medium'] ?? 2;
+    const priorityB = PRIORITY_ORDER[b.priority ?? 'medium'] ?? 2;
+    if (priorityA !== priorityB) return priorityA - priorityB;
 
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   });

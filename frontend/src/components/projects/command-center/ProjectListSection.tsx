@@ -24,6 +24,10 @@ interface ProjectListSectionProps {
   onRowOpen?: (row: ProjectTableRow) => void;
   onEdit?: (row: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
+  onDuplicate?: (projectId: string) => void;
+  onExport?: (row: ProjectTableRow) => void;
+  onDelete?: (projectId: string) => void;
+  canDelete?: boolean;
 }
 
 export function ProjectListSection({
@@ -39,32 +43,39 @@ export function ProjectListSection({
   onRowOpen,
   onEdit,
   onArchive,
+  onDuplicate,
+  onExport,
+  onDelete,
+  canDelete,
 }: ProjectListSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const sectionTitle = `${title} (${count})`;
 
   const table = (
-    <Box sx={{ borderRadius: 3, overflow: 'hidden' }}>
+    <Box sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
       <ContentCard noPadding>
         <ProjectTable
-        projects={projects}
-        customers={customers}
-        users={users}
-        streams={streams}
-        teams={teams}
-        onRowOpen={onRowOpen}
-        onEdit={onEdit}
-        onArchive={onArchive}
-        compact
-      />
+          projects={projects}
+          customers={customers}
+          users={users}
+          streams={streams}
+          teams={teams}
+          onRowOpen={onRowOpen}
+          onEdit={onEdit}
+          onArchive={onArchive}
+          onDuplicate={onDuplicate}
+          onExport={onExport}
+          onDelete={onDelete}
+          canDelete={canDelete}
+        />
       </ContentCard>
     </Box>
   );
 
   if (!collapsible) {
     return (
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>
           {sectionTitle}
         </Typography>
         {table}
@@ -87,8 +98,8 @@ export function ProjectListSection({
         overflow: 'hidden',
       }}
     >
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 48 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
           {sectionTitle}
         </Typography>
       </AccordionSummary>

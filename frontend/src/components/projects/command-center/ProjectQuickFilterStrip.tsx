@@ -1,4 +1,4 @@
-import { Chip, Stack } from '@mui/material';
+import { Stack, Chip } from '@mui/material';
 import type { ProjectQuickFilter } from '../../../utils/projectCommandCenter';
 
 interface QuickFilterChip {
@@ -33,15 +33,16 @@ export function ProjectQuickFilterStrip({
   ];
 
   return (
-    <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mb: 2 }}>
+    <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.75, mb: 1.75 }}>
       {chips.map((chip) => (
         <Chip
           key={chip.key}
           label={chip.label}
+          size="small"
           color={chip.color}
           variant={activeFilter === chip.key ? 'filled' : 'outlined'}
           onClick={() => onSelect(activeFilter === chip.key ? 'none' : chip.key)}
-          sx={{ fontWeight: 600 }}
+          sx={{ fontWeight: 600, height: 28 }}
         />
       ))}
     </Stack>

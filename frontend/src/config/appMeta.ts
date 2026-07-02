@@ -1,4 +1,4 @@
-/** Central product branding and release metadata for ProTrack RC3. */
+/** Central product branding and release metadata for ProTrack RC4. */
 
 export const PRODUCT_NAME = 'ProTrack';
 export const PRODUCT_TAGLINE = 'Engineering Management Platform';
@@ -6,7 +6,7 @@ export const COMPANY_LEGAL_NAME = 'Prosohm Projects Pvt. Ltd.';
 export const COMPANY_BYLINE = `by ${COMPANY_LEGAL_NAME}`;
 
 export const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? '1.0.0';
-export const RELEASE_CANDIDATE = import.meta.env.VITE_RELEASE_CANDIDATE ?? 'RC3';
+export const RELEASE_CANDIDATE = import.meta.env.VITE_RELEASE_CANDIDATE ?? 'RC4';
 export const RELEASE_LABEL = import.meta.env.VITE_RELEASE_LABEL ?? 'Internal Release';
 
 export const VERSION_DISPLAY = `v${APP_VERSION} ${RELEASE_CANDIDATE}`;

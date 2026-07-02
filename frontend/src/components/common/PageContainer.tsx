@@ -3,21 +3,20 @@ import type { ReactNode } from 'react';
 
 interface PageContainerProps {
   children: ReactNode;
-  maxWidth?: number;
+  maxWidth?: number | false;
   sx?: SxProps<Theme>;
 }
 
 export function PageContainer({
   children,
-  maxWidth = 1360,
+  maxWidth = false,
   sx,
 }: PageContainerProps) {
   return (
     <Box
       sx={{
-        maxWidth,
-        mx: 'auto',
         width: '100%',
+        ...(maxWidth ? { maxWidth, mx: 'auto' } : null),
         animation: 'prosohmPageIn 0.28s ease-out',
         '@keyframes prosohmPageIn': {
           from: { opacity: 0, transform: 'translateY(6px)' },

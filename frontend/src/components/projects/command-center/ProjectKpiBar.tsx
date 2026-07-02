@@ -84,9 +84,9 @@ export function ProjectKpiBar({
         gridTemplateColumns: {
           xs: 'repeat(2, minmax(0, 1fr))',
           md: 'repeat(3, minmax(0, 1fr))',
-          xl: 'repeat(6, minmax(200px, 1fr))',
+          xl: 'repeat(6, minmax(180px, 1fr))',
         },
-        gap: 3,
+        gap: 2,
         mb: 3,
       }}
     >

@@ -98,6 +98,38 @@ class TimesheetEntryRead(TimesheetEntryBase, TimestampSchema):
     non_productive_description: str | None = None
 
 
+class TimesheetEntryBulkUpsert(BaseModel):
+    id: UUID | None = None
+    timesheet_id: UUID
+    work_category: WorkCategory = WorkCategory.productive
+    project_id: UUID | None = None
+    customer_id: UUID | None = None
+    task_type_id: UUID | None = None
+    milestone_id: UUID | None = None
+    non_productive_code_id: UUID | None = None
+    entry_date: date
+    hours: Decimal = Field(gt=0, le=24)
+    is_billable: bool = True
+    description: str | None = None
+
+    @field_validator("hours")
+    @classmethod
+    def validate_half_hour_increments(cls, value: Decimal) -> Decimal:
+        if (value * 2) % 1 != 0:
+            raise ValueError("Hours must be in 0.5 increments")
+        return value
+
+
+class TimesheetEntryBulkRequest(BaseModel):
+    upserts: list[TimesheetEntryBulkUpsert] = Field(default_factory=list)
+    deletes: list[UUID] = Field(default_factory=list)
+
+
+class TimesheetEntryBulkResponse(BaseModel):
+    upserted: list[TimesheetEntryRead]
+    deleted: list[UUID]
+
+
 class ActivityRead(TimestampSchema):
     id: UUID
     user_id: UUID | None = None

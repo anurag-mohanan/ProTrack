@@ -15,7 +15,7 @@ import AddIcon from '@mui/icons-material/Add';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import CommentOutlinedIcon from '@mui/icons-material/CommentOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link as RouterLink, Link } from 'react-router-dom';
 import { fetchTimesheetEntries } from '../api/timesheets';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -145,18 +145,22 @@ export function TimesheetsPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Timesheets"
-        subtitle="Weekly engineering timesheets"
+        subtitle="Weekly summaries and monthly Excel-style entry"
         action={
           !isReadOnlyRole(roleName) ? (
-            <ProsohmButton
-              buttonVariant="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateOpen(true)}
-              disabled={!user}
-            >
-              Create Timesheet
-            </ProsohmButton>
+            <Stack direction="row" spacing={1}>
+              <RouterLink to="/timesheets/month" style={{ textDecoration: 'none' }}>
+                <ProsohmButton buttonVariant="primary">Monthly Entry</ProsohmButton>
+              </RouterLink>
+              <ProsohmButton
+                buttonVariant="outlined"
+                startIcon={<AddIcon />}
+                onClick={() => setCreateOpen(true)}
+                disabled={!user}
+              >
+                Create Week
+              </ProsohmButton>
+            </Stack>
           ) : undefined
         }
       />

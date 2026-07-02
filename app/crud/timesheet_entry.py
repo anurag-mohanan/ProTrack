@@ -1,7 +1,9 @@
+from datetime import date
 from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProTrackValidationError
@@ -13,7 +15,13 @@ from app.crud.base import CRUDBase
 from app.crud.timesheet_entry_metrics import build_timesheet_entry_read, build_timesheet_entry_reads
 from app.services.project_calculation_service import recalculate_project
 from app.models.models import Timesheet, TimesheetEntry
-from app.schemas.timesheet import TimesheetEntryCreate, TimesheetEntryRead, TimesheetEntryUpdate
+from app.schemas.timesheet import (
+    TimesheetEntryBulkRequest,
+    TimesheetEntryBulkResponse,
+    TimesheetEntryCreate,
+    TimesheetEntryRead,
+    TimesheetEntryUpdate,
+)
 from app.services.timesheet_entry_service import normalize_entry_payload
 
 
@@ -79,6 +87,59 @@ class CRUDTimesheetEntry(
     ) -> list[TimesheetEntryRead]:
         entries = self.get_multi(db, skip=skip, limit=limit, filters=filters)
         return build_timesheet_entry_reads(db, entries)
+
+    def get_multi_read_for_range(
+        self,
+        db: Session,
+        *,
+        entry_date_from: date | None = None,
+        entry_date_to: date | None = None,
+        user_id: UUID | None = None,
+        skip: int = 0,
+        limit: int = 500,
+    ) -> list[TimesheetEntryRead]:
+        query = select(TimesheetEntry).join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        if entry_date_from is not None:
+            query = query.where(TimesheetEntry.entry_date >= entry_date_from)
+        if entry_date_to is not None:
+            query = query.where(TimesheetEntry.entry_date <= entry_date_to)
+        if user_id is not None:
+            query = query.where(Timesheet.user_id == user_id)
+        query = query.order_by(TimesheetEntry.entry_date, TimesheetEntry.created_at).offset(skip).limit(limit)
+        entries = db.scalars(query).all()
+        return build_timesheet_entry_reads(db, entries)
+
+    def bulk_save(
+        self,
+        db: Session,
+        *,
+        actor,
+        request: TimesheetEntryBulkRequest,
+    ) -> TimesheetEntryBulkResponse:
+        deleted: list[UUID] = []
+        for record_id in request.deletes:
+            removed = self.delete(db, record_id=record_id, actor=actor)
+            if removed is not None:
+                deleted.append(record_id)
+
+        upserted: list[TimesheetEntryRead] = []
+        for item in request.upserts:
+            payload = TimesheetEntryCreate(**item.model_dump(exclude={"id"}))
+            if item.id is not None:
+                db_obj = self.get(db, item.id)
+                if db_obj is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Timesheet entry {item.id} not found",
+                    )
+                update_payload = TimesheetEntryUpdate(**item.model_dump(exclude={"id"}))
+                upserted.append(
+                    self.update_read(db, db_obj=db_obj, obj_in=update_payload, actor=actor)
+                )
+            else:
+                upserted.append(self.create_read(db, obj_in=payload, actor=actor))
+
+        return TimesheetEntryBulkResponse(upserted=upserted, deleted=deleted)
 
     def create(self, db: Session, *, obj_in: TimesheetEntryCreate, actor=None) -> TimesheetEntry:
         if actor is not None:

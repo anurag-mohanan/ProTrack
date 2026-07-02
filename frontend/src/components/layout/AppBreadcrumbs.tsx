@@ -12,6 +12,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/projects': 'Projects',
   '/projects/archived': 'Archived Projects',
   '/timesheets': 'Timesheets',
+  '/timesheets/month': 'Timesheet Entry',
   '/workload': 'Workload',
   '/resource-planning': 'Resource Planning',
   '/reports': 'Reports',
@@ -79,6 +80,10 @@ function resolveBreadcrumbs(pathname: string): BreadcrumbItem[] {
       { label: 'System Settings', to: '/admin/settings' },
       { label: ROUTE_LABELS[pathname] ?? 'Settings' },
     ];
+  }
+
+  if (pathname.startsWith('/timesheets/month')) {
+    return [{ label: 'Timesheet Entry' }];
   }
 
   if (pathname.startsWith('/timesheets/') && pathname.includes('/entries/new')) {

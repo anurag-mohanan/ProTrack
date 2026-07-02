@@ -43,6 +43,11 @@ export interface Project extends Timestamped {
   is_deleted?: boolean;
   deleted_at?: string | null;
   deleted_by_id?: string | null;
+  customer_name?: string;
+  design_leader_name?: string;
+  designer_name?: string | null;
+  surfacer_name?: string | null;
+  team_name?: string | null;
 }
 
 export interface ArchivedProjectListItem extends Project {

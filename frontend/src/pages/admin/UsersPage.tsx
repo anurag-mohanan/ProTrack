@@ -45,7 +45,7 @@ import {
 } from '../../components/ui/design-system';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
-import { formatCellValue, formatEmploymentType, userDisplayName, userInitials } from '../../utils/format';
+import { formatCellValue, formatDisplayValue, formatEmploymentType, userDisplayName, userInitials } from '../../utils/format';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
 
 interface UserFormState {
@@ -566,7 +566,7 @@ export default function UsersPage() {
       headerName: 'Team',
       flex: 1,
       minWidth: 120,
-      valueGetter: (_value, row) => formatCellValue(row.team_name),
+      valueGetter: (_value, row) => formatDisplayValue(row.team_name),
     },
     {
       field: 'employment_type',

@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="ProTrack API",
     description="Engineering management platform API for Prosohm Projects Pvt. Ltd.",
-    version=f"{APP_VERSION}-rc3",
+    version=f"{APP_VERSION}-rc4",
     lifespan=lifespan,
     swagger_ui_parameters={
         "persistAuthorization": True,
@@ -123,6 +123,6 @@ def health_check():
         "status": "ok",
         "app": "ProTrack",
         "version": APP_VERSION,
-        "release": "RC3",
+        "release": "RC4",
         "internal_release": INTERNAL_RELEASE,
     }

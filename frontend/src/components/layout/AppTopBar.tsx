@@ -13,13 +13,10 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
 import TuneIcon from '@mui/icons-material/Tune';
 import { Link as RouterLink } from 'react-router-dom';
-import { LogoHomeLink } from '../branding/LogoHomeLink';
 import { NotificationBell } from '../common/NotificationBell';
-import { ProsohmButton } from '../ui/ProsohmButton';
-import { AppBreadcrumbs, useBreadcrumbTitle } from './AppBreadcrumbs';
 import { AppGlobalSearchBar } from './AppGlobalSearchBar';
+import { useBreadcrumbTitle } from './AppBreadcrumbs';
 import { DRAWER_WIDTH } from './AppSidebar';
-import { PRODUCT_TAGLINE } from '../../config/appMeta';
 import { formatCellValue } from '../../utils/format';
 
 interface AppTopBarProps {
@@ -50,71 +47,36 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
         boxShadow: (theme) => theme.palette.prosohm.shadowHeader,
       }}
     >
-      <Toolbar sx={{ minHeight: '72px !important', px: { xs: 2, md: 3 }, gap: 2 }}>
-        <Box sx={{ display: { xs: 'flex', md: 'none' }, flexShrink: 0 }}>
-          <LogoHomeLink size="sm" />
-        </Box>
-
-        <Box
+      <Toolbar sx={{ minHeight: '64px !important', px: { xs: 1.5, md: 2 }, gap: 2 }}>
+        <Typography
+          variant="h6"
           sx={{
-            display: { xs: 'none', md: 'flex' },
-            alignItems: 'center',
-            gap: 1.5,
+            fontWeight: 800,
+            fontSize: { xs: '1rem', md: '1.125rem' },
+            lineHeight: 1.2,
             flexShrink: 0,
             minWidth: 0,
           }}
         >
-          <LogoHomeLink size="sm" />
-          <Box sx={{ display: { xs: 'none', lg: 'block' }, minWidth: 0 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2 }}>
-              {PRODUCT_TAGLINE}
-            </Typography>
+          {pageTitle}
+        </Typography>
+
+        <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+          <Box sx={{ display: { xs: 'none', md: 'flex' }, width: '100%', maxWidth: 480 }}>
+            <AppGlobalSearchBar />
           </Box>
         </Box>
 
-        <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 800,
-              fontSize: { xs: '1rem', md: '1.125rem' },
-              lineHeight: 1.2,
-            }}
-          >
-            {pageTitle}
-          </Typography>
-          <AppBreadcrumbs />
-        </Box>
-
-        <Box sx={{ display: { xs: 'none', lg: 'flex' }, flex: 1, justifyContent: 'center', maxWidth: 440 }}>
-          <AppGlobalSearchBar />
-        </Box>
-
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
           <NotificationBell />
-          <Box
-            sx={{
-              display: { xs: 'none', md: 'flex' },
-              flexDirection: 'column',
-              alignItems: 'flex-end',
-              mr: 0.5,
-            }}
-          >
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {displayName}
-            </Typography>
-            <Typography variant="captionLabel" color="text.secondary">
-              {formatCellValue(roleName)}
-            </Typography>
-          </Box>
           <IconButton onClick={(event) => setAnchorEl(event.currentTarget)} size="small">
             <Avatar
               sx={{
-                width: 40,
-                height: 40,
+                width: 36,
+                height: 36,
                 bgcolor: 'primary.main',
                 fontWeight: 700,
-                fontSize: '0.875rem',
+                fontSize: '0.8125rem',
               }}
             >
               {initials || 'PT'}
@@ -137,7 +99,7 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
                 {displayName}
               </Typography>
               <Typography variant="captionLabel" color="text.secondary">
-                {roleName}
+                {formatCellValue(roleName)}
               </Typography>
             </Box>
             <MenuItem component={RouterLink} to="/profile" onClick={() => setAnchorEl(null)}>
@@ -158,16 +120,6 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
               Logout
             </MenuItem>
           </Menu>
-          <Box sx={{ display: { xs: 'none', xl: 'block' } }}>
-            <ProsohmButton
-              buttonVariant="outlined"
-              size="small"
-              startIcon={<LogoutIcon />}
-              onClick={onLogout}
-            >
-              Logout
-            </ProsohmButton>
-          </Box>
         </Box>
       </Toolbar>
     </AppBar>

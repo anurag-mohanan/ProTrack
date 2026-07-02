@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -16,6 +17,7 @@ from app.models.models import (
     NonProductiveCode,
     Project,
     TaskType,
+    Timesheet,
     TimesheetEntry,
     User,
 )
@@ -82,6 +84,18 @@ def normalize_entry_payload(
     hours = data.get("hours")
     if hours is not None:
         _validate_hours(Decimal(str(hours)))
+
+    timesheet_id = data.get("timesheet_id")
+    entry_date = data.get("entry_date")
+    if timesheet_id is not None and entry_date is not None:
+        timesheet = db.get(Timesheet, timesheet_id)
+        if timesheet is None:
+            raise ProTrackValidationError("Timesheet not found")
+        week_end = timesheet.week_start + timedelta(days=6)
+        if entry_date < timesheet.week_start or entry_date > week_end:
+            raise ProTrackValidationError(
+                "Entry date must fall within the timesheet week"
+            )
 
     if work_category == WorkCategory.productive:
         project_id = data.get("project_id")

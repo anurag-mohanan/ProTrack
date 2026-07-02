@@ -1,11 +1,13 @@
+from datetime import date, timedelta
 from uuid import UUID
+
+from sqlalchemy import select
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, HTTPException, Query, Session, get_db, status
 from app.core.exceptions import ProTrackValidationError
 from app.crud.timesheet import timesheet
-from app.crud.timesheet_entry import timesheet_entry
-from app.models.models import User
+from app.models.models import Timesheet, User
 from app.models.enums import TimesheetStatus
 from app.schemas.timesheet import (
     TimesheetApprovalRequest,
@@ -37,6 +39,7 @@ def list_timesheets(
     limit: int = Query(100, ge=1, le=500),
     user_id: UUID | None = None,
     status: TimesheetStatus | None = None,
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -45,13 +48,47 @@ def list_timesheets(
         for key, value in {"user_id": user_id, "status": status}.items()
         if value is not None
     }
-    return timesheet.get_multi_for_user(
+    rows = timesheet.get_multi_for_user(
         db,
         actor=current_user,
         skip=skip,
         limit=limit,
         filters=filters or None,
     )
+    if month is None:
+        return rows
+    year, month_num = map(int, month.split("-"))
+    month_start = date(year, month_num, 1)
+    if month_num == 12:
+        month_end = date(year + 1, 1, 1)
+    else:
+        month_end = date(year, month_num + 1, 1)
+    month_end = month_end - timedelta(days=1)
+    return [
+        row
+        for row in rows
+        if row.week_start <= month_end and (row.week_start + timedelta(days=6)) >= month_start
+    ]
+
+
+@router.post("/ensure-week", response_model=TimesheetRead)
+def ensure_week_timesheet(
+    obj_in: TimesheetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    existing = db.scalar(
+        select(Timesheet).where(
+            Timesheet.user_id == obj_in.user_id,
+            Timesheet.week_start == obj_in.week_start,
+        )
+    )
+    if existing is not None:
+        visible = timesheet.get_for_user(db, actor=current_user, record_id=existing.id)
+        if visible is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
+        return visible
+    return timesheet.create_for_user(db, actor=current_user, obj_in=obj_in)
 
 
 @router.get("/{record_id}", response_model=TimesheetRead)

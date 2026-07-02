@@ -2,12 +2,17 @@ import { Box, Typography } from '@mui/material';
 import type { ReactNode } from 'react';
 
 interface PageHeaderProps {
-  title: string;
+  title?: string;
   subtitle?: string;
   action?: ReactNode;
 }
 
-export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
+/** Page title is shown in the top bar; this block is for subtitle and actions only. */
+export function PageHeader({ subtitle, action }: PageHeaderProps) {
+  if (!subtitle && !action) {
+    return null;
+  }
+
   return (
     <Box
       sx={{
@@ -16,19 +21,16 @@ export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
         alignItems: { xs: 'flex-start', sm: 'center' },
         flexDirection: { xs: 'column', sm: 'row' },
         gap: 2,
-        mb: 3,
+        mb: 2,
       }}
     >
-      <Box>
-        <Typography variant="pageTitle" gutterBottom={Boolean(subtitle)}>
-          {title}
+      {subtitle ? (
+        <Typography variant="body2" color="text.secondary">
+          {subtitle}
         </Typography>
-        {subtitle ? (
-          <Typography variant="body2" color="text.secondary">
-            {subtitle}
-          </Typography>
-        ) : null}
-      </Box>
+      ) : (
+        <Box />
+      )}
       {action}
     </Box>
   );

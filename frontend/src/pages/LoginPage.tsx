@@ -14,14 +14,8 @@ import { getErrorMessage } from '../api/client';
 import { CompanyLogo } from '../components/branding/CompanyLogo';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { PasswordField } from '../components/ui/design-system';
-import {
-  COMPANY_BYLINE,
-  COPYRIGHT_NOTICE,
-  PRODUCT_TAGLINE,
-  RELEASE_LABEL,
-  VERSION_DISPLAY,
-} from '../config/appMeta';
-import { IS_DEVELOPMENT, requiresForcedPasswordChange } from '../config/env';
+import { COPYRIGHT_NOTICE, PRODUCT_NAME, VERSION_DISPLAY } from '../config/appMeta';
+import { requiresForcedPasswordChange } from '../config/env';
 import { useAuth } from '../context/AuthContext';
 
 export function LoginPage() {
@@ -104,21 +98,14 @@ export function LoginPage() {
             p: { xs: 2, md: 4 },
           }}
         >
-          <Card sx={{ width: '100%', maxWidth: 460, borderRadius: 3 }}>
+          <Card sx={{ width: '100%', maxWidth: 420, borderRadius: 3 }}>
             <CardContent sx={{ p: { xs: 3, md: 4 } }}>
               <Stack spacing={3} component="form" onSubmit={handleSubmit}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-                  <CompanyLogo size="lg" showByline />
-                </Box>
-
                 <Box sx={{ textAlign: 'center' }}>
                   <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
-                    Welcome to ProTrack
+                    Welcome to {PRODUCT_NAME}
                   </Typography>
-                  <Typography color="text.secondary">{PRODUCT_TAGLINE}</Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    {COMPANY_BYLINE}
-                  </Typography>
+                  <Typography color="text.secondary">Sign in to continue</Typography>
                 </Box>
 
                 {error ? <Alert severity="error">{error}</Alert> : null}
@@ -139,11 +126,6 @@ export function LoginPage() {
                   required
                   autoComplete="current-password"
                 />
-                {IS_DEVELOPMENT ? (
-                  <Typography variant="caption" color="text.secondary">
-                    Internal release: contact your administrator if you need access credentials.
-                  </Typography>
-                ) : null}
                 <ProsohmButton
                   type="submit"
                   buttonVariant="primary"
@@ -153,21 +135,15 @@ export function LoginPage() {
                 >
                   Sign In
                 </ProsohmButton>
-
-                <Box sx={{ textAlign: 'center', pt: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 600 }}>
-                    Version: {VERSION_DISPLAY}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    {RELEASE_LABEL}
-                  </Typography>
-                </Box>
               </Stack>
             </CardContent>
           </Card>
         </Box>
 
         <Box sx={{ px: 2, pb: 2, textAlign: 'center' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            {PRODUCT_NAME} {VERSION_DISPLAY}
+          </Typography>
           <Typography variant="caption" color="text.secondary">
             {COPYRIGHT_NOTICE}
           </Typography>

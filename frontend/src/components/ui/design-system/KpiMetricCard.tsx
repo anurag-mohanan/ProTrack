@@ -40,7 +40,7 @@ export function KpiMetricCard({
       onClick={onClick}
       elevation={0}
       sx={{
-        height: compact ? 88 : 108,
+        height: compact ? 76 : 84,
         cursor: onClick ? 'pointer' : 'default',
         borderRadius: 2.5,
         boxShadow: (theme) =>

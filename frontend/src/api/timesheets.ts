@@ -6,10 +6,40 @@ import type {
 } from '../types';
 import { apiClient, buildQuery, type ListParams } from './client';
 
-export async function fetchTimesheets(params?: ListParams): Promise<Timesheet[]> {
+export interface TimesheetEntryBulkUpsert {
+  id?: string | null;
+  timesheet_id: string;
+  work_category?: 'productive' | 'non_productive';
+  project_id?: string | null;
+  customer_id?: string | null;
+  task_type_id?: string | null;
+  milestone_id?: string | null;
+  non_productive_code_id?: string | null;
+  entry_date: string;
+  hours: number;
+  is_billable?: boolean;
+  description?: string | null;
+}
+
+export interface TimesheetEntryBulkRequest {
+  upserts: TimesheetEntryBulkUpsert[];
+  deletes: string[];
+}
+
+export interface TimesheetEntryBulkResponse {
+  upserted: TimesheetEntry[];
+  deleted: string[];
+}
+
+export async function fetchTimesheets(params?: ListParams & { month?: string }): Promise<Timesheet[]> {
   const { data } = await apiClient.get<Timesheet[]>(
     `/timesheets${buildQuery(params)}`,
   );
+  return data;
+}
+
+export async function ensureWeekTimesheet(payload: TimesheetCreate): Promise<Timesheet> {
+  const { data } = await apiClient.post<Timesheet>('/timesheets/ensure-week', payload);
   return data;
 }
 
@@ -19,7 +49,11 @@ export async function createTimesheet(payload: TimesheetCreate): Promise<Timeshe
 }
 
 export async function fetchTimesheetEntries(
-  params?: ListParams,
+  params?: ListParams & {
+    entry_date_from?: string;
+    entry_date_to?: string;
+    user_id?: string;
+  },
 ): Promise<TimesheetEntry[]> {
   const { data } = await apiClient.get<TimesheetEntry[]>(
     `/timesheet-entries${buildQuery(params)}`,
@@ -32,6 +66,31 @@ export async function createTimesheetEntry(
 ): Promise<TimesheetEntry> {
   const { data } = await apiClient.post<TimesheetEntry>(
     '/timesheet-entries',
+    payload,
+  );
+  return data;
+}
+
+export async function updateTimesheetEntry(
+  entryId: string,
+  payload: Partial<TimesheetEntryCreate>,
+): Promise<TimesheetEntry> {
+  const { data } = await apiClient.patch<TimesheetEntry>(
+    `/timesheet-entries/${entryId}`,
+    payload,
+  );
+  return data;
+}
+
+export async function deleteTimesheetEntry(entryId: string): Promise<void> {
+  await apiClient.delete(`/timesheet-entries/${entryId}`);
+}
+
+export async function bulkSaveTimesheetEntries(
+  payload: TimesheetEntryBulkRequest,
+): Promise<TimesheetEntryBulkResponse> {
+  const { data } = await apiClient.post<TimesheetEntryBulkResponse>(
+    '/timesheet-entries/bulk',
     payload,
   );
   return data;

@@ -16,6 +16,7 @@ import { ArchivedProjectsPage } from './pages/ArchivedProjectsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TimesheetEntryPage } from './pages/TimesheetEntryPage';
+import { TimesheetMonthPage } from './pages/TimesheetMonthPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
 import { ResourcePlanningPage } from './pages/ResourcePlanningPage';
 import { WorkloadPage } from './pages/WorkloadPage';
@@ -151,6 +152,7 @@ export default function App() {
                     <Route path="/projects/archived" element={<ArchivedProjectsRoute />} />
                     <Route path="/projects/:id" element={<ProjectDetailPage />} />
                     <Route path="/timesheets" element={<TimesheetsPage />} />
+                    <Route path="/timesheets/month" element={<TimesheetMonthPage />} />
                     <Route
                       path="/profile"
                       element={

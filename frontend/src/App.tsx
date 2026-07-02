@@ -44,6 +44,7 @@ const AdminSystemPage = lazy(() => import('./pages/admin/AdminSystemPage'));
 const ContactsAdminPage = lazy(() => import('./pages/admin/ContactsPage'));
 const CustomersAdminPage = lazy(() => import('./pages/admin/CustomersPage'));
 const DeletedProjectsAdminPage = lazy(() => import('./pages/admin/DeletedProjectsPage'));
+const DeletedUsersAdminPage = lazy(() => import('./pages/admin/DeletedUsersPage'));
 const ProjectTemplatesAdminPage = lazy(() => import('./pages/admin/ProjectTemplatesPage'));
 const ProjectTemplateEditorPage = lazy(() => import('./pages/admin/ProjectTemplateEditorPage'));
 const ProjectTypesAdminPage = lazy(() => import('./pages/admin/ProjectTypesPage'));
@@ -354,6 +355,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <DeletedProjectsAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/deleted-users"
+                        element={
+                          <LazyAdminPage>
+                            <DeletedUsersAdminPage />
                           </LazyAdminPage>
                         }
                       />

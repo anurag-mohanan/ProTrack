@@ -22,6 +22,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
 import { LoadingState } from '../../components/common/LoadingState';
+import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { contactsApi, customersApi } from '../../api/resources';
@@ -244,7 +245,7 @@ export default function CustomersPage() {
     {
       field: 'actions',
       headerName: 'Actions',
-      width: 100,
+      width: 130,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
@@ -259,6 +260,17 @@ export default function CustomersPage() {
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          <AdminDeleteButton
+            resource="customers"
+            recordId={params.row.id}
+            recordName={params.row.name}
+            onDeleted={() => void loadData()}
+            onDeactivate={async () => {
+              await customersApi.update(params.row.id, { is_active: false });
+              showSuccess('Customer deactivated.');
+              await loadData();
+            }}
+          />
         </Box>
       ),
     },

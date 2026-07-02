@@ -14,12 +14,11 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
@@ -67,8 +66,6 @@ export default function RolesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [viewRole, setViewRole] = useState<Role | null>(null);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Role | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
   const [form, setForm] = useState<RoleFormState>(emptyForm);
 
   const loadData = useCallback(async () => {
@@ -145,21 +142,6 @@ export default function RolesPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setActionLoading(true);
-    try {
-      await rolesApi.remove(deleteTarget.id);
-      showSuccess('Role deleted successfully.');
-      setDeleteTarget(null);
-      await loadData();
-    } catch (error) {
-      showError(getErrorMessage(error));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const columns: GridColDef<Role>[] = [
     {
       field: 'name',
@@ -206,17 +188,14 @@ export default function RolesPage() {
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title={isSystemRole(params.row) ? 'System roles cannot be deleted' : 'Delete'}>
-            <span>
-              <IconButton
-                size="small"
-                disabled={isSystemRole(params.row)}
-                onClick={() => setDeleteTarget(params.row)}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
+          {!isSystemRole(params.row) ? (
+            <AdminDeleteButton
+              resource="roles"
+              recordId={params.row.id}
+              recordName={params.row.name}
+              onDeleted={() => void loadData()}
+            />
+          ) : null}
         </Box>
       ),
     },
@@ -356,19 +335,6 @@ export default function RolesPage() {
         </DialogActions>
       </Dialog>
 
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        title="Delete Role"
-        message={
-          deleteTarget
-            ? `Delete role "${deleteTarget.name}"? This action cannot be undone.`
-            : ''
-        }
-        confirmLabel="Delete"
-        onConfirm={() => void handleDelete()}
-        onClose={() => setDeleteTarget(null)}
-        loading={actionLoading}
-      />
     </Box>
   );
 }

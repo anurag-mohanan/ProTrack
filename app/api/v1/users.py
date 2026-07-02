@@ -335,7 +335,18 @@ def permanent_delete_user_endpoint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         )
+    db_user = user_crud.get(db, record_id)
+    if db_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     try:
         permanent_delete_user(db, record_id)
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.user,
+            entity_id=record_id,
+            action=ActivityAction.record_deleted,
+            new_value=db_user.email,
+        )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc

@@ -73,6 +73,7 @@ api_router.include_router(
         schema_update=StreamUpdate,
         router_dependencies=admin_access,
         write_roles=master_data_write,
+        delete_entity="stream",
     )
 )
 api_router.include_router(
@@ -85,6 +86,7 @@ api_router.include_router(
         schema_update=CustomerUpdate,
         router_dependencies=admin_access,
         write_roles=master_data_write,
+        delete_entity="customer",
     )
 )
 api_router.include_router(
@@ -98,6 +100,7 @@ api_router.include_router(
         filters_model=ContactFilters,
         router_dependencies=admin_access,
         write_roles=master_data_write,
+        delete_entity="contact",
     )
 )
 api_router.include_router(
@@ -111,6 +114,7 @@ api_router.include_router(
         filters_model=TaskTypeFilters,
         router_dependencies=admin_access,
         write_roles=master_data_write,
+        delete_entity="task_type",
     )
 )
 api_router.include_router(project_types.router)

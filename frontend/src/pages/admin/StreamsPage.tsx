@@ -8,15 +8,14 @@ import {
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import StreamOutlinedIcon from '@mui/icons-material/StreamOutlined';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
-import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
+import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { streamsApi } from '../../api/resources';
@@ -52,8 +51,6 @@ export default function StreamsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [viewStream, setViewStream] = useState<Stream | null>(null);
   const [editingStream, setEditingStream] = useState<Stream | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Stream | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
   const [form, setForm] = useState<StreamFormState>(emptyForm);
 
   const loadData = useCallback(async () => {
@@ -123,21 +120,6 @@ export default function StreamsPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setActionLoading(true);
-    try {
-      await streamsApi.remove(deleteTarget.id);
-      showSuccess('Stream deleted successfully.');
-      setDeleteTarget(null);
-      await loadData();
-    } catch (error) {
-      showError(getErrorMessage(error));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const columns: GridColDef<Stream>[] = [
     { field: 'name', headerName: 'Name', flex: 1.2, minWidth: 140 },
     {
@@ -177,11 +159,17 @@ export default function StreamsPage() {
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" onClick={() => setDeleteTarget(params.row)}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <AdminDeleteButton
+            resource="streams"
+            recordId={params.row.id}
+            recordName={params.row.name}
+            onDeleted={() => void loadData()}
+            onDeactivate={async () => {
+              await streamsApi.update(params.row.id, { is_active: false });
+              showSuccess('Stream deactivated.');
+              await loadData();
+            }}
+          />
         </Box>
       ),
     },
@@ -302,20 +290,6 @@ export default function StreamsPage() {
           </Box>
         ) : null}
       </ModernDrawer>
-
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        title="Delete Stream"
-        message={
-          deleteTarget
-            ? `Delete stream "${deleteTarget.name}"? This action cannot be undone.`
-            : ''
-        }
-        confirmLabel="Delete"
-        onConfirm={() => void handleDelete()}
-        onClose={() => setDeleteTarget(null)}
-        loading={actionLoading}
-      />
     </PageContainer>
   );
 }

@@ -20,6 +20,7 @@ import { teamsApi } from '../../api/resources';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
+import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
@@ -28,7 +29,6 @@ import {
   FormSection,
   FormSelect,
   SearchToolbar,
-  DeleteDialog,
   EmptyState,
 } from '../../components/ui/design-system';
 import { useToast } from '../../context/ToastContext';
@@ -67,7 +67,6 @@ export default function TeamsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [form, setForm] = useState<TeamFormState>(emptyForm);
-  const [deleteTarget, setDeleteTarget] = useState<Team | null>(null);
   const [memberTeam, setMemberTeam] = useState<Team | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [memberForm, setMemberForm] = useState<TeamMemberCreate>({
@@ -147,18 +146,6 @@ export default function TeamsPage() {
       showError(getErrorMessage(error));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    try {
-      await teamsApi.remove(deleteTarget.id);
-      showSuccess('Team deleted');
-      setDeleteTarget(null);
-      await loadData();
-    } catch (error) {
-      showError(getErrorMessage(error));
     }
   };
 
@@ -247,9 +234,17 @@ export default function TeamsPage() {
           <IconButton size="small" onClick={() => openEdit(params.row)}>
             <EditIcon fontSize="small" />
           </IconButton>
-          <IconButton size="small" color="error" onClick={() => setDeleteTarget(params.row)}>
-            <DeleteIcon fontSize="small" />
-          </IconButton>
+          <AdminDeleteButton
+            resource="teams"
+            recordId={params.row.id}
+            recordName={params.row.name}
+            onDeleted={() => void loadData()}
+            onDeactivate={async () => {
+              await teamsApi.update(params.row.id, { is_active: false });
+              showSuccess('Team deactivated.');
+              await loadData();
+            }}
+          />
         </Box>
       ),
     },
@@ -450,14 +445,6 @@ export default function TeamsPage() {
         </Box>
       </FormDrawer>
 
-      <DeleteDialog
-        open={Boolean(deleteTarget)}
-        objectLabel="Team"
-        objectName={deleteTarget?.name ?? ''}
-        extraMessage="Projects linked to this team will have their team cleared."
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => void handleDelete()}
-      />
     </PageContainer>
   );
 }

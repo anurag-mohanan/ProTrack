@@ -102,6 +102,12 @@ export function getAdminNavSections(roleName: string): AdminNavItem[] {
       path: '/admin/deleted-projects',
       icon: DeleteIcon,
     });
+    manageChildren.push({
+      id: 'deleted-users',
+      label: 'Deleted Users',
+      path: '/admin/deleted-users',
+      icon: DeleteIcon,
+    });
   }
 
   const importChildren: AdminNavItem[] = [];

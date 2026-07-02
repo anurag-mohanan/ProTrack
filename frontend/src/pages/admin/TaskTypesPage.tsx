@@ -19,12 +19,11 @@ import {
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
@@ -58,8 +57,6 @@ export default function TaskTypesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [viewTaskType, setViewTaskType] = useState<TaskType | null>(null);
   const [editingTaskType, setEditingTaskType] = useState<TaskType | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<TaskType | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
   const [form, setForm] = useState<TaskTypeFormState>(emptyForm);
 
   const streamMap = useMemo(
@@ -148,21 +145,6 @@ export default function TaskTypesPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setActionLoading(true);
-    try {
-      await taskTypesApi.remove(deleteTarget.id);
-      showSuccess('Task type deleted successfully.');
-      setDeleteTarget(null);
-      await loadData();
-    } catch (error) {
-      showError(getErrorMessage(error));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const columns: GridColDef<TaskType>[] = [
     { field: 'name', headerName: 'Name', flex: 1.2, minWidth: 140 },
     {
@@ -227,11 +209,17 @@ export default function TaskTypesPage() {
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" onClick={() => setDeleteTarget(params.row)}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <AdminDeleteButton
+            resource="task-types"
+            recordId={params.row.id}
+            recordName={params.row.name}
+            onDeleted={() => void loadData()}
+            onDeactivate={async () => {
+              await taskTypesApi.update(params.row.id, { is_active: false });
+              showSuccess('Task type deactivated.');
+              await loadData();
+            }}
+          />
         </Box>
       ),
     },
@@ -395,19 +383,6 @@ export default function TaskTypesPage() {
         </DialogActions>
       </Dialog>
 
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        title="Delete Task Type"
-        message={
-          deleteTarget
-            ? `Delete task type "${deleteTarget.name}"? This action cannot be undone.`
-            : ''
-        }
-        confirmLabel="Delete"
-        onConfirm={() => void handleDelete()}
-        onClose={() => setDeleteTarget(null)}
-        loading={actionLoading}
-      />
     </Box>
   );
 }

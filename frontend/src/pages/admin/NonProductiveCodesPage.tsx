@@ -19,11 +19,11 @@ import AddIcon from '@mui/icons-material/Add';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
+import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
@@ -108,17 +108,6 @@ export default function NonProductiveCodesPage() {
       showError(getErrorMessage(error));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleDelete = async (row: NonProductiveCode) => {
-    if (!window.confirm(`Delete NP code ${row.code}? This cannot be undone.`)) return;
-    try {
-      await nonProductiveCodesApi.remove(row.id);
-      showSuccess('NP code deleted');
-      await loadData();
-    } catch (error) {
-      showError(getErrorMessage(error));
     }
   };
 
@@ -213,16 +202,28 @@ export default function NonProductiveCodesPage() {
                 </IconButton>
               </Tooltip>
             )}
-            <Tooltip title="Delete">
-              <IconButton size="small" color="error" onClick={() => void handleDelete(params.row)}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <AdminDeleteButton
+              resource="non-productive-codes"
+              recordId={params.row.id}
+              recordName={params.row.code}
+              onDeleted={() => void loadData()}
+              showArchive
+              onArchive={async () => {
+                await nonProductiveCodesApi.update(params.row.id, { is_archived: true });
+                showSuccess('NP code archived.');
+                await loadData();
+              }}
+              onDeactivate={async () => {
+                await nonProductiveCodesApi.update(params.row.id, { is_active: false });
+                showSuccess('NP code deactivated.');
+                await loadData();
+              }}
+            />
           </Stack>
         ),
       },
     ],
-    [saving],
+    [loadData, saving, showSuccess],
   );
 
   const openCreate = () => {

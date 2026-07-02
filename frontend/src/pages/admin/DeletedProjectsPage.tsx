@@ -16,6 +16,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router-dom';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { DeleteRecordDialog, type DeleteCheckResult } from '../../components/ui/design-system/DeleteRecordDialog';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -38,7 +39,7 @@ export default function DeletedProjectsPage() {
   const { showSuccess, showError } = useToast();
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [permanentId, setPermanentId] = useState<string | null>(null);
-  const [blockers, setBlockers] = useState<string[]>([]);
+  const [permanentCheck, setPermanentCheck] = useState<DeleteCheckResult | null>(null);
 
   const deletedQuery = useQuery({
     queryKey: projectQueryKeys.deleted,
@@ -62,15 +63,21 @@ export default function DeletedProjectsPage() {
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
       showSuccess('Project permanently deleted');
       setPermanentId(null);
-      setBlockers([]);
+      setPermanentCheck(null);
     },
     onError: (error: Error) => showError(error.message),
   });
 
-  async function openPermanentDelete(projectId: string) {
+  async function openPermanentDelete(projectId: string, projectCode: string) {
     try {
       const check = await getProjectDeleteCheck(projectId);
-      setBlockers(check.blockers);
+      setPermanentCheck({
+        can_delete: check.can_permanently_delete,
+        blockers: check.blockers,
+        record_name: projectCode,
+        record_type: 'Project',
+        related_records: check.blockers,
+      });
       setPermanentId(projectId);
     } catch (error) {
       showError(
@@ -140,7 +147,7 @@ export default function DeletedProjectsPage() {
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => openPermanentDelete(project.id)}
+                          onClick={() => openPermanentDelete(project.id, project.code)}
                         >
                           <DeleteForeverIcon fontSize="small" />
                         </IconButton>
@@ -164,27 +171,22 @@ export default function DeletedProjectsPage() {
         onConfirm={() => restoreId && restoreMutation.mutate(restoreId)}
       />
 
-      <ConfirmDialog
+      <DeleteRecordDialog
         open={permanentId !== null}
-        title="Permanently delete project?"
-        message={
-          blockers.length
-            ? `Cannot permanently delete: ${blockers.join(', ')} still exist.`
-            : 'This action cannot be undone. The project record will be removed from the database.'
-        }
-        confirmLabel="Permanent Delete"
+        check={permanentCheck}
         loading={permanentMutation.isPending}
         onClose={() => {
           setPermanentId(null);
-          setBlockers([]);
+          setPermanentCheck(null);
         }}
         onConfirm={() => {
-          if (blockers.length) {
+          if (permanentCheck && !permanentCheck.can_delete) {
             setPermanentId(null);
             return;
           }
           if (permanentId) permanentMutation.mutate(permanentId);
         }}
+        showDeactivate={false}
       />
     </Box>
   );

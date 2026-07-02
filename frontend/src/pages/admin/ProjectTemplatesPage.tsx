@@ -11,18 +11,15 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import BlockIcon from '@mui/icons-material/Block';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import {
   deactivateProjectTemplate,
-  deleteProjectTemplate,
   duplicateProjectTemplate,
   fetchProjectTemplates,
 } from '../../api/projectTemplates';
@@ -34,8 +31,6 @@ export default function ProjectTemplatesPage() {
   const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<ProjectTemplate | null>(null);
-  const [deactivateTarget, setDeactivateTarget] = useState<ProjectTemplate | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -75,36 +70,6 @@ export default function ProjectTemplatesPage() {
       showSuccess('Template duplicated successfully.');
       await loadData();
       navigate(`/admin/project-templates/${duplicate.id}`);
-    } catch (error) {
-      showError(getErrorMessage(error));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDeactivate = async () => {
-    if (!deactivateTarget) return;
-    setActionLoading(true);
-    try {
-      await deactivateProjectTemplate(deactivateTarget.id);
-      showSuccess('Template deactivated successfully.');
-      setDeactivateTarget(null);
-      await loadData();
-    } catch (error) {
-      showError(getErrorMessage(error));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setActionLoading(true);
-    try {
-      await deleteProjectTemplate(deleteTarget.id);
-      showSuccess('Template deleted successfully.');
-      setDeleteTarget(null);
-      await loadData();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -177,20 +142,17 @@ export default function ProjectTemplatesPage() {
               <ContentCopyIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Deactivate">
-            <IconButton
-              size="small"
-              onClick={() => setDeactivateTarget(params.row)}
-              disabled={!params.row.is_active}
-            >
-              <BlockIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" onClick={() => setDeleteTarget(params.row)}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <AdminDeleteButton
+            resource="project-templates"
+            recordId={params.row.id}
+            recordName={params.row.name}
+            onDeleted={() => void loadData()}
+            onDeactivate={async () => {
+              await deactivateProjectTemplate(params.row.id);
+              showSuccess('Template deactivated successfully.');
+              await loadData();
+            }}
+          />
         </Box>
       ),
     },
@@ -235,33 +197,6 @@ export default function ProjectTemplatesPage() {
         />
       </Card>
 
-      <ConfirmDialog
-        open={Boolean(deactivateTarget)}
-        title="Deactivate Template"
-        message={
-          deactivateTarget
-            ? `Deactivate "${deactivateTarget.name}"? It will no longer appear in project creation.`
-            : ''
-        }
-        confirmLabel="Deactivate"
-        onConfirm={() => void handleDeactivate()}
-        onClose={() => setDeactivateTarget(null)}
-        loading={actionLoading}
-      />
-
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        title="Delete Template"
-        message={
-          deleteTarget
-            ? `Delete "${deleteTarget.name}"? This is only allowed when no projects reference the template.`
-            : ''
-        }
-        confirmLabel="Delete"
-        onConfirm={() => void handleDelete()}
-        onClose={() => setDeleteTarget(null)}
-        loading={actionLoading}
-      />
     </Box>
   );
 }

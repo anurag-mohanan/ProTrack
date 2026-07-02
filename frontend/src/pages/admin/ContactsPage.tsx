@@ -19,13 +19,12 @@ import {
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
@@ -79,8 +78,6 @@ export default function ContactsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [viewContact, setViewContact] = useState<Contact | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
   const [form, setForm] = useState<ContactFormState>(emptyForm);
 
   const customerMap = useMemo(
@@ -193,21 +190,6 @@ export default function ContactsPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setActionLoading(true);
-    try {
-      await contactsApi.remove(deleteTarget.id);
-      showSuccess('Contact deleted successfully.');
-      setDeleteTarget(null);
-      await loadData();
-    } catch (error) {
-      showError(getErrorMessage(error));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const columns: GridColDef<Contact>[] = [
     {
       field: 'customer_id',
@@ -275,11 +257,17 @@ export default function ContactsPage() {
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" onClick={() => setDeleteTarget(params.row)}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <AdminDeleteButton
+            resource="contacts"
+            recordId={params.row.id}
+            recordName={`${params.row.first_name} ${params.row.last_name}`}
+            onDeleted={() => void loadData()}
+            onDeactivate={async () => {
+              await contactsApi.update(params.row.id, { is_active: false });
+              showSuccess('Contact deactivated.');
+              await loadData();
+            }}
+          />
         </Box>
       ),
     },
@@ -500,19 +488,6 @@ export default function ContactsPage() {
         </DialogActions>
       </Dialog>
 
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        title="Delete Contact"
-        message={
-          deleteTarget
-            ? `Delete ${deleteTarget.first_name} ${deleteTarget.last_name}? This action cannot be undone.`
-            : ''
-        }
-        confirmLabel="Delete"
-        onConfirm={() => void handleDelete()}
-        onClose={() => setDeleteTarget(null)}
-        loading={actionLoading}
-      />
     </Box>
   );
 }

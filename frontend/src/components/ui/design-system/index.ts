@@ -17,5 +17,6 @@ export { FormSection } from './FormSection';
 export { SearchToolbar } from './SearchToolbar';
 export { StatisticCard } from './StatisticCard';
 export { DeleteDialog } from './DeleteDialog';
+export { DeleteRecordDialog, type DeleteCheckResult } from './DeleteRecordDialog';
 export { ConfirmDialog as ConfirmationDialog } from '../../common/ConfirmDialog';
 export { EmptyState } from '../../common/EmptyState';

@@ -17,7 +17,7 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import GroupsIcon from '@mui/icons-material/Groups';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { NavLink } from 'react-router-dom';
-import { ProsohmLogo } from '../branding/ProsohmLogo';
+import { LogoHomeLink } from '../branding/LogoHomeLink';
 import { AdminNavigation } from './AdminNavigation';
 import { getAdminNavSections } from '../../config/adminNavigation';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
@@ -113,7 +113,7 @@ export function AppSidebar({ roleName }: AppSidebarProps) {
       }}
     >
       <Toolbar sx={{ px: 2.5, minHeight: '72px !important' }}>
-        <ProsohmLogo light size="md" />
+        <LogoHomeLink light size="md" />
       </Toolbar>
 
       <Box sx={{ px: 1, pb: 2, overflow: 'auto' }}>

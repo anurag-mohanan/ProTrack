@@ -8,6 +8,7 @@ from app.api.deps import get_db, get_object_or_404
 from app.core.exceptions import ProTrackValidationError
 from app.crud.team import team
 from app.models.models import Team, User
+from app.schemas.delete_check import DeleteCheckResponse
 from app.schemas.team import (
     TeamCreate,
     TeamMemberCreate,
@@ -18,6 +19,12 @@ from app.schemas.team import (
     TeamUpdate,
 )
 
+from app.services.master_data_delete_service import (
+    ensure_can_delete,
+    log_record_deleted,
+    run_delete_check,
+)
+
 router = APIRouter(
     prefix="/teams",
     tags=["teams"],
@@ -25,6 +32,7 @@ router = APIRouter(
 )
 
 write_access = Depends(require_roles("Admin", "Engineering Manager"))
+admin_access = Depends(require_roles("Admin"))
 read_access = Depends(
     require_roles("Admin", "Engineering Manager", "Design Leader", "Read Only")
 )
@@ -90,14 +98,42 @@ def update_team(
     return result
 
 
+@router.get(
+    "/{record_id}/delete-check",
+    response_model=DeleteCheckResponse,
+    dependencies=[admin_access],
+)
+def delete_check(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    _user: User = admin_access,
+):
+    try:
+        return run_delete_check(db, "team", record_id)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_team(
     record_id: UUID,
     db: Session = Depends(get_db),
-    _user: User = write_access,
+    current_user: User = Depends(get_current_user),
+    _user: User = admin_access,
 ):
     db_obj = get_object_or_404(db, Team, record_id)
+    try:
+        ensure_can_delete(db, "team", record_id)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
     team.delete(db, record_id=db_obj.id)
+    log_record_deleted(
+        db,
+        user=current_user,
+        entity_key="team",
+        record_id=record_id,
+        record_name=db_obj.name,
+    )
 
 
 @router.get("/{record_id}/members", response_model=list[TeamMemberRead])

@@ -25,6 +25,7 @@ export interface User {
   last_name: string;
   email: string;
   role_id: string;
+  role_name?: string;
   team_id?: string | null;
   team_name?: string | null;
   department_id?: string | null;

@@ -4,12 +4,19 @@ from fastapi import HTTPException, status
 
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
+from app.core.exceptions import ProTrackValidationError
 from app.crud.non_productive_code import non_productive_code
 from app.models.models import User
+from app.schemas.delete_check import DeleteCheckResponse
 from app.schemas.organization import (
     NonProductiveCodeCreate,
     NonProductiveCodeRead,
     NonProductiveCodeUpdate,
+)
+from app.services.master_data_delete_service import (
+    ensure_can_delete,
+    log_record_deleted,
+    run_delete_check,
 )
 
 router = APIRouter(
@@ -19,6 +26,14 @@ router = APIRouter(
 )
 
 write_dependency = Depends(require_roles("Admin", "Engineering Manager"))
+admin_dependency = Depends(require_roles("Admin"))
+
+
+def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=exc.detail,
+    )
 
 
 @router.get("", response_model=list[NonProductiveCodeRead])
@@ -41,6 +56,18 @@ def get_non_productive_code(record_id: UUID, db: Session = Depends(get_db)):
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
     return row
+
+
+@router.get(
+    "/{record_id}/delete-check",
+    response_model=DeleteCheckResponse,
+    dependencies=[admin_dependency],
+)
+def delete_check(record_id: UUID, db: Session = Depends(get_db)):
+    try:
+        return run_delete_check(db, "np_code", record_id)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
 
 
 @router.post(
@@ -74,8 +101,27 @@ def update_non_productive_code(
 @router.delete(
     "/{record_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[write_dependency],
+    dependencies=[admin_dependency],
 )
-def delete_non_productive_code(record_id: UUID, db: Session = Depends(get_db)):
-    non_productive_code.delete_with_validation(db, record_id)
+def delete_non_productive_code(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = non_productive_code.get(db, record_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
+    try:
+        ensure_can_delete(db, "np_code", record_id)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    record_name = row.name or row.code
+    non_productive_code.delete(db, record_id=record_id)
+    log_record_deleted(
+        db,
+        user=current_user,
+        entity_key="np_code",
+        record_id=record_id,
+        record_name=record_name,
+    )
 

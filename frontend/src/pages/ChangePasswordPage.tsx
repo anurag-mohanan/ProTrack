@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, Box, Card, CardContent, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Card, CardContent, Stack, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { changePassword } from '../api/auth';
 import { getErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { PasswordField } from '../components/ui/design-system';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { validatePasswordStrength, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordPolicy';
 
@@ -74,38 +75,32 @@ export function ChangePasswordPage() {
 
             {error ? <Alert severity="error">{error}</Alert> : null}
 
-            <TextField
+            <PasswordField
               label="Current Password"
-              type="password"
               value={form.current_password}
               onChange={(event) =>
                 setForm((current) => ({ ...current, current_password: event.target.value }))
               }
               required
-              fullWidth
               autoComplete="current-password"
             />
-            <TextField
+            <PasswordField
               label="New Password"
-              type="password"
               value={form.new_password}
               onChange={(event) =>
                 setForm((current) => ({ ...current, new_password: event.target.value }))
               }
               required
-              fullWidth
               autoComplete="new-password"
-              helperText={PASSWORD_REQUIREMENTS_MESSAGE}
+              helper={PASSWORD_REQUIREMENTS_MESSAGE}
             />
-            <TextField
+            <PasswordField
               label="Confirm Password"
-              type="password"
               value={form.confirm_password}
               onChange={(event) =>
                 setForm((current) => ({ ...current, confirm_password: event.target.value }))
               }
               required
-              fullWidth
               autoComplete="new-password"
             />
             <ProsohmButton

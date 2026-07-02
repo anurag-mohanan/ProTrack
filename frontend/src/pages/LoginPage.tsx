@@ -14,6 +14,7 @@ import { getErrorMessage } from '../api/client';
 import { useCompany } from '../context/CompanyContext';
 import { CompanyLogo } from '../components/branding/CompanyLogo';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
+import { PasswordField } from '../components/ui/design-system';
 import { useAuth } from '../context/AuthContext';
 
 export function LoginPage() {
@@ -112,13 +113,11 @@ export function LoginPage() {
                 fullWidth
                 autoComplete="username"
               />
-              <TextField
+              <PasswordField
                 label="Password"
-                type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 required
-                fullWidth
                 autoComplete="current-password"
               />
               <ProsohmButton

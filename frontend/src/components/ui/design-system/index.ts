@@ -17,6 +17,7 @@ export {
   PriorityBadge,
 } from './StatusBadge';
 export { FormField } from './FormField';
+export { PasswordField } from './PasswordField';
 export { FormSelect, type SelectOption } from './FormSelect';
 export { FormSection } from './FormSection';
 export { SearchToolbar } from './SearchToolbar';

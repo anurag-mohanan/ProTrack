@@ -37,6 +37,7 @@ import {
   FormField,
   FormSection,
   FormSelect,
+  PasswordField,
   ProsohmDataGrid,
   SearchToolbar,
   EmptyState,
@@ -786,9 +787,8 @@ export default function UsersPage() {
                 {!form.generate_temporary_password ? (
                   <>
                     <Grid size={{ xs: 12, sm: 6 }}>
-                      <FormField
+                      <PasswordField
                         label="Temporary Password"
-                        type="password"
                         required
                         value={form.password}
                         helper="Minimum 8 characters."
@@ -798,9 +798,8 @@ export default function UsersPage() {
                       />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
-                      <FormField
+                      <PasswordField
                         label="Confirm Password"
-                        type="password"
                         required
                         value={form.confirm_password}
                         onChange={(event) =>

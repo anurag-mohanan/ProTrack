@@ -6,10 +6,16 @@ def test_token_generation_and_validation():
     token = create_access_token(
         user_id=IDS["user_anurag"],
         email="anurag@prosohm.com",
+        name="Anurag Mohanan",
+        role="Design Leader",
+        permissions=["create_project", "view_reports"],
+        team_id=None,
+        team_name=None,
     )
     payload = decode_access_token(token)
     assert payload.sub == IDS["user_anurag"]
     assert payload.email == "anurag@prosohm.com"
+    assert payload.role == "Design Leader"
 
 
 def test_login_success(client):

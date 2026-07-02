@@ -13,7 +13,7 @@ from app.core.security import hash_password
 from app.db.phase7_schema_sync import ensure_phase7_foundation
 from app.db.phase8_schema_sync import ensure_phase8_foundation
 from app.db.phase9_schema_sync import ensure_phase9_foundation
-from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_team_schema, ensure_user_team_schema
+from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_user_auth_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_team_schema, ensure_user_team_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
 from app.db.base import Base
@@ -265,6 +265,7 @@ def test_engine():
     ensure_project_lifecycle_schema(engine)
     ensure_project_stage_and_execution_status(engine)
     ensure_user_lifecycle_schema(engine)
+    ensure_user_auth_schema(engine)
     ensure_team_schema(engine)
     ensure_user_team_schema(engine)
     ensure_timesheet_entry_work_category(engine)

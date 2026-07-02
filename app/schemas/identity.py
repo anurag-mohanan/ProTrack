@@ -109,6 +109,8 @@ class UserRead(UserBase, TimestampSchema):
     is_deleted: bool = False
     deleted_at: datetime | None = None
     deleted_by_id: UUID | None = None
+    is_locked: bool = False
+    failed_login_count: int = 0
 
     @computed_field
     @property

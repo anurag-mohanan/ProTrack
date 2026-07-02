@@ -56,7 +56,9 @@ interface UserDetailsDrawerProps {
   onEdit: (user: User) => void;
   onDelete: (user: User) => void;
   onResetPassword: (user: User) => void;
+  onSetTemporaryPassword: (user: User) => void;
   onForcePasswordChange: (user: User) => void;
+  onUnlockUser: (user: User) => void;
   onToggleActive: (user: User) => void;
   onArchive: (user: User) => void;
   onImpersonate: (user: User) => void;
@@ -77,7 +79,9 @@ export function UserDetailsDrawer({
   onEdit,
   onDelete,
   onResetPassword,
+  onSetTemporaryPassword,
   onForcePasswordChange,
+  onUnlockUser,
   onToggleActive,
   onArchive,
   onImpersonate,
@@ -379,11 +383,26 @@ export function UserDetailsDrawer({
               <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onResetPassword(user)}>
                 Reset Password
               </ProsohmButton>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => onSetTemporaryPassword(user)}
+              >
+                Set Temporary Password
+              </ProsohmButton>
               <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onForcePasswordChange(user)}>
                 Force Password Change
               </ProsohmButton>
+              {user.is_locked ? (
+                <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onUnlockUser(user)}>
+                  Unlock User
+                </ProsohmButton>
+              ) : null}
               <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onToggleActive(user)}>
                 {user.is_active ? 'Deactivate' : 'Activate'}
+              </ProsohmButton>
+              <ProsohmButton buttonVariant="outlined" size="small" disabled title="Coming soon">
+                Generate Password Reset Link
               </ProsohmButton>
               {isAdmin ? (
                 <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onArchive(user)}>
@@ -417,6 +436,19 @@ export function UserDetailsDrawer({
                   <FormField
                     label="Password Changed"
                     value={user.must_change_password ? 'Required on next login' : 'Yes'}
+                    slotProps={{ input: { readOnly: true } }}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormField
+                    label="Account Status"
+                    value={
+                      user.is_locked
+                        ? `Locked (${user.failed_login_count ?? 0} failed attempts)`
+                        : user.is_active
+                          ? 'Active'
+                          : 'Inactive'
+                    }
                     slotProps={{ input: { readOnly: true } }}
                   />
                 </Grid>

@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -10,12 +11,17 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
 from app.core.auth import create_access_token, decode_access_token
-from app.core.permissions import get_role_name
+from app.core.permissions import get_role_name, get_user_permission_keys
 from app.core.security import hash_password, verify_password
-from app.crud.auth import authenticate_user, get_user_by_email
+from app.crud.auth import (
+    AuthFailureReason,
+    authenticate_user,
+    get_user_by_email,
+    record_failed_login_attempt,
+)
 from app.crud import user as user_crud
 from app.models.enums import ActivityAction, EntityType
-from app.models.models import User
+from app.models.models import Team, User
 from app.schemas.auth import (
     ChangePasswordRequest,
     CurrentUserRead,
@@ -27,10 +33,20 @@ from app.schemas.auth import (
 from app.services.activity_service import log_activity
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
 FAILED_LOGIN_ENTITY_ID = UUID("00000000-0000-0000-0000-000000000001")
+
+_AUTH_FAILURE_LOG_MESSAGES = {
+    AuthFailureReason.user_not_found: "Login failed: user not found (email=%s)",
+    AuthFailureReason.wrong_password: "Login failed: wrong password (email=%s)",
+    AuthFailureReason.inactive: "Login failed: inactive account (email=%s)",
+    AuthFailureReason.deleted: "Login failed: deleted account (email=%s)",
+    AuthFailureReason.archived: "Login failed: archived account (email=%s)",
+    AuthFailureReason.locked: "Login failed: locked account (email=%s)",
+}
 
 
 def get_token_payload(
@@ -46,29 +62,68 @@ def get_token_payload(
         ) from exc
 
 
-def _issue_token(user: User, *, impersonator_id: UUID | None = None) -> Token:
-    access_token = create_access_token(
-        user_id=user.id,
-        email=user.email,
-        impersonator_id=impersonator_id,
-    )
+def _team_context(db: Session, user: User) -> tuple[UUID | None, str | None]:
+    if user.team_id is None:
+        return None, None
+    team = db.get(Team, user.team_id)
+    return user.team_id, team.name if team is not None else None
+
+
+def _issue_token(
+    db: Session,
+    user: User,
+    *,
+    impersonator_id: UUID | None = None,
+) -> Token:
+    role_name = get_role_name(db, user)
+    team_id, team_name = _team_context(db, user)
+    try:
+        access_token = create_access_token(
+            user_id=user.id,
+            email=user.email,
+            name=f"{user.first_name} {user.last_name}",
+            role=role_name,
+            permissions=get_user_permission_keys(db, user),
+            team_id=team_id,
+            team_name=team_name,
+            impersonator_id=impersonator_id,
+        )
+    except Exception:
+        logger.exception("JWT generation failed for user_id=%s email=%s", user.id, user.email)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Incorrect email or password",
+        ) from None
     return Token(access_token=access_token)
 
 
-def _log_failed_login(db: Session, email: str) -> None:
+def _log_failed_login(
+    db: Session,
+    email: str,
+    reason: AuthFailureReason | None,
+) -> None:
+    if reason is not None:
+        log_template = _AUTH_FAILURE_LOG_MESSAGES.get(reason)
+        if log_template:
+            logger.warning(log_template, email)
+
     existing = get_user_by_email(db, email)
+    if existing is not None and reason == AuthFailureReason.wrong_password:
+        record_failed_login_attempt(db, existing)
+
     log_activity(
         db,
         user=existing,
         entity_type=EntityType.user,
         entity_id=existing.id if existing is not None else FAILED_LOGIN_ENTITY_ID,
         action=ActivityAction.login_failed,
-        new_value=email,
+        new_value=f"{email}:{reason.value if reason else 'unknown'}",
     )
 
 
 def _complete_login(db: Session, user: User) -> Token:
     user.last_login = datetime.now(UTC)
+    user.failed_login_count = 0
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -80,7 +135,7 @@ def _complete_login(db: Session, user: User) -> Token:
         action=ActivityAction.user_logged_in,
         new_value=user.email,
     )
-    return _issue_token(user)
+    return _issue_token(db, user)
 
 
 def _build_current_user_read(
@@ -109,17 +164,30 @@ def _build_current_user_read(
     )
 
 
-@router.post("/login", response_model=Token)
-def login_json(body: LoginRequest, db: Session = Depends(get_db)):
-    user = authenticate_user(db, email=body.email, password=body.password)
+def _handle_login(db: Session, email: str, password: str) -> Token:
+    try:
+        user, reason = authenticate_user(db, email=email, password=password)
+    except Exception:
+        logger.exception("Database error during login for email=%s", email)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from None
+
     if user is None:
-        _log_failed_login(db, body.email)
+        _log_failed_login(db, email, reason)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return _complete_login(db, user)
+
+
+@router.post("/login", response_model=Token)
+def login_json(body: LoginRequest, db: Session = Depends(get_db)):
+    return _handle_login(db, body.email, body.password)
 
 
 @router.post("/token", response_model=Token)
@@ -128,15 +196,7 @@ def login_form(
     db: Session = Depends(get_db),
 ):
     """OAuth2-compatible token endpoint for Swagger Authorize (username = email)."""
-    user = authenticate_user(db, email=form.username, password=form.password)
-    if user is None:
-        _log_failed_login(db, form.username)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return _complete_login(db, user)
+    return _handle_login(db, form.username, form.password)
 
 
 @router.post("/logout")
@@ -230,7 +290,7 @@ def impersonate_user(
         action=ActivityAction.admin_impersonation_started,
         new_value=target.email,
     )
-    return _issue_token(target, impersonator_id=admin.id)
+    return _issue_token(db, target, impersonator_id=admin.id)
 
 
 @router.post("/stop-impersonation", response_model=Token)
@@ -258,4 +318,4 @@ def stop_impersonation(
         action=ActivityAction.admin_impersonation_stopped,
         new_value=impersonated.email if impersonated is not None else str(token_payload.sub),
     )
-    return _issue_token(admin)
+    return _issue_token(db, admin)

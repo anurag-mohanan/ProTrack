@@ -33,6 +33,7 @@ from app.db.schema_sync import (
     ensure_team_schema,
     ensure_user_team_schema,
     ensure_user_lifecycle_schema,
+    ensure_user_auth_schema,
 )
 from app.db.session import engine, sessionmaker
 
@@ -52,6 +53,7 @@ async def lifespan(app: FastAPI):
     ensure_team_schema(engine)
     ensure_user_team_schema(engine)
     ensure_user_lifecycle_schema(engine)
+    ensure_user_auth_schema(engine)
     ensure_timesheet_entry_work_category(engine)
     ensure_timesheet_entry_timestamps(engine)
     ensure_non_productive_codes(engine)

@@ -20,6 +20,11 @@ class Token(BaseModel):
 class TokenPayload(BaseModel):
     sub: UUID
     email: EmailStr
+    name: str | None = None
+    role: str | None = None
+    permissions: list[str] = Field(default_factory=list)
+    team_id: UUID | None = None
+    team_name: str | None = None
     impersonator_id: UUID | None = None
 
 

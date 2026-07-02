@@ -79,6 +79,20 @@ export async function forceUserPasswordChange(userId: string): Promise<User> {
   return data;
 }
 
+export async function unlockUser(userId: string): Promise<User> {
+  const { data } = await apiClient.post<User>(`/users/${userId}/unlock`);
+  return data;
+}
+
+export async function setUserTemporaryPassword(
+  userId: string,
+): Promise<ResetPasswordResponse> {
+  const { data } = await apiClient.post<ResetPasswordResponse>(
+    `/users/${userId}/set-temporary-password`,
+  );
+  return data;
+}
+
 export async function archiveUser(userId: string): Promise<User> {
   const { data } = await apiClient.post<User>(`/users/${userId}/archive`);
   return data;

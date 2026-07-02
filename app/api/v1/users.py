@@ -10,7 +10,9 @@ from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db, get_object_or_404
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import can_view_deleted_projects, is_admin
+from app.core.auth_constants import SOFT_LAUNCH_PASSWORD
 from app.core.security import hash_password
+from app.crud.auth import reset_login_lock
 from app.crud import user as user_crud
 from app.crud.user import build_user_read
 from app.models.enums import ActivityAction, EntityType
@@ -223,6 +225,55 @@ def force_password_change(
         new_value=f"force_change:{updated.email}",
     )
     return build_user_read(db, updated)
+
+
+@router.post("/{record_id}/unlock", response_model=UserRead)
+def unlock_user(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_obj = get_object_or_404(user_crud, db, record_id)
+    unlocked = reset_login_lock(db, db_obj)
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.user,
+        entity_id=unlocked.id,
+        action=ActivityAction.password_reset,
+        new_value=f"unlock:{unlocked.email}",
+    )
+    return build_user_read(db, unlocked)
+
+
+@router.post("/{record_id}/set-temporary-password", response_model=ResetPasswordResponse)
+def set_temporary_password(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_obj = get_object_or_404(user_crud, db, record_id)
+    updated = user_crud.update(
+        db,
+        db_obj=db_obj,
+        obj_in={
+            "password_hash": hash_password(SOFT_LAUNCH_PASSWORD),
+            "must_change_password": True,
+        },
+    )
+    unlocked = reset_login_lock(db, updated)
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.user,
+        entity_id=unlocked.id,
+        action=ActivityAction.password_reset,
+        new_value=f"soft_launch:{unlocked.email}",
+    )
+    return ResetPasswordResponse(
+        temporary_password=SOFT_LAUNCH_PASSWORD,
+        message="Temporary password set. User must change password on next login.",
+    )
 
 
 @router.post("/{record_id}/archive", response_model=UserRead)

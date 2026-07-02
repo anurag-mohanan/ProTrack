@@ -48,7 +48,7 @@ from app.schemas.historical_import import (
 from app.services.project_calculation_service import calculate_project_health
 
 UPLOAD_DIR = Path(gettempdir()) / "protrack_imports"
-DEFAULT_IMPORT_PASSWORD = "Password@123"
+DEFAULT_IMPORT_PASSWORD = "Prosohm@2026"
 
 COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "tool_number": ("tool no.", "tool no", "tool number", "tool #", "tool"),

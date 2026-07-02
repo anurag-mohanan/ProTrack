@@ -270,3 +270,25 @@ def project_assignment_filter(user: User, role_name: str):
             Project.surfacer_id == user.id,
         )
     return None
+
+
+def get_user_permission_keys(db: Session, user: User) -> list[str]:
+    role_name = normalize_role_name(get_role_name(db, user))
+    permissions: list[str] = []
+    if role_name == ADMIN:
+        permissions.append("administration")
+    if role_name in PROJECT_CREATE_ROLES:
+        permissions.append("create_project")
+    if role_name in REPORT_VIEWER_ROLES:
+        permissions.append("view_reports")
+    if role_name in RESOURCE_PLANNING_ROLES:
+        permissions.append("resource_planning")
+    if role_name in WORKLOAD_VIEWER_ROLES:
+        permissions.append("view_workload")
+    if role_name in TIMESHEET_ENTRY_WRITE_ROLES:
+        permissions.append("write_timesheet")
+    if role_name in TIMESHEET_APPROVER_ROLES:
+        permissions.append("approve_timesheet")
+    if role_name in PROJECT_EDIT_ROLES:
+        permissions.append("edit_project")
+    return permissions

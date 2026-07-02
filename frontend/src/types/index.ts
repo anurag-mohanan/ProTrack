@@ -48,6 +48,8 @@ export interface User {
   password_changed?: boolean;
   last_login?: string | null;
   is_archived?: boolean;
+  is_locked?: boolean;
+  failed_login_count?: number;
   created_at?: string;
   updated_at?: string;
 }

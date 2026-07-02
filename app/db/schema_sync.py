@@ -399,6 +399,36 @@ def ensure_project_lifecycle_schema(engine: Engine) -> None:
             )
 
 
+def ensure_user_auth_schema(engine: Engine) -> None:
+    dialect = engine.dialect.name
+    auth_columns = (
+        ("is_locked", "is_locked BOOLEAN NOT NULL DEFAULT 0"),
+        ("failed_login_count", "failed_login_count INTEGER NOT NULL DEFAULT 0"),
+    )
+
+    if dialect == "sqlite":
+        for column_name, ddl in auth_columns:
+            if not _sqlite_has_column(engine, "users", column_name):
+                with engine.begin() as connection:
+                    connection.execute(text(f"ALTER TABLE users ADD COLUMN {ddl}"))
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_locked "
+                    "BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_count "
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+
+
 def ensure_user_lifecycle_schema(engine: Engine) -> None:
     dialect = engine.dialect.name
     user_columns = (

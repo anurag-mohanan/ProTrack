@@ -22,7 +22,7 @@ import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
-import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser } from '../../api/resources';
+import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser, setUserTemporaryPassword, unlockUser } from '../../api/resources';
 import { fetchDepartments } from '../../api/settings';
 import { fetchTeams } from '../../api/lookups';
 import { useAuth } from '../../context/AuthContext';
@@ -116,6 +116,8 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState<UserFormState>(emptyForm);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [tempPasswordTarget, setTempPasswordTarget] = useState<User | null>(null);
+  const [unlockTarget, setUnlockTarget] = useState<User | null>(null);
   const [forceChangeTarget, setForceChangeTarget] = useState<User | null>(null);
   const [impersonateTarget, setImpersonateTarget] = useState<User | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<User | null>(null);
@@ -381,6 +383,40 @@ export default function UsersPage() {
         : result.message;
       showSuccess(message);
       setResetTarget(null);
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSetTemporaryPassword = async () => {
+    if (!tempPasswordTarget) return;
+    setActionLoading(true);
+    try {
+      const result = await setUserTemporaryPassword(tempPasswordTarget.id);
+      showSuccess(
+        result.temporary_password
+          ? `${result.message} Temporary password: ${result.temporary_password}`
+          : result.message,
+      );
+      setTempPasswordTarget(null);
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUnlockUser = async () => {
+    if (!unlockTarget) return;
+    setActionLoading(true);
+    try {
+      await unlockUser(unlockTarget.id);
+      showSuccess(`${unlockTarget.email} has been unlocked.`);
+      setUnlockTarget(null);
+      await loadData();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -974,7 +1010,9 @@ export default function UsersPage() {
         }}
         onDelete={setDeleteTarget}
         onResetPassword={setResetTarget}
+        onSetTemporaryPassword={setTempPasswordTarget}
         onForcePasswordChange={setForceChangeTarget}
+        onUnlockUser={setUnlockTarget}
         onToggleActive={setToggleTarget}
         onArchive={setArchiveTarget}
         onImpersonate={setImpersonateTarget}
@@ -991,6 +1029,34 @@ export default function UsersPage() {
         confirmLabel="Reset Password"
         onConfirm={() => void handleResetPassword()}
         onClose={() => setResetTarget(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={Boolean(tempPasswordTarget)}
+        title="Set Temporary Password"
+        message={
+          tempPasswordTarget
+            ? `Set the standard soft-launch temporary password for ${tempPasswordTarget.first_name} ${tempPasswordTarget.last_name}? They will be required to change it on next login.`
+            : ''
+        }
+        confirmLabel="Set Temporary Password"
+        onConfirm={() => void handleSetTemporaryPassword()}
+        onClose={() => setTempPasswordTarget(null)}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={Boolean(unlockTarget)}
+        title="Unlock User"
+        message={
+          unlockTarget
+            ? `Unlock ${unlockTarget.first_name} ${unlockTarget.last_name} and reset failed login attempts?`
+            : ''
+        }
+        confirmLabel="Unlock User"
+        onConfirm={() => void handleUnlockUser()}
+        onClose={() => setUnlockTarget(null)}
         loading={actionLoading}
       />
 

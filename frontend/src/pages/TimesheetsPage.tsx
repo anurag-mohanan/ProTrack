@@ -180,7 +180,14 @@ export function TimesheetsPage() {
   }
 
   if (workspace.error) {
-    return <ErrorState error={workspace.error} />;
+    console.error('Timesheet workspace failed to load lookup data:', workspace.error);
+    return (
+      <ErrorState
+        error={workspace.error}
+        title="Unable to load lookup data"
+        onRetry={workspace.refetchLookups}
+      />
+    );
   }
 
   const showSubmit =

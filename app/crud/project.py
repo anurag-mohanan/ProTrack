@@ -375,26 +375,12 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             assignment_clause=assignment_clause,
         )
         items: list[ArchivedProjectListItem] = []
-        for project in projects:
-            read = build_project_read(db, project)
-            customer = db.get(Customer, project.customer_id)
-            project_type = (
-                db.get(ProjectType, project.project_type_id)
-                if project.project_type_id
-                else None
-            )
-            leader = db.get(User, project.design_leader_id)
-            leader_name = (
-                f"{leader.first_name} {leader.last_name}" if leader else "Unknown"
-            )
-            items.append(
-                ArchivedProjectListItem(
-                    **read.model_dump(),
-                    customer_name=customer.name if customer else "Unknown",
-                    project_type_name=project_type.name if project_type else None,
-                    design_leader_name=leader_name,
-                )
-            )
+        reads = build_project_reads(db, projects)
+        for read in reads:
+            payload = read.model_dump()
+            payload["customer_name"] = read.customer_name or "Unknown"
+            payload["design_leader_name"] = read.design_leader_name or "Unknown"
+            items.append(ArchivedProjectListItem(**payload))
         return items
 
 

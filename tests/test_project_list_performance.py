@@ -101,5 +101,11 @@ def test_project_list_uses_batch_progress_queries(metrics_session):
         event.remove(metrics_session.bind, "before_cursor_execute", log_query)
 
     assert len(rows) == 25
-    assert len(queries) == 4
+    # Query count must stay a small constant (batched), never scale with the
+    # number of projects. Base list + progress/milestone batches plus the
+    # batched display-name lookups (customers, users, teams, types).
+    assert len(queries) <= 8
     assert elapsed_ms < 500
+    # Display names are resolved via the batched lookups.
+    assert all(row.customer_name == "Metrics Customer" for row in rows)
+    assert all(row.design_leader_name == "Metrics Tester" for row in rows)

@@ -281,6 +281,16 @@ export function useTimesheetMonthWorkspace(user: CurrentUser | null, monthValue:
     timesheetsQuery.error ??
     entriesQuery.error;
 
+  const lookupError =
+    projectsQuery.error ?? npCodesQuery.error ?? taskTypesQuery.error ?? null;
+
+  const refetchLookups = useCallback(() => {
+    void projectsQuery.refetch();
+    void npCodesQuery.refetch();
+    void taskTypesQuery.refetch();
+    void holidaysQuery.refetch();
+  }, [holidaysQuery, npCodesQuery, projectsQuery, taskTypesQuery]);
+
   return {
     bounds,
     holidayDates,
@@ -298,6 +308,8 @@ export function useTimesheetMonthWorkspace(user: CurrentUser | null, monthValue:
     dailyTotals,
     isLoading,
     error,
+    lookupError,
+    refetchLookups,
     saveEntryMutation,
     deleteEntryMutation,
     submitMonthMutation,

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, Box, Stack } from '@mui/material';
+import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -21,10 +21,12 @@ import { useTimesheetMonthWorkspace } from '../hooks/useTimesheetMonthWorkspace'
 import type { TimesheetEntry } from '../types';
 import {
   canApproveTimesheet,
+  canEnterOwnTimesheet,
   canOverrideBillable,
   canRejectTimesheet,
   canReturnToDraft,
   canSubmitTimesheet,
+  canViewAllTimesheets,
   isReadOnlyRole,
 } from '../utils/permissions';
 import { currentMonthValue, formatMonthLabel, todayIsoDate } from '../utils/timesheetMonth';
@@ -45,11 +47,23 @@ export function TimesheetsPage() {
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [toolbarDate, setToolbarDate] = useState(todayIsoDate());
 
-  const workspace = useTimesheetMonthWorkspace(user, monthValue);
-  const monthLabel = formatMonthLabel(monthValue);
   const roleName = user?.role_name ?? '';
+  const canViewAll = user ? canViewAllTimesheets(user) : false;
+  const canEnterOwn = user ? canEnterOwnTimesheet(user) : true;
+  // System admins (who cannot enter their own) always land on the all-users
+  // overview. Managers who can view all but also log time default to "mine".
+  const [viewMode, setViewMode] = useState<'mine' | 'all'>(
+    !canEnterOwn && canViewAll ? 'all' : 'mine',
+  );
+  const viewAllUsers = canViewAll && viewMode === 'all';
+
+  const workspace = useTimesheetMonthWorkspace(user, monthValue, viewAllUsers);
+  const monthLabel = formatMonthLabel(monthValue);
+
+  const showEntryForm = canEnterOwn && !viewAllUsers;
 
   const readOnly =
+    viewAllUsers ||
     isReadOnlyRole(roleName) ||
     workspace.monthStatus === 'approved' ||
     workspace.monthStatus === 'submitted';
@@ -223,6 +237,21 @@ export function TimesheetsPage() {
 
       <TimesheetMonthNavigation monthValue={monthValue} onMonthChange={setMonthValue} />
 
+      {canViewAll && canEnterOwn ? (
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={viewMode}
+          onChange={(_, next) => {
+            if (next) setViewMode(next);
+          }}
+          sx={{ mb: 1.5 }}
+        >
+          <ToggleButton value="mine">My Entries</ToggleButton>
+          <ToggleButton value="all">All Users</ToggleButton>
+        </ToggleButtonGroup>
+      ) : null}
+
       <TimesheetMonthSummaryBar status={workspace.monthStatus} summary={workspace.summary} />
 
       {workspace.summary.remainingHours < 0 ? (
@@ -231,31 +260,35 @@ export function TimesheetsPage() {
         </Alert>
       ) : null}
 
-      <TimesheetNpReferencePanel codes={workspace.npCodes} />
+      {showEntryForm ? <TimesheetNpReferencePanel codes={workspace.npCodes} /> : null}
 
-      <TimesheetEntryForm
-        projects={workspace.activeProjects}
-        npCodes={workspace.npCodes}
-        taskTypes={workspace.taskTypes}
-        readOnly={readOnly}
-        canOverrideBillable={canOverrideBillable(roleName)}
-        editingEntry={editingEntry}
-        dailyTotals={workspace.dailyTotals}
-        dailyLimit={workspace.dailyLimit}
-        saving={workspace.saveEntryMutation.isPending}
-        onSubmit={handleSaveEntry}
-        onCancelEdit={() => setEditingEntry(null)}
-        onEntryDateChange={setToolbarDate}
-      />
+      {showEntryForm ? (
+        <TimesheetEntryForm
+          projects={workspace.activeProjects}
+          npCodes={workspace.npCodes}
+          taskTypes={workspace.taskTypes}
+          readOnly={readOnly}
+          canOverrideBillable={canOverrideBillable(roleName)}
+          editingEntry={editingEntry}
+          dailyTotals={workspace.dailyTotals}
+          dailyLimit={workspace.dailyLimit}
+          saving={workspace.saveEntryMutation.isPending}
+          onSubmit={handleSaveEntry}
+          onCancelEdit={() => setEditingEntry(null)}
+          onEntryDateChange={setToolbarDate}
+        />
+      ) : null}
 
-      <TimesheetQuickActions
-        readOnly={readOnly}
-        loading={quickActionLoading}
-        hasSelectedEntry={Boolean(selectedEntry && workspace.isEntryEditable(selectedEntry))}
-        onCopyYesterday={handleCopyYesterday}
-        onCopyPreviousWeek={handleCopyPreviousWeek}
-        onDuplicateSelected={() => void handleDuplicateSelected()}
-      />
+      {showEntryForm ? (
+        <TimesheetQuickActions
+          readOnly={readOnly}
+          loading={quickActionLoading}
+          hasSelectedEntry={Boolean(selectedEntry && workspace.isEntryEditable(selectedEntry))}
+          onCopyYesterday={handleCopyYesterday}
+          onCopyPreviousWeek={handleCopyPreviousWeek}
+          onDuplicateSelected={() => void handleDuplicateSelected()}
+        />
+      ) : null}
 
       <TimesheetEntriesTable
         monthLabel={monthLabel}
@@ -264,6 +297,7 @@ export function TimesheetsPage() {
         dailyTotals={workspace.dailyTotals}
         dailyLimit={workspace.dailyLimit}
         readOnly={readOnly}
+        showUser={viewAllUsers}
         deletingId={deletingEntryId}
         selectedEntryId={selectedEntryId}
         onSelect={(entry) => setSelectedEntryId(entry?.id ?? null)}

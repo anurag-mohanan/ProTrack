@@ -30,6 +30,7 @@ interface TimesheetEntriesTableProps {
   dailyTotals: Map<string, number>;
   dailyLimit: number;
   readOnly: boolean;
+  showUser?: boolean;
   deletingId: string | null;
   selectedEntryId: string | null;
   onSelect: (entry: TimesheetEntry | null) => void;
@@ -66,6 +67,7 @@ export function TimesheetEntriesTable({
   dailyTotals,
   dailyLimit,
   readOnly,
+  showUser = false,
   deletingId,
   selectedEntryId,
   onSelect,
@@ -134,6 +136,7 @@ export function TimesheetEntriesTable({
                     Date
                   </TableSortLabel>
                 </TableCell>
+                {showUser ? <TableCell>User</TableCell> : null}
                 <TableCell sortDirection={sortKey === 'tool' ? sortDirection : false}>
                   <TableSortLabel
                     active={sortKey === 'tool'}
@@ -191,6 +194,11 @@ export function TimesheetEntriesTable({
                         </Typography>
                       ) : null}
                     </TableCell>
+                    {showUser ? (
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        {formatCellValue(entry.user_name) || '—'}
+                      </TableCell>
+                    ) : null}
                     <TableCell>{entryToolLabel(entry)}</TableCell>
                     <TableCell>{entryDescription(entry)}</TableCell>
                     <TableCell>{entryTaskLabel(entry)}</TableCell>

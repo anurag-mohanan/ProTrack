@@ -216,6 +216,13 @@ export function TimesheetEntryForm({
         </Typography>
       ) : null}
 
+      {toolOptions.length === 0 ? (
+        <Alert severity="info" sx={{ mb: 1, py: 0 }}>
+          No tool numbers loaded ({projects.length} live projects, {npCodes.length} NP codes).
+          Check that lookup data has loaded.
+        </Alert>
+      ) : null}
+
       <Stack
         direction="row"
         spacing={1}

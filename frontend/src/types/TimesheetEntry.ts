@@ -21,6 +21,8 @@ export interface TimesheetEntry extends Timestamped {
   milestone_name?: string | null;
   non_productive_code?: string | null;
   non_productive_description?: string | null;
+  user_id?: string | null;
+  user_name?: string | null;
 }
 
 export interface TimesheetEntryCreate {

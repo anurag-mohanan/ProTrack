@@ -287,6 +287,27 @@ export function canRejectTimesheet(status: string, roleNameOrContext: string | A
   return canApproveTimesheet(status, roleNameOrContext);
 }
 
+/**
+ * Whether the user can view other people's timesheets (team/all overview).
+ * Admins always can; managers/leaders with the "approve timesheets" permission
+ * (assignable per-user at creation) can view the timesheets they oversee.
+ */
+export function canViewAllTimesheets(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  if (isAdminRole(ctx.role_name)) return true;
+  if (userHasSpecial(ctx, SPECIAL_APPROVE_TIMESHEETS)) return true;
+  return isOperationalManagerRole(ctx.role_name) || isDesignLeaderRole(ctx.role_name);
+}
+
+/**
+ * Whether the user should get the personal timesheet-entry form.
+ * System admins only oversee others' entries, so they don't get the form.
+ */
+export function canEnterOwnTimesheet(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return !isAdminRole(ctx.role_name);
+}
+
 export function canReturnToDraft(
   status: string,
   ownerId: string,

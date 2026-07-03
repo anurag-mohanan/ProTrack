@@ -30,7 +30,11 @@ import { invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
 
 const ACTIVE_PROJECT_STATUSES = new Set(['currently_being_worked_on', 'on_hold']);
 
-export function useTimesheetMonthWorkspace(user: CurrentUser | null, monthValue: string) {
+export function useTimesheetMonthWorkspace(
+  user: CurrentUser | null,
+  monthValue: string,
+  viewAllUsers = false,
+) {
   const queryClient = useQueryClient();
   const bounds = useMemo(() => monthBounds(monthValue), [monthValue]);
   const userId = user?.id;
@@ -60,13 +64,15 @@ export function useTimesheetMonthWorkspace(user: CurrentUser | null, monthValue:
     staleTime: QUERY_STALE_TIMES.lookups,
   });
 
+  const scopeUserId = viewAllUsers ? undefined : userId;
+
   const timesheetsQuery = useQuery({
-    queryKey: timesheetQueryKeys.month(monthValue, userId),
+    queryKey: [...timesheetQueryKeys.month(monthValue, userId), viewAllUsers ? 'all' : 'self'],
     queryFn: () =>
       fetchTimesheets({
-        user_id: userId,
+        user_id: scopeUserId,
         month: monthValue,
-        limit: 20,
+        limit: viewAllUsers ? 500 : 20,
       }),
     enabled: Boolean(userId),
     staleTime: QUERY_STALE_TIMES.timesheetMonth,
@@ -74,10 +80,13 @@ export function useTimesheetMonthWorkspace(user: CurrentUser | null, monthValue:
   });
 
   const entriesQuery = useQuery({
-    queryKey: timesheetQueryKeys.monthEntries(monthValue, userId),
+    queryKey: [
+      ...timesheetQueryKeys.monthEntries(monthValue, userId),
+      viewAllUsers ? 'all' : 'self',
+    ],
     queryFn: () =>
       fetchTimesheetEntries({
-        user_id: userId,
+        user_id: scopeUserId,
         entry_date_from: bounds.start,
         entry_date_to: bounds.end,
         limit: 500,

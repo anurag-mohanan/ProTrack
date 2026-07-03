@@ -96,6 +96,8 @@ class TimesheetEntryRead(TimesheetEntryBase, TimestampSchema):
     milestone_name: str | None = None
     non_productive_code: str | None = None
     non_productive_description: str | None = None
+    user_id: UUID | None = None
+    user_name: str | None = None
 
 
 class TimesheetEntryBulkUpsert(BaseModel):

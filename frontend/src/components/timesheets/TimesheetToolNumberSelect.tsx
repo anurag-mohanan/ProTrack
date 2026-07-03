@@ -1,8 +1,4 @@
-import {
-  Autocomplete,
-  ListSubheader,
-  TextField,
-} from '@mui/material';
+import { Autocomplete, TextField, createFilterOptions } from '@mui/material';
 import type { TimesheetToolOption } from './timesheetToolOptions';
 
 interface TimesheetToolNumberSelectProps {
@@ -14,6 +10,11 @@ interface TimesheetToolNumberSelectProps {
   inputRef?: React.Ref<HTMLInputElement>;
   onKeyDown?: React.KeyboardEventHandler;
 }
+
+const filterToolOptions = createFilterOptions<TimesheetToolOption>({
+  stringify: (option) => `${option.label} ${option.searchText}`,
+  trim: true,
+});
 
 export function TimesheetToolNumberSelect({
   label = 'Tool Number',
@@ -27,37 +28,19 @@ export function TimesheetToolNumberSelect({
   return (
     <Autocomplete
       size="small"
+      fullWidth
+      openOnFocus
+      autoHighlight
+      handleHomeEndKeys
+      disabled={disabled}
       options={options}
       value={value}
-      disabled={disabled}
       groupBy={(option) => option.group}
       getOptionLabel={(option) => option.label}
       isOptionEqualToValue={(left, right) => left.value === right.value}
-      filterOptions={(items, state) => {
-        const term = state.inputValue.trim().toLowerCase();
-        if (!term) return items;
-        return items.filter(
-          (item) =>
-            item.searchText.includes(term) || item.label.toLowerCase().includes(term),
-        );
-      }}
+      filterOptions={filterToolOptions}
       onChange={(_, option) => onChange(option)}
-      renderGroup={(params) => (
-        <li key={params.key}>
-          <ListSubheader
-            sx={{
-              bgcolor: 'background.default',
-              fontWeight: 700,
-              fontSize: '0.7rem',
-              lineHeight: 2.2,
-              letterSpacing: '0.06em',
-            }}
-          >
-            {params.group}
-          </ListSubheader>
-          <ul style={{ padding: 0 }}>{params.children}</ul>
-        </li>
-      )}
+      noOptionsText="No matching tool numbers or NP codes"
       renderInput={(params) => (
         <TextField
           {...params}
@@ -66,12 +49,7 @@ export function TimesheetToolNumberSelect({
           size="small"
           inputRef={inputRef}
           onKeyDown={onKeyDown}
-          placeholder="Search…"
-          slotProps={{
-            htmlInput: {
-              autoComplete: 'off',
-            },
-          }}
+          placeholder="Search tool number, part, customer or NP code…"
           sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
         />
       )}

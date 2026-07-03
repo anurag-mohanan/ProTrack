@@ -26,6 +26,7 @@ export function TimesheetToolNumberSelect({
 }: TimesheetToolNumberSelectProps) {
   return (
     <Autocomplete
+      size="small"
       options={options}
       value={value}
       disabled={disabled}
@@ -35,7 +36,10 @@ export function TimesheetToolNumberSelect({
       filterOptions={(items, state) => {
         const term = state.inputValue.trim().toLowerCase();
         if (!term) return items;
-        return items.filter((item) => item.searchText.includes(term) || item.label.toLowerCase().includes(term));
+        return items.filter(
+          (item) =>
+            item.searchText.includes(term) || item.label.toLowerCase().includes(term),
+        );
       }}
       onChange={(_, option) => onChange(option)}
       renderGroup={(params) => (
@@ -44,8 +48,9 @@ export function TimesheetToolNumberSelect({
             sx={{
               bgcolor: 'background.default',
               fontWeight: 700,
-              fontSize: '0.75rem',
-              lineHeight: 2.5,
+              fontSize: '0.7rem',
+              lineHeight: 2.2,
+              letterSpacing: '0.06em',
             }}
           >
             {params.group}
@@ -58,15 +63,16 @@ export function TimesheetToolNumberSelect({
           {...params}
           label={label}
           required
+          size="small"
           inputRef={inputRef}
           onKeyDown={onKeyDown}
-          placeholder="Search tool or NP code"
+          placeholder="Search…"
           slotProps={{
             htmlInput: {
               autoComplete: 'off',
             },
           }}
-          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
         />
       )}
     />

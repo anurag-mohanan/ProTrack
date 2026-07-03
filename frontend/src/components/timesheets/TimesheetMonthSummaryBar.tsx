@@ -1,98 +1,55 @@
-import { Box, Grid, Typography } from '@mui/material';
+import { Box, Divider, Typography } from '@mui/material';
 import type { TimesheetStatus } from '../../types/common';
 import { TimesheetStatusChip } from '../common/StatusChip';
 import type { TimesheetMonthSummary } from '../../utils/timesheetMonth';
 import { formatNumber } from '../../utils/format';
 
 interface TimesheetMonthSummaryBarProps {
-  monthLabel: string;
   status: TimesheetStatus | 'draft';
   summary: TimesheetMonthSummary;
 }
 
-function Metric({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
+function InlineMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <Typography variant="body2" component="span" sx={{ whiteSpace: 'nowrap' }}>
+      <Typography component="span" variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+        {label}
+      </Typography>
+      <Typography component="span" sx={{ fontWeight: 700 }}>
+        {value}
+      </Typography>
+    </Typography>
+  );
+}
+
+export function TimesheetMonthSummaryBar({ status, summary }: TimesheetMonthSummaryBarProps) {
   return (
     <Box
       sx={{
-        p: 1.5,
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 1.5,
+        px: 1.5,
+        py: 1,
+        mb: 2,
         borderRadius: 2,
         border: 1,
         borderColor: 'divider',
         bgcolor: 'background.paper',
-        minWidth: 0,
       }}
     >
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-        {label}
-      </Typography>
-      <Typography
-        variant={emphasize ? 'h6' : 'subtitle1'}
-        sx={{ fontWeight: emphasize ? 700 : 600, whiteSpace: 'nowrap' }}
-      >
-        {value}
-      </Typography>
-    </Box>
-  );
-}
-
-export function TimesheetMonthSummaryBar({
-  monthLabel,
-  status,
-  summary,
-}: TimesheetMonthSummaryBarProps) {
-  return (
-    <Box sx={{ mb: 2 }}>
-      <Grid container spacing={1.5}>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <Box
-            sx={{
-              p: 1.5,
-              borderRadius: 2,
-              border: 1,
-              borderColor: 'divider',
-              bgcolor: 'background.paper',
-              height: '100%',
-            }}
-          >
-            <Typography variant="caption" color="text.secondary">
-              Status
-            </Typography>
-            <Box sx={{ mt: 0.5 }}>
-              <TimesheetStatusChip status={status} />
-            </Box>
-          </Box>
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <Metric label="Expected Hours" value={formatNumber(summary.expectedHours, 1)} emphasize />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <Metric label="Entered" value={formatNumber(summary.enteredHours, 1)} emphasize />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <Metric
-            label="Remaining"
-            value={formatNumber(summary.remainingHours, 1)}
-            emphasize
-          />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <Metric label="Billable" value={formatNumber(summary.billableHours, 1)} />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <Metric label="Non Productive" value={formatNumber(summary.nonProductiveHours, 1)} />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <Metric
-            label="Efficiency"
-            value={
-              summary.efficiencyPercent === null ? '—' : `${summary.efficiencyPercent}%`
-            }
-          />
-        </Grid>
-      </Grid>
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-        Summary for {monthLabel}
-      </Typography>
+      <TimesheetStatusChip status={status} />
+      <Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', md: 'block' } }} />
+      <InlineMetric label="Expected" value={formatNumber(summary.expectedHours, 0)} />
+      <InlineMetric label="Entered" value={formatNumber(summary.enteredHours, 0)} />
+      <InlineMetric label="Remaining" value={formatNumber(summary.remainingHours, 0)} />
+      <InlineMetric label="Billable" value={formatNumber(summary.billableHours, 0)} />
+      <InlineMetric label="NP" value={formatNumber(summary.nonProductiveHours, 0)} />
+      <InlineMetric
+        label="Efficiency"
+        value={summary.efficiencyPercent === null ? '—' : `${summary.efficiencyPercent}%`}
+      />
     </Box>
   );
 }

@@ -1,20 +1,30 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { Alert, Box, Grid, MenuItem, TextField, Typography } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Checkbox,
+  FormControlLabel,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import type { Project, TaskType, TimesheetEntry } from '../../types';
-import { FormField } from '../ui/design-system';
 import { ProsohmButton } from '../ui/ProsohmButton';
-import { TimesheetProjectInfoPanel } from './TimesheetProjectInfoPanel';
+import { TimesheetSelectionLine } from './TimesheetSelectionLine';
 import { TimesheetToolNumberSelect } from './TimesheetToolNumberSelect';
 import {
   buildToolOptions,
+  LAST_TASK_KEY,
+  LAST_TOOL_KEY,
+  npTaskLabel,
+  pushRecentTool,
   toolOptionFromEntry,
   type TimesheetToolOption,
 } from './timesheetToolOptions';
 import type { NonProductiveCode } from '../../types';
 import { todayIsoDate } from '../../utils/timesheetMonth';
-
-const LAST_TOOL_KEY = 'protrack.timesheet.lastTool';
-const LAST_TASK_KEY = 'protrack.timesheet.lastTask';
 
 export interface TimesheetEntryFormValues {
   entryDate: string;
@@ -22,20 +32,22 @@ export interface TimesheetEntryFormValues {
   taskTypeId: string;
   hours: string;
   notes: string;
+  isBillable: boolean;
 }
 
 interface TimesheetEntryFormProps {
-  monthLabel: string;
   projects: Project[];
   npCodes: NonProductiveCode[];
   taskTypes: TaskType[];
   dailyTotals: Map<string, number>;
   dailyLimit: number;
   readOnly: boolean;
+  canOverrideBillable: boolean;
   editingEntry: TimesheetEntry | null;
   saving: boolean;
   onSubmit: (values: TimesheetEntryFormValues) => Promise<void>;
   onCancelEdit: () => void;
+  onEntryDateChange?: (entryDate: string) => void;
 }
 
 function readStored(key: string): string {
@@ -61,41 +73,59 @@ function emptyForm(): TimesheetEntryFormValues {
     taskTypeId: readStored(LAST_TASK_KEY),
     hours: '',
     notes: '',
+    isBillable: true,
   };
 }
 
+function defaultBillableForTool(
+  tool: TimesheetToolOption | null,
+  override?: boolean,
+): boolean {
+  if (tool?.kind === 'np') return override ?? false;
+  if (tool?.kind === 'project') return override ?? true;
+  return true;
+}
+
 export function TimesheetEntryForm({
-  monthLabel,
   projects,
   npCodes,
   taskTypes,
   readOnly,
+  canOverrideBillable,
   editingEntry,
   dailyTotals,
   dailyLimit,
   saving,
   onSubmit,
   onCancelEdit,
+  onEntryDateChange,
 }: TimesheetEntryFormProps) {
   const toolOptions = useMemo(() => buildToolOptions(projects, npCodes), [projects, npCodes]);
   const [form, setForm] = useState<TimesheetEntryFormValues>(emptyForm);
+  const toolRef = useRef<HTMLInputElement>(null);
+  const taskRef = useRef<HTMLInputElement>(null);
   const hoursRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLInputElement>(null);
-  const taskRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (editingEntry) {
+      const toolValue = toolOptionFromEntry(editingEntry);
       setForm({
         entryDate: editingEntry.entry_date,
-        toolValue: toolOptionFromEntry(editingEntry),
+        toolValue,
         taskTypeId: editingEntry.task_type_id ?? '',
         hours: String(editingEntry.hours),
         notes: editingEntry.description ?? '',
+        isBillable: editingEntry.is_billable,
       });
       return;
     }
     setForm(emptyForm());
-  }, [editingEntry]);
+  }, [editingEntry, toolOptions]);
+
+  useEffect(() => {
+    onEntryDateChange?.(form.entryDate);
+  }, [form.entryDate, onEntryDateChange]);
 
   const selectedTool =
     toolOptions.find((option) => option.value === form.toolValue) ?? null;
@@ -105,8 +135,10 @@ export function TimesheetEntryForm({
       : null;
 
   const taskOptions = useMemo(() => {
-    if (selectedTool?.kind !== 'project' || !selectedProject) return [];
-    return taskTypes.filter((task) => task.stream_id === selectedProject.stream_id);
+    if (selectedTool?.kind === 'project' && selectedProject) {
+      return taskTypes.filter((task) => task.stream_id === selectedProject.stream_id);
+    }
+    return [];
   }, [selectedProject, selectedTool, taskTypes]);
 
   const projectedDailyTotal =
@@ -117,181 +149,235 @@ export function TimesheetEntryForm({
     (Number(form.hours) || 0);
   const dailyWarning = projectedDailyTotal > dailyLimit;
 
+  const resetAfterSave = (saved: TimesheetEntryFormValues) => {
+    writeStored(LAST_TOOL_KEY, saved.toolValue);
+    if (saved.taskTypeId) writeStored(LAST_TASK_KEY, saved.taskTypeId);
+    pushRecentTool(saved.toolValue);
+    setForm({
+      entryDate: saved.entryDate,
+      toolValue: saved.toolValue,
+      taskTypeId: saved.taskTypeId,
+      hours: '',
+      notes: '',
+      isBillable: defaultBillableForTool(
+        toolOptions.find((option) => option.value === saved.toolValue) ?? null,
+      ),
+    });
+    toolRef.current?.focus();
+  };
+
   const handleSubmit = async (event?: FormEvent) => {
     event?.preventDefault();
-    await onSubmit(form);
-    if (!editingEntry) {
-      writeStored(LAST_TOOL_KEY, form.toolValue);
-      if (form.taskTypeId) writeStored(LAST_TASK_KEY, form.taskTypeId);
-      setForm({
-        ...emptyForm(),
-        toolValue: form.toolValue,
-        taskTypeId: form.taskTypeId,
-      });
-      hoursRef.current?.focus();
+    try {
+      await onSubmit(form);
+      if (!editingEntry) {
+        resetAfterSave(form);
+      }
+    } catch {
+      // Validation and save errors are surfaced by the page.
     }
   };
 
-  const handleToolKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      if (selectedTool?.kind === 'project') {
-        taskRef.current?.focus();
-      } else {
-        hoursRef.current?.focus();
-      }
-    }
+  const handleToolChange = (option: TimesheetToolOption | null) => {
+    setForm((current) => ({
+      ...current,
+      toolValue: option?.value ?? '',
+      taskTypeId: option?.kind === 'project' ? current.taskTypeId : '',
+      isBillable: defaultBillableForTool(option),
+    }));
   };
+
+  const billableDisabled =
+    readOnly || saving || (!canOverrideBillable && selectedTool?.kind === 'np');
 
   return (
     <Box
       component="form"
       onSubmit={(event) => void handleSubmit(event)}
       sx={{
-        p: 2.5,
+        p: 1.5,
         borderRadius: 2,
         border: 1,
         borderColor: 'divider',
         bgcolor: 'background.paper',
-        mb: 2,
+        mb: 1.5,
       }}
     >
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-        {editingEntry ? 'Edit Timesheet Entry' : 'Add Timesheet Entry'}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {monthLabel} · Press Enter in Hours to save and start the next entry
-      </Typography>
+      {editingEntry ? (
+        <Typography variant="caption" color="primary.main" sx={{ display: 'block', mb: 1, fontWeight: 700 }}>
+          Editing entry — save or cancel to return to quick entry
+        </Typography>
+      ) : null}
+
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{ width: '100%', flexWrap: 'wrap', alignItems: 'flex-start' }}
+      >
+        <TextField
+          label="Date"
+          type="date"
+          size="small"
+          required
+          disabled={readOnly || saving}
+          value={form.entryDate}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, entryDate: event.target.value }))
+          }
+          slotProps={{ inputLabel: { shrink: true } }}
+          sx={{ width: 150, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+        />
+
+        <Box sx={{ flex: '1 1 220px', minWidth: 200, maxWidth: 360 }}>
+          <TimesheetToolNumberSelect
+            value={selectedTool}
+            options={toolOptions}
+            disabled={readOnly || saving}
+            inputRef={toolRef}
+            onChange={handleToolChange}
+            onKeyDown={(event: KeyboardEvent) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                if (selectedTool?.kind === 'project') {
+                  taskRef.current?.focus();
+                } else {
+                  hoursRef.current?.focus();
+                }
+              }
+            }}
+          />
+        </Box>
+
+        <TextField
+          select
+          size="small"
+          label="Task"
+          required={selectedTool?.kind === 'project'}
+          disabled={
+            readOnly ||
+            saving ||
+            !selectedTool ||
+            selectedTool.kind === 'np'
+          }
+          value={selectedTool?.kind === 'np' ? 'np' : form.taskTypeId}
+          inputRef={taskRef}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, taskTypeId: event.target.value }))
+          }
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              hoursRef.current?.focus();
+            }
+          }}
+          sx={{ width: 150, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+        >
+          {selectedTool?.kind === 'np' ? (
+            <MenuItem value="np">{npTaskLabel(selectedTool)}</MenuItem>
+          ) : (
+            [
+              <MenuItem key="" value="">
+                Select
+              </MenuItem>,
+              ...taskOptions.map((task) => (
+                <MenuItem key={task.id} value={task.id}>
+                  {task.name}
+                </MenuItem>
+              )),
+            ]
+          )}
+        </TextField>
+
+        <FormControlLabel
+          sx={{ mt: 0.5, mr: 0 }}
+          control={
+            <Checkbox
+              size="small"
+              checked={form.isBillable}
+              disabled={billableDisabled}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, isBillable: event.target.checked }))
+              }
+            />
+          }
+          label="Billable"
+        />
+
+        <TextField
+          label="Hours"
+          size="small"
+          required
+          disabled={readOnly || saving}
+          value={form.hours}
+          inputRef={hoursRef}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, hours: event.target.value }))
+          }
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              notesRef.current?.focus();
+            }
+          }}
+          sx={{ width: 88, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+        />
+
+        <TextField
+          label="Notes"
+          size="small"
+          disabled={readOnly || saving}
+          value={form.notes}
+          placeholder="Optional notes…"
+          inputRef={notesRef}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, notes: event.target.value }))
+          }
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              void handleSubmit();
+            }
+          }}
+          sx={{ flex: '1 1 180px', minWidth: 160, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+        />
+
+        <ProsohmButton
+          type="submit"
+          size="small"
+          buttonVariant="primary"
+          startIcon={<AddIcon />}
+          disabled={readOnly || saving}
+          loading={saving}
+          sx={{ mt: 0.25, whiteSpace: 'nowrap' }}
+        >
+          {editingEntry ? 'Save' : 'Add Entry'}
+        </ProsohmButton>
+
+        {editingEntry ? (
+          <ProsohmButton
+            size="small"
+            buttonVariant="outlined"
+            disabled={saving}
+            onClick={onCancelEdit}
+            sx={{ mt: 0.25 }}
+          >
+            Cancel
+          </ProsohmButton>
+        ) : null}
+      </Stack>
+
+      <TimesheetSelectionLine
+        selection={selectedTool}
+        project={selectedProject}
+        isBillable={form.isBillable}
+      />
 
       {dailyWarning ? (
-        <Alert severity="warning" sx={{ mb: 2 }}>
+        <Alert severity="warning" sx={{ mt: 1, py: 0 }}>
           Daily total would reach {projectedDailyTotal.toFixed(1)} hours (limit {dailyLimit}).
         </Alert>
       ) : null}
-
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <FormField
-                label="Date"
-                type="date"
-                required
-                disabled={readOnly || saving}
-                value={form.entryDate}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, entryDate: event.target.value }))
-                }
-                slotProps={{ inputLabel: { shrink: true } }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 5 }}>
-              <TimesheetToolNumberSelect
-                value={selectedTool}
-                options={toolOptions}
-                disabled={readOnly || saving}
-                onChange={(option: TimesheetToolOption | null) =>
-                  setForm((current) => ({
-                    ...current,
-                    toolValue: option?.value ?? '',
-                    taskTypeId:
-                      option?.kind === 'project' ? current.taskTypeId : '',
-                  }))
-                }
-                onKeyDown={handleToolKeyDown}
-              />
-            </Grid>
-            {selectedTool?.kind === 'project' ? (
-              <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                <TextField
-                  select
-                  fullWidth
-                  required
-                  label="Task"
-                  disabled={readOnly || saving || !selectedProject}
-                  value={form.taskTypeId}
-                  inputRef={taskRef}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, taskTypeId: event.target.value }))
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      hoursRef.current?.focus();
-                    }
-                  }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
-                >
-                  <MenuItem value="">Select task</MenuItem>
-                  {taskOptions.map((task) => (
-                    <MenuItem key={task.id} value={task.id}>
-                      {task.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-            ) : null}
-            <Grid size={{ xs: 12, sm: 4, md: 2 }}>
-              <FormField
-                label="Hours"
-                required
-                disabled={readOnly || saving}
-                value={form.hours}
-                inputRef={hoursRef}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, hours: event.target.value }))
-                }
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void handleSubmit();
-                  }
-                  if (event.key === 'Tab' && !event.shiftKey) {
-                    event.preventDefault();
-                    notesRef.current?.focus();
-                  }
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 8, md: selectedTool?.kind === 'project' ? 12 : 6 }}>
-              <FormField
-                label="Notes"
-                disabled={readOnly || saving}
-                value={form.notes}
-                inputRef={notesRef}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, notes: event.target.value }))
-                }
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void handleSubmit();
-                  }
-                }}
-              />
-            </Grid>
-          </Grid>
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <TimesheetProjectInfoPanel selection={selectedTool} project={selectedProject} />
-        </Grid>
-      </Grid>
-
-      <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
-        <ProsohmButton
-          type="submit"
-          buttonVariant="primary"
-          disabled={readOnly || saving}
-          loading={saving}
-        >
-          {editingEntry ? 'Save Changes' : 'Add Entry'}
-        </ProsohmButton>
-        {editingEntry ? (
-          <ProsohmButton buttonVariant="outlined" disabled={saving} onClick={onCancelEdit}>
-            Cancel Edit
-          </ProsohmButton>
-        ) : null}
-      </Box>
     </Box>
   );
 }

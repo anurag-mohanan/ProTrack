@@ -1,4 +1,11 @@
-import { Box, Typography } from '@mui/material';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Box,
+  Typography,
+} from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { NonProductiveCode } from '../../types';
 import { formatDisplayValue } from '../../utils/format';
 
@@ -12,44 +19,45 @@ export function TimesheetNpReferencePanel({ codes }: TimesheetNpReferencePanelPr
     .sort((left, right) => left.sort_order - right.sort_order || left.code.localeCompare(right.code));
 
   return (
-    <Box
+    <Accordion
+      disableGutters
+      elevation={0}
       sx={{
-        p: 2,
-        borderRadius: 2,
         border: 1,
         borderColor: 'divider',
-        bgcolor: 'background.paper',
-        maxHeight: { xs: 240, lg: 'none' },
-        overflow: 'auto',
+        borderRadius: '8px !important',
+        mb: 2,
+        '&:before': { display: 'none' },
       }}
     >
-      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-        Non Productive Codes
-      </Typography>
-      <Box component="ul" sx={{ m: 0, p: 0, listStyle: 'none' }}>
-        {activeCodes.map((code) => (
-          <Box
-            component="li"
-            key={code.id}
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: '72px 1fr',
-              gap: 1,
-              py: 0.75,
-              borderBottom: 1,
-              borderColor: 'divider',
-              '&:last-child': { borderBottom: 0 },
-            }}
-          >
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {formatDisplayValue(code.code)}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {formatDisplayValue(code.description)}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
-    </Box>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44 }}>
+        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+          Non-Productive Codes
+        </Typography>
+      </AccordionSummary>
+      <AccordionDetails sx={{ pt: 0 }}>
+        <Box component="ul" sx={{ m: 0, p: 0, listStyle: 'none' }}>
+          {activeCodes.map((code) => (
+            <Box
+              component="li"
+              key={code.id}
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '72px 1fr', sm: '80px 1fr' },
+                gap: 1,
+                py: 0.5,
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {formatDisplayValue(code.code)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {formatDisplayValue(code.description)}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </AccordionDetails>
+    </Accordion>
   );
 }

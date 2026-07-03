@@ -201,7 +201,7 @@ export function useTimesheetMonthWorkspace(user: CurrentUser | null, monthValue:
             non_productive_code_id: npCodeId,
             entry_date: payload.entryDate,
             hours: payload.hours,
-            is_billable: false,
+            is_billable: payload.isBillable ?? false,
             description: payload.notes?.trim() || null,
           },
         ],

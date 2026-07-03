@@ -31,6 +31,8 @@ interface TimesheetEntriesTableProps {
   dailyLimit: number;
   readOnly: boolean;
   deletingId: string | null;
+  selectedEntryId: string | null;
+  onSelect: (entry: TimesheetEntry | null) => void;
   onEdit: (entry: TimesheetEntry) => void;
   onDelete: (entry: TimesheetEntry) => void;
   isEntryEditable: (entry: TimesheetEntry) => boolean;
@@ -65,6 +67,8 @@ export function TimesheetEntriesTable({
   dailyLimit,
   readOnly,
   deletingId,
+  selectedEntryId,
+  onSelect,
   onEdit,
   onDelete,
   isEntryEditable,
@@ -168,7 +172,12 @@ export function TimesheetEntriesTable({
                   <TableRow
                     key={entry.id}
                     hover
-                    sx={dayOverLimit ? { bgcolor: 'warning.50' } : undefined}
+                    selected={selectedEntryId === entry.id}
+                    onClick={() => onSelect(selectedEntryId === entry.id ? null : entry)}
+                    sx={{
+                      cursor: 'pointer',
+                      ...(dayOverLimit ? { bgcolor: 'warning.50' } : {}),
+                    }}
                   >
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {formatDate(entry.entry_date)}
@@ -195,7 +204,13 @@ export function TimesheetEntriesTable({
                       {editable ? (
                         <Box sx={{ display: 'inline-flex', gap: 0.5 }}>
                           <Tooltip title="Edit">
-                            <IconButton size="small" onClick={() => onEdit(entry)}>
+                            <IconButton
+                              size="small"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onEdit(entry);
+                              }}
+                            >
                               <EditOutlinedIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -204,7 +219,10 @@ export function TimesheetEntriesTable({
                               size="small"
                               color="error"
                               disabled={deletingId === entry.id}
-                              onClick={() => onDelete(entry)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onDelete(entry);
+                              }}
                             >
                               <DeleteOutlineOutlinedIcon fontSize="small" />
                             </IconButton>

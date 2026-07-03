@@ -208,6 +208,57 @@ def _reference_ids_for_update(
     )
 
 
+def _validate_changed_project_references(
+    db: Session,
+    db_obj: Project,
+    update_data: dict[str, object],
+) -> None:
+    """Validate only the references that are actually changing in an update.
+
+    Re-validating unchanged references would reject edits to legacy/imported
+    projects whose existing design leader/contact predates the current role
+    rules (e.g. a design leader who now holds a different role).
+    """
+    (
+        customer_id,
+        customer_contact_id,
+        design_leader_id,
+        designer_id,
+        surfacer_id,
+    ) = _reference_ids_for_update(db_obj, update_data)
+
+    if "customer_id" in update_data or "customer_contact_id" in update_data:
+        contact = db.scalar(select(Contact).where(Contact.id == customer_contact_id))
+        if contact is None or contact.customer_id != customer_id:
+            raise ProTrackValidationError(
+                "customer_contact_id must belong to the selected customer_id"
+            )
+
+    if "design_leader_id" in update_data:
+        _ = _get_active_user(
+            db,
+            design_leader_id,
+            field_name="design_leader_id",
+            expected_role="Design Leader",
+        )
+
+    if "designer_id" in update_data and designer_id is not None:
+        _ = _get_active_user(
+            db,
+            designer_id,
+            field_name="designer_id",
+            expected_roles=PROJECT_STAFF_ROLES,
+        )
+
+    if "surfacer_id" in update_data and surfacer_id is not None:
+        _ = _get_active_user(
+            db,
+            surfacer_id,
+            field_name="surfacer_id",
+            expected_roles=PROJECT_STAFF_ROLES,
+        )
+
+
 class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
     @override
     def create(self, db: Session, *, obj_in: ProjectCreate) -> Project:
@@ -259,21 +310,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         else:
             update_data = obj_in.model_dump(exclude_unset=True)
 
-        (
-            customer_id,
-            customer_contact_id,
-            design_leader_id,
-            designer_id,
-            surfacer_id,
-        ) = _reference_ids_for_update(db_obj, update_data)
-        _validate_project_references(
-            db,
-            customer_id=customer_id,
-            customer_contact_id=customer_contact_id,
-            design_leader_id=design_leader_id,
-            designer_id=designer_id,
-            surfacer_id=surfacer_id,
-        )
+        _validate_changed_project_references(db, db_obj, update_data)
 
         if "execution_status" in update_data:
             new_status = update_data["execution_status"]

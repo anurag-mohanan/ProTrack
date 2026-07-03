@@ -135,10 +135,17 @@ export function TimesheetEntryForm({
       : null;
 
   const taskOptions = useMemo(() => {
-    if (selectedTool?.kind === 'project' && selectedProject) {
-      return taskTypes.filter((task) => task.stream_id === selectedProject.stream_id);
-    }
-    return [];
+    if (selectedTool?.kind !== 'project') return [];
+    const active = taskTypes.filter((task) => task.is_active !== false);
+    if (!selectedProject) return active;
+    // Prefer the selected project's stream, but never hide the rest so the
+    // Task dropdown is always populated when active task types exist.
+    return [...active].sort((left, right) => {
+      const leftMatch = left.stream_id === selectedProject.stream_id ? 0 : 1;
+      const rightMatch = right.stream_id === selectedProject.stream_id ? 0 : 1;
+      if (leftMatch !== rightMatch) return leftMatch - rightMatch;
+      return left.name.localeCompare(right.name);
+    });
   }, [selectedProject, selectedTool, taskTypes]);
 
   const projectedDailyTotal =

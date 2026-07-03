@@ -7,7 +7,7 @@ import {
   fetchTimesheetEntries,
   fetchTimesheets,
 } from '../api/timesheets';
-import { fetchNonProductiveCodes, fetchTaskTypes } from '../api/lookups';
+import { fetchNonProductiveCodes, fetchTaskTypes, fetchUsers } from '../api/lookups';
 import { fetchHolidays } from '../api/settings';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { getProjects } from '../services/projectService';
@@ -61,6 +61,13 @@ export function useTimesheetMonthWorkspace(
   const taskTypesQuery = useQuery({
     queryKey: ['task-types', 'timesheet'],
     queryFn: () => fetchTaskTypes(),
+    staleTime: QUERY_STALE_TIMES.lookups,
+  });
+
+  const usersQuery = useQuery({
+    queryKey: ['lookups', 'users', 'timesheet-overview'],
+    queryFn: fetchUsers,
+    enabled: viewAllUsers,
     staleTime: QUERY_STALE_TIMES.lookups,
   });
 
@@ -306,6 +313,7 @@ export function useTimesheetMonthWorkspace(
     activeProjects,
     npCodes: npCodesQuery.data ?? [],
     taskTypes: taskTypesQuery.data ?? [],
+    allUsers: usersQuery.data ?? [],
     entries,
     timesheets,
     timesheetById,

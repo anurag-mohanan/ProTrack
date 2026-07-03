@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -13,6 +13,10 @@ import { TimesheetMonthNavigation } from '../components/timesheets/TimesheetMont
 import { TimesheetMonthSummaryBar } from '../components/timesheets/TimesheetMonthSummaryBar';
 import { TimesheetNpReferencePanel } from '../components/timesheets/TimesheetNpReferencePanel';
 import { TimesheetQuickActions } from '../components/timesheets/TimesheetQuickActions';
+import {
+  TimesheetUsersOverview,
+  type TimesheetOverviewSection,
+} from '../components/timesheets/TimesheetUsersOverview';
 import { toolOptionFromEntry } from '../components/timesheets/timesheetToolOptions';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +31,7 @@ import {
   canReturnToDraft,
   canSubmitTimesheet,
   canViewAllTimesheets,
+  isAdminRole,
   isReadOnlyRole,
 } from '../utils/permissions';
 import { currentMonthValue, formatMonthLabel, todayIsoDate } from '../utils/timesheetMonth';
@@ -70,6 +75,59 @@ export function TimesheetsPage() {
 
   const selectedEntry =
     workspace.entries.find((entry) => entry.id === selectedEntryId) ?? null;
+
+  const isAdmin = isAdminRole(roleName);
+
+  const entriesByUser = useMemo(() => {
+    const map = new Map<string, TimesheetEntry[]>();
+    for (const entry of workspace.entries) {
+      const key = entry.user_id ?? 'unknown';
+      const list = map.get(key);
+      if (list) list.push(entry);
+      else map.set(key, [entry]);
+    }
+    return map;
+  }, [workspace.entries]);
+
+  const overviewSections = useMemo<TimesheetOverviewSection[]>(() => {
+    if (!viewAllUsers) return [];
+    const fullName = (person: (typeof workspace.allUsers)[number]) =>
+      `${person.first_name} ${person.last_name}`.trim();
+    const activeUsers = workspace.allUsers
+      .filter((person) => person.is_active !== false)
+      .sort((left, right) => fullName(left).localeCompare(fullName(right)));
+    const toOverview = (person: (typeof workspace.allUsers)[number]) => ({
+      id: person.id,
+      name: fullName(person),
+    });
+
+    if (isAdmin) {
+      return [
+        {
+          title: 'All Users',
+          emptyText: 'No users found',
+          users: activeUsers.map(toOverview),
+        },
+      ];
+    }
+
+    const selfRecord = workspace.allUsers.find((person) => person.id === user?.id);
+    const selfTeamId = selfRecord?.team_id ?? null;
+    const selfUsers = activeUsers.filter((person) => person.id === user?.id);
+    const teamUsers = activeUsers.filter(
+      (person) =>
+        person.id !== user?.id && selfTeamId != null && person.team_id === selfTeamId,
+    );
+
+    return [
+      { title: 'My Timesheets', users: selfUsers.map(toOverview) },
+      {
+        title: 'Team Timesheets',
+        emptyText: 'No team members assigned to your team',
+        users: teamUsers.map(toOverview),
+      },
+    ];
+  }, [viewAllUsers, workspace.allUsers, isAdmin, user?.id]);
 
   const saveEntryPayload = useCallback(
     (values: TimesheetEntryFormValues, entryId?: string | null) => ({
@@ -290,21 +348,34 @@ export function TimesheetsPage() {
         />
       ) : null}
 
-      <TimesheetEntriesTable
-        monthLabel={monthLabel}
-        entries={workspace.entries}
-        timesheetById={workspace.timesheetById}
-        dailyTotals={workspace.dailyTotals}
-        dailyLimit={workspace.dailyLimit}
-        readOnly={readOnly}
-        showUser={viewAllUsers}
-        deletingId={deletingEntryId}
-        selectedEntryId={selectedEntryId}
-        onSelect={(entry) => setSelectedEntryId(entry?.id ?? null)}
-        onEdit={setEditingEntry}
-        onDelete={(entry) => void handleDeleteEntry(entry)}
-        isEntryEditable={workspace.isEntryEditable}
-      />
+      {viewAllUsers ? (
+        <>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+            Timesheets for {monthLabel}
+          </Typography>
+          <TimesheetUsersOverview
+            sections={overviewSections}
+            entriesByUser={entriesByUser}
+            timesheetById={workspace.timesheetById}
+          />
+        </>
+      ) : (
+        <TimesheetEntriesTable
+          monthLabel={monthLabel}
+          entries={workspace.entries}
+          timesheetById={workspace.timesheetById}
+          dailyTotals={workspace.dailyTotals}
+          dailyLimit={workspace.dailyLimit}
+          readOnly={readOnly}
+          showUser={viewAllUsers}
+          deletingId={deletingEntryId}
+          selectedEntryId={selectedEntryId}
+          onSelect={(entry) => setSelectedEntryId(entry?.id ?? null)}
+          onEdit={setEditingEntry}
+          onDelete={(entry) => void handleDeleteEntry(entry)}
+          isEntryEditable={workspace.isEntryEditable}
+        />
+      )}
 
       {reviewableTimesheets.length ? (
         <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>

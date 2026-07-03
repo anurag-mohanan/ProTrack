@@ -213,11 +213,14 @@ def _validate_changed_project_references(
     db_obj: Project,
     update_data: dict[str, object],
 ) -> None:
-    """Validate only the references that are actually changing in an update.
+    """Validate only the references whose value actually changes in an update.
 
-    Re-validating unchanged references would reject edits to legacy/imported
-    projects whose existing design leader/contact predates the current role
-    rules (e.g. a design leader who now holds a different role).
+    The edit form always resubmits the full set of reference fields even when
+    they are unchanged, so presence in ``update_data`` is not enough to decide
+    whether to re-validate. Comparing against the stored values avoids
+    rejecting edits to legacy/imported projects whose existing design
+    leader/contact predates the current role rules (e.g. a design leader who
+    now holds a different role).
     """
     (
         customer_id,
@@ -227,14 +230,21 @@ def _validate_changed_project_references(
         surfacer_id,
     ) = _reference_ids_for_update(db_obj, update_data)
 
-    if "customer_id" in update_data or "customer_contact_id" in update_data:
+    customer_changed = (
+        "customer_id" in update_data and customer_id != db_obj.customer_id
+    )
+    contact_changed = (
+        "customer_contact_id" in update_data
+        and customer_contact_id != db_obj.customer_contact_id
+    )
+    if customer_changed or contact_changed:
         contact = db.scalar(select(Contact).where(Contact.id == customer_contact_id))
         if contact is None or contact.customer_id != customer_id:
             raise ProTrackValidationError(
                 "customer_contact_id must belong to the selected customer_id"
             )
 
-    if "design_leader_id" in update_data:
+    if "design_leader_id" in update_data and design_leader_id != db_obj.design_leader_id:
         _ = _get_active_user(
             db,
             design_leader_id,
@@ -242,7 +252,11 @@ def _validate_changed_project_references(
             expected_role="Design Leader",
         )
 
-    if "designer_id" in update_data and designer_id is not None:
+    if (
+        "designer_id" in update_data
+        and designer_id != db_obj.designer_id
+        and designer_id is not None
+    ):
         _ = _get_active_user(
             db,
             designer_id,
@@ -250,7 +264,11 @@ def _validate_changed_project_references(
             expected_roles=PROJECT_STAFF_ROLES,
         )
 
-    if "surfacer_id" in update_data and surfacer_id is not None:
+    if (
+        "surfacer_id" in update_data
+        and surfacer_id != db_obj.surfacer_id
+        and surfacer_id is not None
+    ):
         _ = _get_active_user(
             db,
             surfacer_id,

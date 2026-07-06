@@ -136,6 +136,7 @@ class TimesheetImportSummary(BaseModel):
     rows_read: int = 0
     rows_imported: int = 0
     rows_skipped: int = 0
+    duplicates_skipped: int = 0
     rows_failed: int = 0
     projects_matched: int = 0
     projects_created: int = 0

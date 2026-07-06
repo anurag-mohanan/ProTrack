@@ -168,7 +168,112 @@ def _parse_date(value: Any) -> date | None:
     return None
 
 
+def _hours_key(hours: Decimal) -> str:
+    return format(hours.quantize(Decimal("0.01")), "f")
+
+
+def _notes_key(notes: str | None) -> str:
+    return (notes or "").strip()
+
+
+def timesheet_duplicate_key(
+    *,
+    user_id: uuid.UUID,
+    entry_date: date,
+    project_number: str | None = None,
+    np_code: str | None = None,
+    task: str | None = None,
+    hours: Decimal,
+    is_billable: bool,
+    notes: str | None = None,
+) -> tuple:
+    """Duplicate when designer, date, project/NP, task, hours, billable, and notes all match."""
+    project_key = (np_code or project_number or "").strip().upper()
+    task_key = (task or "").strip().lower()
+    return (
+        user_id,
+        entry_date,
+        project_key,
+        task_key,
+        _hours_key(hours),
+        is_billable,
+        _notes_key(notes),
+    )
+
+
+def timesheet_duplicate_key_for_row(
+    *,
+    user_id: uuid.UUID,
+    entry_date: date,
+    tool_number: str | None,
+    np_code: str | None,
+    task_type: str | None,
+    hours: Decimal,
+    is_billable: bool,
+    description: str | None,
+    is_np_row: bool,
+) -> tuple:
+    return timesheet_duplicate_key(
+        user_id=user_id,
+        entry_date=entry_date,
+        project_number=None if is_np_row else tool_number,
+        np_code=np_code if is_np_row else None,
+        task=None if is_np_row else task_type,
+        hours=hours,
+        is_billable=is_billable,
+        notes=description,
+    )
+
+
+def load_timesheet_duplicate_keys(
+    db: Session,
+    user_id: uuid.UUID | None = None,
+) -> set[tuple]:
+    query = (
+        select(
+            Timesheet.user_id,
+            TimesheetEntry.entry_date,
+            TimesheetEntry.hours,
+            TimesheetEntry.is_billable,
+            TimesheetEntry.description,
+            TimesheetEntry.non_productive_code_id,
+            Project.tool_number,
+            NonProductiveCode.code,
+            TaskType.name,
+        )
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .outerjoin(Project, TimesheetEntry.project_id == Project.id)
+        .outerjoin(NonProductiveCode, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
+        .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
+    )
+    if user_id is not None:
+        query = query.where(Timesheet.user_id == user_id)
+
+    keys: set[tuple] = set()
+    for row in db.execute(query).all():
+        is_np = row.non_productive_code_id is not None
+        keys.add(
+            timesheet_duplicate_key(
+                user_id=row.user_id,
+                entry_date=row.entry_date,
+                project_number=None if is_np else row.tool_number,
+                np_code=row.code if is_np else None,
+                task=None if is_np else row.name,
+                hours=row.hours,
+                is_billable=bool(row.is_billable),
+                notes=row.description,
+            )
+        )
+    return keys
+
+
 def _normalize_np_code(value: str | None) -> str | None:
+    if not value:
+        return None
+    code = value.strip().upper()
+    return code if code in KNOWN_NP_CODES else None
+
+
     if not value:
         return None
     code = value.strip().upper()
@@ -619,13 +724,17 @@ def validate_upload(db: Session, upload_id: str) -> TimesheetImportValidateRespo
             )
 
         if row.entry_date and row.hours is not None and not row.errors:
-            key = (
+            is_billable = False if row.is_np_row else True
+            dup_key = (
+                _normalize_key(row.designer or _detect_designer(rows)),
                 row.entry_date,
-                row.tool_number or row.np_code,
-                row.task_type,
-                row.hours,
+                (row.np_code or row.tool_number or "").strip().upper(),
+                (row.task_type or "").strip().lower() if not row.is_np_row else "",
+                _hours_key(row.hours),
+                is_billable,
+                _notes_key(row.description),
             )
-            if key in seen_keys:
+            if dup_key in seen_keys:
                 issues.append(
                     TimesheetValidationIssue(
                         row_number=row.row_number,
@@ -634,7 +743,7 @@ def validate_upload(db: Session, upload_id: str) -> TimesheetImportValidateRespo
                         message="Duplicate entry within the file.",
                     )
                 )
-            seen_keys.add(key)
+            seen_keys.add(dup_key)
 
         if not row.is_np_row and row.tool_number and not row.errors:
             project = _find_project(db, row.tool_number, row.project_code)
@@ -825,17 +934,6 @@ def _resolve_task_type_for_row(
     raise ValueError(f"Row {row.row_number}: task type could not be resolved.")
 
 
-def _entry_signature(entry: TimesheetEntry) -> tuple:
-    return (
-        entry.entry_date,
-        entry.project_id,
-        entry.task_type_id,
-        entry.non_productive_code_id,
-        entry.hours,
-        entry.description,
-    )
-
-
 def _clear_week_entries(db: Session, user_id: uuid.UUID, week: date) -> None:
     timesheet = db.scalar(
         select(Timesheet).where(Timesheet.user_id == user_id, Timesheet.week_start == week)
@@ -888,23 +986,7 @@ def run_timesheet_import(
 
     entries_to_add: list[TimesheetEntry] = []
     affected_projects: set[uuid.UUID] = set()
-    existing_by_week: dict[date, list[TimesheetEntry]] = {}
-
-    if context.duplicate_week_action == DuplicateWeekAction.merge:
-        for row in rows:
-            if row.entry_date:
-                week = _week_start(row.entry_date)
-                if week not in existing_by_week:
-                    timesheet = db.scalar(
-                        select(Timesheet).where(
-                            Timesheet.user_id == designer.id,
-                            Timesheet.week_start == week,
-                        )
-                    )
-                    if timesheet:
-                        existing_by_week[week] = list(timesheet.entries)
-                    else:
-                        existing_by_week[week] = []
+    seen_duplicate_keys = load_timesheet_duplicate_keys(db, designer.id)
 
     total = len(rows)
     processed = 0
@@ -985,14 +1067,25 @@ def run_timesheet_import(
                 )
                 affected_projects.add(project.id)
 
-            if context.duplicate_week_action == DuplicateWeekAction.merge:
-                existing = existing_by_week.get(week, [])
-                if any(_entry_signature(e) == _entry_signature(entry) for e in existing):
-                    summary.rows_skipped += 1
-                    preview.status_label = TimesheetImportRowStatus.skipped
-                    preview.messages.append("Duplicate entry merged/skipped.")
-                    error_log.append(preview)
-                    continue
+            dup_key = timesheet_duplicate_key_for_row(
+                user_id=designer.id,
+                entry_date=row.entry_date,
+                tool_number=row.tool_number,
+                np_code=row.np_code,
+                task_type=row.task_type,
+                hours=row.hours,
+                is_billable=entry.is_billable,
+                description=row.description,
+                is_np_row=row.is_np_row,
+            )
+            if dup_key in seen_duplicate_keys:
+                summary.duplicates_skipped += 1
+                summary.rows_skipped += 1
+                preview.status_label = TimesheetImportRowStatus.skipped
+                preview.messages.append("Duplicate entry skipped.")
+                error_log.append(preview)
+                continue
+            seen_duplicate_keys.add(dup_key)
 
             entries_to_add.append(entry)
             summary.rows_imported += 1

@@ -17,16 +17,12 @@ from tempfile import gettempdir
 from typing import Callable
 
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import WorkCategory
 from app.models.models import (
-    NonProductiveCode,
     Project,
-    TaskType,
     TimesheetEntry,
-    Timesheet,
     User,
 )
 from app.schemas.historical_timesheet_folder_import import (
@@ -50,6 +46,8 @@ from app.services.historical_timesheet_import_service import (
     _parse_decimal,
     _parse_date,
     _resolve_task_type_name,
+    load_timesheet_duplicate_keys,
+    timesheet_duplicate_key,
 )
 from app.services.project_calculation_service import recalculate_project
 
@@ -360,49 +358,6 @@ def create_pre_import_backup() -> Path | None:
     return dest
 
 
-def _hours_key(hours: Decimal) -> str:
-    return format(hours.quantize(Decimal("0.01")), "f")
-
-
-def _duplicate_key(
-    user_id: uuid.UUID,
-    entry_date: date,
-    project_key: str,
-    task_key: str,
-    hours: Decimal,
-) -> tuple:
-    return (user_id, entry_date, project_key, task_key, _hours_key(hours))
-
-
-def _load_existing_duplicate_keys(db: Session) -> set[tuple]:
-    keys: set[tuple] = set()
-    rows = db.execute(
-        select(
-            Timesheet.user_id,
-            TimesheetEntry.entry_date,
-            TimesheetEntry.hours,
-            TimesheetEntry.project_id,
-            TimesheetEntry.non_productive_code_id,
-            TimesheetEntry.task_type_id,
-            Project.tool_number,
-            NonProductiveCode.code,
-            TaskType.name,
-        )
-        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
-        .outerjoin(Project, TimesheetEntry.project_id == Project.id)
-        .outerjoin(NonProductiveCode, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
-        .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
-    ).all()
-    for row in rows:
-        if row.non_productive_code_id:
-            project_key = (row.code or "").strip().upper()
-        else:
-            project_key = (row.tool_number or row.code or "").strip().upper()
-        task_key = (row.name or "").strip().lower()
-        keys.add(_duplicate_key(row.user_id, row.entry_date, project_key, task_key, row.hours))
-    return keys
-
-
 def _log_row(
     file_name: str,
     *,
@@ -457,8 +412,7 @@ def run_folder_import(
     files, _ = resolve_source_files(batch_id=batch_id, source_path=source_path)
     summary = FolderImportSummary(backup_path=str(backup_path) if backup_path else None)
     log_rows: list[FolderImportLogRow] = []
-    duplicate_keys = _load_existing_duplicate_keys(db)
-    seen_keys = set(duplicate_keys)
+    seen_duplicate_keys = load_timesheet_duplicate_keys(db)
 
     workbooks: list[ProsohmWorkbook] = []
     for path, rel in files:
@@ -553,25 +507,6 @@ def run_folder_import(
                             entry_date=row.entry_date,
                             project=row.project_number,
                             reason="Invalid Hours",
-                        )
-                    )
-                    continue
-
-                project_key = (row.np_code or row.project_number or "").strip().upper()
-                task_key = (row.task or "").strip().lower()
-                dup = _duplicate_key(
-                    designer_user.id, row.entry_date, project_key, task_key, row.hours
-                )
-                if dup in seen_keys:
-                    summary.duplicates_skipped += 1
-                    log_rows.append(
-                        _log_row(
-                            file_name,
-                            row_number=row.row_number,
-                            designer=designer_name,
-                            entry_date=row.entry_date,
-                            project=row.project_number,
-                            reason="Duplicate Entry",
                         )
                     )
                     continue
@@ -691,8 +626,32 @@ def run_folder_import(
                     )
                     affected_projects.add(project.id)
 
+                dup_key = timesheet_duplicate_key(
+                    user_id=designer_user.id,
+                    entry_date=row.entry_date,
+                    project_number=None if row.is_np_row else row.project_number,
+                    np_code=row.np_code if row.is_np_row else None,
+                    task=None if row.is_np_row else row.task,
+                    hours=row.hours,
+                    is_billable=entry.is_billable,
+                    notes=row.notes,
+                )
+                if dup_key in seen_duplicate_keys:
+                    summary.duplicates_skipped += 1
+                    log_rows.append(
+                        _log_row(
+                            file_name,
+                            row_number=row.row_number,
+                            designer=designer_name,
+                            entry_date=row.entry_date,
+                            project=row.project_number,
+                            reason="Duplicate Entry",
+                        )
+                    )
+                    continue
+
                 pending_entries.append(entry)
-                seen_keys.add(dup)
+                seen_duplicate_keys.add(dup_key)
                 summary.rows_imported += 1
                 file_had_import = True
 

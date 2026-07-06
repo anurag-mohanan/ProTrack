@@ -51,6 +51,7 @@ from app.services.historical_timesheet_import_service import (
     timesheet_duplicate_key,
 )
 from app.services.project_calculation_service import recalculate_project
+from app.services.timesheet_reset_service import timesheet_tables_are_empty
 
 FOLDER_BATCH_DIR = Path(gettempdir()) / "protrack_timesheet_folder_imports"
 BATCH_COMMIT_SIZE = 500
@@ -418,10 +419,17 @@ def run_folder_import(
     progress_callback: Callable[..., None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
     backup_path: Path | None = None,
+    after_database_reset: bool = False,
 ) -> tuple[FolderImportSummary, list[FolderImportLogRow]]:
     started = datetime.now(timezone.utc)
     files, _ = resolve_source_files(batch_id=batch_id, source_path=source_path)
-    summary = FolderImportSummary(backup_path=str(backup_path) if backup_path else None)
+    skip_duplicate_check = after_database_reset or timesheet_tables_are_empty(db)
+    summary = FolderImportSummary(
+        backup_path=str(backup_path) if backup_path else None,
+        database_reset_performed=after_database_reset,
+        duplicate_check_disabled=skip_duplicate_check,
+        duplicate_check_reenabled=True,
+    )
     log_rows: list[FolderImportLogRow] = []
 
     workbooks: list[ProsohmWorkbook] = []
@@ -489,7 +497,8 @@ def run_folder_import(
             check_duplicates = False
             workbook_dup_keys: set[tuple] = set()
             if (
-                workbook.workbook_year is not None
+                not skip_duplicate_check
+                and workbook.workbook_year is not None
                 and workbook.workbook_month is not None
                 and designer_has_entries_for_month(
                     db,

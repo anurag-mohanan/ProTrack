@@ -27,11 +27,13 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SearchIcon from '@mui/icons-material/Search';
 import DownloadIcon from '@mui/icons-material/Download';
 import CancelIcon from '@mui/icons-material/Cancel';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import type { FolderImportJobProgress, FolderScanResponse } from '../types/TimesheetFolderImport';
 import {
   cancelFolderImportJob,
   downloadFolderImportLog,
   fetchFolderImportJob,
+  resetAllTimesheetData,
   runHistoricalTimesheetFolderImport,
   scanHistoricalTimesheetFolder,
   uploadHistoricalTimesheetFolder,
@@ -81,6 +83,11 @@ export function HistoricalTimesheetImportPage() {
   const [scanResult, setScanResult] = useState<FolderScanResponse | null>(null);
   const [job, setJob] = useState<FolderImportJobProgress | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [databaseResetPerformed, setDatabaseResetPerformed] = useState(false);
+  const [resetBackupPath, setResetBackupPath] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,8 +190,8 @@ export function HistoricalTimesheetImportPage() {
     setLoading(true);
     try {
       const payload = batchId
-        ? { batch_id: batchId }
-        : { source_path: serverPath.trim() };
+        ? { batch_id: batchId, after_database_reset: databaseResetPerformed }
+        : { source_path: serverPath.trim(), after_database_reset: databaseResetPerformed };
       const run = await runHistoricalTimesheetFolderImport(payload);
       setPhase('importing');
       await pollJob(run.job_id);
@@ -218,6 +225,29 @@ export function HistoricalTimesheetImportPage() {
     }
   };
 
+  const handleResetAll = async () => {
+    if (resetConfirmText.trim() !== 'DELETE') {
+      setError('Type DELETE to confirm.');
+      return;
+    }
+    setResetting(true);
+    setError(null);
+    try {
+      const result = await resetAllTimesheetData(resetConfirmText.trim());
+      setDatabaseResetPerformed(true);
+      setResetBackupPath(result.backup_path);
+      setResetConfirmOpen(false);
+      setResetConfirmText('');
+      setPhase('setup');
+      setScanResult(null);
+      setJob(null);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const resetWizard = () => {
     setPhase('setup');
     setScanResult(null);
@@ -244,6 +274,34 @@ export function HistoricalTimesheetImportPage() {
           {error}
         </Alert>
       ) : null}
+
+      {databaseResetPerformed ? (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          Database reset complete. Duplicate checking is disabled for the next import.
+          {resetBackupPath ? ` Backup: ${resetBackupPath}` : null}
+        </Alert>
+      ) : null}
+
+      <Card sx={{ mb: 3, borderColor: 'error.light', borderWidth: 1, borderStyle: 'solid' }}>
+        <CardContent>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1, color: 'error.main' }}>
+            Delete All Timesheet Entries
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Permanently remove all timesheet records before a full historical re-import.
+            Users, customers, projects, and settings are not affected.
+          </Typography>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteForeverIcon />}
+            disabled={resetting || phase === 'importing'}
+            onClick={() => setResetConfirmOpen(true)}
+          >
+            Delete All Timesheet Entries
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -437,12 +495,24 @@ export function HistoricalTimesheetImportPage() {
               </Alert>
             ) : null}
             <Stack direction="row" spacing={3} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
+              <SummaryMetric
+                label="Database Reset"
+                value={job.summary.database_reset_performed ? 'Yes' : 'No'}
+              />
+              <SummaryMetric label="Timesheets Imported" value={job.summary.rows_imported} />
+              <SummaryMetric label="Validation Errors" value={job.summary.errors} />
+              <SummaryMetric
+                label="Duplicate Check"
+                value={
+                  job.summary.duplicate_check_reenabled === false
+                    ? 'Disabled'
+                    : 'Re-enabled'
+                }
+              />
               <SummaryMetric label="Designers Imported" value={job.summary.designers_imported} />
               <SummaryMetric label="Files Imported" value={job.summary.files_imported} />
               <SummaryMetric label="Total Rows Read" value={job.summary.rows_read} />
-              <SummaryMetric label="Imported" value={job.summary.rows_imported} />
               <SummaryMetric label="Duplicates Skipped" value={job.summary.duplicates_skipped} />
-              <SummaryMetric label="Validation Errors" value={job.summary.errors} />
               <SummaryMetric
                 label="Duration"
                 value={formatDuration(job.summary.duration_seconds)}
@@ -485,6 +555,53 @@ export function HistoricalTimesheetImportPage() {
           <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
           <Button variant="contained" color="success" onClick={handleImport}>
             Import
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={resetConfirmOpen}
+        onClose={() => !resetting && setResetConfirmOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: 'error.main' }}>WARNING</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            This will permanently delete <strong>ALL</strong> timesheet records.
+          </DialogContentText>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Users, Customers, Projects and Settings will <strong>NOT</strong> be affected.
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Historical reports will be cleared.
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            A database backup will be created automatically before deletion.
+          </Typography>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Type <strong>DELETE</strong> to continue.
+          </Alert>
+          <TextField
+            fullWidth
+            label='Type "DELETE" to confirm'
+            value={resetConfirmText}
+            onChange={(event) => setResetConfirmText(event.target.value)}
+            disabled={resetting}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetConfirmOpen(false)} disabled={resetting}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            disabled={resetting || resetConfirmText.trim() !== 'DELETE'}
+            onClick={() => void handleResetAll()}
+          >
+            Delete All Timesheet Entries
           </Button>
         </DialogActions>
       </Dialog>

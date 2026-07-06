@@ -37,6 +37,8 @@ from app.schemas.historical_timesheet_folder_import import (
     FolderImportJobProgress,
     FolderScanRequest,
     FolderScanResponse,
+    TimesheetResetRequest,
+    TimesheetResetResponse,
 )
 from app.services.historical_timesheet_folder_import_service import (
     create_pre_import_backup,
@@ -47,6 +49,7 @@ from app.services.historical_timesheet_folder_import_service import (
 )
 from app.services.timesheet_folder_import_job_store import timesheet_folder_import_job_store
 from app.services.timesheet_import_job_store import timesheet_import_job_store
+from app.services.timesheet_reset_service import delete_all_timesheet_data
 
 router = APIRouter(
     prefix="/imports/historical-timesheets",
@@ -429,6 +432,7 @@ def _execute_folder_import_job(
     source_path: str | None,
     imported_by_id: UUID,
     backup_path,
+    after_database_reset: bool = False,
 ) -> None:
     from app.db.session import SessionLocal
 
@@ -447,6 +451,7 @@ def _execute_folder_import_job(
             progress_callback=progress_callback,
             cancel_check=lambda: timesheet_folder_import_job_store.is_cancelled(job_id),
             backup_path=backup_path,
+            after_database_reset=after_database_reset,
         )
         cancelled = timesheet_folder_import_job_store.is_cancelled(job_id)
         log_name = f"HistoricalImportLog_{datetime.now().strftime('%Y%m%d')}.xlsx"
@@ -497,6 +502,7 @@ def run_historical_timesheet_folder_import(
         source_path=payload.source_path,
         imported_by_id=current_user.id,
         backup_path=backup_path,
+        after_database_reset=payload.after_database_reset,
     )
     return FolderImportRunResponse(
         job_id=job_id,
@@ -539,4 +545,30 @@ def download_folder_import_log(job_id: str):
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/reset", response_model=TimesheetResetResponse)
+def reset_all_timesheet_data(
+    payload: TimesheetResetRequest,
+    db: Session = Depends(get_db),
+):
+    if payload.confirmation.strip() != "DELETE":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Type DELETE to confirm this operation.',
+        )
+    try:
+        result = delete_all_timesheet_data(db)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    return TimesheetResetResponse(
+        backup_path=str(result.backup_path),
+        timesheets_deleted=result.timesheets_deleted,
+        entries_deleted=result.entries_deleted,
+        import_history_deleted=result.import_history_deleted,
+        deletion_logs_deleted=result.deletion_logs_deleted,
     )

@@ -42,6 +42,19 @@ class FolderScanRequest(BaseModel):
 class FolderImportRunRequest(BaseModel):
     batch_id: str | None = None
     source_path: str | None = None
+    after_database_reset: bool = False
+
+
+class TimesheetResetRequest(BaseModel):
+    confirmation: str = Field(min_length=1)
+
+
+class TimesheetResetResponse(BaseModel):
+    backup_path: str
+    timesheets_deleted: int
+    entries_deleted: int
+    import_history_deleted: int
+    deletion_logs_deleted: int
 
 
 class FolderImportRunResponse(BaseModel):
@@ -67,6 +80,9 @@ class FolderImportSummary(BaseModel):
     errors: int = 0
     duration_seconds: int = 0
     backup_path: str | None = None
+    database_reset_performed: bool = False
+    duplicate_check_disabled: bool = False
+    duplicate_check_reenabled: bool = True
 
 
 class FolderImportJobProgress(BaseModel):

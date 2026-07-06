@@ -16,6 +16,7 @@ import type {
   TimesheetImportUploadResponse,
   TimesheetImportValidateResponse,
 } from '../types/TimesheetImport';
+import type { TimesheetResetResponse } from '../types/TimesheetFolderImport';
 
 const BASE = `${API_BASE_URL}/imports/historical-timesheets`;
 
@@ -149,6 +150,7 @@ export async function scanHistoricalTimesheetFolder(payload: {
 export async function runHistoricalTimesheetFolderImport(payload: {
   batch_id?: string;
   source_path?: string;
+  after_database_reset?: boolean;
 }): Promise<FolderImportRunResponse> {
   const { data } = await axios.post<FolderImportRunResponse>(`${BASE}/folder/run`, payload, {
     headers: authHeaders('application/json'),
@@ -194,4 +196,15 @@ export async function downloadFolderImportLog(
   link.click();
   document.body.removeChild(link);
   window.URL.revokeObjectURL(url);
+}
+
+export async function resetAllTimesheetData(
+  confirmation: string,
+): Promise<TimesheetResetResponse> {
+  const { data } = await axios.post<TimesheetResetResponse>(
+    `${BASE}/reset`,
+    { confirmation },
+    { headers: authHeaders('application/json') },
+  );
+  return data;
 }

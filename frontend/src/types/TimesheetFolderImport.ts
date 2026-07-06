@@ -33,6 +33,17 @@ export interface FolderImportSummary {
   errors: number;
   duration_seconds: number;
   backup_path: string | null;
+  database_reset_performed?: boolean;
+  duplicate_check_disabled?: boolean;
+  duplicate_check_reenabled?: boolean;
+}
+
+export interface TimesheetResetResponse {
+  backup_path: string;
+  timesheets_deleted: number;
+  entries_deleted: number;
+  import_history_deleted: number;
+  deletion_logs_deleted: number;
 }
 
 export type FolderImportJobStatus =

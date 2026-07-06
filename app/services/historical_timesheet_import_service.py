@@ -252,6 +252,7 @@ def load_timesheet_duplicate_keys(
         .outerjoin(Project, TimesheetEntry.project_id == Project.id)
         .outerjoin(NonProductiveCode, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
         .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
+        .where(TimesheetEntry.is_deleted.is_(False))
     )
     if user_id is not None:
         query = query.where(Timesheet.user_id == user_id)
@@ -292,6 +293,7 @@ def designer_has_entries_for_month(
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
             Timesheet.user_id == user_id,
+            TimesheetEntry.is_deleted.is_(False),
             extract("year", TimesheetEntry.entry_date) == year,
             extract("month", TimesheetEntry.entry_date) == month,
         )
@@ -1017,7 +1019,10 @@ def run_timesheet_import(
     valid_dates = [row.entry_date for row in rows if row.entry_date and not row.errors]
     check_duplicates = False
     seen_duplicate_keys: set[tuple] = set()
-    if valid_dates:
+    from app.services.timesheet_reset_service import timesheet_tables_are_empty
+
+    skip_duplicate_check = timesheet_tables_are_empty(db)
+    if valid_dates and not skip_duplicate_check:
         month_counts = Counter((d.year, d.month) for d in valid_dates)
         workbook_year, workbook_month = month_counts.most_common(1)[0][0]
         if designer_has_entries_for_month(db, designer.id, workbook_year, workbook_month):

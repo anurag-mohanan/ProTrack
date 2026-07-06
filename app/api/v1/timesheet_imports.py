@@ -49,6 +49,21 @@ from app.services.historical_timesheet_folder_import_service import (
 )
 from app.services.timesheet_folder_import_job_store import timesheet_folder_import_job_store
 from app.services.timesheet_import_job_store import timesheet_import_job_store
+from app.schemas.historical_timesheet_master_import import (
+    MasterImportJobProgress,
+    MasterImportRunRequest,
+    MasterImportRunResponse,
+    MasterScanResponse,
+    MasterUploadResponse,
+)
+from app.services.historical_timesheet_master_import_service import (
+    get_master_upload,
+    master_import_log_to_excel,
+    run_master_import,
+    save_master_upload,
+    scan_master_workbook,
+)
+from app.services.timesheet_master_import_job_store import timesheet_master_import_job_store
 from app.services.timesheet_reset_service import delete_all_timesheet_data
 
 router = APIRouter(
@@ -545,6 +560,172 @@ def download_folder_import_log(job_id: str):
         )
     content = import_log_to_excel(job.log_rows)
     filename = job.log_download_name or "HistoricalImportLog.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _execute_master_import_job(
+    job_id: str,
+    *,
+    upload_id: str,
+    selected_designers: list[str] | None,
+    backup_path,
+) -> None:
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        timesheet_master_import_job_store.mark_running(
+            job_id, message="Reading workbook…"
+        )
+
+        def progress_callback(**kwargs) -> None:
+            timesheet_master_import_job_store.update_progress(job_id, **kwargs)
+
+        designer_filter = set(selected_designers) if selected_designers else None
+        summary, log_rows = run_master_import(
+            db,
+            upload_id=upload_id,
+            selected_designers=designer_filter,
+            progress_callback=progress_callback,
+            cancel_check=lambda: timesheet_master_import_job_store.is_cancelled(job_id),
+            backup_path=backup_path,
+        )
+        cancelled = timesheet_master_import_job_store.is_cancelled(job_id)
+        log_name = f"MasterHistoricalImportLog_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        timesheet_master_import_job_store.complete(
+            job_id,
+            summary=summary,
+            log_rows=log_rows,
+            log_download_name=log_name,
+            cancelled=cancelled,
+        )
+    except Exception as exc:
+        timesheet_master_import_job_store.fail(job_id, str(exc))
+    finally:
+        db.close()
+
+
+@router.post("/master/upload", response_model=MasterUploadResponse)
+async def upload_master_timesheet_workbook(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A file name is required.",
+        )
+    suffix = file.filename.lower().split(".")[-1]
+    if suffix not in {"xlsx", "xlsm"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .xlsx and .xlsm files are supported.",
+        )
+    content = await file.read()
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty.",
+        )
+    upload_id = str(uuid4())
+    try:
+        save_master_upload(upload_id, file.filename, content)
+        scan = scan_master_workbook(db, upload_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return MasterUploadResponse(upload_id=upload_id, filename=file.filename, scan=scan)
+
+
+@router.get("/master/upload/{upload_id}/scan", response_model=MasterScanResponse)
+def rescan_master_timesheet_workbook(upload_id: str, db: Session = Depends(get_db)):
+    try:
+        return scan_master_workbook(db, upload_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upload not found or expired.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post("/master/run", response_model=MasterImportRunResponse)
+def run_master_timesheet_import(
+    payload: MasterImportRunRequest,
+    background_tasks: BackgroundTasks,
+):
+    try:
+        get_master_upload(payload.upload_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upload not found or expired.",
+        ) from exc
+
+    backup_path = create_pre_import_backup()
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        scan = scan_master_workbook(db, payload.upload_id)
+    finally:
+        db.close()
+
+    job_id = timesheet_master_import_job_store.create_job(rows_total=scan.row_count)
+    background_tasks.add_task(
+        _execute_master_import_job,
+        job_id,
+        upload_id=payload.upload_id,
+        selected_designers=payload.designers,
+        backup_path=backup_path,
+    )
+    return MasterImportRunResponse(
+        job_id=job_id,
+        backup_path=str(backup_path) if backup_path else None,
+    )
+
+
+@router.get("/master/jobs/{job_id}", response_model=MasterImportJobProgress)
+def get_master_import_job(job_id: str):
+    job = timesheet_master_import_job_store.get(job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Master import job not found.",
+        )
+    return job
+
+
+@router.post("/master/jobs/{job_id}/cancel")
+def cancel_master_import_job(job_id: str):
+    if not timesheet_master_import_job_store.request_cancel(job_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Master import job not found.",
+        )
+    return {"status": "cancel_requested"}
+
+
+@router.get("/master/jobs/{job_id}/log.xlsx")
+def download_master_import_log(job_id: str):
+    job = timesheet_master_import_job_store.get(job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Master import job not found.",
+        )
+    content = master_import_log_to_excel(job.log_rows)
+    filename = job.log_download_name or "MasterHistoricalImportLog.xlsx"
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

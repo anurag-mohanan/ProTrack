@@ -16,6 +16,11 @@ import type {
   TimesheetImportUploadResponse,
   TimesheetImportValidateResponse,
 } from '../types/TimesheetImport';
+import type {
+  MasterImportJobProgress,
+  MasterImportRunResponse,
+  MasterUploadResponse,
+} from '../types/TimesheetMasterImport';
 import type { TimesheetResetResponse } from '../types/TimesheetFolderImport';
 
 const BASE = `${API_BASE_URL}/imports/historical-timesheets`;
@@ -208,4 +213,61 @@ export async function resetAllTimesheetData(
     { headers: authHeaders('application/json') },
   );
   return data;
+}
+
+export async function uploadMasterTimesheetWorkbook(
+  file: File,
+): Promise<MasterUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await axios.post<MasterUploadResponse>(`${BASE}/master/upload`, formData, {
+    headers: authHeaders(),
+  });
+  return data;
+}
+
+export async function runMasterTimesheetImport(payload: {
+  upload_id: string;
+  designers?: string[];
+}): Promise<MasterImportRunResponse> {
+  const { data } = await axios.post<MasterImportRunResponse>(`${BASE}/master/run`, payload, {
+    headers: authHeaders('application/json'),
+  });
+  return data;
+}
+
+export async function fetchMasterImportJob(jobId: string): Promise<MasterImportJobProgress> {
+  const { data } = await axios.get<MasterImportJobProgress>(`${BASE}/master/jobs/${jobId}`, {
+    headers: authHeaders(),
+  });
+  return data;
+}
+
+export async function cancelMasterImportJob(jobId: string): Promise<void> {
+  await axios.post(`${BASE}/master/jobs/${jobId}/cancel`, {}, {
+    headers: authHeaders('application/json'),
+  });
+}
+
+export async function downloadMasterImportLog(
+  jobId: string,
+  filename = 'MasterHistoricalImportLog.xlsx',
+): Promise<void> {
+  const response = await fetch(`${BASE}/master/jobs/${jobId}/log.xlsx`, {
+    headers: {
+      Authorization: `Bearer ${getAccessToken() ?? ''}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to download import log.');
+  }
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 }

@@ -1,6 +1,12 @@
 import axios from 'axios';
 import { API_BASE_URL, getAccessToken } from './client';
 import type {
+  FolderBatchUploadResponse,
+  FolderImportJobProgress,
+  FolderImportRunResponse,
+  FolderScanResponse,
+} from '../types/TimesheetFolderImport';
+import type {
   TimesheetImportHistoryDetail,
   TimesheetImportHistoryRead,
   TimesheetImportJobProgress,
@@ -113,4 +119,79 @@ export async function reimportTimesheetHistory(
     { headers: authHeaders('application/json') },
   );
   return data;
+}
+
+export async function uploadHistoricalTimesheetFolder(
+  files: File[],
+  paths: string[],
+): Promise<FolderBatchUploadResponse> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files', file));
+  paths.forEach((path) => formData.append('paths', path));
+  const { data } = await axios.post<FolderBatchUploadResponse>(
+    `${BASE}/folder/upload`,
+    formData,
+    { headers: authHeaders() },
+  );
+  return data;
+}
+
+export async function scanHistoricalTimesheetFolder(payload: {
+  batch_id?: string;
+  source_path?: string;
+}): Promise<FolderScanResponse> {
+  const { data } = await axios.post<FolderScanResponse>(`${BASE}/folder/scan`, payload, {
+    headers: authHeaders('application/json'),
+  });
+  return data;
+}
+
+export async function runHistoricalTimesheetFolderImport(payload: {
+  batch_id?: string;
+  source_path?: string;
+}): Promise<FolderImportRunResponse> {
+  const { data } = await axios.post<FolderImportRunResponse>(`${BASE}/folder/run`, payload, {
+    headers: authHeaders('application/json'),
+  });
+  return data;
+}
+
+export async function fetchFolderImportJob(jobId: string): Promise<FolderImportJobProgress> {
+  const { data } = await axios.get<FolderImportJobProgress>(`${BASE}/folder/jobs/${jobId}`, {
+    headers: authHeaders(),
+  });
+  return data;
+}
+
+export async function cancelFolderImportJob(jobId: string): Promise<void> {
+  await axios.post(`${BASE}/folder/jobs/${jobId}/cancel`, {}, {
+    headers: authHeaders('application/json'),
+  });
+}
+
+export function getFolderImportLogUrl(jobId: string): string {
+  return `${BASE}/folder/jobs/${jobId}/log.xlsx`;
+}
+
+export async function downloadFolderImportLog(
+  jobId: string,
+  filename = 'HistoricalImportLog.xlsx',
+): Promise<void> {
+  const response = await fetch(getFolderImportLogUrl(jobId), {
+    headers: {
+      Authorization: `Bearer ${getAccessToken() ?? ''}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to download import log.');
+  }
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 }

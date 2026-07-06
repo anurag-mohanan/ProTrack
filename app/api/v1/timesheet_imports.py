@@ -1,7 +1,8 @@
+from datetime import datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.auth_deps import get_current_user, require_roles
@@ -29,6 +30,22 @@ from app.services.historical_timesheet_import_service import (
     save_upload,
     validate_upload,
 )
+from app.schemas.historical_timesheet_folder_import import (
+    FolderBatchUploadResponse,
+    FolderImportRunRequest,
+    FolderImportRunResponse,
+    FolderImportJobProgress,
+    FolderScanRequest,
+    FolderScanResponse,
+)
+from app.services.historical_timesheet_folder_import_service import (
+    create_pre_import_backup,
+    import_log_to_excel,
+    run_folder_import,
+    save_folder_batch,
+    scan_folder_source,
+)
+from app.services.timesheet_folder_import_job_store import timesheet_folder_import_job_store
 from app.services.timesheet_import_job_store import timesheet_import_job_store
 
 router = APIRouter(
@@ -335,3 +352,191 @@ def reimport_timesheet_history(
         imported_by_id=current_user.id,
     )
     return TimesheetImportRunResponse(job_id=job_id)
+
+
+@router.post("/folder/upload", response_model=FolderBatchUploadResponse)
+async def upload_historical_timesheet_folder(
+    files: list[UploadFile] = File(...),
+    paths: list[str] = Form(...),
+):
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one Excel file is required.",
+        )
+    if len(files) != len(paths):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Each uploaded file must include a relative path.",
+        )
+
+    payload: list[tuple[str, bytes]] = []
+    for upload, rel_path in zip(files, paths, strict=True):
+        if not upload.filename:
+            continue
+        name = upload.filename
+        if name.startswith("~$") or not name.lower().endswith(".xlsx"):
+            continue
+        content = await upload.read()
+        if not content:
+            continue
+        payload.append((rel_path, content))
+
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid .xlsx files were provided.",
+        )
+
+    batch_id = str(uuid4())
+    save_folder_batch(batch_id, payload)
+    root_name = paths[0].split("/")[0].split("\\")[0] if paths else "Uploaded folder"
+    return FolderBatchUploadResponse(
+        batch_id=batch_id,
+        file_count=len(payload),
+        source_label=root_name,
+    )
+
+
+@router.post("/folder/scan", response_model=FolderScanResponse)
+def scan_historical_timesheet_folder(payload: FolderScanRequest):
+    if not payload.batch_id and not payload.source_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either batch_id or source_path is required.",
+        )
+    try:
+        return scan_folder_source(
+            batch_id=payload.batch_id,
+            source_path=payload.source_path,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+def _execute_folder_import_job(
+    job_id: str,
+    *,
+    batch_id: str | None,
+    source_path: str | None,
+    imported_by_id: UUID,
+    backup_path,
+) -> None:
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        timesheet_folder_import_job_store.mark_running(job_id)
+
+        def progress_callback(**kwargs) -> None:
+            timesheet_folder_import_job_store.update_progress(job_id, **kwargs)
+
+        summary, log_rows = run_folder_import(
+            db,
+            batch_id=batch_id,
+            source_path=source_path,
+            imported_by_id=imported_by_id,
+            progress_callback=progress_callback,
+            cancel_check=lambda: timesheet_folder_import_job_store.is_cancelled(job_id),
+            backup_path=backup_path,
+        )
+        cancelled = timesheet_folder_import_job_store.is_cancelled(job_id)
+        log_name = f"HistoricalImportLog_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        timesheet_folder_import_job_store.complete(
+            job_id,
+            summary=summary,
+            log_rows=log_rows,
+            log_download_name=log_name,
+            cancelled=cancelled,
+        )
+    except Exception as exc:
+        timesheet_folder_import_job_store.fail(job_id, str(exc))
+    finally:
+        db.close()
+
+
+@router.post("/folder/run", response_model=FolderImportRunResponse)
+def run_historical_timesheet_folder_import(
+    payload: FolderImportRunRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    if not payload.batch_id and not payload.source_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either batch_id or source_path is required.",
+        )
+    try:
+        scan = scan_folder_source(
+            batch_id=payload.batch_id,
+            source_path=payload.source_path,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    backup_path = create_pre_import_backup()
+    job_id = timesheet_folder_import_job_store.create_job(
+        files_total=scan.file_count,
+        rows_total=scan.estimated_entries,
+    )
+    background_tasks.add_task(
+        _execute_folder_import_job,
+        job_id,
+        batch_id=payload.batch_id,
+        source_path=payload.source_path,
+        imported_by_id=current_user.id,
+        backup_path=backup_path,
+    )
+    return FolderImportRunResponse(
+        job_id=job_id,
+        backup_path=str(backup_path) if backup_path else None,
+    )
+
+
+@router.get("/folder/jobs/{job_id}", response_model=FolderImportJobProgress)
+def get_folder_import_job(job_id: str):
+    job = timesheet_folder_import_job_store.get(job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Folder import job not found.",
+        )
+    return job
+
+
+@router.post("/folder/jobs/{job_id}/cancel")
+def cancel_folder_import_job(job_id: str):
+    if not timesheet_folder_import_job_store.request_cancel(job_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Folder import job not found.",
+        )
+    return {"status": "cancel_requested"}
+
+
+@router.get("/folder/jobs/{job_id}/log.xlsx")
+def download_folder_import_log(job_id: str):
+    job = timesheet_folder_import_job_store.get(job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Folder import job not found.",
+        )
+    content = import_log_to_excel(job.log_rows)
+    filename = job.log_download_name or "HistoricalImportLog.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

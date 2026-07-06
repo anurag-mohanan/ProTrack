@@ -35,7 +35,6 @@ export interface FolderImportSummary {
   backup_path: string | null;
   database_reset_performed?: boolean;
   duplicate_check_disabled?: boolean;
-  duplicate_check_reenabled?: boolean;
 }
 
 export interface TimesheetResetResponse {

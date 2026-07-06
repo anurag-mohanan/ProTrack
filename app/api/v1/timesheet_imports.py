@@ -156,6 +156,7 @@ def _build_context(payload: TimesheetImportRunRequest) -> ImportContext:
     context = ImportContext(
         designer_resolution=payload.designer or stored.designer_resolution,
         duplicate_week_action=payload.duplicate_week_action or stored.duplicate_week_action,
+        ignore_duplicate_check=payload.ignore_duplicate_check,
         project_resolutions={
             **stored.project_resolutions,
             **{r.row_number: r for r in payload.project_resolutions},
@@ -433,6 +434,7 @@ def _execute_folder_import_job(
     imported_by_id: UUID,
     backup_path,
     after_database_reset: bool = False,
+    ignore_duplicate_check: bool = True,
 ) -> None:
     from app.db.session import SessionLocal
 
@@ -452,6 +454,7 @@ def _execute_folder_import_job(
             cancel_check=lambda: timesheet_folder_import_job_store.is_cancelled(job_id),
             backup_path=backup_path,
             after_database_reset=after_database_reset,
+            ignore_duplicate_check=ignore_duplicate_check,
         )
         cancelled = timesheet_folder_import_job_store.is_cancelled(job_id)
         log_name = f"HistoricalImportLog_{datetime.now().strftime('%Y%m%d')}.xlsx"
@@ -503,6 +506,7 @@ def run_historical_timesheet_folder_import(
         imported_by_id=current_user.id,
         backup_path=backup_path,
         after_database_reset=payload.after_database_reset,
+        ignore_duplicate_check=payload.ignore_duplicate_check,
     )
     return FolderImportRunResponse(
         job_id=job_id,

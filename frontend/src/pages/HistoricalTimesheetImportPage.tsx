@@ -5,6 +5,8 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
+  FormControlLabel,
   Dialog,
   DialogActions,
   DialogContent,
@@ -88,6 +90,7 @@ export function HistoricalTimesheetImportPage() {
   const [databaseResetPerformed, setDatabaseResetPerformed] = useState(false);
   const [resetBackupPath, setResetBackupPath] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [ignoreDuplicateCheck, setIgnoreDuplicateCheck] = useState(true);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,8 +193,16 @@ export function HistoricalTimesheetImportPage() {
     setLoading(true);
     try {
       const payload = batchId
-        ? { batch_id: batchId, after_database_reset: databaseResetPerformed }
-        : { source_path: serverPath.trim(), after_database_reset: databaseResetPerformed };
+        ? {
+            batch_id: batchId,
+            after_database_reset: databaseResetPerformed,
+            ignore_duplicate_check: ignoreDuplicateCheck,
+          }
+        : {
+            source_path: serverPath.trim(),
+            after_database_reset: databaseResetPerformed,
+            ignore_duplicate_check: ignoreDuplicateCheck,
+          };
       const run = await runHistoricalTimesheetFolderImport(payload);
       setPhase('importing');
       await pollJob(run.job_id);
@@ -367,6 +378,18 @@ export function HistoricalTimesheetImportPage() {
             />
           </Stack>
 
+          <FormControlLabel
+            sx={{ mb: 2, display: 'block' }}
+            control={
+              <Checkbox
+                checked={ignoreDuplicateCheck}
+                onChange={(event) => setIgnoreDuplicateCheck(event.target.checked)}
+                disabled={phase === 'importing'}
+              />
+            }
+            label="Ignore duplicate checking (Recommended for first migration)"
+          />
+
           <Stack direction="row" spacing={2}>
             <Button
               variant="contained"
@@ -495,24 +518,16 @@ export function HistoricalTimesheetImportPage() {
               </Alert>
             ) : null}
             <Stack direction="row" spacing={3} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
-              <SummaryMetric
-                label="Database Reset"
-                value={job.summary.database_reset_performed ? 'Yes' : 'No'}
-              />
-              <SummaryMetric label="Timesheets Imported" value={job.summary.rows_imported} />
+              <SummaryMetric label="Rows Read" value={job.summary.rows_read} />
+              <SummaryMetric label="Imported" value={job.summary.rows_imported} />
               <SummaryMetric label="Validation Errors" value={job.summary.errors} />
               <SummaryMetric
                 label="Duplicate Check"
-                value={
-                  job.summary.duplicate_check_reenabled === false
-                    ? 'Disabled'
-                    : 'Re-enabled'
-                }
+                value={job.summary.duplicate_check_disabled ? 'Disabled' : 'Enabled'}
               />
-              <SummaryMetric label="Designers Imported" value={job.summary.designers_imported} />
-              <SummaryMetric label="Files Imported" value={job.summary.files_imported} />
-              <SummaryMetric label="Total Rows Read" value={job.summary.rows_read} />
-              <SummaryMetric label="Duplicates Skipped" value={job.summary.duplicates_skipped} />
+              {job.summary.database_reset_performed ? (
+                <SummaryMetric label="Database Reset" value="Yes" />
+              ) : null}
               <SummaryMetric
                 label="Duration"
                 value={formatDuration(job.summary.duration_seconds)}
@@ -535,21 +550,49 @@ export function HistoricalTimesheetImportPage() {
       ) : null}
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Confirm Historical Import</DialogTitle>
+        <DialogTitle>
+          {ignoreDuplicateCheck ? 'Historical Import Mode' : 'Confirm Historical Import'}
+        </DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            You are about to import:
-          </DialogContentText>
-          <Typography variant="body1" sx={{ mb: 1 }}>
-            • {scanResult?.file_count ?? 0} Excel files
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            • {formatNumber(scanResult?.estimated_entries ?? 0, 0)} entries
-          </Typography>
-          <Alert severity="warning">
-            A timestamped database backup will be created automatically before import begins.
-            Rollback is only possible by restoring that backup.
-          </Alert>
+          {ignoreDuplicateCheck ? (
+            <>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Duplicate checking has been <strong>DISABLED</strong>.
+              </Alert>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                All valid rows will be imported exactly as they appear in the Excel files.
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                If duplicate records exist, they can be removed later using the Timesheet page.
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Importing {scanResult?.file_count ?? 0} files (
+                {formatNumber(scanResult?.estimated_entries ?? 0, 0)} estimated entries).
+              </Typography>
+              <Alert severity="info">
+                A timestamped database backup will be created automatically before import begins.
+              </Alert>
+            </>
+          ) : (
+            <>
+              <DialogContentText sx={{ mb: 2 }}>
+                You are about to import:
+              </DialogContentText>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                • {scanResult?.file_count ?? 0} Excel files
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 2 }}>
+                • {formatNumber(scanResult?.estimated_entries ?? 0, 0)} entries
+              </Typography>
+              <Alert severity="warning">
+                Normal duplicate detection is enabled. Rows that match existing database
+                records may be skipped.
+              </Alert>
+              <Alert severity="info" sx={{ mt: 2 }}>
+                A timestamped database backup will be created automatically before import begins.
+              </Alert>
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>

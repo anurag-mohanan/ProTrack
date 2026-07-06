@@ -129,6 +129,7 @@ class ParsedTimesheetRow:
 class ImportContext:
     designer_resolution: DesignerResolution | None = None
     duplicate_week_action: DuplicateWeekAction = DuplicateWeekAction.skip
+    ignore_duplicate_check: bool = True
     project_resolutions: dict[int, ProjectRowResolution] = field(default_factory=dict)
     customer_resolutions: dict[int, CustomerRowResolution] = field(default_factory=dict)
     task_type_resolutions: dict[int, TaskTypeRowResolution] = field(default_factory=dict)
@@ -496,6 +497,7 @@ def _resolutions_path(upload_id: str) -> Path:
 def save_resolutions(upload_id: str, context: ImportContext) -> None:
     payload = {
         "duplicate_week_action": context.duplicate_week_action.value,
+        "ignore_duplicate_check": context.ignore_duplicate_check,
         "designer": context.designer_resolution.model_dump(mode="json") if context.designer_resolution else None,
         "project_resolutions": [r.model_dump(mode="json") for r in context.project_resolutions.values()],
         "customer_resolutions": [r.model_dump(mode="json") for r in context.customer_resolutions.values()],
@@ -511,6 +513,7 @@ def load_resolutions(upload_id: str) -> ImportContext:
     data = json.loads(path.read_text(encoding="utf-8"))
     context = ImportContext(
         duplicate_week_action=DuplicateWeekAction(data.get("duplicate_week_action", "skip")),
+        ignore_duplicate_check=bool(data.get("ignore_duplicate_check", True)),
     )
     if data.get("designer"):
         context.designer_resolution = DesignerResolution.model_validate(data["designer"])
@@ -1005,24 +1008,23 @@ def run_timesheet_import(
 
     summary.designer = f"{designer.first_name} {designer.last_name}"
     summary.rows_read = len(rows)
+    summary.duplicate_check_disabled = context.ignore_duplicate_check
 
-    duplicate_weeks = _detect_duplicate_weeks(db, rows, designer_name, designer.id)
     skip_weeks: set[date] = set()
-    if context.duplicate_week_action == DuplicateWeekAction.skip:
-        skip_weeks = {item.week_start for item in duplicate_weeks}
-    elif context.duplicate_week_action == DuplicateWeekAction.replace:
-        for item in duplicate_weeks:
-            _clear_week_entries(db, designer.id, item.week_start)
+    if not context.ignore_duplicate_check:
+        duplicate_weeks = _detect_duplicate_weeks(db, rows, designer_name, designer.id)
+        if context.duplicate_week_action == DuplicateWeekAction.skip:
+            skip_weeks = {item.week_start for item in duplicate_weeks}
+        elif context.duplicate_week_action == DuplicateWeekAction.replace:
+            for item in duplicate_weeks:
+                _clear_week_entries(db, designer.id, item.week_start)
 
     entries_to_add: list[TimesheetEntry] = []
     affected_projects: set[uuid.UUID] = set()
     valid_dates = [row.entry_date for row in rows if row.entry_date and not row.errors]
     check_duplicates = False
     seen_duplicate_keys: set[tuple] = set()
-    from app.services.timesheet_reset_service import timesheet_tables_are_empty
-
-    skip_duplicate_check = timesheet_tables_are_empty(db)
-    if valid_dates and not skip_duplicate_check:
+    if valid_dates and not context.ignore_duplicate_check:
         month_counts = Counter((d.year, d.month) for d in valid_dates)
         workbook_year, workbook_month = month_counts.most_common(1)[0][0]
         if designer_has_entries_for_month(db, designer.id, workbook_year, workbook_month):

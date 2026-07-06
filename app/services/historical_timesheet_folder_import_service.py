@@ -51,7 +51,6 @@ from app.services.historical_timesheet_import_service import (
     timesheet_duplicate_key,
 )
 from app.services.project_calculation_service import recalculate_project
-from app.services.timesheet_reset_service import timesheet_tables_are_empty
 
 FOLDER_BATCH_DIR = Path(gettempdir()) / "protrack_timesheet_folder_imports"
 BATCH_COMMIT_SIZE = 500
@@ -420,15 +419,15 @@ def run_folder_import(
     cancel_check: Callable[[], bool] | None = None,
     backup_path: Path | None = None,
     after_database_reset: bool = False,
+    ignore_duplicate_check: bool = True,
 ) -> tuple[FolderImportSummary, list[FolderImportLogRow]]:
     started = datetime.now(timezone.utc)
     files, _ = resolve_source_files(batch_id=batch_id, source_path=source_path)
-    skip_duplicate_check = after_database_reset or timesheet_tables_are_empty(db)
+    skip_duplicate_check = ignore_duplicate_check
     summary = FolderImportSummary(
         backup_path=str(backup_path) if backup_path else None,
         database_reset_performed=after_database_reset,
         duplicate_check_disabled=skip_duplicate_check,
-        duplicate_check_reenabled=True,
     )
     log_rows: list[FolderImportLogRow] = []
 

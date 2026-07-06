@@ -145,6 +145,7 @@ class TimesheetImportSummary(BaseModel):
     np_entries: int = 0
     warnings: int = 0
     errors: int = 0
+    duplicate_check_disabled: bool = False
 
 
 class TimesheetImportJobProgress(BaseModel):
@@ -165,6 +166,7 @@ class TimesheetImportRunRequest(BaseModel):
     upload_id: str
     dry_run: bool = False
     duplicate_week_action: DuplicateWeekAction = DuplicateWeekAction.skip
+    ignore_duplicate_check: bool = True
     designer: DesignerResolution | None = None
     project_resolutions: list[ProjectRowResolution] = Field(default_factory=list)
     customer_resolutions: list[CustomerRowResolution] = Field(default_factory=list)

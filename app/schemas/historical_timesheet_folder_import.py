@@ -43,6 +43,7 @@ class FolderImportRunRequest(BaseModel):
     batch_id: str | None = None
     source_path: str | None = None
     after_database_reset: bool = False
+    ignore_duplicate_check: bool = True
 
 
 class TimesheetResetRequest(BaseModel):
@@ -82,7 +83,6 @@ class FolderImportSummary(BaseModel):
     backup_path: str | None = None
     database_reset_performed: bool = False
     duplicate_check_disabled: bool = False
-    duplicate_check_reenabled: bool = True
 
 
 class FolderImportJobProgress(BaseModel):

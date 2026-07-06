@@ -261,7 +261,35 @@ def test_folder_import_allows_new_dates_when_month_already_has_data(
         db.close()
 
 
-def test_folder_import_skips_exact_duplicate(client, prosohm_productive_bytes):
+def test_folder_import_skips_exact_duplicate_when_check_enabled(client, prosohm_productive_bytes):
+    headers = login(client, "admin@prosohm.com")
+    upload = client.post(
+        "/api/v1/imports/historical-timesheets/folder/upload",
+        headers=headers,
+        files={"files": ("Jun-26.xlsx", prosohm_productive_bytes, "application/vnd.ms-excel")},
+        data={"paths": "Binil JR/Jun-26.xlsx"},
+    )
+    batch_id = upload.json()["batch_id"]
+
+    first = client.post(
+        "/api/v1/imports/historical-timesheets/folder/run",
+        headers=headers,
+        json={"batch_id": batch_id, "ignore_duplicate_check": False},
+    )
+    _poll_folder_job(client, headers, first.json()["job_id"])
+
+    second = client.post(
+        "/api/v1/imports/historical-timesheets/folder/run",
+        headers=headers,
+        json={"batch_id": batch_id, "ignore_duplicate_check": False},
+    )
+    job = _poll_folder_job(client, headers, second.json()["job_id"])
+    assert job["summary"]["duplicates_skipped"] == 1
+    assert job["summary"]["rows_imported"] == 0
+    assert job["summary"]["duplicate_check_disabled"] is False
+
+
+def test_folder_import_default_ignores_duplicate_check(client, prosohm_productive_bytes):
     headers = login(client, "admin@prosohm.com")
     upload = client.post(
         "/api/v1/imports/historical-timesheets/folder/upload",
@@ -284,5 +312,6 @@ def test_folder_import_skips_exact_duplicate(client, prosohm_productive_bytes):
         json={"batch_id": batch_id},
     )
     job = _poll_folder_job(client, headers, second.json()["job_id"])
-    assert job["summary"]["duplicates_skipped"] == 1
-    assert job["summary"]["rows_imported"] == 0
+    assert job["summary"]["duplicates_skipped"] == 0
+    assert job["summary"]["rows_imported"] == 1
+    assert job["summary"]["duplicate_check_disabled"] is True

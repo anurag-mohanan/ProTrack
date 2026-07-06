@@ -151,6 +151,7 @@ export async function runHistoricalTimesheetFolderImport(payload: {
   batch_id?: string;
   source_path?: string;
   after_database_reset?: boolean;
+  ignore_duplicate_check?: boolean;
 }): Promise<FolderImportRunResponse> {
   const { data } = await axios.post<FolderImportRunResponse>(`${BASE}/folder/run`, payload, {
     headers: authHeaders('application/json'),

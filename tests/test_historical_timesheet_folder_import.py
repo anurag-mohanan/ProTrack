@@ -202,6 +202,65 @@ def test_folder_import_allows_same_day_different_notes(client, test_session_fact
     assert job["summary"]["duplicates_skipped"] == 0
 
 
+def test_folder_import_allows_new_dates_when_month_already_has_data(
+    client, test_session_factory,
+):
+    """After a month is populated, new dates in another file must still import."""
+    may_workbook = build_prosohm_workbook(
+        designer="Binil JR",
+        month="May-26",
+        rows=[
+            [1, "2026-05-01", "T-100", "Acme", "Design", "Yes", 8, "Design for intermediates"],
+        ],
+    )
+    extra_day_workbook = build_prosohm_workbook(
+        designer="Binil JR",
+        month="May-26",
+        rows=[
+            [1, "2026-05-02", "T-100", "Acme", "Design", "Yes", 8, "Design for intermediates"],
+        ],
+    )
+    headers = login(client, "admin@prosohm.com")
+
+    first_upload = client.post(
+        "/api/v1/imports/historical-timesheets/folder/upload",
+        headers=headers,
+        files={"files": ("May-26.xlsx", may_workbook, "application/vnd.ms-excel")},
+        data={"paths": "Binil JR/May-26.xlsx"},
+    )
+    first_batch = first_upload.json()["batch_id"]
+    first_run = client.post(
+        "/api/v1/imports/historical-timesheets/folder/run",
+        headers=headers,
+        json={"batch_id": first_batch},
+    )
+    _poll_folder_job(client, headers, first_run.json()["job_id"])
+
+    second_upload = client.post(
+        "/api/v1/imports/historical-timesheets/folder/upload",
+        headers=headers,
+        files={"files": ("May-26b.xlsx", extra_day_workbook, "application/vnd.ms-excel")},
+        data={"paths": "Binil JR/May-26b.xlsx"},
+    )
+    second_batch = second_upload.json()["batch_id"]
+    second_run = client.post(
+        "/api/v1/imports/historical-timesheets/folder/run",
+        headers=headers,
+        json={"batch_id": second_batch},
+    )
+    job = _poll_folder_job(client, headers, second_run.json()["job_id"])
+    assert job["summary"]["rows_imported"] == 1
+    assert job["summary"]["duplicates_skipped"] == 0
+
+    db = test_session_factory()
+    try:
+        project = db.scalar(select(Project).where(Project.tool_number == "T-100"))
+        entries = db.scalars(select(TimesheetEntry).where(TimesheetEntry.project_id == project.id)).all()
+        assert len(entries) == 2
+    finally:
+        db.close()
+
+
 def test_folder_import_skips_exact_duplicate(client, prosohm_productive_bytes):
     headers = login(client, "admin@prosohm.com")
     upload = client.post(

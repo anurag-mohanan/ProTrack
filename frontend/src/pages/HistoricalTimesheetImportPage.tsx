@@ -439,10 +439,10 @@ export function HistoricalTimesheetImportPage() {
             <Stack direction="row" spacing={3} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
               <SummaryMetric label="Designers Imported" value={job.summary.designers_imported} />
               <SummaryMetric label="Files Imported" value={job.summary.files_imported} />
-              <SummaryMetric label="Rows Read" value={job.summary.rows_read} />
+              <SummaryMetric label="Total Rows Read" value={job.summary.rows_read} />
               <SummaryMetric label="Imported" value={job.summary.rows_imported} />
               <SummaryMetric label="Duplicates Skipped" value={job.summary.duplicates_skipped} />
-              <SummaryMetric label="Errors" value={job.summary.errors} />
+              <SummaryMetric label="Validation Errors" value={job.summary.errors} />
               <SummaryMetric
                 label="Duration"
                 value={formatDuration(job.summary.duration_seconds)}

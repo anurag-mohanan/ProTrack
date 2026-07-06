@@ -187,7 +187,7 @@ def timesheet_duplicate_key(
     is_billable: bool,
     notes: str | None = None,
 ) -> tuple:
-    """Duplicate when designer, date, project/NP, task, hours, billable, and notes all match."""
+    """Duplicate when designer, date, project/NP, task, hours, billable, notes, month, and year all match."""
     project_key = (np_code or project_number or "").strip().upper()
     task_key = (task or "").strip().lower()
     return (
@@ -198,6 +198,8 @@ def timesheet_duplicate_key(
         _hours_key(hours),
         is_billable,
         _notes_key(notes),
+        entry_date.year,
+        entry_date.month,
     )
 
 
@@ -228,7 +230,12 @@ def timesheet_duplicate_key_for_row(
 def load_timesheet_duplicate_keys(
     db: Session,
     user_id: uuid.UUID | None = None,
+    *,
+    year: int | None = None,
+    month: int | None = None,
 ) -> set[tuple]:
+    from sqlalchemy import extract, func, select
+
     query = (
         select(
             Timesheet.user_id,
@@ -248,6 +255,10 @@ def load_timesheet_duplicate_keys(
     )
     if user_id is not None:
         query = query.where(Timesheet.user_id == user_id)
+    if year is not None:
+        query = query.where(extract("year", TimesheetEntry.entry_date) == year)
+    if month is not None:
+        query = query.where(extract("month", TimesheetEntry.entry_date) == month)
 
     keys: set[tuple] = set()
     for row in db.execute(query).all():
@@ -267,13 +278,28 @@ def load_timesheet_duplicate_keys(
     return keys
 
 
+def designer_has_entries_for_month(
+    db: Session,
+    user_id: uuid.UUID,
+    year: int,
+    month: int,
+) -> bool:
+    from sqlalchemy import extract, func, select
+
+    count = db.scalar(
+        select(func.count())
+        .select_from(TimesheetEntry)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(
+            Timesheet.user_id == user_id,
+            extract("year", TimesheetEntry.entry_date) == year,
+            extract("month", TimesheetEntry.entry_date) == month,
+        )
+    )
+    return int(count or 0) > 0
+
+
 def _normalize_np_code(value: str | None) -> str | None:
-    if not value:
-        return None
-    code = value.strip().upper()
-    return code if code in KNOWN_NP_CODES else None
-
-
     if not value:
         return None
     code = value.strip().upper()
@@ -733,6 +759,8 @@ def validate_upload(db: Session, upload_id: str) -> TimesheetImportValidateRespo
                 _hours_key(row.hours),
                 is_billable,
                 _notes_key(row.description),
+                row.entry_date.year,
+                row.entry_date.month,
             )
             if dup_key in seen_keys:
                 issues.append(
@@ -986,7 +1014,20 @@ def run_timesheet_import(
 
     entries_to_add: list[TimesheetEntry] = []
     affected_projects: set[uuid.UUID] = set()
-    seen_duplicate_keys = load_timesheet_duplicate_keys(db, designer.id)
+    valid_dates = [row.entry_date for row in rows if row.entry_date and not row.errors]
+    check_duplicates = False
+    seen_duplicate_keys: set[tuple] = set()
+    if valid_dates:
+        month_counts = Counter((d.year, d.month) for d in valid_dates)
+        workbook_year, workbook_month = month_counts.most_common(1)[0][0]
+        if designer_has_entries_for_month(db, designer.id, workbook_year, workbook_month):
+            check_duplicates = True
+            seen_duplicate_keys = load_timesheet_duplicate_keys(
+                db,
+                designer.id,
+                year=workbook_year,
+                month=workbook_month,
+            )
 
     total = len(rows)
     processed = 0
@@ -1078,14 +1119,18 @@ def run_timesheet_import(
                 description=row.description,
                 is_np_row=row.is_np_row,
             )
-            if dup_key in seen_duplicate_keys:
+            if check_duplicates and dup_key in seen_duplicate_keys:
                 summary.duplicates_skipped += 1
                 summary.rows_skipped += 1
                 preview.status_label = TimesheetImportRowStatus.skipped
-                preview.messages.append("Duplicate entry skipped.")
+                preview.messages.append(
+                    "Duplicate entry skipped: matching designer, date, project/NP code, "
+                    "task, hours, billable, notes, month, and year."
+                )
                 error_log.append(preview)
                 continue
-            seen_duplicate_keys.add(dup_key)
+            if check_duplicates:
+                seen_duplicate_keys.add(dup_key)
 
             entries_to_add.append(entry)
             summary.rows_imported += 1

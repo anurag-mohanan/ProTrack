@@ -46,6 +46,7 @@ from app.services.historical_timesheet_import_service import (
     _parse_decimal,
     _parse_date,
     _resolve_task_type_name,
+    designer_has_entries_for_month,
     load_timesheet_duplicate_keys,
     timesheet_duplicate_key,
 )
@@ -86,6 +87,8 @@ class ProsohmWorkbook:
     folder_designer: str
     designer: str
     month_label: str | None
+    workbook_year: int | None = None
+    workbook_month: int | None = None
     rows: list[ProsohmRow] = field(default_factory=list)
 
 
@@ -238,6 +241,8 @@ def parse_prosohm_workbook(file_path: Path, *, relative_path: str | None = None)
             folder_designer=folder_designer,
             designer=designer,
             month_label=month_label,
+            workbook_year=month_hint[0] if month_hint else None,
+            workbook_month=month_hint[1] if month_hint else None,
             rows=parsed_rows,
         )
     finally:
@@ -358,6 +363,12 @@ def create_pre_import_backup() -> Path | None:
     return dest
 
 
+DUPLICATE_SKIP_REASON = (
+    "Duplicate Entry: matching designer, date, project/NP code, task, hours, "
+    "billable, notes, month, and year"
+)
+
+
 def _log_row(
     file_name: str,
     *,
@@ -412,7 +423,6 @@ def run_folder_import(
     files, _ = resolve_source_files(batch_id=batch_id, source_path=source_path)
     summary = FolderImportSummary(backup_path=str(backup_path) if backup_path else None)
     log_rows: list[FolderImportLogRow] = []
-    seen_duplicate_keys = load_timesheet_duplicate_keys(db)
 
     workbooks: list[ProsohmWorkbook] = []
     for path, rel in files:
@@ -475,6 +485,26 @@ def run_folder_import(
 
             designers_seen.add(designer_name)
             file_had_import = False
+
+            check_duplicates = False
+            workbook_dup_keys: set[tuple] = set()
+            if (
+                workbook.workbook_year is not None
+                and workbook.workbook_month is not None
+                and designer_has_entries_for_month(
+                    db,
+                    designer_user.id,
+                    workbook.workbook_year,
+                    workbook.workbook_month,
+                )
+            ):
+                check_duplicates = True
+                workbook_dup_keys = load_timesheet_duplicate_keys(
+                    db,
+                    designer_user.id,
+                    year=workbook.workbook_year,
+                    month=workbook.workbook_month,
+                )
 
             for row in workbook.rows:
                 if cancel_check and cancel_check():
@@ -626,32 +656,33 @@ def run_folder_import(
                     )
                     affected_projects.add(project.id)
 
-                dup_key = timesheet_duplicate_key(
-                    user_id=designer_user.id,
-                    entry_date=row.entry_date,
-                    project_number=None if row.is_np_row else row.project_number,
-                    np_code=row.np_code if row.is_np_row else None,
-                    task=None if row.is_np_row else row.task,
-                    hours=row.hours,
-                    is_billable=entry.is_billable,
-                    notes=row.notes,
-                )
-                if dup_key in seen_duplicate_keys:
-                    summary.duplicates_skipped += 1
-                    log_rows.append(
-                        _log_row(
-                            file_name,
-                            row_number=row.row_number,
-                            designer=designer_name,
-                            entry_date=row.entry_date,
-                            project=row.project_number,
-                            reason="Duplicate Entry",
-                        )
+                if check_duplicates:
+                    dup_key = timesheet_duplicate_key(
+                        user_id=designer_user.id,
+                        entry_date=row.entry_date,
+                        project_number=None if row.is_np_row else row.project_number,
+                        np_code=row.np_code if row.is_np_row else None,
+                        task=None if row.is_np_row else row.task,
+                        hours=row.hours,
+                        is_billable=entry.is_billable,
+                        notes=row.notes,
                     )
-                    continue
+                    if dup_key in workbook_dup_keys:
+                        summary.duplicates_skipped += 1
+                        log_rows.append(
+                            _log_row(
+                                file_name,
+                                row_number=row.row_number,
+                                designer=designer_name,
+                                entry_date=row.entry_date,
+                                project=row.project_number,
+                                reason=DUPLICATE_SKIP_REASON,
+                            )
+                        )
+                        continue
+                    workbook_dup_keys.add(dup_key)
 
                 pending_entries.append(entry)
-                seen_duplicate_keys.add(dup_key)
                 summary.rows_imported += 1
                 file_had_import = True
 

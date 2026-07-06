@@ -179,7 +179,8 @@ def calculate_project_health(
 def calculate_hours(db: Session, project: Project) -> ProjectHours:
     total = db.scalar(
         select(func.coalesce(func.sum(TimesheetEntry.hours), 0)).where(
-            TimesheetEntry.project_id == project.id
+            TimesheetEntry.project_id == project.id,
+            TimesheetEntry.is_deleted.is_(False),
         )
     )
     quoted = _round_hours(_decimal(project.quoted_hours))
@@ -204,7 +205,10 @@ def batch_calculate_hours(
     project_ids = [project.id for project in projects]
     actual_rows = db.execute(
         select(TimesheetEntry.project_id, func.coalesce(func.sum(TimesheetEntry.hours), 0))
-        .where(TimesheetEntry.project_id.in_(project_ids))
+        .where(
+            TimesheetEntry.project_id.in_(project_ids),
+            TimesheetEntry.is_deleted.is_(False),
+        )
         .group_by(TimesheetEntry.project_id)
     ).all()
     actual_by_project = {row[0]: _round_hours(_decimal(row[1])) for row in actual_rows}

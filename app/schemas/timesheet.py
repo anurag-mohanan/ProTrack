@@ -132,6 +132,25 @@ class TimesheetEntryBulkResponse(BaseModel):
     deleted: list[UUID]
 
 
+class TimesheetEntryDeletionLogRead(TimestampSchema):
+    id: UUID
+    entry_id: UUID
+    designer_user_id: UUID
+    designer_name: str
+    entry_date: date
+    tool_number: str | None = None
+    task_name: str | None = None
+    hours: Decimal
+    is_billable: bool
+    notes: str | None = None
+    deleted_by_id: UUID
+    deleted_by_name: str | None = None
+    deleted_at: datetime
+    reason: str
+    restored_at: datetime | None = None
+    restored_by_id: UUID | None = None
+
+
 class ActivityRead(TimestampSchema):
     id: UUID
     user_id: UUID | None = None

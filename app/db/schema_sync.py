@@ -726,6 +726,51 @@ def ensure_timesheet_entry_timestamps(engine: Engine) -> None:
         )
 
 
+def ensure_timesheet_entry_soft_delete(engine: Engine) -> None:
+    """Add soft-delete columns to timesheet entries."""
+    dialect = engine.dialect.name
+    columns_sqlite = [
+        ("is_deleted", "is_deleted BOOLEAN NOT NULL DEFAULT 0"),
+        ("deleted_at", "deleted_at DATETIME"),
+        ("deleted_by_id", "deleted_by_id BLOB"),
+        ("delete_reason", "delete_reason VARCHAR(100)"),
+    ]
+    if dialect == "sqlite":
+        for column_name, ddl in columns_sqlite:
+            if not _sqlite_has_column(engine, "timesheet_entries", column_name):
+                with engine.begin() as connection:
+                    connection.execute(
+                        text(f"ALTER TABLE timesheet_entries ADD COLUMN {ddl}")
+                    )
+        return
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries "
+                    "ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries "
+                    "ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries "
+                    "ADD COLUMN IF NOT EXISTS deleted_by_id UUID REFERENCES users(id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries "
+                    "ADD COLUMN IF NOT EXISTS delete_reason VARCHAR(100)"
+                )
+            )
+
+
 def ensure_team_schema(engine: Engine) -> None:
     """Add team tables and project/template team foreign keys."""
     dialect = engine.dialect.name

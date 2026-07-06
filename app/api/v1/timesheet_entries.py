@@ -3,12 +3,14 @@ from uuid import UUID
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, HTTPException, Query, Session, get_db, status
+from app.core.permissions import can_access_administration
 from app.crud.timesheet_entry import timesheet_entry
 from app.models.models import User
 from app.schemas.timesheet import (
     TimesheetEntryBulkRequest,
     TimesheetEntryBulkResponse,
     TimesheetEntryCreate,
+    TimesheetEntryDeletionLogRead,
     TimesheetEntryRead,
     TimesheetEntryUpdate,
 )
@@ -51,6 +53,24 @@ def list_timesheet_entries(
     )
 
 
+@router.get("/deleted", response_model=list[TimesheetEntryDeletionLogRead])
+def list_deleted_timesheet_entries(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    include_restored: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not can_access_administration(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    return timesheet_entry.list_deletion_logs(
+        db, skip=skip, limit=limit, include_restored=include_restored
+    )
+
+
 @router.get("/{record_id}", response_model=TimesheetEntryRead)
 def get_timesheet_entry(record_id: UUID, db: Session = Depends(get_db)):
     row = timesheet_entry.get_read(db, record_id)
@@ -75,6 +95,15 @@ def bulk_save_timesheet_entries(
     current_user: User = Depends(get_current_user),
 ):
     return timesheet_entry.bulk_save(db, actor=current_user, request=body)
+
+
+@router.post("/{record_id}/restore", response_model=TimesheetEntryRead)
+def restore_timesheet_entry(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return timesheet_entry.restore(db, record_id=record_id, actor=current_user)
 
 
 @router.patch("/{record_id}", response_model=TimesheetEntryRead)

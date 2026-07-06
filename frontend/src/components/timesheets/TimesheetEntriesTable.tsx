@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   IconButton,
@@ -37,6 +37,7 @@ interface TimesheetEntriesTableProps {
   onEdit: (entry: TimesheetEntry) => void;
   onDelete: (entry: TimesheetEntry) => void;
   isEntryEditable: (entry: TimesheetEntry) => boolean;
+  onRequestDeleteSelected?: () => void;
 }
 
 function entryToolLabel(entry: TimesheetEntry): string {
@@ -74,9 +75,31 @@ export function TimesheetEntriesTable({
   onEdit,
   onDelete,
   isEntryEditable,
+  onRequestDeleteSelected,
 }: TimesheetEntriesTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('entry_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' || readOnly || !selectedEntryId || !onRequestDeleteSelected) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      onRequestDeleteSelected();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onRequestDeleteSelected, readOnly, selectedEntryId]);
 
   const sortedEntries = useMemo(() => {
     const copy = [...entries];
@@ -177,6 +200,11 @@ export function TimesheetEntriesTable({
                     hover
                     selected={selectedEntryId === entry.id}
                     onClick={() => onSelect(selectedEntryId === entry.id ? null : entry)}
+                    onDoubleClick={(event) => {
+                      if (!editable) return;
+                      event.stopPropagation();
+                      onEdit(entry);
+                    }}
                     sx={{
                       cursor: 'pointer',
                       ...(dayOverLimit ? { bgcolor: 'warning.50' } : {}),

@@ -86,6 +86,43 @@ export async function deleteTimesheetEntry(entryId: string): Promise<void> {
   await apiClient.delete(`/timesheet-entries/${entryId}`);
 }
 
+export interface TimesheetEntryDeletionLog {
+  id: string;
+  entry_id: string;
+  designer_user_id: string;
+  designer_name: string;
+  entry_date: string;
+  tool_number: string | null;
+  task_name: string | null;
+  hours: number;
+  is_billable: boolean;
+  notes: string | null;
+  deleted_by_id: string;
+  deleted_by_name: string | null;
+  deleted_at: string;
+  reason: string;
+  restored_at: string | null;
+  restored_by_id: string | null;
+}
+
+export async function fetchDeletedTimesheetEntries(params?: {
+  skip?: number;
+  limit?: number;
+  include_restored?: boolean;
+}): Promise<TimesheetEntryDeletionLog[]> {
+  const { data } = await apiClient.get<TimesheetEntryDeletionLog[]>(
+    `/timesheet-entries/deleted${buildQuery(params)}`,
+  );
+  return data;
+}
+
+export async function restoreTimesheetEntry(entryId: string): Promise<TimesheetEntry> {
+  const { data } = await apiClient.post<TimesheetEntry>(
+    `/timesheet-entries/${entryId}/restore`,
+  );
+  return data;
+}
+
 export async function bulkSaveTimesheetEntries(
   payload: TimesheetEntryBulkRequest,
 ): Promise<TimesheetEntryBulkResponse> {

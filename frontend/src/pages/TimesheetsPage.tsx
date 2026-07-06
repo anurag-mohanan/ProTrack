@@ -4,10 +4,9 @@ import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
-import {
-  TimesheetEntryForm,
-  type TimesheetEntryFormValues,
-} from '../components/timesheets/TimesheetEntryForm';
+import { TimesheetEntryForm, type TimesheetEntryFormValues } from '../components/timesheets/TimesheetEntryForm';
+import { TimesheetEntryEditDialog } from '../components/timesheets/TimesheetEntryEditDialog';
+import { TimesheetEntryDeleteDialog } from '../components/timesheets/TimesheetEntryDeleteDialog';
 import { TimesheetEntriesTable } from '../components/timesheets/TimesheetEntriesTable';
 import { TimesheetMonthNavigation } from '../components/timesheets/TimesheetMonthNavigation';
 import { TimesheetMonthSummaryBar } from '../components/timesheets/TimesheetMonthSummaryBar';
@@ -47,7 +46,8 @@ export function TimesheetsPage() {
   const { user } = useAuth();
   const { showError, showSuccess } = useToast();
   const [monthValue, setMonthValue] = useState(currentMonthValue());
-  const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
+  const [editDialogEntry, setEditDialogEntry] = useState<TimesheetEntry | null>(null);
+  const [deleteDialogEntry, setDeleteDialogEntry] = useState<TimesheetEntry | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [toolbarDate, setToolbarDate] = useState(todayIsoDate());
@@ -142,7 +142,7 @@ export function TimesheetsPage() {
     [],
   );
 
-  const handleSaveEntry = async (values: TimesheetEntryFormValues) => {
+  const handleSaveEntry = async (values: TimesheetEntryFormValues, entryId?: string | null) => {
     const hours = Number(values.hours);
     if (!values.entryDate || !Number.isFinite(hours) || hours <= 0) {
       showError('Enter a valid date and hours.');
@@ -159,10 +159,10 @@ export function TimesheetsPage() {
 
     try {
       await workspace.saveEntryMutation.mutateAsync(
-        saveEntryPayload(values, editingEntry?.id),
+        saveEntryPayload(values, entryId),
       );
-      showSuccess(editingEntry ? 'Entry updated.' : 'Entry added.');
-      setEditingEntry(null);
+      showSuccess(entryId ? 'Entry updated.' : 'Entry added.');
+      setEditDialogEntry(null);
       setSelectedEntryId(null);
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Unable to save entry.');
@@ -170,13 +170,15 @@ export function TimesheetsPage() {
     }
   };
 
-  const handleDeleteEntry = async (entry: TimesheetEntry) => {
-    setDeletingEntryId(entry.id);
+  const handleConfirmDelete = async () => {
+    if (!deleteDialogEntry) return;
+    setDeletingEntryId(deleteDialogEntry.id);
     try {
-      await workspace.deleteEntryMutation.mutateAsync(entry.id);
-      if (editingEntry?.id === entry.id) setEditingEntry(null);
-      if (selectedEntryId === entry.id) setSelectedEntryId(null);
+      await workspace.deleteEntryMutation.mutateAsync(deleteDialogEntry.id);
+      if (editDialogEntry?.id === deleteDialogEntry.id) setEditDialogEntry(null);
+      if (selectedEntryId === deleteDialogEntry.id) setSelectedEntryId(null);
       showSuccess('Entry deleted.');
+      setDeleteDialogEntry(null);
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Unable to delete entry.');
     } finally {
@@ -312,6 +314,13 @@ export function TimesheetsPage() {
 
       <TimesheetMonthSummaryBar status={workspace.monthStatus} summary={workspace.summary} />
 
+      {!viewAllUsers &&
+      (workspace.monthStatus === 'submitted' || workspace.monthStatus === 'approved') ? (
+        <Alert severity="info" sx={{ mb: 1.5 }}>
+          This month&apos;s timesheet has already been submitted and can no longer be modified.
+        </Alert>
+      ) : null}
+
       {workspace.summary.remainingHours < 0 ? (
         <Alert severity="warning" sx={{ mb: 1.5 }}>
           Entered hours exceed expected hours for this month.
@@ -327,12 +336,12 @@ export function TimesheetsPage() {
           taskTypes={workspace.taskTypes}
           readOnly={readOnly}
           canOverrideBillable={canOverrideBillable(roleName)}
-          editingEntry={editingEntry}
+          editingEntry={null}
           dailyTotals={workspace.dailyTotals}
           dailyLimit={workspace.dailyLimit}
           saving={workspace.saveEntryMutation.isPending}
-          onSubmit={handleSaveEntry}
-          onCancelEdit={() => setEditingEntry(null)}
+          onSubmit={(values) => handleSaveEntry(values)}
+          onCancelEdit={() => undefined}
           onEntryDateChange={setToolbarDate}
         />
       ) : null}
@@ -371,11 +380,38 @@ export function TimesheetsPage() {
           deletingId={deletingEntryId}
           selectedEntryId={selectedEntryId}
           onSelect={(entry) => setSelectedEntryId(entry?.id ?? null)}
-          onEdit={setEditingEntry}
-          onDelete={(entry) => void handleDeleteEntry(entry)}
+          onEdit={setEditDialogEntry}
+          onDelete={setDeleteDialogEntry}
           isEntryEditable={workspace.isEntryEditable}
+          onRequestDeleteSelected={() => {
+            if (selectedEntry && workspace.isEntryEditable(selectedEntry) && !readOnly) {
+              setDeleteDialogEntry(selectedEntry);
+            }
+          }}
         />
       )}
+
+      <TimesheetEntryEditDialog
+        open={Boolean(editDialogEntry)}
+        entry={editDialogEntry}
+        projects={workspace.activeProjects}
+        npCodes={workspace.npCodes}
+        taskTypes={workspace.taskTypes}
+        canOverrideBillable={canOverrideBillable(roleName)}
+        dailyTotals={workspace.dailyTotals}
+        dailyLimit={workspace.dailyLimit}
+        saving={workspace.saveEntryMutation.isPending}
+        onSave={(values) => handleSaveEntry(values, editDialogEntry?.id)}
+        onClose={() => setEditDialogEntry(null)}
+      />
+
+      <TimesheetEntryDeleteDialog
+        open={Boolean(deleteDialogEntry)}
+        entry={deleteDialogEntry}
+        loading={Boolean(deletingEntryId)}
+        onCancel={() => setDeleteDialogEntry(null)}
+        onConfirm={() => void handleConfirmDelete()}
+      />
 
       {reviewableTimesheets.length ? (
         <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>

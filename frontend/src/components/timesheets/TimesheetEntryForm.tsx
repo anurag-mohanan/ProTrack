@@ -48,6 +48,7 @@ interface TimesheetEntryFormProps {
   onSubmit: (values: TimesheetEntryFormValues) => Promise<void>;
   onCancelEdit: () => void;
   onEntryDateChange?: (entryDate: string) => void;
+  variant?: 'inline' | 'dialog';
 }
 
 function readStored(key: string): string {
@@ -99,6 +100,7 @@ export function TimesheetEntryForm({
   onSubmit,
   onCancelEdit,
   onEntryDateChange,
+  variant = 'inline',
 }: TimesheetEntryFormProps) {
   const toolOptions = useMemo(() => buildToolOptions(projects, npCodes), [projects, npCodes]);
   const [form, setForm] = useState<TimesheetEntryFormValues>(emptyForm);
@@ -201,16 +203,20 @@ export function TimesheetEntryForm({
     <Box
       component="form"
       onSubmit={(event) => void handleSubmit(event)}
-      sx={{
-        p: 1.5,
-        borderRadius: 2,
-        border: 1,
-        borderColor: 'divider',
-        bgcolor: 'background.paper',
-        mb: 1.5,
-      }}
+      sx={
+        variant === 'dialog'
+          ? { pt: 0.5 }
+          : {
+              p: 1.5,
+              borderRadius: 2,
+              border: 1,
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              mb: 1.5,
+            }
+      }
     >
-      {editingEntry ? (
+      {editingEntry && variant === 'inline' ? (
         <Typography variant="caption" color="primary.main" sx={{ display: 'block', mb: 1, fontWeight: 700 }}>
           Editing entry — save or cancel to return to quick entry
         </Typography>
@@ -360,7 +366,7 @@ export function TimesheetEntryForm({
           type="submit"
           size="small"
           buttonVariant="primary"
-          startIcon={<AddIcon />}
+          startIcon={editingEntry ? undefined : <AddIcon />}
           disabled={readOnly || saving}
           loading={saving}
           sx={{ mt: 0.25, whiteSpace: 'nowrap' }}

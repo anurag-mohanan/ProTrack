@@ -165,6 +165,7 @@ export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = [
 export const ADMIN_AUDIT_ITEMS: AdminHubItem[] = [
   { id: 'audit-logs', title: 'Audit Logs', description: 'System activity and change history.', icon: HistoryIcon, path: '/admin/audit', comingSoon: true },
   { id: 'deleted-records', title: 'Deleted Records', description: 'Recover soft-deleted projects and users.', icon: DeleteIcon, path: '/admin/deleted-projects' },
+  { id: 'deleted-timesheets', title: 'Deleted Timesheet Entries', description: 'Audit and restore soft-deleted timesheet rows.', icon: ScheduleIcon, path: '/admin/deleted-timesheet-entries' },
   { id: 'archived-records', title: 'Archived Records', description: 'Review archived engineering projects.', icon: ArchiveIcon, path: '/projects/archived' },
   { id: 'system-health', title: 'System Health', description: 'Version, services, and runtime status.', icon: MonitorHeartIcon, path: '/admin/system' },
   { id: 'import-history', title: 'Import History', description: 'Historical import audit trail.', icon: WorkHistoryIcon, path: '/admin/imports/historical-timesheets#history' },

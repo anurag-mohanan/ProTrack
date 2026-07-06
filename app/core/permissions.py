@@ -16,6 +16,7 @@ from app.core.access_control import (
     SPECIAL_VIEW_RESOURCE_PLANNING,
     resolve_user_modules,
     resolve_user_special_permissions,
+    user_has_special,
 )
 from app.models.enums import TimesheetStatus
 from app.models.models import Project, Role, Timesheet, TimesheetEntry, User
@@ -226,10 +227,16 @@ def can_edit_timesheet(db: Session, user: User, timesheet: Timesheet) -> bool:
         return False
     if not can_read_timesheet(db, user, timesheet):
         return False
-    role_name = get_role_name(db, user)
+    if timesheet.user_id == user.id:
+        return True
+    if is_admin(db, user):
+        return True
+    role_name = normalize_role_name(get_role_name(db, user))
+    if user_has_special(user, role_name, SPECIAL_APPROVE_TIMESHEETS):
+        return True
     if role_name in FULL_ACCESS_ROLES:
         return True
-    return timesheet.user_id == user.id
+    return False
 
 
 def can_delete_timesheet(db: Session, user: User, timesheet: Timesheet) -> bool:

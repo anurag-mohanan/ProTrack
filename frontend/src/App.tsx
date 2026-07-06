@@ -55,6 +55,9 @@ const ContactsAdminPage = lazy(() => import('./pages/admin/ContactsPage'));
 const CustomersAdminPage = lazy(() => import('./pages/admin/CustomersPage'));
 const DeletedProjectsAdminPage = lazy(() => import('./pages/admin/DeletedProjectsPage'));
 const DeletedUsersAdminPage = lazy(() => import('./pages/admin/DeletedUsersPage'));
+const DeletedTimesheetEntriesAdminPage = lazy(
+  () => import('./pages/admin/DeletedTimesheetEntriesPage'),
+);
 const ProjectTemplatesAdminPage = lazy(() => import('./pages/admin/ProjectTemplatesPage'));
 const ProjectTemplateEditorPage = lazy(() => import('./pages/admin/ProjectTemplateEditorPage'));
 const ProjectTypesAdminPage = lazy(() => import('./pages/admin/ProjectTypesPage'));
@@ -400,6 +403,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <DeletedUsersAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/deleted-timesheet-entries"
+                        element={
+                          <LazyAdminPage>
+                            <DeletedTimesheetEntriesAdminPage />
                           </LazyAdminPage>
                         }
                       />

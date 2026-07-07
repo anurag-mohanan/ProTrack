@@ -8,7 +8,8 @@ import EventRoundedIcon from '@mui/icons-material/EventRounded';
 import type { NavigateFunction } from 'react-router-dom';
 import type { DashboardSummary } from '../../types';
 import { formatCellValue, formatNumber } from '../../utils/format';
-import { ExecutiveKpiGrid } from './ExecutiveKpiGrid';
+import { STABLE_TREND } from '../../utils/dashboardKpiMetrics';
+import { buildFlatKpiSections, ExecutiveKpiGrid } from './ExecutiveKpiGrid';
 
 interface StaffDashboardViewProps {
   summary: DashboardSummary | undefined;
@@ -26,47 +27,47 @@ export function StaffDashboardView({ summary, unavailable, navigate }: StaffDash
     {
       title: 'My Projects',
       value: unavailable ? '—' : formatNumber(metrics?.my_projects ?? 0, 0),
-      subtitle: 'Assigned to you',
       icon: FolderOpenRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/projects'),
     },
     {
-      title: 'My Current Project',
+      title: 'Current Project',
       value: unavailable ? '—' : currentProjectLabel,
-      subtitle: formatCellValue(metrics?.current_part_description) || 'No active assignment',
       icon: BuildRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/projects'),
     },
     {
-      title: metrics?.task_label ?? 'Assigned Milestones',
+      title: metrics?.task_label ?? 'Milestones',
       value: unavailable ? '—' : formatNumber(metrics?.assigned_milestones ?? 0, 0),
-      subtitle: 'Open milestones',
       icon: TaskAltRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/projects'),
     },
     {
-      title: 'Upcoming Due Dates',
+      title: 'Due Soon',
       value: unavailable ? '—' : formatNumber(metrics?.upcoming_due_dates ?? 0, 0),
-      subtitle: 'Due within 7 days',
       icon: EventRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/projects?due=7days'),
     },
     {
-      title: 'Hours Logged This Week',
+      title: 'Hours This Week',
       value: unavailable ? '—' : formatNumber(metrics?.hours_logged_this_week ?? 0, 1),
-      subtitle: 'Approved and draft entries',
       icon: TimerRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/timesheets'),
     },
     {
-      title: 'Pending Timesheet Submission',
+      title: 'Pending Timesheets',
       value: unavailable ? '—' : formatNumber(metrics?.pending_timesheet_submissions ?? 0, 0),
-      subtitle: 'Draft timesheets',
       icon: PendingActionsRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/timesheets'),
     },
     {
-      title: 'My Tasks Today',
+      title: 'My Tasks',
       value: unavailable
         ? '—'
         : formatNumber(
@@ -74,11 +75,11 @@ export function StaffDashboardView({ summary, unavailable, navigate }: StaffDash
               (summary?.my_tasks.pending_reviews?.length ?? 0),
             0,
           ),
-      subtitle: "Today's priorities",
       icon: ScheduleRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/timesheets'),
     },
   ];
 
-  return <ExecutiveKpiGrid cards={cards} />;
+  return <ExecutiveKpiGrid sections={buildFlatKpiSections(cards)} />;
 }

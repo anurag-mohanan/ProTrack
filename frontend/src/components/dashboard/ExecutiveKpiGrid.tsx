@@ -1,26 +1,45 @@
-import { Box } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
+import DomainRoundedIcon from '@mui/icons-material/DomainRounded';
 import FolderOpenRoundedIcon from '@mui/icons-material/FolderOpenRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
+import HandymanRoundedIcon from '@mui/icons-material/HandymanRounded';
+import PauseCircleOutlineRoundedIcon from '@mui/icons-material/PauseCircleOutlineRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import SpeedRoundedIcon from '@mui/icons-material/SpeedRounded';
 import TimerRoundedIcon from '@mui/icons-material/TimerRounded';
+import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
+import WorkOutlineRoundedIcon from '@mui/icons-material/WorkOutlineRounded';
 import type { NavigateFunction } from 'react-router-dom';
 import type { DashboardSummary } from '../../types';
+import type { KpiAccent } from '../ui/design-system/KpiMetricCard';
 import { formatNumber } from '../../utils/format';
-import { ActionKpiCard } from './DashboardCards';
+import {
+  activeCustomerCount,
+  averageHoursPerProject,
+  availableCapacityHours,
+  designerUtilizationPercent,
+  hoursUtilizationPercent,
+  STABLE_TREND,
+  surfacerUtilizationPercent,
+  teamProductivityPercent,
+} from '../../utils/dashboardKpiMetrics';
+import { DashboardKpiCard, type DashboardKpiTrend } from './DashboardKpiCard';
 
-const kpiGridSx = {
-  display: 'grid',
-  gridTemplateColumns: {
-    xs: '1fr',
-    sm: 'repeat(2, minmax(0, 1fr))',
-    lg: 'repeat(4, minmax(0, 1fr))',
-  },
-  gap: 2.5,
-  mb: 3,
-};
+export interface DashboardKpiItem {
+  title: string;
+  value: string;
+  icon: typeof FolderOpenRoundedIcon;
+  accent?: KpiAccent;
+  trend?: DashboardKpiTrend;
+  onClick?: () => void;
+}
+
+export interface DashboardKpiSection {
+  title: string;
+  cards: DashboardKpiItem[];
+}
 
 interface BuildExecutiveKpisOptions {
   summary: DashboardSummary | undefined;
@@ -28,98 +47,228 @@ interface BuildExecutiveKpisOptions {
   navigate: NavigateFunction;
 }
 
-function averageTeamUtilization(summary: DashboardSummary | undefined): number {
-  const teams = summary?.team_summary ?? [];
-  if (!teams.length) return 0;
-  const total = teams.reduce((sum, row) => {
-    const capacity = Number(row.actual_hours) + Number(row.available_capacity_hours);
-    if (capacity <= 0) return sum;
-    return sum + (Number(row.actual_hours) / capacity) * 100;
-  }, 0);
-  return Math.round(total / teams.length);
+function trendSignal(value: number, direction: 'up' | 'down' = 'up'): DashboardKpiTrend {
+  if (value === 0) return STABLE_TREND;
+  const prefix = direction === 'up' ? '+' : '-';
+  return { value: `${prefix}${formatNumber(value, 0)}`, direction };
 }
 
-export function buildExecutiveKpis({ summary, unavailable, navigate }: BuildExecutiveKpisOptions) {
-  const designersAvailable = summary?.designer_availability_summary?.available ?? 0;
-  const utilization = averageTeamUtilization(summary);
+export function buildExecutiveKpiSections({
+  summary,
+  unavailable,
+  navigate,
+}: BuildExecutiveKpisOptions): DashboardKpiSection[] {
+  const dash = (value: string) => (unavailable ? '—' : value);
+  const n = (value: number, decimals = 0) => dash(formatNumber(value, decimals));
+
+  const active = summary?.active_projects ?? 0;
+  const dueWeek = summary?.projects_due_this_week ?? 0;
+  const overdue = summary?.overdue_projects ?? 0;
+  const onHold = summary?.on_hold_projects ?? 0;
+  const completedMonth = summary?.completed_this_month ?? 0;
+  const quoted = summary?.total_quoted_hours_active ?? 0;
+  const actual = summary?.total_actual_hours_productive ?? 0;
+  const utilPct = hoursUtilizationPercent(summary);
+  const capacityHrs = availableCapacityHours(summary);
+  const avgHrs = averageHoursPerProject(summary);
+  const customers = activeCustomerCount(summary);
+  const inProgress = summary?.being_worked_on_projects ?? summary?.in_progress_projects ?? 0;
+  const designerUtil = designerUtilizationPercent(summary);
+  const surfacerUtil = surfacerUtilizationPercent(summary);
+  const productivity = teamProductivityPercent(summary);
 
   return [
     {
-      title: 'Active Projects',
-      value: unavailable ? '—' : formatNumber(summary!.active_projects ?? 0, 0),
-      subtitle: 'In progress or on hold',
-      icon: FolderOpenRoundedIcon,
-      statusColor: !unavailable && (summary!.active_projects ?? 0) > 0 ? ('primary' as const) : undefined,
-      onClick: () => navigate('/projects?lifecycle=active'),
+      title: 'Project Health',
+      cards: [
+        {
+          title: 'Active Projects',
+          value: n(active, 0),
+          icon: FolderOpenRoundedIcon,
+          accent: active > 0 ? 'primary' : undefined,
+          trend: STABLE_TREND,
+          onClick: () => navigate('/projects?lifecycle=active'),
+        },
+        {
+          title: 'Due This Week',
+          value: n(dueWeek, 0),
+          icon: ScheduleRoundedIcon,
+          accent: dueWeek > 0 ? 'warning' : undefined,
+          trend: trendSignal(dueWeek),
+          onClick: () => navigate('/projects?due=week'),
+        },
+        {
+          title: 'Overdue',
+          value: n(overdue, 0),
+          icon: WarningAmberRoundedIcon,
+          accent: overdue > 0 ? 'error' : undefined,
+          trend: overdue > 0 ? trendSignal(overdue) : STABLE_TREND,
+          onClick: () => navigate('/projects?due=overdue'),
+        },
+        {
+          title: 'On Hold',
+          value: n(onHold, 0),
+          icon: PauseCircleOutlineRoundedIcon,
+          accent: onHold > 0 ? 'warning' : undefined,
+          trend: STABLE_TREND,
+          onClick: () => navigate('/projects?execution_status=on_hold'),
+        },
+        {
+          title: 'Completed',
+          value: n(completedMonth, 0),
+          icon: CheckCircleOutlineRoundedIcon,
+          accent: completedMonth > 0 ? 'success' : undefined,
+          trend: completedMonth > 0 ? trendSignal(completedMonth) : STABLE_TREND,
+          onClick: () => navigate('/projects?completed=month'),
+        },
+      ],
     },
     {
-      title: 'Due This Week',
-      value: unavailable ? '—' : formatNumber(summary!.projects_due_this_week ?? 0, 0),
-      subtitle: 'Deliveries within 7 days',
-      icon: ScheduleRoundedIcon,
-      statusColor: !unavailable && (summary!.projects_due_this_week ?? 0) > 0 ? ('warning' as const) : undefined,
-      trend: !unavailable && (summary!.projects_due_this_week ?? 0) > 0
-        ? { value: 'Upcoming', direction: 'up' as const }
-        : undefined,
-      onClick: () => navigate('/projects?due=7days'),
+      title: 'Engineering Performance',
+      cards: [
+        {
+          title: 'Quoted Hours',
+          value: n(quoted, 0),
+          icon: TimerRoundedIcon,
+          accent: 'info',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/reports?tab=project-hours'),
+        },
+        {
+          title: 'Actual Hours',
+          value: n(actual, 0),
+          icon: TimerRoundedIcon,
+          accent: 'primary',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/reports?tab=project-hours'),
+        },
+        {
+          title: 'Utilization',
+          value: dash(`${utilPct}%`),
+          icon: SpeedRoundedIcon,
+          accent: utilPct > 100 ? 'error' : utilPct >= 90 ? 'warning' : 'success',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/resource-planning'),
+        },
+        {
+          title: 'Available Capacity',
+          value: n(capacityHrs, 0),
+          icon: GroupsRoundedIcon,
+          accent: 'success',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/resource-planning'),
+        },
+        {
+          title: 'Avg Hrs / Project',
+          value: n(avgHrs, 1),
+          icon: WorkOutlineRoundedIcon,
+          trend: STABLE_TREND,
+          onClick: () => navigate('/reports'),
+        },
+      ],
     },
     {
-      title: 'Delayed Projects',
-      value: unavailable ? '—' : formatNumber(summary!.overdue_projects ?? 0, 0),
-      subtitle: 'Past due date',
-      icon: WarningAmberRoundedIcon,
-      statusColor: !unavailable && (summary!.overdue_projects ?? 0) > 0 ? ('error' as const) : undefined,
-      onClick: () => navigate('/projects?due=overdue'),
-    },
-    {
-      title: 'Released This Month',
-      value: unavailable ? '—' : formatNumber(summary!.completed_this_month ?? 0, 0),
-      subtitle: 'Completed projects',
-      icon: CheckCircleOutlineRoundedIcon,
-      statusColor: !unavailable && (summary!.completed_this_month ?? 0) > 0 ? ('success' as const) : undefined,
-      onClick: () => navigate('/projects?lifecycle=completed'),
-    },
-    {
-      title: 'Designers Available',
-      value: unavailable ? '—' : formatNumber(designersAvailable, 0),
-      subtitle: 'Ready for assignment today',
-      icon: GroupsRoundedIcon,
-      statusColor: !unavailable && designersAvailable > 0 ? ('success' as const) : undefined,
-      onClick: () => navigate('/workload'),
-    },
-    {
-      title: 'Hours Logged Today',
-      value: unavailable ? '—' : formatNumber(summary!.hours_logged_today ?? 0, 1),
-      subtitle: 'Across all designers',
-      icon: TimerRoundedIcon,
-      onClick: () => navigate('/timesheets'),
-    },
-    {
-      title: 'Resource Utilization',
-      value: unavailable ? '—' : `${utilization}%`,
-      subtitle: 'Average team loading',
-      icon: SpeedRoundedIcon,
-      statusColor:
-        !unavailable && utilization >= 90
-          ? ('error' as const)
-          : utilization >= 75
-            ? ('warning' as const)
-            : ('success' as const),
-      onClick: () => navigate('/resource-planning'),
+      title: 'Business Snapshot',
+      cards: [
+        {
+          title: 'Active Customers',
+          value: n(customers, 0),
+          icon: DomainRoundedIcon,
+          accent: 'info',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/admin/customers'),
+        },
+        {
+          title: 'In Progress',
+          value: n(inProgress, 0),
+          icon: TrendingUpRoundedIcon,
+          accent: 'primary',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/projects?execution_status=currently_being_worked_on'),
+        },
+        {
+          title: 'Delivered',
+          value: n(completedMonth, 0),
+          icon: CheckCircleOutlineRoundedIcon,
+          accent: 'success',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/projects?completed=month'),
+        },
+        {
+          title: 'Designers Util',
+          value: dash(`${designerUtil}%`),
+          icon: GroupsRoundedIcon,
+          accent: designerUtil >= 90 ? 'error' : designerUtil >= 75 ? 'warning' : 'success',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/workload'),
+        },
+        {
+          title: 'Surfacers Util',
+          value: dash(`${surfacerUtil}%`),
+          icon: HandymanRoundedIcon,
+          accent: surfacerUtil >= 90 ? 'error' : surfacerUtil >= 75 ? 'warning' : 'success',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/workload'),
+        },
+        {
+          title: 'Team Productivity',
+          value: dash(`${productivity}%`),
+          icon: SpeedRoundedIcon,
+          accent: productivity >= 80 ? 'success' : 'warning',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/reports'),
+        },
+      ],
     },
   ];
 }
 
-export function ExecutiveKpiGrid({
-  cards,
-}: {
-  cards: Parameters<typeof ActionKpiCard>[0][];
-}) {
+export function buildFlatKpiSections(cards: DashboardKpiItem[]): DashboardKpiSection[] {
+  return [{ title: 'Overview', cards }];
+}
+
+const sectionGridSx = {
+  display: 'grid',
+  gridTemplateColumns: {
+    xs: 'repeat(2, minmax(0, 1fr))',
+    sm: 'repeat(3, minmax(0, 1fr))',
+    md: 'repeat(4, minmax(0, 1fr))',
+    xl: 'repeat(5, minmax(0, 1fr))',
+  },
+  gap: 0.75,
+};
+
+export function ExecutiveKpiGrid({ sections }: { sections: DashboardKpiSection[] }) {
   return (
-    <Box sx={kpiGridSx}>
-      {cards.map((card) => (
-        <ActionKpiCard key={card.title} {...card} />
+    <Box sx={{ mb: 1.5 }}>
+      {sections.map((section) => (
+        <Box key={section.title} sx={{ mb: 0.75 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              fontWeight: 700,
+              color: 'text.secondary',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              fontSize: 10,
+              mb: 0.4,
+              display: 'block',
+            }}
+          >
+            {section.title}
+          </Typography>
+          <Box sx={sectionGridSx}>
+            {section.cards.map((card) => (
+              <DashboardKpiCard key={`${section.title}-${card.title}`} {...card} />
+            ))}
+          </Box>
+        </Box>
       ))}
     </Box>
   );
+}
+
+/** @deprecated Use buildExecutiveKpiSections */
+export function buildExecutiveKpis(options: BuildExecutiveKpisOptions): DashboardKpiItem[] {
+  return buildExecutiveKpiSections(options).flatMap((section) => section.cards);
 }

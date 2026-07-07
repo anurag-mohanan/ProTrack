@@ -45,9 +45,9 @@ export function DashboardHeader({
         justifyContent: 'space-between',
         alignItems: { xs: 'flex-start', md: 'center' },
         flexDirection: { xs: 'column', md: 'row' },
-        gap: 2.5,
-        mb: 3,
-        p: 3,
+        gap: 1.5,
+        mb: 1.5,
+        p: 2,
         borderRadius: `${designTokens.radius.lg}px`,
         bgcolor: designTokens.semantic.card,
         border: '1px solid',
@@ -60,7 +60,7 @@ export function DashboardHeader({
         <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
           Engineering Command Center
         </Typography>
-        <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.03em', mb: 0.5, fontSize: { xs: '1.5rem', md: '1.75rem' } }}>
+        <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.03em', mb: 0.25 }}>
           {getGreeting()}, {displayName}
         </Typography>
         <Typography variant="body2" color="text.secondary">

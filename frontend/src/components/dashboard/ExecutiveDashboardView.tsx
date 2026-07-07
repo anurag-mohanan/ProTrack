@@ -5,7 +5,7 @@ import type { DashboardSummary } from '../../types';
 import { DashboardPanel } from '../ui/design-system/DashboardPanel';
 import { ActivityTimeline } from './ActivityTimeline';
 import { ProjectHealthChart, ProjectStageChart, CustomerWorkloadChart, HoursSummaryChart } from './DashboardCharts';
-import { buildExecutiveKpis, ExecutiveKpiGrid } from './ExecutiveKpiGrid';
+import { buildExecutiveKpiSections, ExecutiveKpiGrid } from './ExecutiveKpiGrid';
 import { CustomerWorkloadWidget } from './CustomerWorkloadWidget';
 import { DashboardKpiSkeleton, DashboardPanelSkeleton } from './DashboardSkeletons';
 import { DesignerUtilizationList } from './DesignerUtilizationList';
@@ -32,7 +32,7 @@ export function ExecutiveDashboardView({
   navigate,
   isAdmin = false,
 }: ExecutiveDashboardViewProps) {
-  const executiveKpis = buildExecutiveKpis({ summary, unavailable, navigate });
+  const kpiSections = buildExecutiveKpiSections({ summary, unavailable, navigate });
   const attentionRows = summary?.attention_projects ?? [];
   const upcomingDeliveries = attentionRows.filter((row) => row.attention_reason === 'due_soon');
   const delayedProjects = attentionRows.filter((row) => row.attention_reason === 'overdue');
@@ -66,7 +66,7 @@ export function ExecutiveDashboardView({
   const isVisible = (id: string) => visibleOrdered.some((w) => w.id === id);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <DashboardWidgetToolbar
         storageKey="executive-dashboard-widgets"
         widgets={[
@@ -80,7 +80,7 @@ export function ExecutiveDashboardView({
         ]}
       />
 
-      {loading ? <DashboardKpiSkeleton count={7} /> : <ExecutiveKpiGrid cards={executiveKpis} />}
+      {loading ? <DashboardKpiSkeleton /> : <ExecutiveKpiGrid sections={kpiSections} />}
       {loading ? null : (
         <DashboardPanel title="Insights" subtitle="Automatically detected highlights">
           <Stack spacing={1}>

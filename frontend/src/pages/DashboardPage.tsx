@@ -80,7 +80,7 @@ export function DashboardPage() {
         <>
           <WidgetErrorBoundary title="KPI cards">
             {loading ? (
-              <DashboardKpiSkeleton count={roleGroup === 'staff' ? 6 : 6} />
+              <DashboardKpiSkeleton rows={2} />
             ) : roleGroup === 'staff' ? (
               <StaffDashboardView summary={summary} unavailable={unavailable} navigate={navigate} />
             ) : showDesignLeaderExtras ? (

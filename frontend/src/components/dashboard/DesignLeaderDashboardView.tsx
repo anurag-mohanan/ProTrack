@@ -7,7 +7,8 @@ import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded';
 import type { NavigateFunction } from 'react-router-dom';
 import type { DashboardSummary } from '../../types';
 import { formatNumber } from '../../utils/format';
-import { ExecutiveKpiGrid } from './ExecutiveKpiGrid';
+import { STABLE_TREND } from '../../utils/dashboardKpiMetrics';
+import { buildFlatKpiSections, ExecutiveKpiGrid } from './ExecutiveKpiGrid';
 
 interface DesignLeaderDashboardViewProps {
   summary: DashboardSummary | undefined;
@@ -28,37 +29,38 @@ export function DesignLeaderDashboardView({
     {
       title: 'Team Projects',
       value: unavailable ? '—' : formatNumber(summary!.active_projects ?? 0, 0),
-      subtitle: 'Assigned to your team',
       icon: FolderOpenRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/projects'),
     },
     {
       title: 'Due This Week',
       value: unavailable ? '—' : formatNumber(summary!.projects_due_this_week ?? 0, 0),
-      subtitle: 'Team deadlines',
       icon: ScheduleRoundedIcon,
-      onClick: () => navigate('/projects?due=7days'),
+      accent: !unavailable && (summary!.projects_due_this_week ?? 0) > 0 ? ('warning' as const) : undefined,
+      trend: STABLE_TREND,
+      onClick: () => navigate('/projects?due=week'),
     },
     {
-      title: 'Overdue Projects',
+      title: 'Overdue',
       value: unavailable ? '—' : formatNumber(summary!.overdue_projects ?? 0, 0),
-      subtitle: 'Needs attention',
       icon: WarningAmberRoundedIcon,
-      statusColor: !unavailable && (summary!.overdue_projects ?? 0) > 0 ? ('error' as const) : undefined,
+      accent: !unavailable && (summary!.overdue_projects ?? 0) > 0 ? ('error' as const) : undefined,
+      trend: STABLE_TREND,
       onClick: () => navigate('/projects?due=overdue'),
     },
     {
       title: 'Pending Reviews',
       value: unavailable ? '—' : formatNumber(pendingReviews, 0),
-      subtitle: 'Milestones awaiting review',
       icon: TaskAltRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/projects'),
     },
     {
       title: 'Pending Timesheets',
       value: unavailable ? '—' : formatNumber(pendingTimesheets, 0),
-      subtitle: 'Team submissions',
       icon: PendingActionsRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -68,11 +70,11 @@ export function DesignLeaderDashboardView({
         : teamUtilization
           ? `${formatNumber(teamUtilization.actual_hours, 0)}h`
           : '—',
-      subtitle: teamUtilization?.team_name ?? 'Current team capacity',
       icon: GroupsRoundedIcon,
+      trend: STABLE_TREND,
       onClick: () => navigate('/workload'),
     },
   ];
 
-  return <ExecutiveKpiGrid cards={cards} />;
+  return <ExecutiveKpiGrid sections={buildFlatKpiSections(cards)} />;
 }

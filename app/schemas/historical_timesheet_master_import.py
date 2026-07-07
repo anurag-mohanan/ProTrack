@@ -42,6 +42,8 @@ class MasterUploadResponse(BaseModel):
 class MasterImportRunRequest(BaseModel):
     upload_id: str
     designers: list[str] | None = None
+    auto_create_missing_task_types: bool = False
+    auto_create_task_type_stream_id: UUID | None = None
 
 
 class MasterImportRunResponse(BaseModel):
@@ -64,6 +66,10 @@ class MasterImportSummary(BaseModel):
     duration_seconds: int = 0
     backup_path: str | None = None
     duplicate_check_disabled: bool = True
+    unknown_task_types: list[str] = Field(default_factory=list)
+    auto_created_task_types: list[str] = Field(default_factory=list)
+    leave_entries: int = 0
+    lack_of_work_entries: int = 0
 
 
 class MasterImportJobProgress(BaseModel):

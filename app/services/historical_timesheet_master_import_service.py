@@ -41,14 +41,13 @@ from app.services.historical_timesheet_folder_import_service import create_pre_i
 from app.services.historical_timesheet_import_service import (
     _cell_text,
     _find_project,
-    _find_task_type,
     _match_user_by_name,
     _parse_decimal,
     _parse_date,
-    _resolve_task_type_name,
 )
 from app.services.project_calculation_service import recalculate_project
 from app.services.non_productive_entry_service import build_np_timesheet_entry
+from app.services.task_type_matching_service import match_task_type
 
 MASTER_UPLOAD_DIR = Path(gettempdir()) / "protrack_master_timesheet_imports"
 BATCH_COMMIT_SIZE = 500
@@ -317,6 +316,8 @@ def run_master_import(
     upload_id: str,
     workbook_path_override: str | Path | None = None,
     selected_designers: set[str] | None = None,
+    auto_create_missing_task_types: bool = False,
+    auto_create_task_type_stream_id: uuid.UUID | None = None,
     progress_callback: Callable[..., None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
     backup_path: Path | None = None,
@@ -351,6 +352,8 @@ def run_master_import(
         backup_path=str(backup_path) if backup_path else None,
         duplicate_check_disabled=True,
     )
+    unknown_task_types: set[str] = set()
+    auto_created_task_types: set[str] = set()
     log_rows: list[MasterImportLogRow] = []
     pending_entries: list[TimesheetEntry] = []
     affected_projects: set[uuid.UUID] = set()
@@ -503,6 +506,10 @@ def run_master_import(
                     is_billable=row.billable,
                     allow_billable_override=True,
                 )
+                if (row.np_code or "").upper() == "C500":
+                    summary.leave_entries += 1
+                elif (row.np_code or "").upper() == "C501":
+                    summary.lack_of_work_entries += 1
             else:
                 if not row.project_value:
                     summary.errors += 1
@@ -540,19 +547,30 @@ def run_master_import(
                     )
                     continue
 
-                task_name = _resolve_task_type_name(row.task)
-                task_type = _find_task_type(db, task_name, project.stream_id)
+                task_match = match_task_type(
+                    db,
+                    excel_task_name=row.task,
+                    stream_id=project.stream_id,
+                    auto_create=auto_create_missing_task_types,
+                    auto_create_stream_id=auto_create_task_type_stream_id,
+                )
+                task_type = task_match.task_type
                 if task_type is None:
                     summary.errors += 1
                     summary.rows_skipped += 1
+                    unknown = row.task.strip() if row.task else ""
+                    if unknown:
+                        unknown_task_types.add(unknown)
                     _log_error(
                         log_rows,
                         row_number=row.row_number,
                         designer=designer_name,
                         project=row.project_value,
-                        error="Unknown Task",
+                        error=f'Unknown Task Type: "{unknown}"',
                     )
                     continue
+                if task_match.created:
+                    auto_created_task_types.add(task_type.name)
 
                 entry = TimesheetEntry(
                     timesheet_id=timesheet.id,
@@ -597,6 +615,8 @@ def run_master_import(
             recalculate_project(db, project_id)
 
         summary.duration_seconds = int((datetime.now(timezone.utc) - started).total_seconds())
+        summary.unknown_task_types = sorted(unknown_task_types)
+        summary.auto_created_task_types = sorted(auto_created_task_types)
         logger.info(
             "Master import completed rows_read=%s imported=%s skipped=%s errors=%s",
             summary.rows_read,

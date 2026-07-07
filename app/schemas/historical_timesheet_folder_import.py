@@ -44,6 +44,8 @@ class FolderImportRunRequest(BaseModel):
     source_path: str | None = None
     after_database_reset: bool = False
     ignore_duplicate_check: bool = True
+    auto_create_missing_task_types: bool = False
+    auto_create_task_type_stream_id: UUID | None = None
 
 
 class TimesheetResetRequest(BaseModel):
@@ -83,6 +85,10 @@ class FolderImportSummary(BaseModel):
     backup_path: str | None = None
     database_reset_performed: bool = False
     duplicate_check_disabled: bool = False
+    unknown_task_types: list[str] = Field(default_factory=list)
+    auto_created_task_types: list[str] = Field(default_factory=list)
+    leave_entries: int = 0
+    lack_of_work_entries: int = 0
 
 
 class FolderImportJobProgress(BaseModel):

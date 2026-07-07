@@ -75,6 +75,11 @@ from app.services.project_template_service import (
     create_milestones_from_template,
     resolve_template_for_import,
 )
+from app.services.task_type_matching_service import (
+    canonicalize_task_type_name,
+    match_task_type,
+    normalize_task_type_value,
+)
 
 UPLOAD_DIR = Path(gettempdir()) / "protrack_timesheet_imports"
 SUPPORTED_SUFFIXES = {".xlsx", ".xlsm", ".csv"}
@@ -98,20 +103,6 @@ TIMESHEET_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "entry_date": ("entry date", "work date", "timesheet date", "date"),
     "description": ("description", "notes", "comments", "part description"),
 }
-
-TASK_TYPE_ALIASES: dict[str, str] = {
-    "design": "Design",
-    "surfacing": "Surfacing",
-    "surface": "Surfacing",
-    "feasibility": "Feasibility",
-    "engineering change": "Engineering Change (EC)",
-    "engineering change (ec)": "Engineering Change (EC)",
-    "ec": "Engineering Change (EC)",
-    "2d drawings": "2D Drawings",
-    "2d drawing": "2D Drawings",
-    "drawings": "2D Drawings",
-}
-
 
 @dataclass
 class ParsedTimesheetRow:
@@ -138,6 +129,8 @@ class ImportContext:
     project_resolutions: dict[int, ProjectRowResolution] = field(default_factory=dict)
     customer_resolutions: dict[int, CustomerRowResolution] = field(default_factory=dict)
     task_type_resolutions: dict[int, TaskTypeRowResolution] = field(default_factory=dict)
+    auto_create_missing_task_types: bool = False
+    auto_create_task_type_stream_id: uuid.UUID | None = None
 
 
 def _cell_text(value: Any) -> str | None:
@@ -410,20 +403,10 @@ def _validate_row(row: ParsedTimesheetRow) -> None:
         row.errors.append("Project number or project code is required.")
     if not row.task_type:
         row.errors.append("Task type is required for productive entries.")
-    elif _resolve_task_type_name(row.task_type) is None:
-        row.warnings.append(f"Task type '{row.task_type}' may need manual mapping.")
-
-
-def _resolve_task_type_name(value: str | None) -> str | None:
-    if not value:
-        return None
-    normalized = _normalize_key(value)
-    if normalized in TASK_TYPE_ALIASES:
-        return TASK_TYPE_ALIASES[normalized]
-    for canonical in TASK_TYPE_ALIASES.values():
-        if _normalize_key(canonical) == normalized:
-            return canonical
-    return None
+    else:
+        canonical = canonicalize_task_type_name(row.task_type)
+        if canonical is None:
+            row.warnings.append(f"Task type '{row.task_type}' may need manual mapping.")
 
 
 def parse_csv(file_path: Path) -> list[ParsedTimesheetRow]:
@@ -530,6 +513,10 @@ def save_resolutions(upload_id: str, context: ImportContext) -> None:
         "project_resolutions": [r.model_dump(mode="json") for r in context.project_resolutions.values()],
         "customer_resolutions": [r.model_dump(mode="json") for r in context.customer_resolutions.values()],
         "task_type_resolutions": [r.model_dump(mode="json") for r in context.task_type_resolutions.values()],
+        "auto_create_missing_task_types": context.auto_create_missing_task_types,
+        "auto_create_task_type_stream_id": str(context.auto_create_task_type_stream_id)
+        if context.auto_create_task_type_stream_id
+        else None,
     }
     _resolutions_path(upload_id).write_text(json.dumps(payload), encoding="utf-8")
 
@@ -542,6 +529,12 @@ def load_resolutions(upload_id: str) -> ImportContext:
     context = ImportContext(
         duplicate_week_action=DuplicateWeekAction(data.get("duplicate_week_action", "skip")),
         ignore_duplicate_check=bool(data.get("ignore_duplicate_check", True)),
+        auto_create_missing_task_types=bool(data.get("auto_create_missing_task_types", False)),
+        auto_create_task_type_stream_id=(
+            uuid.UUID(data["auto_create_task_type_stream_id"])
+            if data.get("auto_create_task_type_stream_id")
+            else None
+        ),
     )
     if data.get("designer"):
         context.designer_resolution = DesignerResolution.model_validate(data["designer"])
@@ -600,16 +593,13 @@ def _find_project(db: Session, tool_number: str | None, project_code: str | None
 
 
 def _find_task_type(db: Session, name: str, stream_id: uuid.UUID) -> TaskType | None:
-    canonical = _resolve_task_type_name(name)
-    if canonical is None:
-        return None
-    return db.scalar(
-        select(TaskType).where(
-            TaskType.name == canonical,
-            TaskType.stream_id == stream_id,
-            TaskType.is_active.is_(True),
-        )
+    matched = match_task_type(
+        db,
+        excel_task_name=name,
+        stream_id=stream_id,
+        auto_create=False,
     )
+    return matched.task_type
 
 
 def _week_label(week_start: date) -> str:
@@ -989,9 +979,15 @@ def _resolve_task_type_for_row(
         return task_type
 
     if row.task_type:
-        task_type = _find_task_type(db, row.task_type, project.stream_id)
-        if task_type:
-            return task_type
+        matched = match_task_type(
+            db,
+            excel_task_name=row.task_type,
+            stream_id=project.stream_id,
+            auto_create=context.auto_create_missing_task_types,
+            auto_create_stream_id=context.auto_create_task_type_stream_id,
+        )
+        if matched.task_type is not None:
+            return matched.task_type
     raise ValueError(f"Row {row.row_number}: task type could not be resolved.")
 
 
@@ -1020,6 +1016,8 @@ def run_timesheet_import(
         context = load_resolutions(upload_id)
 
     summary = TimesheetImportSummary()
+    unknown_task_types: set[str] = set()
+    auto_created_task_types: set[str] = set()
     error_log: list[TimesheetImportRowPreview] = []
     designer_name = _detect_designer(rows)
 
@@ -1032,6 +1030,8 @@ def run_timesheet_import(
             preview.status_label = TimesheetImportRowStatus.error
             preview.messages.append(str(exc))
             error_log.append(preview)
+        summary.unknown_task_types = sorted(unknown_task_types)
+        summary.auto_created_task_types = sorted(auto_created_task_types)
         return summary, error_log, None
 
     summary.designer = f"{designer.first_name} {designer.last_name}"
@@ -1116,6 +1116,10 @@ def run_timesheet_import(
                     hours=row.hours,
                     description=row.description,
                 )
+                if row.np_code.upper() == "C500":
+                    summary.leave_entries += 1
+                elif row.np_code.upper() == "C501":
+                    summary.lack_of_work_entries += 1
             else:
                 project = _resolve_project_for_row(db, row, context, summary)
                 if project is None:
@@ -1125,7 +1129,36 @@ def run_timesheet_import(
                     error_log.append(preview)
                     continue
 
-                task_type = _resolve_task_type_for_row(db, row, project, context)
+                if not row.task_type:
+                    summary.rows_skipped += 1
+                    summary.rows_failed += 1
+                    summary.errors += 1
+                    preview.status_label = TimesheetImportRowStatus.skipped
+                    preview.messages.append('Unknown Task Type: ""')
+                    error_log.append(preview)
+                    continue
+
+                matched_task = match_task_type(
+                    db,
+                    excel_task_name=row.task_type,
+                    stream_id=project.stream_id,
+                    auto_create=context.auto_create_missing_task_types,
+                    auto_create_stream_id=context.auto_create_task_type_stream_id,
+                )
+                task_type = matched_task.task_type
+                if task_type is None:
+                    summary.rows_skipped += 1
+                    summary.rows_failed += 1
+                    summary.errors += 1
+                    unknown = row.task_type.strip()
+                    if unknown:
+                        unknown_task_types.add(unknown)
+                    preview.status_label = TimesheetImportRowStatus.skipped
+                    preview.messages.append(f'Unknown Task Type: "{unknown}"')
+                    error_log.append(preview)
+                    continue
+                if matched_task.created:
+                    auto_created_task_types.add(task_type.name)
                 entry = TimesheetEntry(
                     timesheet_id=timesheet.id,
                     work_category=WorkCategory.productive,
@@ -1144,7 +1177,7 @@ def run_timesheet_import(
                 entry_date=row.entry_date,
                 tool_number=row.tool_number,
                 np_code=row.np_code,
-                task_type=row.task_type,
+                task_type=normalize_task_type_value(row.task_type),
                 hours=row.hours,
                 is_billable=entry.is_billable,
                 description=row.description,
@@ -1206,12 +1239,16 @@ def run_timesheet_import(
             )
             db.add(history)
             db.commit()
+            summary.unknown_task_types = sorted(unknown_task_types)
+            summary.auto_created_task_types = sorted(auto_created_task_types)
             return summary, error_log, history.id
 
     except Exception:
         db.rollback()
         raise
 
+    summary.unknown_task_types = sorted(unknown_task_types)
+    summary.auto_created_task_types = sorted(auto_created_task_types)
     return summary, error_log, None
 
 

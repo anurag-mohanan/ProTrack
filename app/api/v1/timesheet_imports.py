@@ -166,6 +166,8 @@ def resolve_timesheet_upload(
         project_resolutions={r.row_number: r for r in payload.project_resolutions},
         customer_resolutions={r.row_number: r for r in payload.customer_resolutions},
         task_type_resolutions={r.row_number: r for r in payload.task_type_resolutions},
+        auto_create_missing_task_types=payload.auto_create_missing_task_types,
+        auto_create_task_type_stream_id=payload.auto_create_task_type_stream_id,
     )
     save_resolutions(upload_id, context)
     return {"status": "saved"}
@@ -189,6 +191,10 @@ def _build_context(payload: TimesheetImportRunRequest) -> ImportContext:
             **stored.task_type_resolutions,
             **{r.row_number: r for r in payload.task_type_resolutions},
         },
+        auto_create_missing_task_types=payload.auto_create_missing_task_types
+        or stored.auto_create_missing_task_types,
+        auto_create_task_type_stream_id=payload.auto_create_task_type_stream_id
+        or stored.auto_create_task_type_stream_id,
     )
     if payload.designer:
         save_resolutions(payload.upload_id, context)
@@ -455,6 +461,8 @@ def _execute_folder_import_job(
     backup_path,
     after_database_reset: bool = False,
     ignore_duplicate_check: bool = True,
+    auto_create_missing_task_types: bool = False,
+    auto_create_task_type_stream_id: UUID | None = None,
 ) -> None:
     from app.db.session import SessionLocal
 
@@ -475,6 +483,8 @@ def _execute_folder_import_job(
             backup_path=backup_path,
             after_database_reset=after_database_reset,
             ignore_duplicate_check=ignore_duplicate_check,
+            auto_create_missing_task_types=auto_create_missing_task_types,
+            auto_create_task_type_stream_id=auto_create_task_type_stream_id,
         )
         cancelled = timesheet_folder_import_job_store.is_cancelled(job_id)
         log_name = f"HistoricalImportLog_{datetime.now().strftime('%Y%m%d')}.xlsx"
@@ -527,6 +537,8 @@ def run_historical_timesheet_folder_import(
         backup_path=backup_path,
         after_database_reset=payload.after_database_reset,
         ignore_duplicate_check=payload.ignore_duplicate_check,
+        auto_create_missing_task_types=payload.auto_create_missing_task_types,
+        auto_create_task_type_stream_id=payload.auto_create_task_type_stream_id,
     )
     return FolderImportRunResponse(
         job_id=job_id,
@@ -579,6 +591,8 @@ def _execute_master_import_job(
     workbook_path: str,
     selected_designers: list[str] | None,
     backup_path,
+    auto_create_missing_task_types: bool = False,
+    auto_create_task_type_stream_id: UUID | None = None,
 ) -> None:
     from app.db.session import SessionLocal
 
@@ -610,6 +624,8 @@ def _execute_master_import_job(
             upload_id=upload_id,
             workbook_path_override=workbook_path,
             selected_designers=designer_filter,
+            auto_create_missing_task_types=auto_create_missing_task_types,
+            auto_create_task_type_stream_id=auto_create_task_type_stream_id,
             progress_callback=progress_callback,
             cancel_check=lambda: timesheet_master_import_job_store.is_cancelled(job_id),
             backup_path=backup_path,
@@ -735,6 +751,8 @@ def run_master_timesheet_import(
         workbook_path=str(worker_path),
         selected_designers=payload.designers,
         backup_path=backup_path,
+        auto_create_missing_task_types=payload.auto_create_missing_task_types,
+        auto_create_task_type_stream_id=payload.auto_create_task_type_stream_id,
     )
     return MasterImportRunResponse(
         job_id=job_id,

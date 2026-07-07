@@ -43,18 +43,17 @@ from app.services.historical_import_service import (
 from app.services.historical_timesheet_import_service import (
     _cell_text,
     _find_project,
-    _find_task_type,
     _match_user_by_name,
     _normalize_np_code,
     _parse_decimal,
     _parse_date,
-    _resolve_task_type_name,
     designer_has_entries_for_month,
     load_timesheet_duplicate_keys,
     timesheet_duplicate_key,
 )
 from app.services.project_calculation_service import recalculate_project
 from app.services.non_productive_entry_service import build_np_timesheet_entry
+from app.services.task_type_matching_service import match_task_type, normalize_task_type_value
 
 FOLDER_BATCH_DIR = Path(gettempdir()) / "protrack_timesheet_folder_imports"
 BATCH_COMMIT_SIZE = 500
@@ -425,6 +424,8 @@ def run_folder_import(
     backup_path: Path | None = None,
     after_database_reset: bool = False,
     ignore_duplicate_check: bool = True,
+    auto_create_missing_task_types: bool = False,
+    auto_create_task_type_stream_id: uuid.UUID | None = None,
 ) -> tuple[FolderImportSummary, list[FolderImportLogRow]]:
     started = datetime.now(timezone.utc)
     files, _ = resolve_source_files(batch_id=batch_id, source_path=source_path)
@@ -434,6 +435,8 @@ def run_folder_import(
         database_reset_performed=after_database_reset,
         duplicate_check_disabled=skip_duplicate_check,
     )
+    unknown_task_types: set[str] = set()
+    auto_created_task_types: set[str] = set()
     log_rows: list[FolderImportLogRow] = []
 
     workbooks: list[ProsohmWorkbook] = []
@@ -602,6 +605,10 @@ def run_folder_import(
                         hours=row.hours,
                         description=row.notes,
                     )
+                    if (row.np_code or "").upper() == "C500":
+                        summary.leave_entries += 1
+                    elif (row.np_code or "").upper() == "C501":
+                        summary.lack_of_work_entries += 1
                 else:
                     if not row.project_number:
                         summary.errors += 1
@@ -644,23 +651,19 @@ def run_folder_import(
                         )
                         continue
 
-                    if _resolve_task_type_name(row.task) is None:
-                        summary.errors += 1
-                        log_rows.append(
-                            _log_row(
-                                file_name,
-                                row_number=row.row_number,
-                                designer=designer_name,
-                                entry_date=row.entry_date,
-                                project=row.project_number,
-                                reason="Unknown Task",
-                            )
-                        )
-                        continue
-
-                    task_type = _find_task_type(db, row.task, project.stream_id)
+                    task_match = match_task_type(
+                        db,
+                        excel_task_name=row.task,
+                        stream_id=project.stream_id,
+                        auto_create=auto_create_missing_task_types,
+                        auto_create_stream_id=auto_create_task_type_stream_id,
+                    )
+                    task_type = task_match.task_type
                     if task_type is None:
                         summary.errors += 1
+                        unknown = row.task.strip() if row.task else ""
+                        if unknown:
+                            unknown_task_types.add(unknown)
                         log_rows.append(
                             _log_row(
                                 file_name,
@@ -668,10 +671,12 @@ def run_folder_import(
                                 designer=designer_name,
                                 entry_date=row.entry_date,
                                 project=row.project_number,
-                                reason="Unknown Task",
+                                reason=f'Unknown Task Type: "{unknown}"',
                             )
                         )
                         continue
+                    if task_match.created:
+                        auto_created_task_types.add(task_type.name)
 
                     is_billable = row.billable if row.billable is not None else True
                     entry = TimesheetEntry(
@@ -693,7 +698,7 @@ def run_folder_import(
                         entry_date=row.entry_date,
                         project_number=None if row.is_np_row else row.project_number,
                         np_code=row.np_code if row.is_np_row else None,
-                        task=None if row.is_np_row else row.task,
+                        task=None if row.is_np_row else normalize_task_type_value(row.task),
                         hours=row.hours,
                         is_billable=entry.is_billable,
                         notes=row.notes,
@@ -752,6 +757,8 @@ def run_folder_import(
         summary.designers_imported = len(designers_seen)
         summary.files_imported = files_imported
         summary.duration_seconds = int((datetime.now(timezone.utc) - started).total_seconds())
+        summary.unknown_task_types = sorted(unknown_task_types)
+        summary.auto_created_task_types = sorted(auto_created_task_types)
         return summary, log_rows
     except Exception:
         db.rollback()

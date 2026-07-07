@@ -129,6 +129,8 @@ class TimesheetImportResolveRequest(BaseModel):
     project_resolutions: list[ProjectRowResolution] = Field(default_factory=list)
     customer_resolutions: list[CustomerRowResolution] = Field(default_factory=list)
     task_type_resolutions: list[TaskTypeRowResolution] = Field(default_factory=list)
+    auto_create_missing_task_types: bool = False
+    auto_create_task_type_stream_id: UUID | None = None
 
 
 class TimesheetImportSummary(BaseModel):
@@ -146,6 +148,10 @@ class TimesheetImportSummary(BaseModel):
     warnings: int = 0
     errors: int = 0
     duplicate_check_disabled: bool = False
+    unknown_task_types: list[str] = Field(default_factory=list)
+    auto_created_task_types: list[str] = Field(default_factory=list)
+    leave_entries: int = 0
+    lack_of_work_entries: int = 0
 
 
 class TimesheetImportJobProgress(BaseModel):
@@ -171,6 +177,8 @@ class TimesheetImportRunRequest(BaseModel):
     project_resolutions: list[ProjectRowResolution] = Field(default_factory=list)
     customer_resolutions: list[CustomerRowResolution] = Field(default_factory=list)
     task_type_resolutions: list[TaskTypeRowResolution] = Field(default_factory=list)
+    auto_create_missing_task_types: bool = False
+    auto_create_task_type_stream_id: UUID | None = None
 
 
 class TimesheetImportRunResponse(BaseModel):

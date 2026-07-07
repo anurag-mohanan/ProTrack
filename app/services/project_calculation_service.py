@@ -141,16 +141,17 @@ def calculate_project_health(
     if project.execution_status == ExecutionStatus.completed:
         return ProjectHealth.green
 
-    if project.due_date < today:
-        return ProjectHealth.red
-
     if db is not None:
         hours = calculate_hours(db, project)
         if hours.quoted > 0 and hours.actual > hours.quoted:
             return ProjectHealth.red
 
-    if project.due_date <= today + timedelta(days=5):
-        return ProjectHealth.yellow
+    if project.due_date is not None:
+        if project.due_date < today:
+            return ProjectHealth.red
+
+        if project.due_date <= today + timedelta(days=5):
+            return ProjectHealth.yellow
 
     if db is not None:
         hours = calculate_hours(db, project)
@@ -170,7 +171,11 @@ def calculate_project_health(
             )
             or 0
         )
-        if overdue_milestones > 0 and project.due_date <= today + timedelta(days=14):
+        if (
+            overdue_milestones > 0
+            and project.due_date is not None
+            and project.due_date <= today + timedelta(days=14)
+        ):
             return ProjectHealth.yellow
 
     return ProjectHealth.green

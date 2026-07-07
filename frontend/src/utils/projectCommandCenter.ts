@@ -70,6 +70,7 @@ export function formatProjectStageDisplay(project: Project): string {
 
 export function formatExecutionStatusShort(status: ExecutionStatus): string {
   const labels: Record<ExecutionStatus, string> = {
+    planning: 'Planning',
     currently_being_worked_on: 'In Progress',
     on_hold: 'On Hold',
     cancelled: 'Cancelled',
@@ -263,7 +264,9 @@ export function filterProjectsForCommandCenter(
       const haystack = buildProjectSearchHaystack(project, {
         customerName: formatCellValue(customerMap.get(project.customer_id)),
         teamName: project.team_id ? formatCellValue(teamMap.get(project.team_id)) : '',
-        designLeaderName: formatCellValue(userMap.get(project.design_leader_id)),
+        designLeaderName: project.design_leader_id
+          ? formatCellValue(userMap.get(project.design_leader_id))
+          : '',
         designerName: project.designer_id ? formatCellValue(userMap.get(project.designer_id)) : '',
       });
       if (!haystack.includes(term)) return false;

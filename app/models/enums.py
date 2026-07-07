@@ -8,6 +8,7 @@ class ProjectStage(enum.Enum):
 
 
 class ExecutionStatus(enum.Enum):
+    planning = "planning"
     currently_being_worked_on = "currently_being_worked_on"
     on_hold = "on_hold"
     cancelled = "cancelled"

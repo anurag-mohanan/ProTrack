@@ -30,17 +30,17 @@ def test_update_allows_unchanged_legacy_design_leader(client, session):
     assert resp.json()["notes"] == "edited note"
 
 
-def test_update_rejects_newly_assigned_invalid_design_leader(client):
-    """Actually changing the design leader to a user without the Design Leader
-    role must still be rejected."""
+def test_update_allows_any_active_user_as_design_leader(client):
+    """Changing the design leader to any active user is allowed."""
     headers = login(client, "admin@prosohm.com")
     project_id = client.project_id
     resp = client.patch(
         f"/api/v1/projects/{project_id}",
-        json={"design_leader_id": str(IDS["user_binil"])},  # Designer role
+        json={"design_leader_id": str(IDS["user_binil"])},
         headers=headers,
     )
-    assert resp.status_code == 422, resp.text
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["design_leader_id"] == str(IDS["user_binil"])
 
 
 def test_update_allows_changing_customer_with_matching_contact(client, session):

@@ -820,3 +820,128 @@ def ensure_user_team_schema(engine: Engine) -> None:
                     "ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id)"
                 )
             )
+
+
+def _sqlite_column_is_not_null(engine: Engine, table_name: str, column_name: str) -> bool:
+    with engine.connect() as connection:
+        rows = connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+    column = next((row for row in rows if row[1] == column_name), None)
+    return column is not None and column[3] == 1
+
+
+def _sqlite_rebuild_projects_for_placeholder_support(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=OFF"))
+        connection.execute(
+            text(
+                """
+                CREATE TABLE projects_placeholder_new (
+                    id BLOB PRIMARY KEY,
+                    tool_number VARCHAR(50) NOT NULL,
+                    part_description VARCHAR(255) NOT NULL,
+                    customer_id BLOB NOT NULL REFERENCES customers(id),
+                    customer_contact_id BLOB REFERENCES contacts(id),
+                    design_leader_id BLOB REFERENCES users(id),
+                    designer_id BLOB REFERENCES users(id),
+                    surfacer_id BLOB REFERENCES users(id),
+                    stream_id BLOB REFERENCES streams(id),
+                    team_id BLOB REFERENCES teams(id),
+                    project_type_id BLOB REFERENCES project_types(id),
+                    project_template_id BLOB REFERENCES project_templates(id),
+                    code VARCHAR(50) NOT NULL UNIQUE,
+                    quoted_hours NUMERIC(8, 2) NOT NULL DEFAULT 0,
+                    actual_hours NUMERIC(8, 2) NOT NULL DEFAULT 0,
+                    due_date DATE,
+                    status VARCHAR(32) NOT NULL DEFAULT 'planning',
+                    project_stage VARCHAR(32) NOT NULL DEFAULT 'preliminary',
+                    health VARCHAR(10) NOT NULL DEFAULT 'green',
+                    priority VARCHAR(32) NOT NULL DEFAULT 'medium',
+                    notes TEXT,
+                    completed_at DATETIME,
+                    is_archived BOOLEAN NOT NULL DEFAULT 0,
+                    archived_at DATETIME,
+                    archived_by_id BLOB REFERENCES users(id),
+                    is_deleted BOOLEAN NOT NULL DEFAULT 0,
+                    deleted_at DATETIME,
+                    deleted_by_id BLOB REFERENCES users(id),
+                    project_folder_path VARCHAR(500),
+                    cad_folder_path VARCHAR(500),
+                    released_folder_path VARCHAR(500),
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO projects_placeholder_new (
+                    id, tool_number, part_description, customer_id, customer_contact_id,
+                    design_leader_id, designer_id, surfacer_id, stream_id, team_id,
+                    project_type_id, project_template_id, code, quoted_hours, actual_hours,
+                    due_date, status, project_stage, health, priority, notes,
+                    completed_at, is_archived, archived_at, archived_by_id, is_deleted,
+                    deleted_at, deleted_by_id, project_folder_path, cad_folder_path,
+                    released_folder_path, created_at, updated_at
+                )
+                SELECT
+                    id, tool_number, part_description, customer_id, customer_contact_id,
+                    design_leader_id, designer_id, surfacer_id, stream_id, team_id,
+                    project_type_id, project_template_id, code, quoted_hours, actual_hours,
+                    due_date, status, project_stage, health, priority, notes,
+                    completed_at, is_archived, archived_at, archived_by_id, is_deleted,
+                    deleted_at, deleted_by_id, project_folder_path, cad_folder_path,
+                    released_folder_path, created_at, updated_at
+                FROM projects
+                """
+            )
+        )
+        connection.execute(text("DROP TABLE projects"))
+        connection.execute(
+            text("ALTER TABLE projects_placeholder_new RENAME TO projects")
+        )
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+
+
+def ensure_placeholder_project_schema(engine: Engine) -> None:
+    """Allow nullable planning fields on projects for placeholder creation."""
+    dialect = engine.dialect.name
+
+    if dialect == "sqlite":
+        if _sqlite_column_is_not_null(engine, "projects", "design_leader_id"):
+            _sqlite_rebuild_projects_for_placeholder_support(engine)
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN customer_contact_id DROP NOT NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN design_leader_id DROP NOT NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN stream_id DROP NOT NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN due_date DROP NOT NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN quoted_hours SET DEFAULT 0"
+                )
+            )

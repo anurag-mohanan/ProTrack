@@ -15,6 +15,7 @@ import { formatStatus } from '../../../utils/format';
 type BadgeVariant = 'filled' | 'outlined';
 
 const executionColors: Record<ExecutionStatus, ChipProps['color']> = {
+  planning: 'default',
   currently_being_worked_on: 'info',
   on_hold: 'warning',
   cancelled: 'default',

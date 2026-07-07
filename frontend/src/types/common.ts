@@ -7,6 +7,7 @@ export interface Timestamped {
 export type ProjectStage = 'preliminary' | 'intermediate' | 'final';
 
 export type ExecutionStatus =
+  | 'planning'
   | 'currently_being_worked_on'
   | 'on_hold'
   | 'cancelled'
@@ -32,6 +33,7 @@ export const PROJECT_STAGE_LABELS: Record<ProjectStage, string> = {
 };
 
 export const EXECUTION_STATUS_LABELS: Record<ExecutionStatus, string> = {
+  planning: 'Planning',
   currently_being_worked_on: 'Currently Being Worked On',
   on_hold: 'On Hold',
   cancelled: 'Cancelled',

@@ -92,7 +92,7 @@ export function TimesheetEntryPage() {
 
   const taskTypesQuery = useQuery({
     queryKey: ['task-types', selectedProject?.stream_id],
-    queryFn: () => fetchTaskTypes(selectedProject?.stream_id),
+    queryFn: () => fetchTaskTypes(selectedProject?.stream_id ?? undefined),
     enabled: workCategory === 'productive' && Boolean(selectedProject?.stream_id),
   });
 

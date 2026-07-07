@@ -188,6 +188,7 @@ def apply_lifecycle_filter(stmt, lifecycle: ProjectLifecycleFilter):
         return stmt.where(
             Project.execution_status.in_(
                 (
+                    ExecutionStatus.planning,
                     ExecutionStatus.currently_being_worked_on,
                     ExecutionStatus.on_hold,
                 )
@@ -197,6 +198,7 @@ def apply_lifecycle_filter(stmt, lifecycle: ProjectLifecycleFilter):
 
 
 _EXECUTION_STATUS_SORT = case(
+    (Project.execution_status == ExecutionStatus.planning, 0),
     (Project.execution_status == ExecutionStatus.currently_being_worked_on, 1),
     (Project.execution_status == ExecutionStatus.on_hold, 2),
     (Project.execution_status == ExecutionStatus.cancelled, 3),

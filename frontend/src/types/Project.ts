@@ -17,11 +17,11 @@ export interface Project extends Timestamped {
   tool_number: string;
   part_description: string;
   customer_id: string;
-  customer_contact_id: string;
-  design_leader_id: string;
+  customer_contact_id: string | null;
+  design_leader_id: string | null;
   designer_id: string | null;
   surfacer_id: string | null;
-  stream_id: string;
+  stream_id: string | null;
   team_id: string | null;
   project_type_id?: string | null;
   project_template_id?: string | null;
@@ -32,7 +32,7 @@ export interface Project extends Timestamped {
   health: ProjectHealth;
   current_milestone?: string | null;
   priority?: 'critical' | 'high' | 'medium' | 'low';
-  due_date: string;
+  due_date: string | null;
   project_stage: ProjectStage;
   execution_status: ExecutionStatus;
   notes: string | null;
@@ -51,10 +51,10 @@ export interface Project extends Timestamped {
   project_type_name?: string | null;
 }
 
-export interface ArchivedProjectListItem extends Project {
+export interface ArchivedProjectListItem extends Omit<Project, 'design_leader_name'> {
   customer_name: string;
   project_type_name?: string | null;
-  design_leader_name: string;
+  design_leader_name: string | null;
 }
 
 export interface ProjectDeleteCheck {
@@ -66,17 +66,17 @@ export interface ProjectCreate {
   tool_number: string;
   part_description: string;
   customer_id: string;
-  customer_contact_id: string;
-  design_leader_id: string;
+  customer_contact_id?: string | null;
+  design_leader_id?: string | null;
   designer_id?: string | null;
   surfacer_id?: string | null;
-  stream_id: string;
+  stream_id?: string | null;
   team_id?: string | null;
-  project_type_id: string;
+  project_type_id?: string | null;
   project_template_id?: string | null;
-  code: string;
-  quoted_hours: number;
-  due_date: string;
+  code?: string | null;
+  quoted_hours?: number | null;
+  due_date?: string | null;
   priority?: 'critical' | 'high' | 'medium' | 'low';
   project_stage?: ProjectStage;
   execution_status?: ExecutionStatus;

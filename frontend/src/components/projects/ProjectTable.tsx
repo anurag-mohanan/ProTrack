@@ -58,10 +58,12 @@ export function buildProjectTableRows(
     ...project,
     customerName: formatCellValue(customerMap.get(project.customer_id)),
     teamName: project.team_id ? formatCellValue(teamMap.get(project.team_id)) : '',
-    designLeaderName: formatCellValue(userMap.get(project.design_leader_id)),
+    designLeaderName: project.design_leader_id
+      ? formatCellValue(userMap.get(project.design_leader_id))
+      : '',
     designerName: project.designer_id ? formatCellValue(userMap.get(project.designer_id)) : '',
     surfacerName: project.surfacer_id ? formatCellValue(userMap.get(project.surfacer_id)) : '',
-    streamName: formatCellValue(streamMap.get(project.stream_id)),
+    streamName: project.stream_id ? formatCellValue(streamMap.get(project.stream_id)) : '',
   }));
 }
 

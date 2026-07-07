@@ -15,6 +15,7 @@ interface FormDrawerProps {
   submitLabel?: string;
   cancelLabel?: string;
   loading?: boolean;
+  submitDisabled?: boolean;
   destructiveAction?: ReactNode;
   width?: number | string;
 }
@@ -31,6 +32,7 @@ export function FormDrawer({
   submitLabel = 'Save Changes',
   cancelLabel = 'Cancel',
   loading = false,
+  submitDisabled = false,
   destructiveAction,
   width,
 }: FormDrawerProps) {
@@ -54,6 +56,7 @@ export function FormDrawer({
             form={formId}
             buttonVariant="primary"
             loading={loading}
+            disabled={submitDisabled || loading}
             onClick={onSubmit}
           >
             {submitLabel}

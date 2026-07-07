@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, override
 from uuid import UUID
 
@@ -98,11 +99,18 @@ def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate
     ):
         data["project_template_id"] = customer.default_project_template_id
 
+    tool_number = (data.get("tool_number") or "").strip()
+    code = (data.get("code") or "").strip()
     if customer.project_number_format:
-        code = (data.get("code") or "").strip()
-        tool_number = (data.get("tool_number") or "").strip()
         if not code or code == tool_number:
             data["code"] = generate_project_code(db, customer, tool_number)
+    elif not code:
+        data["code"] = tool_number
+
+    if data.get("quoted_hours") is None:
+        data["quoted_hours"] = Decimal("0")
+    if data.get("execution_status") is None:
+        data["execution_status"] = ExecutionStatus.planning
 
     return ProjectCreate(**data)
 
@@ -142,23 +150,24 @@ def _validate_project_references(
     db: Session,
     *,
     customer_id: UUID,
-    customer_contact_id: UUID,
-    design_leader_id: UUID,
+    customer_contact_id: UUID | None = None,
+    design_leader_id: UUID | None = None,
     designer_id: UUID | None = None,
     surfacer_id: UUID | None = None,
 ) -> None:
-    contact = db.scalar(select(Contact).where(Contact.id == customer_contact_id))
-    if contact is None or contact.customer_id != customer_id:
-        raise ProTrackValidationError(
-            "customer_contact_id must belong to the selected customer_id"
-        )
+    if customer_contact_id is not None:
+        contact = db.scalar(select(Contact).where(Contact.id == customer_contact_id))
+        if contact is None or contact.customer_id != customer_id:
+            raise ProTrackValidationError(
+                "customer_contact_id must belong to the selected customer_id"
+            )
 
-    _ = _get_active_user(
-        db,
-        design_leader_id,
-        field_name="design_leader_id",
-        expected_role="Design Leader",
-    )
+    if design_leader_id is not None:
+        _ = _get_active_user(
+            db,
+            design_leader_id,
+            field_name="design_leader_id",
+        )
 
     if designer_id is not None:
         _ = _get_active_user(
@@ -180,7 +189,7 @@ def _validate_project_references(
 def _reference_ids_for_update(
     db_obj: Project,
     update_data: dict[str, object],
-) -> tuple[UUID, UUID, UUID, UUID | None, UUID | None]:
+) -> tuple[UUID, UUID | None, UUID | None, UUID | None, UUID | None]:
     def pick_uuid(key: str, current: UUID) -> UUID:
         if key not in update_data:
             return current
@@ -201,8 +210,8 @@ def _reference_ids_for_update(
 
     return (
         pick_uuid("customer_id", db_obj.customer_id),
-        pick_uuid("customer_contact_id", db_obj.customer_contact_id),
-        pick_uuid("design_leader_id", db_obj.design_leader_id),
+        pick_optional_uuid("customer_contact_id", db_obj.customer_contact_id),
+        pick_optional_uuid("design_leader_id", db_obj.design_leader_id),
         pick_optional_uuid("designer_id", db_obj.designer_id),
         pick_optional_uuid("surfacer_id", db_obj.surfacer_id),
     )
@@ -238,18 +247,22 @@ def _validate_changed_project_references(
         and customer_contact_id != db_obj.customer_contact_id
     )
     if customer_changed or contact_changed:
-        contact = db.scalar(select(Contact).where(Contact.id == customer_contact_id))
-        if contact is None or contact.customer_id != customer_id:
-            raise ProTrackValidationError(
-                "customer_contact_id must belong to the selected customer_id"
-            )
+        if customer_contact_id is not None:
+            contact = db.scalar(select(Contact).where(Contact.id == customer_contact_id))
+            if contact is None or contact.customer_id != customer_id:
+                raise ProTrackValidationError(
+                    "customer_contact_id must belong to the selected customer_id"
+                )
 
-    if "design_leader_id" in update_data and design_leader_id != db_obj.design_leader_id:
+    if (
+        "design_leader_id" in update_data
+        and design_leader_id != db_obj.design_leader_id
+        and design_leader_id is not None
+    ):
         _ = _get_active_user(
             db,
             design_leader_id,
             field_name="design_leader_id",
-            expected_role="Design Leader",
         )
 
     if (
@@ -294,20 +307,21 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         db.add(db_obj)
         db.flush()
 
-        template = resolve_template(
-            db,
-            project_type_id=prepared.project_type_id,
-            customer_id=prepared.customer_id,
-            template_id=prepared.project_template_id,
-        )
-        db_obj.project_template_id = template.id
-        if db_obj.team_id is None and template.default_team_id is not None:
-            db_obj.team_id = template.default_team_id
-        create_milestones_from_template(
-            db,
-            project=db_obj,
-            template=template,
-        )
+        if prepared.project_type_id is not None:
+            template = resolve_template(
+                db,
+                project_type_id=prepared.project_type_id,
+                customer_id=prepared.customer_id,
+                template_id=prepared.project_template_id,
+            )
+            db_obj.project_template_id = template.id
+            if db_obj.team_id is None and template.default_team_id is not None:
+                db_obj.team_id = template.default_team_id
+            create_milestones_from_template(
+                db,
+                project=db_obj,
+                template=template,
+            )
 
         db.commit()
         db.refresh(db_obj)

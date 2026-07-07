@@ -10,6 +10,7 @@ interface ActionKpiCardProps {
   icon: SvgIconComponent;
   onClick?: () => void;
   statusColor?: KpiAccent | 'info';
+  trend?: { value: string; direction?: 'up' | 'down' | 'flat' };
 }
 
 interface DashboardSectionProps {
@@ -26,6 +27,7 @@ export function ActionKpiCard({
   icon,
   onClick,
   statusColor,
+  trend,
 }: ActionKpiCardProps) {
   return (
     <KpiMetricCard
@@ -35,6 +37,7 @@ export function ActionKpiCard({
       icon={icon}
       onClick={onClick}
       accent={statusColor === 'info' ? 'info' : statusColor}
+      trend={trend}
     />
   );
 }
@@ -52,7 +55,7 @@ export function DashboardSection({ title, subtitle, action, children }: Dashboar
         }}
       >
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 650, letterSpacing: '-0.01em' }}>
+          <Typography variant="sectionTitle" sx={{ letterSpacing: '-0.01em' }}>
             {title}
           </Typography>
           {subtitle ? (

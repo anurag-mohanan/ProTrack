@@ -3,20 +3,22 @@ import {
   AppBar,
   Avatar,
   Box,
+  Chip,
   IconButton,
   Menu,
   MenuItem,
   Toolbar,
   Typography,
 } from '@mui/material';
-import LogoutIcon from '@mui/icons-material/Logout';
-import PersonIcon from '@mui/icons-material/Person';
-import TuneIcon from '@mui/icons-material/Tune';
+import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
+import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 import { Link as RouterLink } from 'react-router-dom';
 import { NotificationBell } from '../common/NotificationBell';
 import { AppGlobalSearchBar } from './AppGlobalSearchBar';
 import { useBreadcrumbTitle } from './AppBreadcrumbs';
 import { DRAWER_WIDTH } from './AppSidebar';
+import { designTokens } from '../../theme/designTokens';
 import { formatCellValue } from '../../utils/format';
 
 interface AppTopBarProps {
@@ -39,42 +41,67 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
   return (
     <AppBar
       position="fixed"
+      elevation={0}
       sx={{
         zIndex: (theme) => theme.zIndex.drawer + 1,
         width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
         ml: { sm: `${DRAWER_WIDTH}px` },
-        bgcolor: 'prosohm.header',
-        boxShadow: (theme) => theme.palette.prosohm.shadowHeader,
+        bgcolor: designTokens.semantic.card,
+        color: 'text.primary',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        boxShadow: designTokens.elevation.header,
       }}
     >
-      <Toolbar sx={{ minHeight: '64px !important', px: { xs: 1.5, md: 2 }, gap: 2 }}>
-        <Typography
-          variant="h6"
-          sx={{
-            fontWeight: 800,
-            fontSize: { xs: '1rem', md: '1.125rem' },
-            lineHeight: 1.2,
-            flexShrink: 0,
-            minWidth: 0,
-          }}
-        >
-          {pageTitle}
-        </Typography>
+      <Toolbar sx={{ minHeight: '64px !important', px: { xs: 1.5, md: 2.5 }, gap: 2 }}>
+        <Box sx={{ minWidth: 0, flexShrink: 0 }}>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 700,
+              fontSize: { xs: '1rem', md: '1.05rem' },
+              lineHeight: 1.2,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            {pageTitle}
+          </Typography>
+          <Chip
+            label={formatCellValue(roleName)}
+            size="small"
+            sx={{
+              mt: 0.5,
+              height: 22,
+              fontSize: '0.6875rem',
+              fontWeight: 600,
+              bgcolor: designTokens.semantic.primarySoft,
+              color: designTokens.semantic.primary,
+            }}
+          />
+        </Box>
 
         <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
-          <Box sx={{ display: { xs: 'none', md: 'flex' }, width: '100%', maxWidth: 480 }}>
+          <Box sx={{ display: { xs: 'none', md: 'flex' }, width: '100%', maxWidth: 520 }}>
             <AppGlobalSearchBar />
           </Box>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
           <NotificationBell />
-          <IconButton onClick={(event) => setAnchorEl(event.currentTarget)} size="small">
+          <IconButton
+            onClick={(event) => setAnchorEl(event.currentTarget)}
+            size="small"
+            sx={{
+              ml: 0.5,
+              transition: `transform ${designTokens.motion.fast}`,
+              '&:hover': { transform: 'scale(1.04)' },
+            }}
+          >
             <Avatar
               sx={{
-                width: 36,
-                height: 36,
-                bgcolor: 'primary.main',
+                width: 38,
+                height: 38,
+                bgcolor: designTokens.semantic.primary,
                 fontWeight: 700,
                 fontSize: '0.8125rem',
               }}
@@ -90,7 +117,7 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
             slotProps={{
               paper: {
-                sx: { minWidth: 220, mt: 1, borderRadius: 2 },
+                sx: { minWidth: 240, mt: 1, borderRadius: `${designTokens.radius.md}px` },
               },
             }}
           >
@@ -98,16 +125,16 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
               <Typography variant="body2" sx={{ fontWeight: 700 }}>
                 {displayName}
               </Typography>
-              <Typography variant="captionLabel" color="text.secondary">
+              <Typography variant="caption" color="text.secondary">
                 {formatCellValue(roleName)}
               </Typography>
             </Box>
             <MenuItem component={RouterLink} to="/profile" onClick={() => setAnchorEl(null)}>
-              <PersonIcon fontSize="small" sx={{ mr: 1.5 }} />
+              <PersonRoundedIcon fontSize="small" sx={{ mr: 1.5 }} />
               Profile
             </MenuItem>
             <MenuItem component={RouterLink} to="/profile?tab=preferences" onClick={() => setAnchorEl(null)}>
-              <TuneIcon fontSize="small" sx={{ mr: 1.5 }} />
+              <TuneRoundedIcon fontSize="small" sx={{ mr: 1.5 }} />
               Preferences
             </MenuItem>
             <MenuItem
@@ -116,7 +143,7 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
                 onLogout();
               }}
             >
-              <LogoutIcon fontSize="small" sx={{ mr: 1.5 }} />
+              <LogoutRoundedIcon fontSize="small" sx={{ mr: 1.5 }} />
               Logout
             </MenuItem>
           </Menu>

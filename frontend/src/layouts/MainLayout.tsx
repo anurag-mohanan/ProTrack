@@ -38,7 +38,7 @@ export function MainLayout() {
             }}
           >
             <Toolbar sx={{ minHeight: '64px !important' }} />
-            <Box sx={{ flexGrow: 1, p: { xs: 1.5, md: 2 }, minWidth: 0 }}>
+            <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, minWidth: 0 }}>
               <Outlet />
             </Box>
             <AppFooter />

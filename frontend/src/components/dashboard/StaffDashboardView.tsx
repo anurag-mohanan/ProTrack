@@ -1,26 +1,14 @@
-import { Box } from '@mui/material';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import BuildIcon from '@mui/icons-material/Build';
-import TaskAltIcon from '@mui/icons-material/TaskAlt';
-import ScheduleIcon from '@mui/icons-material/Schedule';
-import TimerIcon from '@mui/icons-material/Timer';
-import PendingActionsIcon from '@mui/icons-material/PendingActions';
-import EventIcon from '@mui/icons-material/Event';
+import FolderOpenRoundedIcon from '@mui/icons-material/FolderOpenRounded';
+import BuildRoundedIcon from '@mui/icons-material/BuildRounded';
+import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded';
+import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
+import TimerRoundedIcon from '@mui/icons-material/TimerRounded';
+import PendingActionsRoundedIcon from '@mui/icons-material/PendingActionsRounded';
+import EventRoundedIcon from '@mui/icons-material/EventRounded';
 import type { NavigateFunction } from 'react-router-dom';
 import type { DashboardSummary } from '../../types';
 import { formatCellValue, formatNumber } from '../../utils/format';
-import { ActionKpiCard } from './DashboardCards';
-
-const kpiGridSx = {
-  display: 'grid',
-  gridTemplateColumns: {
-    xs: '1fr',
-    sm: 'repeat(2, 1fr)',
-    lg: 'repeat(4, 1fr)',
-  },
-  gap: 2,
-  mb: 3,
-};
+import { ExecutiveKpiGrid } from './ExecutiveKpiGrid';
 
 interface StaffDashboardViewProps {
   summary: DashboardSummary | undefined;
@@ -39,42 +27,42 @@ export function StaffDashboardView({ summary, unavailable, navigate }: StaffDash
       title: 'My Projects',
       value: unavailable ? '—' : formatNumber(metrics?.my_projects ?? 0, 0),
       subtitle: 'Assigned to you',
-      icon: FolderOpenIcon,
+      icon: FolderOpenRoundedIcon,
       onClick: () => navigate('/projects'),
     },
     {
       title: 'My Current Project',
       value: unavailable ? '—' : currentProjectLabel,
       subtitle: formatCellValue(metrics?.current_part_description) || 'No active assignment',
-      icon: BuildIcon,
+      icon: BuildRoundedIcon,
       onClick: () => navigate('/projects'),
     },
     {
       title: metrics?.task_label ?? 'Assigned Milestones',
       value: unavailable ? '—' : formatNumber(metrics?.assigned_milestones ?? 0, 0),
       subtitle: 'Open milestones',
-      icon: TaskAltIcon,
+      icon: TaskAltRoundedIcon,
       onClick: () => navigate('/projects'),
     },
     {
       title: 'Upcoming Due Dates',
       value: unavailable ? '—' : formatNumber(metrics?.upcoming_due_dates ?? 0, 0),
       subtitle: 'Due within 7 days',
-      icon: EventIcon,
+      icon: EventRoundedIcon,
       onClick: () => navigate('/projects?due=7days'),
     },
     {
       title: 'Hours Logged This Week',
       value: unavailable ? '—' : formatNumber(metrics?.hours_logged_this_week ?? 0, 1),
       subtitle: 'Approved and draft entries',
-      icon: TimerIcon,
+      icon: TimerRoundedIcon,
       onClick: () => navigate('/timesheets'),
     },
     {
       title: 'Pending Timesheet Submission',
       value: unavailable ? '—' : formatNumber(metrics?.pending_timesheet_submissions ?? 0, 0),
       subtitle: 'Draft timesheets',
-      icon: PendingActionsIcon,
+      icon: PendingActionsRoundedIcon,
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -87,16 +75,10 @@ export function StaffDashboardView({ summary, unavailable, navigate }: StaffDash
             0,
           ),
       subtitle: "Today's priorities",
-      icon: ScheduleIcon,
+      icon: ScheduleRoundedIcon,
       onClick: () => navigate('/timesheets'),
     },
   ];
 
-  return (
-    <Box sx={kpiGridSx}>
-      {cards.map((card) => (
-        <ActionKpiCard key={card.title} {...card} />
-      ))}
-    </Box>
-  );
+  return <ExecutiveKpiGrid cards={cards} />;
 }

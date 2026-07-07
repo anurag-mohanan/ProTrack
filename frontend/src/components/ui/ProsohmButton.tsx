@@ -40,6 +40,11 @@ export function ProsohmButton({
       {...props}
       disabled={disabled || loading}
       startIcon={loading ? <CircularProgress size={16} color="inherit" /> : startIcon}
+      sx={{
+        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+        '&:hover:not(:disabled)': { transform: 'translateY(-1px)' },
+        ...props.sx,
+      }}
     >
       {children}
     </Button>

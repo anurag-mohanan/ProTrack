@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import {
   Box,
+  Collapse,
   Divider,
   Drawer,
+  IconButton,
   List,
   ListItemButton,
   ListItemIcon,
@@ -9,10 +12,13 @@ import {
   Toolbar,
   Typography,
 } from '@mui/material';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
+import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
+import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import { NavLink } from 'react-router-dom';
 import { LogoHomeLink } from '../branding/LogoHomeLink';
 import type { CurrentUser } from '../../types';
+import { designTokens } from '../../theme/designTokens';
 import { accessContextFromUser, canAccessAdministration, getMainNavItems } from '../../utils/permissions';
 
 export const DRAWER_WIDTH = 272;
@@ -33,20 +39,21 @@ function NavButton({
       component={NavLink}
       to={path}
       sx={{
-        color: accent ? 'secondary.light' : 'prosohm.sidebarTextMuted',
-        bgcolor: accent ? 'rgba(148,163,184,0.08)' : undefined,
-        border: accent ? '1px solid rgba(148,163,184,0.18)' : undefined,
-        borderRadius: accent ? 2 : 0,
-        mx: accent ? 1 : 0,
-        mb: accent ? 0.5 : 0,
+        mx: 1,
+        mb: 0.25,
+        borderRadius: `${designTokens.radius.md}px`,
+        color: accent ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.68)',
+        transition: `all ${designTokens.motion.fast}`,
+        '&:hover': {
+          bgcolor: designTokens.semantic.sidebarHover,
+          color: '#fff',
+        },
         '&.active': {
-          bgcolor: accent ? 'rgba(148,163,184,0.16)' : 'prosohm.sidebarActive',
-          color: 'prosohm.sidebarText',
-          borderLeft: accent ? undefined : '3px solid',
-          borderColor: 'primary.main',
-          pl: accent ? 2 : 'calc(16px - 3px)',
+          bgcolor: designTokens.semantic.sidebarActive,
+          color: '#fff',
+          boxShadow: 'inset 3px 0 0 #60a5fa',
           '& .MuiListItemIcon-root': {
-            color: accent ? 'secondary.light' : 'primary.main',
+            color: '#93c5fd',
           },
         },
       }}
@@ -56,11 +63,8 @@ function NavButton({
       </ListItemIcon>
       <ListItemText
         primary={label}
-        sx={{
-          '& .MuiListItemText-primary': {
-            fontWeight: accent ? 700 : 600,
-            fontSize: '0.875rem',
-          },
+        slotProps={{
+          primary: { sx: { fontWeight: 600, fontSize: '0.875rem' } },
         }}
       />
     </ListItemButton>
@@ -72,6 +76,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ user }: AppSidebarProps) {
+  const [adminOpen, setAdminOpen] = useState(true);
   const ctx = accessContextFromUser(user);
   const visibleNavItems = getMainNavItems(ctx);
   const showAdministratorEntry = canAccessAdministration(ctx);
@@ -85,9 +90,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
         [`& .MuiDrawer-paper`]: {
           width: DRAWER_WIDTH,
           boxSizing: 'border-box',
-          bgcolor: 'prosohm.sidebar',
-          color: 'prosohm.sidebarText',
-          backgroundImage: (theme) => theme.palette.prosohm.gradientSidebar,
+          bgcolor: designTokens.semantic.sidebar,
+          color: '#fff',
+          borderRight: 'none',
+          boxShadow: designTokens.elevation.nav,
         },
       }}
     >
@@ -95,10 +101,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
         <LogoHomeLink light size="md" />
       </Toolbar>
 
-      <Box sx={{ px: 1, pb: 2, overflow: 'auto' }}>
+      <Box sx={{ px: 0.5, pb: 2, overflow: 'auto' }}>
         <Typography
           variant="overline"
-          sx={{ px: 2, py: 1, display: 'block', color: 'prosohm.sidebarTextMuted' }}
+          sx={{ px: 2.5, py: 1, display: 'block', color: 'rgba(255,255,255,0.45)', letterSpacing: '0.08em' }}
         >
           Engineering Operations
         </Typography>
@@ -110,21 +116,40 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
         {showAdministratorEntry ? (
           <>
-            <Divider sx={{ my: 2, borderColor: 'prosohm.sidebarDivider' }} />
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1 }}>
-              <AdminPanelSettingsIcon sx={{ fontSize: 16, color: 'secondary.light' }} />
-              <Typography variant="overline" sx={{ color: 'prosohm.sidebarTextMuted' }}>
-                System Administration
-              </Typography>
+            <Divider sx={{ my: 2, mx: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                px: 2,
+                py: 0.5,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AdminPanelSettingsRoundedIcon sx={{ fontSize: 16, color: '#93c5fd' }} />
+                <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.45)' }}>
+                  Administration
+                </Typography>
+              </Box>
+              <IconButton
+                size="small"
+                onClick={() => setAdminOpen((open) => !open)}
+                sx={{ color: 'rgba(255,255,255,0.6)' }}
+              >
+                {adminOpen ? <ExpandLessRoundedIcon fontSize="small" /> : <ExpandMoreRoundedIcon fontSize="small" />}
+              </IconButton>
             </Box>
-            <List disablePadding>
-              <NavButton
-                path="/admin/dashboard"
-                label="System Administration"
-                icon={AdminPanelSettingsIcon}
-                accent
-              />
-            </List>
+            <Collapse in={adminOpen}>
+              <List disablePadding>
+                <NavButton
+                  path="/admin/dashboard"
+                  label="System Administration"
+                  icon={AdminPanelSettingsRoundedIcon}
+                  accent
+                />
+              </List>
+            </Collapse>
           </>
         ) : null}
       </Box>

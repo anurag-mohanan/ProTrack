@@ -1,11 +1,11 @@
 import type { SvgIconComponent } from '@mui/icons-material';
-import AssessmentIcon from '@mui/icons-material/Assessment';
-import ArchiveIcon from '@mui/icons-material/Archive';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import FolderIcon from '@mui/icons-material/Folder';
-import ScheduleIcon from '@mui/icons-material/Schedule';
-import GroupsIcon from '@mui/icons-material/Groups';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
+import ArchiveRoundedIcon from '@mui/icons-material/ArchiveRounded';
+import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
+import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
+import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
+import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
+import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded';
 import type { CurrentUser } from '../types';
 import {
   ALL_MODULES,
@@ -136,28 +136,28 @@ const NAV_MODULE_CONFIG: Array<{
   path: string;
   icon: SvgIconComponent;
 }> = [
-  { module: MODULE_DASHBOARD, label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
+  { module: MODULE_DASHBOARD, label: 'Dashboard', path: '/dashboard', icon: DashboardRoundedIcon },
   {
     module: MODULE_PROJECTS,
     label: (ctx) => (getDashboardRoleGroup(ctx.role_name) === 'staff' ? 'My Projects' : 'Projects'),
     path: '/projects',
-    icon: FolderIcon,
+    icon: FolderRoundedIcon,
   },
   {
     module: MODULE_ARCHIVED_PROJECTS,
     label: 'Archived Projects',
     path: '/projects/archived',
-    icon: ArchiveIcon,
+    icon: ArchiveRoundedIcon,
   },
-  { module: MODULE_TIMESHEETS, label: 'Timesheets', path: '/timesheets', icon: ScheduleIcon },
-  { module: MODULE_WORKLOAD, label: 'Workload', path: '/workload', icon: GroupsIcon },
+  { module: MODULE_TIMESHEETS, label: 'Timesheets', path: '/timesheets', icon: ScheduleRoundedIcon },
+  { module: MODULE_WORKLOAD, label: 'Workload', path: '/workload', icon: GroupsRoundedIcon },
   {
     module: MODULE_RESOURCE_PLANNING,
     label: 'Resource Planning',
     path: '/resource-planning',
-    icon: CalendarMonthIcon,
+    icon: CalendarMonthRoundedIcon,
   },
-  { module: MODULE_REPORTS, label: 'Reports', path: '/reports', icon: AssessmentIcon },
+  { module: MODULE_REPORTS, label: 'Reports', path: '/reports', icon: AssessmentRoundedIcon },
 ];
 
 function normalizeRoleName(roleName: string): string {

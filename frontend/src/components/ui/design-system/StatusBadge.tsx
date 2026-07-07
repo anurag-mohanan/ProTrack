@@ -1,4 +1,4 @@
-import { Chip, type ChipProps } from '@mui/material';
+import { Chip } from '@mui/material';
 import type {
   ExecutionStatus,
   MilestoneStatus,
@@ -10,51 +10,55 @@ import {
   EXECUTION_STATUS_LABELS,
   PROJECT_STAGE_LABELS,
 } from '../../../types/common';
+import { designTokens } from '../../../theme/designTokens';
 import { formatStatus } from '../../../utils/format';
 
 type BadgeVariant = 'filled' | 'outlined';
 
-const executionColors: Record<ExecutionStatus, ChipProps['color']> = {
-  planning: 'default',
-  currently_being_worked_on: 'info',
-  on_hold: 'warning',
-  cancelled: 'default',
-  completed: 'success',
+const executionStyles: Record<ExecutionStatus, { bg: string; color: string; label: string }> = {
+  planning: { bg: designTokens.stage.preliminary.soft, color: designTokens.stage.preliminary.main, label: 'Planning' },
+  currently_being_worked_on: { bg: designTokens.semantic.primarySoft, color: designTokens.semantic.primary, label: 'Design' },
+  on_hold: { bg: designTokens.semantic.warningSoft, color: designTokens.semantic.warning, label: 'Delayed' },
+  cancelled: { bg: designTokens.semantic.dangerSoft, color: designTokens.semantic.danger, label: 'Cancelled' },
+  completed: { bg: designTokens.semantic.successSoft, color: designTokens.semantic.success, label: 'Completed' },
 };
 
-const stageColors: Record<ProjectStage, ChipProps['color']> = {
-  preliminary: 'default',
-  intermediate: 'info',
-  final: 'secondary',
+const stageStyles: Record<ProjectStage, { bg: string; color: string }> = {
+  preliminary: { bg: designTokens.stage.preliminary.soft, color: designTokens.stage.preliminary.main },
+  intermediate: { bg: designTokens.stage.intermediate.soft, color: designTokens.stage.intermediate.main },
+  final: { bg: designTokens.stage.final.soft, color: designTokens.stage.final.main },
 };
 
-const healthColors: Record<ProjectHealth, ChipProps['color']> = {
-  green: 'success',
-  yellow: 'warning',
-  red: 'error',
-};
-
-const lifecycleColors = {
-  archived: 'default' as const,
-  deleted: 'error' as const,
+const healthStyles: Record<ProjectHealth, { bg: string; color: string; label: string }> = {
+  green: { bg: designTokens.health.green.soft, color: designTokens.health.green.main, label: 'Healthy' },
+  yellow: { bg: designTokens.health.yellow.soft, color: designTokens.health.yellow.main, label: 'At Risk' },
+  red: { bg: designTokens.health.red.soft, color: designTokens.health.red.main, label: 'Delayed' },
 };
 
 function BadgeShell({
   label,
-  color = 'default',
+  bg,
+  color,
   variant = 'filled',
 }: {
   label: string;
-  color?: ChipProps['color'];
+  bg: string;
+  color: string;
   variant?: BadgeVariant;
 }) {
   return (
     <Chip
       size="small"
       label={label}
-      color={color}
       variant={variant === 'outlined' ? 'outlined' : 'filled'}
-      sx={{ fontWeight: 600, letterSpacing: '0.01em' }}
+      sx={{
+        fontWeight: 700,
+        letterSpacing: '0.02em',
+        fontSize: '0.6875rem',
+        bgcolor: variant === 'outlined' ? 'transparent' : bg,
+        color,
+        borderColor: variant === 'outlined' ? color : 'transparent',
+      }}
     />
   );
 }
@@ -66,10 +70,12 @@ export function ExecutionStatusBadge({
   status: ExecutionStatus;
   variant?: BadgeVariant;
 }) {
+  const style = executionStyles[status];
   return (
     <BadgeShell
-      label={EXECUTION_STATUS_LABELS[status]}
-      color={executionColors[status]}
+      label={style.label || EXECUTION_STATUS_LABELS[status]}
+      bg={style.bg}
+      color={style.color}
       variant={variant}
     />
   );
@@ -82,10 +88,12 @@ export function ProjectStageBadge({
   stage: ProjectStage;
   variant?: BadgeVariant;
 }) {
+  const style = stageStyles[stage];
   return (
     <BadgeShell
       label={PROJECT_STAGE_LABELS[stage]}
-      color={stageColors[stage]}
+      bg={style.bg}
+      color={style.color}
       variant={variant}
     />
   );
@@ -98,15 +106,32 @@ export function HealthBadge({
   health: ProjectHealth;
   variant?: BadgeVariant;
 }) {
-  const labels: Record<ProjectHealth, string> = {
-    green: 'Healthy',
-    yellow: 'At Risk',
-    red: 'Delayed',
-  };
+  const style = healthStyles[health];
   return (
-    <BadgeShell label={labels[health]} color={healthColors[health]} variant={variant} />
+    <BadgeShell label={style.label} bg={style.bg} color={style.color} variant={variant} />
   );
 }
+
+const lifecycleStyles = {
+  archived: { bg: designTokens.semantic.neutralSoft, color: designTokens.semantic.neutral },
+  deleted: { bg: designTokens.semantic.dangerSoft, color: designTokens.semantic.danger },
+};
+
+const timesheetStyles: Record<TimesheetStatus, { bg: string; color: string; label: string }> = {
+  draft: { bg: designTokens.semantic.neutralSoft, color: designTokens.semantic.neutral, label: 'Draft' },
+  submitted: { bg: designTokens.semantic.primarySoft, color: designTokens.semantic.primary, label: 'Submitted' },
+  approved: { bg: designTokens.semantic.successSoft, color: designTokens.semantic.success, label: 'Approved' },
+  rejected: { bg: designTokens.semantic.dangerSoft, color: designTokens.semantic.danger, label: 'Rejected' },
+};
+
+const priorityStyles: Record<ProjectPriority, { bg: string; color: string; label: string }> = {
+  critical: { bg: designTokens.semantic.dangerSoft, color: designTokens.semantic.danger, label: 'Critical' },
+  high: { bg: designTokens.semantic.warningSoft, color: designTokens.semantic.warning, label: 'High' },
+  medium: { bg: designTokens.semantic.primarySoft, color: designTokens.semantic.primary, label: 'Medium' },
+  low: { bg: designTokens.semantic.neutralSoft, color: designTokens.semantic.neutral, label: 'Low' },
+};
+
+export type ProjectPriority = 'critical' | 'high' | 'medium' | 'low';
 
 export function MilestoneStatusBadge({ status }: { status: MilestoneStatus }) {
   return (
@@ -122,48 +147,23 @@ export function MilestoneStatusBadge({ status }: { status: MilestoneStatus }) {
 export function LifecycleBadge({
   kind,
 }: {
-  kind: keyof typeof lifecycleColors;
+  kind: keyof typeof lifecycleStyles;
 }) {
+  const style = lifecycleStyles[kind];
   return (
     <BadgeShell
       label={kind.charAt(0).toUpperCase() + kind.slice(1)}
-      color={lifecycleColors[kind]}
+      bg={style.bg}
+      color={style.color}
       variant="outlined"
     />
   );
 }
 
 export function TimesheetStatusBadge({ status }: { status: TimesheetStatus }) {
-  const colors: Record<TimesheetStatus, ChipProps['color']> = {
-    draft: 'default',
-    submitted: 'info',
-    approved: 'success',
-    rejected: 'error',
-  };
-  const labels: Record<TimesheetStatus, string> = {
-    draft: 'Draft',
-    submitted: 'Submitted',
-    approved: 'Approved',
-    rejected: 'Rejected',
-  };
-  return <BadgeShell label={labels[status]} color={colors[status]} />;
+  const style = timesheetStyles[status];
+  return <BadgeShell label={style.label} bg={style.bg} color={style.color} />;
 }
-
-export type ProjectPriority = 'critical' | 'high' | 'medium' | 'low';
-
-const priorityColors: Record<ProjectPriority, ChipProps['color']> = {
-  critical: 'error',
-  high: 'warning',
-  medium: 'info',
-  low: 'default',
-};
-
-const priorityLabels: Record<ProjectPriority, string> = {
-  critical: 'Critical',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
-};
 
 export function PriorityBadge({
   priority = 'medium',
@@ -173,10 +173,12 @@ export function PriorityBadge({
   variant?: BadgeVariant;
 }) {
   const key = (priority ?? 'medium') as ProjectPriority;
+  const style = priorityStyles[key] ?? priorityStyles.medium;
   return (
     <BadgeShell
-      label={priorityLabels[key] ?? 'Medium'}
-      color={priorityColors[key] ?? 'default'}
+      label={style.label}
+      bg={style.bg}
+      color={style.color}
       variant={variant}
     />
   );

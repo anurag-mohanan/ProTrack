@@ -1,25 +1,13 @@
-import { Box } from '@mui/material';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import ScheduleIcon from '@mui/icons-material/Schedule';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import PendingActionsIcon from '@mui/icons-material/PendingActions';
-import GroupsIcon from '@mui/icons-material/Groups';
-import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import FolderOpenRoundedIcon from '@mui/icons-material/FolderOpenRounded';
+import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
+import PendingActionsRoundedIcon from '@mui/icons-material/PendingActionsRounded';
+import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
+import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded';
 import type { NavigateFunction } from 'react-router-dom';
 import type { DashboardSummary } from '../../types';
 import { formatNumber } from '../../utils/format';
-import { ActionKpiCard } from './DashboardCards';
-
-const kpiGridSx = {
-  display: 'grid',
-  gridTemplateColumns: {
-    xs: '1fr',
-    sm: 'repeat(2, 1fr)',
-    lg: 'repeat(3, 1fr)',
-  },
-  gap: 2,
-  mb: 3,
-};
+import { ExecutiveKpiGrid } from './ExecutiveKpiGrid';
 
 interface DesignLeaderDashboardViewProps {
   summary: DashboardSummary | undefined;
@@ -41,21 +29,21 @@ export function DesignLeaderDashboardView({
       title: 'Team Projects',
       value: unavailable ? '—' : formatNumber(summary!.active_projects ?? 0, 0),
       subtitle: 'Assigned to your team',
-      icon: FolderOpenIcon,
+      icon: FolderOpenRoundedIcon,
       onClick: () => navigate('/projects'),
     },
     {
       title: 'Due This Week',
       value: unavailable ? '—' : formatNumber(summary!.projects_due_this_week ?? 0, 0),
       subtitle: 'Team deadlines',
-      icon: ScheduleIcon,
+      icon: ScheduleRoundedIcon,
       onClick: () => navigate('/projects?due=7days'),
     },
     {
       title: 'Overdue Projects',
       value: unavailable ? '—' : formatNumber(summary!.overdue_projects ?? 0, 0),
       subtitle: 'Needs attention',
-      icon: WarningAmberIcon,
+      icon: WarningAmberRoundedIcon,
       statusColor: !unavailable && (summary!.overdue_projects ?? 0) > 0 ? ('error' as const) : undefined,
       onClick: () => navigate('/projects?due=overdue'),
     },
@@ -63,14 +51,14 @@ export function DesignLeaderDashboardView({
       title: 'Pending Reviews',
       value: unavailable ? '—' : formatNumber(pendingReviews, 0),
       subtitle: 'Milestones awaiting review',
-      icon: TaskAltIcon,
+      icon: TaskAltRoundedIcon,
       onClick: () => navigate('/projects'),
     },
     {
       title: 'Pending Timesheets',
       value: unavailable ? '—' : formatNumber(pendingTimesheets, 0),
       subtitle: 'Team submissions',
-      icon: PendingActionsIcon,
+      icon: PendingActionsRoundedIcon,
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -81,16 +69,10 @@ export function DesignLeaderDashboardView({
           ? `${formatNumber(teamUtilization.actual_hours, 0)}h`
           : '—',
       subtitle: teamUtilization?.team_name ?? 'Current team capacity',
-      icon: GroupsIcon,
+      icon: GroupsRoundedIcon,
       onClick: () => navigate('/workload'),
     },
   ];
 
-  return (
-    <Box sx={kpiGridSx}>
-      {cards.map((card) => (
-        <ActionKpiCard key={card.title} {...card} />
-      ))}
-    </Box>
-  );
+  return <ExecutiveKpiGrid cards={cards} />;
 }

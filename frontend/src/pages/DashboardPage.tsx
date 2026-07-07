@@ -47,6 +47,7 @@ export function DashboardPage() {
 
   const showExecutiveLayout =
     roleGroup === 'admin' || roleGroup === 'engineering_manager' || roleGroup === 'read_only';
+  const isAdminDashboard = roleGroup === 'admin';
   const showDesignLeaderExtras = roleGroup === 'design_leader';
   const showMyTasks = roleGroup === 'staff';
 
@@ -72,6 +73,7 @@ export function DashboardPage() {
             unavailable={unavailable}
             loading={loading}
             navigate={navigate}
+            isAdmin={isAdminDashboard}
           />
         </WidgetErrorBoundary>
       ) : (

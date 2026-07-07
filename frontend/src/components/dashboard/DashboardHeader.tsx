@@ -1,5 +1,6 @@
 import { Box, Typography } from '@mui/material';
 import { useAuth } from '../../context/AuthContext';
+import { designTokens } from '../../theme/designTokens';
 import { formatDate } from '../../utils/format';
 import { DashboardQuickActions } from './DashboardQuickActions';
 
@@ -45,17 +46,21 @@ export function DashboardHeader({
         alignItems: { xs: 'flex-start', md: 'center' },
         flexDirection: { xs: 'column', md: 'row' },
         gap: 2.5,
-        mb: 4,
+        mb: 3,
         p: 3,
-        borderRadius: 3,
-        bgcolor: 'background.paper',
+        borderRadius: `${designTokens.radius.lg}px`,
+        bgcolor: designTokens.semantic.card,
         border: '1px solid',
         borderColor: 'divider',
-        boxShadow: (theme) => theme.palette.prosohm.shadowCard,
+        boxShadow: designTokens.elevation.card,
+        backgroundImage: `linear-gradient(135deg, ${designTokens.semantic.primarySoft} 0%, ${designTokens.semantic.card} 55%)`,
       }}
     >
       <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: '-0.03em', mb: 0.5 }}>
+        <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
+          Engineering Command Center
+        </Typography>
+        <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.03em', mb: 0.5, fontSize: { xs: '1.5rem', md: '1.75rem' } }}>
           {getGreeting()}, {displayName}
         </Typography>
         <Typography variant="body2" color="text.secondary">

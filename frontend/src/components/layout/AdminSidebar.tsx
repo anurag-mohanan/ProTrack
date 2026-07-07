@@ -9,13 +9,15 @@ import {
   Toolbar,
   Typography,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
+import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
 import { NavLink } from 'react-router-dom';
 import { LogoHomeLink } from '../branding/LogoHomeLink';
 import { ADMIN_WORKSPACE_NAV } from '../../config/adminNavigation';
 
 export const ADMIN_DRAWER_WIDTH = 272;
+
+import { designTokens } from '../../theme/designTokens';
 
 function NavButton({
   path,
@@ -34,15 +36,22 @@ function NavButton({
       to={path}
       end={end}
       sx={{
-        color: 'prosohm.sidebarTextMuted',
+        mx: 1,
+        mb: 0.25,
+        borderRadius: `${designTokens.radius.md}px`,
+        color: 'rgba(255,255,255,0.68)',
+        transition: `all ${designTokens.motion.fast}`,
+        '&:hover': {
+          bgcolor: designTokens.semantic.sidebarHover,
+          color: '#fff',
+        },
         '&.active': {
-          bgcolor: 'prosohm.sidebarActive',
-          color: 'prosohm.sidebarText',
-          borderLeft: '3px solid',
-          borderColor: 'secondary.main',
+          bgcolor: designTokens.semantic.sidebarActive,
+          color: '#fff',
+          boxShadow: 'inset 3px 0 0 #60a5fa',
           pl: 'calc(16px - 3px)',
           '& .MuiListItemIcon-root': {
-            color: 'secondary.main',
+            color: '#93c5fd',
           },
         },
       }}
@@ -87,7 +96,7 @@ export function AdminSidebar() {
 
       <Box sx={{ px: 1, pb: 2, overflow: 'auto' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1 }}>
-          <AdminPanelSettingsIcon sx={{ fontSize: 16, color: 'secondary.main' }} />
+          <AdminPanelSettingsRoundedIcon sx={{ fontSize: 16, color: '#93c5fd' }} />
           <Typography variant="overline" sx={{ color: 'prosohm.sidebarTextMuted' }}>
             System Administration
           </Typography>
@@ -108,7 +117,7 @@ export function AdminSidebar() {
         <Divider sx={{ my: 2, borderColor: 'rgba(148,163,184,0.16)' }} />
 
         <List disablePadding>
-          <NavButton path="/dashboard" label="Engineering Operations" icon={ArrowBackIcon} />
+          <NavButton path="/dashboard" label="Engineering Operations" icon={ArrowBackRoundedIcon} />
         </List>
       </Box>
     </Drawer>

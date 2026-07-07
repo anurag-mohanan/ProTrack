@@ -1,6 +1,10 @@
 import { Box, Card, CardContent, Typography } from '@mui/material';
+import TrendingDownRoundedIcon from '@mui/icons-material/TrendingDownRounded';
+import TrendingFlatRoundedIcon from '@mui/icons-material/TrendingFlatRounded';
+import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import { alpha, useTheme } from '@mui/material/styles';
 import type { SvgIconComponent } from '@mui/icons-material';
+import { designTokens } from '../../../theme/designTokens';
 
 export type KpiAccent = 'primary' | 'warning' | 'error' | 'success' | 'info';
 
@@ -13,6 +17,7 @@ interface KpiMetricCardProps {
   selected?: boolean;
   accent?: KpiAccent;
   compact?: boolean;
+  trend?: { value: string; direction?: 'up' | 'down' | 'flat' };
 }
 
 const accentKeys: KpiAccent[] = ['primary', 'warning', 'error', 'success', 'info'];
@@ -26,102 +31,96 @@ export function KpiMetricCard({
   selected = false,
   accent,
   compact = false,
+  trend,
 }: KpiMetricCardProps) {
   const theme = useTheme();
   const iconAccent = accent ?? 'primary';
   const paletteKey = accentKeys.includes(iconAccent) ? iconAccent : 'primary';
   const iconBackground = accent
-    ? alpha(theme.palette[paletteKey].main, 0.12)
-    : theme.palette.grey[100];
+    ? alpha(theme.palette[paletteKey].main, 0.1)
+    : designTokens.semantic.neutralSoft;
   const iconForeground = accent ? theme.palette[paletteKey].main : theme.palette.text.secondary;
+
+  const TrendIcon =
+    trend?.direction === 'up'
+      ? TrendingUpRoundedIcon
+      : trend?.direction === 'down'
+        ? TrendingDownRoundedIcon
+        : TrendingFlatRoundedIcon;
 
   return (
     <Card
       onClick={onClick}
       elevation={0}
       sx={{
-        height: compact ? 76 : 84,
+        minHeight: compact ? 108 : 124,
         cursor: onClick ? 'pointer' : 'default',
-        borderRadius: 2.5,
-        boxShadow: (theme) =>
-          selected ? theme.palette.prosohm.shadowCardHover : theme.palette.prosohm.shadowCard,
+        borderRadius: `${designTokens.radius.lg}px`,
+        boxShadow: selected ? designTokens.elevation.cardHover : designTokens.elevation.card,
         border: '1px solid',
         borderColor: selected ? 'primary.main' : 'divider',
-        bgcolor: selected ? (theme) => `${theme.palette.primary.main}08` : 'background.paper',
-        transition: 'box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease',
+        bgcolor: selected ? alpha(theme.palette.primary.main, 0.04) : designTokens.semantic.card,
+        transition: `box-shadow ${designTokens.motion.normal}, transform ${designTokens.motion.normal}, border-color ${designTokens.motion.fast}`,
         '&:hover': onClick
           ? {
-              transform: 'translateY(-2px)',
-              boxShadow: (theme) => theme.palette.prosohm.shadowCardHover,
+              transform: 'translateY(-3px)',
+              boxShadow: designTokens.elevation.cardHover,
             }
           : undefined,
       }}
     >
-      <CardContent
-        sx={{
-          p: '14px 16px !important',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 1.5,
-        }}
-      >
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography
+      <CardContent sx={{ p: '20px !important', height: '100%' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+          <Box
             sx={{
-              fontSize: 14,
-              fontWeight: 600,
-              lineHeight: 1.2,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              color: 'text.primary',
+              width: 44,
+              height: 44,
+              borderRadius: `${designTokens.radius.md}px`,
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: iconBackground,
+              color: iconForeground,
+              flexShrink: 0,
             }}
           >
-            {title}
-          </Typography>
-          <Typography
-            sx={{
-              fontSize: compact ? 30 : 32,
-              fontWeight: 700,
-              lineHeight: 1.1,
-              letterSpacing: '-0.02em',
-              my: 0.25,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {value}
-          </Typography>
-          {subtitle ? (
-            <Typography
-              sx={{
-                fontSize: 12,
-                lineHeight: 1.2,
-                color: 'text.secondary',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {subtitle}
-            </Typography>
+            <Icon sx={{ fontSize: 22 }} />
+          </Box>
+          {trend ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+              <TrendIcon sx={{ fontSize: 16 }} />
+              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                {trend.value}
+              </Typography>
+            </Box>
           ) : null}
         </Box>
-        <Box
+        <Typography
           sx={{
-            width: compact ? 40 : 44,
-            height: compact ? 40 : 44,
-            borderRadius: '50%',
-            display: 'grid',
-            placeItems: 'center',
-            bgcolor: iconBackground,
-            color: iconForeground,
-            flexShrink: 0,
+            fontSize: 13,
+            fontWeight: 600,
+            color: 'text.secondary',
+            mt: 1.5,
+            letterSpacing: '0.01em',
           }}
         >
-          <Icon sx={{ fontSize: compact ? 20 : 22 }} />
-        </Box>
+          {title}
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: compact ? 30 : 34,
+            fontWeight: 800,
+            lineHeight: 1.05,
+            letterSpacing: '-0.03em',
+            my: 0.5,
+          }}
+        >
+          {value}
+        </Typography>
+        {subtitle ? (
+          <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.3 }}>
+            {subtitle}
+          </Typography>
+        ) : null}
       </CardContent>
     </Card>
   );

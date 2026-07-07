@@ -5,9 +5,9 @@
 
 export const prosohmColors = {
   primary: {
-    main: '#1abc9c',
-    light: '#43cea2',
-    dark: '#15987d',
+    main: '#2563eb',
+    light: '#60a5fa',
+    dark: '#1d4ed8',
     contrastText: '#ffffff',
   },
   secondary: {
@@ -48,11 +48,11 @@ export const prosohmColors = {
   },
   neutral: {
     white: '#ffffff',
-    background: '#f4f7f9',
+    background: '#f4f7fb',
     surface: '#ffffff',
     card: '#ffffff',
-    sidebar: '#2c3e50',
-    sidebarDark: '#243342',
+    sidebar: '#0f172a',
+    sidebarDark: '#0b1220',
     header: '#ffffff',
     border: '#e5e5e5',
     borderLight: '#eaeff5',

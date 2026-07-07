@@ -188,10 +188,38 @@ export function ProjectFormDialog({
     () => serializeForm(form) !== baselineRef.current,
     [form],
   );
+  const trimmedToolNumber = form.tool_number.trim();
+  const quotedHoursNumber = form.quoted_hours === '' ? null : Number(form.quoted_hours);
+  const toolNumberValidationState =
+    trimmedToolNumber.length >= 3 ? ('success' as const) : ('warning' as const);
+  const toolNumberValidationMessage =
+    trimmedToolNumber.length >= 3
+      ? 'Looks good'
+      : 'Use at least 3 characters for easy searchability';
+  const quotedHoursValidationState =
+    quotedHoursNumber === null || quotedHoursNumber <= 24
+      ? ('success' as const)
+      : ('warning' as const);
+  const quotedHoursValidationMessage =
+    quotedHoursNumber === null || quotedHoursNumber <= 24
+      ? 'Quoted effort for planning and delivery tracking'
+      : 'Hours cannot exceed 24 per day equivalent entry';
 
   const handleDiscard = () => {
     setForm(JSON.parse(baselineRef.current) as ProjectFormValues);
   };
+
+  useEffect(() => {
+    if (!open || isEdit) return;
+    if (form.code.trim()) return;
+    const suggested = form.tool_number
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_]/g, '')
+      .toUpperCase();
+    if (!suggested) return;
+    setForm((current) => ({ ...current, code: suggested }));
+  }, [form.tool_number, form.code, open, isEdit]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -386,6 +414,9 @@ export function ProjectFormDialog({
               label="Tool Number"
               required
               value={form.tool_number}
+              tooltip="Customer tool or mold number used to uniquely identify the project."
+              validationState={toolNumberValidationState}
+              validationMessage={toolNumberValidationMessage}
               onChange={(event) =>
                 setForm({ ...form, tool_number: event.target.value })
               }
@@ -395,6 +426,7 @@ export function ProjectFormDialog({
             <FormField
               label="Project Code"
               value={form.code}
+              helper="Suggested automatically from Tool Number. You can edit if needed."
               onChange={(event) => setForm({ ...form, code: event.target.value })}
             />
           </Grid>
@@ -424,6 +456,7 @@ export function ProjectFormDialog({
               required
               searchable
               value={form.customer_id}
+              helper="Select the customer first to filter contacts and templates."
               options={activeCustomers.map((customer) => ({
                 value: customer.id,
                 label: customer.name,
@@ -437,6 +470,7 @@ export function ProjectFormDialog({
               searchable
               disabled={!form.customer_id}
               value={form.customer_contact_id}
+              helper="Defaults to the primary contact when available."
               options={[
                 { value: '', label: 'None' },
                 ...(contactsQuery.data ?? []).map((contact) => ({
@@ -511,6 +545,7 @@ export function ProjectFormDialog({
                   label="Template"
                   disabled={!form.customer_id || !form.project_type_id}
                   value={form.project_template_id ?? ''}
+                  helper="Defines the default milestones created for the project."
                   options={[
                     { value: '', label: 'None' },
                     ...matchingTemplates.map((template) => ({
@@ -636,6 +671,7 @@ export function ProjectFormDialog({
             <FormField
               label="Due Date"
               type="date"
+              helper="Suggested by project template and can be adjusted."
               slotProps={{ inputLabel: { shrink: true } }}
               value={form.due_date}
               onChange={(event) =>
@@ -647,6 +683,9 @@ export function ProjectFormDialog({
             <FormField
               label="Quoted Hours"
               type="number"
+              tooltip="Estimated engineering effort quoted to the customer."
+              validationState={quotedHoursValidationState}
+              validationMessage={quotedHoursValidationMessage}
               slotProps={{ htmlInput: { min: 0, step: 0.25 } }}
               value={form.quoted_hours}
               onChange={(event) =>

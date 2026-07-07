@@ -24,6 +24,8 @@ export function AppGlobalSearchBar({
     <TextField
       size="small"
       fullWidth
+      id="global-search-input"
+      aria-label="Global search"
       placeholder={placeholder}
       value={query}
       onChange={(event) => setQuery(event.target.value)}

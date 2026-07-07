@@ -45,6 +45,19 @@ export function getErrorMessage(error: unknown): string {
   return 'An unexpected error occurred';
 }
 
+function normalizeValidationMessage(message: string): string {
+  const normalized = message.toLowerCase();
+  if (normalized.includes('invalid uuid')) return 'Please select a valid value.';
+  if (normalized.includes('field required')) return 'Please complete all required fields.';
+  if (normalized.includes('tool_number') && normalized.includes('exists')) {
+    return 'A project with this Tool Number already exists.';
+  }
+  if (normalized.includes('validation failed')) {
+    return 'Please review the highlighted fields and try again.';
+  }
+  return message;
+}
+
 export function getUserFriendlyErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) {
@@ -61,7 +74,7 @@ export function getUserFriendlyErrorMessage(error: unknown): string {
     }
   }
 
-  const raw = getErrorMessage(error).trim();
+  const raw = normalizeValidationMessage(getErrorMessage(error).trim());
   const normalized = raw.toLowerCase();
   if (!raw) {
     return 'Something went wrong. Please try again.';

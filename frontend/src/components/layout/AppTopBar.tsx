@@ -13,6 +13,7 @@ import {
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
+import HelpOutlineRoundedIcon from '@mui/icons-material/HelpOutlineRounded';
 import { Link as RouterLink } from 'react-router-dom';
 import { NotificationBell } from '../common/NotificationBell';
 import { AppGlobalSearchBar } from './AppGlobalSearchBar';
@@ -136,6 +137,10 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
             <MenuItem component={RouterLink} to="/profile?tab=preferences" onClick={() => setAnchorEl(null)}>
               <TuneRoundedIcon fontSize="small" sx={{ mr: 1.5 }} />
               Preferences
+            </MenuItem>
+            <MenuItem component={RouterLink} to="/help" onClick={() => setAnchorEl(null)}>
+              <HelpOutlineRoundedIcon fontSize="small" sx={{ mr: 1.5 }} />
+              Help Center
             </MenuItem>
             <MenuItem
               onClick={() => {

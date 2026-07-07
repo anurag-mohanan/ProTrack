@@ -18,6 +18,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
 import { ResourcePlanningPage } from './pages/ResourcePlanningPage';
 import { WorkloadPage } from './pages/WorkloadPage';
+import HelpCenterPage from './pages/HelpCenterPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { AdminRoute } from './routes/AdminRoute';
 import { RoleRoute } from './routes/RoleRoute';
@@ -174,6 +175,7 @@ export default function App() {
                         </Suspense>
                       }
                     />
+                    <Route path="/help" element={<HelpCenterPage />} />
                     <Route element={<RoleRoute allowed={canViewReports} />}>
                       <Route path="/reports" element={<ReportsPage />} />
                     </Route>

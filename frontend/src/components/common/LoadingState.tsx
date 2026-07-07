@@ -7,7 +7,7 @@ interface LoadingStateProps {
 
 export function LoadingState({
   message = 'Loading…',
-  variant = 'spinner',
+  variant = 'skeleton',
 }: LoadingStateProps) {
   if (variant === 'skeleton') {
     return (

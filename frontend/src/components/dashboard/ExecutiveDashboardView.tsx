@@ -40,6 +40,10 @@ export function ExecutiveDashboardView({
   const systemActivities = isAdmin
     ? (summary?.activity_feed ?? []).filter((a) => a.category === 'import' || a.category === 'user')
     : [];
+  const topCustomer = (summary?.customer_workload ?? [])
+    .slice()
+    .sort((a, b) => b.actual_hours - a.actual_hours)[0];
+  const firstAllocatedDesigner = (summary?.designer_availability ?? []).find((row) => row.status === 'working');
 
   const greyHealth = Math.max(
     0,
@@ -77,6 +81,36 @@ export function ExecutiveDashboardView({
       />
 
       {loading ? <DashboardKpiSkeleton count={7} /> : <ExecutiveKpiGrid cards={executiveKpis} />}
+      {loading ? null : (
+        <DashboardPanel title="Insights" subtitle="Automatically detected highlights">
+          <Stack spacing={1}>
+            <Typography variant="body2">
+              {`${summary?.projects_due_this_week ?? 0} projects are due this week.`}
+            </Typography>
+            <Typography variant="body2">
+              {firstAllocatedDesigner
+                ? `${firstAllocatedDesigner.designer_name} is actively allocated on ${firstAllocatedDesigner.current_tool_number ?? 'an active tool'}.`
+                : 'No active designer allocation alerts right now.'}
+            </Typography>
+            <Typography variant="body2">
+              {topCustomer
+                ? `${topCustomer.customer_name} has the highest active workload at ${formatNumber(topCustomer.actual_hours, 0)} hours.`
+                : 'Customer workload insights will appear once projects are active.'}
+            </Typography>
+            <Typography variant="body2">
+              {`Non-billable + NP share this month is ${formatNumber(
+                ((summary?.non_billable_hours ?? 0) + (summary?.np_hours ?? 0)) /
+                  Math.max(
+                    1,
+                    (summary?.billable_hours ?? 0) + (summary?.non_billable_hours ?? 0) + (summary?.np_hours ?? 0),
+                  ) *
+                  100,
+                0,
+              )}%.`}
+            </Typography>
+          </Stack>
+        </DashboardPanel>
+      )}
 
       {isVisible('customer-workload') ? (
       <Grid container spacing={3}>

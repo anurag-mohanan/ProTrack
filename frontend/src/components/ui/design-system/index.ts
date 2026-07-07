@@ -28,6 +28,7 @@ export { StatisticCard } from './StatisticCard';
 export { HealthIndicator } from './HealthIndicator';
 export { UtilizationBar } from './UtilizationBar';
 export { ProgressRing } from './ProgressRing';
+export { HelpTooltip } from './HelpTooltip';
 export { DashboardPanel } from './DashboardPanel';
 export { ModernPageHeader } from './ModernPageHeader';
 export { EntityAvatar } from './EntityAvatar';

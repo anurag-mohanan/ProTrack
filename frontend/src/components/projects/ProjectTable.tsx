@@ -9,6 +9,7 @@ import {
   EntityAvatar,
   ExecutionStatusBadge,
   HealthBadge,
+  HelpTooltip,
   PriorityBadge,
   ProjectStageBadge,
 } from '../ui/design-system';
@@ -133,6 +134,12 @@ function buildColumns(
       headerName: 'Tool Number',
       width: 128,
       minWidth: 110,
+      renderHeader: () => (
+        <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
+          Tool Number
+          <HelpTooltip title="Customer tool or mold number used to uniquely identify the project." />
+        </Box>
+      ),
       renderCell: (params) => (
         <Box sx={{ fontWeight: 800, color: designTokens.semantic.primary }}>{params.value}</Box>
       ),
@@ -175,13 +182,31 @@ function buildColumns(
       field: 'execution_status',
       headerName: 'Project Status',
       width: 140,
-      renderCell: (params) => <ExecutionStatusBadge status={params.value} />,
+      renderCell: (params) => (
+        <Tooltip title="Current execution state for planning, delivery, and reporting.">
+          <Box component="span">
+            <ExecutionStatusBadge status={params.value} />
+          </Box>
+        </Tooltip>
+      ),
     },
     {
       field: 'health',
       headerName: 'Health',
       width: 108,
-      renderCell: (params) => <HealthBadge health={params.value} />,
+      renderHeader: () => (
+        <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
+          Health
+          <HelpTooltip title="Current overall health of the project based on progress, due dates, and milestones." />
+        </Box>
+      ),
+      renderCell: (params) => (
+        <Tooltip title="Project health summarizes progress, timeline risk, and execution quality.">
+          <Box component="span">
+            <HealthBadge health={params.value} />
+          </Box>
+        </Tooltip>
+      ),
     },
     {
       field: 'designerName',
@@ -200,13 +225,31 @@ function buildColumns(
       field: 'progress_percent',
       headerName: 'Progress',
       width: 120,
-      renderCell: (params) => <ProgressCell value={Number(params.value)} />,
+      renderCell: (params) => (
+        <Tooltip title="Completion percentage based on milestone progress.">
+          <Box sx={{ width: '100%' }}>
+            <ProgressCell value={Number(params.value)} />
+          </Box>
+        </Tooltip>
+      ),
     },
     {
       field: 'priority',
       headerName: 'Priority',
       width: 100,
-      renderCell: (params) => <PriorityBadge priority={params.value ?? 'medium'} />,
+      renderHeader: () => (
+        <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
+          Priority
+          <HelpTooltip title="Higher priority projects are highlighted in planning and dashboards." />
+        </Box>
+      ),
+      renderCell: (params) => (
+        <Tooltip title="Priority influences planning focus and workload balancing.">
+          <Box component="span">
+            <PriorityBadge priority={params.value ?? 'medium'} />
+          </Box>
+        </Tooltip>
+      ),
     },
   ];
 

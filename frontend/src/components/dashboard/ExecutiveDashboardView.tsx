@@ -9,9 +9,11 @@ import { buildExecutiveKpis, ExecutiveKpiGrid } from './ExecutiveKpiGrid';
 import { CustomerWorkloadWidget } from './CustomerWorkloadWidget';
 import { DashboardKpiSkeleton, DashboardPanelSkeleton } from './DashboardSkeletons';
 import { DesignerUtilizationList } from './DesignerUtilizationList';
+import { NpHoursPanel } from './NpHoursPanel';
 import { ProjectHealthSummary } from './ProjectHealthSummary';
 import { ProjectStageCards } from './ProjectStageCards';
-import { ProjectsAttentionTable } from './ProjectsAttentionTable';
+import { DashboardWidgetToolbar, useDashboardWidgets } from '../analytics/DashboardWidgetToolbar';
+import { DeliveryPlanningPanel } from '../analytics/DeliveryPlanningPanel';
 import { designTokens } from '../../theme/designTokens';
 import { formatNumber } from '../../utils/format';
 
@@ -47,10 +49,36 @@ export function ExecutiveDashboardView({
       (summary?.red_projects ?? 0),
   );
 
+  const widgetIds = [
+    'customer-workload',
+    'health-charts',
+    'stage-summary',
+    'resource-util',
+    'np-leave',
+    'delivery-planning',
+    'activity',
+  ];
+  const { visibleOrdered } = useDashboardWidgets('executive-dashboard-widgets', widgetIds);
+  const isVisible = (id: string) => visibleOrdered.some((w) => w.id === id);
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <DashboardWidgetToolbar
+        storageKey="executive-dashboard-widgets"
+        widgets={[
+          { id: 'customer-workload', label: 'Customer Workload' },
+          { id: 'health-charts', label: 'Health & Hours' },
+          { id: 'stage-summary', label: 'Stage Summary' },
+          { id: 'resource-util', label: 'Resource Utilization' },
+          { id: 'np-leave', label: 'NP & Leave' },
+          { id: 'delivery-planning', label: 'Delivery Planning' },
+          { id: 'activity', label: 'Activity' },
+        ]}
+      />
+
       {loading ? <DashboardKpiSkeleton count={7} /> : <ExecutiveKpiGrid cards={executiveKpis} />}
 
+      {isVisible('customer-workload') ? (
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, lg: 8 }}>
           {loading ? (
@@ -90,7 +118,9 @@ export function ExecutiveDashboardView({
           )}
         </Grid>
       </Grid>
+      ) : null}
 
+      {isVisible('health-charts') ? (
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 6 }}>
           {loading ? (
@@ -116,7 +146,9 @@ export function ExecutiveDashboardView({
           )}
         </Grid>
       </Grid>
+      ) : null}
 
+      {isVisible('stage-summary') ? (
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 6 }}>
           {loading ? (
@@ -137,7 +169,9 @@ export function ExecutiveDashboardView({
           )}
         </Grid>
       </Grid>
+      ) : null}
 
+      {isVisible('resource-util') ? (
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, lg: 7 }}>
           {loading ? (
@@ -158,6 +192,32 @@ export function ExecutiveDashboardView({
           )}
         </Grid>
       </Grid>
+      ) : null}
+
+      {isVisible('np-leave') ? (
+        <Grid container spacing={3}>
+          <Grid size={{ xs: 12, md: 6 }}>
+            {loading ? <DashboardPanelSkeleton height={280} /> : <NpHoursPanel panel={summary?.np_hours_panel} />}
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <DashboardPanel title="Leave This Month" subtitle="Approved leave days">
+              <Typography variant="h4" sx={{ fontWeight: 800 }}>
+                {formatNumber(summary?.leave_panel?.leave_days_this_month ?? summary?.leave_days_this_month ?? 0, 0)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                NP hours this month: {formatNumber(summary?.np_hours_this_month ?? 0)}
+              </Typography>
+              <Button
+                size="small"
+                sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}
+                onClick={() => navigate('/reports?tab=np-by-month')}
+              >
+                View leave & NP reports
+              </Button>
+            </DashboardPanel>
+          </Grid>
+        </Grid>
+      ) : null}
 
       {isAdmin ? (
         <Grid container spacing={3}>
@@ -187,35 +247,15 @@ export function ExecutiveDashboardView({
         </Grid>
       ) : null}
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, lg: 6 }}>
-          {loading ? (
-            <DashboardPanelSkeleton height={240} />
-          ) : (
-            <DashboardPanel title="Upcoming Deliveries" subtitle="Due within 7 days" noPadding>
-              <ProjectsAttentionTable
-                rows={upcomingDeliveries}
-                filterLabel="upcoming deliveries"
-                viewAllHref="/projects?due=7days"
-              />
-            </DashboardPanel>
-          )}
-        </Grid>
-        <Grid size={{ xs: 12, lg: 6 }}>
-          {loading ? (
-            <DashboardPanelSkeleton height={240} />
-          ) : (
-            <DashboardPanel title="Delayed Projects" subtitle="Past due date" noPadding>
-              <ProjectsAttentionTable
-                rows={delayedProjects}
-                filterLabel="delayed projects"
-                viewAllHref="/projects?due=overdue"
-              />
-            </DashboardPanel>
-          )}
-        </Grid>
-      </Grid>
+      {isVisible('delivery-planning') ? (
+        loading ? (
+          <DashboardPanelSkeleton height={280} />
+        ) : (
+          <DeliveryPlanningPanel upcoming={upcomingDeliveries} delayed={delayedProjects} />
+        )
+      ) : null}
 
+      {isVisible('activity') ? (
       <DashboardPanel
         title={isAdmin ? 'System Activity Timeline' : 'Recent Activity'}
         subtitle={
@@ -230,6 +270,7 @@ export function ExecutiveDashboardView({
           <ActivityTimeline activities={summary?.activity_feed ?? []} />
         )}
       </DashboardPanel>
+      ) : null}
     </Box>
   );
 }

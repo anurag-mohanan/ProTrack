@@ -1,16 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
+  Chip,
   FormControlLabel,
-  Paper,
+  Stack,
   Switch,
   Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Tabs,
   Typography,
 } from '@mui/material';
@@ -19,9 +14,21 @@ import { useSearchParams } from 'react-router-dom';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
-import { PageHeader } from '../components/common/PageHeader';
+import { ModernPageHeader } from '../components/ui/design-system';
 import { ContentCard } from '../components/ui/cards';
-import { ExecutionStatusChip } from '../components/common/StatusChip';
+import { REPORT_CATEGORIES, type ReportCategoryId } from '../components/reports/reportCategories';
+import {
+  BillableUtilizationReportView,
+  BillableVsNpReportView,
+  CustomerSummaryReportView,
+  DesignerUtilizationReportView,
+  ExecutionSummaryReportView,
+  NpTrendReportView,
+  PortfolioReportView,
+  ProjectHoursReportView,
+  SimpleTableReportView,
+  StageSummaryReportView,
+} from '../components/reports/ReportAnalyticsViews';
 import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -41,26 +48,24 @@ import {
   reportQueryKeys,
   type ReportOptions,
 } from '../services/reportService';
-import type { ExecutionStatus } from '../types';
-import { EXECUTION_STATUS_LABELS, PROJECT_STAGE_LABELS } from '../types/common';
-import { canViewDeletedProjects } from '../utils/permissions';
-import { formatCellValue, formatNumber } from '../utils/format';
+import { accessContextFromUser, canExportReports, canViewDeletedProjects } from '../utils/permissions';
+import { formatNumber } from '../utils/format';
 
 const TAB_CONFIG = [
-  { label: 'Project Hours', slug: 'project-hours' },
-  { label: 'Productive Hours', slug: 'productive-hours' },
-  { label: 'NP Hours by Code', slug: 'np-hours' },
-  { label: 'NP Hours by Designer', slug: 'np-by-designer' },
-  { label: 'NP Hours by Month', slug: 'np-by-month' },
-  { label: 'Billable vs Non-Billable', slug: 'billable-vs-np' },
-  { label: 'Top NP Activities', slug: 'top-np' },
-  { label: 'Billable Utilization', slug: 'billable-utilization' },
-  { label: 'Designer Utilization', slug: 'designer-utilization' },
-  { label: 'Customer Summary', slug: 'customer-summary' },
-  { label: 'By Project Stage', slug: 'by-stage' },
-  { label: 'By Execution Status', slug: 'by-execution-status' },
-  { label: 'Project Portfolio', slug: 'project-portfolio' },
-  { label: 'Team Reports', slug: 'team-reports' },
+  { label: 'Project Hours', slug: 'project-hours', category: 'projects' },
+  { label: 'Productive Hours', slug: 'productive-hours', category: 'timesheets' },
+  { label: 'NP Hours by Code', slug: 'np-hours', category: 'leave' },
+  { label: 'NP Hours by Designer', slug: 'np-by-designer', category: 'leave' },
+  { label: 'NP Hours by Month', slug: 'np-by-month', category: 'leave' },
+  { label: 'Billable vs Non-Billable', slug: 'billable-vs-np', category: 'leave' },
+  { label: 'Top NP Activities', slug: 'top-np', category: 'leave' },
+  { label: 'Billable Utilization', slug: 'billable-utilization', category: 'resources' },
+  { label: 'Designer Utilization', slug: 'designer-utilization', category: 'resources' },
+  { label: 'Customer Summary', slug: 'customer-summary', category: 'customers' },
+  { label: 'By Project Stage', slug: 'by-stage', category: 'projects' },
+  { label: 'By Execution Status', slug: 'by-execution-status', category: 'projects' },
+  { label: 'Project Portfolio', slug: 'project-portfolio', category: 'projects' },
+  { label: 'Team Reports', slug: 'team-reports', category: 'planning' },
 ] as const;
 
 function tabIndexFromSlug(slug: string | null): number {
@@ -73,9 +78,13 @@ export function ReportsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = tabIndexFromSlug(searchParams.get('tab'));
   const [tab, setTab] = useState(initialTab);
+  const [category, setCategory] = useState<ReportCategoryId | 'all'>('all');
   const { user } = useAuth();
   const [includeArchived, setIncludeArchived] = useState(true);
   const [includeDeleted, setIncludeDeleted] = useState(false);
+
+  const access = accessContextFromUser(user);
+  const canExport = canExportReports(access);
 
   useEffect(() => {
     setTab(tabIndexFromSlug(searchParams.get('tab')));
@@ -86,78 +95,73 @@ export function ReportsPage() {
     include_deleted: includeDeleted,
   };
 
+  const visibleTabs = useMemo(() => {
+    if (category === 'all') return TAB_CONFIG;
+    const cat = REPORT_CATEGORIES.find((c) => c.id === category);
+    if (!cat) return TAB_CONFIG;
+    return TAB_CONFIG.filter((t) => (cat.slugs as readonly string[]).includes(t.slug));
+  }, [category]);
+
   const projectHoursQuery = useQuery({
     queryKey: reportQueryKeys.projectHours(reportOptions),
     queryFn: () => getProjectHoursReport(reportOptions),
     enabled: tab === 0,
   });
-
   const productiveQuery = useQuery({
     queryKey: reportQueryKeys.productiveHours,
     queryFn: getProductiveHoursReport,
     enabled: tab === 1,
   });
-
   const npHoursQuery = useQuery({
     queryKey: reportQueryKeys.nonProductiveHours,
     queryFn: getNonProductiveHoursReport,
     enabled: tab === 2,
   });
-
   const npByDesignerQuery = useQuery({
     queryKey: reportQueryKeys.npHoursByDesigner,
     queryFn: getNpHoursByDesignerReport,
     enabled: tab === 3,
   });
-
   const npTrendsQuery = useQuery({
     queryKey: reportQueryKeys.monthlyNpTrends,
     queryFn: getMonthlyNpTrendsReport,
     enabled: tab === 4,
   });
-
   const billableVsNpQuery = useQuery({
     queryKey: reportQueryKeys.billableVsNonBillable,
     queryFn: getBillableVsNonBillableReport,
     enabled: tab === 5,
   });
-
   const topNpQuery = useQuery({
     queryKey: reportQueryKeys.topNpActivities,
     queryFn: getTopNpActivitiesReport,
     enabled: tab === 6,
   });
-
   const billableQuery = useQuery({
     queryKey: reportQueryKeys.billableUtilization,
     queryFn: getBillableUtilizationReport,
     enabled: tab === 7,
   });
-
   const designerQuery = useQuery({
     queryKey: reportQueryKeys.designerUtilization,
     queryFn: getDesignerUtilizationReport,
     enabled: tab === 8,
   });
-
   const customerQuery = useQuery({
     queryKey: reportQueryKeys.customerSummary(reportOptions),
     queryFn: () => getCustomerSummaryReport(reportOptions),
     enabled: tab === 9,
   });
-
   const stageSummaryQuery = useQuery({
     queryKey: reportQueryKeys.projectStageSummary(reportOptions),
     queryFn: () => getProjectStageSummaryReport(reportOptions),
     enabled: tab === 10,
   });
-
   const executionSummaryQuery = useQuery({
     queryKey: reportQueryKeys.executionStatusSummary(reportOptions),
     queryFn: () => getExecutionStatusSummaryReport(reportOptions),
     enabled: tab === 11,
   });
-
   const portfolioQuery = useQuery({
     queryKey: reportQueryKeys.projectPortfolio(reportOptions),
     queryFn: () => getProjectPortfolioReport(reportOptions),
@@ -167,9 +171,7 @@ export function ReportsPage() {
   const teamReportsEnabled = tab === 13;
 
   const activeQuery = useMemo(() => {
-    if (teamReportsEnabled) {
-      return { isLoading: false, error: null, isError: false };
-    }
+    if (teamReportsEnabled) return { isLoading: false, error: null };
     const queries = [
       projectHoursQuery,
       productiveQuery,
@@ -188,6 +190,7 @@ export function ReportsPage() {
     return queries[tab] ?? projectHoursQuery;
   }, [
     tab,
+    teamReportsEnabled,
     projectHoursQuery,
     productiveQuery,
     npHoursQuery,
@@ -204,19 +207,52 @@ export function ReportsPage() {
   ]);
 
   const handleTabChange = (_: unknown, value: number) => {
+    const config = TAB_CONFIG[value];
     setTab(value);
-    setSearchParams({ tab: TAB_CONFIG[value].slug });
+    setSearchParams({ tab: config.slug });
+  };
+
+  const handleCategoryChange = (next: ReportCategoryId | 'all') => {
+    setCategory(next);
+    if (next === 'all') return;
+    const cat = REPORT_CATEGORIES.find((c) => c.id === next);
+    if (!cat) return;
+    const firstTab = TAB_CONFIG.findIndex((t) => (cat.slugs as readonly string[]).includes(t.slug));
+    if (firstTab >= 0) {
+      setTab(firstTab);
+      setSearchParams({ tab: TAB_CONFIG[firstTab].slug });
+    }
   };
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Reports"
-        subtitle="Business intelligence"
+      <ModernPageHeader
+        title="Reports & Analytics"
+        subtitle="Visual dashboards with charts, filters, drill-down, and export"
       />
 
-      <Box sx={{ mb: 3 }}>
+      <Stack spacing={2.5}>
         <ContentCard>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+            Categories
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+            <Chip
+              label="All"
+              color={category === 'all' ? 'primary' : 'default'}
+              onClick={() => handleCategoryChange('all')}
+              variant={category === 'all' ? 'filled' : 'outlined'}
+            />
+            {REPORT_CATEGORIES.map((cat) => (
+              <Chip
+                key={cat.id}
+                label={cat.label}
+                color={category === cat.id ? 'primary' : 'default'}
+                onClick={() => handleCategoryChange(cat.id)}
+                variant={category === cat.id ? 'filled' : 'outlined'}
+              />
+            ))}
+          </Box>
           <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
             <FormControlLabel
               control={
@@ -227,7 +263,7 @@ export function ReportsPage() {
               }
               label="Include Archived"
             />
-            {canViewDeletedProjects(user?.role_name ?? '') ? (
+            {canViewDeletedProjects(access) ? (
               <FormControlLabel
                 control={
                   <Switch
@@ -240,363 +276,123 @@ export function ReportsPage() {
             ) : null}
           </Box>
         </ContentCard>
-      </Box>
 
-      <Tabs
-        value={tab}
-        onChange={handleTabChange}
-        sx={{ mb: 3 }}
-        variant="scrollable"
-        scrollButtons="auto"
-      >
-        {TAB_CONFIG.map((config) => (
-          <Tab key={config.slug} label={config.label} />
-        ))}
-      </Tabs>
+        <Tabs
+          value={tab}
+          onChange={handleTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          {(category === 'all' ? TAB_CONFIG : visibleTabs).map((config) => {
+            const index = TAB_CONFIG.findIndex((t) => t.slug === config.slug);
+            return <Tab key={config.slug} value={index} label={config.label} />;
+          })}
+        </Tabs>
 
-      {activeQuery.isLoading ? <LoadingState message="Loading reports…" /> : null}
-      {activeQuery.error ? <ErrorState error={activeQuery.error} /> : null}
+        {activeQuery.isLoading ? <LoadingState message="Loading reports…" /> : null}
+        {activeQuery.error ? <ErrorState error={activeQuery.error} /> : null}
 
-      {tab === 0 && !projectHoursQuery.isLoading && !projectHoursQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Tool Number</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell>Customer</TableCell>
-                <TableCell align="right">Quoted</TableCell>
-                <TableCell align="right">Actual</TableCell>
-                <TableCell align="right">Variance</TableCell>
-                <TableCell>Stage</TableCell>
-                <TableCell>Execution Status</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(projectHoursQuery.data ?? []).map((row) => (
-                <TableRow key={row.project_id} hover>
-                  <TableCell>{row.tool_number}</TableCell>
-                  <TableCell>{row.part_description}</TableCell>
-                  <TableCell>{row.customer_name}</TableCell>
-                  <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.hours_variance)}</TableCell>
-                  <TableCell>
-                    {PROJECT_STAGE_LABELS[row.project_stage]}
-                  </TableCell>
-                  <TableCell>
-                    <ExecutionStatusChip status={row.execution_status} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 0 && !projectHoursQuery.isLoading && !projectHoursQuery.error ? (
+          <ProjectHoursReportView rows={projectHoursQuery.data ?? []} canExport={canExport} />
+        ) : null}
 
-      {tab === 1 && !productiveQuery.isLoading && !productiveQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Project</TableCell>
-                <TableCell>Customer</TableCell>
-                <TableCell>Task</TableCell>
-                <TableCell align="right">Total</TableCell>
-                <TableCell align="right">Billable</TableCell>
-                <TableCell align="right">Non-Billable</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(productiveQuery.data ?? []).map((row, index) => (
-                <TableRow key={`${row.project_id ?? 'none'}-${row.task_type_name}-${index}`} hover>
-                  <TableCell>{formatCellValue(row.tool_number)}</TableCell>
-                  <TableCell>{formatCellValue(row.customer_name)}</TableCell>
-                  <TableCell>{formatCellValue(row.task_type_name)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.billable_hours)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.non_billable_hours)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 1 && !productiveQuery.isLoading && !productiveQuery.error ? (
+          <SimpleTableReportView
+            title="Productive Hours"
+            filename="productive-hours"
+            canExport={canExport}
+            rows={(productiveQuery.data ?? []) as unknown as Record<string, unknown>[]}
+            columns={[
+              { key: 'tool_number', header: 'Project' },
+              { key: 'customer_name', header: 'Customer' },
+              { key: 'task_type_name', header: 'Task' },
+              { key: 'total_hours', header: 'Total', align: 'right' },
+              { key: 'billable_hours', header: 'Billable', align: 'right' },
+              { key: 'non_billable_hours', header: 'Non-Billable', align: 'right' },
+            ]}
+          />
+        ) : null}
 
-      {tab === 2 && !npHoursQuery.isLoading && !npHoursQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>NP Code</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell>Customer</TableCell>
-                <TableCell align="right">Hours</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(npHoursQuery.data ?? []).map((row) => (
-                <TableRow key={row.non_productive_code} hover>
-                  <TableCell>{row.non_productive_code}</TableCell>
-                  <TableCell>{formatCellValue(row.description)}</TableCell>
-                  <TableCell>{formatCellValue(row.customer_name)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 2 && !npHoursQuery.isLoading && !npHoursQuery.error ? (
+          <SimpleTableReportView
+            title="NP Hours by Code"
+            filename="np-hours-by-code"
+            canExport={canExport}
+            rows={(npHoursQuery.data ?? []).map((r) => ({
+              ...r,
+              total_hours: formatNumber(r.total_hours),
+            })) as unknown as Record<string, unknown>[]}
+            columns={[
+              { key: 'non_productive_code', header: 'NP Code' },
+              { key: 'description', header: 'Description' },
+              { key: 'customer_name', header: 'Customer' },
+              { key: 'total_hours', header: 'Hours', align: 'right' },
+            ]}
+          />
+        ) : null}
 
-      {tab === 3 && !npByDesignerQuery.isLoading && !npByDesignerQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Designer</TableCell>
-                <TableCell align="right">NP Hours</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(npByDesignerQuery.data ?? []).map((row) => (
-                <TableRow key={row.user_id} hover>
-                  <TableCell>{row.designer_name}</TableCell>
-                  <TableCell align="right">{formatNumber(row.total_np_hours)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 3 && !npByDesignerQuery.isLoading && !npByDesignerQuery.error ? (
+          <SimpleTableReportView
+            title="NP Hours by Designer"
+            filename="np-by-designer"
+            canExport={canExport}
+            rows={(npByDesignerQuery.data ?? []) as unknown as Record<string, unknown>[]}
+            columns={[
+              { key: 'designer_name', header: 'Designer' },
+              { key: 'total_np_hours', header: 'NP Hours', align: 'right' },
+            ]}
+          />
+        ) : null}
 
-      {tab === 4 && !npTrendsQuery.isLoading && !npTrendsQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Month</TableCell>
-                <TableCell align="right">NP Hours</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(npTrendsQuery.data ?? []).map((row) => (
-                <TableRow key={row.month} hover>
-                  <TableCell>{row.month}</TableCell>
-                  <TableCell align="right">{formatNumber(row.total_np_hours)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 4 && !npTrendsQuery.isLoading && !npTrendsQuery.error ? (
+          <NpTrendReportView rows={npTrendsQuery.data ?? []} canExport={canExport} />
+        ) : null}
 
-      {tab === 5 && !billableVsNpQuery.isLoading && !billableVsNpQuery.error && billableVsNpQuery.data ? (
-        <Paper sx={{ p: 3, maxWidth: 480 }}>
-          <Box sx={{ display: 'grid', gap: 1.5 }}>
-            <Typography variant="body2">
-              Billable hours: {formatNumber(billableVsNpQuery.data.billable_hours)} (
-              {formatNumber(billableVsNpQuery.data.billable_percent)}%)
-            </Typography>
-            <Typography variant="body2">
-              Non-billable hours: {formatNumber(billableVsNpQuery.data.non_billable_hours)}
-            </Typography>
-            <Typography variant="body2">
-              Non-productive hours: {formatNumber(billableVsNpQuery.data.np_hours)}
-            </Typography>
-            <Typography variant="body2">
-              Leave days: {formatNumber(billableVsNpQuery.data.leave_days, 0)}
-            </Typography>
-            <Typography variant="body2">
-              Combined non-billable share: {formatNumber(billableVsNpQuery.data.non_billable_percent)}%
-            </Typography>
-          </Box>
-        </Paper>
-      ) : null}
+        {tab === 5 && !billableVsNpQuery.isLoading && !billableVsNpQuery.error && billableVsNpQuery.data ? (
+          <BillableVsNpReportView data={billableVsNpQuery.data} canExport={canExport} />
+        ) : null}
 
-      {tab === 6 && !topNpQuery.isLoading && !topNpQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>NP Code</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell align="right">Hours</TableCell>
-                <TableCell align="right">Entries</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(topNpQuery.data ?? []).map((row) => (
-                <TableRow key={row.non_productive_code} hover>
-                  <TableCell>{row.non_productive_code}</TableCell>
-                  <TableCell>{row.description}</TableCell>
-                  <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
-                  <TableCell align="right">{row.entry_count}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 6 && !topNpQuery.isLoading && !topNpQuery.error ? (
+          <SimpleTableReportView
+            title="Top NP Activities"
+            filename="top-np-activities"
+            canExport={canExport}
+            rows={(topNpQuery.data ?? []) as unknown as Record<string, unknown>[]}
+            columns={[
+              { key: 'non_productive_code', header: 'Code' },
+              { key: 'description', header: 'Description' },
+              { key: 'total_hours', header: 'Hours', align: 'right' },
+              { key: 'entry_count', header: 'Entries', align: 'right' },
+            ]}
+          />
+        ) : null}
 
-      {tab === 7 && !billableQuery.isLoading && !billableQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Designer</TableCell>
-                <TableCell align="right">Billable</TableCell>
-                <TableCell align="right">Non-Billable</TableCell>
-                <TableCell align="right">NP Hours</TableCell>
-                <TableCell align="right">Billable %</TableCell>
-                <TableCell align="right">Non-Billable %</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(billableQuery.data ?? []).map((row) => (
-                <TableRow key={row.user_id} hover>
-                  <TableCell>{row.designer_name}</TableCell>
-                  <TableCell align="right">{formatNumber(row.billable_hours)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.non_billable_hours)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.np_hours)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.billable_percent)}%</TableCell>
-                  <TableCell align="right">{formatNumber(row.non_billable_percent)}%</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 7 && !billableQuery.isLoading && !billableQuery.error ? (
+          <BillableUtilizationReportView rows={billableQuery.data ?? []} canExport={canExport} />
+        ) : null}
 
-      {tab === 8 && !designerQuery.isLoading && !designerQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Designer</TableCell>
-                <TableCell>Role</TableCell>
-                <TableCell align="right">Active Projects</TableCell>
-                <TableCell align="right">Hours This Week</TableCell>
-                <TableCell align="right">Quoted Assigned</TableCell>
-                <TableCell align="right">Actual Logged</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(designerQuery.data ?? []).map((row) => (
-                <TableRow key={row.user_id} hover>
-                  <TableCell>{row.designer_name}</TableCell>
-                  <TableCell>{row.role}</TableCell>
-                  <TableCell align="right">{row.active_projects}</TableCell>
-                  <TableCell align="right">{formatNumber(row.hours_this_week)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.quoted_hours_assigned)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.actual_hours_logged)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 8 && !designerQuery.isLoading && !designerQuery.error ? (
+          <DesignerUtilizationReportView rows={designerQuery.data ?? []} canExport={canExport} />
+        ) : null}
 
-      {tab === 9 && !customerQuery.isLoading && !customerQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Customer</TableCell>
-                <TableCell align="right">Projects</TableCell>
-                <TableCell align="right">Quoted Hours</TableCell>
-                <TableCell align="right">Actual Hours</TableCell>
-                <TableCell align="right">Variance</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(customerQuery.data ?? []).map((row) => (
-                <TableRow key={row.customer_id} hover>
-                  <TableCell>{row.customer_name}</TableCell>
-                  <TableCell align="right">{row.project_count}</TableCell>
-                  <TableCell align="right">{formatNumber(row.total_quoted_hours)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.total_actual_hours)}</TableCell>
-                  <TableCell align="right">{formatNumber(row.hours_variance)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 9 && !customerQuery.isLoading && !customerQuery.error ? (
+          <CustomerSummaryReportView rows={customerQuery.data ?? []} canExport={canExport} />
+        ) : null}
 
-      {tab === 10 && !stageSummaryQuery.isLoading && !stageSummaryQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Project Stage</TableCell>
-                <TableCell align="right">Projects</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(stageSummaryQuery.data ?? []).map((row) => (
-                <TableRow key={row.project_stage} hover>
-                  <TableCell>{PROJECT_STAGE_LABELS[row.project_stage]}</TableCell>
-                  <TableCell align="right">{row.project_count}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 10 && !stageSummaryQuery.isLoading && !stageSummaryQuery.error ? (
+          <StageSummaryReportView rows={stageSummaryQuery.data ?? []} canExport={canExport} />
+        ) : null}
 
-      {tab === 11 && !executionSummaryQuery.isLoading && !executionSummaryQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Execution Status</TableCell>
-                <TableCell align="right">Projects</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(executionSummaryQuery.data ?? []).map((row) => (
-                <TableRow key={row.execution_status} hover>
-                  <TableCell>
-                    {EXECUTION_STATUS_LABELS[row.execution_status as ExecutionStatus]}
-                  </TableCell>
-                  <TableCell align="right">{row.project_count}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 11 && !executionSummaryQuery.isLoading && !executionSummaryQuery.error ? (
+          <ExecutionSummaryReportView rows={executionSummaryQuery.data ?? []} canExport={canExport} />
+        ) : null}
 
-      {tab === 12 && !portfolioQuery.isLoading && !portfolioQuery.error ? (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Tool Number</TableCell>
-                <TableCell>Customer</TableCell>
-                <TableCell>Stage</TableCell>
-                <TableCell>Execution Status</TableCell>
-                <TableCell>Due Date</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(portfolioQuery.data ?? []).map((row) => (
-                <TableRow key={row.project_id} hover>
-                  <TableCell>{row.tool_number}</TableCell>
-                  <TableCell>{row.customer_name}</TableCell>
-                  <TableCell>{PROJECT_STAGE_LABELS[row.project_stage]}</TableCell>
-                  <TableCell>
-                    <ExecutionStatusChip status={row.execution_status} />
-                  </TableCell>
-                  <TableCell>{row.due_date}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
+        {tab === 12 && !portfolioQuery.isLoading && !portfolioQuery.error ? (
+          <PortfolioReportView rows={portfolioQuery.data ?? []} canExport={canExport} />
+        ) : null}
 
-      {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}
+        {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}
+      </Stack>
     </PageContainer>
   );
 }

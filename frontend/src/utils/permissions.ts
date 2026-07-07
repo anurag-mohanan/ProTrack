@@ -379,6 +379,11 @@ export function canViewReports(roleNameOrContext: string | AccessContext): boole
   return userHasModule(ctx, MODULE_REPORTS) || userHasSpecial(ctx, SPECIAL_VIEW_REPORTS);
 }
 
+export function canExportReports(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_EXPORT_REPORTS);
+}
+
 export function canViewWorkload(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
   return userHasModule(ctx, MODULE_WORKLOAD);

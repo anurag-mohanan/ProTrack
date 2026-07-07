@@ -227,6 +227,63 @@ export function ProjectFilterSidebar({
           />
 
           <FormSelect
+            label="Project Status"
+            value={draft.executionStatus}
+            options={[
+              { value: 'all', label: 'All Statuses' },
+              { value: 'planning', label: 'Planning' },
+              { value: 'currently_being_worked_on', label: 'In Progress' },
+              { value: 'on_hold', label: 'On Hold' },
+              { value: 'completed', label: 'Completed' },
+              { value: 'cancelled', label: 'Cancelled' },
+            ]}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                executionStatus: event.target.value as ProjectCommandCenterFilters['executionStatus'],
+              })
+            }
+            sx={roundedControlSx}
+          />
+
+          <FormSelect
+            label="Priority"
+            value={draft.priority}
+            options={[
+              { value: 'all', label: 'All Priorities' },
+              { value: 'critical', label: 'Critical' },
+              { value: 'high', label: 'High' },
+              { value: 'medium', label: 'Medium' },
+              { value: 'low', label: 'Low' },
+            ]}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                priority: event.target.value as ProjectCommandCenterFilters['priority'],
+              })
+            }
+            sx={roundedControlSx}
+          />
+
+          <FormSelect
+            label="Health"
+            value={draft.health}
+            options={[
+              { value: 'all', label: 'All Health' },
+              { value: 'green', label: 'Green' },
+              { value: 'yellow', label: 'Amber' },
+              { value: 'red', label: 'Red' },
+            ]}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                health: event.target.value as ProjectCommandCenterFilters['health'],
+              })
+            }
+            sx={roundedControlSx}
+          />
+
+          <FormSelect
             label="Due Date"
             value={draft.dueDate}
             options={[

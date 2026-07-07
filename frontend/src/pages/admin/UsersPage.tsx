@@ -646,7 +646,7 @@ export default function UsersPage() {
         }
       />
 
-      <SearchToolbar>
+      <SearchToolbar sticky>
         <FormField
           label="Search users"
           value={search}
@@ -690,6 +690,7 @@ export default function UsersPage() {
           <ProsohmDataGrid
             rows={filteredUsers}
             columns={columns}
+            pinLeftFields={['full_name']}
             autoHeight
             pageSizeOptions={[10, 25, 50]}
             initialState={{

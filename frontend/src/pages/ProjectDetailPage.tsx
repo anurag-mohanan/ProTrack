@@ -46,7 +46,16 @@ import {
 } from '../components/common/StatusChip';
 import { MilestoneFormDialog } from '../components/projects/MilestoneFormDialog';
 import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
-import { AppCard, FormDrawer, FormField, PriorityBadge, StickyRecordHeader } from '../components/ui/design-system';
+import { AppCard, CollapsiblePanel, FormDrawer, FormField, PriorityBadge, StickyRecordHeader } from '../components/ui/design-system';
+import TimelineRoundedIcon from '@mui/icons-material/TimelineRounded';
+import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
+import BusinessRoundedIcon from '@mui/icons-material/BusinessRounded';
+import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
+import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
+import GavelRoundedIcon from '@mui/icons-material/GavelRounded';
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
+
+const PROJECT_DETAIL_SECTIONS_KEY = 'protrack:sections:project-detail';
 import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
@@ -270,7 +279,50 @@ export function ProjectDetailPage() {
         dueDate={project.due_date}
         health={header.health}
         stickyTop={APP_TOP_BAR_OFFSET}
-        meta={<PriorityBadge priority={header.priority} />}
+        meta={
+          <>
+            <PriorityBadge priority={header.priority} />
+            {!project.is_deleted ? (
+              <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap', ml: { sm: 1 } }}>
+                <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => setEditOpen(true)}>
+                  Edit
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<FileCopyIcon />}
+                  onClick={() => cloneMutation.mutate()}
+                  disabled={cloneMutation.isPending}
+                >
+                  Clone
+                </Button>
+                {project.is_archived ? (
+                  canArchiveProject(user?.role_name ?? '') ? (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<UnarchiveIcon />}
+                      onClick={() => restoreMutation.mutate()}
+                      disabled={restoreMutation.isPending}
+                    >
+                      Restore
+                    </Button>
+                  ) : null
+                ) : canArchiveProject(user?.role_name ?? '') ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="secondary"
+                    startIcon={<ArchiveIcon />}
+                    onClick={() => setArchiveOpen(true)}
+                  >
+                    Archive
+                  </Button>
+                ) : null}
+              </Stack>
+            ) : null}
+          </>
+        }
       />
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -296,12 +348,24 @@ export function ProjectDetailPage() {
 
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, lg: 8 }}>
-          <AppCard title="Project Timeline" subtitle="Engineering workflow milestones">
+          <CollapsiblePanel
+            sectionId="timeline"
+            storageKey={PROJECT_DETAIL_SECTIONS_KEY}
+            title="Project Timeline"
+            subtitle="Engineering workflow milestones"
+            icon={TimelineRoundedIcon}
+          >
             <WorkflowTimeline steps={data.timeline} />
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
         <Grid size={{ xs: 12, lg: 4 }}>
-          <AppCard title="Project Risks" subtitle="Automatically detected">
+          <CollapsiblePanel
+            sectionId="risks"
+            storageKey={PROJECT_DETAIL_SECTIONS_KEY}
+            title="Project Risks"
+            subtitle="Automatically detected"
+            icon={WarningAmberRoundedIcon}
+          >
             {!data.risks.length ? (
               <Typography variant="body2" color="text.secondary">
                 No active risks detected.
@@ -334,17 +398,28 @@ export function ProjectDetailPage() {
                 </Box>
               ))
             )}
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
 
         <Grid size={{ xs: 12 }}>
-          <AppCard title="Project KPIs">
+          <CollapsiblePanel
+            sectionId="kpis"
+            storageKey={PROJECT_DETAIL_SECTIONS_KEY}
+            title="Project KPIs"
+            icon={AssessmentRoundedIcon}
+          >
             <KpiPanel kpis={data.kpis} />
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <AppCard title="Project Team" subtitle="Capacity and availability">
+          <CollapsiblePanel
+            sectionId="team"
+            storageKey={PROJECT_DETAIL_SECTIONS_KEY}
+            title="Project Team"
+            subtitle="Capacity and availability"
+            icon={GroupsRoundedIcon}
+          >
             <InfoLine label="Engineering Manager" value={data.team.engineering_manager_name} />
             <InfoLine label="Design Leader" value={data.team.design_leader_name} />
             <InfoLine label="Designer" value={data.team.designer_name} />
@@ -362,11 +437,16 @@ export function ProjectDetailPage() {
                 </Typography>
               </Box>
             ))}
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <AppCard title="Customer Summary">
+          <CollapsiblePanel
+            sectionId="customer"
+            storageKey={PROJECT_DETAIL_SECTIONS_KEY}
+            title="Customer Summary"
+            icon={BusinessRoundedIcon}
+          >
             <InfoLine label="Customer" value={data.customer_summary.customer_name} />
             <InfoLine
               label="Primary Contact"
@@ -381,11 +461,11 @@ export function ProjectDetailPage() {
               label="Average Hours"
               value={formatNumber(data.customer_summary.average_hours)}
             />
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <AppCard title="Engineering Changes">
+          <CollapsiblePanel sectionId="engineering-changes" storageKey={PROJECT_DETAIL_SECTIONS_KEY} title="Engineering Changes" icon={AssessmentRoundedIcon}>
             <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
               <Chip label={`Open: ${data.engineering_changes.open_count}`} color="warning" />
               <Chip label={`Closed: ${data.engineering_changes.closed_count}`} color="success" />
@@ -411,11 +491,11 @@ export function ProjectDetailPage() {
                 ))}
               </TableBody>
             </Table>
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <AppCard title="Recent Timesheets">
+          <CollapsiblePanel sectionId="recent-timesheets" storageKey={PROJECT_DETAIL_SECTIONS_KEY} title="Recent Timesheets" icon={ScheduleIcon}>
             {!data.recent_timesheets.length ? (
               <EmptyState title="No timesheet entries" />
             ) : (
@@ -440,11 +520,11 @@ export function ProjectDetailPage() {
                 </TableBody>
               </Table>
             )}
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <AppCard title="Project Folder" subtitle="Paths only — no file storage">
+          <CollapsiblePanel sectionId="folders" storageKey={PROJECT_DETAIL_SECTIONS_KEY} title="Project Folder" subtitle="Paths only — no file storage" icon={FolderRoundedIcon}>
             <InfoLine label="Project Folder" value={displayFolder} />
             <InfoLine
               label="CAD Folder"
@@ -467,11 +547,13 @@ export function ProjectDetailPage() {
                 Edit Paths
               </Button>
             </Stack>
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
 
         <Grid size={{ xs: 12 }}>
-          <AppCard
+          <CollapsiblePanel
+            sectionId="quick-actions"
+            storageKey={PROJECT_DETAIL_SECTIONS_KEY}
             title="Quick Actions"
             action={
               <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
@@ -497,11 +579,11 @@ export function ProjectDetailPage() {
               Use the actions above to update milestones, assignments, engineering changes, and folder
               paths without leaving the command center.
             </Typography>
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
 
         <Grid size={{ xs: 12 }}>
-          <AppCard title="Engineering Decision Log">
+          <CollapsiblePanel sectionId="decisions" storageKey={PROJECT_DETAIL_SECTIONS_KEY} title="Engineering Decision Log" icon={GavelRoundedIcon}>
             <DecisionLogPanel
               decisions={data.decisions}
               loading={decisionMutation.isPending}
@@ -514,7 +596,7 @@ export function ProjectDetailPage() {
               }
               onDelete={(decisionId) => setDeleteDecisionTarget(decisionId)}
             />
-          </AppCard>
+          </CollapsiblePanel>
         </Grid>
       </Grid>
 

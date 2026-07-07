@@ -1,5 +1,6 @@
 import { Box, Paper, Typography } from '@mui/material';
 import { ProsohmButton } from '../ui/ProsohmButton';
+import { designTokens } from '../../theme/designTokens';
 
 interface UnsavedChangesBarProps {
   visible: boolean;
@@ -43,18 +44,23 @@ export function UnsavedChangesBar({
         elevation={8}
         sx={{
           pointerEvents: 'auto',
-          px: 2,
-          py: 1.25,
-          borderRadius: 999,
+          px: 2.5,
+          py: 1.5,
+          borderRadius: `${designTokens.radius.lg}px`,
           display: 'flex',
           alignItems: 'center',
           gap: 2,
           flexWrap: 'wrap',
           border: 1,
           borderColor: 'divider',
-          boxShadow: (theme) => theme.palette.prosohm.shadowDialog,
+          boxShadow: designTokens.elevation.cardHover,
           width: inset ? '100%' : { xs: '100%', sm: 'auto' },
           justifyContent: { xs: 'space-between', sm: 'flex-start' },
+          animation: 'unsavedBarIn 0.22s ease-out',
+          '@keyframes unsavedBarIn': {
+            from: { opacity: 0, transform: 'translateY(12px)' },
+            to: { opacity: 1, transform: 'translateY(0)' },
+          },
         }}
       >
         <Typography variant="body2" sx={{ fontWeight: 600, px: 0.5 }}>

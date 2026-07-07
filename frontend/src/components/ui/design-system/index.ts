@@ -30,6 +30,13 @@ export { UtilizationBar } from './UtilizationBar';
 export { ProgressRing } from './ProgressRing';
 export { DashboardPanel } from './DashboardPanel';
 export { ModernPageHeader } from './ModernPageHeader';
+export { EntityAvatar } from './EntityAvatar';
+export { CollapsiblePanel } from './CollapsiblePanel';
+export {
+  OperationalDataTable,
+  StickyHeaderCell,
+  StickyTableCell,
+} from './OperationalDataTable';
 export { DeleteDialog } from './DeleteDialog';
 export { DeleteRecordDialog, type DeleteCheckResult } from './DeleteRecordDialog';
 export { ConfirmDialog as ConfirmationDialog } from '../../common/ConfirmDialog';

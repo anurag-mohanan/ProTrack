@@ -1,5 +1,5 @@
 import type { Customer, Project, Team, User } from '../types';
-import type { ExecutionStatus, ProjectStage } from '../types/common';
+import type { ExecutionStatus, ProjectStage, ProjectHealth } from '../types/common';
 import { PROJECT_STAGE_LABELS } from '../types/common';
 import { formatCellValue, userDisplayName } from './format';
 
@@ -29,6 +29,7 @@ export interface ProjectCommandCenterFilters {
   designerId: string;
   surfacerId: string;
   priority: ProjectPriorityFilter;
+  health: ProjectHealth | 'all';
   dueDate: ProjectDueFilter;
   showArchived: boolean;
   groupByTeam: boolean;
@@ -48,6 +49,7 @@ export const defaultProjectCommandCenterFilters: ProjectCommandCenterFilters = {
   designerId: 'all',
   surfacerId: 'all',
   priority: 'all',
+  health: 'all',
   dueDate: 'all',
   showArchived: false,
   groupByTeam: false,
@@ -257,6 +259,10 @@ export function filterProjectsForCommandCenter(
       return false;
     }
 
+    if (filters.health !== 'all' && project.health !== filters.health) {
+      return false;
+    }
+
     if (!matchesDueFilter(project, filters.dueDate, today)) return false;
     if (!matchesQuickFilter(project, filters.quickFilter, today)) return false;
 
@@ -346,6 +352,8 @@ export function countActiveSidebarFilters(filters: ProjectCommandCenterFilters):
   if (filters.designLeaderId !== 'all') count += 1;
   if (filters.designerId !== 'all') count += 1;
   if (filters.surfacerId !== 'all') count += 1;
+  if (filters.priority !== 'all') count += 1;
+  if (filters.health !== 'all') count += 1;
   if (filters.dueDate !== 'all') count += 1;
   if (filters.showArchived) count += 1;
   return count;

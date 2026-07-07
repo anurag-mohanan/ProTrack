@@ -1,12 +1,21 @@
 import { memo, useMemo } from 'react';
-import { Box, Chip } from '@mui/material';
-import RestoreIcon from '@mui/icons-material/Restore';
+import { Box, LinearProgress } from '@mui/material';
+import RestoreRoundedIcon from '@mui/icons-material/RestoreRounded';
 import { IconButton, Tooltip } from '@mui/material';
 import type { GridColDef } from '@mui/x-data-grid';
 import type { Customer, Project, Stream, Team, User } from '../../types';
-import { ProsohmDataGrid, HealthBadge, ProjectStageBadge } from '../ui/design-system';
+import {
+  ProsohmDataGrid,
+  EntityAvatar,
+  ExecutionStatusBadge,
+  HealthBadge,
+  PriorityBadge,
+  ProjectStageBadge,
+} from '../ui/design-system';
 import { ProjectRowActions } from './ProjectRowActions';
+import { designTokens } from '../../theme/designTokens';
 import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
+import { formatNumber } from '../../utils/format';
 
 export interface ProjectTableRow extends Project {
   customerName: string;
@@ -81,6 +90,37 @@ export function buildProjectTableRows(
 
 const displayOrDash = (value: unknown) => formatCellValue(value) || '—';
 
+function ProgressCell({ value }: { value: number }) {
+  const pct = Math.min(100, Math.max(0, Number(value) || 0));
+  return (
+    <Box sx={{ width: '100%', minWidth: 72 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+        <Box component="span" sx={{ fontSize: '0.75rem', fontWeight: 700 }}>
+          {formatNumber(pct, 0)}%
+        </Box>
+      </Box>
+      <LinearProgress
+        variant="determinate"
+        value={pct}
+        sx={{
+          height: 6,
+          borderRadius: designTokens.radius.pill,
+          bgcolor: designTokens.semantic.neutralSoft,
+          '& .MuiLinearProgress-bar': {
+            borderRadius: designTokens.radius.pill,
+            bgcolor:
+              pct >= 90
+                ? designTokens.semantic.success
+                : pct >= 50
+                  ? designTokens.semantic.primary
+                  : designTokens.semantic.warning,
+          },
+        }}
+      />
+    </Box>
+  );
+}
+
 function buildColumns(
   handlers: Pick<
     ProjectTableProps,
@@ -88,96 +128,85 @@ function buildColumns(
   >,
 ): GridColDef<ProjectTableRow>[] {
   const baseColumns: GridColDef<ProjectTableRow>[] = [
-    { field: 'tool_number', headerName: 'Tool Number', flex: 0.85, minWidth: 110 },
+    {
+      field: 'tool_number',
+      headerName: 'Tool Number',
+      width: 128,
+      minWidth: 110,
+      renderCell: (params) => (
+        <Box sx={{ fontWeight: 800, color: designTokens.semantic.primary }}>{params.value}</Box>
+      ),
+    },
     {
       field: 'part_description',
       headerName: 'Part Description',
-      flex: 1.35,
+      flex: 1.2,
       minWidth: 160,
       valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'customerName',
       headerName: 'Customer',
-      flex: 0.95,
-      minWidth: 120,
-      valueFormatter: (value) => displayOrDash(value),
-    },
-    {
-      field: 'teamName',
-      headerName: 'Team',
-      flex: 0.85,
-      minWidth: 100,
-      valueFormatter: (value) => displayOrDash(value),
-    },
-    {
-      field: 'designLeaderName',
-      headerName: 'Design Leader',
-      flex: 0.95,
-      minWidth: 120,
-      valueFormatter: (value) => displayOrDash(value),
-    },
-    {
-      field: 'designerName',
-      headerName: 'Designer',
-      flex: 0.85,
-      minWidth: 100,
-      valueFormatter: (value) => displayOrDash(value),
-    },
-    {
-      field: 'surfacerName',
-      headerName: 'Surfacer',
-      flex: 0.85,
-      minWidth: 100,
-      valueFormatter: (value) => displayOrDash(value),
-    },
-    {
-      field: 'current_milestone',
-      headerName: 'Current Milestone',
       flex: 1,
-      minWidth: 130,
-      renderCell: (params) => {
-        const label = formatCellValue(params.value);
-        if (!label) return '—';
-        return (
-          <Chip
-            size="small"
-            label={label}
-            variant="outlined"
-            sx={{ fontWeight: 600, maxWidth: '100%' }}
-          />
-        );
-      },
+      minWidth: 140,
+      renderCell: (params) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+          <EntityAvatar label={String(params.value || '?')} size={26} />
+          <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {displayOrDash(params.value)}
+          </Box>
+        </Box>
+      ),
     },
     {
       field: 'project_stage',
-      headerName: 'Project Stage',
+      headerName: 'Current Stage',
       width: 130,
       renderCell: (params) => {
         const row = params.row;
-        if (row.is_archived) {
-          return <Chip size="small" label="Archived" variant="outlined" />;
-        }
+        if (row.is_archived) return <ProjectStageBadge stage="preliminary" />;
         if (row.execution_status === 'completed') {
-          return <Chip size="small" label="Completed" color="success" />;
-        }
-        if (row.execution_status === 'cancelled') {
-          return <Chip size="small" label="Cancelled" variant="outlined" />;
+          return <ExecutionStatusBadge status="completed" />;
         }
         return <ProjectStageBadge stage={row.project_stage} />;
       },
     },
     {
-      field: 'due_date',
-      headerName: 'Due Date',
-      width: 105,
-      valueFormatter: (value) => formatDate(String(value)) || '—',
+      field: 'execution_status',
+      headerName: 'Project Status',
+      width: 140,
+      renderCell: (params) => <ExecutionStatusBadge status={params.value} />,
     },
     {
       field: 'health',
       headerName: 'Health',
-      width: 100,
+      width: 108,
       renderCell: (params) => <HealthBadge health={params.value} />,
+    },
+    {
+      field: 'designerName',
+      headerName: 'Assigned Designer',
+      flex: 0.9,
+      minWidth: 120,
+      valueFormatter: (value) => displayOrDash(value),
+    },
+    {
+      field: 'due_date',
+      headerName: 'Due Date',
+      width: 108,
+      valueFormatter: (value) => formatDate(String(value)) || '—',
+    },
+    {
+      field: 'progress_percent',
+      headerName: 'Progress',
+      width: 120,
+      renderCell: (params) => <ProgressCell value={Number(params.value)} />,
+    },
+    {
+      field: 'priority',
+      headerName: 'Priority',
+      width: 100,
+      renderCell: (params) => <PriorityBadge priority={params.value ?? 'medium'} />,
     },
   ];
 
@@ -187,9 +216,10 @@ function buildColumns(
   const actionColumn: GridColDef<ProjectTableRow> = {
     field: 'actions',
     headerName: '',
-    width: 96,
+    width: 108,
     sortable: false,
     filterable: false,
+    disableColumnMenu: true,
     renderCell: (params) => (
       <Box sx={{ display: 'flex', alignItems: 'center' }}>
         {onRestore ? (
@@ -202,7 +232,7 @@ function buildColumns(
                 onRestore(String(params.id));
               }}
             >
-              <RestoreIcon fontSize="small" />
+              <RestoreRoundedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         ) : onEdit ? (
@@ -222,7 +252,7 @@ function buildColumns(
   return [...baseColumns, actionColumn];
 }
 
-const TABLE_HEIGHT = 520;
+const TABLE_HEIGHT = 560;
 const PAGE_SIZE = 25;
 
 function ProjectTableComponent({
@@ -265,10 +295,22 @@ function ProjectTableComponent({
     <ProsohmDataGrid
       rows={rows}
       columns={columns}
+      pinLeftFields={['tool_number']}
       autoHeight={rows.length <= PAGE_SIZE}
       sx={rows.length > PAGE_SIZE ? { height: TABLE_HEIGHT } : undefined}
       paginationModel={{ pageSize: PAGE_SIZE, page: 0 }}
       pageSizeOptions={[25, 50, 100]}
+      disableColumnMenu={false}
+      initialState={{
+        columns: {
+          columnVisibilityModel: {
+            teamName: false,
+            designLeaderName: false,
+            surfacerName: false,
+            current_milestone: false,
+          },
+        },
+      }}
       onRowOpen={(rowId) => {
         const row = rowMap.get(rowId);
         if (row) onRowOpen?.(row);

@@ -2,22 +2,25 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   IconButton,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
   TableRow,
   TableSortLabel,
   Tooltip,
   Typography,
 } from '@mui/material';
-import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
+import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import type { Timesheet, TimesheetEntry } from '../../types';
 import { TimesheetStatusChip } from '../common/StatusChip';
 import { EmptyState } from '../common/EmptyState';
+import {
+  ClickableTableRow,
+  OperationalDataTable,
+  StickyHeaderCell,
+  StickyTableCell,
+} from '../ui/design-system';
+import { TimesheetToolCell, TimesheetWorkCategoryBadge } from './TimesheetEntryBadges';
+import { designTokens } from '../../theme/designTokens';
 import { formatCellValue, formatDate, formatNumber } from '../../utils/format';
 
 type SortKey = 'entry_date' | 'tool' | 'hours';
@@ -36,15 +39,9 @@ interface TimesheetEntriesTableProps {
   onSelect: (entry: TimesheetEntry | null) => void;
   onEdit: (entry: TimesheetEntry) => void;
   onDelete: (entry: TimesheetEntry) => void;
+  onDuplicate?: (entry: TimesheetEntry) => void;
   isEntryEditable: (entry: TimesheetEntry) => boolean;
   onRequestDeleteSelected?: () => void;
-}
-
-function entryToolLabel(entry: TimesheetEntry): string {
-  if (entry.work_category === 'non_productive') {
-    return formatCellValue(entry.non_productive_code) || '—';
-  }
-  return formatCellValue(entry.project_tool_number) || '—';
 }
 
 function entryDescription(entry: TimesheetEntry): string {
@@ -64,6 +61,13 @@ function entryTaskLabel(entry: TimesheetEntry): string {
   return formatCellValue(entry.task_type_name) || '—';
 }
 
+function entryToolSortKey(entry: TimesheetEntry): string {
+  if (entry.work_category === 'non_productive') {
+    return formatCellValue(entry.non_productive_code) || '';
+  }
+  return formatCellValue(entry.project_tool_number) || '';
+}
+
 export function TimesheetEntriesTable({
   monthLabel,
   entries,
@@ -77,6 +81,7 @@ export function TimesheetEntriesTable({
   onSelect,
   onEdit,
   onDelete,
+  onDuplicate,
   isEntryEditable,
   onRequestDeleteSelected,
 }: TimesheetEntriesTableProps) {
@@ -111,7 +116,7 @@ export function TimesheetEntriesTable({
       if (sortKey === 'entry_date') {
         compare = left.entry_date.localeCompare(right.entry_date);
       } else if (sortKey === 'tool') {
-        compare = entryToolLabel(left).localeCompare(entryToolLabel(right));
+        compare = entryToolSortKey(left).localeCompare(entryToolSortKey(right));
       } else {
         compare = Number(left.hours) - Number(right.hours);
       }
@@ -137,146 +142,180 @@ export function TimesheetEntriesTable({
     return counts;
   }, [entries]);
 
+  const rowCategoryBg = (entry: TimesheetEntry) => {
+    if ((entry.leave_count ?? 0) > 0 || entry.non_productive_category === 'leave') {
+      return designTokens.semantic.primarySoft;
+    }
+    if (entry.work_category === 'non_productive') {
+      return designTokens.semantic.warningSoft;
+    }
+    if (entry.is_billable) {
+      return designTokens.semantic.successSoft;
+    }
+    return undefined;
+  };
+
   return (
     <Box>
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+      <Typography variant="sectionTitle" sx={{ mb: 1.5 }}>
         Entries for {monthLabel}
       </Typography>
 
       {!entries.length ? (
         <EmptyState
-          title="No entries yet"
-          description="Use the form above to add your first timesheet entry for this month."
+          title="No timesheet entries"
+          description="Use the form above to add your first entry, or duplicate a previous day."
         />
       ) : (
-        <TableContainer component={Paper} sx={{ borderRadius: 2, border: 1, borderColor: 'divider' }}>
-          <Table size="small" stickyHeader>
-            <TableHead>
-              <TableRow>
-                <TableCell sortDirection={sortKey === 'entry_date' ? sortDirection : false}>
-                  <TableSortLabel
-                    active={sortKey === 'entry_date'}
-                    direction={sortKey === 'entry_date' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('entry_date')}
-                  >
-                    Date
-                  </TableSortLabel>
-                </TableCell>
-                {showUser ? <TableCell>User</TableCell> : null}
-                <TableCell sortDirection={sortKey === 'tool' ? sortDirection : false}>
-                  <TableSortLabel
-                    active={sortKey === 'tool'}
-                    direction={sortKey === 'tool' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('tool')}
-                  >
-                    Tool Number / NP Code
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>Project Description</TableCell>
-                <TableCell>Task</TableCell>
-                <TableCell sortDirection={sortKey === 'hours' ? sortDirection : false} align="right">
-                  <TableSortLabel
-                    active={sortKey === 'hours'}
-                    direction={sortKey === 'hours' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('hours')}
-                  >
-                    Hours
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>Notes</TableCell>
-                <TableCell>Billable</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {sortedEntries.map((entry) => {
-                const editable = !readOnly && isEntryEditable(entry);
-                const dayTotal = dailyTotals.get(entry.entry_date) ?? 0;
-                const showDayTotal = (dailySubtotals.get(entry.entry_date) ?? 0) > 1;
-                const dayOverLimit = dayTotal > dailyLimit;
-                const sheet = timesheetById.get(entry.timesheet_id);
+        <OperationalDataTable
+          maxHeight={520}
+          head={
+            <TableRow>
+              <StickyHeaderCell pinned>
+                <TableSortLabel
+                  active={sortKey === 'entry_date'}
+                  direction={sortKey === 'entry_date' ? sortDirection : 'asc'}
+                  onClick={() => handleSort('entry_date')}
+                >
+                  Date
+                </TableSortLabel>
+              </StickyHeaderCell>
+              {showUser ? <StickyHeaderCell>Designer</StickyHeaderCell> : null}
+              <StickyHeaderCell pinned={!showUser}>
+                <TableSortLabel
+                  active={sortKey === 'tool'}
+                  direction={sortKey === 'tool' ? sortDirection : 'asc'}
+                  onClick={() => handleSort('tool')}
+                >
+                  Tool / NP Code
+                </TableSortLabel>
+              </StickyHeaderCell>
+              <StickyHeaderCell>Description</StickyHeaderCell>
+              <StickyHeaderCell>Task</StickyHeaderCell>
+              <StickyHeaderCell align="right">
+                <TableSortLabel
+                  active={sortKey === 'hours'}
+                  direction={sortKey === 'hours' ? sortDirection : 'asc'}
+                  onClick={() => handleSort('hours')}
+                >
+                  Hours
+                </TableSortLabel>
+              </StickyHeaderCell>
+              <StickyHeaderCell>Category</StickyHeaderCell>
+              <StickyHeaderCell>Notes</StickyHeaderCell>
+              <StickyHeaderCell>Status</StickyHeaderCell>
+              <StickyHeaderCell align="right">Actions</StickyHeaderCell>
+            </TableRow>
+          }
+        >
+          {sortedEntries.map((entry) => {
+            const editable = !readOnly && isEntryEditable(entry);
+            const dayTotal = dailyTotals.get(entry.entry_date) ?? 0;
+            const showDayTotal = (dailySubtotals.get(entry.entry_date) ?? 0) > 1;
+            const dayOverLimit = dayTotal > dailyLimit;
+            const sheet = timesheetById.get(entry.timesheet_id);
+            const categoryBg = rowCategoryBg(entry);
 
-                return (
-                  <TableRow
-                    key={entry.id}
-                    hover
-                    selected={selectedEntryId === entry.id}
-                    onClick={() => onSelect(selectedEntryId === entry.id ? null : entry)}
-                    onDoubleClick={(event) => {
-                      if (!editable) return;
-                      event.stopPropagation();
-                      onEdit(entry);
-                    }}
-                    sx={{
-                      cursor: 'pointer',
-                      ...(dayOverLimit ? { bgcolor: 'warning.50' } : {}),
-                    }}
-                  >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {formatDate(entry.entry_date)}
-                      {showDayTotal ? (
-                        <Typography
-                          variant="caption"
-                          color={dayOverLimit ? 'warning.main' : 'text.secondary'}
-                          sx={{ display: 'block' }}
+            return (
+              <ClickableTableRow
+                key={entry.id}
+                selected={selectedEntryId === entry.id}
+                onClick={() => onSelect(selectedEntryId === entry.id ? null : entry)}
+              >
+                <StickyTableCell
+                  pinned
+                  sx={{
+                    whiteSpace: 'nowrap',
+                    bgcolor: categoryBg ?? 'inherit',
+                    ...(dayOverLimit ? { borderLeft: `3px solid ${designTokens.semantic.warning}` } : {}),
+                  }}
+                >
+                  {formatDate(entry.entry_date)}
+                  {showDayTotal ? (
+                    <Typography
+                      variant="caption"
+                      color={dayOverLimit ? 'warning.main' : 'text.secondary'}
+                      sx={{ display: 'block' }}
+                    >
+                      Day: {formatNumber(dayTotal, 1)}h
+                    </Typography>
+                  ) : null}
+                </StickyTableCell>
+                {showUser ? (
+                  <StickyTableCell sx={{ whiteSpace: 'nowrap', bgcolor: categoryBg ?? 'inherit' }}>
+                    {formatCellValue(entry.user_name) || '—'}
+                  </StickyTableCell>
+                ) : null}
+                <StickyTableCell pinned={!showUser} sx={{ bgcolor: categoryBg ?? 'inherit' }}>
+                  <TimesheetToolCell entry={entry} />
+                </StickyTableCell>
+                <StickyTableCell sx={{ bgcolor: categoryBg ?? 'inherit' }}>
+                  {entryDescription(entry)}
+                </StickyTableCell>
+                <StickyTableCell sx={{ bgcolor: categoryBg ?? 'inherit' }}>
+                  {entryTaskLabel(entry)}
+                </StickyTableCell>
+                <StickyTableCell align="right" sx={{ fontWeight: 700, bgcolor: categoryBg ?? 'inherit' }}>
+                  {formatNumber(entry.hours, 1)}
+                </StickyTableCell>
+                <StickyTableCell sx={{ bgcolor: categoryBg ?? 'inherit' }}>
+                  <TimesheetWorkCategoryBadge entry={entry} />
+                </StickyTableCell>
+                <StickyTableCell sx={{ bgcolor: categoryBg ?? 'inherit' }}>
+                  {formatCellValue(entry.description) || '—'}
+                </StickyTableCell>
+                <StickyTableCell sx={{ bgcolor: categoryBg ?? 'inherit' }}>
+                  <TimesheetStatusChip status={sheet?.status ?? 'draft'} />
+                </StickyTableCell>
+                <StickyTableCell align="right" sx={{ bgcolor: categoryBg ?? 'inherit' }}>
+                  {editable ? (
+                    <Box sx={{ display: 'inline-flex', gap: 0.25 }}>
+                      <Tooltip title="Edit">
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onEdit(entry);
+                          }}
                         >
-                          Day total: {formatNumber(dayTotal, 1)}
-                        </Typography>
+                          <EditRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      {onDuplicate ? (
+                        <Tooltip title="Duplicate row">
+                          <IconButton
+                            size="small"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onDuplicate(entry);
+                            }}
+                          >
+                            <ContentCopyRoundedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       ) : null}
-                    </TableCell>
-                    {showUser ? (
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        {formatCellValue(entry.user_name) || '—'}
-                      </TableCell>
-                    ) : null}
-                    <TableCell>{entryToolLabel(entry)}</TableCell>
-                    <TableCell>{entryDescription(entry)}</TableCell>
-                    <TableCell>{entryTaskLabel(entry)}</TableCell>
-                    <TableCell align="right">{formatNumber(entry.hours, 1)}</TableCell>
-                    <TableCell>{formatCellValue(entry.description) || '—'}</TableCell>
-                    <TableCell>{entry.is_billable ? 'Yes' : 'No'}</TableCell>
-                    <TableCell>
-                      <TimesheetStatusChip status={sheet?.status ?? 'draft'} />
-                    </TableCell>
-                    <TableCell align="right">
-                      {editable ? (
-                        <Box sx={{ display: 'inline-flex', gap: 0.5 }}>
-                          <Tooltip title="Edit">
-                            <IconButton
-                              size="small"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onEdit(entry);
-                              }}
-                            >
-                              <EditOutlinedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              disabled={deletingId === entry.id}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onDelete(entry);
-                              }}
-                            >
-                              <DeleteOutlineOutlinedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          disabled={deletingId === entry.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDelete(entry);
+                          }}
+                        >
+                          <DeleteOutlineRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  ) : (
+                    '—'
+                  )}
+                </StickyTableCell>
+              </ClickableTableRow>
+            );
+          })}
+        </OperationalDataTable>
       )}
     </Box>
   );

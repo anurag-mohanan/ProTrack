@@ -312,7 +312,7 @@ export default function CustomersPage() {
         }
       />
 
-      <SearchToolbar>
+      <SearchToolbar sticky>
         <FormField
           label="Search by name or code"
           value={search}
@@ -325,6 +325,7 @@ export default function CustomersPage() {
         <ProsohmDataGrid
           rows={filteredCustomers}
           columns={columns}
+          pinLeftFields={['name']}
           autoHeight
           pageSizeOptions={[10, 25, 50]}
           initialState={{

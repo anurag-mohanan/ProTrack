@@ -1,6 +1,30 @@
 import { alpha, type Theme } from '@mui/material/styles';
 import { designTokens } from './designTokens';
 
+export const PINNED_LEFT_CELL_CLASS = 'prosohm-pinned-left';
+
+export const zebraRowSx = {
+  '& .MuiTableRow-root:nth-of-type(even)': {
+    bgcolor: alpha(designTokens.semantic.neutralSoft, 0.65),
+  },
+};
+
+export function pinnedDataGridColumnSx(theme: Theme) {
+  return {
+    [`& .${PINNED_LEFT_CELL_CLASS}`]: {
+      position: 'sticky',
+      left: 0,
+      zIndex: 2,
+      bgcolor: theme.palette.background.paper,
+      boxShadow: '2px 0 8px rgba(15, 23, 42, 0.06)',
+    },
+    [`& .MuiDataGrid-columnHeader.${PINNED_LEFT_CELL_CLASS}`]: {
+      zIndex: 3,
+      bgcolor: designTokens.semantic.neutralSoft,
+    },
+  };
+}
+
 export function prosohmDataGridSx(theme: Theme) {
   return {
     border: `1px solid ${theme.palette.divider}`,
@@ -31,7 +55,7 @@ export function prosohmDataGridSx(theme: Theme) {
       transition: 'background-color 0.2s ease',
     },
     '& .MuiDataGrid-row:nth-of-type(even)': {
-      backgroundColor: alpha(theme.palette.background.default, 0.65),
+      backgroundColor: alpha(designTokens.semantic.neutralSoft, 0.55),
     },
     '& .MuiDataGrid-row:hover': {
       backgroundColor: theme.palette.prosohm.hover,
@@ -80,6 +104,9 @@ export function prosohmTableContainerSx(theme: Theme) {
     '& .MuiTableCell-body': {
       py: 1.25,
       fontSize: '0.875rem',
+    },
+    '& .MuiTableRow-root:nth-of-type(even)': {
+      bgcolor: alpha(designTokens.semantic.neutralSoft, 0.55),
     },
     '& .MuiTableRow-root': {
       transition: 'background-color 0.2s ease',

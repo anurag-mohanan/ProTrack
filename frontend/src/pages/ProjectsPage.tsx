@@ -7,6 +7,8 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
+import { designTokens } from '../theme/designTokens';
+import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
 import AddIcon from '@mui/icons-material/Add';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -439,26 +441,37 @@ export function ProjectsPage() {
             ) : null}
           </Box>
 
-          <ProjectSearchBar
-            value={appliedFilters.search}
-            onChange={(search) => {
-              setAppliedFilters((current) => ({ ...current, search }));
-              setDraftFilters((current) => ({ ...current, search }));
+          <Box
+            sx={{
+              position: 'sticky',
+              top: APP_TOP_BAR_OFFSET,
+              zIndex: 4,
+              py: 1,
+              mb: 1,
+              bgcolor: designTokens.semantic.background,
             }}
-          />
+          >
+            <ProjectSearchBar
+              value={appliedFilters.search}
+              onChange={(value) => {
+                setAppliedFilters((current) => ({ ...current, search: value }));
+                setDraftFilters((current) => ({ ...current, search: value }));
+              }}
+            />
 
-          <ProjectKpiBar
-            summary={summary}
-            loading={dashboardQuery.isLoading}
-            activeFilter={appliedFilters.quickFilter}
-            onFilter={handleQuickFilter}
-          />
+            <ProjectKpiBar
+              summary={summary}
+              loading={dashboardQuery.isLoading}
+              activeFilter={appliedFilters.quickFilter}
+              onFilter={handleQuickFilter}
+            />
 
-          <ProjectQuickFilterStrip
-            counts={quickCounts}
-            activeFilter={appliedFilters.quickFilter}
-            onSelect={handleQuickFilter}
-          />
+            <ProjectQuickFilterStrip
+              counts={quickCounts}
+              activeFilter={appliedFilters.quickFilter}
+              onSelect={handleQuickFilter}
+            />
+          </Box>
 
           {tableLoading ? (
             <TableSkeleton rows={8} columns={8} />

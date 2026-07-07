@@ -8,14 +8,16 @@ import {
   MenuItem,
   Tooltip,
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import ArchiveIcon from '@mui/icons-material/Archive';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
-import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
+import EditRoundedIcon from '@mui/icons-material/EditRounded';
+import MoreVertRoundedIcon from '@mui/icons-material/MoreVertRounded';
+import ArchiveRoundedIcon from '@mui/icons-material/ArchiveRounded';
+import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
+import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
+import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
 
 interface ProjectRowActionsProps {
+  onView?: () => void;
   onEdit: () => void;
   onArchive?: () => void;
   onDuplicate?: () => void;
@@ -29,6 +31,7 @@ function stopRowClick(event: MouseEvent) {
 }
 
 export function ProjectRowActions({
+  onView,
   onEdit,
   onArchive,
   onDuplicate,
@@ -41,6 +44,20 @@ export function ProjectRowActions({
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+      {onView ? (
+        <Tooltip title="View">
+          <IconButton
+            size="small"
+            aria-label="View project"
+            onClick={(event) => {
+              stopRowClick(event);
+              onView();
+            }}
+          >
+            <VisibilityRoundedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      ) : null}
       <Tooltip title="Edit">
         <IconButton
           size="small"
@@ -50,7 +67,7 @@ export function ProjectRowActions({
             onEdit();
           }}
         >
-          <EditIcon fontSize="small" />
+          <EditRoundedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
       <Tooltip title="More actions">
@@ -62,7 +79,7 @@ export function ProjectRowActions({
             setAnchorEl(event.currentTarget);
           }}
         >
-          <MoreVertIcon fontSize="small" />
+          <MoreVertRoundedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
       <Menu
@@ -72,21 +89,8 @@ export function ProjectRowActions({
         onClick={(event) => stopRowClick(event)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        slotProps={{ paper: { sx: { minWidth: 168, borderRadius: 2 } } }}
+        slotProps={{ paper: { sx: { minWidth: 180, borderRadius: 2 } } }}
       >
-        {onArchive ? (
-          <MenuItem
-            onClick={() => {
-              setAnchorEl(null);
-              onArchive();
-            }}
-          >
-            <ListItemIcon>
-              <ArchiveIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Archive</ListItemText>
-          </MenuItem>
-        ) : null}
         {onDuplicate ? (
           <MenuItem
             onClick={() => {
@@ -95,9 +99,22 @@ export function ProjectRowActions({
             }}
           >
             <ListItemIcon>
-              <ContentCopyIcon fontSize="small" />
+              <ContentCopyRoundedIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>Duplicate</ListItemText>
+          </MenuItem>
+        ) : null}
+        {onArchive ? (
+          <MenuItem
+            onClick={() => {
+              setAnchorEl(null);
+              onArchive();
+            }}
+          >
+            <ListItemIcon>
+              <ArchiveRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Archive</ListItemText>
           </MenuItem>
         ) : null}
         {onExport ? (
@@ -108,7 +125,7 @@ export function ProjectRowActions({
             }}
           >
             <ListItemIcon>
-              <FileDownloadOutlinedIcon fontSize="small" />
+              <FileDownloadRoundedIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>Export</ListItemText>
           </MenuItem>
@@ -122,7 +139,7 @@ export function ProjectRowActions({
             sx={{ color: 'error.main' }}
           >
             <ListItemIcon sx={{ color: 'error.main' }}>
-              <DeleteOutlineOutlinedIcon fontSize="small" />
+              <DeleteOutlineRoundedIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>Delete</ListItemText>
           </MenuItem>

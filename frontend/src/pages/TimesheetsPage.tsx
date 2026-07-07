@@ -252,6 +252,46 @@ export function TimesheetsPage() {
     }
   };
 
+  const quickActionLoading = workspace.saveEntryMutation.isPending;
+
+  const handleDuplicateEntry = async (entry: TimesheetEntry) => {
+    if (!workspace.isEntryEditable(entry)) {
+      showError('This entry cannot be duplicated.');
+      return;
+    }
+    try {
+      await workspace.saveEntryMutation.mutateAsync({
+        entryDate: entry.entry_date,
+        toolValue: toolOptionFromEntry(entry),
+        taskTypeId: entry.task_type_id,
+        hours: Number(entry.hours),
+        notes: entry.description ?? '',
+        isBillable: entry.is_billable,
+      });
+      showSuccess('Entry duplicated.');
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Duplicate failed.');
+    }
+  };
+
+  const todayHours = useMemo(
+    () =>
+      workspace.entries
+        .filter((e) => e.entry_date === todayIsoDate())
+        .reduce((sum, e) => sum + Number(e.hours), 0),
+    [workspace.entries],
+  );
+
+  const weeklyTotal = useMemo(() => {
+    const day = new Date(`${toolbarDate}T12:00:00`).getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const weekStart = shiftIsoDate(toolbarDate, diff);
+    const weekEnd = shiftIsoDate(weekStart, 6);
+    return workspace.entries
+      .filter((e) => e.entry_date >= weekStart && e.entry_date <= weekEnd)
+      .reduce((sum, e) => sum + Number(e.hours), 0);
+  }, [workspace.entries, toolbarDate]);
+
   if (workspace.isLoading) {
     return <LoadingState message="Loading timesheet workspace…" />;
   }
@@ -278,8 +318,6 @@ export function TimesheetsPage() {
   const reviewableTimesheets = workspace.timesheets.filter(
     (sheet) => sheet.status === 'submitted',
   );
-
-  const quickActionLoading = workspace.saveEntryMutation.isPending;
 
   return (
     <PageContainer>
@@ -327,7 +365,12 @@ export function TimesheetsPage() {
         </ToggleButtonGroup>
       ) : null}
 
-      <TimesheetMonthSummaryBar status={workspace.monthStatus} summary={workspace.summary} />
+      <TimesheetMonthSummaryBar
+        status={workspace.monthStatus}
+        summary={workspace.summary}
+        todayHours={todayHours}
+        weeklyTotal={weeklyTotal}
+      />
 
       {!viewAllUsers &&
       (workspace.monthStatus === 'submitted' || workspace.monthStatus === 'approved') ? (
@@ -397,6 +440,7 @@ export function TimesheetsPage() {
           onSelect={(entry) => setSelectedEntryId(entry?.id ?? null)}
           onEdit={setEditDialogEntry}
           onDelete={setDeleteDialogEntry}
+          onDuplicate={(entry) => void handleDuplicateEntry(entry)}
           isEntryEditable={workspace.isEntryEditable}
           onRequestDeleteSelected={() => {
             if (selectedEntry && workspace.isEntryEditable(selectedEntry) && !readOnly) {

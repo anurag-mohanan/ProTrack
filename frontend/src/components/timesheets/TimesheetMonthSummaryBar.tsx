@@ -2,27 +2,43 @@ import { Box, Divider, Typography } from '@mui/material';
 import type { TimesheetStatus } from '../../types/common';
 import { TimesheetStatusChip } from '../common/StatusChip';
 import type { TimesheetMonthSummary } from '../../utils/timesheetMonth';
+import { designTokens } from '../../theme/designTokens';
 import { formatNumber } from '../../utils/format';
 
 interface TimesheetMonthSummaryBarProps {
   status: TimesheetStatus | 'draft';
   summary: TimesheetMonthSummary;
+  todayHours?: number;
+  weeklyTotal?: number;
 }
 
-function InlineMetric({ label, value }: { label: string; value: string }) {
+function MetricCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <Typography variant="body2" component="span" sx={{ whiteSpace: 'nowrap' }}>
-      <Typography component="span" variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+    <Box
+      sx={{
+        px: 1.5,
+        py: 1,
+        borderRadius: `${designTokens.radius.md}px`,
+        bgcolor: accent ? `${accent}14` : designTokens.semantic.neutralSoft,
+        minWidth: 88,
+      }}
+    >
+      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
         {label}
       </Typography>
-      <Typography component="span" sx={{ fontWeight: 700 }}>
+      <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', color: accent ?? 'text.primary' }}>
         {value}
       </Typography>
-    </Typography>
+    </Box>
   );
 }
 
-export function TimesheetMonthSummaryBar({ status, summary }: TimesheetMonthSummaryBarProps) {
+export function TimesheetMonthSummaryBar({
+  status,
+  summary,
+  todayHours = 0,
+  weeklyTotal,
+}: TimesheetMonthSummaryBarProps) {
   return (
     <Box
       sx={{
@@ -30,24 +46,32 @@ export function TimesheetMonthSummaryBar({ status, summary }: TimesheetMonthSumm
         flexWrap: 'wrap',
         alignItems: 'center',
         gap: 1.5,
-        px: 1.5,
-        py: 1,
+        px: 2,
+        py: 1.5,
         mb: 2,
-        borderRadius: 2,
-        border: 1,
+        borderRadius: `${designTokens.radius.lg}px`,
+        border: '1px solid',
         borderColor: 'divider',
-        bgcolor: 'background.paper',
+        bgcolor: designTokens.semantic.card,
+        boxShadow: designTokens.elevation.card,
       }}
     >
       <TimesheetStatusChip status={status} />
       <Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', md: 'block' } }} />
-      <InlineMetric label="Expected" value={formatNumber(summary.expectedHours, 0)} />
-      <InlineMetric label="Entered" value={formatNumber(summary.enteredHours, 0)} />
-      <InlineMetric label="Remaining" value={formatNumber(summary.remainingHours, 0)} />
-      <InlineMetric label="Billable" value={formatNumber(summary.billableHours, 0)} />
-      <InlineMetric label="NP" value={formatNumber(summary.nonProductiveHours, 0)} />
-      <InlineMetric label="Leave" value={formatNumber(summary.leaveDays, 0)} />
-      <InlineMetric
+      <MetricCard label="Today" value={formatNumber(todayHours, 1)} accent={designTokens.semantic.primary} />
+      <MetricCard label="Billable" value={formatNumber(summary.billableHours, 1)} accent={designTokens.semantic.success} />
+      <MetricCard label="Non-Productive" value={formatNumber(summary.nonProductiveHours, 1)} accent={designTokens.semantic.warning} />
+      <MetricCard label="Leave" value={formatNumber(summary.leaveDays, 0)} accent={designTokens.semantic.primary} />
+      {weeklyTotal !== undefined ? (
+        <MetricCard label="Weekly Total" value={formatNumber(weeklyTotal, 1)} />
+      ) : null}
+      <MetricCard label="Monthly Total" value={formatNumber(summary.enteredHours, 1)} />
+      <MetricCard
+        label="Remaining"
+        value={formatNumber(summary.remainingHours, 1)}
+        accent={summary.remainingHours < 0 ? designTokens.semantic.danger : undefined}
+      />
+      <MetricCard
         label="Efficiency"
         value={summary.efficiencyPercent === null ? '—' : `${summary.efficiencyPercent}%`}
       />

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
+  Chip,
   Drawer,
   IconButton,
+  Stack,
   Typography,
   useMediaQuery,
   useTheme,
@@ -31,6 +33,7 @@ import { ProjectKpiBar } from '../components/projects/command-center/ProjectKpiB
 import { ProjectListSection } from '../components/projects/command-center/ProjectListSection';
 import { ProjectQuickFilterStrip } from '../components/projects/command-center/ProjectQuickFilterStrip';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
+import { FormSelect } from '../components/ui/design-system';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -70,7 +73,10 @@ export function ProjectsPage() {
   const { user } = useAuth();
   const isAdmin = canDeleteRecords(user?.role_name ?? '');
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('projects.filters.collapsed') === '1';
+  });
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState<ProjectCommandCenterFilters>(
     defaultProjectCommandCenterFilters,
@@ -86,12 +92,9 @@ export function ProjectsPage() {
   const [restoreId, setRestoreId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isTablet) {
-      setSidebarCollapsed(true);
-    } else if (!isMobile) {
-      setSidebarCollapsed(false);
-    }
-  }, [isMobile, isTablet]);
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('projects.filters.collapsed', sidebarCollapsed ? '1' : '0');
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     const urlSearch = searchParams.get('search');
@@ -376,6 +379,101 @@ export function ProjectsPage() {
     [appliedFilters],
   );
 
+  const customerNameMap = useMemo(
+    () => new Map((customersQuery.data ?? []).map((item) => [item.id, item.name])),
+    [customersQuery.data],
+  );
+  const teamNameMap = useMemo(
+    () => new Map((teamsQuery.data ?? []).map((item) => [item.id, item.name])),
+    [teamsQuery.data],
+  );
+  const userNameMap = useMemo(
+    () =>
+      new Map(
+        (usersQuery.data ?? []).map((item) => [
+          item.id,
+          `${item.first_name} ${item.last_name}`.trim() || item.email,
+        ]),
+      ),
+    [usersQuery.data],
+  );
+
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
+    appliedFilters.customerIds.forEach((id) => {
+      chips.push({
+        key: `customer-${id}`,
+        label: `Customer: ${customerNameMap.get(id) ?? 'Unknown'}`,
+        onRemove: () => {
+          setAppliedFilters((current) => ({
+            ...current,
+            customerIds: current.customerIds.filter((value) => value !== id),
+          }));
+          setDraftFilters((current) => ({
+            ...current,
+            customerIds: current.customerIds.filter((value) => value !== id),
+          }));
+        },
+      });
+    });
+    appliedFilters.teamIds.forEach((id) => {
+      chips.push({
+        key: `team-${id}`,
+        label: `Team: ${teamNameMap.get(id) ?? 'Unknown'}`,
+        onRemove: () => {
+          setAppliedFilters((current) => ({
+            ...current,
+            teamIds: current.teamIds.filter((value) => value !== id),
+          }));
+          setDraftFilters((current) => ({
+            ...current,
+            teamIds: current.teamIds.filter((value) => value !== id),
+          }));
+        },
+      });
+    });
+    if (appliedFilters.projectStage !== 'all') {
+      chips.push({
+        key: 'stage',
+        label: `Stage: ${appliedFilters.projectStage.replaceAll('_', ' ')}`,
+        onRemove: () => {
+          setAppliedFilters((current) => ({ ...current, projectStage: 'all' }));
+          setDraftFilters((current) => ({ ...current, projectStage: 'all' }));
+        },
+      });
+    }
+    if (appliedFilters.executionStatus !== 'all') {
+      chips.push({
+        key: 'status',
+        label: `Status: ${appliedFilters.executionStatus.replaceAll('_', ' ')}`,
+        onRemove: () => {
+          setAppliedFilters((current) => ({ ...current, executionStatus: 'all' }));
+          setDraftFilters((current) => ({ ...current, executionStatus: 'all' }));
+        },
+      });
+    }
+    if (appliedFilters.designerId !== 'all') {
+      chips.push({
+        key: 'designer',
+        label: `Designer: ${userNameMap.get(appliedFilters.designerId) ?? 'Unknown'}`,
+        onRemove: () => {
+          setAppliedFilters((current) => ({ ...current, designerId: 'all' }));
+          setDraftFilters((current) => ({ ...current, designerId: 'all' }));
+        },
+      });
+    }
+    return chips;
+  }, [
+    appliedFilters.customerIds,
+    appliedFilters.designerId,
+    appliedFilters.executionStatus,
+    appliedFilters.projectStage,
+    appliedFilters.teamIds,
+    customerNameMap,
+    teamNameMap,
+    userNameMap,
+  ]);
+
   const filterSidebarProps = {
     collapsed: sidebarCollapsed,
     onToggleCollapsed: () => setSidebarCollapsed((current) => !current),
@@ -397,9 +495,7 @@ export function ProjectsPage() {
 
   return (
     <PageContainer>
-      <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
-        {!isMobile ? <ProjectFilterSidebar {...filterSidebarProps} /> : null}
-
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box
             sx={{
@@ -413,6 +509,15 @@ export function ProjectsPage() {
             <Box sx={{ minWidth: 0 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {isMobile ? (
+                  <IconButton
+                    size="small"
+                    aria-label="Open filters"
+                    onClick={() => setMobileFiltersOpen(true)}
+                  >
+                    <FilterListIcon />
+                  </IconButton>
+                ) : null}
+                {isTablet ? (
                   <IconButton
                     size="small"
                     aria-label="Open filters"
@@ -459,6 +564,86 @@ export function ProjectsPage() {
               }}
             />
 
+            <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap', rowGap: 1 }}>
+              <Box sx={{ minWidth: 150, maxWidth: 220 }}>
+                <FormSelect
+                  label="Customer"
+                  size="small"
+                  value={appliedFilters.customerIds[0] ?? 'all'}
+                  options={[
+                    { value: 'all', label: 'All Customers' },
+                    ...(customersQuery.data ?? []).map((c) => ({ value: c.id, label: c.name })),
+                  ]}
+                  onChange={(event) => {
+                    const value = String(event.target.value);
+                    const nextIds = value === 'all' ? [] : [value];
+                    setAppliedFilters((current) => ({ ...current, customerIds: nextIds }));
+                    setDraftFilters((current) => ({ ...current, customerIds: nextIds }));
+                  }}
+                />
+              </Box>
+              <Box sx={{ minWidth: 150, maxWidth: 220 }}>
+                <FormSelect
+                  label="Designer"
+                  searchable
+                  size="small"
+                  value={appliedFilters.designerId}
+                  options={[
+                    { value: 'all', label: 'All Designers' },
+                    ...(usersQuery.data ?? []).map((u) => ({
+                      value: u.id,
+                      label: `${u.first_name} ${u.last_name}`.trim() || u.email,
+                    })),
+                  ]}
+                  onChange={(event) => {
+                    const value = String(event.target.value);
+                    setAppliedFilters((current) => ({ ...current, designerId: value }));
+                    setDraftFilters((current) => ({ ...current, designerId: value }));
+                  }}
+                />
+              </Box>
+              <Box sx={{ minWidth: 140, maxWidth: 190 }}>
+                <FormSelect
+                  label="Stage"
+                  size="small"
+                  value={appliedFilters.projectStage}
+                  options={[
+                    { value: 'all', label: 'All Stages' },
+                    { value: 'preliminary', label: 'Preliminary' },
+                    { value: 'design', label: 'Design' },
+                    { value: 'checking', label: 'Checking' },
+                    { value: 'simulation', label: 'Simulation' },
+                    { value: 'tool_trial', label: 'Tool Trial' },
+                  ]}
+                  onChange={(event) => {
+                    const value = event.target.value as ProjectCommandCenterFilters['projectStage'];
+                    setAppliedFilters((current) => ({ ...current, projectStage: value }));
+                    setDraftFilters((current) => ({ ...current, projectStage: value }));
+                  }}
+                />
+              </Box>
+              <Box sx={{ minWidth: 150, maxWidth: 200 }}>
+                <FormSelect
+                  label="Status"
+                  size="small"
+                  value={appliedFilters.executionStatus}
+                  options={[
+                    { value: 'all', label: 'All Statuses' },
+                    { value: 'planning', label: 'Planning' },
+                    { value: 'currently_being_worked_on', label: 'In Progress' },
+                    { value: 'on_hold', label: 'On Hold' },
+                    { value: 'completed', label: 'Completed' },
+                    { value: 'cancelled', label: 'Cancelled' },
+                  ]}
+                  onChange={(event) => {
+                    const value = event.target.value as ProjectCommandCenterFilters['executionStatus'];
+                    setAppliedFilters((current) => ({ ...current, executionStatus: value }));
+                    setDraftFilters((current) => ({ ...current, executionStatus: value }));
+                  }}
+                />
+              </Box>
+            </Stack>
+
             <ProjectKpiBar
               summary={summary}
               loading={dashboardQuery.isLoading}
@@ -471,6 +656,27 @@ export function ProjectsPage() {
               activeFilter={appliedFilters.quickFilter}
               onSelect={handleQuickFilter}
             />
+
+            {activeFilterChips.length > 0 ? (
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1, mb: 1 }}>
+                {activeFilterChips.map((chip) => (
+                  <Chip
+                    key={chip.key}
+                    label={chip.label}
+                    onDelete={chip.onRemove}
+                    size="small"
+                    variant="outlined"
+                  />
+                ))}
+                <Chip
+                  label="Clear All"
+                  size="small"
+                  color="primary"
+                  onClick={clearFilters}
+                  variant="filled"
+                />
+              </Stack>
+            ) : null}
           </Box>
 
           {tableLoading ? (
@@ -527,13 +733,15 @@ export function ProjectsPage() {
             </>
           )}
         </Box>
+
+        {!isMobile && !isTablet ? <ProjectFilterSidebar {...filterSidebarProps} /> : null}
       </Box>
 
       <Drawer
-        anchor="left"
+        anchor="right"
         open={mobileFiltersOpen}
         onClose={() => setMobileFiltersOpen(false)}
-        slotProps={{ paper: { sx: { width: 300 } } }}
+        slotProps={{ paper: { sx: { width: { xs: '100%', sm: 320 } } } }}
       >
         <ProjectFilterSidebar {...filterSidebarProps} embedded collapsed={false} />
       </Drawer>

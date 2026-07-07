@@ -147,15 +147,15 @@ function buildColumns(
     {
       field: 'part_description',
       headerName: 'Part Description',
-      flex: 1.2,
-      minWidth: 160,
+      flex: 1.8,
+      minWidth: 260,
       valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'customerName',
       headerName: 'Customer',
-      flex: 1,
-      minWidth: 140,
+      flex: 1.2,
+      minWidth: 190,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
           <EntityAvatar label={String(params.value || '?')} size={26} />

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.permissions import JUNIOR_DESIGNER, SENIOR_DESIGNER
 from app.core.security import hash_password
 from app.db.design_team import ensure_design_team_users
+from app.models.enums import NonProductiveCodeCategory
 from app.models.models import NonProductiveCode, Project, Role, Stream, TaskType, TimesheetEntry
 from app.services.project_calculation_service import recalculate_project
 
@@ -496,15 +497,15 @@ def ensure_user_lifecycle_schema(engine: Engine) -> None:
             )
 
 
-NP_CODE_SEED: tuple[tuple[str, str, int], ...] = (
-    ("C500", "Lack of Work / Leave / Holiday", 1),
-    ("C501", "IT Issues", 2),
-    ("C502", "Meetings", 3),
-    ("C503", "Upload / Download", 4),
-    ("C504", "Training", 5),
-    ("C505", "Infra Issues", 6),
-    ("C506", "Internal Work", 7),
-    ("EST001", "Estimation", 8),
+NP_CODE_SEED: tuple[tuple[str, str, int, NonProductiveCodeCategory], ...] = (
+    ("C500", "Leave", 1, NonProductiveCodeCategory.leave),
+    ("C501", "IT Issues", 2, NonProductiveCodeCategory.non_productive),
+    ("C502", "Meetings", 3, NonProductiveCodeCategory.non_productive),
+    ("C503", "Upload / Download", 4, NonProductiveCodeCategory.non_productive),
+    ("C504", "Training", 5, NonProductiveCodeCategory.non_productive),
+    ("C505", "Infra Issues", 6, NonProductiveCodeCategory.non_productive),
+    ("C506", "Internal Work", 7, NonProductiveCodeCategory.non_productive),
+    ("EST001", "Estimation", 8, NonProductiveCodeCategory.non_productive),
 )
 
 STANDARD_TASK_TYPE_NAMES: tuple[tuple[str, str], ...] = (
@@ -532,27 +533,57 @@ def ensure_non_productive_codes(engine: Engine) -> None:
                             "ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0"
                         )
                     )
+                if "category" not in columns:
+                    connection.execute(
+                        text(
+                            "ALTER TABLE non_productive_codes "
+                            "ADD COLUMN category VARCHAR(32) NOT NULL DEFAULT 'non_productive'"
+                        )
+                    )
+        elif engine.dialect.name == "postgresql":
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "DO $$ BEGIN "
+                        "CREATE TYPE non_productive_code_category AS ENUM "
+                        "('non_productive', 'leave'); "
+                        "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE non_productive_codes "
+                        "ADD COLUMN IF NOT EXISTS category "
+                        "non_productive_code_category NOT NULL DEFAULT 'non_productive'"
+                    )
+                )
         existing_by_code = {
             row.code: row
             for row in session.scalars(select(NonProductiveCode)).all()
         }
         changed = False
-        for code, description, sort_order in NP_CODE_SEED:
+        for code, description, sort_order, category in NP_CODE_SEED:
             row = existing_by_code.get(code)
             if row is None:
                 session.add(
                     NonProductiveCode(
                         code=code,
                         description=description,
+                        category=category,
                         sort_order=sort_order,
                         is_active=True,
                         is_archived=False,
                     )
                 )
                 changed = True
-            elif row.description != description or row.sort_order != sort_order:
+            elif (
+                row.description != description
+                or row.sort_order != sort_order
+                or row.category != category
+            ):
                 row.description = description
                 row.sort_order = sort_order
+                row.category = category
                 changed = True
         if changed:
             session.commit()
@@ -635,6 +666,49 @@ def _sqlite_rebuild_timesheet_entries(engine: Engine) -> None:
         connection.execute(
             text("ALTER TABLE timesheet_entries_new RENAME TO timesheet_entries")
         )
+
+
+def ensure_timesheet_entry_leave_count(engine: Engine) -> None:
+    """Add leave_count and backfill leave entries from configured leave NP codes."""
+    dialect = engine.dialect.name
+    if dialect == "sqlite":
+        if not _sqlite_has_column(engine, "timesheet_entries", "leave_count"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE timesheet_entries ADD COLUMN leave_count INTEGER")
+                )
+    elif dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries "
+                    "ADD COLUMN IF NOT EXISTS leave_count INTEGER"
+                )
+            )
+
+    session = sessionmaker(bind=engine)()
+    try:
+        leave_code_ids = session.scalars(
+            select(NonProductiveCode.id).where(
+                NonProductiveCode.category == NonProductiveCodeCategory.leave
+            )
+        ).all()
+        if not leave_code_ids:
+            return
+        entries = session.scalars(
+            select(TimesheetEntry).where(
+                TimesheetEntry.non_productive_code_id.in_(leave_code_ids),
+                TimesheetEntry.leave_count.is_(None),
+            )
+        ).all()
+        if not entries:
+            return
+        for entry in entries:
+            entry.leave_count = 1
+            entry.is_billable = False
+        session.commit()
+    finally:
+        session.close()
 
 
 def ensure_timesheet_entry_work_category(engine: Engine) -> None:

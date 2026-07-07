@@ -18,6 +18,7 @@ import {
   buildToolOptions,
   LAST_TASK_KEY,
   LAST_TOOL_KEY,
+  isLeaveToolOption,
   npTaskLabel,
   pushRecentTool,
   toolOptionFromEntry,
@@ -192,12 +193,17 @@ export function TimesheetEntryForm({
       ...current,
       toolValue: option?.value ?? '',
       taskTypeId: option?.kind === 'project' ? current.taskTypeId : '',
-      isBillable: defaultBillableForTool(option),
+      isBillable: isLeaveToolOption(option)
+        ? false
+        : defaultBillableForTool(option),
     }));
   };
 
   const billableDisabled =
-    readOnly || saving || (!canOverrideBillable && selectedTool?.kind === 'np');
+    readOnly ||
+    saving ||
+    isLeaveToolOption(selectedTool) ||
+    (!canOverrideBillable && selectedTool?.kind === 'np');
 
   return (
     <Box

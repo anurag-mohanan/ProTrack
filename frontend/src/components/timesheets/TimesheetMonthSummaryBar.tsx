@@ -46,6 +46,7 @@ export function TimesheetMonthSummaryBar({ status, summary }: TimesheetMonthSumm
       <InlineMetric label="Remaining" value={formatNumber(summary.remainingHours, 0)} />
       <InlineMetric label="Billable" value={formatNumber(summary.billableHours, 0)} />
       <InlineMetric label="NP" value={formatNumber(summary.nonProductiveHours, 0)} />
+      <InlineMetric label="Leave" value={formatNumber(summary.leaveDays, 0)} />
       <InlineMetric
         label="Efficiency"
         value={summary.efficiencyPercent === null ? '—' : `${summary.efficiencyPercent}%`}

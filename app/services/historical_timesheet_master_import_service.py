@@ -44,6 +44,7 @@ from app.services.historical_timesheet_import_service import (
     _resolve_task_type_name,
 )
 from app.services.project_calculation_service import recalculate_project
+from app.services.non_productive_entry_service import build_np_timesheet_entry
 
 MASTER_UPLOAD_DIR = Path(gettempdir()) / "protrack_master_timesheet_imports"
 BATCH_COMMIT_SIZE = 500
@@ -436,14 +437,14 @@ def run_master_import(
                         error="Unknown Non-Productive Code",
                     )
                     continue
-                entry = TimesheetEntry(
+                entry = build_np_timesheet_entry(
+                    np_code=np_record,
                     timesheet_id=timesheet.id,
-                    work_category=WorkCategory.non_productive,
-                    non_productive_code_id=np_record.id,
-                    is_billable=row.billable,
                     entry_date=row.entry_date,
                     hours=row.hours,
                     description=row.notes,
+                    is_billable=row.billable,
+                    allow_billable_override=True,
                 )
             else:
                 if not row.project_value:

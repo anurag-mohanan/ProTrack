@@ -30,6 +30,7 @@ from app.db.schema_sync import (
     ensure_non_productive_codes,
     ensure_standard_task_types,
     ensure_timesheet_entry_work_category,
+    ensure_timesheet_entry_leave_count,
     ensure_timesheet_entry_timestamps,
     ensure_timesheet_entry_soft_delete,
     ensure_timesheet_approval_comments,
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
     ensure_timesheet_entry_timestamps(engine)
     ensure_timesheet_entry_soft_delete(engine)
     ensure_non_productive_codes(engine)
+    ensure_timesheet_entry_leave_count(engine)
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
     ensure_phase8_foundation(engine)

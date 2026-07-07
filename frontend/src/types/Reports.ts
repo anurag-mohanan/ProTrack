@@ -64,6 +64,7 @@ export interface BillableVsNonBillableReportRow {
   billable_hours: number;
   non_billable_hours: number;
   np_hours: number;
+  leave_days: number;
   billable_percent: number;
   non_billable_percent: number;
 }

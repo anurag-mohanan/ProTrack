@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 
 from app.crud.base import Session
+from app.core.non_productive_categories import leave_entry_clause, standard_np_hours_clause
 from app.crud.project_metrics import build_project_read
 from app.core.permissions import (
     ASSIGNED_PROJECT_ROLES,
@@ -31,6 +32,7 @@ from app.schemas.dashboard import (
     DashboardFuturePlaceholders,
     DashboardDesignerAvailabilitySummary,
     DashboardKpis,
+    DashboardLeavePanel,
     DashboardMyTasks,
     DashboardNpPanel,
     DashboardOperationalMetrics,
@@ -56,6 +58,7 @@ from app.services.dashboard_service import (
     get_dashboard_my_tasks,
     get_dashboard_recent_activity,
     get_designer_availability,
+    get_leave_days_this_month,
     get_np_hours_panel,
     get_team_summary,
     safe_dashboard_call,
@@ -271,10 +274,15 @@ def get_dashboard_summary(
                 .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
                 .where(
                     Timesheet.status == TimesheetStatus.approved,
-                    TimesheetEntry.work_category == WorkCategory.non_productive,
+                    standard_np_hours_clause(),
                 )
             )
         )
+    )
+    leave_days_this_month = safe_dashboard_call(
+        "leave_days_this_month",
+        lambda: get_leave_days_this_month(db),
+        0,
     )
     non_billable_hours = _round_hours(
         _decimal(
@@ -427,7 +435,9 @@ def get_dashboard_summary(
         hours_logged_today=hours_logged_today,
         open_engineering_changes=open_engineering_changes,
         np_hours_this_month=engineering_kpis.np_hours_this_month,
+        leave_days_this_month=leave_days_this_month,
         np_hours_panel=np_hours_panel,
+        leave_panel=DashboardLeavePanel(leave_days_this_month=leave_days_this_month),
         operational_metrics=operational_metrics,
         staff_metrics=staff_metrics,
     )

@@ -17,9 +17,11 @@ export function TimesheetSelectionLine({
   if (!selection) return null;
 
   if (selection.kind === 'np') {
+    const categoryLabel =
+      selection.npCategory === 'leave' ? 'Leave' : 'Non-Productive';
     return (
       <Typography variant="body2" color="text.secondary" sx={{ mt: 1, px: 0.5 }}>
-        {formatDisplayValue(selection.toolNumber)} • {formatDisplayValue(selection.label.split(' - ').slice(1).join(' - '))}
+        {formatDisplayValue(selection.toolNumber)} • Category: {categoryLabel}
         {' • Billable: '}
         {isBillable ? 'Yes' : 'No'}
       </Typography>

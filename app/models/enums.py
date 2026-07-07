@@ -40,6 +40,11 @@ class WorkCategory(enum.Enum):
     non_productive = "non_productive"
 
 
+class NonProductiveCodeCategory(enum.Enum):
+    non_productive = "non_productive"
+    leave = "leave"
+
+
 class ProjectLifecycleFilter(enum.Enum):
     all = "all"
     active = "active"

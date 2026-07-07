@@ -41,6 +41,7 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
     milestone_name = None
     np_code = None
     np_description = None
+    np_category = None
     owner_id, owner_name = _entry_owner(db, entry)
 
     if entry.project_id is not None:
@@ -65,6 +66,7 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
         if np is not None:
             np_code = np.code
             np_description = np.description
+            np_category = np.category.value
 
     return TimesheetEntryRead(
         id=entry.id,
@@ -80,6 +82,7 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
         entry_date=entry.entry_date,
         hours=entry.hours,
         is_billable=entry.is_billable,
+        leave_count=entry.leave_count,
         description=entry.description,
         project_tool_number=project_tool_number,
         project_code=project_code,
@@ -88,6 +91,7 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
         milestone_name=milestone_name,
         non_productive_code=np_code,
         non_productive_description=np_description,
+        non_productive_category=np_category,
         user_id=owner_id,
         user_name=owner_name,
     )

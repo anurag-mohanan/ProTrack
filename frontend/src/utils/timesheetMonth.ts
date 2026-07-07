@@ -67,23 +67,35 @@ export interface TimesheetMonthSummary {
   remainingHours: number;
   billableHours: number;
   nonProductiveHours: number;
+  leaveDays: number;
   efficiencyPercent: number | null;
 }
 
 export function summarizeMonthEntries(
-  entries: Array<{ hours: number; is_billable: boolean; work_category: string }>,
+  entries: Array<{
+    hours: number;
+    is_billable: boolean;
+    work_category: string;
+    leave_count?: number | null;
+    non_productive_category?: string | null;
+  }>,
   expectedHours: number,
 ): TimesheetMonthSummary {
   let enteredHours = 0;
   let billableHours = 0;
   let nonProductiveHours = 0;
+  let leaveDays = 0;
 
   for (const entry of entries) {
     const hours = Number(entry.hours);
     if (!Number.isFinite(hours)) continue;
     enteredHours += hours;
     if (entry.work_category === 'non_productive') {
-      nonProductiveHours += hours;
+      if ((entry.leave_count ?? 0) > 0 || entry.non_productive_category === 'leave') {
+        leaveDays += entry.leave_count ?? 1;
+      } else {
+        nonProductiveHours += hours;
+      }
     } else if (entry.is_billable) {
       billableHours += hours;
     }
@@ -95,6 +107,7 @@ export function summarizeMonthEntries(
     remainingHours: expectedHours - enteredHours,
     billableHours,
     nonProductiveHours,
+    leaveDays,
     efficiencyPercent:
       enteredHours > 0 ? Math.round((billableHours / enteredHours) * 100) : null,
   };

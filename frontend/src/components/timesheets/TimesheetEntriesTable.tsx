@@ -56,6 +56,9 @@ function entryDescription(entry: TimesheetEntry): string {
 
 function entryTaskLabel(entry: TimesheetEntry): string {
   if (entry.work_category === 'non_productive') {
+    if ((entry.leave_count ?? 0) > 0 || entry.non_productive_category === 'leave') {
+      return 'Leave';
+    }
     return formatCellValue(entry.non_productive_description) || '—';
   }
   return formatCellValue(entry.task_type_name) || '—';

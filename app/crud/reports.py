@@ -3,6 +3,12 @@ from decimal import Decimal
 
 from sqlalchemy import func, select
 
+from app.core.non_productive_categories import (
+    is_leave_entry,
+    leave_entry_clause,
+    standard_np_code_clause,
+    standard_np_hours_clause,
+)
 from app.crud.base import Session
 from app.crud.dashboard import get_designer_workload, _decimal, _round_hours
 from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
@@ -324,7 +330,10 @@ def get_non_productive_hours_report(db: Session) -> list[NonProductiveHoursRepor
             TimesheetEntry.non_productive_code_id == NonProductiveCode.id,
         )
         .outerjoin(Customer, TimesheetEntry.customer_id == Customer.id)
-        .where(TimesheetEntry.work_category == WorkCategory.non_productive)
+        .where(
+            TimesheetEntry.work_category == WorkCategory.non_productive,
+            standard_np_code_clause(),
+        )
     ).all()
     grouped: dict[str, dict] = {}
     for entry, np_code, customer_name in rows:
@@ -365,6 +374,8 @@ def get_billable_utilization_report(db: Session) -> list[BillableUtilizationRepo
         for entry in entries:
             hours = _decimal(entry.hours)
             if entry.work_category == WorkCategory.non_productive:
+                if is_leave_entry(entry):
+                    continue
                 np_hours += hours
             elif entry.is_billable:
                 billable += hours
@@ -392,8 +403,11 @@ def get_billable_utilization_report(db: Session) -> list[BillableUtilizationRepo
 
 def get_monthly_np_trends_report(db: Session) -> list[MonthlyNpTrendReportRow]:
     rows = db.scalars(
-        select(TimesheetEntry).where(
-            TimesheetEntry.work_category == WorkCategory.non_productive
+        select(TimesheetEntry)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(
+            Timesheet.status == TimesheetStatus.approved,
+            standard_np_hours_clause(),
         )
     ).all()
     grouped: dict[str, Decimal] = {}
@@ -414,9 +428,11 @@ def get_np_hours_by_designer_report(db: Session) -> list[NpHoursByDesignerReport
         select(User.id, User.first_name, User.last_name, func.coalesce(func.sum(TimesheetEntry.hours), 0))
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .join(User, Timesheet.user_id == User.id)
+        .join(NonProductiveCode, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
         .where(
             TimesheetEntry.work_category == WorkCategory.non_productive,
             Timesheet.status == TimesheetStatus.approved,
+            standard_np_code_clause(),
         )
         .group_by(User.id, User.first_name, User.last_name)
     ).all()
@@ -438,9 +454,13 @@ def get_billable_vs_non_billable_report(db: Session) -> BillableVsNonBillableRep
         .where(Timesheet.status == TimesheetStatus.approved)
     ).all()
     billable = non_billable = np_hours = Decimal("0")
+    leave_days = 0
     for entry in entries:
         hours = _decimal(entry.hours)
         if entry.work_category == WorkCategory.non_productive:
+            if is_leave_entry(entry):
+                leave_days += int(entry.leave_count or 0)
+                continue
             np_hours += hours
         elif entry.is_billable:
             billable += hours
@@ -452,6 +472,7 @@ def get_billable_vs_non_billable_report(db: Session) -> BillableVsNonBillableRep
             billable_hours=Decimal("0"),
             non_billable_hours=Decimal("0"),
             np_hours=Decimal("0"),
+            leave_days=leave_days,
             billable_percent=Decimal("0.00"),
             non_billable_percent=Decimal("0.00"),
         )
@@ -459,6 +480,7 @@ def get_billable_vs_non_billable_report(db: Session) -> BillableVsNonBillableRep
         billable_hours=_round_hours(billable),
         non_billable_hours=_round_hours(non_billable),
         np_hours=_round_hours(np_hours),
+        leave_days=leave_days,
         billable_percent=_round_hours((billable / total) * Decimal("100")),
         non_billable_percent=_round_hours(((non_billable + np_hours) / total) * Decimal("100")),
     )
@@ -473,7 +495,10 @@ def get_top_np_activities_report(db: Session, *, limit: int = 10) -> list[TopNpA
             func.count(TimesheetEntry.id),
         )
         .join(TimesheetEntry, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
-        .where(TimesheetEntry.work_category == WorkCategory.non_productive)
+        .where(
+            TimesheetEntry.work_category == WorkCategory.non_productive,
+            standard_np_code_clause(),
+        )
         .group_by(NonProductiveCode.code, NonProductiveCode.description)
         .order_by(func.sum(TimesheetEntry.hours).desc())
         .limit(limit)

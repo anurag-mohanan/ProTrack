@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProTrackValidationError
+from app.core.non_productive_categories import apply_category_rules, is_leave_code
 from app.core.permissions import FULL_ACCESS_ROLES, get_role_name, is_admin
 from app.models.enums import ExecutionStatus, WorkCategory
 from app.models.models import (
@@ -74,6 +75,7 @@ def normalize_entry_payload(
             "hours": existing.hours if existing else None,
             "description": existing.description if existing else None,
             "is_billable": existing.is_billable if existing else True,
+            "leave_count": existing.leave_count if existing else None,
         }
         updates = payload.model_dump(exclude_unset=True)
         data = {**base, **updates}
@@ -108,6 +110,7 @@ def normalize_entry_payload(
         project = _get_active_project(db, project_id)
         data["customer_id"] = project.customer_id
         data["non_productive_code_id"] = None
+        data["leave_count"] = None
 
         task_type_id = data.get("task_type_id")
         if task_type_id is None:
@@ -153,14 +156,19 @@ def normalize_entry_payload(
         data["milestone_id"] = None
         data["task_type_id"] = None
         unset = payload.model_dump(exclude_unset=True)
-        if (
+        allow_billable_override = (
             actor is not None
             and can_override_billable(db, actor)
             and "is_billable" in unset
-        ):
+            and not is_leave_code(np_code)
+        )
+        apply_category_rules(
+            data,
+            np_code,
+            allow_billable_override=allow_billable_override,
+        )
+        if allow_billable_override:
             data["is_billable"] = bool(unset["is_billable"])
-        else:
-            data["is_billable"] = False
 
     data["work_category"] = work_category
     return data

@@ -51,6 +51,7 @@ class TimesheetEntryBase(BaseModel):
     entry_date: date
     hours: Decimal = Field(gt=0, le=24)
     is_billable: bool = True
+    leave_count: int | None = None
     description: str | None = None
 
     @field_validator("hours")
@@ -76,6 +77,7 @@ class TimesheetEntryUpdate(BlankOptionalFieldsMixin, BaseModel):
     entry_date: date | None = None
     hours: Decimal | None = Field(default=None, gt=0, le=24)
     is_billable: bool | None = None
+    leave_count: int | None = None
     description: str | None = None
 
     @field_validator("hours")
@@ -96,6 +98,7 @@ class TimesheetEntryRead(TimesheetEntryBase, TimestampSchema):
     milestone_name: str | None = None
     non_productive_code: str | None = None
     non_productive_description: str | None = None
+    non_productive_category: str | None = None
     user_id: UUID | None = None
     user_name: str | None = None
 
@@ -112,6 +115,7 @@ class TimesheetEntryBulkUpsert(BaseModel):
     entry_date: date
     hours: Decimal = Field(gt=0, le=24)
     is_billable: bool = True
+    leave_count: int | None = None
     description: str | None = None
 
     @field_validator("hours")

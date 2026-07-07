@@ -1,4 +1,4 @@
-import type { NonProductiveCode, Project } from '../../types';
+import type { NonProductiveCode, NonProductiveCodeCategory, Project } from '../../types';
 
 export type TimesheetToolGroup = 'RECENTLY USED' | 'LIVE PROJECTS' | 'NON PRODUCTIVE';
 
@@ -9,6 +9,7 @@ export interface TimesheetToolOption {
   kind: 'project' | 'np';
   projectId?: string;
   npCodeId?: string;
+  npCategory?: NonProductiveCodeCategory;
   toolNumber: string;
   searchText: string;
 }
@@ -76,10 +77,14 @@ export function buildNpToolOptions(codes: NonProductiveCode[]): TimesheetToolOpt
     .sort((left, right) => left.sort_order - right.sort_order || left.code.localeCompare(right.code))
     .map((code) => ({
       value: `np:${code.id}`,
-      label: `${code.code} - ${code.description ?? code.code}`,
+      label:
+        code.category === 'leave'
+          ? `${code.code} - Leave`
+          : `${code.code} - ${code.description ?? code.code}`,
       group: 'NON PRODUCTIVE' as const,
       kind: 'np' as const,
       npCodeId: code.id,
+      npCategory: code.category ?? 'non_productive',
       toolNumber: code.code,
       searchText: [code.code, code.description].filter(Boolean).join(' ').toLowerCase(),
     }));
@@ -119,6 +124,11 @@ export function toolOptionFromEntry(entry: {
 
 export function npTaskLabel(option: TimesheetToolOption | null): string {
   if (!option || option.kind !== 'np') return '';
+  if (option.npCategory === 'leave') return 'Leave';
   const parts = option.label.split(' - ');
   return parts.slice(1).join(' - ').trim() || option.toolNumber;
+}
+
+export function isLeaveToolOption(option: TimesheetToolOption | null): boolean {
+  return option?.kind === 'np' && option.npCategory === 'leave';
 }

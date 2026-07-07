@@ -195,6 +195,7 @@ class BillableVsNonBillableReportRow(BaseModel):
     billable_hours: Decimal
     non_billable_hours: Decimal
     np_hours: Decimal
+    leave_days: int = 0
     billable_percent: Decimal
     non_billable_percent: Decimal
 

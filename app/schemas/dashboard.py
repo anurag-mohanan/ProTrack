@@ -89,6 +89,10 @@ class DashboardNpPanel(BaseModel):
     codes: list[DashboardNpCodeRow] = Field(default_factory=list)
 
 
+class DashboardLeavePanel(BaseModel):
+    leave_days_this_month: int = 0
+
+
 class ProjectAttentionRow(BaseModel):
     project_id: UUID
     tool_number: str
@@ -234,7 +238,9 @@ class DashboardSummary(BaseModel):
     hours_logged_today: Decimal = Decimal("0")
     open_engineering_changes: int = 0
     np_hours_this_month: Decimal = Decimal("0")
+    leave_days_this_month: int = 0
     np_hours_panel: DashboardNpPanel = Field(default_factory=DashboardNpPanel)
+    leave_panel: DashboardLeavePanel = Field(default_factory=DashboardLeavePanel)
     operational_metrics: DashboardOperationalMetrics = Field(
         default_factory=DashboardOperationalMetrics
     )

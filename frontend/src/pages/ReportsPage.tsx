@@ -404,6 +404,9 @@ export function ReportsPage() {
               Non-productive hours: {formatNumber(billableVsNpQuery.data.np_hours)}
             </Typography>
             <Typography variant="body2">
+              Leave days: {formatNumber(billableVsNpQuery.data.leave_days, 0)}
+            </Typography>
+            <Typography variant="body2">
               Combined non-billable share: {formatNumber(billableVsNpQuery.data.non_billable_percent)}%
             </Typography>
           </Box>

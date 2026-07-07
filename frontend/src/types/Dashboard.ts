@@ -43,7 +43,9 @@ export interface DashboardSummary {
   hours_logged_today: number;
   open_engineering_changes: number;
   np_hours_this_month: number;
+  leave_days_this_month: number;
   np_hours_panel: DashboardNpPanel;
+  leave_panel: DashboardLeavePanel;
   operational_metrics: DashboardOperationalMetrics;
   staff_metrics?: StaffDashboardMetrics | null;
 }
@@ -74,6 +76,10 @@ export interface DashboardNpCodeRow {
 export interface DashboardNpPanel {
   total_np_hours_this_month: number;
   codes: DashboardNpCodeRow[];
+}
+
+export interface DashboardLeavePanel {
+  leave_days_this_month: number;
 }
 
 export interface DashboardOverview {

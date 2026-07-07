@@ -51,6 +51,7 @@ from app.services.historical_timesheet_import_service import (
     timesheet_duplicate_key,
 )
 from app.services.project_calculation_service import recalculate_project
+from app.services.non_productive_entry_service import build_np_timesheet_entry
 
 FOLDER_BATCH_DIR = Path(gettempdir()) / "protrack_timesheet_folder_imports"
 BATCH_COMMIT_SIZE = 500
@@ -567,14 +568,9 @@ def run_folder_import(
                         )
                         continue
                     np_record = _resolve_np_code(db, row.np_code)
-                    entry = TimesheetEntry(
+                    entry = build_np_timesheet_entry(
+                        np_code=np_record,
                         timesheet_id=timesheet.id,
-                        work_category=WorkCategory.non_productive,
-                        non_productive_code_id=np_record.id,
-                        project_id=None,
-                        customer_id=None,
-                        task_type_id=None,
-                        is_billable=False,
                         entry_date=row.entry_date,
                         hours=row.hours,
                         description=row.notes,

@@ -2,6 +2,8 @@ import type { Timestamped } from './common';
 
 export type WorkCategory = 'productive' | 'non_productive';
 
+export type NonProductiveCodeCategory = 'non_productive' | 'leave';
+
 export interface TimesheetEntry extends Timestamped {
   timesheet_id: string;
   work_category: WorkCategory;
@@ -13,6 +15,7 @@ export interface TimesheetEntry extends Timestamped {
   entry_date: string;
   hours: number;
   is_billable: boolean;
+  leave_count?: number | null;
   description: string | null;
   project_tool_number?: string | null;
   project_code?: string | null;
@@ -21,6 +24,7 @@ export interface TimesheetEntry extends Timestamped {
   milestone_name?: string | null;
   non_productive_code?: string | null;
   non_productive_description?: string | null;
+  non_productive_category?: NonProductiveCodeCategory | null;
   user_id?: string | null;
   user_name?: string | null;
 }
@@ -42,6 +46,7 @@ export interface TimesheetEntryCreate {
 export interface NonProductiveCode extends Timestamped {
   code: string;
   description: string | null;
+  category?: NonProductiveCodeCategory;
   is_active: boolean;
   is_archived: boolean;
   sort_order: number;
@@ -50,6 +55,7 @@ export interface NonProductiveCode extends Timestamped {
 export interface NonProductiveCodeCreate {
   code: string;
   description?: string | null;
+  category?: NonProductiveCodeCategory;
   is_active?: boolean;
   sort_order?: number;
 }
@@ -57,6 +63,7 @@ export interface NonProductiveCodeCreate {
 export interface NonProductiveCodeUpdate {
   code?: string;
   description?: string | null;
+  category?: NonProductiveCodeCategory;
   is_active?: boolean;
   is_archived?: boolean;
   sort_order?: number;

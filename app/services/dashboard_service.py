@@ -10,6 +10,11 @@ from uuid import UUID
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.non_productive_categories import (
+    leave_entry_clause,
+    standard_np_code_clause,
+    standard_np_hours_clause,
+)
 from app.core.permissions import (
     READ_ALL_PROJECT_ROLES,
     can_approve_timesheet,
@@ -71,7 +76,6 @@ WORKLOAD_ROLES = (
     "Surfacer",
 )
 
-_LEAVE_NP_CODE = "C500"
 _WEEKLY_CAPACITY_HOURS = Decimal("40")
 
 _DASHBOARD_ACTIVITY_ACTIONS = (
@@ -259,7 +263,7 @@ def get_dashboard_kpis(
                     Timesheet.status == TimesheetStatus.approved,
                     TimesheetEntry.entry_date >= month_start,
                     TimesheetEntry.entry_date <= today,
-                    TimesheetEntry.work_category == WorkCategory.non_productive,
+                    standard_np_hours_clause(),
                 )
             )
         )
@@ -322,13 +326,32 @@ def _batch_designer_names(db: Session, projects: list[Project]) -> dict[UUID, st
     }
 
 
+def get_leave_days_this_month(db: Session) -> int:
+    today = date.today()
+    month_start = today.replace(day=1)
+    total = db.scalar(
+        select(func.coalesce(func.sum(TimesheetEntry.leave_count), 0))
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(
+            Timesheet.status == TimesheetStatus.approved,
+            TimesheetEntry.entry_date >= month_start,
+            TimesheetEntry.entry_date <= today,
+            leave_entry_clause(),
+        )
+    )
+    return int(total or 0)
+
+
 def get_np_hours_panel(db: Session) -> DashboardNpPanel:
     today = date.today()
     month_start = today.replace(day=1)
 
     codes = db.scalars(
         select(NonProductiveCode)
-        .where(NonProductiveCode.is_archived.is_(False))
+        .where(
+            NonProductiveCode.is_archived.is_(False),
+            standard_np_code_clause(),
+        )
         .order_by(NonProductiveCode.sort_order, NonProductiveCode.code)
     ).all()
 
@@ -341,9 +364,10 @@ def get_np_hours_panel(db: Session) -> DashboardNpPanel:
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
             Timesheet.status == TimesheetStatus.approved,
-            TimesheetEntry.work_category == WorkCategory.non_productive,
             TimesheetEntry.entry_date >= month_start,
             TimesheetEntry.entry_date <= today,
+            standard_np_hours_clause(),
+            standard_np_code_clause(),
         )
         .group_by(NonProductiveCode.code)
     ).all()
@@ -750,16 +774,11 @@ def get_designer_availability(
         db.scalars(
             select(Timesheet.user_id)
             .join(TimesheetEntry, TimesheetEntry.timesheet_id == Timesheet.id)
-            .join(
-                NonProductiveCode,
-                TimesheetEntry.non_productive_code_id == NonProductiveCode.id,
-            )
             .where(
                 Timesheet.user_id.in_(designer_ids),
                 Timesheet.status == TimesheetStatus.approved,
                 TimesheetEntry.entry_date == today,
-                TimesheetEntry.work_category == WorkCategory.non_productive,
-                NonProductiveCode.code == _LEAVE_NP_CODE,
+                leave_entry_clause(),
                 TimesheetEntry.hours > 0,
             )
             .distinct()

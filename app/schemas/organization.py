@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import DueDateCalculationMode
+from app.models.enums import DueDateCalculationMode, NonProductiveCodeCategory
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
@@ -123,6 +123,7 @@ class TaskTypeRead(TaskTypeBase, TimestampSchema):
 class NonProductiveCodeBase(BaseModel):
     code: str = Field(min_length=1, max_length=20)
     description: str | None = Field(default=None, max_length=255)
+    category: NonProductiveCodeCategory = NonProductiveCodeCategory.non_productive
     is_active: bool = True
     is_archived: bool = False
     sort_order: int = 0
@@ -135,6 +136,7 @@ class NonProductiveCodeCreate(BlankOptionalFieldsMixin, NonProductiveCodeBase):
 class NonProductiveCodeUpdate(BlankOptionalFieldsMixin, BaseModel):
     code: str | None = Field(default=None, max_length=20)
     description: str | None = Field(default=None, max_length=255)
+    category: NonProductiveCodeCategory | None = None
     is_active: bool | None = None
     is_archived: bool | None = None
     sort_order: int | None = None

@@ -45,6 +45,7 @@ from app.schemas.historical_import import (
     ImportSummary,
     ImportUploadResponse,
 )
+from app.services.non_productive_entry_service import build_np_timesheet_entry
 from app.services.project_calculation_service import calculate_project_health
 
 UPLOAD_DIR = Path(gettempdir()) / "protrack_imports"
@@ -795,15 +796,10 @@ def _create_np_entry_from_row(
 
     week_start = _week_start(row.entry_date)
     timesheet = _get_or_create_approved_timesheet(db, designer.id, week_start)
-    entry = TimesheetEntry(
+    entry = build_np_timesheet_entry(
+        np_code=np_code,
         timesheet_id=timesheet.id,
-        work_category=WorkCategory.non_productive,
-        non_productive_code_id=np_code.id,
-        project_id=None,
-        milestone_id=None,
         customer_id=customer.id if customer else None,
-        task_type_id=None,
-        is_billable=False,
         entry_date=row.entry_date,
         hours=row.hours,
         description=row.notes or row.part_description,

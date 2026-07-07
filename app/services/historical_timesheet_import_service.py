@@ -66,6 +66,7 @@ from app.services.historical_import_service import (
     _week_start,
 )
 from app.services.project_calculation_service import recalculate_project
+from app.services.non_productive_entry_service import build_np_timesheet_entry
 from app.services.project_template_service import (
     create_milestones_from_template,
     resolve_template_for_import,
@@ -1080,14 +1081,10 @@ def run_timesheet_import(
                     customer = _resolve_or_create_customer(db, row.customer, import_summary)
                     summary.customers_created += import_summary.customers_created
 
-                entry = TimesheetEntry(
+                entry = build_np_timesheet_entry(
+                    np_code=np_code,
                     timesheet_id=timesheet.id,
-                    work_category=WorkCategory.non_productive,
-                    non_productive_code_id=np_code.id,
-                    project_id=None,
                     customer_id=customer.id if customer else None,
-                    task_type_id=None,
-                    is_billable=False,
                     entry_date=row.entry_date,
                     hours=row.hours,
                     description=row.description,

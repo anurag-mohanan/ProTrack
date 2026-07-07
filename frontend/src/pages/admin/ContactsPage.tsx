@@ -25,7 +25,9 @@ import {
   FormSelect,
   ProsohmDataGrid,
   RecordDetailDrawer,
-  SearchToolbar,
+  FilterDrawer,
+  FilterToolbar,
+  compactFilterFieldSx,
   TableRowActions,
 } from '../../components/ui/design-system';
 import { formatCellValue, formatDateTime } from '../../utils/format';
@@ -71,7 +73,9 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [customerFilter, setCustomerFilter] = useState(customerFilterParam);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [appliedCustomerFilter, setAppliedCustomerFilter] = useState(customerFilterParam);
+  const [draftCustomerFilter, setDraftCustomerFilter] = useState(customerFilterParam);
   const [formOpen, setFormOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -83,14 +87,15 @@ export default function ContactsPage() {
   );
 
   useEffect(() => {
-    setCustomerFilter(customerFilterParam);
+    setAppliedCustomerFilter(customerFilterParam);
+    setDraftCustomerFilter(customerFilterParam);
   }, [customerFilterParam]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const contactParams =
-        customerFilter !== 'all' ? { customer_id: customerFilter } : undefined;
+        appliedCustomerFilter !== 'all' ? { customer_id: appliedCustomerFilter } : undefined;
       const [contactsData, customersData, contactTypesData] = await Promise.all([
         contactsApi.list(contactParams),
         customersApi.list(),
@@ -104,7 +109,7 @@ export default function ContactsPage() {
     } finally {
       setLoading(false);
     }
-  }, [customerFilter, showError]);
+  }, [appliedCustomerFilter, showError]);
 
   useEffect(() => {
     void loadData();
@@ -132,8 +137,8 @@ export default function ContactsPage() {
     setForm({
       ...emptyForm,
       customer_id:
-        customerFilter !== 'all'
-          ? customerFilter
+        appliedCustomerFilter !== 'all'
+          ? appliedCustomerFilter
           : (customers[0]?.id ?? ''),
     });
     setFormOpen(true);
@@ -300,24 +305,37 @@ export default function ContactsPage() {
         }
       />
 
-      <SearchToolbar>
+      <FilterToolbar
+        filterButton={{
+          activeCount: appliedCustomerFilter !== 'all' ? 1 : 0,
+          onClick: () => setFiltersOpen(true),
+        }}
+        chips={
+          appliedCustomerFilter !== 'all'
+            ? [
+                {
+                  key: 'customer',
+                  label: `Customer: ${customerMap.get(appliedCustomerFilter) ?? 'Unknown'}`,
+                  onRemove: () => {
+                    setAppliedCustomerFilter('all');
+                    setDraftCustomerFilter('all');
+                  },
+                },
+              ]
+            : []
+        }
+        onClearAll={() => {
+          setAppliedCustomerFilter('all');
+          setDraftCustomerFilter('all');
+        }}
+      >
         <FormField
           label="Search contacts"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 260, flex: 1 }}
+          sx={{ minWidth: 260, flex: 1, maxWidth: 420 }}
         />
-        <FormSelect
-          label="Customer"
-          value={customerFilter}
-          options={[
-            { value: 'all', label: 'All Customers' },
-            ...customers.map((customer) => ({ value: customer.id, label: customer.name })),
-          ]}
-          onChange={(event) => setCustomerFilter(String(event.target.value))}
-          sx={{ minWidth: 220 }}
-        />
-      </SearchToolbar>
+      </FilterToolbar>
 
       <ContentCard noPadding>
         <ProsohmDataGrid
@@ -521,6 +539,27 @@ export default function ContactsPage() {
           </FormSection>
         ) : null}
       </RecordDetailDrawer>
+
+      <FilterDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Contact filters"
+        onApply={() => setAppliedCustomerFilter(draftCustomerFilter)}
+        onReset={() => setDraftCustomerFilter('all')}
+      >
+        <Box sx={compactFilterFieldSx}>
+          <FormSelect
+            label="Customer"
+            size="small"
+            value={draftCustomerFilter}
+            options={[
+              { value: 'all', label: 'All Customers' },
+              ...customers.map((customer) => ({ value: customer.id, label: customer.name })),
+            ]}
+            onChange={(event) => setDraftCustomerFilter(String(event.target.value))}
+          />
+        </Box>
+      </FilterDrawer>
     </PageContainer>
   );
 }

@@ -1,13 +1,5 @@
 import { useMemo, useState } from 'react';
-import {
-  Box,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  Tab,
-  Tabs,
-} from '@mui/material';
+import { Box, Tab, Tabs } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   assignProjectDesigner,
@@ -25,7 +17,15 @@ import { ResourcePlanningTimeline } from '../components/resource-planning/Resour
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
-import { KpiMetricCard, ModernPageHeader } from '../components/ui/design-system';
+import {
+  FilterDrawer,
+  FilterGroup,
+  FilterToolbar,
+  FormSelect,
+  KpiMetricCard,
+  ModernPageHeader,
+  compactFilterFieldSx,
+} from '../components/ui/design-system';
 import { KpiStrip } from '../components/analytics/KpiStrip';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useToast } from '../context/ToastContext';
@@ -35,6 +35,7 @@ import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
+import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 
 const GRANULARITY_OPTIONS: { value: ResourcePlanningGranularity; label: string }[] = [
   { value: 'week', label: 'Weekly' },
@@ -45,17 +46,20 @@ const GRANULARITY_OPTIONS: { value: ResourcePlanningGranularity; label: string }
 export function ResourcePlanningPage() {
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
-  const [teamFilter, setTeamFilter] = useState<string>('all');
-  const [granularity, setGranularity] = useState<ResourcePlanningGranularity>('week');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [appliedTeamFilter, setAppliedTeamFilter] = useState('all');
+  const [draftTeamFilter, setDraftTeamFilter] = useState('all');
+  const [appliedGranularity, setAppliedGranularity] = useState<ResourcePlanningGranularity>('week');
+  const [draftGranularity, setDraftGranularity] = useState<ResourcePlanningGranularity>('week');
   const [leftTab, setLeftTab] = useState<LeftPanelTab>('designers');
   const [selectedDesignerId, setSelectedDesignerId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
-  const teamParam = teamFilter === 'all' ? undefined : teamFilter;
+  const teamParam = appliedTeamFilter === 'all' ? undefined : appliedTeamFilter;
   const gridParams = useMemo(
-    () => ({ granularity, team_id: teamParam }),
-    [granularity, teamParam],
+    () => ({ granularity: appliedGranularity, team_id: teamParam }),
+    [appliedGranularity, teamParam],
   );
 
   const teamsQuery = useQuery({
@@ -84,6 +88,56 @@ export function ResourcePlanningPage() {
     },
     onError: (error: Error) => showError(error.message),
   });
+
+  const teamNameMap = useMemo(
+    () => new Map((teamsQuery.data ?? []).map((team) => [team.id, team.name])),
+    [teamsQuery.data],
+  );
+
+  const activeFilterCount =
+    (appliedTeamFilter !== 'all' ? 1 : 0) + (appliedGranularity !== 'week' ? 1 : 0);
+
+  const filterChips = useMemo(() => {
+    const chips = [];
+    if (appliedTeamFilter !== 'all') {
+      chips.push({
+        key: 'team',
+        label: `Team: ${teamNameMap.get(appliedTeamFilter) ?? 'Unknown'}`,
+        onRemove: () => {
+          setAppliedTeamFilter('all');
+          setDraftTeamFilter('all');
+        },
+      });
+    }
+    if (appliedGranularity !== 'week') {
+      chips.push({
+        key: 'granularity',
+        label: `View: ${GRANULARITY_OPTIONS.find((option) => option.value === appliedGranularity)?.label ?? appliedGranularity}`,
+        onRemove: () => {
+          setAppliedGranularity('week');
+          setDraftGranularity('week');
+        },
+      });
+    }
+    return chips;
+  }, [appliedGranularity, appliedTeamFilter, teamNameMap]);
+
+  const applyFilters = () => {
+    setAppliedTeamFilter(draftTeamFilter);
+    setAppliedGranularity(draftGranularity);
+  };
+
+  const resetFilters = () => {
+    setDraftTeamFilter('all');
+    setDraftGranularity('week');
+  };
+
+  const clearFilters = () => {
+    setAppliedTeamFilter('all');
+    setDraftTeamFilter('all');
+    setAppliedGranularity('week');
+    setDraftGranularity('week');
+  };
 
   if (planningQuery.isLoading) return <LoadingState message="Loading resource planning…" />;
   if (planningQuery.error) return <ErrorState error={planningQuery.error} />;
@@ -114,34 +168,6 @@ export function ResourcePlanningPage() {
       <ModernPageHeader
         title="Resource Planning"
         subtitle="Engineering planning dashboard — capacity, assignments, and customer allocation"
-        actions={
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel>Team</InputLabel>
-              <Select
-                label="Team"
-                value={teamFilter}
-                onChange={(event) => setTeamFilter(String(event.target.value))}
-              >
-                <MenuItem value="all">All Teams</MenuItem>
-                {(teamsQuery.data ?? []).map((team) => (
-                  <MenuItem key={team.id} value={team.id}>
-                    {team.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Tabs
-              value={granularity}
-              onChange={(_, value: ResourcePlanningGranularity) => setGranularity(value)}
-              sx={{ minHeight: 40 }}
-            >
-              {GRANULARITY_OPTIONS.map((option) => (
-                <Tab key={option.value} value={option.value} label={option.label} sx={{ minHeight: 40 }} />
-              ))}
-            </Tabs>
-          </Box>
-        }
         summary={
           <KpiStrip columns={{ xs: 12, sm: 6, md: 3 }}>
             <KpiMetricCard
@@ -176,6 +202,26 @@ export function ResourcePlanningPage() {
           </KpiStrip>
         }
       />
+
+      <FilterToolbar
+        sticky
+        filterButton={{ activeCount: activeFilterCount, onClick: () => setFiltersOpen(true) }}
+        chips={filterChips}
+        onClearAll={clearFilters}
+      >
+        <Tabs
+          value={appliedGranularity}
+          onChange={(_, value: ResourcePlanningGranularity) => {
+            setAppliedGranularity(value);
+            setDraftGranularity(value);
+          }}
+          sx={{ minHeight: 36 }}
+        >
+          {GRANULARITY_OPTIONS.map((option) => (
+            <Tab key={option.value} value={option.value} label={option.label} sx={{ minHeight: 36, py: 0.5 }} />
+          ))}
+        </Tabs>
+      </FilterToolbar>
 
       <Box
         sx={{
@@ -217,6 +263,43 @@ export function ResourcePlanningPage() {
           onSelectProject={setSelectedProjectId}
         />
       </Box>
+
+      <FilterDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Planning filters"
+        onApply={applyFilters}
+        onReset={resetFilters}
+      >
+        <Box sx={compactFilterFieldSx}>
+          <FormSelect
+            label="Team"
+            size="small"
+            value={draftTeamFilter}
+            options={[
+              { value: 'all', label: 'All Teams' },
+              ...(teamsQuery.data ?? []).map((team) => ({ value: team.id, label: team.name })),
+            ]}
+            onChange={(event) => setDraftTeamFilter(String(event.target.value))}
+          />
+        </Box>
+        <FilterGroup title="Planning" icon={<CalendarMonthOutlinedIcon sx={{ fontSize: 14 }} />}>
+          <Box sx={compactFilterFieldSx}>
+            <FormSelect
+              label="Time scale"
+              size="small"
+              value={draftGranularity}
+              options={GRANULARITY_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label,
+              }))}
+              onChange={(event) =>
+                setDraftGranularity(event.target.value as ResourcePlanningGranularity)
+              }
+            />
+          </Box>
+        </FilterGroup>
+      </FilterDrawer>
     </PageContainer>
   );
 }

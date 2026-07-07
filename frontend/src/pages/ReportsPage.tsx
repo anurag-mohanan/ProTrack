@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Chip,
   FormControlLabel,
   Stack,
   Switch,
@@ -14,8 +13,14 @@ import { useSearchParams } from 'react-router-dom';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
-import { ModernPageHeader } from '../components/ui/design-system';
-import { ContentCard } from '../components/ui/cards';
+import {
+  FilterDrawer,
+  FilterGroup,
+  FilterToolbar,
+  FormSelect,
+  ModernPageHeader,
+  compactFilterFieldSx,
+} from '../components/ui/design-system';
 import { REPORT_CATEGORIES, type ReportCategoryId } from '../components/reports/reportCategories';
 import {
   BillableUtilizationReportView,
@@ -50,6 +55,7 @@ import {
 } from '../services/reportService';
 import { accessContextFromUser, canExportReports, canViewDeletedProjects } from '../utils/permissions';
 import { formatNumber } from '../utils/format';
+import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 
 const TAB_CONFIG = [
   { label: 'Project Hours', slug: 'project-hours', category: 'projects' },
@@ -78,10 +84,14 @@ export function ReportsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = tabIndexFromSlug(searchParams.get('tab'));
   const [tab, setTab] = useState(initialTab);
-  const [category, setCategory] = useState<ReportCategoryId | 'all'>('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [appliedCategory, setAppliedCategory] = useState<ReportCategoryId | 'all'>('all');
+  const [draftCategory, setDraftCategory] = useState<ReportCategoryId | 'all'>('all');
   const { user } = useAuth();
-  const [includeArchived, setIncludeArchived] = useState(true);
-  const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [appliedIncludeArchived, setAppliedIncludeArchived] = useState(true);
+  const [draftIncludeArchived, setDraftIncludeArchived] = useState(true);
+  const [appliedIncludeDeleted, setAppliedIncludeDeleted] = useState(false);
+  const [draftIncludeDeleted, setDraftIncludeDeleted] = useState(false);
 
   const access = accessContextFromUser(user);
   const canExport = canExportReports(access);
@@ -91,16 +101,16 @@ export function ReportsPage() {
   }, [searchParams]);
 
   const reportOptions: ReportOptions = {
-    include_archived: includeArchived,
-    include_deleted: includeDeleted,
+    include_archived: appliedIncludeArchived,
+    include_deleted: appliedIncludeDeleted,
   };
 
   const visibleTabs = useMemo(() => {
-    if (category === 'all') return TAB_CONFIG;
-    const cat = REPORT_CATEGORIES.find((c) => c.id === category);
+    if (appliedCategory === 'all') return TAB_CONFIG;
+    const cat = REPORT_CATEGORIES.find((c) => c.id === appliedCategory);
     if (!cat) return TAB_CONFIG;
     return TAB_CONFIG.filter((t) => (cat.slugs as readonly string[]).includes(t.slug));
-  }, [category]);
+  }, [appliedCategory]);
 
   const projectHoursQuery = useQuery({
     queryKey: reportQueryKeys.projectHours(reportOptions),
@@ -213,7 +223,7 @@ export function ReportsPage() {
   };
 
   const handleCategoryChange = (next: ReportCategoryId | 'all') => {
-    setCategory(next);
+    setAppliedCategory(next);
     if (next === 'all') return;
     const cat = REPORT_CATEGORIES.find((c) => c.id === next);
     if (!cat) return;
@@ -224,6 +234,70 @@ export function ReportsPage() {
     }
   };
 
+  const activeFilterCount =
+    (appliedCategory !== 'all' ? 1 : 0) +
+    (!appliedIncludeArchived ? 1 : 0) +
+    (appliedIncludeDeleted ? 1 : 0);
+
+  const filterChips = useMemo(() => {
+    const chips = [];
+    if (appliedCategory !== 'all') {
+      const label = REPORT_CATEGORIES.find((cat) => cat.id === appliedCategory)?.label ?? appliedCategory;
+      chips.push({
+        key: 'category',
+        label: `Category: ${label}`,
+        onRemove: () => {
+          setAppliedCategory('all');
+          setDraftCategory('all');
+        },
+      });
+    }
+    if (!appliedIncludeArchived) {
+      chips.push({
+        key: 'archived',
+        label: 'Exclude archived',
+        onRemove: () => {
+          setAppliedIncludeArchived(true);
+          setDraftIncludeArchived(true);
+        },
+      });
+    }
+    if (appliedIncludeDeleted) {
+      chips.push({
+        key: 'deleted',
+        label: 'Include deleted',
+        onRemove: () => {
+          setAppliedIncludeDeleted(false);
+          setDraftIncludeDeleted(false);
+        },
+      });
+    }
+    return chips;
+  }, [appliedCategory, appliedIncludeArchived, appliedIncludeDeleted]);
+
+  const applyFilters = () => {
+    if (draftCategory !== appliedCategory) {
+      handleCategoryChange(draftCategory);
+    }
+    setAppliedIncludeArchived(draftIncludeArchived);
+    setAppliedIncludeDeleted(draftIncludeDeleted);
+  };
+
+  const resetFilters = () => {
+    setDraftCategory('all');
+    setDraftIncludeArchived(true);
+    setDraftIncludeDeleted(false);
+  };
+
+  const clearFilters = () => {
+    setAppliedCategory('all');
+    setDraftCategory('all');
+    setAppliedIncludeArchived(true);
+    setDraftIncludeArchived(true);
+    setAppliedIncludeDeleted(false);
+    setDraftIncludeDeleted(false);
+  };
+
   return (
     <PageContainer>
       <ModernPageHeader
@@ -231,63 +305,25 @@ export function ReportsPage() {
         subtitle="Visual dashboards with charts, filters, drill-down, and export"
       />
 
-      <Stack spacing={2.5}>
-        <ContentCard>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-            Categories
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-            <Chip
-              label="All"
-              color={category === 'all' ? 'primary' : 'default'}
-              onClick={() => handleCategoryChange('all')}
-              variant={category === 'all' ? 'filled' : 'outlined'}
-            />
-            {REPORT_CATEGORIES.map((cat) => (
-              <Chip
-                key={cat.id}
-                label={cat.label}
-                color={category === cat.id ? 'primary' : 'default'}
-                onClick={() => handleCategoryChange(cat.id)}
-                variant={category === cat.id ? 'filled' : 'outlined'}
-              />
-            ))}
-          </Box>
-          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={includeArchived}
-                  onChange={(event) => setIncludeArchived(event.target.checked)}
-                />
-              }
-              label="Include Archived"
-            />
-            {canViewDeletedProjects(access) ? (
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={includeDeleted}
-                    onChange={(event) => setIncludeDeleted(event.target.checked)}
-                  />
-                }
-                label="Include Deleted (Admin)"
-              />
-            ) : null}
-          </Box>
-        </ContentCard>
+      <FilterToolbar
+        sticky
+        filterButton={{ activeCount: activeFilterCount, onClick: () => setFiltersOpen(true) }}
+        chips={filterChips}
+        onClearAll={clearFilters}
+      />
 
-        <Tabs
-          value={tab}
-          onChange={handleTabChange}
-          variant="scrollable"
-          scrollButtons="auto"
-        >
-          {(category === 'all' ? TAB_CONFIG : visibleTabs).map((config) => {
-            const index = TAB_CONFIG.findIndex((t) => t.slug === config.slug);
-            return <Tab key={config.slug} value={index} label={config.label} />;
-          })}
-        </Tabs>
+      <Tabs
+        value={tab}
+        onChange={handleTabChange}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ mb: 2 }}
+      >
+        {(appliedCategory === 'all' ? TAB_CONFIG : visibleTabs).map((config) => {
+          const index = TAB_CONFIG.findIndex((t) => t.slug === config.slug);
+          return <Tab key={config.slug} value={index} label={config.label} />;
+        })}
+      </Tabs>
 
         {activeQuery.isLoading ? <LoadingState message="Loading reports…" /> : null}
         {activeQuery.error ? <ErrorState error={activeQuery.error} /> : null}
@@ -392,7 +428,61 @@ export function ReportsPage() {
         ) : null}
 
         {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}
-      </Stack>
+
+      <FilterDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Report filters"
+        subtitle="Scope and data options"
+        onApply={applyFilters}
+        onReset={resetFilters}
+      >
+        <Stack spacing={1}>
+          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+            Primary filters
+          </Typography>
+          <Box sx={compactFilterFieldSx}>
+            <FormSelect
+              label="Category"
+              size="small"
+              value={draftCategory}
+              options={[
+                { value: 'all', label: 'All categories' },
+                ...REPORT_CATEGORIES.map((cat) => ({ value: cat.id, label: cat.label })),
+              ]}
+              onChange={(event) =>
+                setDraftCategory(event.target.value as ReportCategoryId | 'all')
+              }
+            />
+          </Box>
+        </Stack>
+        <FilterGroup title="Advanced filters" icon={<TuneRoundedIcon sx={{ fontSize: 14 }} />}>
+          <FormControlLabel
+            sx={{ ml: 0, mr: 0 }}
+            control={
+              <Switch
+                size="small"
+                checked={draftIncludeArchived}
+                onChange={(event) => setDraftIncludeArchived(event.target.checked)}
+              />
+            }
+            label={<Typography variant="caption">Include archived</Typography>}
+          />
+          {canViewDeletedProjects(access) ? (
+            <FormControlLabel
+              sx={{ ml: 0, mr: 0 }}
+              control={
+                <Switch
+                  size="small"
+                  checked={draftIncludeDeleted}
+                  onChange={(event) => setDraftIncludeDeleted(event.target.checked)}
+                />
+              }
+              label={<Typography variant="caption">Include deleted (admin)</Typography>}
+            />
+          ) : null}
+        </FilterGroup>
+      </FilterDrawer>
     </PageContainer>
   );
 }

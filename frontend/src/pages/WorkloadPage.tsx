@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Box, Stack, TableRow } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
@@ -8,6 +8,7 @@ import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import { fetchDesignerWorkload } from '../api/dashboard';
 import { fetchResourcePlanningGrid } from '../api/resourcePlanning';
 import { fetchDashboardSummary } from '../api/dashboard';
+import { fetchTeams } from '../api/lookups';
 import { PageContainer } from '../components/common/PageContainer';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -19,17 +20,31 @@ import {
   ClickableTableRow,
   DashboardPanel,
   EntityAvatar,
+  FilterDrawer,
+  FilterToolbar,
+  FormSelect,
   KpiMetricCard,
   ModernPageHeader,
   OperationalDataTable,
   StickyHeaderCell,
   StickyTableCell,
   UtilizationBar,
+  compactFilterFieldSx,
 } from '../components/ui/design-system';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { formatDisplayValue, formatNumber } from '../utils/format';
 
 export function WorkloadPage() {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [appliedTeamFilter, setAppliedTeamFilter] = useState('all');
+  const [draftTeamFilter, setDraftTeamFilter] = useState('all');
+
+  const teamsQuery = useQuery({
+    queryKey: ['lookups', 'teams'],
+    queryFn: fetchTeams,
+    staleTime: QUERY_STALE_TIMES.lookups,
+  });
+
   const workloadQuery = useQuery({
     queryKey: ['dashboard', 'workload'],
     queryFn: fetchDesignerWorkload,
@@ -46,6 +61,41 @@ export function WorkloadPage() {
     queryFn: () => fetchDashboardSummary(),
     staleTime: QUERY_STALE_TIMES.dashboard,
   });
+
+  const teamNameMap = useMemo(
+    () => new Map((teamsQuery.data ?? []).map((team) => [team.id, team.name])),
+    [teamsQuery.data],
+  );
+
+  const designerTeamMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const designer of planningQuery.data?.designers ?? []) {
+      if (designer.team_name) map.set(designer.user_id, designer.team_name);
+    }
+    return map;
+  }, [planningQuery.data?.designers]);
+
+  const filteredWorkload = useMemo(() => {
+    const rows = workloadQuery.data ?? [];
+    if (appliedTeamFilter === 'all') return rows;
+    const teamName = teamNameMap.get(appliedTeamFilter);
+    if (!teamName) return rows;
+    return rows.filter((row) => designerTeamMap.get(row.user_id) === teamName);
+  }, [appliedTeamFilter, designerTeamMap, teamNameMap, workloadQuery.data]);
+
+  const filterChips = useMemo(() => {
+    if (appliedTeamFilter === 'all') return [];
+    return [
+      {
+        key: 'team',
+        label: `Team: ${teamNameMap.get(appliedTeamFilter) ?? 'Unknown'}`,
+        onRemove: () => {
+          setAppliedTeamFilter('all');
+          setDraftTeamFilter('all');
+        },
+      },
+    ];
+  }, [appliedTeamFilter, teamNameMap]);
 
   const heatmapData = useMemo(() => {
     const grid = planningQuery.data;
@@ -69,7 +119,7 @@ export function WorkloadPage() {
   }, [planningQuery.data]);
 
   const summary = useMemo(() => {
-    const rows = workloadQuery.data ?? [];
+    const rows = filteredWorkload;
     const quoted = rows.reduce((s, r) => s + r.quoted_hours_assigned, 0);
     const actual = rows.reduce((s, r) => s + r.actual_hours_logged, 0);
     const weekHours = rows.reduce((s, r) => s + r.hours_this_week, 0);
@@ -90,9 +140,14 @@ export function WorkloadPage() {
           )
         : 0;
     return { quoted, actual, weekHours, billablePct, npPct, count: rows.length };
-  }, [workloadQuery.data, summaryQuery.data]);
+  }, [filteredWorkload, summaryQuery.data]);
 
-  const teamUtilization = planningQuery.data?.team_summary ?? [];
+  const teamUtilization = useMemo(() => {
+    const teams = planningQuery.data?.team_summary ?? [];
+    if (appliedTeamFilter === 'all') return teams;
+    const teamName = teamNameMap.get(appliedTeamFilter);
+    return teams.filter((team) => team.team_name === teamName);
+  }, [appliedTeamFilter, planningQuery.data?.team_summary, teamNameMap]);
 
   const monthlyForecast = useMemo(() => {
     const now = new Date();
@@ -110,7 +165,7 @@ export function WorkloadPage() {
   if (workloadQuery.isLoading) return <LoadingState />;
   if (workloadQuery.error) return <ErrorState error={workloadQuery.error} />;
 
-  const data = workloadQuery.data ?? [];
+  const data = filteredWorkload;
 
   return (
     <PageContainer>
@@ -149,6 +204,19 @@ export function WorkloadPage() {
             />
           </KpiStrip>
         }
+      />
+
+      <FilterToolbar
+        sticky
+        filterButton={{
+          activeCount: appliedTeamFilter !== 'all' ? 1 : 0,
+          onClick: () => setFiltersOpen(true),
+        }}
+        chips={filterChips}
+        onClearAll={() => {
+          setAppliedTeamFilter('all');
+          setDraftTeamFilter('all');
+        }}
       />
 
       {!data.length ? (
@@ -252,6 +320,27 @@ export function WorkloadPage() {
           </DashboardPanel>
         </Stack>
       )}
+
+      <FilterDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Workload filters"
+        onApply={() => setAppliedTeamFilter(draftTeamFilter)}
+        onReset={() => setDraftTeamFilter('all')}
+      >
+        <Box sx={compactFilterFieldSx}>
+          <FormSelect
+            label="Team"
+            size="small"
+            value={draftTeamFilter}
+            options={[
+              { value: 'all', label: 'All Teams' },
+              ...(teamsQuery.data ?? []).map((team) => ({ value: team.id, label: team.name })),
+            ]}
+            onChange={(event) => setDraftTeamFilter(String(event.target.value))}
+          />
+        </Box>
+      </FilterDrawer>
     </PageContainer>
   );
 }

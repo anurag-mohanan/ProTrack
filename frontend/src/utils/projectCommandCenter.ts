@@ -349,6 +349,7 @@ export function countActiveSidebarFilters(filters: ProjectCommandCenterFilters):
   if (filters.projectTypeId !== 'all') count += 1;
   if (filters.teamIds.length > 0) count += 1;
   if (filters.projectStage !== 'all') count += 1;
+  if (filters.executionStatus !== 'all') count += 1;
   if (filters.designLeaderId !== 'all') count += 1;
   if (filters.designerId !== 'all') count += 1;
   if (filters.surfacerId !== 'all') count += 1;
@@ -357,4 +358,134 @@ export function countActiveSidebarFilters(filters: ProjectCommandCenterFilters):
   if (filters.dueDate !== 'all') count += 1;
   if (filters.showArchived) count += 1;
   return count;
+}
+
+export interface ProjectFilterChipDef {
+  key: string;
+  label: string;
+  patch: (current: ProjectCommandCenterFilters) => ProjectCommandCenterFilters;
+}
+
+interface ProjectFilterChipLookup {
+  customerNameMap: Map<string, string>;
+  teamNameMap: Map<string, string>;
+  userNameMap: Map<string, string>;
+  projectTypeNameMap: Map<string, string>;
+}
+
+export function getProjectActiveFilterChips(
+  filters: ProjectCommandCenterFilters,
+  lookup: ProjectFilterChipLookup,
+): ProjectFilterChipDef[] {
+  const chips: ProjectFilterChipDef[] = [];
+
+  filters.customerIds.forEach((id) => {
+    chips.push({
+      key: `customer-${id}`,
+      label: `Customer: ${lookup.customerNameMap.get(id) ?? 'Unknown'}`,
+      patch: (current) => ({
+        ...current,
+        customerIds: current.customerIds.filter((value) => value !== id),
+      }),
+    });
+  });
+
+  filters.teamIds.forEach((id) => {
+    chips.push({
+      key: `team-${id}`,
+      label: `Team: ${lookup.teamNameMap.get(id) ?? 'Unknown'}`,
+      patch: (current) => ({
+        ...current,
+        teamIds: current.teamIds.filter((value) => value !== id),
+      }),
+    });
+  });
+
+  if (filters.projectStage !== 'all') {
+    chips.push({
+      key: 'stage',
+      label: `Stage: ${filters.projectStage.replaceAll('_', ' ')}`,
+      patch: (current) => ({ ...current, projectStage: 'all' }),
+    });
+  }
+
+  if (filters.executionStatus !== 'all') {
+    chips.push({
+      key: 'status',
+      label: `Status: ${formatExecutionStatusShort(filters.executionStatus)}`,
+      patch: (current) => ({ ...current, executionStatus: 'all' }),
+    });
+  }
+
+  if (filters.designerId !== 'all') {
+    chips.push({
+      key: 'designer',
+      label: `Designer: ${lookup.userNameMap.get(filters.designerId) ?? 'Unknown'}`,
+      patch: (current) => ({ ...current, designerId: 'all' }),
+    });
+  }
+
+  if (filters.projectTypeId !== 'all') {
+    chips.push({
+      key: 'project-type',
+      label: `Type: ${lookup.projectTypeNameMap.get(filters.projectTypeId) ?? 'Unknown'}`,
+      patch: (current) => ({ ...current, projectTypeId: 'all' }),
+    });
+  }
+
+  if (filters.designLeaderId !== 'all') {
+    chips.push({
+      key: 'design-leader',
+      label: `Leader: ${lookup.userNameMap.get(filters.designLeaderId) ?? 'Unknown'}`,
+      patch: (current) => ({ ...current, designLeaderId: 'all' }),
+    });
+  }
+
+  if (filters.surfacerId !== 'all') {
+    chips.push({
+      key: 'surfacer',
+      label: `Surfacer: ${lookup.userNameMap.get(filters.surfacerId) ?? 'Unknown'}`,
+      patch: (current) => ({ ...current, surfacerId: 'all' }),
+    });
+  }
+
+  if (filters.priority !== 'all') {
+    chips.push({
+      key: 'priority',
+      label: `Priority: ${filters.priority}`,
+      patch: (current) => ({ ...current, priority: 'all' }),
+    });
+  }
+
+  if (filters.health !== 'all') {
+    chips.push({
+      key: 'health',
+      label: `Health: ${filters.health}`,
+      patch: (current) => ({ ...current, health: 'all' }),
+    });
+  }
+
+  if (filters.dueDate !== 'all') {
+    const dueLabels: Record<ProjectDueFilter, string> = {
+      all: 'Any',
+      week: 'Due this week',
+      '7days': 'Due next 7 days',
+      overdue: 'Overdue',
+    };
+    chips.push({
+      key: 'due-date',
+      label: dueLabels[filters.dueDate],
+      patch: (current) => ({ ...current, dueDate: 'all' }),
+    });
+  }
+
+  if (filters.showArchived) {
+    chips.push({
+      key: 'archived',
+      label: 'Archived',
+      patch: (current) => ({ ...current, showArchived: false }),
+    });
+  }
+
+  return chips;
 }

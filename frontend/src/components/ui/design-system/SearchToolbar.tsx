@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { Box } from '@mui/material';
-import { ContentCard } from '../cards';
 import { designTokens } from '../../../theme/designTokens';
 import { APP_TOP_BAR_OFFSET } from './StickyRecordHeader';
 
@@ -9,34 +8,28 @@ interface SearchToolbarProps {
   sticky?: boolean;
 }
 
+/** @deprecated Prefer FilterToolbar for list pages with filters. */
 export function SearchToolbar({ children, sticky = false }: SearchToolbarProps) {
   return (
     <Box
       sx={{
-        mb: 2.5,
+        mb: 1.5,
+        display: 'flex',
+        gap: 1,
+        flexWrap: 'wrap',
+        alignItems: 'center',
         ...(sticky
           ? {
               position: 'sticky',
               top: APP_TOP_BAR_OFFSET,
               zIndex: 4,
-              py: 1,
+              py: 0.75,
               bgcolor: designTokens.semantic.background,
             }
           : null),
       }}
     >
-      <ContentCard>
-        <Box
-          sx={{
-            display: 'flex',
-            gap: 2,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-          }}
-        >
-          {children}
-        </Box>
-      </ContentCard>
+      {children}
     </Box>
   );
 }

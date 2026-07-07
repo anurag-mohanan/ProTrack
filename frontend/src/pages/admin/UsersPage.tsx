@@ -12,6 +12,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PersonIcon from '@mui/icons-material/Person';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import ContactMailOutlinedIcon from '@mui/icons-material/ContactMailOutlined';
 import type { GridColDef } from '@mui/x-data-grid';
@@ -41,7 +42,10 @@ import {
   FormSelect,
   PasswordField,
   ProsohmDataGrid,
-  SearchToolbar,
+  FilterDrawer,
+  FilterGroup,
+  FilterToolbar,
+  compactFilterFieldSx,
   EmptyState,
   TableRowActions,
 } from '../../components/ui/design-system';
@@ -113,10 +117,15 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string>('all');
-  const [teamFilter, setTeamFilter] = useState<string>('all');
-  const [employmentFilter, setEmploymentFilter] = useState<string>('all');
-  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [appliedRoleFilter, setAppliedRoleFilter] = useState<string>('all');
+  const [draftRoleFilter, setDraftRoleFilter] = useState<string>('all');
+  const [appliedTeamFilter, setAppliedTeamFilter] = useState<string>('all');
+  const [draftTeamFilter, setDraftTeamFilter] = useState<string>('all');
+  const [appliedEmploymentFilter, setAppliedEmploymentFilter] = useState<string>('all');
+  const [draftEmploymentFilter, setDraftEmploymentFilter] = useState<string>('all');
+  const [appliedActiveFilter, setAppliedActiveFilter] = useState<string>('all');
+  const [draftActiveFilter, setDraftActiveFilter] = useState<string>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -173,9 +182,9 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const params: Record<string, string | boolean> = {};
-      if (roleFilter !== 'all') params.role_id = roleFilter;
-      if (activeFilter === 'active') params.is_active = true;
-      if (activeFilter === 'inactive') params.is_active = false;
+      if (appliedRoleFilter !== 'all') params.role_id = appliedRoleFilter;
+      if (appliedActiveFilter === 'active') params.is_active = true;
+      if (appliedActiveFilter === 'inactive') params.is_active = false;
 
       const [usersData, rolesData, teamsData, departmentsData] = await Promise.all([
         usersApi.list({ ...params, limit: 500 }),
@@ -192,7 +201,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeFilter, roleFilter, showError]);
+  }, [appliedActiveFilter, appliedRoleFilter, showError]);
 
   useEffect(() => {
     void loadData();
@@ -207,11 +216,11 @@ export default function UsersPage() {
           .toLowerCase();
         if (!haystack.includes(term)) return false;
       }
-      if (teamFilter !== 'all' && user.team_id !== teamFilter) return false;
-      if (employmentFilter !== 'all' && user.employment_type !== employmentFilter) return false;
+      if (appliedTeamFilter !== 'all' && user.team_id !== appliedTeamFilter) return false;
+      if (appliedEmploymentFilter !== 'all' && user.employment_type !== appliedEmploymentFilter) return false;
       return true;
     });
-  }, [employmentFilter, search, teamFilter, users]);
+  }, [appliedEmploymentFilter, appliedTeamFilter, search, users]);
 
   const teamOptions = useMemo(
     () => [
@@ -634,6 +643,80 @@ export default function UsersPage() {
 
   if (loading) return <LoadingState message="Loading users…" />;
 
+  const activeFilterCount =
+    (appliedRoleFilter !== 'all' ? 1 : 0) +
+    (appliedTeamFilter !== 'all' ? 1 : 0) +
+    (appliedEmploymentFilter !== 'all' ? 1 : 0) +
+    (appliedActiveFilter !== 'all' ? 1 : 0);
+
+  const filterChips = [
+    appliedRoleFilter !== 'all'
+      ? {
+          key: 'role',
+          label: `Role: ${roleMap.get(appliedRoleFilter) ?? 'Unknown'}`,
+          onRemove: () => {
+            setAppliedRoleFilter('all');
+            setDraftRoleFilter('all');
+          },
+        }
+      : null,
+    appliedTeamFilter !== 'all'
+      ? {
+          key: 'team',
+          label: `Team: ${teams.find((team) => team.id === appliedTeamFilter)?.name ?? 'Unknown'}`,
+          onRemove: () => {
+            setAppliedTeamFilter('all');
+            setDraftTeamFilter('all');
+          },
+        }
+      : null,
+    appliedEmploymentFilter !== 'all'
+      ? {
+          key: 'employment',
+          label: `Employment: ${formatEmploymentType(appliedEmploymentFilter)}`,
+          onRemove: () => {
+            setAppliedEmploymentFilter('all');
+            setDraftEmploymentFilter('all');
+          },
+        }
+      : null,
+    appliedActiveFilter !== 'all'
+      ? {
+          key: 'active',
+          label: `Status: ${appliedActiveFilter === 'active' ? 'Active' : 'Inactive'}`,
+          onRemove: () => {
+            setAppliedActiveFilter('all');
+            setDraftActiveFilter('all');
+          },
+        }
+      : null,
+  ].filter((chip): chip is NonNullable<typeof chip> => chip !== null);
+
+  const applyFilters = () => {
+    setAppliedRoleFilter(draftRoleFilter);
+    setAppliedTeamFilter(draftTeamFilter);
+    setAppliedEmploymentFilter(draftEmploymentFilter);
+    setAppliedActiveFilter(draftActiveFilter);
+  };
+
+  const resetFilters = () => {
+    setDraftRoleFilter('all');
+    setDraftTeamFilter('all');
+    setDraftEmploymentFilter('all');
+    setDraftActiveFilter('all');
+  };
+
+  const clearFilters = () => {
+    setAppliedRoleFilter('all');
+    setDraftRoleFilter('all');
+    setAppliedTeamFilter('all');
+    setDraftTeamFilter('all');
+    setAppliedEmploymentFilter('all');
+    setDraftEmploymentFilter('all');
+    setAppliedActiveFilter('all');
+    setDraftActiveFilter('all');
+  };
+
   return (
     <PageContainer>
       <PageHeader
@@ -646,42 +729,19 @@ export default function UsersPage() {
         }
       />
 
-      <SearchToolbar sticky>
+      <FilterToolbar
+        sticky
+        filterButton={{ activeCount: activeFilterCount, onClick: () => setFiltersOpen(true) }}
+        chips={filterChips}
+        onClearAll={clearFilters}
+      >
         <FormField
           label="Search users"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 260, flex: 1 }}
+          sx={{ minWidth: 260, flex: 1, maxWidth: 420 }}
         />
-        <FormSelect
-          label="Role"
-          value={roleFilter}
-          options={roleFilterOptions}
-          onChange={(event) => setRoleFilter(String(event.target.value))}
-          sx={{ minWidth: 180 }}
-        />
-        <FormSelect
-          label="Team"
-          value={teamFilter}
-          options={teamFilterOptions}
-          onChange={(event) => setTeamFilter(String(event.target.value))}
-          sx={{ minWidth: 180 }}
-        />
-        <FormSelect
-          label="Employment Status"
-          value={employmentFilter}
-          options={employmentFilterOptions}
-          onChange={(event) => setEmploymentFilter(String(event.target.value))}
-          sx={{ minWidth: 200 }}
-        />
-        <FormSelect
-          label="Active / Inactive"
-          value={activeFilter}
-          options={activeFilterOptions}
-          onChange={(event) => setActiveFilter(String(event.target.value))}
-          sx={{ minWidth: 160 }}
-        />
-      </SearchToolbar>
+      </FilterToolbar>
 
       <ContentCard noPadding>
         {filteredUsers.length === 0 ? (
@@ -1200,6 +1260,51 @@ export default function UsersPage() {
         onClose={() => setDeleteTarget(null)}
         loading={actionLoading}
       />
+
+      <FilterDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="User filters"
+        onApply={applyFilters}
+        onReset={resetFilters}
+      >
+        <Box sx={{ pb: 1 }}>
+          <Box sx={{ ...compactFilterFieldSx, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <FormSelect
+              label="Role"
+              size="small"
+              value={draftRoleFilter}
+              options={roleFilterOptions}
+              onChange={(event) => setDraftRoleFilter(String(event.target.value))}
+            />
+            <FormSelect
+              label="Team"
+              size="small"
+              value={draftTeamFilter}
+              options={teamFilterOptions}
+              onChange={(event) => setDraftTeamFilter(String(event.target.value))}
+            />
+          </Box>
+        </Box>
+        <FilterGroup title="Advanced filters" icon={<GroupsOutlinedIcon sx={{ fontSize: 14 }} />}>
+          <Box sx={{ ...compactFilterFieldSx, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <FormSelect
+              label="Employment status"
+              size="small"
+              value={draftEmploymentFilter}
+              options={employmentFilterOptions}
+              onChange={(event) => setDraftEmploymentFilter(String(event.target.value))}
+            />
+            <FormSelect
+              label="Active / inactive"
+              size="small"
+              value={draftActiveFilter}
+              options={activeFilterOptions}
+              onChange={(event) => setDraftActiveFilter(String(event.target.value))}
+            />
+          </Box>
+        </FilterGroup>
+      </FilterDrawer>
     </PageContainer>
   );
 }

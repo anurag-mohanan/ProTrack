@@ -23,6 +23,15 @@ export { FormSection } from './FormSection';
 export { CollapsibleFormSection } from './CollapsibleFormSection';
 export { StickyRecordHeader, APP_TOP_BAR_OFFSET } from './StickyRecordHeader';
 export { SearchToolbar } from './SearchToolbar';
+export {
+  FilterDrawer,
+  FilterGroup,
+  FilterButton,
+  FilterToolbar,
+  ActiveFilterChips,
+  compactFilterFieldSx,
+  type ActiveFilterChip,
+} from './filters';
 export { KpiMetricCard } from './KpiMetricCard';
 export { StatisticCard } from './StatisticCard';
 export { HealthIndicator } from './HealthIndicator';

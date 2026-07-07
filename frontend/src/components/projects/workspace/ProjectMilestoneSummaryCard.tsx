@@ -1,81 +1,72 @@
-import { Box, Grid } from '@mui/material';
-import { KpiMetricCard } from '../../ui/design-system';
+import { Box, LinearProgress, Typography } from '@mui/material';
 import type { ProjectMilestoneSummary } from '../../../types/Milestone';
+import { designTokens } from '../../../theme/designTokens';
 import { formatNumber } from '../../../utils/format';
-import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
-import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
-import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
-import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
-import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 
 interface ProjectMilestoneSummaryCardProps {
   summary: ProjectMilestoneSummary;
 }
 
 export function ProjectMilestoneSummaryCard({ summary }: ProjectMilestoneSummaryCardProps) {
-  const variance = summary.planned_variance_hours;
-  const varianceLabel =
-    variance === 0 ? 'On quote' : variance > 0 ? `+${formatNumber(variance)} hrs` : `${formatNumber(variance)} hrs`;
+  const inProgress =
+    summary.in_progress_count ??
+    Math.max(0, summary.milestone_count - summary.completed_count - (summary.not_started_count ?? 0));
+  const notStarted = summary.not_started_count ?? 0;
+  const progress = summary.overall_progress_percent ?? 0;
 
   return (
-    <Box sx={{ mb: 2 }}>
-      <Grid container spacing={1.5}>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <KpiMetricCard
-            compact
-            title="Total Planned"
-            value={`${formatNumber(summary.total_planned_hours)}h`}
-            icon={ScheduleRoundedIcon}
-            accent="primary"
-          />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <KpiMetricCard
-            compact
-            title="Total Actual"
-            value={`${formatNumber(summary.total_actual_hours)}h`}
-            icon={AccessTimeRoundedIcon}
-            accent="info"
-          />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <KpiMetricCard
-            compact
-            title="Milestones"
-            value={String(summary.milestone_count)}
-            icon={FlagRoundedIcon}
-            accent="info"
-          />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <KpiMetricCard
-            compact
-            title="Completed"
-            value={String(summary.completed_count)}
-            icon={CheckCircleRoundedIcon}
-            accent="success"
-          />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <KpiMetricCard
-            compact
-            title="Remaining"
-            value={`${formatNumber(summary.remaining_hours)}h`}
-            icon={AccessTimeRoundedIcon}
-            accent="warning"
-          />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <KpiMetricCard
-            compact
-            title="Quoted / Planned"
-            value={`${formatNumber(summary.quoted_hours)} / ${formatNumber(summary.current_planned_hours)}`}
-            subtitle={`Variance ${varianceLabel}`}
-            icon={TrendingUpRoundedIcon}
-            accent={variance > 0 ? 'warning' : 'success'}
-          />
-        </Grid>
-      </Grid>
+    <Box
+      sx={{
+        mb: 1.25,
+        px: 1.5,
+        py: 1,
+        borderRadius: 2,
+        border: 1,
+        borderColor: 'divider',
+        bgcolor: designTokens.semantic.card,
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 2,
+      }}
+    >
+      <Box>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+          Milestones
+        </Typography>
+        <Typography sx={{ fontSize: '0.85rem', fontWeight: 700 }}>
+          {summary.milestone_count} Total · {summary.completed_count} Completed · {inProgress} In
+          Progress · {notStarted} Not Started
+        </Typography>
+      </Box>
+
+      <Box sx={{ flex: 1, minWidth: 160, maxWidth: 280 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+            Progress
+          </Typography>
+          <Typography variant="caption" sx={{ fontWeight: 800 }}>
+            {formatNumber(progress, 0)}%
+          </Typography>
+        </Box>
+        <LinearProgress
+          variant="determinate"
+          value={progress}
+          sx={{
+            height: 5,
+            borderRadius: designTokens.radius.pill,
+            bgcolor: designTokens.semantic.neutralSoft,
+            '& .MuiLinearProgress-bar': {
+              borderRadius: designTokens.radius.pill,
+              bgcolor: designTokens.semantic.primary,
+            },
+          }}
+        />
+      </Box>
+
+      <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+        {formatNumber(summary.remaining_hours, 0)} hrs Remaining
+      </Typography>
     </Box>
   );
 }

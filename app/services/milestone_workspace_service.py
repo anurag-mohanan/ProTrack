@@ -96,6 +96,17 @@ def get_project_milestone_summary(db: Session, project_id: UUID) -> ProjectMiles
     completed_count = sum(
         1 for row in milestones if row.status == MilestoneStatus.completed
     )
+    in_progress_count = sum(
+        1 for row in milestones if row.status == MilestoneStatus.in_progress
+    )
+    not_started_count = sum(
+        1 for row in milestones if row.status == MilestoneStatus.not_started
+    )
+    overall_progress_percent = (
+        int(sum(int(row.progress_percent or 0) for row in milestones) / len(milestones))
+        if milestones
+        else 0
+    )
     quoted = _decimal(project.quoted_hours)
     current_planned = _decimal(project.current_planned_hours or total_planned)
 
@@ -104,6 +115,9 @@ def get_project_milestone_summary(db: Session, project_id: UUID) -> ProjectMiles
         total_actual_hours=total_actual,
         milestone_count=len(milestones),
         completed_count=completed_count,
+        in_progress_count=in_progress_count,
+        not_started_count=not_started_count,
+        overall_progress_percent=overall_progress_percent,
         remaining_hours=max(total_planned - total_actual, Decimal("0")),
         quoted_hours=quoted,
         current_planned_hours=current_planned,

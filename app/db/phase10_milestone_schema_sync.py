@@ -34,6 +34,7 @@ def ensure_phase10_milestone_columns(engine: Engine) -> None:
         ("planned_hours", "NUMERIC(8, 2) NOT NULL DEFAULT 0"),
         ("progress_percent", "INTEGER NOT NULL DEFAULT 0"),
         ("assigned_user_id", "BLOB" if dialect == "sqlite" else "UUID"),
+        ("assignment_manual", "BOOLEAN NOT NULL DEFAULT 0"),
         ("completed_date", "DATE"),
     ]
     project_columns = [

@@ -46,6 +46,9 @@ export interface ProjectMilestoneSummary {
   total_actual_hours: number;
   milestone_count: number;
   completed_count: number;
+  in_progress_count?: number;
+  not_started_count?: number;
+  overall_progress_percent?: number;
   remaining_hours: number;
   quoted_hours: number;
   current_planned_hours: number;

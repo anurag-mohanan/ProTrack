@@ -171,8 +171,10 @@ def create_milestones_from_template(
             )
         )
     from app.services.milestone_workspace_service import recalculate_project_planned_hours
+    from app.services.milestone_assignment_service import sync_milestone_assignments
 
     recalculate_project_planned_hours(db, project.id)
+    sync_milestone_assignments(db, project.id)
 
 
 def template_is_in_use(db: Session, template_id: UUID) -> bool:

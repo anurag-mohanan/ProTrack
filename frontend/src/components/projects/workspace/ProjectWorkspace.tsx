@@ -16,6 +16,7 @@ import { ProsohmButton } from '../../ui/ProsohmButton';
 import { APP_TOP_BAR_OFFSET } from '../../ui/design-system/StickyRecordHeader';
 import { commandCenterQueryKeys, fetchProjectCommandCenter } from '../../../api/commandCenter';
 import { ProjectMilestoneGrid } from './ProjectMilestoneGrid';
+import { ProjectWorkspaceCompactHeader } from './ProjectWorkspaceCompactHeader';
 import { WorkflowTimeline } from '../../command-center/WorkflowTimeline';
 import { useAuth } from '../../../context/AuthContext';
 import { ROLES } from '../../../utils/permissions';
@@ -96,28 +97,32 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
 
   return (
     <PageContainer>
-      <StickyRecordHeader
-        primaryLabel={project.part_description}
-        secondaryLabel={subtitle}
-        stickyTop={APP_TOP_BAR_OFFSET}
-        toolNumber={project.tool_number}
-        customerName={project.customer_name}
-        executionStatus={project.execution_status}
-        dueDate={project.due_date}
-        health={project.health}
-        compact
-        meta={
-          <Typography variant="caption" color="text.secondary">
-            Quoted {project.quoted_hours}h
-          </Typography>
-        }
-      />
+      {tab === 'milestones' ? (
+        <ProjectWorkspaceCompactHeader project={project} />
+      ) : (
+        <StickyRecordHeader
+          primaryLabel={project.part_description}
+          secondaryLabel={subtitle}
+          stickyTop={APP_TOP_BAR_OFFSET}
+          toolNumber={project.tool_number}
+          customerName={project.customer_name}
+          executionStatus={project.execution_status}
+          dueDate={project.due_date}
+          health={project.health}
+          compact
+          meta={
+            <Typography variant="caption" color="text.secondary">
+              Quoted {project.quoted_hours}h
+            </Typography>
+          }
+        />
+      )}
 
-      <ProsohmButton buttonVariant="outlined" size="small" sx={{ mb: 1.5 }} onClick={() => navigate('/projects')}>
+      <ProsohmButton buttonVariant="outlined" size="small" sx={{ mb: 1 }} onClick={() => navigate('/projects')}>
         Back to projects
       </ProsohmButton>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 1.5 }}>
         <Tabs
           value={tab}
           onChange={(_, value: WorkspaceTab) => setSearchParams({ tab: value })}

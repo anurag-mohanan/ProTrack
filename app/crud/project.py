@@ -458,6 +458,10 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
                 previous_designer_id=previous_designer_id,
                 previous_leader_id=previous_leader_id,
             )
+        if "designer_id" in update_data or "surfacer_id" in update_data:
+            from app.services.milestone_assignment_service import sync_milestone_assignments
+
+            sync_milestone_assignments(db, db_obj.id)
         return db_obj
 
     def get_read(self, db: Session, record_id: UUID) -> ProjectRead | None:

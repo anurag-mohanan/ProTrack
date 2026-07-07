@@ -18,6 +18,10 @@ from app.services.project_calculation_service import recalculate_project
 class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
     def create(self, db, *, obj_in: MilestoneCreate, actor=None) -> Milestone:
         db_obj = super().create(db, obj_in=obj_in)
+        from app.services.milestone_assignment_service import sync_milestone_assignments
+
+        sync_milestone_assignments(db, db_obj.project_id)
+        db.refresh(db_obj)
         recalculate_project_planned_hours(db, db_obj.project_id)
         recalculate_project(db, db_obj.project_id)
         if actor is not None:
@@ -54,6 +58,8 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
         }
         previous_status = db_obj.status
         update_data = apply_progress_rules(update_data)
+        if "assigned_user_id" in update_data:
+            update_data["assignment_manual"] = True
 
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
         recalculate_project_planned_hours(db, updated.project_id)

@@ -175,7 +175,7 @@ export function ProjectRecordDrawer({
               <FormField label="Tool Number" value={project.tool_number} slotProps={{ input: { readOnly: true } }} />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <FormField label="Project Code" value={project.code} slotProps={{ input: { readOnly: true } }} />
+              <FormField label="Project Code" value={displayValue(project.code)} slotProps={{ input: { readOnly: true } }} />
             </Grid>
             <Grid size={{ xs: 12 }}>
               <FormField label="Part Description" value={project.part_description} slotProps={{ input: { readOnly: true } }} />

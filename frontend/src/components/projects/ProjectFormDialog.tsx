@@ -86,7 +86,7 @@ function projectToForm(project: Project): ProjectFormValues {
     project_type_id: project.project_type_id ?? '',
     project_template_id: project.project_template_id ?? '',
     team_id: project.team_id ?? '',
-    code: project.code,
+    code: project.code ?? '',
     quoted_hours: project.quoted_hours,
     due_date: project.due_date ?? '',
     notes: project.notes ?? '',
@@ -176,17 +176,18 @@ export function ProjectFormDialog({
     mutationFn: async () => {
       if (isEdit && project) {
         const updatePayload: ProjectUpdate = {
-          tool_number: form.tool_number,
-          code: form.code,
+          tool_number: form.tool_number.trim(),
+          part_description: form.part_description.trim(),
+          code: optionalString(form.code),
           customer_id: form.customer_id,
-          customer_contact_id: optionalUuid(form.customer_contact_id) ?? undefined,
-          design_leader_id: optionalUuid(form.design_leader_id) ?? undefined,
+          customer_contact_id: optionalUuid(form.customer_contact_id),
+          design_leader_id: optionalUuid(form.design_leader_id),
           designer_id: optionalUuid(form.designer_id),
           surfacer_id: optionalUuid(form.surfacer_id),
-          stream_id: optionalUuid(form.stream_id) ?? undefined,
+          stream_id: optionalUuid(form.stream_id),
           team_id: optionalUuid(form.team_id),
-          quoted_hours: form.quoted_hours === '' ? undefined : Number(form.quoted_hours),
-          due_date: optionalString(form.due_date) ?? undefined,
+          quoted_hours: form.quoted_hours === '' ? null : Number(form.quoted_hours),
+          due_date: optionalString(form.due_date),
           notes: optionalString(form.notes),
           project_stage: form.project_stage,
           execution_status: form.execution_status,
@@ -248,31 +249,14 @@ export function ProjectFormDialog({
 
   useEffect(() => {
     if (isEdit || !open) return;
-    if (!form.customer_id || !form.project_type_id || matchingTemplates.length === 0) {
+    if (!form.customer_id || !form.project_type_id) {
       if (form.project_template_id) {
         setForm((current) => ({ ...current, project_template_id: '' }));
       }
-      return;
     }
+  }, [form.customer_id, form.project_type_id, form.project_template_id, isEdit, open]);
 
-    const preferred =
-      matchingTemplates.find((template) => template.is_customer_specific) ??
-      matchingTemplates.find((template) => template.is_default) ??
-      matchingTemplates[0];
-
-    if (preferred && preferred.id !== form.project_template_id) {
-      setForm((current) => ({ ...current, project_template_id: preferred.id }));
-    }
-  }, [
-    form.customer_id,
-    form.project_template_id,
-    form.project_type_id,
-    isEdit,
-    matchingTemplates,
-    open,
-  ]);
-
-  const canSubmitCreate = useMemo(
+  const canSubmit = useMemo(
     () =>
       !isBlankDisplayValue(form.tool_number) &&
       !isBlankDisplayValue(form.part_description) &&
@@ -283,39 +267,18 @@ export function ProjectFormDialog({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
 
-    const validationError = isEdit
-      ? validateRequiredFields(
-          {
-            tool_number: form.tool_number,
-            code: form.code,
-            customer_id: form.customer_id,
-            customer_contact_id: form.customer_contact_id,
-            design_leader_id: form.design_leader_id,
-            stream_id: form.stream_id,
-            due_date: form.due_date,
-          },
-          [
-            { key: 'tool_number', label: 'Tool number' },
-            { key: 'code', label: 'Project code' },
-            { key: 'customer_id', label: 'Customer' },
-            { key: 'customer_contact_id', label: 'Customer contact' },
-            { key: 'design_leader_id', label: 'Design leader' },
-            { key: 'stream_id', label: 'Stream' },
-            { key: 'due_date', label: 'Due date' },
-          ],
-        )
-      : validateRequiredFields(
-          {
-            tool_number: form.tool_number,
-            part_description: form.part_description,
-            customer_id: form.customer_id,
-          },
-          [
-            { key: 'tool_number', label: 'Tool number' },
-            { key: 'part_description', label: 'Part description' },
-            { key: 'customer_id', label: 'Customer' },
-          ],
-        );
+    const validationError = validateRequiredFields(
+      {
+        tool_number: form.tool_number,
+        part_description: form.part_description,
+        customer_id: form.customer_id,
+      },
+      [
+        { key: 'tool_number', label: 'Tool number' },
+        { key: 'part_description', label: 'Part description' },
+        { key: 'customer_id', label: 'Customer' },
+      ],
+    );
 
     if (validationError) {
       showError(validationError);
@@ -360,7 +323,7 @@ export function ProjectFormDialog({
       width={640}
       submitLabel={isEdit ? 'Save Changes' : 'Create Project'}
       loading={saveMutation.isPending}
-      submitDisabled={!isEdit && !canSubmitCreate}
+      submitDisabled={!canSubmit}
     >
       <Box
         component="form"
@@ -386,24 +349,21 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormField
               label="Project Code"
-              required={isEdit}
               value={form.code}
               onChange={(event) => setForm({ ...form, code: event.target.value })}
             />
           </Grid>
-          {!isEdit ? (
-            <Grid size={{ xs: 12 }}>
-              <FormField
-                label="Part Description"
-                required
-                value={form.part_description}
-                maxLength={255}
-                onChange={(event) =>
-                  setForm({ ...form, part_description: event.target.value })
-                }
-              />
-            </Grid>
-          ) : null}
+          <Grid size={{ xs: 12 }}>
+            <FormField
+              label="Part Description"
+              required
+              value={form.part_description}
+              maxLength={255}
+              onChange={(event) =>
+                setForm({ ...form, part_description: event.target.value })
+              }
+            />
+          </Grid>
         </FormSection>
 
         <FormSection title="Customer" subtitle="Customer and primary contact" icon={BusinessOutlinedIcon}>
@@ -423,7 +383,6 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormSelect
               label="Customer Contact"
-              required={isEdit}
               searchable
               disabled={!form.customer_id}
               value={form.customer_contact_id}
@@ -530,7 +489,6 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12, sm: 4 }}>
             <FormSelect
               label="Design Leader"
-              required={isEdit}
               searchable
               value={form.design_leader_id}
               options={[{ value: '', label: 'None' }, ...userOptions]}
@@ -570,7 +528,6 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12 }}>
             <FormSelect
               label="Stream"
-              required={isEdit}
               value={form.stream_id}
               options={[
                 { value: '', label: 'None' },
@@ -591,7 +548,6 @@ export function ProjectFormDialog({
             <FormField
               label="Due Date"
               type="date"
-              required={isEdit}
               slotProps={{ inputLabel: { shrink: true } }}
               value={form.due_date}
               onChange={(event) =>
@@ -603,7 +559,6 @@ export function ProjectFormDialog({
             <FormField
               label="Quoted Hours"
               type="number"
-              required={isEdit}
               slotProps={{ htmlInput: { min: 0, step: 0.25 } }}
               value={form.quoted_hours}
               onChange={(event) =>

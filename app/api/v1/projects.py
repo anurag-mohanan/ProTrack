@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from app.api.auth_deps import get_current_user
@@ -70,8 +71,11 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
+    logger.info("Project validation error: %s", exc.detail)
     return HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=exc.detail,

@@ -837,7 +837,7 @@ def _sqlite_rebuild_projects_for_placeholder_support(engine: Engine) -> None:
                 """
                 CREATE TABLE projects_placeholder_new (
                     id BLOB PRIMARY KEY,
-                    tool_number VARCHAR(50) NOT NULL,
+                    tool_number VARCHAR(50) NOT NULL UNIQUE,
                     part_description VARCHAR(255) NOT NULL,
                     customer_id BLOB NOT NULL REFERENCES customers(id),
                     customer_contact_id BLOB REFERENCES contacts(id),
@@ -848,7 +848,7 @@ def _sqlite_rebuild_projects_for_placeholder_support(engine: Engine) -> None:
                     team_id BLOB REFERENCES teams(id),
                     project_type_id BLOB REFERENCES project_types(id),
                     project_template_id BLOB REFERENCES project_templates(id),
-                    code VARCHAR(50) NOT NULL UNIQUE,
+                    code VARCHAR(50) UNIQUE,
                     quoted_hours NUMERIC(8, 2) NOT NULL DEFAULT 0,
                     actual_hours NUMERIC(8, 2) NOT NULL DEFAULT 0,
                     due_date DATE,
@@ -909,7 +909,11 @@ def ensure_placeholder_project_schema(engine: Engine) -> None:
     dialect = engine.dialect.name
 
     if dialect == "sqlite":
-        if _sqlite_column_is_not_null(engine, "projects", "design_leader_id"):
+        needs_rebuild = (
+            _sqlite_column_is_not_null(engine, "projects", "design_leader_id")
+            or _sqlite_column_is_not_null(engine, "projects", "code")
+        )
+        if needs_rebuild:
             _sqlite_rebuild_projects_for_placeholder_support(engine)
         return
 
@@ -943,5 +947,11 @@ def ensure_placeholder_project_schema(engine: Engine) -> None:
                 text(
                     "ALTER TABLE projects "
                     "ALTER COLUMN quoted_hours SET DEFAULT 0"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN code DROP NOT NULL"
                 )
             )

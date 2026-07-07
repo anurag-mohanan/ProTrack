@@ -114,7 +114,7 @@ export function ArchivedProjectsPage() {
                 <TableCell>
                   {project.archived_at ? formatDate(project.archived_at) : '—'}
                 </TableCell>
-                <TableCell>{project.design_leader_name}</TableCell>
+                <TableCell>{formatCellValue(project.design_leader_name) || '—'}</TableCell>
               </ClickableTableRow>
             ))}
           </ProsohmTable>
@@ -183,7 +183,7 @@ export function ArchivedProjectsPage() {
             <Grid size={{ xs: 12 }}>
               <FormField
                 label="Design Leader"
-                value={selectedProject.design_leader_name}
+                value={formatCellValue(selectedProject.design_leader_name) || '—'}
                 slotProps={{ input: { readOnly: true } }}
               />
             </Grid>

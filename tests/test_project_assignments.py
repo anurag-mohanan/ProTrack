@@ -28,6 +28,7 @@ def test_designer_tier_can_fill_designer_or_surfacer_slot(client, project_type_m
         "/api/v1/projects",
         json=_project_payload(
             project_type_mold_id,
+            tool_number="T-200-A",
             code="TEST-JR-DESIGNER",
             designer_id=str(IDS["user_junior_designer"]),
             surfacer_id=str(IDS["user_senior_designer"]),
@@ -40,6 +41,7 @@ def test_designer_tier_can_fill_designer_or_surfacer_slot(client, project_type_m
         "/api/v1/projects",
         json=_project_payload(
             project_type_mold_id,
+            tool_number="T-200-B",
             code="TEST-SR-SURFACER",
             designer_id=str(IDS["user_binil"]),
             surfacer_id=str(IDS["user_junior_designer"]),
@@ -55,6 +57,7 @@ def test_junior_assigned_as_surfacer_can_read_project(client, project_type_mold_
         "/api/v1/projects",
         json=_project_payload(
             project_type_mold_id,
+            tool_number="T-200-C",
             code="TEST-JR-ACCESS",
             designer_id=str(IDS["user_binil"]),
             surfacer_id=str(IDS["user_junior_designer"]),

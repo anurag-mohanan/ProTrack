@@ -56,14 +56,26 @@ export function buildProjectTableRows(
 
   return projects.map((project) => ({
     ...project,
-    customerName: formatCellValue(customerMap.get(project.customer_id)),
-    teamName: project.team_id ? formatCellValue(teamMap.get(project.team_id)) : '',
+    customerName: formatCellValue(
+      customerMap.get(project.customer_id) ?? project.customer_name,
+    ),
+    teamName: project.team_id
+      ? formatCellValue(teamMap.get(project.team_id) ?? project.team_name)
+      : formatCellValue(project.team_name),
     designLeaderName: project.design_leader_id
-      ? formatCellValue(userMap.get(project.design_leader_id))
+      ? formatCellValue(
+          userMap.get(project.design_leader_id) ?? project.design_leader_name,
+        )
+      : formatCellValue(project.design_leader_name),
+    designerName: project.designer_id
+      ? formatCellValue(userMap.get(project.designer_id) ?? project.designer_name)
+      : formatCellValue(project.designer_name),
+    surfacerName: project.surfacer_id
+      ? formatCellValue(userMap.get(project.surfacer_id) ?? project.surfacer_name)
+      : formatCellValue(project.surfacer_name),
+    streamName: project.stream_id
+      ? formatCellValue(streamMap.get(project.stream_id))
       : '',
-    designerName: project.designer_id ? formatCellValue(userMap.get(project.designer_id)) : '',
-    surfacerName: project.surfacer_id ? formatCellValue(userMap.get(project.surfacer_id)) : '',
-    streamName: project.stream_id ? formatCellValue(streamMap.get(project.stream_id)) : '',
   }));
 }
 

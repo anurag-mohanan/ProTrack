@@ -36,8 +36,8 @@ import {
   archiveProject,
   getProjects,
   projectQueryKeys,
+  restoreProject,
   softDeleteProject,
-  updateProject,
 } from '../services/projectService';
 import type { ProjectStage } from '../types';
 import { canArchiveProject, canCreateProject, canDeleteRecords } from '../utils/permissions';
@@ -252,10 +252,7 @@ export function ProjectsPage() {
   });
 
   const restoreMutation = useMutation({
-    mutationFn: (projectId: string) =>
-      updateProject(projectId, {
-        execution_status: 'currently_being_worked_on',
-      }),
+    mutationFn: (projectId: string) => restoreProject(projectId),
     onSuccess: () => {
       invalidateAll();
       showSuccess('Project restored to active');

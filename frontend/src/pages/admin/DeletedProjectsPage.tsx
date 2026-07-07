@@ -29,6 +29,7 @@ import {
   restoreDeletedProject,
 } from '../../services/projectService';
 import type { Project } from '../../types';
+import { projectLabel } from '../../types/Project';
 import { formatDate, formatDisplayValue } from '../../utils/format';
 import { EXECUTION_STATUS_LABELS } from '../../types/common';
 
@@ -153,7 +154,9 @@ export default function DeletedProjectsPage() {
               <ProsohmButton
                 buttonVariant="danger"
                 size="small"
-                onClick={() => openPermanentDelete(selectedProject.id, selectedProject.code)}
+                onClick={() =>
+                  openPermanentDelete(selectedProject.id, projectLabel(selectedProject))
+                }
               >
                 Delete Permanently
               </ProsohmButton>
@@ -166,7 +169,7 @@ export default function DeletedProjectsPage() {
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormField
                 label="Project Code"
-                value={selectedProject.code}
+                value={formatDisplayValue(selectedProject.code) || selectedProject.tool_number}
                 slotProps={{ input: { readOnly: true } }}
               />
             </Grid>

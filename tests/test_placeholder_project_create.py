@@ -5,12 +5,12 @@ from tests.conftest import IDS, login
 
 def test_create_placeholder_project_with_minimal_fields(client):
     headers = login(client, "admin@prosohm.com")
-    code = f"PH-{uuid.uuid4().hex[:6]}"
+    tool_number = f"PH-{uuid.uuid4().hex[:6]}"
 
     response = client.post(
         "/api/v1/projects",
         json={
-            "tool_number": code,
+            "tool_number": tool_number,
             "part_description": "RFQ placeholder part",
             "customer_id": str(IDS["customer"]),
         },
@@ -18,7 +18,7 @@ def test_create_placeholder_project_with_minimal_fields(client):
     )
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["tool_number"] == code
+    assert body["tool_number"] == tool_number
     assert body["part_description"] == "RFQ placeholder part"
     assert body["customer_id"] == str(IDS["customer"])
     assert body["customer_contact_id"] is None
@@ -33,7 +33,7 @@ def test_create_placeholder_project_with_minimal_fields(client):
     assert body["execution_status"] == "planning"
     assert body["priority"] == "medium"
     assert body["health"] == "green"
-    assert body["code"] == code
+    assert body["code"] is None
     assert float(body["quoted_hours"]) == 0.0
 
 
@@ -63,3 +63,49 @@ def test_create_rejects_missing_required_fields(client):
         headers=headers,
     )
     assert response.status_code == 422, response.text
+
+
+def test_create_rejects_duplicate_tool_number(client):
+    headers = login(client, "admin@prosohm.com")
+    tool_number = f"DUP-{uuid.uuid4().hex[:6]}"
+
+    first = client.post(
+        "/api/v1/projects",
+        json={
+            "tool_number": tool_number,
+            "part_description": "First project",
+            "customer_id": str(IDS["customer"]),
+        },
+        headers=headers,
+    )
+    assert first.status_code == 201, first.text
+
+    second = client.post(
+        "/api/v1/projects",
+        json={
+            "tool_number": tool_number,
+            "part_description": "Duplicate tool number",
+            "customer_id": str(IDS["customer"]),
+        },
+        headers=headers,
+    )
+    assert second.status_code == 422, second.text
+    assert "tool number" in second.json()["detail"].lower()
+
+
+def test_create_with_explicit_code(client):
+    headers = login(client, "admin@prosohm.com")
+    code = f"CODE-{uuid.uuid4().hex[:6]}"
+
+    response = client.post(
+        "/api/v1/projects",
+        json={
+            "tool_number": f"T-{uuid.uuid4().hex[:6]}",
+            "part_description": "Coded project",
+            "customer_id": str(IDS["customer"]),
+            "code": code,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["code"] == code

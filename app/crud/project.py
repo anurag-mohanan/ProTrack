@@ -3,7 +3,8 @@ from decimal import Decimal
 from typing import Any, override
 from uuid import UUID
 
-from sqlalchemy import Select
+from sqlalchemy import Select, func
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import PROJECT_STAFF_ROLES
@@ -12,16 +13,14 @@ from app.crud.project_metrics import build_project_read, build_project_reads
 from app.models.enums import (
     EntityType,
     ExecutionStatus,
-    MilestoneStatus,
     NotificationType,
     ProjectLifecycleFilter,
 )
-from app.models.models import Contact, Customer, Milestone, Project, ProjectType, Role, User
+from app.models.models import Contact, Customer, Project, Role, User
 from app.schemas.project import ArchivedProjectListItem, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.notification_service import create_notification
 from app.services.project_calculation_service import recalculate_project
 from app.services.project_lifecycle_service import apply_lifecycle_filter, apply_lifecycle_sort
-from app.services.project_number_service import generate_project_code
 from app.services.project_template_service import (
     create_milestones_from_template,
     resolve_template,
@@ -40,6 +39,36 @@ DEFAULT_PROJECT_MILESTONES = (
 
 def _lookup_user(db: Session, user_id: UUID) -> User | None:
     return db.scalar(select(User).where(User.id == user_id))
+
+
+def _project_label(project: Project) -> str:
+    return project.code or project.tool_number
+
+
+def _normalize_optional_code(value: object | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _integrity_error_message(exc: IntegrityError) -> str:
+    raw = str(exc.orig).lower() if exc.orig is not None else str(exc).lower()
+    if "tool_number" in raw:
+        return "A project with this tool number already exists."
+    if "code" in raw and "unique" in raw:
+        return "A project with this project code already exists."
+    return "Operation violates a database constraint."
+
+
+def _safe_commit(db: Session) -> None:
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ProTrackValidationError(_integrity_error_message(exc)) from exc
 
 
 def _get_active_user(
@@ -83,6 +112,49 @@ def _get_active_user(
     return user
 
 
+def _validate_tool_number_unique(
+    db: Session,
+    tool_number: str,
+    *,
+    exclude_id: UUID | None = None,
+) -> None:
+    normalized = tool_number.strip()
+    if not normalized:
+        raise ProTrackValidationError("tool_number is required")
+
+    existing = db.scalar(
+        select(Project).where(
+            func.lower(Project.tool_number) == normalized.lower(),
+            Project.is_deleted.is_(False),
+        )
+    )
+    if existing is not None and (exclude_id is None or existing.id != exclude_id):
+        raise ProTrackValidationError(
+            f"A project with tool number '{normalized}' already exists."
+        )
+
+
+def _validate_code_unique(
+    db: Session,
+    code: str | None,
+    *,
+    exclude_id: UUID | None = None,
+) -> None:
+    if code is None:
+        return
+
+    existing = db.scalar(
+        select(Project).where(
+            func.lower(Project.code) == code.lower(),
+            Project.is_deleted.is_(False),
+        )
+    )
+    if existing is not None and (exclude_id is None or existing.id != exclude_id):
+        raise ProTrackValidationError(
+            f"A project with project code '{code}' already exists."
+        )
+
+
 def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate:
     customer = db.get(Customer, obj_in.customer_id)
     if customer is None:
@@ -94,18 +166,18 @@ def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate
     if data.get("team_id") is None and customer.default_team_id is not None:
         data["team_id"] = customer.default_team_id
     if (
-        data.get("project_template_id") is None
+        data.get("project_type_id") is None
+        and customer.default_project_type_id is not None
+    ):
+        data["project_type_id"] = customer.default_project_type_id
+    if (
+        data.get("project_type_id") is not None
+        and data.get("project_template_id") is None
         and customer.default_project_template_id is not None
     ):
         data["project_template_id"] = customer.default_project_template_id
 
-    tool_number = (data.get("tool_number") or "").strip()
-    code = (data.get("code") or "").strip()
-    if customer.project_number_format:
-        if not code or code == tool_number:
-            data["code"] = generate_project_code(db, customer, tool_number)
-    elif not code:
-        data["code"] = tool_number
+    data["code"] = _normalize_optional_code(data.get("code"))
 
     if data.get("quoted_hours") is None:
         data["quoted_hours"] = Decimal("0")
@@ -134,13 +206,14 @@ def _notify_project_assignments(
     ):
         assignments.append((project.design_leader_id, "design leader"))
 
+    label = _project_label(project)
     for user_id, _role in assignments:
         create_notification(
             db,
             user_id=user_id,
             notification_type=NotificationType.project_assigned,
             title="New project assignment",
-            message=f"You were assigned to project {project.code}",
+            message=f"You were assigned to project {label}",
             entity_type=EntityType.project,
             entity_id=project.id,
         )
@@ -222,15 +295,7 @@ def _validate_changed_project_references(
     db_obj: Project,
     update_data: dict[str, object],
 ) -> None:
-    """Validate only the references whose value actually changes in an update.
-
-    The edit form always resubmits the full set of reference fields even when
-    they are unchanged, so presence in ``update_data`` is not enough to decide
-    whether to re-validate. Comparing against the stored values avoids
-    rejecting edits to legacy/imported projects whose existing design
-    leader/contact predates the current role rules (e.g. a design leader who
-    now holds a different role).
-    """
+    """Validate only the references whose value actually changes in an update."""
     (
         customer_id,
         customer_contact_id,
@@ -294,6 +359,8 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
     @override
     def create(self, db: Session, *, obj_in: ProjectCreate) -> Project:
         prepared = _prepare_project_create(db, obj_in)
+        _validate_tool_number_unique(db, prepared.tool_number)
+        _validate_code_unique(db, prepared.code)
         _validate_project_references(
             db,
             customer_id=prepared.customer_id,
@@ -322,8 +389,10 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
                 project=db_obj,
                 template=template,
             )
+        else:
+            db_obj.project_template_id = None
 
-        db.commit()
+        _safe_commit(db)
         db.refresh(db_obj)
         recalculate_project(db, db_obj.id)
         _notify_project_assignments(db, db_obj)
@@ -342,7 +411,25 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         else:
             update_data = obj_in.model_dump(exclude_unset=True)
 
+        if "code" in update_data:
+            update_data["code"] = _normalize_optional_code(update_data.get("code"))
+
         _validate_changed_project_references(db, db_obj, update_data)
+
+        if "tool_number" in update_data and isinstance(update_data["tool_number"], str):
+            _validate_tool_number_unique(
+                db,
+                update_data["tool_number"],
+                exclude_id=db_obj.id,
+            )
+
+        next_code = (
+            update_data["code"]
+            if "code" in update_data
+            else db_obj.code
+        )
+        if isinstance(next_code, str) or next_code is None:
+            _validate_code_unique(db, next_code, exclude_id=db_obj.id)
 
         if "execution_status" in update_data:
             new_status = update_data["execution_status"]
@@ -353,16 +440,23 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             elif new_status != ExecutionStatus.completed:
                 update_data["completed_at"] = None
 
-        updated = super().update(db, db_obj=db_obj, obj_in=update_data)
-        recalculate_project(db, updated.id)
+        previous_designer_id = db_obj.designer_id
+        previous_leader_id = db_obj.design_leader_id
+
+        for field, value in update_data.items():
+            setattr(db_obj, field, value)
+        db.add(db_obj)
+        _safe_commit(db)
+        db.refresh(db_obj)
+        recalculate_project(db, db_obj.id)
         if "designer_id" in update_data or "design_leader_id" in update_data:
             _notify_project_assignments(
                 db,
-                updated,
-                previous_designer_id=db_obj.designer_id,
-                previous_leader_id=db_obj.design_leader_id,
+                db_obj,
+                previous_designer_id=previous_designer_id,
+                previous_leader_id=previous_leader_id,
             )
-        return updated
+        return db_obj
 
     def get_read(self, db: Session, record_id: UUID) -> ProjectRead | None:
         db_project = self.get(db, record_id)
@@ -448,7 +542,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         for read in reads:
             payload = read.model_dump()
             payload["customer_name"] = read.customer_name or "Unknown"
-            payload["design_leader_name"] = read.design_leader_name or "Unknown"
+            payload["design_leader_name"] = read.design_leader_name
             items.append(ArchivedProjectListItem(**payload))
         return items
 

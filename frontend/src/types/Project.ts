@@ -25,7 +25,7 @@ export interface Project extends Timestamped {
   team_id: string | null;
   project_type_id?: string | null;
   project_template_id?: string | null;
-  code: string;
+  code: string | null;
   quoted_hours: number;
   actual_hours: number;
   progress_percent: number;
@@ -87,16 +87,16 @@ export interface ProjectUpdate {
   tool_number?: string;
   part_description?: string;
   customer_id?: string;
-  customer_contact_id?: string;
-  design_leader_id?: string;
+  customer_contact_id?: string | null;
+  design_leader_id?: string | null;
   designer_id?: string | null;
   surfacer_id?: string | null;
-  stream_id?: string;
+  stream_id?: string | null;
   team_id?: string | null;
   project_type_id?: string;
-  code?: string;
-  quoted_hours?: number;
-  due_date?: string;
+  code?: string | null;
+  quoted_hours?: number | null;
+  due_date?: string | null;
   priority?: 'critical' | 'high' | 'medium' | 'low';
   project_stage?: ProjectStage;
   execution_status?: ExecutionStatus;
@@ -106,5 +106,9 @@ export interface ProjectUpdate {
 export function projectLabel(
   project: Pick<Project, 'code' | 'tool_number' | 'part_description'>,
 ) {
-  return `${project.code} — ${project.tool_number}`;
+  const code = project.code?.trim();
+  if (code) {
+    return `${code} — ${project.tool_number}`;
+  }
+  return project.tool_number;
 }

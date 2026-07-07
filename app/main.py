@@ -23,6 +23,7 @@ from app.db.schema_sync import (
     ensure_project_lifecycle_schema,
     ensure_project_stage_and_execution_status,
     ensure_placeholder_project_schema,
+    ensure_project_timestamps,
     ensure_project_template_schema,
     ensure_project_actual_hours,
     ensure_project_health,
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
     ensure_project_lifecycle_schema(engine)
     ensure_project_stage_and_execution_status(engine)
     ensure_placeholder_project_schema(engine)
+    ensure_project_timestamps(engine)
     ensure_team_schema(engine)
     ensure_user_team_schema(engine)
     ensure_user_lifecycle_schema(engine)

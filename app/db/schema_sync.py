@@ -867,8 +867,8 @@ def _sqlite_rebuild_projects_for_placeholder_support(engine: Engine) -> None:
                     project_folder_path VARCHAR(500),
                     cad_folder_path VARCHAR(500),
                     released_folder_path VARCHAR(500),
-                    created_at DATETIME,
-                    updated_at DATETIME
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
@@ -892,7 +892,9 @@ def _sqlite_rebuild_projects_for_placeholder_support(engine: Engine) -> None:
                     due_date, status, project_stage, health, priority, notes,
                     completed_at, is_archived, archived_at, archived_by_id, is_deleted,
                     deleted_at, deleted_by_id, project_folder_path, cad_folder_path,
-                    released_folder_path, created_at, updated_at
+                    released_folder_path,
+                    COALESCE(created_at, CURRENT_TIMESTAMP),
+                    COALESCE(updated_at, CURRENT_TIMESTAMP)
                 FROM projects
                 """
             )
@@ -902,6 +904,106 @@ def _sqlite_rebuild_projects_for_placeholder_support(engine: Engine) -> None:
             text("ALTER TABLE projects_placeholder_new RENAME TO projects")
         )
         connection.execute(text("PRAGMA foreign_keys=ON"))
+
+
+def _sqlite_column_default_value(
+    engine: Engine, table_name: str, column_name: str
+) -> str | None:
+    with engine.connect() as connection:
+        rows = connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+    column = next((row for row in rows if row[1] == column_name), None)
+    if column is None:
+        return None
+    return column[4]
+
+
+def _sqlite_projects_timestamps_need_fix(engine: Engine) -> bool:
+    if not _sqlite_has_column(engine, "projects", "created_at"):
+        return False
+    if not _sqlite_column_is_not_null(engine, "projects", "created_at"):
+        return True
+    if not _sqlite_column_is_not_null(engine, "projects", "updated_at"):
+        return True
+    return _sqlite_column_default_value(engine, "projects", "created_at") is None
+
+
+def _backfill_project_timestamps(connection, *, dialect: str) -> None:
+    if dialect == "sqlite":
+        connection.execute(
+            text(
+                """
+                UPDATE projects
+                SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP),
+                    updated_at = COALESCE(
+                        updated_at,
+                        COALESCE(created_at, CURRENT_TIMESTAMP)
+                    )
+                WHERE created_at IS NULL OR updated_at IS NULL
+                """
+            )
+        )
+        return
+
+    if dialect == "postgresql":
+        connection.execute(
+            text(
+                """
+                UPDATE projects
+                SET created_at = COALESCE(created_at, NOW()),
+                    updated_at = COALESCE(
+                        updated_at,
+                        COALESCE(created_at, NOW())
+                    )
+                WHERE created_at IS NULL OR updated_at IS NULL
+                """
+            )
+        )
+
+
+def ensure_project_timestamps(engine: Engine) -> None:
+    """Backfill and enforce NOT NULL timestamp columns on projects.
+
+    The placeholder-project SQLite rebuild originally recreated ``created_at`` and
+    ``updated_at`` without defaults, so ORM inserts stored NULL despite
+    TimestampMixin server defaults on the model.
+    """
+    dialect = engine.dialect.name
+
+    with engine.begin() as connection:
+        _backfill_project_timestamps(connection, dialect=dialect)
+
+    if dialect == "sqlite" and _sqlite_projects_timestamps_need_fix(engine):
+        _sqlite_rebuild_projects_for_placeholder_support(engine)
+        with engine.begin() as connection:
+            _backfill_project_timestamps(connection, dialect=dialect)
+        return
+
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN created_at SET DEFAULT NOW()"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN updated_at SET DEFAULT NOW()"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN created_at SET NOT NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ALTER COLUMN updated_at SET NOT NULL"
+                )
+            )
 
 
 def ensure_placeholder_project_schema(engine: Engine) -> None:

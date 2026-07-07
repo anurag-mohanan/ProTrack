@@ -16,7 +16,16 @@ from app.core.permissions import (
     normalize_role_name,
     project_assignment_filter,
 )
-from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
+from app.models.enums import (
+    EngineeringChangeStatus,
+    ExecutionStatus,
+    MilestoneStatus,
+    ProjectHealth,
+    ProjectStage,
+    TimesheetStatus,
+    WorkCategory,
+)
+from app.models.intelligence import EngineeringChange
 from app.models.models import Activity, Customer, Milestone, Project, Role, Timesheet, TimesheetEntry, TimesheetImportHistory, User
 from app.schemas.dashboard import (
     DashboardFuturePlaceholders,
@@ -26,6 +35,7 @@ from app.schemas.dashboard import (
     DashboardNpPanel,
     DashboardOperationalMetrics,
     DashboardOverview,
+    DashboardProjectStageRow,
     DashboardSummary,
     DashboardTaskItem,
     DesignerWorkload,
@@ -64,6 +74,12 @@ WORKLOAD_ROLES = (
     "Designer",
     "Junior Designer",
     "Surfacer",
+)
+
+_ACTIVE_EXECUTION_STATUSES = (
+    ExecutionStatus.planning,
+    ExecutionStatus.currently_being_worked_on,
+    ExecutionStatus.on_hold,
 )
 
 
@@ -326,6 +342,50 @@ def get_dashboard_summary(
     operational_metrics = _get_operational_metrics(db, user)
     staff_metrics = _get_staff_metrics(db, user)
 
+    today = date.today()
+    hours_logged_today = _round_hours(
+        _decimal(
+            db.scalar(
+                select(func.coalesce(func.sum(TimesheetEntry.hours), 0)).where(
+                    TimesheetEntry.entry_date == today,
+                    TimesheetEntry.is_deleted.is_(False),
+                )
+            )
+        )
+    )
+    open_engineering_changes = int(
+        db.scalar(
+            select(func.count())
+            .select_from(EngineeringChange)
+            .join(Project, EngineeringChange.project_id == Project.id)
+            .where(
+                EngineeringChange.status == EngineeringChangeStatus.open,
+                Project.is_deleted.is_(False),
+                Project.is_archived.is_(False),
+            )
+        )
+        or 0
+    )
+    stage_rows = db.execute(
+        select(Project.project_stage, func.count())
+        .where(
+            Project.is_deleted.is_(False),
+            Project.is_archived.is_(False),
+            Project.execution_status.in_(_ACTIVE_EXECUTION_STATUSES),
+            *stage,
+            *team,
+        )
+        .group_by(Project.project_stage)
+        .order_by(Project.project_stage)
+    ).all()
+    projects_by_stage = [
+        DashboardProjectStageRow(
+            project_stage=row[0],
+            project_count=int(row[1] or 0),
+        )
+        for row in stage_rows
+    ]
+
     return DashboardSummary(
         total_projects=total_projects,
         active_projects=active,
@@ -363,6 +423,9 @@ def get_dashboard_summary(
         designer_availability_summary=designer_summary,
         designer_availability=designer_availability,
         team_summary=team_summary,
+        projects_by_stage=projects_by_stage,
+        hours_logged_today=hours_logged_today,
+        open_engineering_changes=open_engineering_changes,
         np_hours_this_month=engineering_kpis.np_hours_this_month,
         np_hours_panel=np_hours_panel,
         operational_metrics=operational_metrics,

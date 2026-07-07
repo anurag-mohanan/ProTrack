@@ -14,6 +14,9 @@ def test_dashboard_summary(client, auth_headers):
     assert "designer_availability" in body
     assert "team_summary" in body
     assert "activity_feed" in body
+    assert "hours_logged_today" in body
+    assert "open_engineering_changes" in body
+    assert "projects_by_stage" in body
     assert len(body["attention_projects"]) <= 25
 
 

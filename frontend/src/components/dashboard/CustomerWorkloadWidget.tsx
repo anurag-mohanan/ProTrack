@@ -15,9 +15,10 @@ import { formatDisplayValue, formatNumber } from '../../utils/format';
 
 interface CustomerWorkloadWidgetProps {
   rows: DashboardCustomerWorkloadRow[];
+  compact?: boolean;
 }
 
-export function CustomerWorkloadWidget({ rows }: CustomerWorkloadWidgetProps) {
+export function CustomerWorkloadWidget({ rows, compact = false }: CustomerWorkloadWidgetProps) {
   const navigate = useNavigate();
 
   if (!rows.length) {
@@ -41,8 +42,8 @@ export function CustomerWorkloadWidget({ rows }: CustomerWorkloadWidgetProps) {
           <TableRow>
             <TableCell>Customer</TableCell>
             <TableCell align="right">Active Tools</TableCell>
-            <TableCell align="right">Quoted Hrs</TableCell>
-            <TableCell align="right">Actual Hrs</TableCell>
+            {!compact ? <TableCell align="right">Quoted Hrs</TableCell> : null}
+            {!compact ? <TableCell align="right">Actual Hrs</TableCell> : null}
             <TableCell align="right">Designers</TableCell>
           </TableRow>
         </TableHead>
@@ -59,14 +60,20 @@ export function CustomerWorkloadWidget({ rows }: CustomerWorkloadWidgetProps) {
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
                     {formatDisplayValue(row.customer_name)}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {formatNumber(row.active_tools, 0)} tools
-                  </Typography>
+                  {compact ? null : (
+                    <Typography variant="caption" color="text.secondary">
+                      {formatNumber(row.active_tools, 0)} tools
+                    </Typography>
+                  )}
                 </Box>
               </TableCell>
               <TableCell align="right">{formatNumber(row.active_tools, 0)}</TableCell>
-              <TableCell align="right">{formatNumber(row.quoted_hours, 1)}</TableCell>
-              <TableCell align="right">{formatNumber(row.actual_hours, 1)}</TableCell>
+              {!compact ? (
+                <TableCell align="right">{formatNumber(row.quoted_hours, 1)}</TableCell>
+              ) : null}
+              {!compact ? (
+                <TableCell align="right">{formatNumber(row.actual_hours, 1)}</TableCell>
+              ) : null}
               <TableCell align="right">{formatNumber(row.designers_assigned, 0)}</TableCell>
             </TableRow>
           ))}

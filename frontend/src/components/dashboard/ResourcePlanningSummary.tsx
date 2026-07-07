@@ -20,6 +20,7 @@ import { formatCellValue, formatNumber } from '../../utils/format';
 
 interface ResourcePlanningSummaryProps {
   rows: DashboardTeamSummaryRow[];
+  showHeader?: boolean;
 }
 
 function utilizationPercent(row: DashboardTeamSummaryRow): number {
@@ -28,7 +29,7 @@ function utilizationPercent(row: DashboardTeamSummaryRow): number {
   return Math.min(100, Math.round((Number(row.actual_hours) / capacity) * 100));
 }
 
-export function ResourcePlanningSummary({ rows }: ResourcePlanningSummaryProps) {
+export function ResourcePlanningSummary({ rows, showHeader = true }: ResourcePlanningSummaryProps) {
   const navigate = useNavigate();
 
   if (!rows.length) {
@@ -57,22 +58,24 @@ export function ResourcePlanningSummary({ rows }: ResourcePlanningSummaryProps) 
         boxShadow: (theme) => theme.palette.prosohm.shadowCard,
       }}
     >
-      <Box
-        sx={{
-          px: 2.5,
-          py: 1.75,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1,
-          borderBottom: 1,
-          borderColor: 'divider',
-        }}
-      >
-        <GroupsOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-          Team Capacity Overview
-        </Typography>
-      </Box>
+      {showHeader ? (
+        <Box
+          sx={{
+            px: 2.5,
+            py: 1.75,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            borderBottom: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <GroupsOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Team Capacity Overview
+          </Typography>
+        </Box>
+      ) : null}
       <TableContainer>
         <Table size="small">
           <TableHead>

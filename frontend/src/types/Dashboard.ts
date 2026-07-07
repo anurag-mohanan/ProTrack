@@ -1,4 +1,4 @@
-import type { ExecutionStatus, ProjectHealth } from './common';
+import type { ExecutionStatus, ProjectHealth, ProjectStage } from './common';
 import type { Project } from './Project';
 import type { TimesheetEntry } from './TimesheetEntry';
 
@@ -39,6 +39,9 @@ export interface DashboardSummary {
   designer_availability_summary: DashboardDesignerAvailabilitySummary;
   designer_availability: DashboardDesignerAvailabilityRow[];
   team_summary: DashboardTeamSummaryRow[];
+  projects_by_stage: DashboardProjectStageRow[];
+  hours_logged_today: number;
+  open_engineering_changes: number;
   np_hours_this_month: number;
   np_hours_panel: DashboardNpPanel;
   operational_metrics: DashboardOperationalMetrics;
@@ -156,6 +159,11 @@ export interface DashboardTeamSummaryRow {
   quoted_hours: number;
   actual_hours: number;
   available_capacity_hours: number;
+}
+
+export interface DashboardProjectStageRow {
+  project_stage: ProjectStage;
+  project_count: number;
 }
 
 export type DashboardActivityCategory =

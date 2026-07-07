@@ -22,13 +22,26 @@ const MAX_ROWS = 5;
 
 interface ProjectsAttentionTableProps {
   rows: ProjectAttentionRow[];
+  filterLabel?: string;
+  viewAllHref?: string;
 }
 
-export function ProjectsAttentionTable({ rows }: ProjectsAttentionTableProps) {
+export function ProjectsAttentionTable({
+  rows,
+  filterLabel,
+  viewAllHref = '/projects?due=overdue',
+}: ProjectsAttentionTableProps) {
   const navigate = useNavigate();
   const visibleRows = rows.slice(0, MAX_ROWS);
 
   if (!rows.length) {
+    const emptyTitle = filterLabel
+      ? `No ${filterLabel} right now`
+      : 'All projects are on track';
+    const emptySubtitle = filterLabel
+      ? 'Check back as due dates approach or projects slip.'
+      : 'No overdue, blocked, on hold, or due-soon projects require attention right now.';
+
     return (
       <Paper
         variant="outlined"
@@ -45,10 +58,10 @@ export function ProjectsAttentionTable({ rows }: ProjectsAttentionTableProps) {
         <CheckCircleOutlineOutlinedIcon color="success" sx={{ fontSize: 28 }} />
         <Box>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'success.dark' }}>
-            All projects are on track
+            {emptyTitle}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            No overdue, blocked, on hold, or due-soon projects require attention right now.
+            {emptySubtitle}
           </Typography>
         </Box>
       </Paper>
@@ -103,7 +116,7 @@ export function ProjectsAttentionTable({ rows }: ProjectsAttentionTableProps) {
         <Button
           size="small"
           endIcon={<ArrowForwardIcon />}
-          onClick={() => navigate('/projects?due=overdue')}
+          onClick={() => navigate(viewAllHref)}
           sx={{ textTransform: 'none', fontWeight: 600 }}
         >
           View All Projects

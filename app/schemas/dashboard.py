@@ -150,6 +150,11 @@ class DashboardTeamSummaryRow(BaseModel):
     available_capacity_hours: Decimal = Decimal("0")
 
 
+class DashboardProjectStageRow(BaseModel):
+    project_stage: ProjectStage
+    project_count: int = 0
+
+
 class DashboardActivityItem(BaseModel):
     id: str
     category: DashboardActivityCategory
@@ -225,6 +230,9 @@ class DashboardSummary(BaseModel):
         default_factory=list
     )
     team_summary: list[DashboardTeamSummaryRow] = Field(default_factory=list)
+    projects_by_stage: list[DashboardProjectStageRow] = Field(default_factory=list)
+    hours_logged_today: Decimal = Decimal("0")
+    open_engineering_changes: int = 0
     np_hours_this_month: Decimal = Decimal("0")
     np_hours_panel: DashboardNpPanel = Field(default_factory=DashboardNpPanel)
     operational_metrics: DashboardOperationalMetrics = Field(

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
@@ -27,7 +27,10 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import EditIcon from '@mui/icons-material/Edit';
 import { PageHeader } from '../../components/common/PageHeader';
+import { StickyFormPageLayout } from '../../components/common/StickyFormPageLayout';
 import { LoadingState } from '../../components/common/LoadingState';
+import { StickyRecordHeader } from '../../components/ui/design-system';
+import { APP_TOP_BAR_OFFSET } from '../../components/ui/design-system/StickyRecordHeader';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { fetchCustomers } from '../../api/lookups';
@@ -96,6 +99,14 @@ export default function ProjectTemplateEditorPage() {
   const [editingMilestoneKey, setEditingMilestoneKey] = useState<string | null>(null);
   const [milestoneDraft, setMilestoneDraft] = useState<MilestoneRow>(createMilestoneRow());
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const baselineRef = useRef('');
+
+  const serializeEditorState = (templateForm: TemplateFormState, rows: MilestoneRow[]) =>
+    JSON.stringify({ form: templateForm, milestones: rows });
+
+  const captureBaseline = (templateForm: TemplateFormState, rows: MilestoneRow[]) => {
+    baselineRef.current = serializeEditorState(templateForm, rows);
+  };
 
   const loadLookups = useCallback(async () => {
     const [types, customerRows] = await Promise.all([
@@ -136,6 +147,31 @@ export default function ProjectTemplateEditorPage() {
             }),
           ),
       );
+      captureBaseline(
+        {
+          name: template.name,
+          description: template.description ?? '',
+          project_type_id: template.project_type_id,
+          customer_id: template.customer_id ?? '',
+          is_default: template.is_default,
+          is_active: template.is_active,
+        },
+        template.milestones
+          .slice()
+          .sort((left, right) => left.sort_order - right.sort_order)
+          .map((milestone) =>
+            createMilestoneRow({
+              key: milestone.id,
+              milestone_name: milestone.milestone_name,
+              description: milestone.description,
+              sort_order: milestone.sort_order,
+              default_due_offset_days: milestone.default_due_offset_days,
+              is_required: milestone.is_required,
+              project_stage: milestone.project_stage ?? '',
+              estimated_hours: milestone.estimated_hours ?? null,
+            }),
+          ),
+      );
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -150,6 +186,26 @@ export default function ProjectTemplateEditorPage() {
   useEffect(() => {
     void loadTemplate();
   }, [loadTemplate]);
+
+  useEffect(() => {
+    if (isNew) {
+      captureBaseline(emptyForm, []);
+    }
+  }, [isNew]);
+
+  const isDirty = useMemo(
+    () => serializeEditorState(form, milestones) !== baselineRef.current,
+    [form, milestones],
+  );
+
+  const handleDiscard = () => {
+    const parsed = JSON.parse(baselineRef.current) as {
+      form: TemplateFormState;
+      milestones: MilestoneRow[];
+    };
+    setForm(parsed.form);
+    setMilestones(parsed.milestones);
+  };
 
   const sortedMilestones = useMemo(
     () => milestones.slice().sort((left, right) => left.sort_order - right.sort_order),
@@ -240,6 +296,7 @@ export default function ProjectTemplateEditorPage() {
       } else if (templateId) {
         await updateProjectTemplate(templateId, payload);
         showSuccess('Template updated successfully.');
+        captureBaseline(form, sortedMilestones);
         await loadTemplate();
       }
     } catch (error) {
@@ -257,19 +314,33 @@ export default function ProjectTemplateEditorPage() {
         title={isNew ? 'Create Project Template' : 'Edit Project Template'}
         subtitle="Define milestone workflow steps for project creation"
         action={
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              startIcon={<ArrowBackIcon />}
-              onClick={() => navigate('/admin/project-templates')}
-            >
-              Back
-            </Button>
-            <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
-              {saving ? 'Saving…' : 'Save Template'}
-            </Button>
-          </Box>
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate('/admin/project-templates')}
+          >
+            Back
+          </Button>
         }
       />
+
+      <StickyFormPageLayout
+        dirty={isDirty}
+        onSave={() => void handleSave()}
+        onDiscard={handleDiscard}
+        saving={saving}
+        saveLabel="Save Template"
+        header={
+          <StickyRecordHeader
+            compact
+            primaryLabel={form.name || 'New Project Template'}
+            secondaryLabel={
+              projectTypes.find((type) => type.id === form.project_type_id)?.name ??
+              'Milestone workflow template'
+            }
+            stickyTop={APP_TOP_BAR_OFFSET}
+          />
+        }
+      >
 
       <Card sx={{ p: 3, mb: 3 }}>
         <Grid container spacing={2}>
@@ -529,6 +600,7 @@ export default function ProjectTemplateEditorPage() {
           </Box>
         )}
       </Card>
+      </StickyFormPageLayout>
     </Box>
   );
 }

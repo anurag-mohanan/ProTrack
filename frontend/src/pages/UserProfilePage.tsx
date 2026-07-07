@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Avatar,
   Box,
@@ -14,10 +14,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
+import { UnsavedChangesBar } from '../components/common/UnsavedChangesBar';
 import { LoadingState } from '../components/common/LoadingState';
 import { ContentCard } from '../components/ui/cards';
-import { FormField, FormSection } from '../components/ui/design-system';
-import { ProsohmButton } from '../components/ui/ProsohmButton';
+import { FormField, FormSection, StickyRecordHeader } from '../components/ui/design-system';
+import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
 import {
   changePassword,
   fetchMyProfile,
@@ -76,6 +77,7 @@ export default function UserProfilePage() {
     mutationFn: updateMyPreferences,
     onSuccess: async () => {
       showSuccess('Preferences saved');
+      setPrefsForm({});
       await queryClient.invalidateQueries({ queryKey: ['preferences', 'me'] });
       await queryClient.invalidateQueries({ queryKey: ['auth', 'profile'] });
       await queryClient.invalidateQueries({ queryKey: ['settings', 'public'] });
@@ -90,12 +92,36 @@ export default function UserProfilePage() {
   const profile = profileQuery.data;
   const preferences = { ...profile.preferences, ...prefsForm };
   const initials = `${profile.first_name[0] ?? ''}${profile.last_name[0] ?? ''}`.toUpperCase();
+  const prefsDirty = Object.keys(prefsForm).length > 0;
+  const passwordDirty = useMemo(
+    () =>
+      Boolean(
+        passwordForm.current_password ||
+          passwordForm.new_password ||
+          passwordForm.confirm_password,
+      ),
+    [passwordForm],
+  );
+  const showUnsavedBar = (tab === 1 && prefsDirty) || (tab === 2 && passwordDirty);
 
   return (
     <PageContainer>
       <PageHeader
         title="My Profile"
         subtitle="Account details, appearance preferences, and activity summary"
+      />
+
+      <StickyRecordHeader
+        compact
+        primaryLabel={`${profile.first_name} ${profile.last_name}`.trim()}
+        secondaryLabel={profile.email}
+        stickyTop={APP_TOP_BAR_OFFSET}
+        meta={
+          <>
+            {profile.role_name ? <Chip size="small" label={profile.role_name} /> : null}
+            {profile.team_name ? <Chip size="small" variant="outlined" label={profile.team_name} /> : null}
+          </>
+        }
       />
 
       <Grid container spacing={2.5}>
@@ -295,14 +321,6 @@ export default function UserProfilePage() {
                   </Typography>
                 </FormSection>
 
-                <Box sx={{ mt: 3 }}>
-                  <ProsohmButton
-                    loading={preferencesMutation.isPending}
-                    onClick={() => preferencesMutation.mutate(preferences)}
-                  >
-                    Save Preferences
-                  </ProsohmButton>
-                </Box>
                 </>
               ) : null}
 
@@ -349,30 +367,40 @@ export default function UserProfilePage() {
                       />
                     </Grid>
                   </Grid>
-                  <Box sx={{ mt: 3 }}>
-                    <ProsohmButton
-                      loading={passwordMutation.isPending}
-                      onClick={() => {
-                        if (passwordForm.new_password !== passwordForm.confirm_password) {
-                          showError('Passwords do not match');
-                          return;
-                        }
-                        passwordMutation.mutate({
-                          current_password: passwordForm.current_password,
-                          new_password: passwordForm.new_password,
-                          confirm_password: passwordForm.confirm_password,
-                        });
-                      }}
-                    >
-                      Update Password
-                    </ProsohmButton>
-                  </Box>
                 </FormSection>
               ) : null}
             </Box>
           </ContentCard>
         </Grid>
       </Grid>
+
+      <UnsavedChangesBar
+        visible={showUnsavedBar}
+        saveLabel={tab === 2 ? 'Update Password' : 'Save Preferences'}
+        onSave={() => {
+          if (tab === 2) {
+            if (passwordForm.new_password !== passwordForm.confirm_password) {
+              showError('Passwords do not match');
+              return;
+            }
+            passwordMutation.mutate({
+              current_password: passwordForm.current_password,
+              new_password: passwordForm.new_password,
+              confirm_password: passwordForm.confirm_password,
+            });
+            return;
+          }
+          preferencesMutation.mutate(preferences);
+        }}
+        onDiscard={() => {
+          if (tab === 2) {
+            setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
+            return;
+          }
+          setPrefsForm({});
+        }}
+        saving={preferencesMutation.isPending || passwordMutation.isPending}
+      />
     </PageContainer>
   );
 }

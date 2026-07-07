@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Grid, MenuItem } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
+import { StickyFormPageLayout } from '../../components/common/StickyFormPageLayout';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { LoadingState } from '../../components/common/LoadingState';
-import { FormField, FormSection } from '../../components/ui/design-system';
+import { CollapsibleFormSection, FormField, StickyRecordHeader } from '../../components/ui/design-system';
 import { LogoUpload } from '../../components/settings/LogoUpload';
 import {
   fetchCompanySettings,
@@ -27,6 +28,23 @@ const TIMEZONES = [
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'CAD', 'AUD'];
 
 const WORKING_DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const COMPANY_SECTION_STORAGE_KEY = 'protrack:sections:company-profile';
+
+type CompanyFormState = {
+  company_name: string;
+  company_short_name: string;
+  email: string;
+  address: string;
+  phone: string;
+  website: string;
+  gst_number: string;
+  currency: string;
+  timezone: string;
+  financial_year_start_month: number;
+  default_working_hours_per_day: number;
+  default_working_days: string;
+  logo_url: string;
+};
 
 export default function CompanyProfilePage() {
   const { showSuccess, showError } = useToast();
@@ -48,10 +66,14 @@ export default function CompanyProfilePage() {
     logo_url: '',
   });
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const baselineRef = useRef('');
+
+  const serializeState = (values: CompanyFormState, days: string[]) =>
+    JSON.stringify({ form: values, selectedDays: days });
 
   useEffect(() => {
     if (query.data) {
-      setForm({
+      const nextForm = {
         company_name: query.data.company_name,
         company_short_name: query.data.company_short_name ?? '',
         email: query.data.email ?? '',
@@ -65,10 +87,27 @@ export default function CompanyProfilePage() {
         default_working_hours_per_day: Number(query.data.default_working_hours_per_day),
         default_working_days: query.data.default_working_days,
         logo_url: query.data.logo_url ?? '',
-      });
-      setSelectedDays(query.data.default_working_days.split(',').filter(Boolean));
+      };
+      const nextDays = query.data.default_working_days.split(',').filter(Boolean);
+      setForm(nextForm);
+      setSelectedDays(nextDays);
+      baselineRef.current = serializeState(nextForm, nextDays);
     }
   }, [query.data]);
+
+  const isDirty = useMemo(
+    () => serializeState(form, selectedDays) !== baselineRef.current,
+    [form, selectedDays],
+  );
+
+  const handleDiscard = () => {
+    const parsed = JSON.parse(baselineRef.current) as {
+      form: CompanyFormState;
+      selectedDays: string[];
+    };
+    setForm(parsed.form);
+    setSelectedDays(parsed.selectedDays);
+  };
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -78,6 +117,7 @@ export default function CompanyProfilePage() {
       }),
     onSuccess: async () => {
       showSuccess('Company information saved');
+      baselineRef.current = serializeState(form, selectedDays);
       await queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
     onError: (error) => showError(String(error)),
@@ -110,6 +150,20 @@ export default function CompanyProfilePage() {
         subtitle="Company name, logo, address, contact details, working hours, timezone, financial year, and holiday calendar"
       />
 
+      <StickyFormPageLayout
+        dirty={isDirty}
+        onSave={() => saveMutation.mutate()}
+        onDiscard={handleDiscard}
+        saving={saveMutation.isPending}
+        header={
+          <StickyRecordHeader
+            primaryLabel={form.company_name || 'Company Information'}
+            secondaryLabel={form.company_short_name || 'Organisation profile and working pattern'}
+            stickyTop={64}
+            compact
+          />
+        }
+      >
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, lg: 4 }}>
           <ContentCard title="Company Logo">
@@ -125,8 +179,11 @@ export default function CompanyProfilePage() {
 
         <Grid size={{ xs: 12, lg: 8 }}>
           <ContentCard title="Organisation Details">
-            <FormSection title="Identity">
-              <Grid container spacing={2}>
+            <CollapsibleFormSection
+              sectionId="identity"
+              storageKey={COMPANY_SECTION_STORAGE_KEY}
+              title="Identity"
+            >
                 <Grid size={{ xs: 12, md: 6 }}>
                   <FormField
                     label="Company Name"
@@ -194,11 +251,14 @@ export default function CompanyProfilePage() {
                     }
                   />
                 </Grid>
-              </Grid>
-            </FormSection>
+            </CollapsibleFormSection>
 
-            <FormSection title="Regional Settings">
-              <Grid container spacing={2}>
+            <Box sx={{ mt: 2.5 }}>
+            <CollapsibleFormSection
+              sectionId="regional-settings"
+              storageKey={COMPANY_SECTION_STORAGE_KEY}
+              title="Regional Settings"
+            >
                 <Grid size={{ xs: 12, md: 4 }}>
                   <FormField
                     select
@@ -245,11 +305,15 @@ export default function CompanyProfilePage() {
                     helper={`Currently set to ${financialYearLabel}`}
                   />
                 </Grid>
-              </Grid>
-            </FormSection>
+            </CollapsibleFormSection>
+            </Box>
 
-            <FormSection title="Working Pattern">
-              <Grid container spacing={2}>
+            <Box sx={{ mt: 2.5 }}>
+            <CollapsibleFormSection
+              sectionId="working-pattern"
+              storageKey={COMPANY_SECTION_STORAGE_KEY}
+              title="Working Pattern"
+            >
                 <Grid size={{ xs: 12, md: 6 }}>
                   <FormField
                     type="number"
@@ -286,17 +350,12 @@ export default function CompanyProfilePage() {
                     })}
                   </Box>
                 </Grid>
-              </Grid>
-            </FormSection>
-
-            <Box sx={{ mt: 3 }}>
-              <ProsohmButton onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
-                Save Company Information
-              </ProsohmButton>
+            </CollapsibleFormSection>
             </Box>
           </ContentCard>
         </Grid>
       </Grid>
+      </StickyFormPageLayout>
     </PageContainer>
   );
 }

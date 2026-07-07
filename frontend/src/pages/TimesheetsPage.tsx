@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
+import { StickyRecordHeader } from '../components/ui/design-system';
+import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
 import { LoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
 import { TimesheetEntryForm, type TimesheetEntryFormValues } from '../components/timesheets/TimesheetEntryForm';
@@ -35,6 +37,7 @@ import {
 } from '../utils/permissions';
 import { currentMonthValue, formatMonthLabel, todayIsoDate } from '../utils/timesheetMonth';
 import { formatDisplayValue, userDisplayName } from '../utils/format';
+import { TimesheetStatusBadge } from '../components/ui/design-system';
 
 function shiftIsoDate(isoDate: string, days: number): string {
   const date = new Date(`${isoDate}T12:00:00`);
@@ -293,6 +296,18 @@ export function TimesheetsPage() {
             </ProsohmButton>
           ) : undefined
         }
+      />
+
+      <StickyRecordHeader
+        compact
+        primaryLabel={monthLabel}
+        secondaryLabel={
+          viewAllUsers
+            ? 'All users timesheet overview'
+            : `${formatDisplayValue(user ? userDisplayName(user) : '')} · ${toolbarDate}`
+        }
+        stickyTop={APP_TOP_BAR_OFFSET}
+        meta={<TimesheetStatusBadge status={workspace.monthStatus} />}
       />
 
       <TimesheetMonthNavigation monthValue={monthValue} onMonthChange={setMonthValue} />

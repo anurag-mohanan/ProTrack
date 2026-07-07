@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Grid, Typography } from '@mui/material';
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined';
+import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
 import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
+import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchContacts, fetchCustomers, fetchStreams, fetchTeams, fetchUsers } from '../../api/lookups';
 import { fetchMatchingProjectTemplates, fetchProjectTypes } from '../../api/projectTemplates';
@@ -22,10 +24,11 @@ import {
 } from '../../types/common';
 import { ErrorState } from '../common/ErrorState';
 import {
+  CollapsibleFormSection,
   FormDrawer,
   FormField,
-  FormSection,
   FormSelect,
+  StickyRecordHeader,
 } from '../ui/design-system';
 import { userDisplayName } from '../../utils/format';
 import { optionalString, optionalUuid, optionalNumber, validateRequiredFields, isBlankDisplayValue } from '../../utils/formValues';
@@ -51,6 +54,8 @@ interface ProjectFormValues {
   project_stage: ProjectStage;
   execution_status: ExecutionStatus;
 }
+
+const PROJECT_SECTION_STORAGE_KEY = 'protrack:sections:project-form';
 
 const emptyForm: ProjectFormValues = {
   tool_number: '',
@@ -115,6 +120,9 @@ export function ProjectFormDialog({
   const queryClient = useQueryClient();
   const { showError } = useToast();
   const [form, setForm] = useState<ProjectFormValues>(emptyForm);
+  const baselineRef = useRef('');
+
+  const serializeForm = (values: ProjectFormValues) => JSON.stringify(values);
 
   const customersQuery = useQuery({
     queryKey: ['customers'],
@@ -165,12 +173,22 @@ export function ProjectFormDialog({
   useEffect(() => {
     if (!open) {
       setForm(emptyForm);
+      baselineRef.current = serializeForm(emptyForm);
       return;
     }
-    if (project) {
-      setForm(projectToForm(project));
-    }
+    const initial = project ? projectToForm(project) : emptyForm;
+    setForm(initial);
+    baselineRef.current = serializeForm(initial);
   }, [open, project]);
+
+  const isDirty = useMemo(
+    () => serializeForm(form) !== baselineRef.current,
+    [form],
+  );
+
+  const handleDiscard = () => {
+    setForm(JSON.parse(baselineRef.current) as ProjectFormValues);
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -308,6 +326,13 @@ export function ProjectFormDialog({
     label: userDisplayName(user),
   }));
 
+  const selectedCustomerName = useMemo(() => {
+    if (project?.customer_name && form.customer_id === project.customer_id) {
+      return project.customer_name;
+    }
+    return activeCustomers.find((customer) => customer.id === form.customer_id)?.name ?? null;
+  }, [activeCustomers, form.customer_id, project]);
+
   return (
     <FormDrawer
       open={open}
@@ -316,7 +341,7 @@ export function ProjectFormDialog({
       subtitle={
         isEdit
           ? 'Update project details, team assignments, and execution status.'
-          : 'Create a placeholder project with tool number, customer, and description. Assign team members and milestones later.'
+          : 'Create a placeholder project with tool number, customer, and description.'
       }
       icon={AssignmentOutlinedIcon}
       formId="project-form"
@@ -324,14 +349,30 @@ export function ProjectFormDialog({
       submitLabel={isEdit ? 'Save Changes' : 'Create Project'}
       loading={saveMutation.isPending}
       submitDisabled={!canSubmit}
+      dirty={isDirty}
+      onDiscard={handleDiscard}
     >
       <Box
         component="form"
         id="project-form"
         onSubmit={handleSubmit}
-        sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+        sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}
       >
-        <FormSection
+        <StickyRecordHeader
+          compact
+          mode={isEdit ? 'full' : 'draft'}
+          toolNumber={form.tool_number}
+          partDescription={form.part_description}
+          customerName={selectedCustomerName}
+          executionStatus={isEdit ? form.execution_status : null}
+          dueDate={form.due_date}
+          health={isEdit ? project?.health ?? null : null}
+          stickyTop={0}
+        />
+
+        <CollapsibleFormSection
+          sectionId="general-information"
+          storageKey={PROJECT_SECTION_STORAGE_KEY}
           title="General Information"
           subtitle="Tool identification and description"
           icon={AssignmentOutlinedIcon}
@@ -364,9 +405,15 @@ export function ProjectFormDialog({
               }
             />
           </Grid>
-        </FormSection>
+        </CollapsibleFormSection>
 
-        <FormSection title="Customer" subtitle="Customer and primary contact" icon={BusinessOutlinedIcon}>
+        <CollapsibleFormSection
+          sectionId="customer"
+          storageKey={PROJECT_SECTION_STORAGE_KEY}
+          title="Customer"
+          subtitle="Customer and primary contact"
+          icon={BusinessOutlinedIcon}
+        >
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormSelect
               label="Customer"
@@ -398,11 +445,17 @@ export function ProjectFormDialog({
               }
             />
           </Grid>
-        </FormSection>
+        </CollapsibleFormSection>
 
         {!isEdit ? (
           <>
-            <FormSection title="Project Type" icon={ViewListOutlinedIcon}>
+            <CollapsibleFormSection
+              sectionId="project-type"
+              storageKey={PROJECT_SECTION_STORAGE_KEY}
+              title="Project Type"
+              subtitle="Classification and default team"
+              icon={ViewListOutlinedIcon}
+            >
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormSelect
                   label="Project Type"
@@ -440,12 +493,14 @@ export function ProjectFormDialog({
                   }
                 />
               </Grid>
-            </FormSection>
+            </CollapsibleFormSection>
 
-            <FormSection
-              title="Project Template"
-              subtitle="Milestone template applied at creation"
-              icon={ViewListOutlinedIcon}
+            <CollapsibleFormSection
+              sectionId="milestones"
+              storageKey={PROJECT_SECTION_STORAGE_KEY}
+              title="Milestones"
+              subtitle="Template applied at creation"
+              icon={TimelineOutlinedIcon}
             >
               <Grid size={{ xs: 12 }}>
                 <FormSelect
@@ -481,11 +536,17 @@ export function ProjectFormDialog({
                 </Typography>
               </Grid>
             ) : null}
-            </FormSection>
+            </CollapsibleFormSection>
           </>
         ) : null}
 
-        <FormSection title="Team" subtitle="Design leadership and assignments" icon={GroupsOutlinedIcon}>
+        <CollapsibleFormSection
+          sectionId="team"
+          storageKey={PROJECT_SECTION_STORAGE_KEY}
+          title="Team"
+          subtitle="Design leadership and assignments"
+          icon={GroupsOutlinedIcon}
+        >
           <Grid size={{ xs: 12, sm: 4 }}>
             <FormSelect
               label="Design Leader"
@@ -541,9 +602,15 @@ export function ProjectFormDialog({
               }
             />
           </Grid>
-        </FormSection>
+        </CollapsibleFormSection>
 
-        <FormSection title="Schedule & Hours" subtitle="Due date and quoted effort" icon={ScheduleOutlinedIcon}>
+        <CollapsibleFormSection
+          sectionId="schedule"
+          storageKey={PROJECT_SECTION_STORAGE_KEY}
+          title="Schedule"
+          subtitle="Due date and quoted effort"
+          icon={ScheduleOutlinedIcon}
+        >
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormField
               label="Due Date"
@@ -570,10 +637,12 @@ export function ProjectFormDialog({
               }
             />
           </Grid>
-        </FormSection>
+        </CollapsibleFormSection>
 
         {isEdit ? (
-          <FormSection
+          <CollapsibleFormSection
+            sectionId="project-status"
+            storageKey={PROJECT_SECTION_STORAGE_KEY}
             title="Project Status"
             subtitle="Engineering stage and execution status"
             icon={FlagOutlinedIcon}
@@ -631,9 +700,14 @@ export function ProjectFormDialog({
                 }
               />
             </Grid>
-          </FormSection>
+          </CollapsibleFormSection>
         ) : (
-          <FormSection title="Priority" icon={FlagOutlinedIcon}>
+          <CollapsibleFormSection
+            sectionId="priority"
+            storageKey={PROJECT_SECTION_STORAGE_KEY}
+            title="Priority"
+            icon={FlagOutlinedIcon}
+          >
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormSelect
                 label="Priority"
@@ -652,10 +726,16 @@ export function ProjectFormDialog({
                 }
               />
             </Grid>
-          </FormSection>
+          </CollapsibleFormSection>
         )}
 
-        <FormSection title="Notes" subtitle="Additional project context" icon={NotesOutlinedIcon}>
+        <CollapsibleFormSection
+          sectionId="notes"
+          storageKey={PROJECT_SECTION_STORAGE_KEY}
+          title="Notes"
+          subtitle="Additional project context"
+          icon={NotesOutlinedIcon}
+        >
           <Grid size={{ xs: 12 }}>
             <FormField
               label="Notes"
@@ -666,7 +746,25 @@ export function ProjectFormDialog({
               onChange={(event) => setForm({ ...form, notes: event.target.value })}
             />
           </Grid>
-        </FormSection>
+        </CollapsibleFormSection>
+
+        {isEdit && project ? (
+          <CollapsibleFormSection
+            sectionId="files"
+            storageKey={PROJECT_SECTION_STORAGE_KEY}
+            title="Files"
+            subtitle="Project folders and released documents"
+            icon={FolderOpenOutlinedIcon}
+            defaultExpanded={false}
+          >
+            <Grid size={{ xs: 12 }}>
+              <Typography variant="body2" color="text.secondary">
+                Folder paths and engineering files are managed from the project command center.
+                Open the project detail page to edit folder locations and released documents.
+              </Typography>
+            </Grid>
+          </CollapsibleFormSection>
+        ) : null}
 
         {saveMutation.error ? (
           <ErrorState

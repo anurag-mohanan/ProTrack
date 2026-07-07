@@ -30,6 +30,8 @@ interface ModernDrawerProps {
   icon?: SvgIconComponent;
   children: ReactNode;
   footer?: ReactNode;
+  floatingBar?: ReactNode;
+  hideFooterWhenFloating?: boolean;
   width?: number | string;
   widthPreset?: DrawerWidthPreset;
 }
@@ -42,6 +44,8 @@ export function ModernDrawer({
   icon: Icon,
   children,
   footer,
+  floatingBar,
+  hideFooterWhenFloating = true,
   width,
   widthPreset = 'detail',
 }: ModernDrawerProps) {
@@ -80,6 +84,7 @@ export function ModernDrawer({
             maxWidth: '100vw',
             display: 'flex',
             flexDirection: 'column',
+            position: 'relative',
             boxShadow: theme.palette.prosohm.shadowDialog,
             borderLeft: `1px solid ${theme.palette.prosohm.border}`,
           },
@@ -144,13 +149,30 @@ export function ModernDrawer({
           overflow: 'auto',
           px: 3,
           py: 3,
+          pb: floatingBar ? 10 : 3,
           bgcolor: 'background.default',
         }}
       >
         {children}
       </Box>
 
-      {footer ? (
+      {floatingBar ? (
+        <Box
+          sx={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 16,
+            px: 2,
+            zIndex: 3,
+            pointerEvents: 'none',
+          }}
+        >
+          {floatingBar}
+        </Box>
+      ) : null}
+
+      {footer && !(hideFooterWhenFloating && floatingBar) ? (
         <Box
           sx={{
             px: 3,

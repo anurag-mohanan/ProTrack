@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { SvgIconComponent } from '@mui/icons-material';
 import { ProsohmButton } from '../ProsohmButton';
 import { ModernDrawer } from './ModernDrawer';
+import { UnsavedChangesBar } from '../../common/UnsavedChangesBar';
 
 interface FormDrawerProps {
   open: boolean;
@@ -18,6 +19,8 @@ interface FormDrawerProps {
   submitDisabled?: boolean;
   destructiveAction?: ReactNode;
   width?: number | string;
+  dirty?: boolean;
+  onDiscard?: () => void;
 }
 
 export function FormDrawer({
@@ -35,7 +38,24 @@ export function FormDrawer({
   submitDisabled = false,
   destructiveAction,
   width,
+  dirty = false,
+  onDiscard,
 }: FormDrawerProps) {
+  const floatingBar = dirty ? (
+    <UnsavedChangesBar
+      visible
+      inset
+      onSave={() => {
+        const form = document.getElementById(formId) as HTMLFormElement | null;
+        form?.requestSubmit();
+      }}
+      onDiscard={() => onDiscard?.()}
+      saving={loading}
+      saveDisabled={submitDisabled}
+      saveLabel={submitLabel}
+    />
+  ) : null;
+
   return (
     <ModernDrawer
       open={open}
@@ -45,22 +65,25 @@ export function FormDrawer({
       icon={icon}
       width={width}
       widthPreset="form"
+      floatingBar={floatingBar}
       footer={
         <>
           {destructiveAction}
           <ProsohmButton buttonVariant="outlined" onClick={onClose} disabled={loading}>
             {cancelLabel}
           </ProsohmButton>
-          <ProsohmButton
-            type="submit"
-            form={formId}
-            buttonVariant="primary"
-            loading={loading}
-            disabled={submitDisabled || loading}
-            onClick={onSubmit}
-          >
-            {submitLabel}
-          </ProsohmButton>
+          {!dirty ? (
+            <ProsohmButton
+              type="submit"
+              form={formId}
+              buttonVariant="primary"
+              loading={loading}
+              disabled={submitDisabled || loading}
+              onClick={onSubmit}
+            >
+              {submitLabel}
+            </ProsohmButton>
+          ) : null}
         </>
       }
     >

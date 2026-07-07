@@ -41,13 +41,12 @@ import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
 import {
-  HealthChip,
-  ExecutionStatusChip,
   ProjectStageChip,
 } from '../components/common/StatusChip';
 import { MilestoneFormDialog } from '../components/projects/MilestoneFormDialog';
 import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
-import { AppCard, FormDrawer, FormField, PriorityBadge } from '../components/ui/design-system';
+import { AppCard, FormDrawer, FormField, PriorityBadge, StickyRecordHeader } from '../components/ui/design-system';
+import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -242,6 +241,17 @@ export function ProjectDetailPage() {
         }
       />
 
+      <StickyRecordHeader
+        toolNumber={header.tool_number}
+        partDescription={header.part_description}
+        customerName={header.customer_name}
+        executionStatus={header.execution_status}
+        dueDate={project.due_date}
+        health={header.health}
+        stickyTop={APP_TOP_BAR_OFFSET}
+        meta={<PriorityBadge priority={header.priority} />}
+      />
+
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
           { label: 'Customer', value: header.customer_name },
@@ -260,10 +270,7 @@ export function ProjectDetailPage() {
       </Grid>
 
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 3 }}>
-        <HealthChip health={header.health} />
         <ProjectStageChip stage={header.project_stage} />
-        <ExecutionStatusChip status={header.execution_status} />
-        <PriorityBadge priority={header.priority} />
       </Box>
 
       <Grid container spacing={2.5}>

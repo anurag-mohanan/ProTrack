@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Chip,
@@ -29,6 +29,7 @@ import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
   DrawerQuickActions,
+  CollapsibleFormSection,
   FormDrawer,
   FormField,
   FormSection,
@@ -36,6 +37,7 @@ import {
   ProsohmDataGrid,
   RecordDetailDrawer,
   SearchToolbar,
+  StickyRecordHeader,
   TableRowActions,
 } from '../../components/ui/design-system';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
@@ -73,6 +75,8 @@ const emptyForm: CustomerFormState = {
   project_number_prefix: '',
 };
 
+const CUSTOMER_SECTION_STORAGE_KEY = 'protrack:sections:customer-form';
+
 export default function CustomersPage() {
   const { user } = useAuth();
   const isAdmin = canDeleteRecords(user?.role_name ?? '');
@@ -89,6 +93,18 @@ export default function CustomersPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [form, setForm] = useState<CustomerFormState>(emptyForm);
+  const baselineRef = useRef('');
+
+  const serializeForm = (values: CustomerFormState) => JSON.stringify(values);
+
+  const isFormDirty = useMemo(
+    () => serializeForm(form) !== baselineRef.current,
+    [form],
+  );
+
+  const handleDiscardForm = () => {
+    setForm(JSON.parse(baselineRef.current) as CustomerFormState);
+  };
 
   const contactCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -137,6 +153,7 @@ export default function CustomersPage() {
   const openCreate = () => {
     setEditingCustomer(null);
     setForm(emptyForm);
+    baselineRef.current = serializeForm(emptyForm);
     setFormOpen(true);
   };
 
@@ -144,7 +161,7 @@ export default function CustomersPage() {
 
   const openEdit = (customer: Customer) => {
     setEditingCustomer(customer);
-    setForm({
+    const nextForm = {
       name: customer.name,
       code: customer.code ?? '',
       notes: customer.notes ?? '',
@@ -156,7 +173,9 @@ export default function CustomersPage() {
       due_date_calculation: customer.due_date_calculation ?? 'from_start',
       project_number_format: customer.project_number_format ?? '',
       project_number_prefix: customer.project_number_prefix ?? '',
-    });
+    };
+    setForm(nextForm);
+    baselineRef.current = serializeForm(nextForm);
     setFormOpen(true);
   };
 
@@ -328,6 +347,8 @@ export default function CustomersPage() {
         width={560}
         submitLabel={editingCustomer ? 'Save Changes' : 'Create Customer'}
         loading={saving}
+        dirty={isFormDirty}
+        onDiscard={handleDiscardForm}
       >
         <Box
           component="form"
@@ -336,9 +357,23 @@ export default function CustomersPage() {
             event.preventDefault();
             void handleSave();
           }}
-          sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}
         >
-          <FormSection title="General Information" icon={BusinessOutlinedIcon}>
+          <StickyRecordHeader
+            compact
+            mode={editingCustomer ? 'full' : 'draft'}
+            primaryLabel={form.name || 'New Customer'}
+            secondaryLabel={form.code ? `Code ${form.code}` : 'Customer profile'}
+            customerName={form.name || null}
+            stickyTop={0}
+          />
+
+          <CollapsibleFormSection
+            sectionId="general-information"
+            storageKey={CUSTOMER_SECTION_STORAGE_KEY}
+            title="General Information"
+            icon={BusinessOutlinedIcon}
+          >
             <Grid size={{ xs: 12 }}>
               <FormField
                 label="Name"
@@ -374,9 +409,14 @@ export default function CustomersPage() {
                 label="Active customer"
               />
             </Grid>
-          </FormSection>
+          </CollapsibleFormSection>
 
-          <FormSection title="Project Defaults" icon={BarChartOutlinedIcon}>
+          <CollapsibleFormSection
+            sectionId="project-defaults"
+            storageKey={CUSTOMER_SECTION_STORAGE_KEY}
+            title="Project Defaults"
+            icon={BarChartOutlinedIcon}
+          >
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormSelect
                 label="Default Project Type"
@@ -442,9 +482,14 @@ export default function CustomersPage() {
                 }
               />
             </Grid>
-          </FormSection>
+          </CollapsibleFormSection>
 
-          <FormSection title="Project Numbering" icon={BusinessOutlinedIcon}>
+          <CollapsibleFormSection
+            sectionId="project-numbering"
+            storageKey={CUSTOMER_SECTION_STORAGE_KEY}
+            title="Project Numbering"
+            icon={BusinessOutlinedIcon}
+          >
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormField
                 label="Number Prefix"
@@ -488,9 +533,14 @@ export default function CustomersPage() {
                 }
               />
             </Grid>
-          </FormSection>
+          </CollapsibleFormSection>
 
-          <FormSection title="Notes" icon={NotesOutlinedIcon}>
+          <CollapsibleFormSection
+            sectionId="notes"
+            storageKey={CUSTOMER_SECTION_STORAGE_KEY}
+            title="Notes"
+            icon={NotesOutlinedIcon}
+          >
             <Grid size={{ xs: 12 }}>
               <FormField
                 label="Notes"
@@ -503,7 +553,7 @@ export default function CustomersPage() {
                 }
               />
             </Grid>
-          </FormSection>
+          </CollapsibleFormSection>
         </Box>
       </FormDrawer>
 

@@ -41,6 +41,7 @@ import {
 import type { ProjectStage } from '../types';
 import { canArchiveProject, canCreateProject, canDeleteRecords } from '../utils/permissions';
 import {
+  applyKpiQuickFilter,
   countActiveSidebarFilters,
   countByExecutionStatus,
   countDueThisWeekProjects,
@@ -79,6 +80,7 @@ export function ProjectsPage() {
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
+  const [gridSessionKey, setGridSessionKey] = useState(0);
 
   useEffect(() => {
     const urlSearch = searchParams.get('search');
@@ -319,24 +321,9 @@ export function ProjectsPage() {
 
   const handleQuickFilter = useCallback(
     (filter: ProjectQuickFilter) => {
-      setAppliedFilters((current) => ({
-        ...current,
-        quickFilter: filter,
-        showArchived: filter === 'archived',
-        dueDate:
-          filter === 'overdue'
-            ? 'overdue'
-            : filter === 'due_week'
-              ? 'week'
-              : filter === 'none'
-                ? 'all'
-                : current.dueDate,
-      }));
-      setDraftFilters((current) => ({
-        ...current,
-        quickFilter: filter,
-        showArchived: filter === 'archived',
-      }));
+      setAppliedFilters((current) => applyKpiQuickFilter(current, filter));
+      setDraftFilters((current) => applyKpiQuickFilter(current, filter));
+      setGridSessionKey((key) => key + 1);
       setSearchParams({});
     },
     [setSearchParams],
@@ -508,6 +495,7 @@ export function ProjectsPage() {
                   users={usersQuery.data ?? []}
                   streams={streamsQuery.data ?? []}
                   teams={teamsQuery.data ?? []}
+                  gridSessionKey={gridSessionKey}
                   onRowOpen={(row) => navigate(`/projects/${row.id}?tab=milestones`)}
                   onEdit={setEditProject}
                   onArchive={showArchiveActions ? setArchiveId : undefined}

@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { Box, LinearProgress, Tooltip, Typography } from '@mui/material';
+import { Box, LinearProgress, Link, Tooltip, Typography } from '@mui/material';
 import RestoreRoundedIcon from '@mui/icons-material/RestoreRounded';
 import { IconButton } from '@mui/material';
 import { useTheme, type Theme } from '@mui/material/styles';
@@ -11,7 +11,6 @@ import {
   ExecutionStatusBadge,
   HealthBadge,
   HelpTooltip,
-  PriorityBadge,
   ProjectStageBadge,
 } from '../ui/design-system';
 import { ProjectRowActions } from './ProjectRowActions';
@@ -21,10 +20,10 @@ import { formatNumber } from '../../utils/format';
 import {
   calculateEAC,
   forecastVariance,
-  formatHoursVariance,
-  hoursPerformanceTone,
-  hoursUtilizationPercent,
-  hoursVariance,
+  formatHoursOverPercent,
+  hoursBurnPercent,
+  hoursUtilizationTone,
+  type HoursPerformanceTone,
 } from '../../utils/projectHoursMetrics';
 
 export interface ProjectTableRow extends Project {
@@ -44,6 +43,8 @@ interface ProjectTableProps {
   teams: Team[];
   /** Use viewport-based height for the primary live projects grid. */
   primary?: boolean;
+  /** Changes when filters change — resets pagination and sort state. */
+  gridSessionKey?: number;
   onRowOpen?: (row: ProjectTableRow) => void;
   onEdit?: (row: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
@@ -102,39 +103,13 @@ export function buildProjectTableRows(
 
 const displayOrDash = (value: unknown) => formatCellValue(value) || '—';
 
-function toneColor(tone: ReturnType<typeof hoursPerformanceTone>, palette: Theme['palette']) {
+function toneColor(tone: HoursPerformanceTone, palette: Theme['palette']) {
   if (tone === 'success') return palette.success.main;
   if (tone === 'warning') return palette.warning.main;
   return palette.error.main;
 }
 
-function HoursValueCell({ value }: { value: number }) {
-  return (
-    <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-      {formatNumber(value, 0)}
-    </Typography>
-  );
-}
-
-function VarianceCell({ actual, quoted }: { actual: number; quoted: number }) {
-  const theme = useTheme();
-  const variance = hoursVariance(actual, quoted);
-  const tone = hoursPerformanceTone(actual, quoted);
-  return (
-    <Typography
-      sx={{
-        fontSize: '0.75rem',
-        fontWeight: 800,
-        fontVariantNumeric: 'tabular-nums',
-        color: toneColor(tone, theme.palette),
-      }}
-    >
-      {formatHoursVariance(variance, 0)}
-    </Typography>
-  );
-}
-
-function HoursProgressCell({
+function HoursComparisonCell({
   actual,
   quoted,
   progressPercent,
@@ -144,65 +119,64 @@ function HoursProgressCell({
   progressPercent: number;
 }) {
   const theme = useTheme();
-  const utilization = hoursUtilizationPercent(actual, quoted);
-  const tone = hoursPerformanceTone(actual, quoted);
-  const barColor = toneColor(tone, theme.palette);
+  const burnPct = hoursBurnPercent(actual, quoted);
+  const tone = hoursUtilizationTone(actual, quoted);
+  const accent = toneColor(tone, theme.palette);
+  const overLabel = formatHoursOverPercent(actual, quoted);
+  const barValue = actual <= quoted ? Math.min(100, burnPct) : 100;
   const eac = calculateEAC(actual, progressPercent);
   const forecast = forecastVariance(actual, quoted, progressPercent);
 
-  const tooltipLines = [
-    `Quoted: ${formatNumber(quoted, 0)} hrs`,
-    `Actual: ${formatNumber(actual, 0)} hrs`,
-    `Milestone progress: ${formatNumber(progressPercent, 0)}%`,
-  ];
-  if (eac != null) {
-    tooltipLines.push(`Projected final: ${formatNumber(eac, 0)} hrs`);
-  }
-  if (forecast != null) {
-    tooltipLines.push(`Forecast variance: ${formatHoursVariance(forecast, 0)} hrs`);
-  }
+  const tooltipParts = [`Quoted: ${formatNumber(quoted, 0)}`, `Actual: ${formatNumber(actual, 0)}`];
+  if (eac != null) tooltipParts.push(`Projected: ${formatNumber(eac, 0)}`);
+  if (forecast != null) tooltipParts.push(`Forecast: ${formatNumber(forecast, 0)}`);
 
   return (
-    <Tooltip title={tooltipLines.join(' · ')}>
-      <Box sx={{ width: '100%', minWidth: 88, py: 0.25 }}>
+    <Tooltip title={tooltipParts.join(' · ')}>
+      <Box sx={{ width: '100%', minWidth: 76, py: 0.15 }}>
         <Typography
           sx={{
             fontSize: '0.7rem',
             fontWeight: 700,
-            lineHeight: 1.2,
+            lineHeight: 1.15,
             fontVariantNumeric: 'tabular-nums',
-            mb: 0.25,
           }}
         >
-          {formatNumber(actual, 0)} / {formatNumber(quoted, 0)} hrs
+          {formatNumber(actual, 0)} / {formatNumber(quoted, 0)}
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, mt: 0.2 }}>
           <LinearProgress
             variant="determinate"
-            value={utilization}
+            value={barValue}
             sx={{
               flex: 1,
-              height: 4,
+              height: 3,
               borderRadius: designTokens.radius.pill,
               bgcolor: designTokens.semantic.neutralSoft,
               '& .MuiLinearProgress-bar': {
                 borderRadius: designTokens.radius.pill,
-                bgcolor: barColor,
+                bgcolor: accent,
               },
             }}
           />
           <Typography
             sx={{
               fontSize: '0.65rem',
-              fontWeight: 700,
-              color: 'text.secondary',
-              minWidth: 28,
+              fontWeight: 800,
+              color: accent,
+              minWidth: 30,
               fontVariantNumeric: 'tabular-nums',
+              lineHeight: 1,
             }}
           >
-            {formatNumber(utilization, 0)}%
+            {formatNumber(Math.round(burnPct), 0)}%
           </Typography>
         </Box>
+        {overLabel ? (
+          <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: accent, lineHeight: 1.1 }}>
+            {overLabel}
+          </Typography>
+        ) : null}
       </Box>
     </Tooltip>
   );
@@ -211,15 +185,15 @@ function HoursProgressCell({
 function ProgressCell({ value }: { value: number }) {
   const pct = Math.min(100, Math.max(0, Number(value) || 0));
   return (
-    <Box sx={{ width: '100%', minWidth: 64 }}>
-      <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, lineHeight: 1.2, mb: 0.25 }}>
+    <Box sx={{ width: '100%', minWidth: 56 }}>
+      <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, lineHeight: 1.15, mb: 0.15 }}>
         {formatNumber(pct, 0)}%
       </Typography>
       <LinearProgress
         variant="determinate"
         value={pct}
         sx={{
-          height: 4,
+          height: 3,
           borderRadius: designTokens.radius.pill,
           bgcolor: designTokens.semantic.neutralSoft,
           '& .MuiLinearProgress-bar': {
@@ -240,45 +214,58 @@ function ProgressCell({ value }: { value: number }) {
 function buildColumns(
   handlers: Pick<
     ProjectTableProps,
-    'onEdit' | 'onArchive' | 'onDuplicate' | 'onExport' | 'onDelete' | 'onRestore' | 'canDelete'
+    'onEdit' | 'onArchive' | 'onDuplicate' | 'onExport' | 'onDelete' | 'onRestore' | 'canDelete' | 'onRowOpen'
   >,
 ): GridColDef<ProjectTableRow>[] {
   const baseColumns: GridColDef<ProjectTableRow>[] = [
     {
       field: 'tool_number',
-      headerName: 'Tool No.',
-      width: 96,
-      minWidth: 88,
+      headerName: 'Tool Number',
+      width: 100,
+      minWidth: 92,
       renderHeader: () => (
         <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
-          Tool No.
-          <HelpTooltip title="Customer tool or mold number used to uniquely identify the project." />
+          Tool Number
+          <HelpTooltip title="Customer tool or mold number — primary project identifier." />
         </Box>
       ),
       renderCell: (params) => (
-        <Box sx={{ fontWeight: 800, color: designTokens.semantic.primary, fontSize: '0.8rem' }}>
+        <Link
+          component="button"
+          type="button"
+          underline="hover"
+          onClick={(event) => {
+            event.stopPropagation();
+            handlers.onRowOpen?.(params.row);
+          }}
+          sx={{
+            fontWeight: 800,
+            fontSize: '0.8rem',
+            color: designTokens.semantic.primary,
+            textAlign: 'left',
+            cursor: 'pointer',
+            p: 0,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
           {params.value}
-        </Box>
+        </Link>
       ),
-    },
-    {
-      field: 'part_description',
-      headerName: 'Part',
-      flex: 1.4,
-      minWidth: 180,
-      valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'customerName',
       headerName: 'Customer',
       flex: 1,
-      minWidth: 150,
+      minWidth: 130,
       renderCell: (params) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-          <EntityAvatar label={String(params.value || '?')} size={22} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+          <EntityAvatar label={String(params.value || '?')} size={20} />
           <Box
             component="span"
-            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.8rem' }}
+            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.78rem' }}
           >
             {displayOrDash(params.value)}
           </Box>
@@ -286,39 +273,23 @@ function buildColumns(
       ),
     },
     {
-      field: 'quoted_hours',
-      headerName: 'Quoted',
-      width: 72,
-      align: 'right',
-      headerAlign: 'right',
-      renderCell: (params) => <HoursValueCell value={Number(params.value)} />,
-    },
-    {
-      field: 'actual_hours',
-      headerName: 'Actual',
-      width: 72,
-      align: 'right',
-      headerAlign: 'right',
-      renderCell: (params) => <HoursValueCell value={Number(params.value)} />,
-    },
-    {
-      field: 'hours_variance',
-      headerName: 'Variance',
-      width: 80,
-      align: 'right',
-      headerAlign: 'right',
-      valueGetter: (_value, row) => hoursVariance(Number(row.actual_hours), Number(row.quoted_hours)),
+      field: 'hours_comparison',
+      headerName: 'Hours',
+      width: 108,
+      sortable: true,
+      valueGetter: (_value, row) => hoursBurnPercent(Number(row.actual_hours), Number(row.quoted_hours)),
       renderCell: (params) => (
-        <VarianceCell
+        <HoursComparisonCell
           actual={Number(params.row.actual_hours)}
           quoted={Number(params.row.quoted_hours)}
+          progressPercent={Number(params.row.progress_percent)}
         />
       ),
     },
     {
       field: 'project_stage',
-      headerName: 'Stage',
-      width: 112,
+      headerName: 'Current Stage',
+      width: 118,
       renderCell: (params) => {
         const row = params.row;
         if (row.is_archived) return <ProjectStageBadge stage="preliminary" />;
@@ -330,8 +301,8 @@ function buildColumns(
     },
     {
       field: 'execution_status',
-      headerName: 'Status',
-      width: 120,
+      headerName: 'Project Status',
+      width: 128,
       renderCell: (params) => (
         <Tooltip title="Current execution state for planning, delivery, and reporting.">
           <Box component="span">
@@ -341,54 +312,9 @@ function buildColumns(
       ),
     },
     {
-      field: 'due_date',
-      headerName: 'Due Date',
-      width: 96,
-      valueFormatter: (value) => formatDate(String(value)) || '—',
-    },
-    {
-      field: 'hours_progress',
-      headerName: 'Hours',
-      width: 128,
-      sortable: false,
-      valueGetter: (_value, row) =>
-        hoursUtilizationPercent(Number(row.actual_hours), Number(row.quoted_hours)),
-      renderCell: (params) => (
-        <HoursProgressCell
-          actual={Number(params.row.actual_hours)}
-          quoted={Number(params.row.quoted_hours)}
-          progressPercent={Number(params.row.progress_percent)}
-        />
-      ),
-    },
-    {
-      field: 'progress_percent',
-      headerName: 'Progress',
-      width: 88,
-      renderCell: (params) => (
-        <Tooltip title="Completion percentage based on milestone progress.">
-          <Box sx={{ width: '100%' }}>
-            <ProgressCell value={Number(params.value)} />
-          </Box>
-        </Tooltip>
-      ),
-    },
-    {
-      field: 'designerName',
-      headerName: 'Designer',
-      width: 108,
-      valueFormatter: (value) => displayOrDash(value),
-    },
-    {
       field: 'health',
       headerName: 'Health',
-      width: 96,
-      renderHeader: () => (
-        <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
-          Health
-          <HelpTooltip title="Current overall health of the project based on progress, due dates, and milestones." />
-        </Box>
-      ),
+      width: 88,
       renderCell: (params) => (
         <Tooltip title="Project health summarizes progress, timeline risk, and execution quality.">
           <Box component="span">
@@ -398,19 +324,31 @@ function buildColumns(
       ),
     },
     {
-      field: 'priority',
-      headerName: 'Priority',
+      field: 'designerName',
+      headerName: 'Designer',
+      width: 100,
+      valueFormatter: (value) => displayOrDash(value),
+    },
+    {
+      field: 'surfacerName',
+      headerName: 'Surfacer',
+      width: 100,
+      valueFormatter: (value) => displayOrDash(value),
+    },
+    {
+      field: 'due_date',
+      headerName: 'Due Date',
       width: 92,
-      renderHeader: () => (
-        <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
-          Priority
-          <HelpTooltip title="Higher priority projects are highlighted in planning and dashboards." />
-        </Box>
-      ),
+      valueFormatter: (value) => formatDate(String(value)) || '—',
+    },
+    {
+      field: 'progress_percent',
+      headerName: 'Progress',
+      width: 80,
       renderCell: (params) => (
-        <Tooltip title="Priority influences planning focus and workload balancing.">
-          <Box component="span">
-            <PriorityBadge priority={params.value ?? 'medium'} />
+        <Tooltip title="Completion percentage based on milestone progress.">
+          <Box sx={{ width: '100%' }}>
+            <ProgressCell value={Number(params.value)} />
           </Box>
         </Tooltip>
       ),
@@ -423,7 +361,7 @@ function buildColumns(
   const actionColumn: GridColDef<ProjectTableRow> = {
     field: 'actions',
     headerName: '',
-    width: 108,
+    width: 96,
     sortable: false,
     filterable: false,
     disableColumnMenu: true,
@@ -459,7 +397,7 @@ function buildColumns(
   return [...baseColumns, actionColumn];
 }
 
-const LIVE_TABLE_HEIGHT = 'calc(100vh - 300px)';
+const LIVE_TABLE_HEIGHT = 'calc(100vh - 268px)';
 const COMPLETED_TABLE_HEIGHT = 360;
 const PAGE_SIZE = 25;
 
@@ -470,6 +408,7 @@ function ProjectTableComponent({
   streams,
   teams,
   primary = false,
+  gridSessionKey = 0,
   onRowOpen,
   onEdit,
   onArchive,
@@ -496,8 +435,9 @@ function ProjectTableComponent({
         onDelete,
         onRestore,
         canDelete,
+        onRowOpen,
       }),
-    [canDelete, onArchive, onDelete, onDuplicate, onEdit, onExport, onRestore],
+    [canDelete, onArchive, onDelete, onDuplicate, onEdit, onExport, onRestore, onRowOpen],
   );
 
   const tableHeight = primary
@@ -508,6 +448,7 @@ function ProjectTableComponent({
 
   return (
     <ProsohmDataGrid
+      key={`project-grid-${gridSessionKey}`}
       rows={rows}
       columns={columns}
       pinLeftFields={['tool_number']}
@@ -517,7 +458,7 @@ function ProjectTableComponent({
         tableHeight
           ? {
               height: tableHeight,
-              minHeight: 320,
+              minHeight: 360,
               '& .MuiDataGrid-main': { overflow: 'hidden' },
               '& .MuiDataGrid-virtualScroller': { overflow: 'auto !important' },
               '& .MuiDataGrid-columnHeaders': {
@@ -532,11 +473,12 @@ function ProjectTableComponent({
       pageSizeOptions={[25, 50, 100]}
       disableColumnMenu={false}
       initialState={{
+        sorting: { sortModel: [] },
         columns: {
           columnVisibilityModel: {
             teamName: false,
             designLeaderName: false,
-            surfacerName: false,
+            part_description: false,
             current_milestone: false,
           },
         },

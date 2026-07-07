@@ -489,3 +489,34 @@ export function getProjectActiveFilterChips(
 
   return chips;
 }
+
+/** Apply a KPI / quick-filter chip selection with consistent, non-stale filter state. */
+export function applyKpiQuickFilter(
+  current: ProjectCommandCenterFilters,
+  filter: ProjectQuickFilter,
+): ProjectCommandCenterFilters {
+  if (filter === 'none') {
+    return {
+      ...current,
+      quickFilter: 'none',
+      showArchived: false,
+      dueDate: 'all',
+    };
+  }
+
+  const next: ProjectCommandCenterFilters = {
+    ...current,
+    quickFilter: filter,
+    showArchived: filter === 'archived',
+    dueDate: 'all',
+  };
+
+  if (filter === 'overdue') {
+    return { ...next, dueDate: 'overdue' };
+  }
+  if (filter === 'due_week') {
+    return { ...next, dueDate: 'week' };
+  }
+
+  return next;
+}

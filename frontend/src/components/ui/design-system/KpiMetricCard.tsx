@@ -57,27 +57,43 @@ export function KpiMetricCard({
         onClick={onClick}
         elevation={0}
         sx={{
-          minHeight: 68,
+          position: 'relative',
+          minHeight: 56,
+          height: '100%',
           cursor: onClick ? 'pointer' : 'default',
           borderRadius: `${designTokens.radius.lg}px`,
           boxShadow: selected ? designTokens.elevation.cardHover : designTokens.elevation.card,
-          border: '1px solid',
+          border: '1.5px solid',
           borderColor: selected ? 'primary.main' : 'divider',
-          bgcolor: selected ? alpha(theme.palette.primary.main, 0.04) : designTokens.semantic.card,
-          transition: `box-shadow ${designTokens.motion.normal}, border-color ${designTokens.motion.fast}`,
+          bgcolor: selected ? alpha(theme.palette.primary.main, 0.08) : designTokens.semantic.card,
+          transition: `box-shadow ${designTokens.motion.normal}, border-color ${designTokens.motion.normal}, background-color ${designTokens.motion.normal}`,
+          overflow: 'hidden',
           '&:hover': onClick
             ? {
                 boxShadow: designTokens.elevation.cardHover,
+                borderColor: selected ? 'primary.main' : alpha(theme.palette.primary.main, 0.35),
+              }
+            : undefined,
+          '&::after': selected
+            ? {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 3,
+                bgcolor: 'primary.main',
+                transition: `opacity ${designTokens.motion.fast}`,
               }
             : undefined,
         }}
       >
-        <CardContent sx={{ p: '10px 12px !important', height: '100%' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+        <CardContent sx={{ p: '8px 10px !important', height: '100%' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
             <Box
               sx={{
-                width: 22,
-                height: 22,
+                width: 18,
+                height: 18,
                 borderRadius: `${designTokens.radius.sm}px`,
                 display: 'grid',
                 placeItems: 'center',
@@ -86,17 +102,18 @@ export function KpiMetricCard({
                 flexShrink: 0,
               }}
             >
-              <Icon sx={{ fontSize: 14 }} />
+              <Icon sx={{ fontSize: 12 }} />
             </Box>
             <Typography
               sx={{
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: 600,
-                color: 'text.secondary',
+                color: selected ? 'primary.main' : 'text.secondary',
                 letterSpacing: '0.01em',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
+                transition: `color ${designTokens.motion.fast}`,
               }}
             >
               {title}
@@ -112,8 +129,8 @@ export function KpiMetricCard({
                   flexShrink: 0,
                 }}
               >
-                <TrendIcon sx={{ fontSize: 14 }} />
-                <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                <TrendIcon sx={{ fontSize: 12 }} />
+                <Typography variant="caption" sx={{ fontWeight: 700, fontSize: 10 }}>
                   {trend.value}
                 </Typography>
               </Box>
@@ -121,11 +138,13 @@ export function KpiMetricCard({
           </Box>
           <Typography
             sx={{
-              fontSize: 24,
+              fontSize: 20,
               fontWeight: 800,
               lineHeight: 1.1,
               letterSpacing: '-0.03em',
-              mt: 0.5,
+              mt: 0.25,
+              color: selected ? 'primary.dark' : 'text.primary',
+              transition: `color ${designTokens.motion.fast}`,
             }}
           >
             {value}

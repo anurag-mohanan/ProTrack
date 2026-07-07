@@ -51,7 +51,7 @@ export function ProjectKpiBar({
     },
     {
       key: 'completed_month' as const,
-      title: 'Completed This Month',
+      title: 'Completed',
       value: unavailable ? '—' : formatNumber(summary!.completed_this_month ?? 0, 0),
       icon: TaskAltIcon,
       accent: !unavailable && (summary!.completed_this_month ?? 0) > 0 ? ('success' as const) : undefined,
@@ -62,29 +62,29 @@ export function ProjectKpiBar({
   return (
     <Box
       sx={{
-        display: 'grid',
-        gridTemplateColumns: {
-          xs: 'repeat(2, minmax(0, 1fr))',
-          sm: 'repeat(2, minmax(0, 1fr))',
-          lg: 'repeat(4, minmax(0, 1fr))',
-        },
-        gap: 1,
-        mb: 1,
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'stretch',
+        gap: 0.75,
+        mb: 0.75,
       }}
     >
       {countKpis.map((kpi) => (
-        <KpiMetricCard
-          key={kpi.key}
-          title={kpi.title}
-          value={kpi.value}
-          icon={kpi.icon}
-          accent={kpi.accent}
-          dense
-          onClick={kpi.onClick}
-          selected={activeFilter === kpi.key}
-        />
+        <Box key={kpi.key} sx={{ flex: '1 1 140px', maxWidth: 168, minWidth: 120 }}>
+          <KpiMetricCard
+            title={kpi.title}
+            value={kpi.value}
+            icon={kpi.icon}
+            accent={kpi.accent}
+            dense
+            onClick={kpi.onClick}
+            selected={activeFilter === kpi.key}
+          />
+        </Box>
       ))}
-      <ProjectHoursPerformanceCard summary={summary} loading={loading} />
+      <Box sx={{ flex: '0 0 auto' }}>
+        <ProjectHoursPerformanceCard summary={summary} loading={loading} />
+      </Box>
     </Box>
   );
 }

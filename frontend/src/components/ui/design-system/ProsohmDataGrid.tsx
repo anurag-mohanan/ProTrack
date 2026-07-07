@@ -33,8 +33,8 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
   const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
   const pinnedSx = useMemo(() => pinnedDataGridColumnSx(theme), [theme]);
   const compactPreference = preferences?.table_density === 'compact';
-  const rowHeight = dense ? 40 : compactPreference ? 44 : 52;
-  const headerHeight = dense ? 38 : compactPreference ? 42 : 48;
+  const rowHeight = dense ? 42 : compactPreference ? 44 : 52;
+  const headerHeight = dense ? 40 : compactPreference ? 42 : 48;
   const persistedPageSize = Number(window.localStorage.getItem(pageSizeStorageKey) ?? 0);
   const defaultOption = props.pageSizeOptions?.[0];
   const fallbackPageSize =
@@ -91,16 +91,16 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
           dense
             ? {
                 '& .MuiDataGrid-row': {
+                  minHeight: '42px !important',
+                  maxHeight: '42px !important',
+                },
+                '& .MuiDataGrid-columnHeaders': {
                   minHeight: '40px !important',
                   maxHeight: '40px !important',
                 },
-                '& .MuiDataGrid-columnHeaders': {
-                  minHeight: '38px !important',
-                  maxHeight: '38px !important',
-                },
                 '& .MuiDataGrid-cell': {
-                  py: 0.5,
-                  fontSize: '0.8rem',
+                  py: 0.35,
+                  fontSize: '0.78rem',
                 },
               }
             : undefined,

@@ -22,6 +22,7 @@ interface ProjectListSectionProps {
   defaultExpanded?: boolean;
   collapsible?: boolean;
   primary?: boolean;
+  gridSessionKey?: number;
   onRowOpen?: (row: ProjectTableRow) => void;
   onEdit?: (row: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
@@ -42,6 +43,7 @@ export function ProjectListSection({
   defaultExpanded = true,
   collapsible = false,
   primary = false,
+  gridSessionKey = 0,
   onRowOpen,
   onEdit,
   onArchive,
@@ -63,6 +65,7 @@ export function ProjectListSection({
           streams={streams}
           teams={teams}
           primary={primary}
+          gridSessionKey={gridSessionKey}
           onRowOpen={onRowOpen}
           onEdit={onEdit}
           onArchive={onArchive}

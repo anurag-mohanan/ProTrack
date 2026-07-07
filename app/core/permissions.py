@@ -173,10 +173,51 @@ def can_update_project(db: Session, user: User, project: Project) -> bool:
 
 def can_write_milestones(db: Session, user: User, project: Project) -> bool:
     role_name = get_role_name(db, user)
-    if role_name in FULL_ACCESS_ROLES | {DESIGN_LEADER}:
+    if role_name in FULL_ACCESS_ROLES | {DESIGN_LEADER, LEGACY_PROJECT_MANAGER}:
         return can_read_project(db, user, project)
     if role_name in ASSIGNED_PROJECT_ROLES:
         return is_assigned_to_project(project, user.id)
+    return False
+
+
+def _is_team_leader_for_project(db: Session, user: User, project: Project) -> bool:
+    if project.team_id is None:
+        return False
+    from app.models.models import Team
+
+    team = db.get(Team, project.team_id)
+    return team is not None and team.team_lead_id == user.id
+
+
+def can_edit_milestone(
+    db: Session,
+    user: User,
+    project: Project,
+    milestone_row: "Milestone | None" = None,
+) -> bool:
+    if can_write_milestones(db, user, project):
+        return True
+    if milestone_row is None:
+        return _is_team_leader_for_project(db, user, project)
+    if _is_team_leader_for_project(db, user, project):
+        if milestone_row.assigned_user_id == user.id:
+            return True
+        return milestone_row.assigned_user_id is not None
+    return False
+
+
+def can_update_milestone_progress(
+    db: Session,
+    user: User,
+    project: Project,
+    milestone_row: "Milestone",
+) -> bool:
+    if can_edit_milestone(db, user, project, milestone_row):
+        return True
+    if milestone_row.assigned_user_id == user.id:
+        return can_read_project(db, user, project)
+    if is_assigned_to_project(project, user.id):
+        return can_read_project(db, user, project)
     return False
 
 

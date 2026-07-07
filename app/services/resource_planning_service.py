@@ -267,7 +267,11 @@ def get_resource_planning_grid(
         hours = project_hours.get(project.id)
         if hours is None:
             continue
-        remaining = max(hours.remaining, Decimal("0"))
+        planned_total = _decimal(project.current_planned_hours)
+        if planned_total > 0:
+            remaining = max(planned_total - hours.actual, Decimal("0"))
+        else:
+            remaining = max(hours.remaining, Decimal("0"))
         spread_end = max(project.due_date, today)
         business_days = _remaining_business_days(today, spread_end, holidays)
         project_daily_rates[project.id] = (remaining, business_days)

@@ -11,7 +11,7 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { LoginPage } from './pages/LoginPage';
-import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import { ProjectWorkspacePage } from './components/projects/workspace/ProjectWorkspace';
 import { ArchivedProjectsPage } from './pages/ArchivedProjectsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -153,7 +153,7 @@ export default function App() {
                     </Route>
                     <Route element={<ModuleRoute module={MODULE_PROJECTS} />}>
                       <Route path="/projects" element={<ProjectsPage />} />
-                      <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                      <Route path="/projects/:id" element={<ProjectWorkspacePage />} />
                     </Route>
                     <Route element={<ModuleRoute module={MODULE_TIMESHEETS} />}>
                       <Route path="/timesheets" element={<TimesheetsPage />} />

@@ -14,6 +14,7 @@ from app.db.project_template_seed import ensure_project_types_and_templates
 from app.db.phase7_schema_sync import ensure_phase7_foundation
 from app.db.phase8_schema_sync import ensure_phase8_foundation
 from app.db.phase9_schema_sync import ensure_phase9_foundation
+from app.db.phase10_milestone_schema_sync import ensure_phase10_milestone_foundation
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
     ensure_phase7_foundation(engine)
     ensure_phase8_foundation(engine)
     ensure_phase9_foundation(engine)
+    ensure_phase10_milestone_foundation(engine)
     ensure_performance_indexes(engine)
     if ENABLE_DEMO_SEED:
         ensure_design_team(engine)

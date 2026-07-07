@@ -1,0 +1,210 @@
+import { useMemo } from 'react';
+import { Box, Tab, Tabs, Typography } from '@mui/material';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
+import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
+import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
+import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
+import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import { PageContainer } from '../../common/PageContainer';
+import { LoadingState } from '../../common/LoadingState';
+import { ErrorState } from '../../common/ErrorState';
+import { StickyRecordHeader } from '../../ui/design-system';
+import { ProsohmButton } from '../../ui/ProsohmButton';
+import { APP_TOP_BAR_OFFSET } from '../../ui/design-system/StickyRecordHeader';
+import { commandCenterQueryKeys, fetchProjectCommandCenter } from '../../../api/commandCenter';
+import { ProjectMilestoneGrid } from './ProjectMilestoneGrid';
+import { WorkflowTimeline } from '../../command-center/WorkflowTimeline';
+import { useAuth } from '../../../context/AuthContext';
+import { ROLES } from '../../../utils/permissions';
+import { formatDisplayValue } from '../../../utils/format';
+import { getProjectActivities } from '../../../services/notificationService';
+import type { Activity } from '../../../types';
+
+const TABS = [
+  { id: 'overview', label: 'Overview', icon: FolderRoundedIcon },
+  { id: 'milestones', label: 'Milestones', icon: FlagRoundedIcon },
+  { id: 'team', label: 'Team', icon: GroupsRoundedIcon },
+  { id: 'timesheets', label: 'Timesheets', icon: ScheduleRoundedIcon },
+  { id: 'activity', label: 'Activity Log', icon: HistoryRoundedIcon },
+  { id: 'files', label: 'Files', icon: InsertDriveFileOutlinedIcon },
+] as const;
+
+type WorkspaceTab = (typeof TABS)[number]['id'];
+
+function tabFromParam(value: string | null): WorkspaceTab {
+  if (value && TABS.some((tab) => tab.id === value)) {
+    return value as WorkspaceTab;
+  }
+  return 'milestones';
+}
+
+interface ProjectWorkspaceProps {
+  projectId: string;
+}
+
+export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = tabFromParam(searchParams.get('tab'));
+  const { user } = useAuth();
+
+  const query = useQuery({
+    queryKey: commandCenterQueryKeys.detail(projectId),
+    queryFn: () => fetchProjectCommandCenter(projectId),
+  });
+
+  const activityQuery = useQuery({
+    queryKey: ['activities', 'project', projectId],
+    queryFn: () => getProjectActivities(projectId),
+    enabled: tab === 'activity',
+  });
+
+  const roleName = user?.role_name ?? '';
+  const canEditMilestones = (
+    [
+      ROLES.ADMIN,
+      ROLES.ENGINEERING_MANAGER,
+      ROLES.PROJECT_MANAGER,
+      ROLES.DESIGN_LEADER,
+    ] as string[]
+  ).includes(roleName);
+  const canEditProgress =
+    canEditMilestones ||
+    (
+      [
+        ROLES.SENIOR_DESIGNER,
+        ROLES.DESIGNER,
+        ROLES.JUNIOR_DESIGNER,
+        ROLES.SURFACER,
+      ] as string[]
+    ).includes(roleName);
+
+  const subtitle = useMemo(() => {
+    if (!query.data) return '';
+    const project = query.data.project;
+    return `${formatDisplayValue(project.customer_name)} · ${formatDisplayValue(project.tool_number)}`;
+  }, [query.data]);
+
+  if (query.isLoading) return <LoadingState message="Loading project workspace…" />;
+  if (query.error) return <ErrorState error={query.error} />;
+  if (!query.data) return null;
+
+  const { project, timeline } = query.data;
+
+  return (
+    <PageContainer>
+      <StickyRecordHeader
+        primaryLabel={project.part_description}
+        secondaryLabel={subtitle}
+        stickyTop={APP_TOP_BAR_OFFSET}
+        toolNumber={project.tool_number}
+        customerName={project.customer_name}
+        executionStatus={project.execution_status}
+        dueDate={project.due_date}
+        health={project.health}
+        compact
+        meta={
+          <Typography variant="caption" color="text.secondary">
+            Quoted {project.quoted_hours}h
+          </Typography>
+        }
+      />
+
+      <ProsohmButton buttonVariant="outlined" size="small" sx={{ mb: 1.5 }} onClick={() => navigate('/projects')}>
+        Back to projects
+      </ProsohmButton>
+
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, value: WorkspaceTab) => setSearchParams({ tab: value })}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          {TABS.map((item) => (
+            <Tab key={item.id} value={item.id} label={item.label} />
+          ))}
+        </Tabs>
+      </Box>
+
+      {tab === 'overview' ? (
+        <Box>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+            Execution timeline
+          </Typography>
+          <WorkflowTimeline steps={timeline} />
+        </Box>
+      ) : null}
+
+      {tab === 'milestones' ? (
+        <ProjectMilestoneGrid
+          projectId={projectId}
+          canEdit={canEditMilestones}
+          canEditProgress={canEditProgress}
+        />
+      ) : null}
+
+      {tab === 'team' ? (
+        <Box sx={{ display: 'grid', gap: 1, maxWidth: 480 }}>
+          <Typography variant="body2">Design Leader: {formatDisplayValue(project.design_leader_name)}</Typography>
+          <Typography variant="body2">Designer: {formatDisplayValue(project.designer_name)}</Typography>
+          <Typography variant="body2">Surfacer: {formatDisplayValue(project.surfacer_name)}</Typography>
+          <Typography variant="body2">Team: {formatDisplayValue(project.team_name)}</Typography>
+        </Box>
+      ) : null}
+
+      {tab === 'timesheets' ? (
+        <Typography variant="body2" color="text.secondary">
+          Timesheet entries for this project are available from the Timesheets module. Milestone-level
+          hours roll up automatically from logged time.
+        </Typography>
+      ) : null}
+
+      {tab === 'activity' ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {(activityQuery.data ?? []).length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No activity recorded yet.
+            </Typography>
+          ) : (
+            (activityQuery.data ?? []).map((entry: Activity) => (
+              <Box
+                key={entry.id}
+                sx={{
+                  py: 1,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {entry.action.replaceAll('_', ' ')}
+                  {entry.user_name ? ` · ${entry.user_name}` : ''}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {entry.created_at}
+                  {entry.old_value || entry.new_value
+                    ? ` · ${entry.old_value ?? ''} → ${entry.new_value ?? ''}`
+                    : ''}
+                </Typography>
+              </Box>
+            ))
+          )}
+        </Box>
+      ) : null}
+
+      {tab === 'files' ? (
+        <Typography variant="body2" color="text.secondary">
+          File attachments per milestone will be available in a future release.
+        </Typography>
+      ) : null}
+    </PageContainer>
+  );
+}
+
+export function ProjectWorkspacePage() {
+  const { id = '' } = useParams();
+  return <ProjectWorkspace projectId={id} />;
+}

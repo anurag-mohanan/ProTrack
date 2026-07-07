@@ -3,6 +3,7 @@ import {
   Box,
   Typography,
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import { designTokens } from '../theme/designTokens';
 import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
 import AddIcon from '@mui/icons-material/Add';
@@ -58,6 +59,7 @@ import {
 } from '../utils/projectCommandCenter';
 
 export function ProjectsPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
@@ -505,7 +507,7 @@ export function ProjectsPage() {
                   users={usersQuery.data ?? []}
                   streams={streamsQuery.data ?? []}
                   teams={teamsQuery.data ?? []}
-                  onRowOpen={setSelectedProject}
+                  onRowOpen={(projectId) => navigate(`/projects/${projectId}?tab=milestones`)}
                   onEdit={setEditProject}
                   onArchive={showArchiveActions ? setArchiveId : undefined}
                   onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
@@ -528,7 +530,7 @@ export function ProjectsPage() {
                   teams={teamsQuery.data ?? []}
                   defaultExpanded={false}
                   collapsible
-                  onRowOpen={setSelectedProject}
+                  onRowOpen={(projectId) => navigate(`/projects/${projectId}?tab=milestones`)}
                   onEdit={setEditProject}
                   onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
                   onExport={handleExport}

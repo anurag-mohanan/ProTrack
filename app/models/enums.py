@@ -24,7 +24,10 @@ class ProjectHealth(enum.Enum):
 class MilestoneStatus(enum.Enum):
     not_started = "not_started"
     in_progress = "in_progress"
+    waiting = "waiting"
+    on_hold = "on_hold"
     completed = "completed"
+    cancelled = "cancelled"
     not_applicable = "not_applicable"
 
 
@@ -97,6 +100,10 @@ class ActivityAction(enum.Enum):
     project_restored_from_deleted = "project_restored_from_deleted"
     milestone_completed = "milestone_completed"
     milestone_reopened = "milestone_reopened"
+    milestone_created = "milestone_created"
+    milestone_updated = "milestone_updated"
+    milestone_deleted = "milestone_deleted"
+    milestone_reordered = "milestone_reordered"
     timesheet_submitted = "timesheet_submitted"
     timesheet_approved = "timesheet_approved"
     timesheet_rejected = "timesheet_rejected"

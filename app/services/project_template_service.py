@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -166,8 +167,12 @@ def create_milestones_from_template(
                 status=MilestoneStatus.not_started,
                 sort_order=template_milestone.sort_order,
                 due_date=due_date,
+                planned_hours=template_milestone.estimated_hours or Decimal("0"),
             )
         )
+    from app.services.milestone_workspace_service import recalculate_project_planned_hours
+
+    recalculate_project_planned_hours(db, project.id)
 
 
 def template_is_in_use(db: Session, template_id: UUID) -> bool:

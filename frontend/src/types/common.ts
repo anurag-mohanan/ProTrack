@@ -19,8 +19,21 @@ export type ProjectStatus = ExecutionStatus;
 export type MilestoneStatus =
   | 'not_started'
   | 'in_progress'
+  | 'waiting'
+  | 'on_hold'
   | 'completed'
+  | 'cancelled'
   | 'not_applicable';
+
+export const MILESTONE_STATUS_LABELS: Record<MilestoneStatus, string> = {
+  not_started: 'Not Started',
+  in_progress: 'In Progress',
+  waiting: 'Waiting',
+  on_hold: 'On Hold',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  not_applicable: 'N/A',
+};
 
 export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 

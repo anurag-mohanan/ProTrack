@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from collections import defaultdict
@@ -49,6 +50,8 @@ from app.services.non_productive_entry_service import build_np_timesheet_entry
 
 MASTER_UPLOAD_DIR = Path(gettempdir()) / "protrack_master_timesheet_imports"
 BATCH_COMMIT_SIZE = 500
+PROGRESS_LOG_EVERY_ROWS = 10
+logger = logging.getLogger(__name__)
 
 MASTER_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
     "designer": ("designer",),
@@ -164,11 +167,14 @@ def _format_date_range(date_from: date | None, date_to: date | None) -> str | No
 
 
 def parse_master_workbook_bytes(content: bytes, *, db: Session | None = None) -> list[MasterRow]:
+    logger.info("Workbook opening from bytes size=%s", len(content))
     workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
     try:
+        logger.info("Workbook opened successfully.")
         sheet = workbook.active
         if sheet is None:
             raise ValueError("Workbook has no active worksheet.")
+        logger.info("Worksheet found title=%s", sheet.title)
 
         header_map: dict[str, int] | None = None
         header_row = 1
@@ -185,6 +191,7 @@ def parse_master_workbook_bytes(content: bytes, *, db: Session | None = None) ->
                 continue
         if header_map is None:
             raise ValueError("Could not locate header row in master workbook.")
+        logger.info("Header row detected at row=%s", header_row)
 
         def read_col(values: list[object], field: str) -> object | None:
             idx = header_map.get(field)  # type: ignore[union-attr]
@@ -223,6 +230,7 @@ def parse_master_workbook_bytes(content: bytes, *, db: Session | None = None) ->
                     np_code=np_code,
                 )
             )
+        logger.info("Workbook parsing complete rows=%s", len(rows))
         return rows
     finally:
         workbook.close()
@@ -305,18 +313,37 @@ def run_master_import(
     db: Session,
     *,
     upload_id: str,
+    workbook_path_override: str | Path | None = None,
     selected_designers: set[str] | None = None,
     progress_callback: Callable[..., None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
     backup_path: Path | None = None,
 ) -> tuple[MasterImportSummary, list[MasterImportLogRow]]:
     started = datetime.now(timezone.utc)
-    workbook_path, _ = get_master_upload(upload_id)
+    logger.info("Master import started upload_id=%s", upload_id)
+    if workbook_path_override is not None:
+        workbook_path = Path(workbook_path_override)
+    else:
+        workbook_path, _ = get_master_upload(upload_id)
+    logger.info("Workbook path resolved path=%s", workbook_path)
+    if not workbook_path.is_file():
+        raise FileNotFoundError(f"Workbook file does not exist: {workbook_path}")
+    logger.info("Reading workbook bytes...")
     rows = parse_master_workbook_bytes(workbook_path.read_bytes(), db=db)
+    logger.info("Workbook rows loaded count=%s", len(rows))
+    if progress_callback:
+        progress_callback(
+            percent_complete=1,
+            rows_processed=0,
+            rows_imported=0,
+            rows_total=len(rows),
+            message="Workbook opened. Matching designers...",
+        )
 
     if selected_designers is not None:
         selected = {name.strip().lower() for name in selected_designers}
         rows = [row for row in rows if (row.designer or "").strip().lower() in selected]
+        logger.info("Filtered rows by selected designers count=%s", len(rows))
 
     summary = MasterImportSummary(
         backup_path=str(backup_path) if backup_path else None,
@@ -327,6 +354,7 @@ def run_master_import(
     affected_projects: set[uuid.UUID] = set()
     rows_total = len(rows)
     rows_processed = 0
+    logger.info("Beginning row processing rows_total=%s", rows_total)
 
     def flush_batch() -> None:
         nonlocal pending_entries
@@ -350,7 +378,7 @@ def run_master_import(
             rows_processed += 1
             designer_name = row.designer or "Unknown"
 
-            if progress_callback and rows_processed % 25 == 0:
+            if progress_callback:
                 progress_callback(
                     percent_complete=int((rows_processed / rows_total) * 100) if rows_total else 0,
                     rows_processed=rows_processed,
@@ -358,6 +386,13 @@ def run_master_import(
                     rows_total=rows_total,
                     current_designer=designer_name,
                     message="Importing rows…",
+                )
+            if rows_processed == 1 or rows_processed % PROGRESS_LOG_EVERY_ROWS == 0:
+                logger.info(
+                    "Processed row checkpoint processed=%s imported=%s designer=%s",
+                    rows_processed,
+                    summary.rows_imported,
+                    designer_name,
                 )
 
             designer_user = _match_user_by_name(db, designer_name)
@@ -521,14 +556,41 @@ def run_master_import(
             summary.rows_imported += 1
 
             if len(pending_entries) >= BATCH_COMMIT_SIZE:
+                logger.info("Flushing pending batch size=%s", len(pending_entries))
+                if progress_callback:
+                    progress_callback(
+                        percent_complete=int((rows_processed / rows_total) * 100) if rows_total else 0,
+                        rows_processed=rows_processed,
+                        rows_imported=summary.rows_imported,
+                        rows_total=rows_total,
+                        current_designer=designer_name,
+                        message="Saving entries...",
+                    )
                 flush_batch()
 
+        if progress_callback:
+            progress_callback(
+                percent_complete=99,
+                rows_processed=rows_processed,
+                rows_imported=summary.rows_imported,
+                rows_total=rows_total,
+                message="Finalizing import...",
+            )
+        logger.info("Final batch flush pending=%s", len(pending_entries))
         flush_batch()
         for project_id in affected_projects:
             recalculate_project(db, project_id)
 
         summary.duration_seconds = int((datetime.now(timezone.utc) - started).total_seconds())
+        logger.info(
+            "Master import completed rows_read=%s imported=%s skipped=%s errors=%s",
+            summary.rows_read,
+            summary.rows_imported,
+            summary.rows_skipped,
+            summary.errors,
+        )
         return summary, log_rows
     except Exception:
         db.rollback()
+        logger.exception("Master import failed upload_id=%s", upload_id)
         raise

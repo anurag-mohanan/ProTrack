@@ -1,4 +1,8 @@
 from datetime import datetime
+import logging
+from pathlib import Path
+import shutil
+from tempfile import gettempdir
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
@@ -71,6 +75,7 @@ router = APIRouter(
     tags=["imports"],
     dependencies=[Depends(require_roles("Admin"))],
 )
+logger = logging.getLogger(__name__)
 
 
 @router.post("/upload", response_model=TimesheetImportUploadResponse)
@@ -571,6 +576,7 @@ def _execute_master_import_job(
     job_id: str,
     *,
     upload_id: str,
+    workbook_path: str,
     selected_designers: list[str] | None,
     backup_path,
 ) -> None:
@@ -578,8 +584,21 @@ def _execute_master_import_job(
 
     db = SessionLocal()
     try:
+        logger.info(
+            "Master import background task started job_id=%s upload_id=%s workbook_path=%s",
+            job_id,
+            upload_id,
+            workbook_path,
+        )
         timesheet_master_import_job_store.mark_running(
-            job_id, message="Reading workbook…"
+            job_id, message="Opening workbook..."
+        )
+        timesheet_master_import_job_store.update_progress(
+            job_id,
+            percent_complete=1,
+            rows_processed=0,
+            rows_imported=0,
+            message="Opening workbook...",
         )
 
         def progress_callback(**kwargs) -> None:
@@ -589,6 +608,7 @@ def _execute_master_import_job(
         summary, log_rows = run_master_import(
             db,
             upload_id=upload_id,
+            workbook_path_override=workbook_path,
             selected_designers=designer_filter,
             progress_callback=progress_callback,
             cancel_check=lambda: timesheet_master_import_job_store.is_cancelled(job_id),
@@ -604,7 +624,8 @@ def _execute_master_import_job(
             cancelled=cancelled,
         )
     except Exception as exc:
-        timesheet_master_import_job_store.fail(job_id, str(exc))
+        logger.exception("Master import job failed job_id=%s", job_id)
+        timesheet_master_import_job_store.fail(job_id, f"Import failed: {exc}")
     finally:
         db.close()
 
@@ -664,13 +685,20 @@ def run_master_timesheet_import(
     payload: MasterImportRunRequest,
     background_tasks: BackgroundTasks,
 ):
+    logger.info("Import request received upload_id=%s", payload.upload_id)
     try:
-        get_master_upload(payload.upload_id)
+        upload_workbook_path, _ = get_master_upload(payload.upload_id)
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Upload not found or expired.",
         ) from exc
+
+    if not upload_workbook_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Uploaded workbook file was not found.",
+        )
 
     backup_path = create_pre_import_backup()
     from app.db.session import SessionLocal
@@ -682,10 +710,29 @@ def run_master_timesheet_import(
         db.close()
 
     job_id = timesheet_master_import_job_store.create_job(rows_total=scan.row_count)
+    worker_dir = Path(gettempdir()) / "protrack_master_timesheet_import_worker"
+    worker_dir.mkdir(parents=True, exist_ok=True)
+    worker_path = worker_dir / f"{job_id}.xlsx"
+    try:
+        shutil.copy2(upload_workbook_path, worker_path)
+    except Exception as exc:
+        logger.exception(
+            "Failed to copy workbook for background worker upload_id=%s path=%s",
+            payload.upload_id,
+            upload_workbook_path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to prepare workbook for import: {exc}",
+        ) from exc
+    logger.info("Workbook copied to worker path job_id=%s path=%s", job_id, worker_path)
+
+    logger.info("Background job created job_id=%s rows_total=%s", job_id, scan.row_count)
     background_tasks.add_task(
         _execute_master_import_job,
         job_id,
         upload_id=payload.upload_id,
+        workbook_path=str(worker_path),
         selected_designers=payload.designers,
         backup_path=backup_path,
     )

@@ -75,6 +75,7 @@ class MasterImportJobProgress(BaseModel):
     rows_imported: int = 0
     current_designer: str | None = None
     message: str | None = None
+    last_progress_at: datetime | None = None
     summary: MasterImportSummary | None = None
     log_rows: list[MasterImportLogRow] = Field(default_factory=list)
     started_at: datetime | None = None

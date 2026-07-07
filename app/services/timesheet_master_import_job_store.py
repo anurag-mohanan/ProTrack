@@ -20,12 +20,14 @@ class TimesheetMasterImportJobStore:
 
     def create_job(self, *, rows_total: int) -> str:
         job_id = str(uuid4())
+        now = datetime.now(timezone.utc)
         job = MasterImportJobProgress(
             job_id=job_id,
             status=MasterImportJobStatus.pending,
             percent_complete=0,
             rows_total=rows_total,
-            started_at=datetime.now(timezone.utc),
+            started_at=now,
+            last_progress_at=now,
         )
         with self._lock:
             self._jobs[job_id] = job
@@ -35,7 +37,30 @@ class TimesheetMasterImportJobStore:
     def get(self, job_id: str) -> MasterImportJobProgress | None:
         with self._lock:
             job = self._jobs.get(job_id)
+            if job is not None:
+                self._mark_stale_locked(job)
             return job.model_copy(deep=True) if job is not None else None
+
+    def _mark_stale_locked(
+        self,
+        job: MasterImportJobProgress,
+        *,
+        timeout_seconds: int = 30,
+    ) -> None:
+        if job.status != MasterImportJobStatus.running:
+            return
+        now = datetime.now(timezone.utc)
+        last = job.last_progress_at or job.started_at
+        if last is None:
+            return
+        if (now - last).total_seconds() <= timeout_seconds:
+            return
+        job.status = MasterImportJobStatus.failed
+        job.completed_at = now
+        job.message = (
+            "Import failed: worker made no progress for over "
+            f"{timeout_seconds} seconds. Check server logs."
+        )
 
     def is_cancelled(self, job_id: str) -> bool:
         with self._lock:
@@ -52,6 +77,7 @@ class TimesheetMasterImportJobStore:
         with self._lock:
             job = self._jobs[job_id]
             job.status = MasterImportJobStatus.running
+            job.last_progress_at = datetime.now(timezone.utc)
             if message:
                 job.message = message
 
@@ -71,6 +97,7 @@ class TimesheetMasterImportJobStore:
             job.percent_complete = min(max(percent_complete, 0), 100)
             job.rows_processed = rows_processed
             job.rows_imported = rows_imported
+            job.last_progress_at = datetime.now(timezone.utc)
             if rows_total is not None:
                 job.rows_total = rows_total
             if current_designer is not None:
@@ -99,6 +126,7 @@ class TimesheetMasterImportJobStore:
             job.log_rows = log_rows
             job.log_download_name = log_download_name
             job.completed_at = datetime.now(timezone.utc)
+            job.last_progress_at = job.completed_at
             job.message = "Import cancelled" if cancelled else "Import completed"
 
     def fail(self, job_id: str, message: str) -> None:
@@ -107,6 +135,7 @@ class TimesheetMasterImportJobStore:
             job.status = MasterImportJobStatus.failed
             job.message = message
             job.completed_at = datetime.now(timezone.utc)
+            job.last_progress_at = job.completed_at
 
 
 timesheet_master_import_job_store = TimesheetMasterImportJobStore()

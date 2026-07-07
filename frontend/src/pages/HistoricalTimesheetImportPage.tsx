@@ -398,6 +398,26 @@ export function HistoricalTimesheetImportPage() {
         </Card>
       ) : null}
 
+      {phase === 'completed' && job?.status === 'failed' && !job.summary ? (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Alert severity="error" sx={{ mb: 2 }}>
+              Import failed.
+            </Alert>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Reason: {job.message ?? 'Unknown error'}
+            </Typography>
+            <Button
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={handleDownloadLog}
+            >
+              View Log
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {phase === 'completed' && job?.summary ? (
         <Card>
           <CardContent>

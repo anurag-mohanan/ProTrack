@@ -315,3 +315,22 @@ def test_folder_import_default_ignores_duplicate_check(client, prosohm_productiv
     assert job["summary"]["duplicates_skipped"] == 0
     assert job["summary"]["rows_imported"] == 1
     assert job["summary"]["duplicate_check_disabled"] is True
+
+
+def test_folder_parser_accepts_c500_zero_hours(tmp_path):
+    leave_workbook = build_prosohm_workbook(
+        designer="Binil JR",
+        month="Jun-26",
+        rows=[
+            [1, "2026-06-24", "C500", "", "Leave", "No", 0, "Leave"],
+        ],
+    )
+    path = tmp_path / "Binil JR" / "Jun-26.xlsx"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(leave_workbook)
+    parsed = parse_prosohm_workbook(path, relative_path="Binil JR/Jun-26.xlsx")
+    assert len(parsed.rows) == 1
+    row = parsed.rows[0]
+    assert row.is_np_row is True
+    assert row.np_code == "C500"
+    assert row.hours == Decimal("0")

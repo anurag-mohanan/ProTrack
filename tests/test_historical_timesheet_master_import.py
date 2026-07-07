@@ -135,3 +135,18 @@ def test_master_import_all_skips_unknown_designer(client, master_workbook_bytes,
     job = _poll_master_job(client, headers, run.json()["job_id"])
     assert job["summary"]["rows_imported"] == 1
     assert job["summary"]["rows_skipped"] == 1
+
+
+def test_master_parser_accepts_c500_zero_hours(test_session_factory):
+    workbook_bytes = build_master_workbook(
+        [
+            ["Binil JR", 1, "06-24-2026", "C500", "", "Leave", "", 0, "Leave", "Jun-26", "06"],
+        ]
+    )
+    with test_session_factory() as db:
+        rows = parse_master_workbook_bytes(workbook_bytes, db=db)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.is_np_row is True
+    assert row.np_code == "C500"
+    assert row.hours == Decimal("0")

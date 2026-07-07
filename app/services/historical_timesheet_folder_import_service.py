@@ -34,6 +34,7 @@ from app.schemas.historical_timesheet_folder_import import (
 from app.services.historical_import_service import (
     _get_or_create_approved_timesheet,
     _normalize_header,
+    normalize_special_project_code,
     _resolve_np_code,
     _week_start,
 )
@@ -219,7 +220,8 @@ def parse_prosohm_workbook(file_path: Path, *, relative_path: str | None = None)
                     billable = False
             notes = _cell_text(read_col(values, "notes"))
 
-            np_code = _normalize_np_code(project_number)
+            special_code = normalize_special_project_code(project_number)
+            np_code = special_code or _normalize_np_code(project_number)
             is_np = np_code is not None
 
             parsed_rows.append(
@@ -536,7 +538,14 @@ def run_folder_import(
                     )
                     continue
 
-                if row.hours is None or row.hours <= 0:
+                special_code = normalize_special_project_code(row.project_number)
+                if special_code:
+                    row.is_np_row = True
+                    row.np_code = special_code
+                    if row.hours is None:
+                        row.hours = Decimal("0")
+
+                if row.hours is None or (row.hours <= 0 and not special_code):
                     summary.errors += 1
                     log_rows.append(
                         _log_row(

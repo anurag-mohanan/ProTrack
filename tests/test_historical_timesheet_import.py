@@ -249,6 +249,22 @@ def test_np_code_import(client, test_session_factory):
         session.close()
 
 
+def test_special_code_c500_zero_hours_imports_successfully(client):
+    csv_bytes = build_timesheet_csv([["2026-06-24", "C500", "", "", 0, "Binil"]])
+
+    headers = login(client, "admin@prosohm.com")
+    upload = client.post(
+        "/api/v1/imports/historical-timesheets/upload",
+        headers=headers,
+        files={"file": ("leave.csv", csv_bytes, "text/csv")},
+    )
+    assert upload.status_code == 200
+    body = upload.json()
+    assert body["error_rows"] == 0
+    assert body["ready_rows"] == 1
+    assert not any("Invalid Hours" in " ".join(row.get("messages", [])) for row in body["preview"])
+
+
 def test_import_history_recorded(client, sample_csv_bytes):
     headers = login(client, "admin@prosohm.com")
     upload = client.post(

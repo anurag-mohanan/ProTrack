@@ -56,9 +56,11 @@ from app.schemas.historical_timesheet_import import (
 from app.services.historical_import_service import (
     DEFAULT_IMPORT_PASSWORD,
     KNOWN_NP_CODES,
+    SPECIAL_PROJECT_CODES,
     _get_or_create_approved_timesheet,
     _normalize_header,
     _normalize_key,
+    normalize_special_project_code,
     _resolve_np_code,
     _resolve_or_create_customer,
     _split_name,
@@ -347,6 +349,17 @@ def _row_from_values(row_number: int, values: list[Any], header_map: dict[str, i
     row.description = _cell_text(read("description"))
     row.hours = _parse_decimal(read("hours"))
     row.entry_date = _parse_date(read("entry_date"))
+    special_code = normalize_special_project_code(row.tool_number)
+
+    if special_code:
+        row.is_np_row = True
+        row.np_code = special_code
+        if row.hours is None:
+            row.hours = Decimal("0")
+        if row.task_type is None:
+            row.task_type = SPECIAL_PROJECT_CODES[special_code]
+        _validate_row(row)
+        return row
 
     if row.np_code or not row.tool_number:
         row.is_np_row = True
@@ -358,6 +371,14 @@ def _row_from_values(row_number: int, values: list[Any], header_map: dict[str, i
 
 
 def _validate_row(row: ParsedTimesheetRow) -> None:
+    special_code = normalize_special_project_code(row.tool_number)
+    if special_code:
+        row.is_np_row = True
+        row.np_code = special_code
+        if row.hours is None:
+            row.hours = Decimal("0")
+        return
+
     if row.hours is None:
         row.errors.append("Hours are missing or invalid.")
     elif row.hours <= 0:

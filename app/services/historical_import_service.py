@@ -106,6 +106,18 @@ KNOWN_NP_CODES = frozenset(
     {"C500", "C501", "C502", "C503", "C504", "C505", "C506", "EST001"}
 )
 
+SPECIAL_PROJECT_CODES: dict[str, str] = {
+    "C500": "Leave",
+    "C501": "Lack of Work",
+}
+
+
+def normalize_special_project_code(value: str | None) -> str | None:
+    if not value:
+        return None
+    code = value.strip().upper()
+    return code if code in SPECIAL_PROJECT_CODES else None
+
 IMPORT_NOTE_MARKER = "Imported from historical workbook"
 
 

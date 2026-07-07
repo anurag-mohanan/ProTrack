@@ -30,6 +30,7 @@ from app.services.historical_import_service import (
     KNOWN_NP_CODES,
     _get_or_create_approved_timesheet,
     _normalize_header,
+    normalize_special_project_code,
     _resolve_np_code,
     _week_start,
 )
@@ -136,13 +137,16 @@ def _parse_billable(value: object | None) -> bool | None:
 def _classify_project_value(db: Session, value: str | None) -> tuple[bool, str | None]:
     if not value:
         return False, None
+    special = normalize_special_project_code(value)
+    if special is not None:
+        return True, special
     code = value.strip().upper()
     if code in KNOWN_NP_CODES:
         return True, code
     np_record = db.scalar(select(NonProductiveCode).where(NonProductiveCode.code == code))
     if np_record is not None:
         return True, np_record.code
-    if code.startswith("C") or code.startswith("EST"):
+    if code.startswith("EST"):
         return True, code
     return False, None
 
@@ -381,7 +385,14 @@ def run_master_import(
                 )
                 continue
 
-            if row.hours is None or row.hours <= 0:
+            is_np, np_code = _classify_project_value(db, row.project_value)
+            row.is_np_row = is_np
+            row.np_code = np_code
+
+            if row.is_np_row and row.np_code and row.hours is None:
+                row.hours = Decimal("0")
+
+            if row.hours is None or (row.hours <= 0 and not row.is_np_row):
                 summary.errors += 1
                 summary.rows_skipped += 1
                 _log_error(
@@ -393,7 +404,7 @@ def run_master_import(
                 )
                 continue
 
-            if row.billable is None:
+            if row.billable is None and not row.is_np_row:
                 summary.errors += 1
                 summary.rows_skipped += 1
                 _log_error(
@@ -404,10 +415,6 @@ def run_master_import(
                     error="Invalid Billable value",
                 )
                 continue
-
-            is_np, np_code = _classify_project_value(db, row.project_value)
-            row.is_np_row = is_np
-            row.np_code = np_code
 
             week = _week_start(row.entry_date)
             timesheet = _get_or_create_approved_timesheet(db, designer_user.id, week)

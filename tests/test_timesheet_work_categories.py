@@ -113,6 +113,95 @@ def test_non_productive_rejects_project(client):
     assert response.status_code == 422
 
 
+def test_productive_entry_rejects_zero_hours(client):
+    timesheet_id = _create_draft_timesheet(client)
+    task_type_id = _get_task_type_id(client, "Design")
+    response = client.post(
+        "/api/v1/timesheet-entries",
+        headers=client.auth_headers,
+        json={
+            "timesheet_id": timesheet_id,
+            "work_category": "productive",
+            "project_id": client.project_id,
+            "task_type_id": task_type_id,
+            "entry_date": "2026-06-10",
+            "hours": "0",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_non_productive_c500_allows_zero_hours(client):
+    timesheet_id = _create_draft_timesheet(client)
+    np_code_id = _get_np_code_id(client, "C500")
+    response = client.post(
+        "/api/v1/timesheet-entries",
+        headers=client.auth_headers,
+        json={
+            "timesheet_id": timesheet_id,
+            "work_category": "non_productive",
+            "non_productive_code_id": np_code_id,
+            "entry_date": "2026-06-10",
+            "hours": "0",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["hours"] == "0.00"
+
+
+def test_non_productive_c501_allows_zero_hours(client):
+    timesheet_id = _create_draft_timesheet(client)
+    np_code_id = _get_np_code_id(client, "C501")
+    response = client.post(
+        "/api/v1/timesheet-entries",
+        headers=client.auth_headers,
+        json={
+            "timesheet_id": timesheet_id,
+            "work_category": "non_productive",
+            "non_productive_code_id": np_code_id,
+            "entry_date": "2026-06-10",
+            "hours": "0",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["hours"] == "0.00"
+
+
+def test_entry_rejects_hours_above_24(client):
+    timesheet_id = _create_draft_timesheet(client)
+    task_type_id = _get_task_type_id(client, "Design")
+    response = client.post(
+        "/api/v1/timesheet-entries",
+        headers=client.auth_headers,
+        json={
+            "timesheet_id": timesheet_id,
+            "work_category": "productive",
+            "project_id": client.project_id,
+            "task_type_id": task_type_id,
+            "entry_date": "2026-06-10",
+            "hours": "24.5",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_entry_rejects_negative_hours(client):
+    timesheet_id = _create_draft_timesheet(client)
+    np_code_id = _get_np_code_id(client, "C501")
+    response = client.post(
+        "/api/v1/timesheet-entries",
+        headers=client.auth_headers,
+        json={
+            "timesheet_id": timesheet_id,
+            "work_category": "non_productive",
+            "non_productive_code_id": np_code_id,
+            "entry_date": "2026-06-10",
+            "hours": "-1",
+        },
+    )
+    assert response.status_code == 422
+
+
 def test_reports_separate_productive_and_np_hours(client):
     timesheet_id = _create_draft_timesheet(client)
     task_type_id = _get_task_type_id(client, "Design")

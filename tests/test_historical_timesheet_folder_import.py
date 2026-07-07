@@ -334,3 +334,22 @@ def test_folder_parser_accepts_c500_zero_hours(tmp_path):
     assert row.is_np_row is True
     assert row.np_code == "C500"
     assert row.hours == Decimal("0")
+
+
+def test_folder_parser_accepts_c501_zero_hours(tmp_path):
+    workbook = build_prosohm_workbook(
+        designer="Binil JR",
+        month="Jun-26",
+        rows=[
+            [1, "2026-06-24", "C501", "", "Lack of Work", "No", 0, "No work"],
+        ],
+    )
+    path = tmp_path / "Binil JR" / "Jun-26.xlsx"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(workbook)
+    parsed = parse_prosohm_workbook(path, relative_path="Binil JR/Jun-26.xlsx")
+    assert len(parsed.rows) == 1
+    row = parsed.rows[0]
+    assert row.is_np_row is True
+    assert row.np_code == "C501"
+    assert row.hours == Decimal("0")

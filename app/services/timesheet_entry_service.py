@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProTrackValidationError
+from app.core.hours_validation import validate_timesheet_hours
 from app.core.non_productive_categories import apply_category_rules, is_leave_code
 from app.core.permissions import FULL_ACCESS_ROLES, get_role_name, is_admin
 from app.models.enums import ExecutionStatus, WorkCategory
@@ -33,13 +34,6 @@ ACTIVE_PROJECT_STATUSES = (
 def can_override_billable(db: Session, user: User) -> bool:
     role_name = get_role_name(db, user)
     return is_admin(db, user) or role_name in FULL_ACCESS_ROLES
-
-
-def _validate_hours(hours: Decimal) -> None:
-    if hours <= 0 or hours > 24:
-        raise ProTrackValidationError("Hours must be between 0 and 24")
-    if (hours * 2) % 1 != 0:
-        raise ProTrackValidationError("Hours must be in 0.5 increments")
 
 
 def _get_active_project(db: Session, project_id: UUID) -> Project:
@@ -85,7 +79,10 @@ def normalize_entry_payload(
     work_category = data.get("work_category") or WorkCategory.productive
     hours = data.get("hours")
     if hours is not None:
-        _validate_hours(Decimal(str(hours)))
+        validate_timesheet_hours(
+            Decimal(str(hours)),
+            allow_zero=work_category == WorkCategory.non_productive,
+        )
 
     timesheet_id = data.get("timesheet_id")
     entry_date = data.get("entry_date")

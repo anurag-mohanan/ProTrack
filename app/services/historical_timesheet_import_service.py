@@ -20,6 +20,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import DESIGNER, PROJECT_STAFF_ROLES
+from app.core.exceptions import ProTrackValidationError
+from app.core.hours_validation import validate_timesheet_hours
 from app.core.security import hash_password
 from app.models.enums import ExecutionStatus, TimesheetStatus, WorkCategory
 from app.models.models import (
@@ -381,10 +383,14 @@ def _validate_row(row: ParsedTimesheetRow) -> None:
 
     if row.hours is None:
         row.errors.append("Hours are missing or invalid.")
-    elif row.hours <= 0:
-        row.errors.append("Hours must be greater than zero.")
-    elif row.hours > 24:
-        row.errors.append("Hours cannot exceed 24 per entry.")
+    else:
+        try:
+            validate_timesheet_hours(
+                row.hours,
+                allow_zero=row.is_np_row,
+            )
+        except ProTrackValidationError as exc:
+            row.errors.append(str(exc))
 
     if row.entry_date is None:
         row.errors.append("Entry date is missing or invalid.")

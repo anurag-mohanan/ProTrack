@@ -640,7 +640,7 @@ def _sqlite_rebuild_timesheet_entries(engine: Engine) -> None:
                     description TEXT,
                     created_at DATETIME,
                     updated_at DATETIME,
-                    CHECK (hours > 0 AND hours <= 24)
+                    CHECK (hours >= 0 AND hours <= 24)
                 )
                 """
             )
@@ -666,6 +666,101 @@ def _sqlite_rebuild_timesheet_entries(engine: Engine) -> None:
         connection.execute(
             text("ALTER TABLE timesheet_entries_new RENAME TO timesheet_entries")
         )
+
+
+def _sqlite_hours_constraint_is_legacy(engine: Engine) -> bool:
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type='table' AND name='timesheet_entries'"
+            )
+        ).fetchone()
+    if row is None or row[0] is None:
+        return False
+    sql = str(row[0]).lower()
+    return "hours > 0 and hours <= 24" in sql
+
+
+def _sqlite_rebuild_timesheet_entries_hours_constraint(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=OFF"))
+        connection.execute(
+            text(
+                """
+                CREATE TABLE timesheet_entries_new (
+                    id BLOB PRIMARY KEY,
+                    timesheet_id BLOB NOT NULL REFERENCES timesheets(id) ON DELETE CASCADE,
+                    project_id BLOB REFERENCES projects(id),
+                    customer_id BLOB REFERENCES customers(id),
+                    task_type_id BLOB REFERENCES task_types(id),
+                    milestone_id BLOB REFERENCES milestones(id),
+                    non_productive_code_id BLOB REFERENCES non_productive_codes(id),
+                    work_category VARCHAR(32) NOT NULL DEFAULT 'productive',
+                    is_billable BOOLEAN NOT NULL DEFAULT 1,
+                    leave_count INTEGER,
+                    entry_date DATE NOT NULL,
+                    hours NUMERIC(5, 2) NOT NULL,
+                    description TEXT,
+                    is_deleted BOOLEAN NOT NULL DEFAULT 0,
+                    deleted_at DATETIME,
+                    deleted_by_id BLOB REFERENCES users(id),
+                    delete_reason VARCHAR(100),
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    CHECK (hours >= 0 AND hours <= 24)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO timesheet_entries_new (
+                    id, timesheet_id, project_id, customer_id, task_type_id,
+                    milestone_id, non_productive_code_id, work_category, is_billable,
+                    leave_count, entry_date, hours, description, is_deleted,
+                    deleted_at, deleted_by_id, delete_reason, created_at, updated_at
+                )
+                SELECT
+                    id, timesheet_id, project_id, customer_id, task_type_id,
+                    milestone_id, non_productive_code_id,
+                    COALESCE(work_category, 'productive'), COALESCE(is_billable, 1),
+                    leave_count, entry_date, hours, description, COALESCE(is_deleted, 0),
+                    deleted_at, deleted_by_id, delete_reason, created_at, updated_at
+                FROM timesheet_entries
+                """
+            )
+        )
+        connection.execute(text("DROP TABLE timesheet_entries"))
+        connection.execute(
+            text("ALTER TABLE timesheet_entries_new RENAME TO timesheet_entries")
+        )
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+
+
+def ensure_timesheet_entry_hours_constraint(engine: Engine) -> None:
+    """Migrate timesheet entry CHECK to allow zero hours."""
+    dialect = engine.dialect.name
+    if dialect == "sqlite":
+        if _sqlite_hours_constraint_is_legacy(engine):
+            _sqlite_rebuild_timesheet_entries_hours_constraint(engine)
+        return
+    if dialect == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries "
+                    "DROP CONSTRAINT IF EXISTS ck_timesheet_entry_hours"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE timesheet_entries "
+                    "ADD CONSTRAINT ck_timesheet_entry_hours "
+                    "CHECK (hours >= 0 AND hours <= 24)"
+                )
+            )
 
 
 def ensure_timesheet_entry_leave_count(engine: Engine) -> None:

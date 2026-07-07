@@ -20,6 +20,8 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy.orm import Session
 
 from app.models.enums import WorkCategory
+from app.core.hours_validation import validate_timesheet_hours
+from app.core.exceptions import ProTrackValidationError
 from app.models.models import (
     Project,
     TimesheetEntry,
@@ -545,7 +547,23 @@ def run_folder_import(
                     if row.hours is None:
                         row.hours = Decimal("0")
 
-                if row.hours is None or (row.hours <= 0 and not special_code):
+                allow_zero = row.is_np_row or special_code is not None
+                if row.hours is None:
+                    summary.errors += 1
+                    log_rows.append(
+                        _log_row(
+                            file_name,
+                            row_number=row.row_number,
+                            designer=designer_name,
+                            entry_date=row.entry_date,
+                            project=row.project_number,
+                            reason="Invalid Hours",
+                        )
+                    )
+                    continue
+                try:
+                    validate_timesheet_hours(row.hours, allow_zero=allow_zero)
+                except ProTrackValidationError:
                     summary.errors += 1
                     log_rows.append(
                         _log_row(

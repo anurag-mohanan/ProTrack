@@ -213,7 +213,7 @@ export function TimesheetMonthPage() {
     mutationFn: async (row: TimesheetGridRow): Promise<{ saved: TimesheetEntry; source: TimesheetGridRow }> => {
       if (!user?.id) throw new Error('Not authenticated');
       const hours = Number(row.hours);
-      if (!row.entryDate || !Number.isFinite(hours) || hours <= 0) {
+      if (!row.entryDate || !Number.isFinite(hours) || hours <= 0 || hours > 24) {
         throw new Error('Enter a valid date and hours before saving.');
       }
       if (!row.projectId || !row.taskTypeId) {

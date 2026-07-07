@@ -20,6 +20,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import WorkCategory
+from app.core.hours_validation import validate_timesheet_hours
+from app.core.exceptions import ProTrackValidationError
 from app.models.models import NonProductiveCode, TimesheetEntry, User
 from app.schemas.historical_timesheet_master_import import (
     MasterDesignerScanRow,
@@ -427,7 +429,20 @@ def run_master_import(
             if row.is_np_row and row.np_code and row.hours is None:
                 row.hours = Decimal("0")
 
-            if row.hours is None or (row.hours <= 0 and not row.is_np_row):
+            if row.hours is None:
+                summary.errors += 1
+                summary.rows_skipped += 1
+                _log_error(
+                    log_rows,
+                    row_number=row.row_number,
+                    designer=designer_name,
+                    project=row.project_value,
+                    error="Invalid Hours",
+                )
+                continue
+            try:
+                validate_timesheet_hours(row.hours, allow_zero=row.is_np_row)
+            except ProTrackValidationError:
                 summary.errors += 1
                 summary.rows_skipped += 1
                 _log_error(

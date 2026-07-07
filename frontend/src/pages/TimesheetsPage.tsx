@@ -147,8 +147,13 @@ export function TimesheetsPage() {
 
   const handleSaveEntry = async (values: TimesheetEntryFormValues, entryId?: string | null) => {
     const hours = Number(values.hours);
-    if (!values.entryDate || !Number.isFinite(hours) || hours <= 0) {
+    const isProjectWork = values.toolValue.startsWith('project:');
+    if (!values.entryDate || !Number.isFinite(hours) || hours < 0 || hours > 24) {
       showError('Enter a valid date and hours.');
+      throw new Error('Invalid entry');
+    }
+    if (isProjectWork && hours <= 0) {
+      showError('Project work must be greater than 0 hours.');
       throw new Error('Invalid entry');
     }
     if (!values.toolValue) {

@@ -219,7 +219,7 @@ CREATE TABLE timesheet_entries (
     task_type_id  UUID           REFERENCES task_types (id),
     milestone_id  UUID           REFERENCES milestones (id),
     entry_date    DATE           NOT NULL,
-    hours         NUMERIC(5, 2)  NOT NULL CHECK (hours > 0 AND hours <= 24),
+    hours         NUMERIC(5, 2)  NOT NULL CHECK (hours >= 0 AND hours <= 24),
     description   TEXT,
     created_at    TIMESTAMPTZ    NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ    NOT NULL DEFAULT now()

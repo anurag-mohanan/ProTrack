@@ -196,8 +196,12 @@ export function TimesheetEntryPage() {
   if (customersQuery.error) return <ErrorState error={customersQuery.error} />;
   if (taskTypesQuery.error) return <ErrorState error={taskTypesQuery.error} />;
 
-  const productiveValid = Boolean(projectId && taskTypeId && hours);
-  const nonProductiveValid = Boolean(npCodeId && hours);
+  const hoursValue = Number(hours);
+  const validHoursForProductive = Number.isFinite(hoursValue) && hoursValue > 0 && hoursValue <= 24;
+  const validHoursForNonProductive =
+    Number.isFinite(hoursValue) && hoursValue >= 0 && hoursValue <= 24;
+  const productiveValid = Boolean(projectId && taskTypeId && validHoursForProductive);
+  const nonProductiveValid = Boolean(npCodeId && validHoursForNonProductive);
   const canSubmit = workCategory === 'productive' ? productiveValid : nonProductiveValid;
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -382,7 +386,13 @@ export function TimesheetEntryPage() {
             type="number"
             required
             fullWidth
-            slotProps={{ htmlInput: { min: 0.5, max: 24, step: 0.5 } }}
+            slotProps={{
+              htmlInput: {
+                min: workCategory === 'non_productive' ? 0 : 0.5,
+                max: 24,
+                step: 0.5,
+              },
+            }}
             value={hours}
             onChange={(event) => setHours(event.target.value)}
           />

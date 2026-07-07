@@ -49,7 +49,7 @@ class TimesheetEntryBase(BaseModel):
     milestone_id: UUID | None = None
     non_productive_code_id: UUID | None = None
     entry_date: date
-    hours: Decimal = Field(gt=0, le=24)
+    hours: Decimal = Field(ge=0, le=24)
     is_billable: bool = True
     leave_count: int | None = None
     description: str | None = None
@@ -75,7 +75,7 @@ class TimesheetEntryUpdate(BlankOptionalFieldsMixin, BaseModel):
     milestone_id: UUID | None = None
     non_productive_code_id: UUID | None = None
     entry_date: date | None = None
-    hours: Decimal | None = Field(default=None, gt=0, le=24)
+    hours: Decimal | None = Field(default=None, ge=0, le=24)
     is_billable: bool | None = None
     leave_count: int | None = None
     description: str | None = None
@@ -113,7 +113,7 @@ class TimesheetEntryBulkUpsert(BaseModel):
     milestone_id: UUID | None = None
     non_productive_code_id: UUID | None = None
     entry_date: date
-    hours: Decimal = Field(gt=0, le=24)
+    hours: Decimal = Field(ge=0, le=24)
     is_billable: bool = True
     leave_count: int | None = None
     description: str | None = None

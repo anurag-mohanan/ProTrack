@@ -17,6 +17,8 @@ interface KpiMetricCardProps {
   selected?: boolean;
   accent?: KpiAccent;
   compact?: boolean;
+  /** Ultra-compact horizontal layout for command-center KPI strips. */
+  dense?: boolean;
   trend?: { value: string; direction?: 'up' | 'down' | 'flat' };
 }
 
@@ -31,6 +33,7 @@ export function KpiMetricCard({
   selected = false,
   accent,
   compact = false,
+  dense = false,
   trend,
 }: KpiMetricCardProps) {
   const theme = useTheme();
@@ -47,6 +50,90 @@ export function KpiMetricCard({
       : trend?.direction === 'down'
         ? TrendingDownRoundedIcon
         : TrendingFlatRoundedIcon;
+
+  if (dense) {
+    return (
+      <Card
+        onClick={onClick}
+        elevation={0}
+        sx={{
+          minHeight: 68,
+          cursor: onClick ? 'pointer' : 'default',
+          borderRadius: `${designTokens.radius.lg}px`,
+          boxShadow: selected ? designTokens.elevation.cardHover : designTokens.elevation.card,
+          border: '1px solid',
+          borderColor: selected ? 'primary.main' : 'divider',
+          bgcolor: selected ? alpha(theme.palette.primary.main, 0.04) : designTokens.semantic.card,
+          transition: `box-shadow ${designTokens.motion.normal}, border-color ${designTokens.motion.fast}`,
+          '&:hover': onClick
+            ? {
+                boxShadow: designTokens.elevation.cardHover,
+              }
+            : undefined,
+        }}
+      >
+        <CardContent sx={{ p: '10px 12px !important', height: '100%' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 22,
+                height: 22,
+                borderRadius: `${designTokens.radius.sm}px`,
+                display: 'grid',
+                placeItems: 'center',
+                bgcolor: iconBackground,
+                color: iconForeground,
+                flexShrink: 0,
+              }}
+            >
+              <Icon sx={{ fontSize: 14 }} />
+            </Box>
+            <Typography
+              sx={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'text.secondary',
+                letterSpacing: '0.01em',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {title}
+            </Typography>
+            {trend ? (
+              <Box
+                sx={{
+                  ml: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.25,
+                  color: 'text.secondary',
+                  flexShrink: 0,
+                }}
+              >
+                <TrendIcon sx={{ fontSize: 14 }} />
+                <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                  {trend.value}
+                </Typography>
+              </Box>
+            ) : null}
+          </Box>
+          <Typography
+            sx={{
+              fontSize: 24,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              letterSpacing: '-0.03em',
+              mt: 0.5,
+            }}
+          >
+            {value}
+          </Typography>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card

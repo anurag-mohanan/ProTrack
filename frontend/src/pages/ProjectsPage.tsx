@@ -503,11 +503,12 @@ export function ProjectsPage() {
                   }
                   count={displayLiveProjects.length}
                   projects={displayLiveProjects}
+                  primary
                   customers={customersQuery.data ?? []}
                   users={usersQuery.data ?? []}
                   streams={streamsQuery.data ?? []}
                   teams={teamsQuery.data ?? []}
-                  onRowOpen={(projectId) => navigate(`/projects/${projectId}?tab=milestones`)}
+                  onRowOpen={(row) => navigate(`/projects/${row.id}?tab=milestones`)}
                   onEdit={setEditProject}
                   onArchive={showArchiveActions ? setArchiveId : undefined}
                   onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
@@ -530,7 +531,7 @@ export function ProjectsPage() {
                   teams={teamsQuery.data ?? []}
                   defaultExpanded={false}
                   collapsible
-                  onRowOpen={(projectId) => navigate(`/projects/${projectId}?tab=milestones`)}
+                  onRowOpen={(row) => navigate(`/projects/${row.id}?tab=milestones`)}
                   onEdit={setEditProject}
                   onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
                   onExport={handleExport}

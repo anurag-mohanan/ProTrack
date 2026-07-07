@@ -14,6 +14,8 @@ interface ProsohmDataGridProps<R extends GridValidRowModel = GridValidRowModel>
   /** Pin these column fields to the left (sticky while scrolling). */
   pinLeftFields?: string[];
   pageSizeStorageKey?: string;
+  /** Tighter row and header heights for data-dense engineering views. */
+  dense?: boolean;
 }
 
 export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>({
@@ -23,14 +25,16 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
   columns: columnsProp,
   pinLeftFields = [],
   pageSizeStorageKey = 'protrack:grid:page-size',
+  dense = false,
   ...props
 }: ProsohmDataGridProps<R>) {
   const theme = useTheme();
   const { preferences } = usePreferences();
   const gridSx = useMemo(() => prosohmDataGridSx(theme), [theme]);
   const pinnedSx = useMemo(() => pinnedDataGridColumnSx(theme), [theme]);
-  const rowHeight = preferences?.table_density === 'compact' ? 44 : 52;
-  const headerHeight = preferences?.table_density === 'compact' ? 42 : 48;
+  const compactPreference = preferences?.table_density === 'compact';
+  const rowHeight = dense ? 40 : compactPreference ? 44 : 52;
+  const headerHeight = dense ? 38 : compactPreference ? 42 : 48;
   const persistedPageSize = Number(window.localStorage.getItem(pageSizeStorageKey) ?? 0);
   const defaultOption = props.pageSizeOptions?.[0];
   const fallbackPageSize =
@@ -81,7 +85,27 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
           onRowOpen?.(String(params.id));
           onRowClick?.(params, event, details);
         }}
-        sx={[gridSx, pinnedSx, ...(Array.isArray(sx) ? sx : sx ? [sx] : [])]}
+        sx={[
+          gridSx,
+          pinnedSx,
+          dense
+            ? {
+                '& .MuiDataGrid-row': {
+                  minHeight: '40px !important',
+                  maxHeight: '40px !important',
+                },
+                '& .MuiDataGrid-columnHeaders': {
+                  minHeight: '38px !important',
+                  maxHeight: '38px !important',
+                },
+                '& .MuiDataGrid-cell': {
+                  py: 0.5,
+                  fontSize: '0.8rem',
+                },
+              }
+            : undefined,
+          ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
+        ]}
       />
     </Box>
   );

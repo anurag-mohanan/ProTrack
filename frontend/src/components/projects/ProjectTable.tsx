@@ -1,7 +1,8 @@
 import { memo, useMemo } from 'react';
-import { Box, LinearProgress } from '@mui/material';
+import { Box, LinearProgress, Tooltip, Typography } from '@mui/material';
 import RestoreRoundedIcon from '@mui/icons-material/RestoreRounded';
-import { IconButton, Tooltip } from '@mui/material';
+import { IconButton } from '@mui/material';
+import { useTheme, type Theme } from '@mui/material/styles';
 import type { GridColDef } from '@mui/x-data-grid';
 import type { Customer, Project, Stream, Team, User } from '../../types';
 import {
@@ -17,6 +18,14 @@ import { ProjectRowActions } from './ProjectRowActions';
 import { designTokens } from '../../theme/designTokens';
 import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
 import { formatNumber } from '../../utils/format';
+import {
+  calculateEAC,
+  forecastVariance,
+  formatHoursVariance,
+  hoursPerformanceTone,
+  hoursUtilizationPercent,
+  hoursVariance,
+} from '../../utils/projectHoursMetrics';
 
 export interface ProjectTableRow extends Project {
   customerName: string;
@@ -33,6 +42,8 @@ interface ProjectTableProps {
   users: User[];
   streams: Stream[];
   teams: Team[];
+  /** Use viewport-based height for the primary live projects grid. */
+  primary?: boolean;
   onRowOpen?: (row: ProjectTableRow) => void;
   onEdit?: (row: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
@@ -91,20 +102,124 @@ export function buildProjectTableRows(
 
 const displayOrDash = (value: unknown) => formatCellValue(value) || '—';
 
+function toneColor(tone: ReturnType<typeof hoursPerformanceTone>, palette: Theme['palette']) {
+  if (tone === 'success') return palette.success.main;
+  if (tone === 'warning') return palette.warning.main;
+  return palette.error.main;
+}
+
+function HoursValueCell({ value }: { value: number }) {
+  return (
+    <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+      {formatNumber(value, 0)}
+    </Typography>
+  );
+}
+
+function VarianceCell({ actual, quoted }: { actual: number; quoted: number }) {
+  const theme = useTheme();
+  const variance = hoursVariance(actual, quoted);
+  const tone = hoursPerformanceTone(actual, quoted);
+  return (
+    <Typography
+      sx={{
+        fontSize: '0.75rem',
+        fontWeight: 800,
+        fontVariantNumeric: 'tabular-nums',
+        color: toneColor(tone, theme.palette),
+      }}
+    >
+      {formatHoursVariance(variance, 0)}
+    </Typography>
+  );
+}
+
+function HoursProgressCell({
+  actual,
+  quoted,
+  progressPercent,
+}: {
+  actual: number;
+  quoted: number;
+  progressPercent: number;
+}) {
+  const theme = useTheme();
+  const utilization = hoursUtilizationPercent(actual, quoted);
+  const tone = hoursPerformanceTone(actual, quoted);
+  const barColor = toneColor(tone, theme.palette);
+  const eac = calculateEAC(actual, progressPercent);
+  const forecast = forecastVariance(actual, quoted, progressPercent);
+
+  const tooltipLines = [
+    `Quoted: ${formatNumber(quoted, 0)} hrs`,
+    `Actual: ${formatNumber(actual, 0)} hrs`,
+    `Milestone progress: ${formatNumber(progressPercent, 0)}%`,
+  ];
+  if (eac != null) {
+    tooltipLines.push(`Projected final: ${formatNumber(eac, 0)} hrs`);
+  }
+  if (forecast != null) {
+    tooltipLines.push(`Forecast variance: ${formatHoursVariance(forecast, 0)} hrs`);
+  }
+
+  return (
+    <Tooltip title={tooltipLines.join(' · ')}>
+      <Box sx={{ width: '100%', minWidth: 88, py: 0.25 }}>
+        <Typography
+          sx={{
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            lineHeight: 1.2,
+            fontVariantNumeric: 'tabular-nums',
+            mb: 0.25,
+          }}
+        >
+          {formatNumber(actual, 0)} / {formatNumber(quoted, 0)} hrs
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <LinearProgress
+            variant="determinate"
+            value={utilization}
+            sx={{
+              flex: 1,
+              height: 4,
+              borderRadius: designTokens.radius.pill,
+              bgcolor: designTokens.semantic.neutralSoft,
+              '& .MuiLinearProgress-bar': {
+                borderRadius: designTokens.radius.pill,
+                bgcolor: barColor,
+              },
+            }}
+          />
+          <Typography
+            sx={{
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              color: 'text.secondary',
+              minWidth: 28,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {formatNumber(utilization, 0)}%
+          </Typography>
+        </Box>
+      </Box>
+    </Tooltip>
+  );
+}
+
 function ProgressCell({ value }: { value: number }) {
   const pct = Math.min(100, Math.max(0, Number(value) || 0));
   return (
-    <Box sx={{ width: '100%', minWidth: 72 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
-        <Box component="span" sx={{ fontSize: '0.75rem', fontWeight: 700 }}>
-          {formatNumber(pct, 0)}%
-        </Box>
-      </Box>
+    <Box sx={{ width: '100%', minWidth: 64 }}>
+      <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, lineHeight: 1.2, mb: 0.25 }}>
+        {formatNumber(pct, 0)}%
+      </Typography>
       <LinearProgress
         variant="determinate"
         value={pct}
         sx={{
-          height: 6,
+          height: 4,
           borderRadius: designTokens.radius.pill,
           bgcolor: designTokens.semantic.neutralSoft,
           '& .MuiLinearProgress-bar': {
@@ -131,44 +246,79 @@ function buildColumns(
   const baseColumns: GridColDef<ProjectTableRow>[] = [
     {
       field: 'tool_number',
-      headerName: 'Tool Number',
-      width: 128,
-      minWidth: 110,
+      headerName: 'Tool No.',
+      width: 96,
+      minWidth: 88,
       renderHeader: () => (
         <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
-          Tool Number
+          Tool No.
           <HelpTooltip title="Customer tool or mold number used to uniquely identify the project." />
         </Box>
       ),
       renderCell: (params) => (
-        <Box sx={{ fontWeight: 800, color: designTokens.semantic.primary }}>{params.value}</Box>
+        <Box sx={{ fontWeight: 800, color: designTokens.semantic.primary, fontSize: '0.8rem' }}>
+          {params.value}
+        </Box>
       ),
     },
     {
       field: 'part_description',
-      headerName: 'Part Description',
-      flex: 1.8,
-      minWidth: 260,
+      headerName: 'Part',
+      flex: 1.4,
+      minWidth: 180,
       valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'customerName',
       headerName: 'Customer',
-      flex: 1.2,
-      minWidth: 190,
+      flex: 1,
+      minWidth: 150,
       renderCell: (params) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-          <EntityAvatar label={String(params.value || '?')} size={26} />
-          <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+          <EntityAvatar label={String(params.value || '?')} size={22} />
+          <Box
+            component="span"
+            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.8rem' }}
+          >
             {displayOrDash(params.value)}
           </Box>
         </Box>
       ),
     },
     {
+      field: 'quoted_hours',
+      headerName: 'Quoted',
+      width: 72,
+      align: 'right',
+      headerAlign: 'right',
+      renderCell: (params) => <HoursValueCell value={Number(params.value)} />,
+    },
+    {
+      field: 'actual_hours',
+      headerName: 'Actual',
+      width: 72,
+      align: 'right',
+      headerAlign: 'right',
+      renderCell: (params) => <HoursValueCell value={Number(params.value)} />,
+    },
+    {
+      field: 'hours_variance',
+      headerName: 'Variance',
+      width: 80,
+      align: 'right',
+      headerAlign: 'right',
+      valueGetter: (_value, row) => hoursVariance(Number(row.actual_hours), Number(row.quoted_hours)),
+      renderCell: (params) => (
+        <VarianceCell
+          actual={Number(params.row.actual_hours)}
+          quoted={Number(params.row.quoted_hours)}
+        />
+      ),
+    },
+    {
       field: 'project_stage',
-      headerName: 'Current Stage',
-      width: 130,
+      headerName: 'Stage',
+      width: 112,
       renderCell: (params) => {
         const row = params.row;
         if (row.is_archived) return <ProjectStageBadge stage="preliminary" />;
@@ -180,8 +330,8 @@ function buildColumns(
     },
     {
       field: 'execution_status',
-      headerName: 'Project Status',
-      width: 140,
+      headerName: 'Status',
+      width: 120,
       renderCell: (params) => (
         <Tooltip title="Current execution state for planning, delivery, and reporting.">
           <Box component="span">
@@ -191,9 +341,48 @@ function buildColumns(
       ),
     },
     {
+      field: 'due_date',
+      headerName: 'Due Date',
+      width: 96,
+      valueFormatter: (value) => formatDate(String(value)) || '—',
+    },
+    {
+      field: 'hours_progress',
+      headerName: 'Hours',
+      width: 128,
+      sortable: false,
+      valueGetter: (_value, row) =>
+        hoursUtilizationPercent(Number(row.actual_hours), Number(row.quoted_hours)),
+      renderCell: (params) => (
+        <HoursProgressCell
+          actual={Number(params.row.actual_hours)}
+          quoted={Number(params.row.quoted_hours)}
+          progressPercent={Number(params.row.progress_percent)}
+        />
+      ),
+    },
+    {
+      field: 'progress_percent',
+      headerName: 'Progress',
+      width: 88,
+      renderCell: (params) => (
+        <Tooltip title="Completion percentage based on milestone progress.">
+          <Box sx={{ width: '100%' }}>
+            <ProgressCell value={Number(params.value)} />
+          </Box>
+        </Tooltip>
+      ),
+    },
+    {
+      field: 'designerName',
+      headerName: 'Designer',
+      width: 108,
+      valueFormatter: (value) => displayOrDash(value),
+    },
+    {
       field: 'health',
       headerName: 'Health',
-      width: 108,
+      width: 96,
       renderHeader: () => (
         <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
           Health
@@ -209,34 +398,9 @@ function buildColumns(
       ),
     },
     {
-      field: 'designerName',
-      headerName: 'Assigned Designer',
-      flex: 0.9,
-      minWidth: 120,
-      valueFormatter: (value) => displayOrDash(value),
-    },
-    {
-      field: 'due_date',
-      headerName: 'Due Date',
-      width: 108,
-      valueFormatter: (value) => formatDate(String(value)) || '—',
-    },
-    {
-      field: 'progress_percent',
-      headerName: 'Progress',
-      width: 120,
-      renderCell: (params) => (
-        <Tooltip title="Completion percentage based on milestone progress.">
-          <Box sx={{ width: '100%' }}>
-            <ProgressCell value={Number(params.value)} />
-          </Box>
-        </Tooltip>
-      ),
-    },
-    {
       field: 'priority',
       headerName: 'Priority',
-      width: 100,
+      width: 92,
       renderHeader: () => (
         <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
           Priority
@@ -295,7 +459,8 @@ function buildColumns(
   return [...baseColumns, actionColumn];
 }
 
-const TABLE_HEIGHT = 560;
+const LIVE_TABLE_HEIGHT = 'calc(100vh - 300px)';
+const COMPLETED_TABLE_HEIGHT = 360;
 const PAGE_SIZE = 25;
 
 function ProjectTableComponent({
@@ -304,6 +469,7 @@ function ProjectTableComponent({
   users,
   streams,
   teams,
+  primary = false,
   onRowOpen,
   onEdit,
   onArchive,
@@ -334,13 +500,34 @@ function ProjectTableComponent({
     [canDelete, onArchive, onDelete, onDuplicate, onEdit, onExport, onRestore],
   );
 
+  const tableHeight = primary
+    ? LIVE_TABLE_HEIGHT
+    : rows.length > PAGE_SIZE
+      ? COMPLETED_TABLE_HEIGHT
+      : undefined;
+
   return (
     <ProsohmDataGrid
       rows={rows}
       columns={columns}
       pinLeftFields={['tool_number']}
-      autoHeight={rows.length <= PAGE_SIZE}
-      sx={rows.length > PAGE_SIZE ? { height: TABLE_HEIGHT } : undefined}
+      autoHeight={!tableHeight}
+      dense
+      sx={
+        tableHeight
+          ? {
+              height: tableHeight,
+              minHeight: 320,
+              '& .MuiDataGrid-main': { overflow: 'hidden' },
+              '& .MuiDataGrid-virtualScroller': { overflow: 'auto !important' },
+              '& .MuiDataGrid-columnHeaders': {
+                position: 'sticky',
+                top: 0,
+                zIndex: 3,
+              },
+            }
+          : undefined
+      }
       paginationModel={{ pageSize: PAGE_SIZE, page: 0 }}
       pageSizeOptions={[25, 50, 100]}
       disableColumnMenu={false}

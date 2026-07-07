@@ -21,6 +21,7 @@ interface ProjectListSectionProps {
   teams: Team[];
   defaultExpanded?: boolean;
   collapsible?: boolean;
+  primary?: boolean;
   onRowOpen?: (row: ProjectTableRow) => void;
   onEdit?: (row: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
@@ -40,6 +41,7 @@ export function ProjectListSection({
   teams,
   defaultExpanded = true,
   collapsible = false,
+  primary = false,
   onRowOpen,
   onEdit,
   onArchive,
@@ -60,6 +62,7 @@ export function ProjectListSection({
           users={users}
           streams={streams}
           teams={teams}
+          primary={primary}
           onRowOpen={onRowOpen}
           onEdit={onEdit}
           onArchive={onArchive}
@@ -74,8 +77,8 @@ export function ProjectListSection({
 
   if (!collapsible) {
     return (
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+      <Box sx={{ mb: 1.5 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
           {sectionTitle}
         </Typography>
         {table}

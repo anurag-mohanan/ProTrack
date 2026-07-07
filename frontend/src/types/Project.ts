@@ -100,6 +100,7 @@ export interface ProjectUpdate {
   priority?: 'critical' | 'high' | 'medium' | 'low';
   project_stage?: ProjectStage;
   execution_status?: ExecutionStatus;
+  health?: ProjectHealth;
   notes?: string | null;
 }
 

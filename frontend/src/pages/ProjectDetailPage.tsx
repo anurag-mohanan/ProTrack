@@ -15,10 +15,11 @@ import {
 import ArchiveIcon from '@mui/icons-material/Archive';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import EditIcon from '@mui/icons-material/Edit';
+import FileCopyIcon from '@mui/icons-material/FileCopy';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import ScheduleIcon from '@mui/icons-material/Schedule';
-import FileCopyIcon from '@mui/icons-material/FileCopy';
+import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -50,7 +51,7 @@ import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordH
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { archiveProject, invalidateProjectCalculationQueries } from '../services/projectService';
+import { archiveProject, invalidateProjectCalculationQueries, restoreProject } from '../services/projectService';
 import { formatCellValue, formatDisplayValue, formatDate, formatNumber } from '../utils/format';
 import { canArchiveProject } from '../utils/permissions';
 
@@ -107,6 +108,15 @@ export function ProjectDetailPage() {
     onSuccess: () => {
       showSuccess('Project archived');
       setArchiveOpen(false);
+      invalidate();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: () => restoreProject(id),
+    onSuccess: () => {
+      showSuccess('Project restored');
       invalidate();
     },
     onError: (error: Error) => showError(error.message),
@@ -198,7 +208,7 @@ export function ProjectDetailPage() {
         subtitle={header.part_description}
         action={
           <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-            {!project.is_archived && !project.is_deleted ? (
+            {!project.is_deleted ? (
               <>
                 <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setEditOpen(true)}>
                   Edit
@@ -211,7 +221,18 @@ export function ProjectDetailPage() {
                 >
                   Clone
                 </Button>
-                {canArchiveProject(user?.role_name ?? '') ? (
+                {project.is_archived ? (
+                  canArchiveProject(user?.role_name ?? '') ? (
+                    <Button
+                      variant="outlined"
+                      startIcon={<UnarchiveIcon />}
+                      onClick={() => restoreMutation.mutate()}
+                      disabled={restoreMutation.isPending}
+                    >
+                      Restore
+                    </Button>
+                  ) : null
+                ) : canArchiveProject(user?.role_name ?? '') ? (
                   <Button
                     variant="outlined"
                     color="secondary"

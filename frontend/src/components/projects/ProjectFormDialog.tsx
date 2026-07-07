@@ -17,7 +17,7 @@ import {
   invalidateProjectCalculationQueries,
   updateProject,
 } from '../../services/projectService';
-import type { ExecutionStatus, Project, ProjectCreate, ProjectStage, ProjectUpdate } from '../../types';
+import type { ExecutionStatus, Project, ProjectCreate, ProjectHealth, ProjectStage, ProjectUpdate } from '../../types';
 import {
   EXECUTION_STATUS_LABELS,
   PROJECT_STAGE_LABELS,
@@ -53,6 +53,7 @@ interface ProjectFormValues {
   priority: ProjectCreate['priority'];
   project_stage: ProjectStage;
   execution_status: ExecutionStatus;
+  health: ProjectHealth;
 }
 
 const PROJECT_SECTION_STORAGE_KEY = 'protrack:sections:project-form';
@@ -76,6 +77,7 @@ const emptyForm: ProjectFormValues = {
   priority: 'medium',
   project_stage: 'preliminary',
   execution_status: 'planning',
+  health: 'green',
 };
 
 function projectToForm(project: Project): ProjectFormValues {
@@ -98,6 +100,7 @@ function projectToForm(project: Project): ProjectFormValues {
     priority: project.priority ?? 'medium',
     project_stage: project.project_stage,
     execution_status: project.execution_status,
+    health: project.health,
   };
 }
 
@@ -210,6 +213,7 @@ export function ProjectFormDialog({
           project_stage: form.project_stage,
           execution_status: form.execution_status,
           priority: form.priority,
+          health: form.health,
         };
         return updateProject(project.id, updatePayload);
       }
@@ -588,6 +592,23 @@ export function ProjectFormDialog({
           </Grid>
           <Grid size={{ xs: 12 }}>
             <FormSelect
+              label="Team"
+              searchable
+              value={form.team_id ?? ''}
+              options={[
+                { value: '', label: 'None' },
+                ...(teamsQuery.data ?? []).map((team) => ({
+                  value: team.id,
+                  label: team.name,
+                })),
+              ]}
+              onChange={(event) =>
+                setForm({ ...form, team_id: String(event.target.value) })
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <FormSelect
               label="Stream"
               value={form.stream_id}
               options={[
@@ -677,6 +698,23 @@ export function ProjectFormDialog({
                   setForm({
                     ...form,
                     execution_status: event.target.value as ExecutionStatus,
+                  })
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Health"
+                value={form.health}
+                options={[
+                  { value: 'green', label: 'Green' },
+                  { value: 'yellow', label: 'Yellow' },
+                  { value: 'red', label: 'Red' },
+                ]}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    health: event.target.value as ProjectHealth,
                   })
                 }
               />

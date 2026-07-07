@@ -7,13 +7,13 @@ from sqlalchemy import Select, func
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import ProTrackValidationError
-from app.core.permissions import PROJECT_STAFF_ROLES
 from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read, build_project_reads
 from app.models.enums import (
     EntityType,
     ExecutionStatus,
     NotificationType,
+    ProjectHealth,
     ProjectLifecycleFilter,
 )
 from app.models.models import Contact, Customer, Project, Role, User
@@ -247,7 +247,6 @@ def _validate_project_references(
             db,
             designer_id,
             field_name="designer_id",
-            expected_roles=PROJECT_STAFF_ROLES,
         )
 
     if surfacer_id is not None:
@@ -255,7 +254,6 @@ def _validate_project_references(
             db,
             surfacer_id,
             field_name="surfacer_id",
-            expected_roles=PROJECT_STAFF_ROLES,
         )
 
 
@@ -339,7 +337,6 @@ def _validate_changed_project_references(
             db,
             designer_id,
             field_name="designer_id",
-            expected_roles=PROJECT_STAFF_ROLES,
         )
 
     if (
@@ -351,7 +348,6 @@ def _validate_changed_project_references(
             db,
             surfacer_id,
             field_name="surfacer_id",
-            expected_roles=PROJECT_STAFF_ROLES,
         )
 
 
@@ -442,6 +438,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
 
         previous_designer_id = db_obj.designer_id
         previous_leader_id = db_obj.design_leader_id
+        manual_health = update_data.get("health") if "health" in update_data else None
 
         for field, value in update_data.items():
             setattr(db_obj, field, value)
@@ -449,6 +446,11 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         _safe_commit(db)
         db.refresh(db_obj)
         recalculate_project(db, db_obj.id)
+        if manual_health is not None:
+            db_obj.health = manual_health
+            db.add(db_obj)
+            _safe_commit(db)
+            db.refresh(db_obj)
         if "designer_id" in update_data or "design_leader_id" in update_data:
             _notify_project_assignments(
                 db,

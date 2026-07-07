@@ -17,9 +17,9 @@ from openpyxl import load_workbook
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.permissions import DESIGNER, PROJECT_STAFF_ROLES
+from app.core.permissions import DESIGNER
 from app.core.security import hash_password
-from app.crud.project import DEFAULT_PROJECT_MILESTONES
+from app.crud.project import DEFAULT_PROJECT_MILESTONES, _normalize_optional_code
 from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
 from app.models.models import (
     Contact,
@@ -104,6 +104,38 @@ DEFAULT_IMPORT_ARCHIVE_DAYS = 365
 KNOWN_NP_CODES = frozenset(
     {"C500", "C501", "C502", "C503", "C504", "C505", "C506", "EST001"}
 )
+
+IMPORT_NOTE_MARKER = "Imported from historical workbook"
+
+
+def _import_notes(existing: str | None = None) -> str:
+    if existing and existing.strip():
+        if IMPORT_NOTE_MARKER in existing:
+            return existing.strip()
+        return f"{existing.strip()}\n\n({IMPORT_NOTE_MARKER})"
+    return IMPORT_NOTE_MARKER
+
+
+def _resolve_primary_contact(db: Session, customer: Customer) -> Contact | None:
+    contact = db.scalar(
+        select(Contact)
+        .where(Contact.customer_id == customer.id, Contact.is_primary.is_(True))
+        .order_by(Contact.created_at)
+    )
+    if contact is None:
+        contact = db.scalar(
+            select(Contact)
+            .where(Contact.customer_id == customer.id)
+            .order_by(Contact.created_at)
+        )
+    return contact
+
+
+def _resolve_import_code(db: Session, raw_code: str | None) -> str | None:
+    normalized = _normalize_optional_code(raw_code)
+    if normalized is None:
+        return None
+    return _unique_project_code(db, normalized)
 
 
 def _should_import_as_archived(
@@ -590,9 +622,7 @@ def _resolve_or_create_user(
 
     normalized = _normalize_key(name)
     users = db.scalars(
-        select(User)
-        .join(Role, User.role_id == Role.id)
-        .where(User.is_active.is_(True), Role.name.in_(PROJECT_STAFF_ROLES))
+        select(User).where(User.is_active.is_(True), User.is_deleted.is_(False))
     ).all()
 
     for user in users:
@@ -624,37 +654,27 @@ def _resolve_or_create_user(
     return user
 
 
-def _resolve_design_leader(db: Session, name: str | None) -> User:
-    if name and name.strip():
-        leader = db.scalars(
-            select(User)
-            .join(Role, User.role_id == Role.id)
-            .where(Role.name == "Design Leader", User.is_active.is_(True))
-        ).all()
-        normalized = _normalize_key(name)
-        for user in leader:
-            full = _normalize_key(f"{user.first_name} {user.last_name}")
-            if normalized in {full, _normalize_key(user.first_name)}:
-                return user
+def _resolve_design_leader(db: Session, name: str | None) -> User | None:
+    if not name or not name.strip():
+        return None
 
-    default = db.scalar(
+    leaders = db.scalars(
         select(User)
         .join(Role, User.role_id == Role.id)
-        .where(Role.name == "Design Leader", User.is_active.is_(True))
-        .order_by(User.last_name, User.first_name)
-    )
-    if default is None:
-        raise ValueError("No Design Leader is configured in the system.")
-    return default
+        .where(User.is_active.is_(True))
+    ).all()
+    normalized = _normalize_key(name)
+    for user in leaders:
+        full = _normalize_key(f"{user.first_name} {user.last_name}")
+        if normalized in {full, _normalize_key(user.first_name), _normalize_key(user.last_name)}:
+            return user
+    return None
 
 
-def _default_stream(db: Session) -> Stream:
-    stream = db.scalar(
+def _optional_default_stream(db: Session) -> Stream | None:
+    return db.scalar(
         select(Stream).where(Stream.is_active.is_(True)).order_by(Stream.name)
     )
-    if stream is None:
-        raise ValueError("No active stream is configured in the system.")
-    return stream
 
 
 def _unique_project_code(db: Session, base_code: str) -> str:
@@ -823,40 +843,45 @@ def _create_project_from_row(
             existing = None
 
     customer = _resolve_or_create_customer(db, row.customer, summary)
-    contact = db.scalar(
-        select(Contact)
-        .where(Contact.customer_id == customer.id, Contact.is_primary.is_(True))
-        .order_by(Contact.created_at)
-    )
-    if contact is None:
-        contact = db.scalar(
-            select(Contact).where(Contact.customer_id == customer.id).order_by(Contact.created_at)
-        )
-    assert contact is not None
+    contact = _resolve_primary_contact(db, customer)
 
     designer = _resolve_or_create_user(db, row.designer, summary=summary)
     surfacer = _resolve_or_create_user(db, row.surfacer, summary=summary)
     design_leader = _resolve_design_leader(db, row.design_leader)
-    stream = _default_stream(db)
+    stream = _optional_default_stream(db)
 
     part_description = row.part_description or f"Imported project {row.tool_number}"
     due_date = row.due_date or (date.today() + timedelta(days=90))
-    code = row.code or row.tool_number
-    status = row.status or ExecutionStatus.currently_being_worked_on
+    code = _resolve_import_code(db, row.code)
+    status = row.status or ExecutionStatus.planning
 
     if existing is not None and duplicate_action == DuplicateAction.update:
         existing.customer_id = customer.id
-        existing.customer_contact_id = contact.id
-        existing.design_leader_id = design_leader.id
-        existing.designer_id = designer.id if designer else None
-        existing.surfacer_id = surfacer.id if surfacer else None
-        existing.stream_id = stream.id
+        existing.customer_contact_id = contact.id if contact else None
+        if design_leader is not None:
+            existing.design_leader_id = design_leader.id
+        if designer is not None:
+            existing.designer_id = designer.id
+        elif row.designer is not None and not row.designer.strip():
+            existing.designer_id = None
+        if surfacer is not None:
+            existing.surfacer_id = surfacer.id
+        elif row.surfacer is not None and not row.surfacer.strip():
+            existing.surfacer_id = None
+        if stream is not None:
+            existing.stream_id = stream.id
+        if customer.default_team_id is not None:
+            existing.team_id = customer.default_team_id
         existing.part_description = part_description
         existing.quoted_hours = row.quoted_hours
         existing.due_date = due_date
         existing.execution_status = status
+        if code is not None:
+            existing.code = code
         if row.actual_hours is not None:
             existing.actual_hours = row.actual_hours
+        if row.notes:
+            existing.notes = _import_notes(row.notes)
         db.add(existing)
         db.flush()
         _apply_milestone_history(
@@ -875,7 +900,6 @@ def _create_project_from_row(
         preview.status_label = ImportRowStatus.updated
         return "updated", preview
 
-    code = _unique_project_code(db, code)
     mold_design_type = db.scalar(
         select(ProjectType).where(ProjectType.name == "Mold Design")
     )
@@ -884,26 +908,28 @@ def _create_project_from_row(
         tool_number=row.tool_number.strip(),
         part_description=part_description,
         customer_id=customer.id,
-        customer_contact_id=contact.id,
-        design_leader_id=design_leader.id,
+        customer_contact_id=contact.id if contact else None,
+        design_leader_id=design_leader.id if design_leader else None,
         designer_id=designer.id if designer else None,
         surfacer_id=surfacer.id if surfacer else None,
-        stream_id=stream.id,
+        stream_id=stream.id if stream else None,
+        team_id=customer.default_team_id,
         project_type_id=mold_design_type.id if mold_design_type else None,
-        project_template_id=template.id,
+        project_template_id=template.id if template else None,
         code=code,
         quoted_hours=row.quoted_hours,
         actual_hours=row.actual_hours or Decimal("0"),
         due_date=due_date,
         execution_status=status,
         health=ProjectHealth.green,
-        notes="Imported from historical workbook",
+        notes=_import_notes(row.notes),
     )
     db.add(project)
     db.flush()
 
-    create_milestones_from_template(db, project=project, template=template)
-    db.flush()
+    if template is not None:
+        create_milestones_from_template(db, project=project, template=template)
+        db.flush()
 
     _apply_milestone_history(db, project, row.design_phase, row.progress, summary)
     if row.actual_hours is not None:

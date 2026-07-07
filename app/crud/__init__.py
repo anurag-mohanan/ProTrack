@@ -5,6 +5,7 @@ from app.crud.timesheet import timesheet
 from app.crud.timesheet_entry import timesheet_entry
 from app.crud.user import user
 from app.crud.project_template import project_template
+from app.crud.task_type import task_type
 from app.models.models import Contact, Customer, ProjectType, Role, Stream, TaskType
 from app.schemas.identity import RoleCreate, RoleUpdate
 from app.schemas.organization import (
@@ -24,7 +25,6 @@ project_type = CRUDBase[ProjectType, ProjectTypeCreate, ProjectTypeUpdate](Proje
 stream = CRUDBase[Stream, StreamCreate, StreamUpdate](Stream)
 customer = CRUDBase[Customer, CustomerCreate, CustomerUpdate](Customer)
 contact = CRUDBase[Contact, ContactCreate, ContactUpdate](Contact)
-task_type = CRUDBase[TaskType, TaskTypeCreate, TaskTypeUpdate](TaskType)
 
 __all__ = [
     "contact",

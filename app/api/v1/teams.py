@@ -31,7 +31,7 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
-write_access = Depends(require_roles("Admin", "Engineering Manager"))
+write_access = Depends(require_roles("Admin"))
 admin_access = Depends(require_roles("Admin"))
 read_access = Depends(
     require_roles("Admin", "Engineering Manager", "Design Leader", "Read Only")
@@ -40,7 +40,7 @@ read_access = Depends(
 
 def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
     return HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=exc.status_code,
         detail=exc.detail,
     )
 

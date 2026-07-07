@@ -24,9 +24,18 @@ export function getErrorMessage(error: unknown): string {
   }
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data?.detail;
-    if (typeof detail === 'string') return detail;
+    if (typeof detail === 'string' && detail.trim()) return detail;
     if (Array.isArray(detail)) {
       return detail.map((item) => item.msg ?? JSON.stringify(item)).join(', ');
+    }
+    if (error.response?.status === 409) {
+      return 'This record already exists or conflicts with existing data.';
+    }
+    if (error.response?.status === 404) {
+      return 'The requested record could not be found.';
+    }
+    if (error.response?.status && error.response.status >= 500) {
+      return 'Unable to complete this action. Please try again.';
     }
     return error.message;
   }

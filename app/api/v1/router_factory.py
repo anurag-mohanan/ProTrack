@@ -62,7 +62,7 @@ class TimesheetEntryFilters(BaseModel):
 
 def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
     return HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=exc.status_code,
         detail=exc.detail,
     )
 
@@ -136,7 +136,10 @@ def build_crud_router(
         dependencies=[write_dependency],
     )
     def create_record(obj_in: schema_create, db: Session = Depends(get_db)):  # type: ignore[valid-type]
-        return crud.create(db, obj_in=obj_in)
+        try:
+            return crud.create(db, obj_in=obj_in)
+        except ProTrackValidationError as exc:
+            raise _handle_validation(exc) from exc
 
     @router.patch(
         "/{record_id}",
@@ -149,7 +152,10 @@ def build_crud_router(
         db: Session = Depends(get_db),
     ):
         db_obj = get_object_or_404(crud, db, record_id)
-        return crud.update(db, db_obj=db_obj, obj_in=obj_in)
+        try:
+            return crud.update(db, db_obj=db_obj, obj_in=obj_in)
+        except ProTrackValidationError as exc:
+            raise _handle_validation(exc) from exc
 
     @router.delete(
         "/{record_id}",

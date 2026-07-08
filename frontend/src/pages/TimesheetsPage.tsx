@@ -36,6 +36,7 @@ import {
   isReadOnlyRole,
 } from '../utils/permissions';
 import { currentMonthValue, formatMonthLabel, todayIsoDate } from '../utils/timesheetMonth';
+import { isTimesheetMonthCalendarLocked } from '../utils/timesheetLocking';
 import { formatDisplayValue, userDisplayName } from '../utils/format';
 import { TimesheetStatusBadge } from '../components/ui/design-system';
 
@@ -56,6 +57,7 @@ export function TimesheetsPage() {
   const [toolbarDate, setToolbarDate] = useState(todayIsoDate());
 
   const roleName = user?.role_name ?? '';
+  const isAdmin = isAdminRole(roleName);
   const canViewAll = user ? canViewAllTimesheets(user) : false;
   const canEnterOwn = user ? canEnterOwnTimesheet(user) : true;
   // System admins (who cannot enter their own) always land on the all-users
@@ -73,13 +75,12 @@ export function TimesheetsPage() {
   const readOnly =
     viewAllUsers ||
     isReadOnlyRole(roleName) ||
+    isTimesheetMonthCalendarLocked(monthValue, { adminOverride: isAdmin }) ||
     workspace.monthStatus === 'approved' ||
     workspace.monthStatus === 'submitted';
 
   const selectedEntry =
     workspace.entries.find((entry) => entry.id === selectedEntryId) ?? null;
-
-  const isAdmin = isAdminRole(roleName);
 
   const entriesByUser = useMemo(() => {
     const map = new Map<string, TimesheetEntry[]>();

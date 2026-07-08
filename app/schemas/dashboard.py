@@ -175,8 +175,35 @@ class DashboardOperationalMetrics(BaseModel):
     pending_import_jobs: int = 0
 
 
+class StaffProjectRow(BaseModel):
+    project_id: UUID
+    tool_number: str
+    customer_name: str
+    current_stage: str
+    due_date: date | None = None
+    progress_percent: Decimal = Decimal("0")
+    hours_logged: Decimal = Decimal("0")
+    remaining_planned_hours: Decimal = Decimal("0")
+
+
+class EngineeringInsight(BaseModel):
+    category: str
+    severity: str = "info"
+    title: str
+    detail: str | None = None
+    href: str | None = None
+
+
+class MissingTimesheetRow(BaseModel):
+    user_id: UUID
+    employee_name: str
+    last_entry_date: date | None = None
+    missing_days: int = 0
+
+
 class StaffDashboardMetrics(BaseModel):
     my_projects: int = 0
+    my_project_rows: list[StaffProjectRow] = Field(default_factory=list)
     current_tool_number: str | None = None
     current_part_description: str | None = None
     assigned_milestones: int = 0
@@ -245,6 +272,8 @@ class DashboardSummary(BaseModel):
         default_factory=DashboardOperationalMetrics
     )
     staff_metrics: StaffDashboardMetrics | None = None
+    engineering_insights: list[EngineeringInsight] = Field(default_factory=list)
+    missing_timesheets: list[MissingTimesheetRow] = Field(default_factory=list)
 
 
 class DashboardFuturePlaceholders(BaseModel):

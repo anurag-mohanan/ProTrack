@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Box, Tab, Tabs, Typography } from '@mui/material';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
 import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
@@ -12,7 +12,7 @@ import { PageContainer } from '../../common/PageContainer';
 import { LoadingState } from '../../common/LoadingState';
 import { ErrorState } from '../../common/ErrorState';
 import { StickyRecordHeader } from '../../ui/design-system';
-import { ProsohmButton } from '../../ui/ProsohmButton';
+import { BackButton } from '../../navigation/BackButton';
 import { APP_TOP_BAR_OFFSET } from '../../ui/design-system/StickyRecordHeader';
 import { commandCenterQueryKeys, fetchProjectCommandCenter } from '../../../api/commandCenter';
 import { ProjectMilestoneGrid } from './ProjectMilestoneGrid';
@@ -21,6 +21,7 @@ import { WorkflowTimeline } from '../../command-center/WorkflowTimeline';
 import { useAuth } from '../../../context/AuthContext';
 import { ROLES } from '../../../utils/permissions';
 import { formatDisplayValue } from '../../../utils/format';
+import { isActiveProjectForHealth } from '../../../utils/projectHealth';
 import { getProjectActivities } from '../../../services/notificationService';
 import type { Activity } from '../../../types';
 
@@ -47,7 +48,6 @@ interface ProjectWorkspaceProps {
 }
 
 export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = tabFromParam(searchParams.get('tab'));
   const { user } = useAuth();
@@ -108,7 +108,11 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
           customerName={project.customer_name}
           executionStatus={project.execution_status}
           dueDate={project.due_date}
-          health={project.health}
+          health={
+            isActiveProjectForHealth(project.execution_status, project.is_archived)
+              ? project.health
+              : undefined
+          }
           compact
           meta={
             <Typography variant="caption" color="text.secondary">
@@ -118,9 +122,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
         />
       )}
 
-      <ProsohmButton buttonVariant="outlined" size="small" sx={{ mb: 1 }} onClick={() => navigate('/projects')}>
-        Back to projects
-      </ProsohmButton>
+      <BackButton fallbackPath="/projects" label="Back to projects" />
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 1.5 }}>
         <Tabs

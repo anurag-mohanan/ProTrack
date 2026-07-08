@@ -20,6 +20,7 @@ import type {
   DesignerByTeamReportRow,
   TeamProfitabilityReportRow,
   MonthlyTeamSummaryRow,
+  TimesheetExportReportRow,
 } from '../types';
 import { apiClient, buildQuery } from '../api/client';
 
@@ -196,6 +197,25 @@ export async function getTeamProfitabilityReport(
 export async function getMonthlyTeamSummaryReport(): Promise<MonthlyTeamSummaryRow[]> {
   const { data } = await apiClient.get<MonthlyTeamSummaryRow[]>(
     '/reports/monthly-team-summary',
+  );
+  return data;
+}
+
+export interface TimesheetExportOptions extends ReportOptions {
+  period?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  user_id?: string;
+  team_id?: string;
+  customer_id?: string;
+  project_id?: string;
+  task_type_id?: string;
+  billable?: 'billable' | 'non_billable';
+}
+
+export async function getTimesheetExportReport(
+  options?: TimesheetExportOptions,
+): Promise<TimesheetExportReportRow[]> {
+  const { data } = await apiClient.get<TimesheetExportReportRow[]>(
+    `/reports/timesheet-export${buildQuery({ ...(options ?? {}) })}`,
   );
   return data;
 }

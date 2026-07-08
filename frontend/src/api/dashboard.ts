@@ -70,6 +70,10 @@ export async function fetchProjectDashboard(
   return data;
 }
 
+export async function sendTimesheetReminder(userId: string): Promise<void> {
+  await apiClient.post(`/dashboard/timesheet-reminders/${userId}`);
+}
+
 export const dashboardQueryKeys = {
   all: ['dashboard'] as const,
   summary: (projectStage?: ProjectStage, teamId?: string) =>

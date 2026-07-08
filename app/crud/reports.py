@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -12,7 +12,7 @@ from app.core.non_productive_categories import (
 from app.crud.base import Session
 from app.crud.dashboard import get_designer_workload, _decimal, _round_hours
 from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
-from app.models.models import Customer, Milestone, NonProductiveCode, Project, TaskType, Timesheet, TimesheetEntry, User
+from app.models.models import Customer, Milestone, NonProductiveCode, Project, TaskType, Team, Timesheet, TimesheetEntry, User
 from app.schemas.reports import (
     BillableUtilizationReportRow,
     BillableVsNonBillableReportRow,
@@ -30,6 +30,7 @@ from app.schemas.reports import (
     ProjectStageSummaryRow,
     ReportsBundle,
     TimesheetApprovalReportRow,
+    TimesheetExportReportRow,
     TopNpActivityReportRow,
 )
 from app.services.project_calculation_service import calculate_hours
@@ -583,6 +584,124 @@ def get_execution_status_summary_report(
         )
         for row in rows
     ]
+
+
+def _period_bounds(period: str, *, anchor: date | None = None) -> tuple[date, date]:
+    today = anchor or date.today()
+    if period == "daily":
+        return today, today
+    if period == "weekly":
+        week_start = today - timedelta(days=today.weekday())
+        return week_start, week_start + timedelta(days=6)
+    if period == "monthly":
+        start = date(today.year, today.month, 1)
+        if today.month == 12:
+            end = date(today.year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end = date(today.year, today.month + 1, 1) - timedelta(days=1)
+        return start, end
+    if period == "quarterly":
+        quarter = (today.month - 1) // 3
+        start_month = quarter * 3 + 1
+        start = date(today.year, start_month, 1)
+        end_month = start_month + 2
+        if end_month == 12:
+            end = date(today.year, 12, 31)
+        else:
+            end = date(today.year, end_month + 1, 1) - timedelta(days=1)
+        return start, end
+    if period == "yearly":
+        return date(today.year, 1, 1), date(today.year, 12, 31)
+    return date(today.year, today.month, 1), today
+
+
+def get_timesheet_export_report(
+    db: Session,
+    *,
+    period: str = "monthly",
+    date_from: date | None = None,
+    date_to: date | None = None,
+    user_id=None,
+    team_id=None,
+    customer_id=None,
+    project_id=None,
+    task_type_id=None,
+    billable: str | None = None,
+) -> list[TimesheetExportReportRow]:
+    if date_from is None or date_to is None:
+        date_from, date_to = _period_bounds(period)
+
+    stmt = (
+        select(
+            TimesheetEntry,
+            User.first_name,
+            User.last_name,
+            Team.name,
+            Customer.name,
+            Project.tool_number,
+            TaskType.name,
+            NonProductiveCode.code,
+            NonProductiveCode.description,
+        )
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .join(User, Timesheet.user_id == User.id)
+        .outerjoin(Team, User.team_id == Team.id)
+        .outerjoin(Project, TimesheetEntry.project_id == Project.id)
+        .outerjoin(Customer, TimesheetEntry.customer_id == Customer.id)
+        .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
+        .outerjoin(NonProductiveCode, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
+        .where(
+            TimesheetEntry.is_deleted.is_(False),
+            TimesheetEntry.entry_date >= date_from,
+            TimesheetEntry.entry_date <= date_to,
+        )
+        .order_by(TimesheetEntry.entry_date, User.last_name, User.first_name)
+    )
+    if user_id is not None:
+        stmt = stmt.where(Timesheet.user_id == user_id)
+    if team_id is not None:
+        stmt = stmt.where(User.team_id == team_id)
+    if customer_id is not None:
+        stmt = stmt.where(
+            (TimesheetEntry.customer_id == customer_id)
+            | (Project.customer_id == customer_id)
+        )
+    if project_id is not None:
+        stmt = stmt.where(TimesheetEntry.project_id == project_id)
+    if task_type_id is not None:
+        stmt = stmt.where(TimesheetEntry.task_type_id == task_type_id)
+    if billable == "billable":
+        stmt = stmt.where(TimesheetEntry.is_billable.is_(True))
+    elif billable == "non_billable":
+        stmt = stmt.where(TimesheetEntry.is_billable.is_(False))
+
+    rows = db.execute(stmt).all()
+    report: list[TimesheetExportReportRow] = []
+    for (
+        entry,
+        first_name,
+        last_name,
+        team_name,
+        customer_name,
+        tool_number,
+        task_name,
+        np_code,
+        np_description,
+    ) in rows:
+        report.append(
+            TimesheetExportReportRow(
+                entry_date=entry.entry_date,
+                employee_name=f"{first_name} {last_name}".strip(),
+                team_name=team_name,
+                customer_name=customer_name,
+                tool_number=tool_number,
+                task_name=task_name or np_code or np_description,
+                hours=_round_hours(_decimal(entry.hours)),
+                is_billable=entry.is_billable,
+                work_category=entry.work_category,
+            )
+        )
+    return report
 
 
 def get_reports_bundle(

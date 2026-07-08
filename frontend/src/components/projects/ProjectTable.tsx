@@ -25,6 +25,7 @@ import {
   hoursUtilizationTone,
   type HoursPerformanceTone,
 } from '../../utils/projectHoursMetrics';
+import { isActiveProjectForHealth } from '../../utils/projectHealth';
 
 export interface ProjectTableRow extends Project {
   customerName: string;
@@ -258,8 +259,8 @@ function buildColumns(
     {
       field: 'customerName',
       headerName: 'Customer',
-      flex: 1,
-      minWidth: 130,
+      flex: 1.1,
+      minWidth: 140,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
           <EntityAvatar label={String(params.value || '?')} size={20} />
@@ -275,7 +276,7 @@ function buildColumns(
     {
       field: 'hours_comparison',
       headerName: 'Hours',
-      width: 108,
+      width: 116,
       sortable: true,
       valueGetter: (_value, row) => hoursBurnPercent(Number(row.actual_hours), Number(row.quoted_hours)),
       renderCell: (params) => (
@@ -289,7 +290,7 @@ function buildColumns(
     {
       field: 'project_stage',
       headerName: 'Current Stage',
-      width: 118,
+      width: 128,
       renderCell: (params) => {
         const row = params.row;
         if (row.is_archived) return <ProjectStageBadge stage="preliminary" />;
@@ -302,7 +303,7 @@ function buildColumns(
     {
       field: 'execution_status',
       headerName: 'Project Status',
-      width: 128,
+      width: 118,
       renderCell: (params) => (
         <Tooltip title="Current execution state for planning, delivery, and reporting.">
           <Box component="span">
@@ -314,37 +315,42 @@ function buildColumns(
     {
       field: 'health',
       headerName: 'Health',
-      width: 88,
-      renderCell: (params) => (
+      width: 84,
+      renderCell: (params) => {
+        if (!isActiveProjectForHealth(params.row.execution_status, Boolean(params.row.is_archived))) {
+          return '—';
+        }
+        return (
         <Tooltip title="Project health summarizes progress, timeline risk, and execution quality.">
           <Box component="span">
             <HealthBadge health={params.value} />
           </Box>
         </Tooltip>
-      ),
+        );
+      },
     },
     {
       field: 'designerName',
       headerName: 'Designer',
-      width: 100,
+      width: 108,
       valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'surfacerName',
       headerName: 'Surfacer',
-      width: 100,
+      width: 108,
       valueFormatter: (value) => displayOrDash(value),
     },
     {
       field: 'due_date',
       headerName: 'Due Date',
-      width: 92,
+      width: 100,
       valueFormatter: (value) => formatDate(String(value)) || '—',
     },
     {
       field: 'progress_percent',
       headerName: 'Progress',
-      width: 80,
+      width: 88,
       renderCell: (params) => (
         <Tooltip title="Completion percentage based on milestone progress.">
           <Box sx={{ width: '100%' }}>

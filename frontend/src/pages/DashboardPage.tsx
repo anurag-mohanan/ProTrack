@@ -11,6 +11,7 @@ import { DashboardKpiSkeleton, DashboardPanelSkeleton } from '../components/dash
 import { DesignLeaderDashboardView } from '../components/dashboard/DesignLeaderDashboardView';
 import { ExecutiveDashboardView } from '../components/dashboard/ExecutiveDashboardView';
 import { MyTasksWidget } from '../components/dashboard/MyTasksWidget';
+import { MyProjectsWidget } from '../components/dashboard/MyProjectsWidget';
 import { ProjectsAttentionTable } from '../components/dashboard/ProjectsAttentionTable';
 import { StaffDashboardView } from '../components/dashboard/StaffDashboardView';
 import { WidgetErrorBoundary } from '../components/dashboard/WidgetErrorBoundary';
@@ -78,6 +79,21 @@ export function DashboardPage() {
         </WidgetErrorBoundary>
       ) : (
         <>
+          {showMyTasks ? (
+            <Box sx={{ mb: 3 }}>
+              <WidgetErrorBoundary title="my projects">
+                {loading ? (
+                  <DashboardPanelSkeleton height={220} />
+                ) : (
+                  <MyProjectsWidget
+                    rows={summary?.staff_metrics?.my_project_rows ?? []}
+                    navigate={navigate}
+                  />
+                )}
+              </WidgetErrorBoundary>
+            </Box>
+          ) : null}
+
           <WidgetErrorBoundary title="KPI cards">
             {loading ? (
               <DashboardKpiSkeleton rows={2} />

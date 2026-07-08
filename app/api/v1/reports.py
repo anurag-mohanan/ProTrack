@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from app.api.auth_deps import get_current_user, require_roles
@@ -20,6 +21,7 @@ from app.crud.reports import (
     get_project_stage_summary_report,
     get_reports_bundle,
     get_timesheet_approval_report,
+    get_timesheet_export_report,
     get_top_np_activities_report,
 )
 from app.crud.team_reports import (
@@ -53,6 +55,7 @@ from app.schemas.reports import (
     ProjectStageSummaryRow,
     ReportsBundle,
     TimesheetApprovalReportRow,
+    TimesheetExportReportRow,
     TopNpActivityReportRow,
     ProjectsByTeamReportRow,
     HoursByTeamReportRow,
@@ -184,6 +187,33 @@ def billable_vs_non_billable_report(db: Session = Depends(get_db)):
 @router.get("/top-np-activities", response_model=list[TopNpActivityReportRow])
 def top_np_activities_report(db: Session = Depends(get_db)):
     return get_top_np_activities_report(db)
+
+
+@router.get("/timesheet-export", response_model=list[TimesheetExportReportRow])
+def timesheet_export_report(
+    period: str = Query("monthly", pattern="^(daily|weekly|monthly|quarterly|yearly)$"),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    user_id: UUID | None = None,
+    team_id: UUID | None = None,
+    customer_id: UUID | None = None,
+    project_id: UUID | None = None,
+    task_type_id: UUID | None = None,
+    billable: str | None = Query(None, pattern="^(billable|non_billable)$"),
+    db: Session = Depends(get_db),
+):
+    return get_timesheet_export_report(
+        db,
+        period=period,
+        date_from=date_from,
+        date_to=date_to,
+        user_id=user_id,
+        team_id=team_id,
+        customer_id=customer_id,
+        project_id=project_id,
+        task_type_id=task_type_id,
+        billable=billable,
+    )
 
 
 @router.get("/project-portfolio", response_model=list[ProjectPortfolioReportRow])

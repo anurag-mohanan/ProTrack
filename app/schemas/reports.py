@@ -225,3 +225,15 @@ class ProjectStageSummaryRow(BaseModel):
 class ExecutionStatusSummaryRow(BaseModel):
     execution_status: ExecutionStatus
     project_count: int
+
+
+class TimesheetExportReportRow(BaseModel):
+    entry_date: date
+    employee_name: str
+    team_name: str | None = None
+    customer_name: str | None = None
+    tool_number: str | None = None
+    task_name: str | None = None
+    hours: Decimal
+    is_billable: bool
+    work_category: WorkCategory

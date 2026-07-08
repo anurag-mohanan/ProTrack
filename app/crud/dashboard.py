@@ -9,6 +9,7 @@ from app.core.non_productive_categories import leave_entry_clause, standard_np_h
 from app.crud.project_metrics import build_project_read
 from app.core.permissions import (
     ASSIGNED_PROJECT_ROLES,
+    DESIGN_LEADER,
     FULL_ACCESS_ROLES,
     READ_ALL_PROJECT_ROLES,
     SURFACER,
@@ -41,12 +42,15 @@ from app.schemas.dashboard import (
     DashboardSummary,
     DashboardTaskItem,
     DesignerWorkload,
+    EngineeringInsight,
     MilestoneSummary,
+    MissingTimesheetRow,
     MyTaskItem,
     ProjectAttentionRow,
     ProjectDashboard,
     ProjectHoursSummary,
     StaffDashboardMetrics,
+    StaffProjectRow,
     WorkflowDashboard,
 )
 from app.schemas.timesheet import ActivityRead, TimesheetEntryRead
@@ -64,6 +68,8 @@ from app.services.dashboard_service import (
     safe_dashboard_call,
 )
 from app.services.notification_service import count_unread_notifications
+from app.services.engineering_insights_service import generate_engineering_insights
+from app.services.timesheet_compliance_service import get_missing_timesheet_rows
 from app.services.project_calculation_service import (
     aggregate_portfolio_hours,
     calculate_hours,
@@ -349,6 +355,19 @@ def get_dashboard_summary(
 
     operational_metrics = _get_operational_metrics(db, user)
     staff_metrics = _get_staff_metrics(db, user)
+    engineering_insights = safe_dashboard_call(
+        "engineering_insights",
+        lambda: generate_engineering_insights(db),
+        [],
+    )
+    role_name = normalize_role_name(get_role_name(db, user))
+    missing_timesheets: list[MissingTimesheetRow] = []
+    if role_name in FULL_ACCESS_ROLES | {DESIGN_LEADER}:
+        missing_timesheets = safe_dashboard_call(
+            "missing_timesheets",
+            lambda: get_missing_timesheet_rows(db),
+            [],
+        )
 
     today = date.today()
     hours_logged_today = _round_hours(
@@ -440,6 +459,8 @@ def get_dashboard_summary(
         leave_panel=DashboardLeavePanel(leave_days_this_month=leave_days_this_month),
         operational_metrics=operational_metrics,
         staff_metrics=staff_metrics,
+        engineering_insights=engineering_insights,
+        missing_timesheets=missing_timesheets,
     )
 
 
@@ -553,6 +574,21 @@ def _get_staff_metrics(db: Session, user: User) -> StaffDashboardMetrics | None:
 
     return StaffDashboardMetrics(
         my_projects=len(projects),
+        my_project_rows=[
+            StaffProjectRow(
+                project_id=project.id,
+                tool_number=project.tool_number,
+                customer_name=build_project_read(db, project).customer_name or "—",
+                current_stage=project.project_stage.value if project.project_stage else "—",
+                due_date=project.due_date,
+                progress_percent=_decimal(project.progress_percent),
+                hours_logged=_round_hours(_decimal(project.actual_hours)),
+                remaining_planned_hours=_round_hours(
+                    max(_decimal(0), _decimal(project.quoted_hours) - _decimal(project.actual_hours))
+                ),
+            )
+            for project in projects
+        ],
         current_tool_number=current.tool_number if current else None,
         current_part_description=current.part_description if current else None,
         assigned_milestones=assigned_milestones,

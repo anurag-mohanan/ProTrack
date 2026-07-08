@@ -50,6 +50,7 @@ import {
   getProjectStageSummaryReport,
   getExecutionStatusSummaryReport,
   getTopNpActivitiesReport,
+  getTimesheetExportReport,
   reportQueryKeys,
   type ReportOptions,
 } from '../services/reportService';
@@ -71,6 +72,7 @@ const TAB_CONFIG = [
   { label: 'By Project Stage', slug: 'by-stage', category: 'projects' },
   { label: 'By Execution Status', slug: 'by-execution-status', category: 'projects' },
   { label: 'Project Portfolio', slug: 'project-portfolio', category: 'projects' },
+  { label: 'Timesheet Export', slug: 'timesheet-export', category: 'timesheets' },
   { label: 'Team Reports', slug: 'team-reports', category: 'planning' },
 ] as const;
 
@@ -92,6 +94,7 @@ export function ReportsPage() {
   const [draftIncludeArchived, setDraftIncludeArchived] = useState(true);
   const [appliedIncludeDeleted, setAppliedIncludeDeleted] = useState(false);
   const [draftIncludeDeleted, setDraftIncludeDeleted] = useState(false);
+  const [exportPeriod, setExportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'>('monthly');
 
   const access = accessContextFromUser(user);
   const canExport = canExportReports(access);
@@ -177,8 +180,13 @@ export function ReportsPage() {
     queryFn: () => getProjectPortfolioReport(reportOptions),
     enabled: tab === 12,
   });
+  const timesheetExportQuery = useQuery({
+    queryKey: ['reports', 'timesheet-export', exportPeriod],
+    queryFn: () => getTimesheetExportReport({ period: exportPeriod }),
+    enabled: tab === 13,
+  });
 
-  const teamReportsEnabled = tab === 13;
+  const teamReportsEnabled = tab === 14;
 
   const activeQuery = useMemo(() => {
     if (teamReportsEnabled) return { isLoading: false, error: null };
@@ -196,6 +204,7 @@ export function ReportsPage() {
       stageSummaryQuery,
       executionSummaryQuery,
       portfolioQuery,
+      timesheetExportQuery,
     ];
     return queries[tab] ?? projectHoursQuery;
   }, [
@@ -425,6 +434,43 @@ export function ReportsPage() {
 
         {tab === 12 && !portfolioQuery.isLoading && !portfolioQuery.error ? (
           <PortfolioReportView rows={portfolioQuery.data ?? []} canExport={canExport} />
+        ) : null}
+
+        {tab === 13 && !timesheetExportQuery.isLoading && !timesheetExportQuery.error ? (
+          <Stack spacing={2}>
+            <FormSelect
+              label="Export period"
+              value={exportPeriod}
+              options={[
+                { value: 'daily', label: 'Daily' },
+                { value: 'weekly', label: 'Weekly' },
+                { value: 'monthly', label: 'Monthly' },
+                { value: 'quarterly', label: 'Quarterly' },
+                { value: 'yearly', label: 'Yearly' },
+              ]}
+              onChange={(event) =>
+                setExportPeriod(event.target.value as typeof exportPeriod)
+              }
+              sx={compactFilterFieldSx}
+            />
+            <SimpleTableReportView
+              title="Timesheet Export"
+              filename={`timesheet-export-${exportPeriod}`}
+              canExport={canExport}
+              rows={(timesheetExportQuery.data ?? []) as unknown as Record<string, unknown>[]}
+              columns={[
+                { key: 'entry_date', header: 'Date' },
+                { key: 'employee_name', header: 'Employee' },
+                { key: 'team_name', header: 'Team' },
+                { key: 'customer_name', header: 'Customer' },
+                { key: 'tool_number', header: 'Project' },
+                { key: 'task_name', header: 'Task' },
+                { key: 'hours', header: 'Hours', align: 'right' },
+                { key: 'is_billable', header: 'Billable' },
+                { key: 'work_category', header: 'Category' },
+              ]}
+            />
+          </Stack>
         ) : null}
 
         {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}

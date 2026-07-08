@@ -4,6 +4,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { navigateWithBack } from '../hooks/useBackNavigation';
 import { designTokens } from '../theme/designTokens';
 import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
 import AddIcon from '@mui/icons-material/Add';
@@ -496,7 +497,7 @@ export function ProjectsPage() {
                   streams={streamsQuery.data ?? []}
                   teams={teamsQuery.data ?? []}
                   gridSessionKey={gridSessionKey}
-                  onRowOpen={(row) => navigate(`/projects/${row.id}?tab=milestones`)}
+                  onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
                   onEdit={setEditProject}
                   onArchive={showArchiveActions ? setArchiveId : undefined}
                   onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
@@ -519,7 +520,7 @@ export function ProjectsPage() {
                   teams={teamsQuery.data ?? []}
                   defaultExpanded={false}
                   collapsible
-                  onRowOpen={(row) => navigate(`/projects/${row.id}?tab=milestones`)}
+                  onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
                   onEdit={setEditProject}
                   onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
                   onExport={handleExport}

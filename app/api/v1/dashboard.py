@@ -5,7 +5,7 @@ from datetime import date
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import APIRouter, Depends, HTTPException, Session, get_db, get_object_or_404, status
 from app.core.exceptions import ProTrackValidationError
-from app.core.permissions import can_update_project
+from app.core.permissions import can_update_project, FULL_ACCESS_ROLES, DESIGN_LEADER, get_role_name, normalize_role_name
 from app.crud import project as project_crud
 from app.crud.dashboard import (
     get_dashboard_overview,
@@ -14,7 +14,7 @@ from app.crud.dashboard import (
     get_project_dashboard,
     get_workflow_dashboard,
 )
-from app.models.enums import ProjectStage
+from app.models.enums import NotificationType, ProjectStage
 from app.models.models import User
 from app.schemas.dashboard import (
     DashboardKpis,
@@ -34,6 +34,7 @@ from app.schemas.resource_planning import (
     ResourcePlanningGrid,
 )
 from app.crud.team_reports import get_team_resource_planning
+from app.services.notification_service import create_notification
 from app.services.resource_planning_service import get_resource_planning_grid
 from app.services.dashboard_service import (
     get_attention_projects,
@@ -207,3 +208,25 @@ def dashboard_project(project_id: UUID, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
         )
     return result
+
+
+@router.post("/timesheet-reminders/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def send_timesheet_reminder(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    role_name = normalize_role_name(get_role_name(db, current_user))
+    if role_name not in FULL_ACCESS_ROLES | {DESIGN_LEADER}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    target = db.get(User, user_id)
+    if target is None or not target.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    create_notification(
+        db,
+        user_id=user_id,
+        notification_type=NotificationType.pending_approval,
+        title="Timesheet reminder",
+        message="Please submit your missing timesheet entries for recent working days.",
+    )
+    return None

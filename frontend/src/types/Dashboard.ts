@@ -48,6 +48,8 @@ export interface DashboardSummary {
   leave_panel: DashboardLeavePanel;
   operational_metrics: DashboardOperationalMetrics;
   staff_metrics?: StaffDashboardMetrics | null;
+  engineering_insights?: EngineeringInsight[];
+  missing_timesheets?: MissingTimesheetRow[];
 }
 
 export interface DashboardOperationalMetrics {
@@ -56,8 +58,35 @@ export interface DashboardOperationalMetrics {
   pending_import_jobs: number;
 }
 
+export interface StaffProjectRow {
+  project_id: string;
+  tool_number: string;
+  customer_name: string;
+  current_stage: string;
+  due_date?: string | null;
+  progress_percent: number;
+  hours_logged: number;
+  remaining_planned_hours: number;
+}
+
+export interface EngineeringInsight {
+  category: string;
+  severity: 'info' | 'warning' | 'error' | string;
+  title: string;
+  detail?: string | null;
+  href?: string | null;
+}
+
+export interface MissingTimesheetRow {
+  user_id: string;
+  employee_name: string;
+  last_entry_date?: string | null;
+  missing_days: number;
+}
+
 export interface StaffDashboardMetrics {
   my_projects: number;
+  my_project_rows?: StaffProjectRow[];
   current_tool_number?: string | null;
   current_part_description?: string | null;
   assigned_milestones: number;

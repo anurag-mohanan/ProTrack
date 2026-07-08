@@ -1,4 +1,5 @@
 import { Box, Typography, useTheme } from '@mui/material';
+import { useEffect, useMemo, useState } from 'react';
 import { useCompany } from '../../context/CompanyContext';
 import { COMPANY_BYLINE, PRODUCT_NAME, PRODUCT_TAGLINE } from '../../config/appMeta';
 import { resolveAssetUrl } from '../../config/env';
@@ -25,7 +26,20 @@ export function CompanyLogo({
   const theme = useTheme();
   const { company } = useCompany();
   const dimensions = sizeMap[size];
-  const logoUrl = resolveAssetUrl(company?.logo_url);
+  const [imageFailed, setImageFailed] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    setImageFailed(false);
+    setRetryCount(0);
+  }, [company?.logo_url]);
+
+  const logoUrl = useMemo(() => {
+    const resolved = resolveAssetUrl(company?.logo_url);
+    if (!resolved || imageFailed) return null;
+    const separator = resolved.includes('?') ? '&' : '?';
+    return retryCount > 0 ? `${resolved}${separator}v=${retryCount}` : resolved;
+  }, [company?.logo_url, imageFailed, retryCount]);
   const primary = theme.palette.primary.main;
   const textColor = light ? theme.palette.prosohm.sidebarText : theme.palette.text.primary;
   const mutedColor = light ? theme.palette.prosohm.sidebarTextMuted : 'text.secondary';
@@ -51,8 +65,18 @@ export function CompanyLogo({
         {logoUrl ? (
           <Box
             component="img"
+            key={`${company?.logo_url ?? 'default'}-${retryCount}`}
             src={logoUrl}
             alt={`${company?.company_name ?? PRODUCT_NAME} logo`}
+            loading="eager"
+            decoding="async"
+            onError={() => {
+              if (retryCount < 2) {
+                setRetryCount((value) => value + 1);
+                return;
+              }
+              setImageFailed(true);
+            }}
             sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
           />
         ) : (

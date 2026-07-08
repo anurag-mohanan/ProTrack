@@ -10,14 +10,12 @@ import SpeedRoundedIcon from '@mui/icons-material/SpeedRounded';
 import TimerRoundedIcon from '@mui/icons-material/TimerRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
-import WorkOutlineRoundedIcon from '@mui/icons-material/WorkOutlineRounded';
 import type { NavigateFunction } from 'react-router-dom';
 import type { DashboardSummary } from '../../types';
 import type { KpiAccent } from '../ui/design-system/KpiMetricCard';
 import { formatNumber } from '../../utils/format';
 import {
   activeCustomerCount,
-  averageHoursPerProject,
   availableCapacityHours,
   designerUtilizationPercent,
   hoursUtilizationPercent,
@@ -70,7 +68,6 @@ export function buildExecutiveKpiSections({
   const actual = summary?.total_actual_hours_productive ?? 0;
   const utilPct = hoursUtilizationPercent(summary);
   const capacityHrs = availableCapacityHours(summary);
-  const avgHrs = averageHoursPerProject(summary);
   const customers = activeCustomerCount(summary);
   const inProgress = summary?.being_worked_on_projects ?? summary?.in_progress_projects ?? 0;
   const designerUtil = designerUtilizationPercent(summary);
@@ -158,13 +155,6 @@ export function buildExecutiveKpiSections({
           trend: STABLE_TREND,
           onClick: () => navigate('/resource-planning'),
         },
-        {
-          title: 'Avg Hrs / Project',
-          value: n(avgHrs, 1),
-          icon: WorkOutlineRoundedIcon,
-          trend: STABLE_TREND,
-          onClick: () => navigate('/reports'),
-        },
       ],
     },
     {
@@ -233,9 +223,10 @@ const sectionGridSx = {
     xs: 'repeat(2, minmax(0, 1fr))',
     sm: 'repeat(3, minmax(0, 1fr))',
     md: 'repeat(4, minmax(0, 1fr))',
-    xl: 'repeat(5, minmax(0, 1fr))',
+    lg: 'repeat(5, minmax(0, 1fr))',
+    xl: 'repeat(6, minmax(0, 1fr))',
   },
-  gap: 0.75,
+  gap: 0.5,
 };
 
 export function ExecutiveKpiGrid({ sections }: { sections: DashboardKpiSection[] }) {

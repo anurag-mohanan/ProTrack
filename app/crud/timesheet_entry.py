@@ -12,6 +12,10 @@ from app.core.permissions import (
     can_write_timesheet_entry,
     is_admin,
 )
+from app.core.timesheet_locking import (
+    TIMESHEET_CALENDAR_LOCKED_MESSAGE,
+    is_timesheet_month_calendar_locked,
+)
 from app.crud.base import CRUDBase
 from app.crud.timesheet_entry_metrics import build_timesheet_entry_read, build_timesheet_entry_reads
 from app.services.project_calculation_service import recalculate_project
@@ -73,6 +77,7 @@ class CRUDTimesheetEntry(
         *,
         actor,
         timesheet_id: UUID,
+        entry_date: date | None = None,
     ) -> Timesheet:
         if not can_write_timesheet_entry(db, actor):
             raise HTTPException(
@@ -84,6 +89,15 @@ class CRUDTimesheetEntry(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Timesheet not found",
+            )
+        lock_date = entry_date or timesheet.week_start
+        if is_timesheet_month_calendar_locked(
+            lock_date,
+            admin_override=is_admin(db, actor),
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=TIMESHEET_CALENDAR_LOCKED_MESSAGE,
             )
         if timesheet.status != TimesheetStatus.draft:
             raise HTTPException(
@@ -196,7 +210,12 @@ class CRUDTimesheetEntry(
 
     def create(self, db: Session, *, obj_in: TimesheetEntryCreate, actor=None) -> TimesheetEntry:
         if actor is not None:
-            self._ensure_editable(db, actor=actor, timesheet_id=obj_in.timesheet_id)
+            self._ensure_editable(
+                db,
+                actor=actor,
+                timesheet_id=obj_in.timesheet_id,
+                entry_date=obj_in.entry_date,
+            )
         try:
             data = normalize_entry_payload(db, obj_in, actor=actor)
         except ProTrackValidationError as exc:
@@ -228,7 +247,12 @@ class CRUDTimesheetEntry(
                 detail="Record not found",
             )
         if actor is not None:
-            self._ensure_editable(db, actor=actor, timesheet_id=db_obj.timesheet_id)
+            self._ensure_editable(
+                db,
+                actor=actor,
+                timesheet_id=db_obj.timesheet_id,
+                entry_date=db_obj.entry_date,
+            )
         previous_project_id = db_obj.project_id
         if isinstance(obj_in, TimesheetEntryUpdate):
             try:
@@ -243,7 +267,12 @@ class CRUDTimesheetEntry(
         if actor is not None:
             target_timesheet_id = updated.timesheet_id
             if isinstance(obj_in, TimesheetEntryUpdate) and obj_in.timesheet_id is not None:
-                self._ensure_editable(db, actor=actor, timesheet_id=target_timesheet_id)
+                self._ensure_editable(
+                    db,
+                    actor=actor,
+                    timesheet_id=target_timesheet_id,
+                    entry_date=updated.entry_date,
+                )
         self._recalculate_projects(db, updated.project_id, previous_project_id)
         return updated
 
@@ -270,7 +299,12 @@ class CRUDTimesheetEntry(
         if db_obj is None or db_obj.is_deleted:
             return None
         if actor is not None:
-            timesheet = self._ensure_editable(db, actor=actor, timesheet_id=db_obj.timesheet_id)
+            timesheet = self._ensure_editable(
+                db,
+                actor=actor,
+                timesheet_id=db_obj.timesheet_id,
+                entry_date=db_obj.entry_date,
+            )
         else:
             timesheet = self._get_timesheet(db, db_obj.timesheet_id)
             if timesheet is None:

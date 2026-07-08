@@ -96,6 +96,18 @@ export interface ExecutionStatusSummaryRow {
   project_count: number;
 }
 
+export interface TimesheetExportReportRow {
+  entry_date: string;
+  employee_name: string;
+  team_name?: string | null;
+  customer_name?: string | null;
+  tool_number?: string | null;
+  task_name?: string | null;
+  hours: number;
+  is_billable: boolean;
+  work_category: string;
+}
+
 export type { DesignerWorkload };
 
 export interface ProjectsByTeamReportRow {

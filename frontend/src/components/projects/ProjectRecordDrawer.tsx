@@ -40,6 +40,7 @@ import { QUERY_STALE_TIMES } from '../../config/queryConfig';
 import { useToast } from '../../context/ToastContext';
 import { formatCellValue, formatDate, formatDateTime, formatDisplayValue, formatNumber, formatStatus } from '../../utils/format';
 import { formatProjectStageDisplay } from '../../utils/projectCommandCenter';
+import { isActiveProjectForHealth } from '../../utils/projectHealth';
 import { projectQueryKeys } from '../../services/projectService';
 
 interface ProjectRecordDrawerProps {
@@ -92,7 +93,10 @@ export function ProjectRecordDrawer({
 
   const cc = commandCenterQuery.data;
   const detail = detailQuery.data;
-  const health = detail?.health ?? project?.health;
+  const health =
+    project && isActiveProjectForHealth(project.execution_status, project.is_archived)
+      ? detail?.health ?? project.health
+      : null;
 
   const recentActivity = useMemo(() => {
     const items: Array<{ id: string; title: string; detail: string; when: string }> = [];

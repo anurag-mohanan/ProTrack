@@ -19,6 +19,8 @@ import {
   timesheetQueryKeys,
 } from '../services/timesheetService';
 import type { CurrentUser, Timesheet, TimesheetEntry } from '../types';
+import { isEntryDateCalendarLocked } from '../utils/timesheetLocking';
+import { isAdminRole } from '../utils/permissions';
 import {
   countWorkingDays,
   monthBounds,
@@ -276,9 +278,13 @@ export function useTimesheetMonthWorkspace(
   const isEntryEditable = useCallback(
     (entry: TimesheetEntry) => {
       const sheet = timesheetById.get(entry.timesheet_id);
+      const adminOverride = user ? isAdminRole(user.role_name ?? '') : false;
+      if (isEntryDateCalendarLocked(entry.entry_date, { adminOverride })) {
+        return false;
+      }
       return sheet?.status === 'draft';
     },
-    [timesheetById],
+    [timesheetById, user],
   );
 
   const isLoading =

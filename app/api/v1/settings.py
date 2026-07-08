@@ -205,6 +205,7 @@ def _email_settings_read(settings) -> EmailSettingsRead:
     return EmailSettingsRead(
         id=settings.id,
         enabled=settings.enabled,
+        provider_type=getattr(settings, "provider_type", "zoho") or "zoho",
         smtp_host=settings.smtp_host,
         smtp_port=settings.smtp_port,
         smtp_username=settings.smtp_username,
@@ -213,6 +214,11 @@ def _email_settings_read(settings) -> EmailSettingsRead:
         use_ssl=settings.use_ssl,
         sender_name=settings.sender_name,
         sender_email=settings.sender_email,
+        reply_to_email=getattr(settings, "reply_to_email", None),
+        company_signature=getattr(settings, "company_signature", None),
+        connection_status=getattr(settings, "connection_status", None),
+        connection_checked_at=getattr(settings, "connection_checked_at", None),
+        connection_message=getattr(settings, "connection_message", None),
     )
 
 
@@ -237,6 +243,33 @@ def test_email_settings(payload: EmailTestRequest, db: Session = Depends(get_db)
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return {"sent": True}
+
+
+@router.post("/email/test-connection", dependencies=admin_access)
+def test_email_connection(db: Session = Depends(get_db)):
+    from app.schemas.communication import EmailConnectionStatus
+    from app.services.email.engine import EmailService
+
+    result = EmailService(db).test_connection()
+    settings = get_or_create_email_settings(db)
+    return EmailConnectionStatus(
+        status=settings.connection_status,
+        checked_at=settings.connection_checked_at,
+        message=settings.connection_message,
+        success=result.success,
+    )
+
+
+@router.post("/email/apply-zoho-defaults", response_model=EmailSettingsRead, dependencies=admin_access)
+def apply_zoho_defaults(db: Session = Depends(get_db)):
+    from app.services.email.providers.zoho_provider import ZohoProvider
+
+    settings = get_or_create_email_settings(db)
+    ZohoProvider.apply_defaults(settings)
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return _email_settings_read(settings)
 
 
 @router.get("/email/templates", response_model=list[EmailTemplateRead], dependencies=admin_access)

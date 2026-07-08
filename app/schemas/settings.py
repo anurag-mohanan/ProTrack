@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -228,18 +228,25 @@ class NotificationSettingsUpdate(BaseModel):
 class EmailSettingsRead(BaseModel):
     id: UUID
     enabled: bool = False
+    provider_type: str = "zoho"
     smtp_host: str | None = None
-    smtp_port: int = 587
+    smtp_port: int = 465
     smtp_username: str | None = None
     has_password: bool = False
-    use_tls: bool = True
-    use_ssl: bool = False
+    use_tls: bool = False
+    use_ssl: bool = True
     sender_name: str | None = None
     sender_email: str | None = None
+    reply_to_email: str | None = None
+    company_signature: str | None = None
+    connection_status: str | None = None
+    connection_checked_at: datetime | None = None
+    connection_message: str | None = None
 
 
 class EmailSettingsUpdate(BaseModel):
     enabled: bool | None = None
+    provider_type: str | None = Field(default=None, max_length=32)
     smtp_host: str | None = Field(default=None, max_length=255)
     smtp_port: int | None = Field(default=None, ge=1, le=65535)
     smtp_username: str | None = Field(default=None, max_length=255)
@@ -248,6 +255,8 @@ class EmailSettingsUpdate(BaseModel):
     use_ssl: bool | None = None
     sender_name: str | None = Field(default=None, max_length=200)
     sender_email: str | None = Field(default=None, max_length=255)
+    reply_to_email: str | None = Field(default=None, max_length=255)
+    company_signature: str | None = None
 
 
 class EmailTestRequest(BaseModel):

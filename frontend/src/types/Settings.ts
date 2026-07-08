@@ -117,6 +117,7 @@ export interface NotificationSettings {
 export interface EmailSettings {
   id: string;
   enabled: boolean;
+  provider_type: string;
   smtp_host?: string | null;
   smtp_port: number;
   smtp_username?: string | null;
@@ -125,6 +126,11 @@ export interface EmailSettings {
   use_ssl: boolean;
   sender_name?: string | null;
   sender_email?: string | null;
+  reply_to_email?: string | null;
+  company_signature?: string | null;
+  connection_status?: string | null;
+  connection_checked_at?: string | null;
+  connection_message?: string | null;
 }
 
 export interface EmailTemplate {

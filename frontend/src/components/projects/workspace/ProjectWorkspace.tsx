@@ -6,6 +6,7 @@ import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
 import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
+import EmailRoundedIcon from '@mui/icons-material/EmailRounded';
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import { PageContainer } from '../../common/PageContainer';
@@ -23,6 +24,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { ROLES } from '../../../utils/permissions';
 import { formatDisplayValue } from '../../../utils/format';
 import { isActiveProjectForHealth } from '../../../utils/projectHealth';
+import { ProjectCommunicationsPanel } from './ProjectCommunicationsPanel';
 import { getProjectActivities } from '../../../services/notificationService';
 import type { Activity } from '../../../types';
 
@@ -32,6 +34,7 @@ const TABS = [
   { id: 'team', label: 'Team', icon: GroupsRoundedIcon },
   { id: 'timesheets', label: 'Timesheets', icon: ScheduleRoundedIcon },
   { id: 'activity', label: 'Activity Log', icon: HistoryRoundedIcon },
+  { id: 'communications', label: 'Communications', icon: EmailRoundedIcon },
   { id: 'files', label: 'Files', icon: InsertDriveFileOutlinedIcon },
 ] as const;
 
@@ -205,6 +208,8 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
           )}
         </Box>
       ) : null}
+
+      {tab === 'communications' ? <ProjectCommunicationsPanel projectId={projectId} /> : null}
 
       {tab === 'files' ? (
         <Typography variant="body2" color="text.secondary">

@@ -579,6 +579,7 @@ def _activity_category(action: ActivityAction) -> DashboardActivityCategory:
         ActivityAction.project_restored,
         ActivityAction.project_deleted,
         ActivityAction.project_restored_from_deleted,
+        ActivityAction.email_sent,
     ):
         return DashboardActivityCategory.project
     if action in (
@@ -615,6 +616,7 @@ def _activity_title(action: ActivityAction) -> str:
         ActivityAction.admin_impersonation_stopped: "Administrator impersonation ended",
         ActivityAction.user_archived: "User archived",
         ActivityAction.user_restored: "User restored",
+        ActivityAction.email_sent: "Email sent",
     }
     return labels.get(action, action.value.replace("_", " ").title())
 

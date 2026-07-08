@@ -104,7 +104,10 @@ def update_notification_settings(
 def get_or_create_email_settings(db: Session) -> EmailSettings:
     settings = db.scalar(select(EmailSettings).limit(1))
     if settings is None:
+        from app.services.email.providers.zoho_provider import ZohoProvider
+
         settings = EmailSettings()
+        ZohoProvider.apply_defaults(settings)
         db.add(settings)
         db.commit()
         db.refresh(settings)

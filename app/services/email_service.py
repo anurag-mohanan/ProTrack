@@ -1,60 +1,25 @@
-"""SMTP email delivery and template rendering."""
+"""Backward-compatible email service facade."""
 
 from __future__ import annotations
 
-import logging
-import re
-import smtplib
-from email.message import EmailMessage
 from typing import Any
+from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.secret_encryption import decrypt_secret
-from app.crud.foundation import get_or_create_email_settings, get_email_template_by_slug
-from app.models.foundation import EmailSettings, EmailTemplate
-from app.models.models import User
-
-logger = logging.getLogger(__name__)
-
-_PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([A-Za-z0-9_]+)\s*\}\}")
+from app.services.email.engine import EmailService
 
 
 def render_template_content(content: str, context: dict[str, Any]) -> str:
-    def replace(match: re.Match[str]) -> str:
-        key = match.group(1)
-        value = context.get(key, context.get(key.lower(), ""))
-        return "" if value is None else str(value)
+    from app.services.email.template_renderer import render_template_content as _render
 
-    return _PLACEHOLDER_PATTERN.sub(replace, content)
+    return _render(content, context)
 
 
-def render_email_template(
-    template: EmailTemplate,
-    context: dict[str, Any],
-) -> tuple[str, str, str | None]:
-    subject = render_template_content(template.subject, context)
-    html = render_template_content(template.body_html, context)
-    text = (
-        render_template_content(template.body_text, context)
-        if template.body_text
-        else None
-    )
-    return subject, html, text
+def render_email_template(template, context: dict[str, Any]):
+    from app.services.email.template_renderer import render_email_template as _render
 
-
-def _smtp_connection(settings: EmailSettings):
-    password = decrypt_secret(settings.smtp_password_encrypted or "")
-    if settings.use_ssl:
-        server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=30)
-    else:
-        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30)
-        if settings.use_tls:
-            server.starttls()
-    if settings.smtp_username:
-        server.login(settings.smtp_username, password)
-    return server
+    return _render(template, context)
 
 
 def send_email_message(
@@ -65,33 +30,15 @@ def send_email_message(
     html_body: str,
     text_body: str | None = None,
 ) -> bool:
-    recipients = [address.strip() for address in to_addresses if address and address.strip()]
-    if not recipients:
-        return False
-
-    settings = get_or_create_email_settings(db)
-    if not settings.enabled or not settings.smtp_host or not settings.sender_email:
-        logger.info("Email delivery skipped — SMTP not configured.")
-        return False
-
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = (
-        f"{settings.sender_name} <{settings.sender_email}>"
-        if settings.sender_name
-        else settings.sender_email
+    service = EmailService(db)
+    message = service.queue_email(
+        to_addresses=to_addresses,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+        send_immediately=True,
     )
-    message["To"] = ", ".join(recipients)
-    message.set_content(text_body or _html_to_text(html_body))
-    message.add_alternative(html_body, subtype="html")
-
-    try:
-        with _smtp_connection(settings) as server:
-            server.send_message(message)
-        return True
-    except Exception:
-        logger.exception("Failed to send email to %s", recipients)
-        return False
+    return message is not None and message.status == "sent"
 
 
 def send_templated_email(
@@ -100,58 +47,39 @@ def send_templated_email(
     template_slug: str,
     to_addresses: list[str],
     context: dict[str, Any],
+    project_id: UUID | None = None,
+    sent_by_user_id: UUID | None = None,
+    attachment_paths: list[str] | None = None,
+    timeline_label: str | None = None,
 ) -> bool:
-    template = get_email_template_by_slug(db, template_slug)
-    if template is None or not template.is_enabled:
-        logger.warning("Email template %s is missing or disabled.", template_slug)
-        return False
-    subject, html, text = render_email_template(template, context)
-    return send_email_message(
-        db,
+    return EmailService(db).send_templated_email(
+        template_slug=template_slug,
         to_addresses=to_addresses,
-        subject=subject,
-        html_body=html,
-        text_body=text,
+        context=context,
+        project_id=project_id,
+        sent_by_user_id=sent_by_user_id,
+        attachment_paths=attachment_paths,
+        timeline_label=timeline_label,
     )
 
 
 def send_email_to_user(
     db: Session,
     *,
-    user_id,
+    user_id: UUID,
     template_slug: str,
     context: dict[str, Any],
     extra_addresses: list[str] | None = None,
+    project_id: UUID | None = None,
 ) -> bool:
-    user = db.get(User, user_id)
-    addresses = list(extra_addresses or [])
-    if user and user.email:
-        addresses.append(user.email)
-    return send_templated_email(db, template_slug=template_slug, to_addresses=addresses, context=context)
+    return EmailService(db).send_email_to_user(
+        user_id=user_id,
+        template_slug=template_slug,
+        context=context,
+        extra_addresses=extra_addresses,
+        project_id=project_id,
+    )
 
 
 def send_test_email(db: Session, *, to_address: str) -> None:
-    settings = get_or_create_email_settings(db)
-    if not settings.smtp_host or not settings.sender_email:
-        raise ValueError("SMTP host and sender email are required before sending a test email.")
-
-    html = (
-        "<p>This is a test email from <strong>ProTrack</strong>.</p>"
-        "<p>Your SMTP configuration is working correctly.</p>"
-    )
-    sent = send_email_message(
-        db,
-        to_addresses=[to_address],
-        subject="ProTrack SMTP test",
-        html_body=html,
-        text_body="This is a test email from ProTrack. Your SMTP configuration is working correctly.",
-    )
-    if not sent:
-        raise RuntimeError("Test email could not be sent. Check SMTP settings and server logs.")
-
-
-def _html_to_text(html: str) -> str:
-    text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
-    text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", "", text)
-    return re.sub(r"\n{3,}", "\n\n", text).strip()
+    EmailService(db).send_test_email(to_address=to_address)

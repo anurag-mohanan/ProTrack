@@ -155,6 +155,7 @@ const ALL_SETTINGS_ITEMS: AdminHubItem[] = [
   { id: 'paths', title: 'File Paths', description: 'Project folder templates and backup paths.', icon: FolderSharedIcon, path: '/admin/settings/paths' },
   { id: 'email', title: 'Email Settings', description: 'Outbound SMTP configuration and test delivery.', icon: EmailIcon, path: '/admin/settings/email' },
   { id: 'email-templates', title: 'Email Templates', description: 'Transactional and manual notification templates.', icon: EmailIcon, path: '/admin/settings/email-templates' },
+  { id: 'email-queue', title: 'Email Queue', description: 'Outgoing mail queue, delivery status, and retries.', icon: EmailIcon, path: '/admin/settings/email-queue' },
   { id: 'notifications', title: 'Notifications', description: 'System notification rules.', icon: AssessmentIcon, path: '/admin/settings/notifications' },
   { id: 'backup', title: 'Backup', description: 'Database backup and restore.', icon: BackupIcon, path: '/admin/settings/backup' },
   { id: 'security', title: 'Security', description: 'Authentication and password policy.', icon: LockIcon, path: '/admin/settings/security' },

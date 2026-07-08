@@ -18,6 +18,12 @@ class UserPreferencesRead(TimestampSchema):
     reduced_motion: bool = False
     default_landing_page: str = "dashboard"
     email_notifications_enabled: bool = True
+    email_assignment_enabled: bool = True
+    email_reminder_enabled: bool = True
+    email_ai_insights_enabled: bool = True
+    email_daily_summary_enabled: bool = True
+    email_weekly_summary_enabled: bool = True
+    email_monthly_report_enabled: bool = True
 
 
 class UserPreferencesUpdate(BaseModel):
@@ -31,3 +37,9 @@ class UserPreferencesUpdate(BaseModel):
     reduced_motion: bool | None = None
     default_landing_page: str | None = Field(default=None, max_length=32)
     email_notifications_enabled: bool | None = None
+    email_assignment_enabled: bool | None = None
+    email_reminder_enabled: bool | None = None
+    email_ai_insights_enabled: bool | None = None
+    email_daily_summary_enabled: bool | None = None
+    email_weekly_summary_enabled: bool | None = None
+    email_monthly_report_enabled: bool | None = None

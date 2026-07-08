@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -11,6 +11,7 @@ from app.db.base import (
     Base,
     Boolean,
     Date,
+    DateTime,
     Enum,
     ForeignKey,
     Integer,
@@ -99,6 +100,24 @@ class UserPreferences(Base, TimestampMixin):
         String(32), nullable=False, default="dashboard"
     )
     email_notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    email_assignment_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    email_reminder_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    email_ai_insights_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    email_daily_summary_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    email_weekly_summary_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    email_monthly_report_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
 
@@ -228,14 +247,20 @@ class EmailSettings(Base, TimestampMixin):
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    smtp_host: Mapped[Optional[str]] = mapped_column(String(255))
-    smtp_port: Mapped[int] = mapped_column(Integer, nullable=False, default=587)
+    provider_type: Mapped[str] = mapped_column(String(32), nullable=False, default="zoho")
+    smtp_host: Mapped[Optional[str]] = mapped_column(String(255), default="smtp.zoho.com")
+    smtp_port: Mapped[int] = mapped_column(Integer, nullable=False, default=465)
     smtp_username: Mapped[Optional[str]] = mapped_column(String(255))
     smtp_password_encrypted: Mapped[Optional[str]] = mapped_column(Text)
-    use_tls: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    use_ssl: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    use_tls: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    use_ssl: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sender_name: Mapped[Optional[str]] = mapped_column(String(200))
     sender_email: Mapped[Optional[str]] = mapped_column(String(255))
+    reply_to_email: Mapped[Optional[str]] = mapped_column(String(255))
+    company_signature: Mapped[Optional[str]] = mapped_column(Text)
+    connection_status: Mapped[Optional[str]] = mapped_column(String(32))
+    connection_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    connection_message: Mapped[Optional[str]] = mapped_column(Text)
 
 
 class EmailTemplate(Base, TimestampMixin):
@@ -253,3 +278,33 @@ class EmailTemplate(Base, TimestampMixin):
     body_text: Mapped[Optional[str]] = mapped_column(Text)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class EmailMessage(Base, TimestampMixin):
+    __tablename__ = "email_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
+    sent_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    template_slug: Mapped[Optional[str]] = mapped_column(String(64))
+    to_addresses: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    cc_addresses: Mapped[Optional[str]] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(String(500), nullable=False)
+    body_html: Mapped[str] = mapped_column(Text, nullable=False)
+    body_text: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    last_error: Mapped[Optional[str]] = mapped_column(Text)
+    smtp_response: Mapped[Optional[str]] = mapped_column(Text)
+    attachment_metadata: Mapped[Optional[str]] = mapped_column(Text)
+    recipients_display: Mapped[Optional[str]] = mapped_column(String(500))
+    timeline_label: Mapped[Optional[str]] = mapped_column(String(200))
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

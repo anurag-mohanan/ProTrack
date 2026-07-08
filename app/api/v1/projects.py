@@ -1,3 +1,4 @@
+import json
 import logging
 from uuid import UUID
 
@@ -54,7 +55,8 @@ from app.schemas.project import (
     ProjectRead,
     ProjectUpdate,
 )
-from app.services.activity_service import log_activity
+from app.schemas.communication import EmailMessageRead
+from app.services.email.engine import list_email_messages
 from app.services.command_center_service import get_project_command_center
 from app.services.project_lifecycle_service import (
     archive_project,
@@ -685,6 +687,43 @@ def soft_delete_project_legacy(
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
+
+
+@router.get("/{record_id}/communications", response_model=list[EmailMessageRead])
+def get_project_communications(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    search: str | None = None,
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_read_project(db, current_user, db_project):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    messages = list_email_messages(db, project_id=record_id, search=search)
+    return [
+        EmailMessageRead(
+            id=message.id,
+            project_id=message.project_id,
+            sent_by_user_id=message.sent_by_user_id,
+            template_slug=message.template_slug,
+            to_addresses=json.loads(message.to_addresses or "[]"),
+            subject=message.subject,
+            body_html=message.body_html,
+            body_text=message.body_text,
+            status=message.status,
+            retry_count=message.retry_count,
+            max_retries=message.max_retries,
+            last_error=message.last_error,
+            smtp_response=message.smtp_response,
+            attachments=json.loads(message.attachment_metadata or "[]"),
+            recipients_display=message.recipients_display,
+            timeline_label=message.timeline_label,
+            sent_at=message.sent_at,
+            delivered_at=message.delivered_at,
+            created_at=message.created_at,
+        )
+        for message in messages
+    ]
 
 
 @router.delete("/{record_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)

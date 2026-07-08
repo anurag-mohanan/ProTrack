@@ -193,35 +193,35 @@ def _notify_project_assignments(
     *,
     previous_designer_id: UUID | None = None,
     previous_leader_id: UUID | None = None,
+    previous_surfacer_id: UUID | None = None,
 ) -> None:
-    assignments: list[tuple[UUID, str]] = []
-    if (
-        project.designer_id is not None
-        and project.designer_id != previous_designer_id
-    ):
-        assignments.append((project.designer_id, "designer"))
-    if (
-        project.design_leader_id is not None
-        and project.design_leader_id != previous_leader_id
-    ):
-        assignments.append((project.design_leader_id, "design leader"))
-
     label = _project_label(project)
     customer_name = project.customer.name if project.customer else ""
-    for user_id, _role in assignments:
+    email_context = {
+        "ToolNumber": project.tool_number,
+        "Customer": customer_name,
+        "DueDate": str(project.due_date) if project.due_date else "",
+        "PartDescription": project.part_description,
+    }
+
+    changes: list[tuple[UUID, str]] = []
+    if project.designer_id is not None and project.designer_id != previous_designer_id:
+        changes.append((project.designer_id, "designer"))
+    if project.surfacer_id is not None and project.surfacer_id != previous_surfacer_id:
+        changes.append((project.surfacer_id, "surfacer"))
+    if project.design_leader_id is not None and project.design_leader_id != previous_leader_id:
+        changes.append((project.design_leader_id, "design leader"))
+
+    for user_id, role in changes:
         create_notification(
             db,
             user_id=user_id,
             notification_type=NotificationType.project_assigned,
             title="New project assignment",
-            message=f"You were assigned to project {label}",
+            message=f"You were assigned to project {label} as {role}",
             entity_type=EntityType.project,
             entity_id=project.id,
-            email_context={
-                "ToolNumber": project.tool_number,
-                "Customer": customer_name,
-                "DueDate": str(project.due_date) if project.due_date else "",
-            },
+            email_context=email_context,
         )
 
 
@@ -398,6 +398,23 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         db.refresh(db_obj)
         recalculate_project(db, db_obj.id)
         _notify_project_assignments(db, db_obj)
+        from app.services.email.engine import EmailService
+
+        if db_obj.design_leader_id:
+            leader = db.get(User, db_obj.design_leader_id)
+            context = {
+                "ToolNumber": db_obj.tool_number,
+                "Customer": db_obj.customer.name if db_obj.customer else "",
+                "DueDate": str(db_obj.due_date) if db_obj.due_date else "",
+            }
+            if leader and leader.email:
+                EmailService(db).send_templated_email(
+                    template_slug="project_created",
+                    to_addresses=[leader.email],
+                    context=context,
+                    project_id=db_obj.id,
+                    timeline_label="Project Created",
+                )
         return db_obj
 
     @override
@@ -444,6 +461,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
 
         previous_designer_id = db_obj.designer_id
         previous_leader_id = db_obj.design_leader_id
+        previous_surfacer_id = db_obj.surfacer_id
         manual_health = update_data.get("health") if "health" in update_data else None
 
         for field, value in update_data.items():
@@ -457,12 +475,13 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             db.add(db_obj)
             _safe_commit(db)
             db.refresh(db_obj)
-        if "designer_id" in update_data or "design_leader_id" in update_data:
+        if "designer_id" in update_data or "design_leader_id" in update_data or "surfacer_id" in update_data:
             _notify_project_assignments(
                 db,
                 db_obj,
                 previous_designer_id=previous_designer_id,
                 previous_leader_id=previous_leader_id,
+                previous_surfacer_id=previous_surfacer_id,
             )
         if "designer_id" in update_data or "surfacer_id" in update_data:
             from app.services.milestone_assignment_service import sync_milestone_assignments

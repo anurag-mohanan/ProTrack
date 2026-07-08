@@ -126,6 +126,7 @@ class ActivityAction(enum.Enum):
     settings_updated = "settings_updated"
     import_completed = "import_completed"
     data_exported = "data_exported"
+    email_sent = "email_sent"
 
 
 class NotificationType(enum.Enum):
@@ -156,6 +157,18 @@ class EntityType(enum.Enum):
     np_code = "np_code"
     settings = "settings"
     import_batch = "import_batch"
+
+
+class EmailMessageStatus(enum.Enum):
+    queued = "queued"
+    sending = "sending"
+    sent = "sent"
+    failed = "failed"
+
+
+class EmailProviderType(enum.Enum):
+    smtp = "smtp"
+    zoho = "zoho"
 
 
 class DesignerAvailabilityStatus(enum.Enum):

@@ -8,7 +8,6 @@ from app.crud.foundation import get_or_create_notification_settings
 from app.models.enums import EntityType, NotificationType
 from app.models.foundation import UserPreferences
 from app.models.models import Notification, User
-from app.services.email_service import send_templated_email
 
 _NOTIFICATION_TYPE_TO_SETTING = {
     NotificationType.project_assigned: "new_assignments_enabled",
@@ -43,13 +42,25 @@ def _notification_allowed(db: Session, notification_type: NotificationType) -> b
     return bool(getattr(settings, key, True))
 
 
-def _user_wants_email(db: Session, user_id: UUID) -> bool:
+def _user_wants_email(db: Session, user_id: UUID, notification_type: NotificationType) -> bool:
     settings = get_or_create_notification_settings(db)
     if not settings.email_notifications_enabled:
         return False
     prefs = db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
     if prefs is not None and not prefs.email_notifications_enabled:
         return False
+    if prefs is not None:
+        if notification_type == NotificationType.project_assigned and not prefs.email_assignment_enabled:
+            return False
+        reminder_types = {
+            NotificationType.milestone_due_tomorrow,
+            NotificationType.project_due_soon,
+            NotificationType.project_overdue,
+            NotificationType.timesheet_submitted,
+            NotificationType.pending_approval,
+        }
+        if notification_type in reminder_types and not prefs.email_reminder_enabled:
+            return False
     return True
 
 
@@ -61,8 +72,10 @@ def _dispatch_notification_email(
     title: str,
     message: str,
     email_context: dict | None = None,
+    entity_type: EntityType | None = None,
+    entity_id: UUID | None = None,
 ) -> None:
-    if not _user_wants_email(db, user_id):
+    if not _user_wants_email(db, user_id, notification_type):
         return
     template_slug = _NOTIFICATION_TYPE_TO_TEMPLATE.get(notification_type)
     if not template_slug:
@@ -74,12 +87,17 @@ def _dispatch_notification_email(
         "Title": title,
         **(email_context or {}),
     }
+    project_id = entity_id if entity_type == EntityType.project else None
     if user and user.email:
-        send_templated_email(
-            db,
+        from app.services.email.engine import EmailService
+
+        EmailService(db).send_templated_email(
             template_slug=template_slug,
             to_addresses=[user.email],
             context=context,
+            project_id=project_id,
+            sent_by_user_id=user_id,
+            timeline_label=title,
         )
 
 
@@ -118,6 +136,8 @@ def create_notification(
             title=title,
             message=message,
             email_context=email_context,
+            entity_type=entity_type,
+            entity_id=entity_id,
         )
     return notification
 

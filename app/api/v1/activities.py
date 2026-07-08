@@ -2,8 +2,9 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from app.api.auth_deps import get_current_user
-from app.api.deps import APIRouter, Depends, Query, Session, get_db
+from app.api.auth_deps import get_current_user, require_roles
+from app.api.deps import APIRouter, Depends, HTTPException, Query, Session, get_db, status
+from app.models.enums import ActivityAction
 from app.models.models import Activity, Milestone, Project, TimesheetEntry, User
 from app.schemas.timesheet import ActivityRead
 
@@ -55,10 +56,20 @@ def _project_activity_query(db: Session, project_id: UUID):
 def list_activities(
     project_id: UUID | None = None,
     user_id: UUID | None = None,
+    action: ActivityAction | None = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if project_id is None and user_id is None:
+        from app.models.models import Role
+
+        role_name = db.scalar(
+            select(Role.name).join(User, User.role_id == Role.id).where(User.id == current_user.id)
+        )
+        if role_name not in {"Admin", "Engineering Manager"}:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     if project_id is not None:
         query = _project_activity_query(db, project_id)
     elif user_id is not None:
@@ -69,6 +80,8 @@ def list_activities(
         )
     else:
         query = select(Activity).order_by(Activity.created_at.desc())
+    if action is not None:
+        query = query.where(Activity.action == action)
     rows = db.scalars(query.offset(skip).limit(limit)).all()
     return [_activity_to_read(db, row) for row in rows]
 

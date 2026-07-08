@@ -6,7 +6,9 @@ from app.api.v1 import (
     admin_timesheets,
     ai,
     auth,
+    calendar,
     dashboard,
+    emails,
     imports,
     timesheet_imports,
     lookups,
@@ -129,10 +131,12 @@ api_router.include_router(timesheet_entries.router)
 api_router.include_router(admin_timesheets.router)
 api_router.include_router(non_productive_codes.router)
 api_router.include_router(settings.router)
+api_router.include_router(emails.router)
 api_router.include_router(preferences.router)
 api_router.include_router(notifications.router)
 api_router.include_router(activities.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(calendar.router)
 api_router.include_router(ai.router)
 api_router.include_router(reports.router)
 api_router.include_router(system.router)

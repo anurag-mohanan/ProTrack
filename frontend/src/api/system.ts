@@ -21,3 +21,38 @@ export async function fetchSystemHealth(): Promise<SystemHealth> {
   const response = await apiClient.get<SystemHealth>('/system/health');
   return response.data;
 }
+
+export interface BackupEntry {
+  filename: string;
+  path: string;
+  size_bytes: string;
+  modified_at: string;
+}
+
+export interface SecurityPolicy {
+  password_requirements: string;
+  session_timeout_minutes: number;
+  internal_release_mode: boolean;
+}
+
+export async function fetchBackups(): Promise<BackupEntry[]> {
+  const { data } = await apiClient.get<BackupEntry[]>('/system/backups');
+  return data;
+}
+
+export async function createBackup(): Promise<{ filename: string }> {
+  const { data } = await apiClient.post<{ filename: string }>('/system/backups');
+  return data;
+}
+
+export async function restoreBackup(filename: string): Promise<{ restored_from: string }> {
+  const { data } = await apiClient.post<{ restored_from: string }>('/system/backups/restore', {
+    filename,
+  });
+  return data;
+}
+
+export async function fetchSecurityPolicy(): Promise<SecurityPolicy> {
+  const { data } = await apiClient.get<SecurityPolicy>('/system/security-policy');
+  return data;
+}

@@ -98,6 +98,9 @@ class UserPreferences(Base, TimestampMixin):
     default_landing_page: Mapped[str] = mapped_column(
         String(32), nullable=False, default="dashboard"
     )
+    email_notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
 
     user: Mapped["User"] = relationship(back_populates="preferences")
 
@@ -215,3 +218,38 @@ class NotificationSettings(Base, TimestampMixin):
     pending_approvals_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     new_assignments_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     imports_completed_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    email_notifications_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class EmailSettings(Base, TimestampMixin):
+    __tablename__ = "email_settings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    smtp_host: Mapped[Optional[str]] = mapped_column(String(255))
+    smtp_port: Mapped[int] = mapped_column(Integer, nullable=False, default=587)
+    smtp_username: Mapped[Optional[str]] = mapped_column(String(255))
+    smtp_password_encrypted: Mapped[Optional[str]] = mapped_column(Text)
+    use_tls: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    use_ssl: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sender_name: Mapped[Optional[str]] = mapped_column(String(200))
+    sender_email: Mapped[Optional[str]] = mapped_column(String(255))
+
+
+class EmailTemplate(Base, TimestampMixin):
+    __tablename__ = "email_templates"
+    __table_args__ = (UniqueConstraint("slug"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    slug: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(String(500), nullable=False)
+    body_html: Mapped[str] = mapped_column(Text, nullable=False)
+    body_text: Mapped[Optional[str]] = mapped_column(Text)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

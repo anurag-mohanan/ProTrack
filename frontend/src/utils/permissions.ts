@@ -158,6 +158,7 @@ const NAV_MODULE_CONFIG: Array<{
     icon: CalendarMonthRoundedIcon,
   },
   { module: MODULE_REPORTS, label: 'Reports', path: '/reports', icon: AssessmentRoundedIcon },
+  { module: MODULE_DASHBOARD, label: 'Calendar', path: '/calendar', icon: CalendarMonthRoundedIcon },
 ];
 
 function normalizeRoleName(roleName: string): string {

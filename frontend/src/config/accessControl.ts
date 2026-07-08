@@ -119,6 +119,7 @@ export const PATH_MODULE_MAP: Record<string, ModuleKey> = {
   '/workload': MODULE_WORKLOAD,
   '/resource-planning': MODULE_RESOURCE_PLANNING,
   '/reports': MODULE_REPORTS,
+  '/calendar': MODULE_DASHBOARD,
 };
 
 export function moduleForPath(pathname: string): ModuleKey | null {

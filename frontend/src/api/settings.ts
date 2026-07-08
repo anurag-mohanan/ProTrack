@@ -3,6 +3,8 @@ import type {
   CompanySettings,
   ContactType,
   Department,
+  EmailSettings,
+  EmailTemplate,
   EngineeringDiscipline,
   FilePathSettings,
   Holiday,
@@ -111,6 +113,38 @@ export async function updateNotificationSettings(
 ): Promise<NotificationSettings> {
   const { data } = await apiClient.patch<NotificationSettings>(
     '/settings/notifications',
+    payload,
+  );
+  return data;
+}
+
+export async function fetchEmailSettings(): Promise<EmailSettings> {
+  const { data } = await apiClient.get<EmailSettings>('/settings/email');
+  return data;
+}
+
+export async function updateEmailSettings(
+  payload: Partial<EmailSettings> & { smtp_password?: string },
+): Promise<EmailSettings> {
+  const { data } = await apiClient.patch<EmailSettings>('/settings/email', payload);
+  return data;
+}
+
+export async function sendEmailTest(to_address: string): Promise<void> {
+  await apiClient.post('/settings/email/test', { to_address });
+}
+
+export async function fetchEmailTemplates(): Promise<EmailTemplate[]> {
+  const { data } = await apiClient.get<EmailTemplate[]>('/settings/email/templates');
+  return data;
+}
+
+export async function updateEmailTemplate(
+  templateId: string,
+  payload: Partial<Pick<EmailTemplate, 'subject' | 'body_html' | 'body_text' | 'is_enabled' | 'name' | 'description'>>,
+): Promise<EmailTemplate> {
+  const { data } = await apiClient.patch<EmailTemplate>(
+    `/settings/email/templates/${templateId}`,
     payload,
   );
   return data;

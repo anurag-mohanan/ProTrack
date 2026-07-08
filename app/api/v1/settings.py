@@ -11,17 +11,21 @@ from app.crud.foundation import (
     department,
     get_or_create_branding_settings,
     get_or_create_company_settings,
+    get_or_create_email_settings,
     get_or_create_file_path_settings,
     get_or_create_notification_settings,
     holiday,
     list_contact_types,
     list_disciplines,
+    list_email_templates,
     list_skills,
     list_user_skills,
     replace_user_skills,
     restore_default_branding_settings,
     update_branding_settings,
     update_company_settings,
+    update_email_settings,
+    update_email_template,
     update_file_path_settings,
     update_notification_settings,
 )
@@ -34,6 +38,11 @@ from app.schemas.settings import (
     DepartmentCreate,
     DepartmentRead,
     DepartmentUpdate,
+    EmailSettingsRead,
+    EmailSettingsUpdate,
+    EmailTemplateRead,
+    EmailTemplateUpdate,
+    EmailTestRequest,
     EngineeringDisciplineRead,
     FilePathSettingsRead,
     FilePathSettingsUpdate,
@@ -190,6 +199,65 @@ def patch_notification_settings(
     payload: NotificationSettingsUpdate, db: Session = Depends(get_db)
 ):
     return update_notification_settings(db, payload)
+
+
+def _email_settings_read(settings) -> EmailSettingsRead:
+    return EmailSettingsRead(
+        id=settings.id,
+        enabled=settings.enabled,
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+        smtp_username=settings.smtp_username,
+        has_password=bool(settings.smtp_password_encrypted),
+        use_tls=settings.use_tls,
+        use_ssl=settings.use_ssl,
+        sender_name=settings.sender_name,
+        sender_email=settings.sender_email,
+    )
+
+
+@router.get("/email", response_model=EmailSettingsRead, dependencies=admin_access)
+def get_email_settings(db: Session = Depends(get_db)):
+    return _email_settings_read(get_or_create_email_settings(db))
+
+
+@router.patch("/email", response_model=EmailSettingsRead, dependencies=admin_access)
+def patch_email_settings(payload: EmailSettingsUpdate, db: Session = Depends(get_db)):
+    return _email_settings_read(update_email_settings(db, payload))
+
+
+@router.post("/email/test", dependencies=admin_access)
+def test_email_settings(payload: EmailTestRequest, db: Session = Depends(get_db)):
+    from app.services.email_service import send_test_email
+
+    try:
+        send_test_email(db, to_address=payload.to_address)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return {"sent": True}
+
+
+@router.get("/email/templates", response_model=list[EmailTemplateRead], dependencies=admin_access)
+def get_email_templates(db: Session = Depends(get_db)):
+    return list_email_templates(db)
+
+
+@router.patch(
+    "/email/templates/{template_id}",
+    response_model=EmailTemplateRead,
+    dependencies=admin_access,
+)
+def patch_email_template(
+    template_id: UUID,
+    payload: EmailTemplateUpdate,
+    db: Session = Depends(get_db),
+):
+    template = update_email_template(db, template_id, payload)
+    if template is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    return template
 
 
 @router.get("/holidays", response_model=list[HolidayRead])

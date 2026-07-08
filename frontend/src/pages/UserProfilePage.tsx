@@ -3,9 +3,11 @@ import {
   Avatar,
   Box,
   Chip,
+  FormControlLabel,
   Grid,
   MenuItem,
   Stack,
+  Switch,
   Tab,
   Tabs,
   Typography,
@@ -315,9 +317,22 @@ export default function UserProfilePage() {
                 </FormSection>
 
                 <FormSection title="Notification Preferences">
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Personal notification preferences will be available in a future release. System
-                    notification rules are managed in the Administrator Workspace.
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={preferences.email_notifications_enabled ?? true}
+                        onChange={(event) =>
+                          setPrefsForm((current) => ({
+                            ...current,
+                            email_notifications_enabled: event.target.checked,
+                          }))
+                        }
+                      />
+                    }
+                    label="Receive email notifications"
+                  />
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    System notification categories are managed in the Administrator Workspace.
                   </Typography>
                 </FormSection>
 

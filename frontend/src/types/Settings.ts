@@ -111,6 +111,32 @@ export interface NotificationSettings {
   pending_approvals_enabled: boolean;
   new_assignments_enabled: boolean;
   imports_completed_enabled: boolean;
+  email_notifications_enabled: boolean;
+}
+
+export interface EmailSettings {
+  id: string;
+  enabled: boolean;
+  smtp_host?: string | null;
+  smtp_port: number;
+  smtp_username?: string | null;
+  has_password: boolean;
+  use_tls: boolean;
+  use_ssl: boolean;
+  sender_name?: string | null;
+  sender_email?: string | null;
+}
+
+export interface EmailTemplate {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  subject: string;
+  body_html: string;
+  body_text?: string | null;
+  is_enabled: boolean;
+  is_system: boolean;
 }
 
 export type ProjectPriority = 'critical' | 'high' | 'medium' | 'low';

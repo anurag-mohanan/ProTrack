@@ -40,6 +40,7 @@ import {
   softDeleteProject,
 } from '../services/projectService';
 import type { ProjectStage } from '../types';
+import { exportToCsv } from '../utils/exportData';
 import { canArchiveProject, canCreateProject, canDeleteRecords } from '../utils/permissions';
 import {
   applyKpiQuickFilter,
@@ -331,8 +332,31 @@ export function ProjectsPage() {
   );
 
   const handleExport = useCallback(
-    (_row: ProjectTableRow) => {
-      showSuccess('Export will be available in a future release.');
+    (row: ProjectTableRow) => {
+      exportToCsv(
+        `project-${row.tool_number}`,
+        [
+          {
+            tool_number: row.tool_number,
+            customer_name: row.customer_name,
+            part_description: row.part_description,
+            designer_name: row.designer_name,
+            quoted_hours: row.quoted_hours,
+            actual_hours: row.actual_hours,
+            execution_status: row.execution_status,
+          },
+        ],
+        [
+          { key: 'tool_number', header: 'Tool Number' },
+          { key: 'customer_name', header: 'Customer' },
+          { key: 'part_description', header: 'Part Description' },
+          { key: 'designer_name', header: 'Designer' },
+          { key: 'quoted_hours', header: 'Quoted Hours' },
+          { key: 'actual_hours', header: 'Actual Hours' },
+          { key: 'execution_status', header: 'Status' },
+        ],
+      );
+      showSuccess(`Exported ${row.tool_number}`);
     },
     [showSuccess],
   );

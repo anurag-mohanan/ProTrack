@@ -21,6 +21,7 @@ export default function NotificationSettingsPage() {
     pending_approvals_enabled: true,
     new_assignments_enabled: true,
     imports_completed_enabled: true,
+    email_notifications_enabled: true,
   });
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export default function NotificationSettingsPage() {
             ['pending_approvals_enabled', 'Pending approvals'],
             ['new_assignments_enabled', 'New assignments'],
             ['imports_completed_enabled', 'Imports completed'],
+            ['email_notifications_enabled', 'Email notifications'],
           ] as const
         ).map(([key, label]) => (
           <FormControlLabel

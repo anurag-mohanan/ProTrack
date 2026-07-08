@@ -208,7 +208,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
 
       {tab === 'files' ? (
         <Typography variant="body2" color="text.secondary">
-          File attachments per milestone will be available in a future release.
+          Engineering documents are stored in the project folder structure configured under System Settings → File Paths.
         </Typography>
       ) : null}
     </PageContainer>

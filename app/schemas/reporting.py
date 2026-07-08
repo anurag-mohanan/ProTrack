@@ -219,4 +219,4 @@ class ReportScheduleEntry(BaseModel):
     period_type: str
     frequency: str
     enabled: bool
-    note: str = "Email delivery is not yet enabled; schedules are stored for future use."
+    note: str = "Scheduled reports are stored and will email recipients when SMTP is enabled."

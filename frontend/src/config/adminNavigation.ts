@@ -21,13 +21,10 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import TypeSpecimenIcon from '@mui/icons-material/TypeSpecimen';
 import ViewTimelineIcon from '@mui/icons-material/ViewTimeline';
-import BuildIcon from '@mui/icons-material/Build';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import EmailIcon from '@mui/icons-material/Email';
 import BackupIcon from '@mui/icons-material/Backup';
-import RestorePageIcon from '@mui/icons-material/RestorePage';
 import LockIcon from '@mui/icons-material/Lock';
-import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -154,34 +151,29 @@ const ALL_SETTINGS_ITEMS: AdminHubItem[] = [
   { id: 'system-settings', title: 'System Settings', description: 'Core application configuration.', icon: SettingsIcon, path: '/admin/settings' },
   { id: 'company', title: 'Company Information', description: 'Name, logo, address, hours, and holidays.', icon: BusinessIcon, path: '/admin/settings/company' },
   { id: 'branding', title: 'Theme', description: 'Default application theme and colour palette.', icon: PaletteIcon, path: '/admin/settings/branding' },
-  { id: 'logo', title: 'Logo Upload', description: 'Company logo used across ProTrack.', icon: BusinessIcon, path: '/admin/settings/company' },
-  { id: 'email', title: 'Email Settings', description: 'Outbound email configuration.', icon: EmailIcon, path: '/admin/settings', comingSoon: true },
+  { id: 'holidays', title: 'Holiday Calendar', description: 'Company holidays and working-day rules.', icon: ScheduleIcon, path: '/admin/settings/holidays' },
+  { id: 'paths', title: 'File Paths', description: 'Project folder templates and backup paths.', icon: FolderSharedIcon, path: '/admin/settings/paths' },
+  { id: 'email', title: 'Email Settings', description: 'Outbound SMTP configuration and test delivery.', icon: EmailIcon, path: '/admin/settings/email' },
+  { id: 'email-templates', title: 'Email Templates', description: 'Transactional and manual notification templates.', icon: EmailIcon, path: '/admin/settings/email-templates' },
   { id: 'notifications', title: 'Notifications', description: 'System notification rules.', icon: AssessmentIcon, path: '/admin/settings/notifications' },
-  { id: 'backup', title: 'Backup', description: 'Database and file backup.', icon: BackupIcon, path: '/admin/settings', comingSoon: true },
-  { id: 'restore', title: 'Restore', description: 'Restore from backup.', icon: RestorePageIcon, path: '/admin/settings', comingSoon: true },
-  { id: 'security', title: 'Security', description: 'Authentication and access controls.', icon: LockIcon, path: '/admin/settings/security', comingSoon: true },
-  { id: 'authentication', title: 'Authentication', description: 'Sign-in methods and session policy.', icon: VpnKeyIcon, path: '/admin/settings/security', comingSoon: true },
-  { id: 'password-policy', title: 'Password Policy', description: 'Password complexity and expiry rules.', icon: SecurityIcon, path: '/admin/settings/security', comingSoon: true },
+  { id: 'backup', title: 'Backup', description: 'Database backup and restore.', icon: BackupIcon, path: '/admin/settings/backup' },
+  { id: 'security', title: 'Security', description: 'Authentication and password policy.', icon: LockIcon, path: '/admin/settings/security' },
 ];
 
-export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = ALL_SETTINGS_ITEMS.filter(
-  (item) => !item.comingSoon,
-);
+export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = ALL_SETTINGS_ITEMS;
 
 const ALL_AUDIT_ITEMS: AdminHubItem[] = [
-  { id: 'audit-logs', title: 'Audit Logs', description: 'System activity and change history.', icon: HistoryIcon, path: '/admin/audit', comingSoon: true },
+  { id: 'audit-logs', title: 'Audit Logs', description: 'System activity and change history.', icon: HistoryIcon, path: '/admin/audit/logs' },
   { id: 'deleted-records', title: 'Deleted Records', description: 'Recover soft-deleted projects and users.', icon: DeleteIcon, path: '/admin/deleted-projects' },
+  { id: 'deleted-users', title: 'Deleted Users', description: 'Review and restore deleted user accounts.', icon: PeopleIcon, path: '/admin/deleted-users' },
   { id: 'deleted-timesheets', title: 'Deleted Timesheet Entries', description: 'Audit and restore soft-deleted timesheet rows.', icon: ScheduleIcon, path: '/admin/deleted-timesheet-entries' },
   { id: 'archived-records', title: 'Archived Records', description: 'Review archived engineering projects.', icon: ArchiveIcon, path: '/projects/archived' },
   { id: 'system-health', title: 'System Health', description: 'Version, services, and runtime status.', icon: MonitorHeartIcon, path: '/admin/system' },
   { id: 'rebuild-timesheet-stats', title: 'Rebuild Timesheet Statistics', description: 'Recalculate all timesheet summaries and repair data.', icon: RefreshIcon, path: '/admin/rebuild-timesheet-stats' },
   { id: 'import-history', title: 'Import History', description: 'Historical import audit trail.', icon: WorkHistoryIcon, path: '/admin/imports/historical-timesheets#history' },
-  { id: 'background-jobs', title: 'Background Jobs', description: 'Scheduled tasks and queue status.', icon: BuildIcon, path: '/admin/audit', comingSoon: true },
 ];
 
-export const ADMIN_AUDIT_ITEMS: AdminHubItem[] = ALL_AUDIT_ITEMS.filter(
-  (item) => !item.comingSoon,
-);
+export const ADMIN_AUDIT_ITEMS: AdminHubItem[] = ALL_AUDIT_ITEMS;
 
 export const ADMIN_REPORT_ITEMS: AdminHubItem[] = [
   { id: 'import-history', title: 'Import History', description: 'Historical import audit.', icon: HistoryIcon, path: '/admin/imports/historical-timesheets#history' },

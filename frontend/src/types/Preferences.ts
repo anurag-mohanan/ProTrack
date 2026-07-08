@@ -16,6 +16,7 @@ export interface UserPreferences {
   animations_enabled: boolean;
   reduced_motion: boolean;
   default_landing_page: LandingPagePreference;
+  email_notifications_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
 }

@@ -213,6 +213,7 @@ class NotificationSettingsRead(BaseModel):
     pending_approvals_enabled: bool = True
     new_assignments_enabled: bool = True
     imports_completed_enabled: bool = True
+    email_notifications_enabled: bool = True
 
 
 class NotificationSettingsUpdate(BaseModel):
@@ -221,6 +222,64 @@ class NotificationSettingsUpdate(BaseModel):
     pending_approvals_enabled: bool | None = None
     new_assignments_enabled: bool | None = None
     imports_completed_enabled: bool | None = None
+    email_notifications_enabled: bool | None = None
+
+
+class EmailSettingsRead(BaseModel):
+    id: UUID
+    enabled: bool = False
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    has_password: bool = False
+    use_tls: bool = True
+    use_ssl: bool = False
+    sender_name: str | None = None
+    sender_email: str | None = None
+
+
+class EmailSettingsUpdate(BaseModel):
+    enabled: bool | None = None
+    smtp_host: str | None = Field(default=None, max_length=255)
+    smtp_port: int | None = Field(default=None, ge=1, le=65535)
+    smtp_username: str | None = Field(default=None, max_length=255)
+    smtp_password: str | None = Field(default=None, max_length=512)
+    use_tls: bool | None = None
+    use_ssl: bool | None = None
+    sender_name: str | None = Field(default=None, max_length=200)
+    sender_email: str | None = Field(default=None, max_length=255)
+
+
+class EmailTestRequest(BaseModel):
+    to_address: str = Field(..., max_length=255)
+
+
+class EmailTemplateRead(BaseModel):
+    id: UUID
+    slug: str
+    name: str
+    description: str | None = None
+    subject: str
+    body_html: str
+    body_text: str | None = None
+    is_enabled: bool = True
+    is_system: bool = True
+
+
+class EmailTemplateUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    subject: str | None = Field(default=None, max_length=500)
+    body_html: str | None = None
+    body_text: str | None = None
+    is_enabled: bool | None = None
+
+
+class ManualEmailRequest(BaseModel):
+    template_slug: str
+    to_addresses: list[str] = Field(default_factory=list)
+    user_ids: list[UUID] = Field(default_factory=list)
+    context: dict[str, str] = Field(default_factory=dict)
 
 
 class UserCapacityUpdate(BaseModel):

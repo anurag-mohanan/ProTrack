@@ -52,6 +52,12 @@ const HolidayCalendarPage = lazy(() => import('./pages/admin/HolidayCalendarPage
 const DepartmentsPage = lazy(() => import('./pages/admin/DepartmentsPage'));
 const FilePathSettingsPage = lazy(() => import('./pages/admin/FilePathSettingsPage'));
 const NotificationSettingsPage = lazy(() => import('./pages/admin/NotificationSettingsPage'));
+const EmailSettingsPage = lazy(() => import('./pages/admin/EmailSettingsPage'));
+const EmailTemplatesPage = lazy(() => import('./pages/admin/EmailTemplatesPage'));
+const AuditLogsPage = lazy(() => import('./pages/admin/AuditLogsPage'));
+const BackupRestorePage = lazy(() => import('./pages/admin/BackupRestorePage'));
+const SecuritySettingsPage = lazy(() => import('./pages/admin/SecuritySettingsPage'));
+const EngineeringCalendarPage = lazy(() => import('./pages/EngineeringCalendarPage'));
 const AdminAuditHubPage = lazy(() => import('./pages/admin/AdminAuditHubPage'));
 const AdminSystemPage = lazy(() => import('./pages/admin/AdminSystemPage'));
 const ContactsAdminPage = lazy(() => import('./pages/admin/ContactsPage'));
@@ -183,6 +189,7 @@ export default function App() {
                     <Route path="/help" element={<HelpCenterPage />} />
                     <Route element={<RoleRoute allowed={canViewReports} />}>
                       <Route path="/reports" element={<ReportsPage />} />
+                      <Route path="/calendar" element={<EngineeringCalendarPage />} />
                       <Route path="/knowledge" element={<KnowledgeBasePage />} />
                       <Route path="/executive-wall" element={<ExecutiveWallPage />} />
                     </Route>
@@ -298,6 +305,46 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <NotificationSettingsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/email"
+                        element={
+                          <LazyAdminPage>
+                            <EmailSettingsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/email-templates"
+                        element={
+                          <LazyAdminPage>
+                            <EmailTemplatesPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/backup"
+                        element={
+                          <LazyAdminPage>
+                            <BackupRestorePage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/security"
+                        element={
+                          <LazyAdminPage>
+                            <SecuritySettingsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/audit/logs"
+                        element={
+                          <LazyAdminPage>
+                            <AuditLogsPage />
                           </LazyAdminPage>
                         }
                       />

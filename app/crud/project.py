@@ -207,6 +207,7 @@ def _notify_project_assignments(
         assignments.append((project.design_leader_id, "design leader"))
 
     label = _project_label(project)
+    customer_name = project.customer.name if project.customer else ""
     for user_id, _role in assignments:
         create_notification(
             db,
@@ -216,6 +217,11 @@ def _notify_project_assignments(
             message=f"You were assigned to project {label}",
             entity_type=EntityType.project,
             entity_id=project.id,
+            email_context={
+                "ToolNumber": project.tool_number,
+                "Customer": customer_name,
+                "DueDate": str(project.due_date) if project.due_date else "",
+            },
         )
 
 

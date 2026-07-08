@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   Accordion,
   AccordionDetails,
@@ -64,6 +65,7 @@ export function ProjectRecordDrawer({
   onArchive,
   canArchive = false,
 }: ProjectRecordDrawerProps) {
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [historyExpanded, setHistoryExpanded] = useState(false);
@@ -162,9 +164,12 @@ export function ProjectRecordDrawer({
             <ProsohmButton
               buttonVariant="outlined"
               size="small"
-              onClick={() => showSuccess('Export will be available in a future release.')}
+              onClick={() => {
+                if (!project) return;
+                navigate(`/projects/${project.id}`);
+              }}
             >
-              Export
+              Open Workspace
             </ProsohmButton>
           </DrawerQuickActions>
         ) : null
@@ -335,7 +340,7 @@ export function ProjectRecordDrawer({
 
           <FormSection title="Attachments" icon={FolderCopyOutlinedIcon}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Attachments will be available in a future release.
+              Engineering documents are managed in the project workspace. Use the configured project folder for CAD, PDF, and released files.
             </Typography>
             {cc?.folders.project_folder_path ? (
               <FormField

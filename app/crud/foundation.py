@@ -11,17 +11,22 @@ from app.models.foundation import (
     ContactType,
     Department,
     EngineeringDiscipline,
+    EmailSettings,
+    EmailTemplate,
     FilePathSettings,
     Holiday,
     NotificationSettings,
     Skill,
     UserSkill,
 )
+from app.core.secret_encryption import decrypt_secret, encrypt_secret
 from app.schemas.settings import (
     BrandingSettingsUpdate,
     CompanySettingsUpdate,
     DepartmentCreate,
     DepartmentUpdate,
+    EmailSettingsUpdate,
+    EmailTemplateUpdate,
     FilePathSettingsUpdate,
     HolidayCreate,
     HolidayUpdate,
@@ -94,6 +99,60 @@ def update_notification_settings(
     db.commit()
     db.refresh(settings)
     return settings
+
+
+def get_or_create_email_settings(db: Session) -> EmailSettings:
+    settings = db.scalar(select(EmailSettings).limit(1))
+    if settings is None:
+        settings = EmailSettings()
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
+def update_email_settings(db: Session, payload: EmailSettingsUpdate) -> EmailSettings:
+    settings = get_or_create_email_settings(db)
+    data = payload.model_dump(exclude_unset=True)
+    password = data.pop("smtp_password", None)
+    for key, value in data.items():
+        setattr(settings, key, value)
+    if password is not None:
+        settings.smtp_password_encrypted = encrypt_secret(password) if password else None
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return settings
+
+
+def list_email_templates(db: Session) -> list[EmailTemplate]:
+    rows = db.scalars(select(EmailTemplate).order_by(EmailTemplate.name)).all()
+    if rows:
+        return rows
+    from app.services.email_template_defaults import DEFAULT_EMAIL_TEMPLATES
+
+    for template in DEFAULT_EMAIL_TEMPLATES:
+        db.add(EmailTemplate(**template, is_system=True))
+    db.commit()
+    return db.scalars(select(EmailTemplate).order_by(EmailTemplate.name)).all()
+
+
+def get_email_template_by_slug(db: Session, slug: str) -> EmailTemplate | None:
+    return db.scalar(select(EmailTemplate).where(EmailTemplate.slug == slug))
+
+
+def update_email_template(
+    db: Session, template_id: UUID, payload: EmailTemplateUpdate
+) -> EmailTemplate | None:
+    template = db.get(EmailTemplate, template_id)
+    if template is None:
+        return None
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(template, key, value)
+    db.add(template)
+    db.commit()
+    db.refresh(template)
+    return template
 
 
 class CRUDHoliday:

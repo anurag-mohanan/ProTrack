@@ -1,5 +1,10 @@
 export const REPORT_CATEGORIES = [
   {
+    id: 'executive',
+    label: 'Executive',
+    slugs: ['engineering-suite'],
+  },
+  {
     id: 'projects',
     label: 'Projects',
     slugs: ['project-hours', 'by-stage', 'by-execution-status', 'project-portfolio'],

@@ -76,6 +76,7 @@ def _register_defaults(engine: AiEngine) -> None:
     from app.services.ai.modules.productivity_analytics import ProductivityAnalyticsModule
     from app.services.ai.modules.project_health_engine import ProjectHealthEngineModule
     from app.services.ai.modules.quoting_assistant import QuotingAssistantModule
+    from app.services.ai.modules.report_insights import ReportInsightsModule
     from app.services.ai.modules.resource_optimizer import ResourceOptimizerModule
     from app.services.ai.modules.schedule_predictor import SchedulePredictorModule
     from app.services.ai.modules.timesheet_suggestions import TimesheetSuggestionsModule
@@ -91,6 +92,7 @@ def _register_defaults(engine: AiEngine) -> None:
         KnowledgeBaseModule(),
         ProductivityAnalyticsModule(),
         EngineeringKpiModule(),
+        ReportInsightsModule(),
         NotificationEngineModule(),
         TimesheetSuggestionsModule(),
         ChatAssistantModule(),

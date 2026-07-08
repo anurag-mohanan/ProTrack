@@ -35,6 +35,7 @@ import {
   StageSummaryReportView,
 } from '../components/reports/ReportAnalyticsViews';
 import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
+import { EngineeringReportingSuite } from '../components/reports/EngineeringReportingSuite';
 import { fetchCustomers, fetchTeams, fetchUsers, fetchTaskTypes } from '../api/lookups';
 import { fetchProjects } from '../api/projects';
 import { useAuth } from '../context/AuthContext';
@@ -61,6 +62,7 @@ import { formatNumber } from '../utils/format';
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 
 const TAB_CONFIG = [
+  { label: 'Engineering Suite', slug: 'engineering-suite', category: 'executive' },
   { label: 'Project Hours', slug: 'project-hours', category: 'projects' },
   { label: 'Productive Hours', slug: 'productive-hours', category: 'timesheets' },
   { label: 'NP Hours by Code', slug: 'np-hours', category: 'leave' },
@@ -128,67 +130,67 @@ export function ReportsPage() {
   const projectHoursQuery = useQuery({
     queryKey: reportQueryKeys.projectHours(reportOptions),
     queryFn: () => getProjectHoursReport(reportOptions),
-    enabled: tab === 0,
+    enabled: tab === 1,
   });
   const productiveQuery = useQuery({
     queryKey: reportQueryKeys.productiveHours,
     queryFn: getProductiveHoursReport,
-    enabled: tab === 1,
+    enabled: tab === 2,
   });
   const npHoursQuery = useQuery({
     queryKey: reportQueryKeys.nonProductiveHours,
     queryFn: getNonProductiveHoursReport,
-    enabled: tab === 2,
+    enabled: tab === 3,
   });
   const npByDesignerQuery = useQuery({
     queryKey: reportQueryKeys.npHoursByDesigner,
     queryFn: getNpHoursByDesignerReport,
-    enabled: tab === 3,
+    enabled: tab === 4,
   });
   const npTrendsQuery = useQuery({
     queryKey: reportQueryKeys.monthlyNpTrends,
     queryFn: getMonthlyNpTrendsReport,
-    enabled: tab === 4,
+    enabled: tab === 5,
   });
   const billableVsNpQuery = useQuery({
     queryKey: reportQueryKeys.billableVsNonBillable,
     queryFn: getBillableVsNonBillableReport,
-    enabled: tab === 5,
+    enabled: tab === 6,
   });
   const topNpQuery = useQuery({
     queryKey: reportQueryKeys.topNpActivities,
     queryFn: getTopNpActivitiesReport,
-    enabled: tab === 6,
+    enabled: tab === 7,
   });
   const billableQuery = useQuery({
     queryKey: reportQueryKeys.billableUtilization,
     queryFn: getBillableUtilizationReport,
-    enabled: tab === 7,
+    enabled: tab === 8,
   });
   const designerQuery = useQuery({
     queryKey: reportQueryKeys.designerUtilization,
     queryFn: getDesignerUtilizationReport,
-    enabled: tab === 8,
+    enabled: tab === 9,
   });
   const customerQuery = useQuery({
     queryKey: reportQueryKeys.customerSummary(reportOptions),
     queryFn: () => getCustomerSummaryReport(reportOptions),
-    enabled: tab === 9,
+    enabled: tab === 10,
   });
   const stageSummaryQuery = useQuery({
     queryKey: reportQueryKeys.projectStageSummary(reportOptions),
     queryFn: () => getProjectStageSummaryReport(reportOptions),
-    enabled: tab === 10,
+    enabled: tab === 11,
   });
   const executionSummaryQuery = useQuery({
     queryKey: reportQueryKeys.executionStatusSummary(reportOptions),
     queryFn: () => getExecutionStatusSummaryReport(reportOptions),
-    enabled: tab === 11,
+    enabled: tab === 12,
   });
   const portfolioQuery = useQuery({
     queryKey: reportQueryKeys.projectPortfolio(reportOptions),
     queryFn: () => getProjectPortfolioReport(reportOptions),
-    enabled: tab === 12,
+    enabled: tab === 13,
   });
   const timesheetExportQuery = useQuery({
     queryKey: ['reports', 'timesheet-export', exportPeriod, exportFilters],
@@ -202,44 +204,44 @@ export function ReportsPage() {
         task_type_id: exportFilters.task_type_id || undefined,
         billable: exportFilters.billable || undefined,
       }),
-    enabled: tab === 13,
+    enabled: tab === 14,
   });
 
   const exportTeamsQuery = useQuery({
     queryKey: ['reports', 'export-teams'],
     queryFn: fetchTeams,
-    enabled: tab === 13,
+    enabled: tab === 14,
     staleTime: 5 * 60 * 1000,
   });
   const exportUsersQuery = useQuery({
     queryKey: ['reports', 'export-users'],
     queryFn: fetchUsers,
-    enabled: tab === 13,
+    enabled: tab === 14,
     staleTime: 5 * 60 * 1000,
   });
   const exportCustomersQuery = useQuery({
     queryKey: ['reports', 'export-customers'],
     queryFn: fetchCustomers,
-    enabled: tab === 13,
+    enabled: tab === 14,
     staleTime: 5 * 60 * 1000,
   });
   const exportProjectsQuery = useQuery({
     queryKey: ['reports', 'export-projects'],
     queryFn: () => fetchProjects({ limit: 500 }),
-    enabled: tab === 13,
+    enabled: tab === 14,
     staleTime: 5 * 60 * 1000,
   });
   const exportTaskTypesQuery = useQuery({
     queryKey: ['reports', 'export-task-types'],
     queryFn: () => fetchTaskTypes(),
-    enabled: tab === 13,
+    enabled: tab === 14,
     staleTime: 5 * 60 * 1000,
   });
 
-  const teamReportsEnabled = tab === 14;
+  const teamReportsEnabled = tab === 15;
 
   const activeQuery = useMemo(() => {
-    if (teamReportsEnabled) return { isLoading: false, error: null };
+    if (tab === 0 || teamReportsEnabled) return { isLoading: false, error: null };
     const queries = [
       projectHoursQuery,
       productiveQuery,
@@ -256,7 +258,7 @@ export function ReportsPage() {
       portfolioQuery,
       timesheetExportQuery,
     ];
-    return queries[tab] ?? projectHoursQuery;
+    return queries[tab - 1] ?? projectHoursQuery;
   }, [
     tab,
     teamReportsEnabled,
@@ -387,11 +389,19 @@ export function ReportsPage() {
         {activeQuery.isLoading ? <LoadingState message="Loading reports…" /> : null}
         {activeQuery.error ? <ErrorState error={activeQuery.error} /> : null}
 
-        {tab === 0 && !projectHoursQuery.isLoading && !projectHoursQuery.error ? (
+        {tab === 0 ? (
+          <EngineeringReportingSuite
+            canExport={canExport}
+            includeArchived={appliedIncludeArchived}
+            includeDeleted={appliedIncludeDeleted}
+          />
+        ) : null}
+
+        {tab === 1 && !projectHoursQuery.isLoading && !projectHoursQuery.error ? (
           <ProjectHoursReportView rows={projectHoursQuery.data ?? []} canExport={canExport} />
         ) : null}
 
-        {tab === 1 && !productiveQuery.isLoading && !productiveQuery.error ? (
+        {tab === 2 && !productiveQuery.isLoading && !productiveQuery.error ? (
           <SimpleTableReportView
             title="Productive Hours"
             filename="productive-hours"
@@ -408,7 +418,7 @@ export function ReportsPage() {
           />
         ) : null}
 
-        {tab === 2 && !npHoursQuery.isLoading && !npHoursQuery.error ? (
+        {tab === 3 && !npHoursQuery.isLoading && !npHoursQuery.error ? (
           <SimpleTableReportView
             title="NP Hours by Code"
             filename="np-hours-by-code"
@@ -426,7 +436,7 @@ export function ReportsPage() {
           />
         ) : null}
 
-        {tab === 3 && !npByDesignerQuery.isLoading && !npByDesignerQuery.error ? (
+        {tab === 4 && !npByDesignerQuery.isLoading && !npByDesignerQuery.error ? (
           <SimpleTableReportView
             title="NP Hours by Designer"
             filename="np-by-designer"
@@ -439,15 +449,15 @@ export function ReportsPage() {
           />
         ) : null}
 
-        {tab === 4 && !npTrendsQuery.isLoading && !npTrendsQuery.error ? (
+        {tab === 5 && !npTrendsQuery.isLoading && !npTrendsQuery.error ? (
           <NpTrendReportView rows={npTrendsQuery.data ?? []} canExport={canExport} />
         ) : null}
 
-        {tab === 5 && !billableVsNpQuery.isLoading && !billableVsNpQuery.error && billableVsNpQuery.data ? (
+        {tab === 6 && !billableVsNpQuery.isLoading && !billableVsNpQuery.error && billableVsNpQuery.data ? (
           <BillableVsNpReportView data={billableVsNpQuery.data} canExport={canExport} />
         ) : null}
 
-        {tab === 6 && !topNpQuery.isLoading && !topNpQuery.error ? (
+        {tab === 7 && !topNpQuery.isLoading && !topNpQuery.error ? (
           <SimpleTableReportView
             title="Top NP Activities"
             filename="top-np-activities"
@@ -462,31 +472,31 @@ export function ReportsPage() {
           />
         ) : null}
 
-        {tab === 7 && !billableQuery.isLoading && !billableQuery.error ? (
+        {tab === 8 && !billableQuery.isLoading && !billableQuery.error ? (
           <BillableUtilizationReportView rows={billableQuery.data ?? []} canExport={canExport} />
         ) : null}
 
-        {tab === 8 && !designerQuery.isLoading && !designerQuery.error ? (
+        {tab === 9 && !designerQuery.isLoading && !designerQuery.error ? (
           <DesignerUtilizationReportView rows={designerQuery.data ?? []} canExport={canExport} />
         ) : null}
 
-        {tab === 9 && !customerQuery.isLoading && !customerQuery.error ? (
+        {tab === 10 && !customerQuery.isLoading && !customerQuery.error ? (
           <CustomerSummaryReportView rows={customerQuery.data ?? []} canExport={canExport} />
         ) : null}
 
-        {tab === 10 && !stageSummaryQuery.isLoading && !stageSummaryQuery.error ? (
+        {tab === 11 && !stageSummaryQuery.isLoading && !stageSummaryQuery.error ? (
           <StageSummaryReportView rows={stageSummaryQuery.data ?? []} canExport={canExport} />
         ) : null}
 
-        {tab === 11 && !executionSummaryQuery.isLoading && !executionSummaryQuery.error ? (
+        {tab === 12 && !executionSummaryQuery.isLoading && !executionSummaryQuery.error ? (
           <ExecutionSummaryReportView rows={executionSummaryQuery.data ?? []} canExport={canExport} />
         ) : null}
 
-        {tab === 12 && !portfolioQuery.isLoading && !portfolioQuery.error ? (
+        {tab === 13 && !portfolioQuery.isLoading && !portfolioQuery.error ? (
           <PortfolioReportView rows={portfolioQuery.data ?? []} canExport={canExport} />
         ) : null}
 
-        {tab === 13 && !timesheetExportQuery.isLoading && !timesheetExportQuery.error ? (
+        {tab === 14 && !timesheetExportQuery.isLoading && !timesheetExportQuery.error ? (
           <Stack spacing={2}>
             <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
               <FormSelect

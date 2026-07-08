@@ -1,6 +1,9 @@
 from datetime import date
 from uuid import UUID
 
+from fastapi import HTTPException, status
+from fastapi.responses import Response
+
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
 from app.core.permissions import can_view_deleted_projects
@@ -66,6 +69,14 @@ from app.schemas.reports import (
     TeamProfitabilityReportRow,
     MonthlyTeamSummaryRow,
 )
+from app.schemas.reporting import (
+    EngineeringReportPayload,
+    ReportCatalog,
+    ReportScheduleEntry,
+    ReportScheduleRequest,
+)
+from app.services.reporting import reporting_engine
+from app.services.reporting.schedule_store import list_schedules, upsert_schedule
 
 router = APIRouter(
     prefix="/reports",
@@ -97,6 +108,75 @@ def _report_options(
         "include_archived": include_archived,
         "include_deleted": include_deleted,
     }
+
+
+def _engineering_report_options(
+    period_type: str = Query("monthly"),
+    anchor: date | None = Query(None),
+    include_archived: bool = Query(True),
+    include_deleted: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    if include_deleted and not can_view_deleted_projects(db, current_user):
+        include_deleted = False
+    return {
+        "period_type": period_type,
+        "anchor": anchor,
+        "include_archived": include_archived,
+        "include_deleted": include_deleted,
+    }
+
+
+@router.get("/catalog", response_model=ReportCatalog)
+def engineering_report_catalog():
+    return reporting_engine.catalog()
+
+
+@router.get("/engine/{report_id}/preview", response_model=EngineeringReportPayload)
+def engineering_report_preview(
+    report_id: str,
+    db: Session = Depends(get_db),
+    options: dict[str, object] = Depends(_engineering_report_options),
+):
+    try:
+        return reporting_engine.build_report(db, report_id=report_id, **options)
+    except KeyError as exc:
+        if "Unknown report" in str(exc) or "not registered" in str(exc):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise
+
+
+@router.get("/engine/{report_id}/export.xlsx")
+def engineering_report_export(
+    report_id: str,
+    db: Session = Depends(get_db),
+    options: dict[str, object] = Depends(_engineering_report_options),
+):
+    try:
+        payload = reporting_engine.build_report(db, report_id=report_id, **options)
+        content = reporting_engine.export_excel(payload)
+    except KeyError as exc:
+        if "Unknown report" in str(exc) or "not registered" in str(exc):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise
+
+    filename = f"{report_id}-{payload.period.start_date.isoformat()}.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/schedules", response_model=list[ReportScheduleEntry])
+def engineering_report_schedules():
+    return list_schedules()
+
+
+@router.put("/schedules", response_model=ReportScheduleEntry)
+def save_engineering_report_schedule(payload: ReportScheduleRequest):
+    return upsert_schedule(payload)
 
 
 @router.get("", response_model=ReportsBundle)

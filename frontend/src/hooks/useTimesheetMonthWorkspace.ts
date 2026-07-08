@@ -277,14 +277,12 @@ export function useTimesheetMonthWorkspace(
 
   const isEntryEditable = useCallback(
     (entry: TimesheetEntry) => {
-      const sheet = timesheetById.get(entry.timesheet_id);
+      // Editability depends only on the calendar rule (current + previous two
+      // months). Workflow status (submitted/approved/rejected) does not lock.
       const adminOverride = user ? isAdminRole(user.role_name ?? '') : false;
-      if (isEntryDateCalendarLocked(entry.entry_date, { adminOverride })) {
-        return false;
-      }
-      return sheet?.status === 'draft';
+      return !isEntryDateCalendarLocked(entry.entry_date, { adminOverride });
     },
-    [timesheetById, user],
+    [user],
   );
 
   const isLoading =

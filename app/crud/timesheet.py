@@ -105,7 +105,7 @@ class CRUDTimesheet(CRUDBase[Timesheet, TimesheetCreate, TimesheetUpdate]):
         if not can_delete_timesheet(db, actor, db_obj):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only draft timesheets can be deleted",
+                detail="Timesheet is locked or you lack permission to delete it",
             )
         return super().delete(db, record_id=record_id)
 

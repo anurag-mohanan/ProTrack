@@ -49,7 +49,9 @@ import {
   canRejectTimesheet,
   canReturnToDraft,
   canSubmitTimesheet,
+  isAdminRole,
 } from '../utils/permissions';
+import { isTimesheetMonthCalendarLocked } from '../utils/timesheetLocking';
 import {
   countWorkingDays,
   formatMonthLabel,
@@ -161,7 +163,11 @@ export function TimesheetMonthPage() {
     return draftTimesheets[0] ?? (timesheetsQuery.data ?? [])[0] ?? null;
   }, [draftTimesheets, selectedTimesheetId, timesheetsQuery.data]);
 
-  const readOnly = primaryTimesheet ? primaryTimesheet.status !== 'draft' : false;
+  // Editability depends only on the calendar rule (current + previous two
+  // months), not on workflow status.
+  const readOnly = isTimesheetMonthCalendarLocked(monthValue, {
+    adminOverride: isAdminRole(user?.role_name ?? ''),
+  });
 
   useEffect(() => {
     if (!entriesQuery.data) return;

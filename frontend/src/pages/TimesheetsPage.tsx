@@ -76,12 +76,9 @@ export function TimesheetsPage() {
     adminOverride: isAdmin,
   });
 
-  const readOnly =
-    viewAllUsers ||
-    isReadOnlyRole(roleName) ||
-    calendarLocked ||
-    workspace.monthStatus === 'approved' ||
-    workspace.monthStatus === 'submitted';
+  // Editability depends only on the calendar rule (current + previous two
+  // months) and role. Workflow status does NOT lock the timesheet.
+  const readOnly = viewAllUsers || isReadOnlyRole(roleName) || calendarLocked;
 
   const selectedEntry =
     workspace.entries.find((entry) => entry.id === selectedEntryId) ?? null;
@@ -385,16 +382,8 @@ export function TimesheetsPage() {
       {!viewAllUsers && calendarLocked ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
           {isAdmin
-            ? 'This month is older than two calendar months. As a System Administrator you can still edit it.'
-            : 'Timesheets are locked for months older than the previous calendar month. Only the current and previous months remain editable.'}
-        </Alert>
-      ) : null}
-
-      {!viewAllUsers &&
-      !calendarLocked &&
-      (workspace.monthStatus === 'submitted' || workspace.monthStatus === 'approved') ? (
-        <Alert severity="info" sx={{ mb: 1.5 }}>
-          This month&apos;s timesheet has already been submitted and can no longer be modified.
+            ? 'This timesheet is archived because it is older than two months. As a System Administrator you can still edit it.'
+            : 'This timesheet is archived because it is older than two months.'}
         </Alert>
       ) : null}
 

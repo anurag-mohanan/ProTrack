@@ -103,7 +103,8 @@ def test_admin_can_restore_deleted_entry(client, auth_headers, test_session_fact
         assert log.restored_at is not None
 
 
-def test_cannot_edit_or_delete_after_submit(client, auth_headers):
+def test_can_edit_and_delete_after_submit(client, auth_headers):
+    """Submitting a timesheet must NOT lock it. Status only drives workflow."""
     entry = _create_draft_entry(client, auth_headers)
     timesheet_id = entry["timesheet_id"]
 
@@ -118,11 +119,38 @@ def test_cannot_edit_or_delete_after_submit(client, auth_headers):
         json={"hours": 6},
         headers=auth_headers,
     )
-    assert updated.status_code == 403
-    assert "submitted" in updated.json()["detail"].lower()
+    assert updated.status_code == 200
+    assert float(updated.json()["hours"]) == 6
 
     deleted = client.delete(f"/api/v1/timesheet-entries/{entry['id']}", headers=auth_headers)
-    assert deleted.status_code == 403
+    assert deleted.status_code == 204
+
+
+def test_can_edit_after_approve(client, auth_headers):
+    """Approved timesheets remain editable so users can correct entries."""
+    entry = _create_draft_entry(client, auth_headers)
+    timesheet_id = entry["timesheet_id"]
+
+    submitted = client.post(
+        f"/api/v1/timesheets/{timesheet_id}/submit",
+        headers=auth_headers,
+    )
+    assert submitted.status_code == 200
+
+    approved = client.post(
+        f"/api/v1/timesheets/{timesheet_id}/approve",
+        json={"comments": "Looks good"},
+        headers=auth_headers,
+    )
+    assert approved.status_code == 200
+
+    updated = client.patch(
+        f"/api/v1/timesheet-entries/{entry['id']}",
+        json={"hours": 4},
+        headers=auth_headers,
+    )
+    assert updated.status_code == 200
+    assert float(updated.json()["hours"]) == 4
 
 
 def test_non_owner_cannot_edit_entry(client, auth_headers):

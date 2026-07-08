@@ -18,6 +18,7 @@ from app.core.access_control import (
     resolve_user_special_permissions,
     user_has_special,
 )
+from app.core.timesheet_locking import is_timesheet_month_calendar_locked
 from app.models.enums import TimesheetStatus
 from app.models.models import Project, Role, Timesheet, TimesheetEntry, User
 
@@ -264,7 +265,13 @@ def can_read_timesheet(db: Session, user: User, timesheet: Timesheet) -> bool:
 
 
 def can_edit_timesheet(db: Session, user: User, timesheet: Timesheet) -> bool:
-    if timesheet.status != TimesheetStatus.draft:
+    # Editability is governed by the calendar rule (current + previous two
+    # months), NOT by workflow status. Approved/submitted timesheets remain
+    # editable so users can correct entries.
+    if is_timesheet_month_calendar_locked(
+        timesheet.week_start,
+        admin_override=is_admin(db, user),
+    ):
         return False
     if not can_read_timesheet(db, user, timesheet):
         return False

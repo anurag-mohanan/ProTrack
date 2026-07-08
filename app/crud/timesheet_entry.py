@@ -20,7 +20,6 @@ from app.crud.base import CRUDBase
 from app.crud.timesheet_entry_metrics import build_timesheet_entry_read, build_timesheet_entry_reads
 from app.services.project_calculation_service import recalculate_project
 from app.models.models import Timesheet, TimesheetEntry, TimesheetEntryDeletionLog, User
-from app.models.enums import TimesheetStatus
 from app.schemas.timesheet import (
     TimesheetEntryBulkRequest,
     TimesheetEntryBulkResponse,
@@ -31,9 +30,6 @@ from app.schemas.timesheet import (
 )
 from app.services.timesheet_entry_service import normalize_entry_payload
 
-TIMESHEET_LOCKED_MESSAGE = (
-    "This month's timesheet has already been submitted and can no longer be modified."
-)
 TIMESHEET_UNAUTHORIZED_MESSAGE = "You are not authorized to modify this timesheet entry."
 
 
@@ -98,11 +94,6 @@ class CRUDTimesheetEntry(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=TIMESHEET_CALENDAR_LOCKED_MESSAGE,
-            )
-        if timesheet.status != TimesheetStatus.draft:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=TIMESHEET_LOCKED_MESSAGE,
             )
         if not can_edit_timesheet_entry(db, actor, timesheet):
             raise HTTPException(
@@ -401,10 +392,13 @@ class CRUDTimesheetEntry(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Timesheet not found",
             )
-        if timesheet.status != TimesheetStatus.draft:
+        if is_timesheet_month_calendar_locked(
+            timesheet.week_start,
+            admin_override=is_admin(db, actor),
+        ):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Entries can only be restored while the timesheet month is still in draft",
+                detail=TIMESHEET_CALENDAR_LOCKED_MESSAGE,
             )
 
         entry.is_deleted = False

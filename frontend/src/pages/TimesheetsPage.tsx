@@ -72,10 +72,14 @@ export function TimesheetsPage() {
 
   const showEntryForm = canEnterOwn && !viewAllUsers;
 
+  const calendarLocked = isTimesheetMonthCalendarLocked(monthValue, {
+    adminOverride: isAdmin,
+  });
+
   const readOnly =
     viewAllUsers ||
     isReadOnlyRole(roleName) ||
-    isTimesheetMonthCalendarLocked(monthValue, { adminOverride: isAdmin }) ||
+    calendarLocked ||
     workspace.monthStatus === 'approved' ||
     workspace.monthStatus === 'submitted';
 
@@ -378,7 +382,16 @@ export function TimesheetsPage() {
         weeklyTotal={weeklyTotal}
       />
 
+      {!viewAllUsers && calendarLocked ? (
+        <Alert severity="info" sx={{ mb: 1.5 }}>
+          {isAdmin
+            ? 'This month is older than two calendar months. As a System Administrator you can still edit it.'
+            : 'Timesheets are locked for months older than the previous calendar month. Only the current and previous months remain editable.'}
+        </Alert>
+      ) : null}
+
       {!viewAllUsers &&
+      !calendarLocked &&
       (workspace.monthStatus === 'submitted' || workspace.monthStatus === 'approved') ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
           This month&apos;s timesheet has already been submitted and can no longer be modified.

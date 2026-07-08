@@ -1,9 +1,21 @@
+/**
+ * Format a Date to an ISO date (YYYY-MM-DD) using LOCAL calendar fields.
+ * Avoids the UTC shift from Date.toISOString() that moves dates back a day
+ * for users in positive-offset timezones (e.g. IST +5:30).
+ */
+export function formatLocalIso(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function weekStartMonday(value: string | Date): string {
   const copy = new Date(typeof value === 'string' ? `${value}T12:00:00` : value);
   const day = copy.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   copy.setDate(copy.getDate() + diff);
-  return copy.toISOString().slice(0, 10);
+  return formatLocalIso(copy);
 }
 
 export function monthBounds(monthValue: string): { start: string; end: string; days: string[] } {
@@ -12,12 +24,11 @@ export function monthBounds(monthValue: string): { start: string; end: string; d
   const endDate = new Date(year, month, 0);
   const days: string[] = [];
   for (let day = 1; day <= endDate.getDate(); day += 1) {
-    const iso = new Date(year, month - 1, day).toISOString().slice(0, 10);
-    days.push(iso);
+    days.push(formatLocalIso(new Date(year, month - 1, day)));
   }
   return {
-    start: startDate.toISOString().slice(0, 10),
-    end: endDate.toISOString().slice(0, 10),
+    start: formatLocalIso(startDate),
+    end: formatLocalIso(endDate),
     days,
   };
 }
@@ -58,7 +69,7 @@ export function currentMonthValue(): string {
 }
 
 export function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return formatLocalIso(new Date());
 }
 
 export interface TimesheetMonthSummary {

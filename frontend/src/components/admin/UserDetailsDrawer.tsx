@@ -410,9 +410,6 @@ export function UserDetailsDrawer({
               <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onToggleActive(user)}>
                 {user.is_active ? 'Deactivate' : 'Activate'}
               </ProsohmButton>
-              <ProsohmButton buttonVariant="outlined" size="small" disabled title="Coming soon">
-                Generate Password Reset Link
-              </ProsohmButton>
               {isAdmin ? (
                 <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onArchive(user)}>
                   Archive

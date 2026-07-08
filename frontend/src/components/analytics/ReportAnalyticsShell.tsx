@@ -1,10 +1,16 @@
 import type { ReactNode } from 'react';
 import { Box, Stack } from '@mui/material';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
+import GridOnRoundedIcon from '@mui/icons-material/GridOnRounded';
 import PictureAsPdfRoundedIcon from '@mui/icons-material/PictureAsPdfRounded';
 import { DashboardPanel } from '../ui/design-system/DashboardPanel';
 import { ProsohmButton } from '../ui/ProsohmButton';
-import { exportToCsv, exportToPdfPlaceholder, type ExportColumn } from '../../utils/exportData';
+import {
+  exportToCsv,
+  exportToExcel,
+  exportToPdf,
+  type ExportColumn,
+} from '../../utils/exportData';
 
 interface ReportAnalyticsShellProps<T extends Record<string, unknown>> {
   title: string;
@@ -48,6 +54,14 @@ export function ReportAnalyticsShell<T extends Record<string, unknown>>({
               <ProsohmButton
                 buttonVariant="outlined"
                 size="small"
+                startIcon={<GridOnRoundedIcon />}
+                onClick={() => exportToExcel(exportFilename!, exportRows!, exportColumns!, title)}
+              >
+                Excel
+              </ProsohmButton>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
                 startIcon={<FileDownloadRoundedIcon />}
                 onClick={() => exportToCsv(exportFilename!, exportRows!, exportColumns!)}
               >
@@ -57,7 +71,7 @@ export function ReportAnalyticsShell<T extends Record<string, unknown>>({
                 buttonVariant="outlined"
                 size="small"
                 startIcon={<PictureAsPdfRoundedIcon />}
-                onClick={() => exportToPdfPlaceholder(exportFilename!)}
+                onClick={() => exportToPdf(exportFilename!, exportRows!, exportColumns!, title)}
               >
                 PDF
               </ProsohmButton>

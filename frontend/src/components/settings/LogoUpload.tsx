@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { ProsohmButton } from '../ui/ProsohmButton';
-import { getAssetUrl } from '../../utils/assetUrl';
+import { resolveLogoUrl } from '../../config/env';
 
 interface LogoUploadProps {
   logoUrl?: string | null;
@@ -16,7 +16,7 @@ export function LogoUpload({ logoUrl, onUpload, uploading = false }: LogoUploadP
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
-  const resolved = preview ?? getAssetUrl(logoUrl);
+  const resolved = preview ?? resolveLogoUrl(logoUrl, logoUrl ?? '');
 
   const handleFile = useCallback(
     async (file: File | undefined) => {

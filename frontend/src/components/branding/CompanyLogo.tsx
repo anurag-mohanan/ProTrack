@@ -2,7 +2,7 @@ import { Box, Typography, useTheme } from '@mui/material';
 import { useEffect, useMemo, useState } from 'react';
 import { useCompany } from '../../context/CompanyContext';
 import { COMPANY_BYLINE, PRODUCT_NAME, PRODUCT_TAGLINE } from '../../config/appMeta';
-import { resolveAssetUrl } from '../../config/env';
+import { resolveLogoUrl } from '../../config/env';
 
 interface CompanyLogoProps {
   variant?: 'full' | 'mark';
@@ -35,10 +35,11 @@ export function CompanyLogo({
   }, [company?.logo_url]);
 
   const logoUrl = useMemo(() => {
-    const resolved = resolveAssetUrl(company?.logo_url);
-    if (!resolved || imageFailed) return null;
-    const separator = resolved.includes('?') ? '&' : '?';
-    return retryCount > 0 ? `${resolved}${separator}v=${retryCount}` : resolved;
+    if (imageFailed) return null;
+    // Version token keeps the logo cached but refreshes it when the stored
+    // logo_url changes or after a transient load failure triggers a retry.
+    const version = `${company?.logo_url ?? ''}-${retryCount}`;
+    return resolveLogoUrl(company?.logo_url, version);
   }, [company?.logo_url, imageFailed, retryCount]);
   const primary = theme.palette.primary.main;
   const textColor = light ? theme.palette.prosohm.sidebarText : theme.palette.text.primary;

@@ -35,6 +35,8 @@ import {
   StageSummaryReportView,
 } from '../components/reports/ReportAnalyticsViews';
 import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
+import { fetchCustomers, fetchTeams, fetchUsers, fetchTaskTypes } from '../api/lookups';
+import { fetchProjects } from '../api/projects';
 import { useAuth } from '../context/AuthContext';
 import {
   getBillableUtilizationReport,
@@ -95,6 +97,14 @@ export function ReportsPage() {
   const [appliedIncludeDeleted, setAppliedIncludeDeleted] = useState(false);
   const [draftIncludeDeleted, setDraftIncludeDeleted] = useState(false);
   const [exportPeriod, setExportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'>('monthly');
+  const [exportFilters, setExportFilters] = useState<{
+    team_id: string;
+    user_id: string;
+    customer_id: string;
+    project_id: string;
+    task_type_id: string;
+    billable: '' | 'billable' | 'non_billable';
+  }>({ team_id: '', user_id: '', customer_id: '', project_id: '', task_type_id: '', billable: '' });
 
   const access = accessContextFromUser(user);
   const canExport = canExportReports(access);
@@ -181,9 +191,49 @@ export function ReportsPage() {
     enabled: tab === 12,
   });
   const timesheetExportQuery = useQuery({
-    queryKey: ['reports', 'timesheet-export', exportPeriod],
-    queryFn: () => getTimesheetExportReport({ period: exportPeriod }),
+    queryKey: ['reports', 'timesheet-export', exportPeriod, exportFilters],
+    queryFn: () =>
+      getTimesheetExportReport({
+        period: exportPeriod,
+        team_id: exportFilters.team_id || undefined,
+        user_id: exportFilters.user_id || undefined,
+        customer_id: exportFilters.customer_id || undefined,
+        project_id: exportFilters.project_id || undefined,
+        task_type_id: exportFilters.task_type_id || undefined,
+        billable: exportFilters.billable || undefined,
+      }),
     enabled: tab === 13,
+  });
+
+  const exportTeamsQuery = useQuery({
+    queryKey: ['reports', 'export-teams'],
+    queryFn: fetchTeams,
+    enabled: tab === 13,
+    staleTime: 5 * 60 * 1000,
+  });
+  const exportUsersQuery = useQuery({
+    queryKey: ['reports', 'export-users'],
+    queryFn: fetchUsers,
+    enabled: tab === 13,
+    staleTime: 5 * 60 * 1000,
+  });
+  const exportCustomersQuery = useQuery({
+    queryKey: ['reports', 'export-customers'],
+    queryFn: fetchCustomers,
+    enabled: tab === 13,
+    staleTime: 5 * 60 * 1000,
+  });
+  const exportProjectsQuery = useQuery({
+    queryKey: ['reports', 'export-projects'],
+    queryFn: () => fetchProjects({ limit: 500 }),
+    enabled: tab === 13,
+    staleTime: 5 * 60 * 1000,
+  });
+  const exportTaskTypesQuery = useQuery({
+    queryKey: ['reports', 'export-task-types'],
+    queryFn: () => fetchTaskTypes(),
+    enabled: tab === 13,
+    staleTime: 5 * 60 * 1000,
   });
 
   const teamReportsEnabled = tab === 14;
@@ -438,21 +488,105 @@ export function ReportsPage() {
 
         {tab === 13 && !timesheetExportQuery.isLoading && !timesheetExportQuery.error ? (
           <Stack spacing={2}>
-            <FormSelect
-              label="Export period"
-              value={exportPeriod}
-              options={[
-                { value: 'daily', label: 'Daily' },
-                { value: 'weekly', label: 'Weekly' },
-                { value: 'monthly', label: 'Monthly' },
-                { value: 'quarterly', label: 'Quarterly' },
-                { value: 'yearly', label: 'Yearly' },
-              ]}
-              onChange={(event) =>
-                setExportPeriod(event.target.value as typeof exportPeriod)
-              }
-              sx={compactFilterFieldSx}
-            />
+            <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+              <FormSelect
+                label="Export period"
+                value={exportPeriod}
+                options={[
+                  { value: 'daily', label: 'Daily' },
+                  { value: 'weekly', label: 'Weekly' },
+                  { value: 'monthly', label: 'Monthly' },
+                  { value: 'quarterly', label: 'Quarterly' },
+                  { value: 'yearly', label: 'Yearly' },
+                ]}
+                onChange={(event) =>
+                  setExportPeriod(event.target.value as typeof exportPeriod)
+                }
+                sx={compactFilterFieldSx}
+              />
+              <FormSelect
+                label="Team"
+                value={exportFilters.team_id}
+                options={[
+                  { value: '', label: 'All teams' },
+                  ...(exportTeamsQuery.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+                ]}
+                onChange={(event) =>
+                  setExportFilters((f) => ({ ...f, team_id: String(event.target.value) }))
+                }
+                sx={compactFilterFieldSx}
+              />
+              <FormSelect
+                label="Designer"
+                value={exportFilters.user_id}
+                options={[
+                  { value: '', label: 'All designers' },
+                  ...(exportUsersQuery.data ?? []).map((u) => ({
+                    value: u.id,
+                    label: `${u.first_name} ${u.last_name}`.trim() || u.email,
+                  })),
+                ]}
+                onChange={(event) =>
+                  setExportFilters((f) => ({ ...f, user_id: String(event.target.value) }))
+                }
+                sx={compactFilterFieldSx}
+              />
+              <FormSelect
+                label="Customer"
+                value={exportFilters.customer_id}
+                options={[
+                  { value: '', label: 'All customers' },
+                  ...(exportCustomersQuery.data ?? []).map((c) => ({ value: c.id, label: c.name })),
+                ]}
+                onChange={(event) =>
+                  setExportFilters((f) => ({ ...f, customer_id: String(event.target.value) }))
+                }
+                sx={compactFilterFieldSx}
+              />
+              <FormSelect
+                label="Project"
+                value={exportFilters.project_id}
+                options={[
+                  { value: '', label: 'All projects' },
+                  ...(exportProjectsQuery.data ?? []).map((p) => ({
+                    value: p.id,
+                    label: p.code ? `${p.code} — ${p.tool_number}` : p.tool_number || p.id,
+                  })),
+                ]}
+                onChange={(event) =>
+                  setExportFilters((f) => ({ ...f, project_id: String(event.target.value) }))
+                }
+                sx={compactFilterFieldSx}
+              />
+              <FormSelect
+                label="Task"
+                value={exportFilters.task_type_id}
+                options={[
+                  { value: '', label: 'All tasks' },
+                  ...(exportTaskTypesQuery.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+                ]}
+                onChange={(event) =>
+                  setExportFilters((f) => ({ ...f, task_type_id: String(event.target.value) }))
+                }
+                sx={compactFilterFieldSx}
+              />
+              <FormSelect
+                label="Billable"
+                value={exportFilters.billable}
+                options={[
+                  { value: '', label: 'All' },
+                  { value: 'billable', label: 'Billable only' },
+                  { value: 'non_billable', label: 'Non-billable only' },
+                ]}
+                onChange={(event) =>
+                  setExportFilters((f) => ({
+                    ...f,
+                    billable: event.target.value as typeof f.billable,
+                  }))
+                }
+                sx={compactFilterFieldSx}
+              />
+            </Stack>
             <SimpleTableReportView
               title="Timesheet Export"
               filename={`timesheet-export-${exportPeriod}`}

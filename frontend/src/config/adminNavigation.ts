@@ -145,10 +145,11 @@ function buildImportItems(roleName: string, includeComingSoon: boolean): AdminHu
 export const ADMIN_IMPORT_ITEMS = (roleName: string): AdminHubItem[] =>
   buildImportItems(roleName, false);
 
+// Unfinished ("Coming Soon") items are hidden from navigation until implemented.
 export const ADMIN_IMPORT_ALL_ITEMS = (roleName: string): AdminHubItem[] =>
-  buildImportItems(roleName, true);
+  buildImportItems(roleName, false);
 
-export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = [
+const ALL_SETTINGS_ITEMS: AdminHubItem[] = [
   { id: 'system-settings', title: 'System Settings', description: 'Core application configuration.', icon: SettingsIcon, path: '/admin/settings' },
   { id: 'company', title: 'Company Information', description: 'Name, logo, address, hours, and holidays.', icon: BusinessIcon, path: '/admin/settings/company' },
   { id: 'branding', title: 'Theme', description: 'Default application theme and colour palette.', icon: PaletteIcon, path: '/admin/settings/branding' },
@@ -162,7 +163,11 @@ export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = [
   { id: 'password-policy', title: 'Password Policy', description: 'Password complexity and expiry rules.', icon: SecurityIcon, path: '/admin/settings/security', comingSoon: true },
 ];
 
-export const ADMIN_AUDIT_ITEMS: AdminHubItem[] = [
+export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = ALL_SETTINGS_ITEMS.filter(
+  (item) => !item.comingSoon,
+);
+
+const ALL_AUDIT_ITEMS: AdminHubItem[] = [
   { id: 'audit-logs', title: 'Audit Logs', description: 'System activity and change history.', icon: HistoryIcon, path: '/admin/audit', comingSoon: true },
   { id: 'deleted-records', title: 'Deleted Records', description: 'Recover soft-deleted projects and users.', icon: DeleteIcon, path: '/admin/deleted-projects' },
   { id: 'deleted-timesheets', title: 'Deleted Timesheet Entries', description: 'Audit and restore soft-deleted timesheet rows.', icon: ScheduleIcon, path: '/admin/deleted-timesheet-entries' },
@@ -171,6 +176,10 @@ export const ADMIN_AUDIT_ITEMS: AdminHubItem[] = [
   { id: 'import-history', title: 'Import History', description: 'Historical import audit trail.', icon: WorkHistoryIcon, path: '/admin/imports/historical-timesheets#history' },
   { id: 'background-jobs', title: 'Background Jobs', description: 'Scheduled tasks and queue status.', icon: BuildIcon, path: '/admin/audit', comingSoon: true },
 ];
+
+export const ADMIN_AUDIT_ITEMS: AdminHubItem[] = ALL_AUDIT_ITEMS.filter(
+  (item) => !item.comingSoon,
+);
 
 export const ADMIN_REPORT_ITEMS: AdminHubItem[] = [
   { id: 'import-history', title: 'Import History', description: 'Historical import audit.', icon: HistoryIcon, path: '/admin/imports/historical-timesheets#history' },

@@ -575,18 +575,20 @@ def _get_staff_metrics(db: Session, user: User) -> StaffDashboardMetrics | None:
     return StaffDashboardMetrics(
         my_projects=len(projects),
         my_project_rows=[
-            StaffProjectRow(
-                project_id=project.id,
-                tool_number=project.tool_number,
-                customer_name=build_project_read(db, project).customer_name or "—",
-                current_stage=project.project_stage.value if project.project_stage else "—",
-                due_date=project.due_date,
-                progress_percent=_decimal(project.progress_percent),
-                hours_logged=_round_hours(_decimal(project.actual_hours)),
-                remaining_planned_hours=_round_hours(
-                    max(_decimal(0), _decimal(project.quoted_hours) - _decimal(project.actual_hours))
-                ),
-            )
+            (
+                lambda project_read: StaffProjectRow(
+                    project_id=project.id,
+                    tool_number=project.tool_number,
+                    customer_name=project_read.customer_name or "—",
+                    current_stage=project.project_stage.value if project.project_stage else "—",
+                    due_date=project.due_date,
+                    progress_percent=_decimal(project_read.progress_percent),
+                    hours_logged=_round_hours(_decimal(project.actual_hours)),
+                    remaining_planned_hours=_round_hours(
+                        max(_decimal(0), _decimal(project.quoted_hours) - _decimal(project.actual_hours))
+                    ),
+                )
+            )(build_project_read(db, project))
             for project in projects
         ],
         current_tool_number=current.tool_number if current else None,

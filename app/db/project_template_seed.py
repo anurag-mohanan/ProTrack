@@ -240,19 +240,20 @@ def ensure_project_types_and_templates(session: Session) -> None:
         type_by_name[name] = _get_or_create_project_type(session, name)
 
     for definition in TEMPLATE_DEFINITIONS:
-        existing = session.scalar(
-            select(ProjectTemplate).where(ProjectTemplate.name == definition["name"])
-        )
-        if existing is not None:
-            continue
-
         project_type = type_by_name[definition["project_type"]]
+        customer = None
         customer_id = None
         if definition["customer"]:
             customer = session.scalar(
                 select(Customer).where(Customer.name == definition["customer"])
             )
             customer_id = customer.id if customer else None
+
+        existing = session.scalar(
+            select(ProjectTemplate).where(ProjectTemplate.name == definition["name"])
+        )
+        if existing is not None:
+            continue
 
         template = ProjectTemplate(
             name=definition["name"],

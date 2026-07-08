@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.auth_deps import require_roles
@@ -50,7 +51,7 @@ from app.schemas.settings import (
 )
 
 router = APIRouter(prefix="/settings", tags=["settings"])
-admin_access = [Depends(require_roles("Admin", "Engineering Manager"))]
+admin_access = [Depends(require_roles("Admin"))]
 
 ALLOWED_LOGO_TYPES = {
     "image/png": ".png",
@@ -78,6 +79,39 @@ def get_public_settings(db: Session = Depends(get_db)):
 @router.get("/company", response_model=CompanySettingsRead)
 def get_company_settings(db: Session = Depends(get_db)):
     return get_or_create_company_settings(db)
+
+
+_LOGO_MEDIA_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".svg": "image/svg+xml",
+}
+
+
+@router.get("/company/logo")
+def get_company_logo(db: Session = Depends(get_db)):
+    """Serve the company logo through the API path.
+
+    Serving via /api (rather than only the /uploads static mount) guarantees the
+    logo is reachable in every deployment, including behind IIS reverse proxies
+    that only forward /api to the backend. Cached so it loads reliably.
+    """
+    company = get_or_create_company_settings(db)
+    candidates = []
+    if company.logo_url:
+        candidates.append(COMPANY_LOGO_DIR / company.logo_url.rsplit("/", 1)[-1])
+    candidates.extend(sorted(COMPANY_LOGO_DIR.glob("company-logo.*")))
+
+    for path in candidates:
+        if path.is_file():
+            media_type = _LOGO_MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
+            return FileResponse(
+                path,
+                media_type=media_type,
+                headers={"Cache-Control": "public, max-age=3600"},
+            )
+    return Response(status_code=status.HTTP_404_NOT_FOUND)
 
 
 @router.patch("/company", response_model=CompanySettingsRead, dependencies=admin_access)

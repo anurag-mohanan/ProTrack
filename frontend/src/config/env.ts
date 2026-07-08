@@ -34,6 +34,26 @@ export function resolveAssetUrl(path: string | null | undefined): string | null 
   return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+/**
+ * Resolve the company logo URL through the API path. Serving via /api/v1
+ * guarantees the logo is reachable in every deployment (including behind IIS
+ * reverse proxies that only forward /api to the backend), avoiding the
+ * intermittent placeholder caused by the /uploads static mount not being routed.
+ * The optional version token busts the browser cache when the logo changes.
+ */
+export function resolveLogoUrl(
+  logoPath: string | null | undefined,
+  version?: string | number,
+): string | null {
+  if (!logoPath) return null;
+  if (logoPath.startsWith('data:')) return logoPath;
+  const base = getApiBaseUrl().replace(/\/$/, '');
+  const url = `${base}/settings/company/logo`;
+  return version !== undefined && version !== null && version !== ''
+    ? `${url}?v=${encodeURIComponent(String(version))}`
+    : url;
+}
+
 export const IS_PRODUCTION = import.meta.env.PROD;
 export const IS_DEVELOPMENT = import.meta.env.DEV;
 

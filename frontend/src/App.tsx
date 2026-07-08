@@ -18,6 +18,8 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
 import { ResourcePlanningPage } from './pages/ResourcePlanningPage';
 import { WorkloadPage } from './pages/WorkloadPage';
+import { ExecutiveWallPage } from './pages/ExecutiveWallPage';
+import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import HelpCenterPage from './pages/HelpCenterPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { AdminRoute } from './routes/AdminRoute';
@@ -178,6 +180,8 @@ export default function App() {
                     <Route path="/help" element={<HelpCenterPage />} />
                     <Route element={<RoleRoute allowed={canViewReports} />}>
                       <Route path="/reports" element={<ReportsPage />} />
+                      <Route path="/knowledge" element={<KnowledgeBasePage />} />
+                      <Route path="/executive-wall" element={<ExecutiveWallPage />} />
                     </Route>
                     <Route element={<RoleRoute allowed={canViewWorkload} />}>
                       <Route path="/workload" element={<WorkloadPage />} />

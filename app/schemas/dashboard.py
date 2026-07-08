@@ -277,9 +277,9 @@ class DashboardSummary(BaseModel):
 
 
 class DashboardFuturePlaceholders(BaseModel):
-    notifications_enabled: bool = False
-    ai_recommendations_enabled: bool = False
-    todays_priorities_enabled: bool = False
+    notifications_enabled: bool = True
+    ai_recommendations_enabled: bool = True
+    todays_priorities_enabled: bool = True
 
 
 class DashboardOverview(BaseModel):

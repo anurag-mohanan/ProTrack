@@ -15,6 +15,7 @@ import { StickyRecordHeader } from '../../ui/design-system';
 import { BackButton } from '../../navigation/BackButton';
 import { APP_TOP_BAR_OFFSET } from '../../ui/design-system/StickyRecordHeader';
 import { commandCenterQueryKeys, fetchProjectCommandCenter } from '../../../api/commandCenter';
+import { QuoteAssistantPanel } from '../../ai/QuoteAssistantPanel';
 import { ProjectMilestoneGrid } from './ProjectMilestoneGrid';
 import { ProjectWorkspaceCompactHeader } from './ProjectWorkspaceCompactHeader';
 import { WorkflowTimeline } from '../../command-center/WorkflowTimeline';
@@ -138,11 +139,14 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
       </Box>
 
       {tab === 'overview' ? (
-        <Box>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-            Execution timeline
-          </Typography>
-          <WorkflowTimeline steps={timeline} />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+              Execution timeline
+            </Typography>
+            <WorkflowTimeline steps={timeline} />
+          </Box>
+          <QuoteAssistantPanel projectId={projectId} />
         </Box>
       ) : null}
 

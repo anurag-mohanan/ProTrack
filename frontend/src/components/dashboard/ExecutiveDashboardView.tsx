@@ -1,6 +1,8 @@
 import { Box, Button, Grid, Stack, Typography } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
 import type { NavigateFunction } from 'react-router-dom';
 import type { DashboardSummary } from '../../types';
+import { aiQueryKeys, fetchAiInsights, fetchMorningBrief } from '../../api/ai';
 import { DashboardPanel } from '../ui/design-system/DashboardPanel';
 import { ActivityTimeline } from './ActivityTimeline';
 import { ProjectHealthChart, ProjectStageChart, CustomerWorkloadChart, HoursSummaryChart } from './DashboardCharts';
@@ -15,7 +17,9 @@ import { DashboardWidgetToolbar, useDashboardWidgets } from '../analytics/Dashbo
 import { DeliveryPlanningPanel } from '../analytics/DeliveryPlanningPanel';
 import { designTokens } from '../../theme/designTokens';
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
-import { EngineeringInsightsPanel } from './EngineeringInsightsPanel';
+import { AiOperationsPanel } from '../ai/AiOperationsPanel';
+import { MorningBriefPanel } from '../ai/MorningBriefPanel';
+import { AiChatAssistant } from '../ai/AiChatAssistant';
 import { MissingTimesheetsWidget } from './MissingTimesheetsWidget';
 import { formatNumber } from '../../utils/format';
 
@@ -63,6 +67,30 @@ export function ExecutiveDashboardView({
   const { visibleOrdered } = useDashboardWidgets('executive-dashboard-widgets', widgetIds);
   const isVisible = (id: string) => visibleOrdered.some((w) => w.id === id);
 
+  const aiInsightsQuery = useQuery({
+    queryKey: aiQueryKeys.insights(10),
+    queryFn: () => fetchAiInsights(10),
+    staleTime: 5 * 60 * 1000,
+  });
+  const morningBriefQuery = useQuery({
+    queryKey: aiQueryKeys.morningBrief,
+    queryFn: fetchMorningBrief,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const aiInsights =
+    aiInsightsQuery.data ??
+    (summary?.engineering_insights ?? []).map((insight, index) => ({
+      id: `legacy-${index}`,
+      module: 'dashboard_insights',
+      category: insight.category,
+      severity: insight.severity as 'info' | 'warning' | 'error',
+      title: insight.title,
+      detail: insight.detail,
+      href: insight.href,
+      confidence: 80,
+    }));
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <DashboardWidgetToolbar
@@ -81,18 +109,17 @@ export function ExecutiveDashboardView({
       {loading ? (
         <DashboardKpiSkeleton />
       ) : (
-        <Grid container spacing={1.5} sx={{ alignItems: 'stretch' }}>
-          <Grid size={{ xs: 12, xl: 9 }}>
-            <ExecutiveKpiGrid sections={kpiSections} />
+        <>
+          <MorningBriefPanel brief={morningBriefQuery.data} />
+          <Grid container spacing={1.5} sx={{ alignItems: 'stretch' }}>
+            <Grid size={{ xs: 12, xl: 9 }}>
+              <ExecutiveKpiGrid sections={kpiSections} />
+            </Grid>
+            <Grid size={{ xs: 12, xl: 3 }}>
+              <AiOperationsPanel insights={aiInsights} navigate={navigate} compact />
+            </Grid>
           </Grid>
-          <Grid size={{ xs: 12, xl: 3 }}>
-            <EngineeringInsightsPanel
-              insights={summary?.engineering_insights ?? []}
-              navigate={navigate}
-              compact
-            />
-          </Grid>
-        </Grid>
+        </>
       )}
 
       {!loading && (summary?.missing_timesheets?.length ?? 0) > 0 ? (
@@ -292,6 +319,27 @@ export function ExecutiveDashboardView({
         )}
       </DashboardPanel>
       ) : null}
+
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, lg: 8 }}>
+          <AiChatAssistant />
+        </Grid>
+        <Grid size={{ xs: 12, lg: 4 }}>
+          <DashboardPanel title="AI Quick Links" subtitle="Intelligence surfaces">
+            <Stack spacing={1}>
+              <Button size="small" onClick={() => navigate('/knowledge')}>
+                Knowledge Base
+              </Button>
+              <Button size="small" onClick={() => navigate('/executive-wall')}>
+                Executive KPI Wall
+              </Button>
+              <Button size="small" onClick={() => navigate('/reports')}>
+                Engineering Reports
+              </Button>
+            </Stack>
+          </DashboardPanel>
+        </Grid>
+      </Grid>
     </Box>
   );
 }

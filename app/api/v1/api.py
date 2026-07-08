@@ -3,6 +3,7 @@ from fastapi import Depends
 from app.api.auth_deps import require_roles
 from app.api.v1 import (
     activities,
+    ai,
     auth,
     dashboard,
     imports,
@@ -130,6 +131,7 @@ api_router.include_router(preferences.router)
 api_router.include_router(notifications.router)
 api_router.include_router(activities.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(ai.router)
 api_router.include_router(reports.router)
 api_router.include_router(system.router)
 api_router.include_router(imports.router)

@@ -39,9 +39,11 @@ import {
   runMasterTimesheetImport,
   uploadMasterTimesheetWorkbook,
 } from '../api/timesheetImport';
+import { useQueryClient } from '@tanstack/react-query';
 import { getErrorMessage } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
 import { formatNumber } from '../utils/format';
+import { invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
 
 type WizardPhase = 'setup' | 'scanned' | 'importing' | 'completed';
 
@@ -65,6 +67,7 @@ function SummaryMetric({ label, value }: { label: string; value: number | string
 }
 
 export function HistoricalTimesheetImportPage() {
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<WizardPhase>('setup');
   const [uploadId, setUploadId] = useState<string | null>(null);
@@ -88,12 +91,14 @@ export function HistoricalTimesheetImportPage() {
       setJob(progress);
       if (['completed', 'failed', 'cancelled'].includes(progress.status)) {
         setPhase('completed');
+        // Imported entries must appear in summaries/dashboards without a manual refresh.
+        invalidateTimesheetRelatedQueries(queryClient);
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     setError('Import is taking longer than expected. Check back shortly.');
-  }, []);
+  }, [queryClient]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -175,6 +180,7 @@ export function HistoricalTimesheetImportPage() {
       setResetConfirmOpen(false);
       setResetConfirmText('');
       resetWizard();
+      invalidateTimesheetRelatedQueries(queryClient);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

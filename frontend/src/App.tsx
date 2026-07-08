@@ -58,6 +58,9 @@ const ContactsAdminPage = lazy(() => import('./pages/admin/ContactsPage'));
 const CustomersAdminPage = lazy(() => import('./pages/admin/CustomersPage'));
 const DeletedProjectsAdminPage = lazy(() => import('./pages/admin/DeletedProjectsPage'));
 const DeletedUsersAdminPage = lazy(() => import('./pages/admin/DeletedUsersPage'));
+const RebuildTimesheetStatsAdminPage = lazy(
+  () => import('./pages/admin/RebuildTimesheetStatsPage'),
+);
 const DeletedTimesheetEntriesAdminPage = lazy(
   () => import('./pages/admin/DeletedTimesheetEntriesPage'),
 );
@@ -417,6 +420,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <DeletedTimesheetEntriesAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/rebuild-timesheet-stats"
+                        element={
+                          <LazyAdminPage>
+                            <RebuildTimesheetStatsAdminPage />
                           </LazyAdminPage>
                         }
                       />

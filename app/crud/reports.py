@@ -256,7 +256,8 @@ def get_designer_productivity_report(db: Session) -> list[DesignerProductivityRe
             hours = _decimal(
                 db.scalar(
                     select(func.coalesce(func.sum(TimesheetEntry.hours), 0)).where(
-                        TimesheetEntry.timesheet_id == ts.id
+                        TimesheetEntry.timesheet_id == ts.id,
+                        TimesheetEntry.is_deleted.is_(False),
                     )
                 )
             )
@@ -286,7 +287,10 @@ def get_productive_hours_report(db: Session) -> list[ProductiveHoursReportRow]:
         .outerjoin(Project, TimesheetEntry.project_id == Project.id)
         .outerjoin(Customer, TimesheetEntry.customer_id == Customer.id)
         .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
-        .where(TimesheetEntry.work_category == WorkCategory.productive)
+        .where(
+            TimesheetEntry.work_category == WorkCategory.productive,
+            TimesheetEntry.is_deleted.is_(False),
+        )
     ).all()
     grouped: dict[tuple, dict] = {}
     for entry, project, customer_name, task_name in rows:
@@ -333,6 +337,7 @@ def get_non_productive_hours_report(db: Session) -> list[NonProductiveHoursRepor
         .outerjoin(Customer, TimesheetEntry.customer_id == Customer.id)
         .where(
             TimesheetEntry.work_category == WorkCategory.non_productive,
+            TimesheetEntry.is_deleted.is_(False),
             standard_np_code_clause(),
         )
     ).all()
@@ -368,7 +373,7 @@ def get_billable_utilization_report(db: Session) -> list[BillableUtilizationRepo
             .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
             .where(
                 Timesheet.user_id == user.id,
-                Timesheet.status == TimesheetStatus.approved,
+                TimesheetEntry.is_deleted.is_(False),
             )
         ).all()
         billable = non_billable = np_hours = Decimal("0")
@@ -405,9 +410,8 @@ def get_billable_utilization_report(db: Session) -> list[BillableUtilizationRepo
 def get_monthly_np_trends_report(db: Session) -> list[MonthlyNpTrendReportRow]:
     rows = db.scalars(
         select(TimesheetEntry)
-        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
-            Timesheet.status == TimesheetStatus.approved,
+            TimesheetEntry.is_deleted.is_(False),
             standard_np_hours_clause(),
         )
     ).all()
@@ -432,7 +436,7 @@ def get_np_hours_by_designer_report(db: Session) -> list[NpHoursByDesignerReport
         .join(NonProductiveCode, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
         .where(
             TimesheetEntry.work_category == WorkCategory.non_productive,
-            Timesheet.status == TimesheetStatus.approved,
+            TimesheetEntry.is_deleted.is_(False),
             standard_np_code_clause(),
         )
         .group_by(User.id, User.first_name, User.last_name)
@@ -450,9 +454,7 @@ def get_np_hours_by_designer_report(db: Session) -> list[NpHoursByDesignerReport
 
 def get_billable_vs_non_billable_report(db: Session) -> BillableVsNonBillableReportRow:
     entries = db.scalars(
-        select(TimesheetEntry)
-        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
-        .where(Timesheet.status == TimesheetStatus.approved)
+        select(TimesheetEntry).where(TimesheetEntry.is_deleted.is_(False))
     ).all()
     billable = non_billable = np_hours = Decimal("0")
     leave_days = 0

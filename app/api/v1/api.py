@@ -3,6 +3,7 @@ from fastapi import Depends
 from app.api.auth_deps import require_roles
 from app.api.v1 import (
     activities,
+    admin_timesheets,
     ai,
     auth,
     dashboard,
@@ -125,6 +126,7 @@ api_router.include_router(projects.router)
 api_router.include_router(milestones.router)
 api_router.include_router(timesheets.router)
 api_router.include_router(timesheet_entries.router)
+api_router.include_router(admin_timesheets.router)
 api_router.include_router(non_productive_codes.router)
 api_router.include_router(settings.router)
 api_router.include_router(preferences.router)

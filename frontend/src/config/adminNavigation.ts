@@ -30,6 +30,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import {
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
@@ -173,6 +174,7 @@ const ALL_AUDIT_ITEMS: AdminHubItem[] = [
   { id: 'deleted-timesheets', title: 'Deleted Timesheet Entries', description: 'Audit and restore soft-deleted timesheet rows.', icon: ScheduleIcon, path: '/admin/deleted-timesheet-entries' },
   { id: 'archived-records', title: 'Archived Records', description: 'Review archived engineering projects.', icon: ArchiveIcon, path: '/projects/archived' },
   { id: 'system-health', title: 'System Health', description: 'Version, services, and runtime status.', icon: MonitorHeartIcon, path: '/admin/system' },
+  { id: 'rebuild-timesheet-stats', title: 'Rebuild Timesheet Statistics', description: 'Recalculate all timesheet summaries and repair data.', icon: RefreshIcon, path: '/admin/rebuild-timesheet-stats' },
   { id: 'import-history', title: 'Import History', description: 'Historical import audit trail.', icon: WorkHistoryIcon, path: '/admin/imports/historical-timesheets#history' },
   { id: 'background-jobs', title: 'Background Jobs', description: 'Scheduled tasks and queue status.', icon: BuildIcon, path: '/admin/audit', comingSoon: true },
 ];

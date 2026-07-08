@@ -35,7 +35,16 @@ import {
   isAdminRole,
   isReadOnlyRole,
 } from '../utils/permissions';
-import { currentMonthValue, formatMonthLabel, todayIsoDate } from '../utils/timesheetMonth';
+import {
+  currentMonthValue,
+  formatLocalIso,
+  formatMonthLabel,
+  isWeekend,
+  sumEntryHours,
+  todayIsoDate,
+  weekStartMonday,
+  weekWorkingDayCount,
+} from '../utils/timesheetMonth';
 import { isTimesheetMonthCalendarLocked } from '../utils/timesheetLocking';
 import { formatDisplayValue, userDisplayName } from '../utils/format';
 import { TimesheetStatusBadge } from '../components/ui/design-system';
@@ -43,7 +52,7 @@ import { TimesheetStatusBadge } from '../components/ui/design-system';
 function shiftIsoDate(isoDate: string, days: number): string {
   const date = new Date(`${isoDate}T12:00:00`);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return formatLocalIso(date);
 }
 
 export function TimesheetsPage() {
@@ -281,23 +290,27 @@ export function TimesheetsPage() {
     }
   };
 
+  const todayIso = todayIsoDate();
   const todayHours = useMemo(
-    () =>
-      workspace.entries
-        .filter((e) => e.entry_date === todayIsoDate())
-        .reduce((sum, e) => sum + Number(e.hours), 0),
-    [workspace.entries],
+    () => sumEntryHours(workspace.entries.filter((e) => e.entry_date === todayIso)),
+    [workspace.entries, todayIso],
   );
 
-  const weeklyTotal = useMemo(() => {
-    const day = new Date(`${toolbarDate}T12:00:00`).getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    const weekStart = shiftIsoDate(toolbarDate, diff);
+  const todayExpected = useMemo(
+    () =>
+      isWeekend(todayIso) || workspace.holidayDates.has(todayIso) ? 0 : workspace.dailyLimit,
+    [todayIso, workspace.holidayDates, workspace.dailyLimit],
+  );
+
+  const { weeklyHours, weeklyExpected } = useMemo(() => {
+    const weekStart = weekStartMonday(toolbarDate);
     const weekEnd = shiftIsoDate(weekStart, 6);
-    return workspace.entries
-      .filter((e) => e.entry_date >= weekStart && e.entry_date <= weekEnd)
-      .reduce((sum, e) => sum + Number(e.hours), 0);
-  }, [workspace.entries, toolbarDate]);
+    const hours = sumEntryHours(
+      workspace.entries.filter((e) => e.entry_date >= weekStart && e.entry_date <= weekEnd),
+    );
+    const workingDays = weekWorkingDayCount(toolbarDate, workspace.holidayDates);
+    return { weeklyHours: hours, weeklyExpected: workingDays * workspace.dailyLimit };
+  }, [workspace.entries, toolbarDate, workspace.holidayDates, workspace.dailyLimit]);
 
   if (workspace.isLoading) {
     return <LoadingState message="Loading timesheet workspace…" />;
@@ -376,7 +389,9 @@ export function TimesheetsPage() {
         status={workspace.monthStatus}
         summary={workspace.summary}
         todayHours={todayHours}
-        weeklyTotal={weeklyTotal}
+        todayExpected={todayExpected}
+        weeklyHours={weeklyHours}
+        weeklyExpected={weeklyExpected}
       />
 
       {!viewAllUsers && calendarLocked ? (
@@ -384,6 +399,16 @@ export function TimesheetsPage() {
           {isAdmin
             ? 'This timesheet is archived because it is older than two months. As a System Administrator you can still edit it.'
             : 'This timesheet is archived because it is older than two months.'}
+        </Alert>
+      ) : null}
+
+      {!viewAllUsers &&
+      !calendarLocked &&
+      (workspace.monthStatus === 'approved' || workspace.monthStatus === 'submitted') ? (
+        <Alert severity="success" sx={{ mb: 1.5 }}>
+          {workspace.monthStatus === 'approved' ? 'Approved. ' : 'Submitted. '}
+          You may still edit this month&apos;s entries. Changes will automatically update
+          approvals.
         </Alert>
       ) : null}
 

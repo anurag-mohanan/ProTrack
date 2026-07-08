@@ -84,7 +84,9 @@ def test_admin_can_approve_all_timesheets(client, auth_headers):
     assert response.json()["status"] == "approved"
 
 
-def test_approved_timesheet_cannot_be_edited(client, auth_headers):
+def test_approved_timesheet_remains_editable(client, auth_headers):
+    """Approval must NOT lock a timesheet. Owners may correct entries after
+    approval; only the calendar rule (older than two months) locks editing."""
     designer_headers = login(client, "binil@prosohm.com")
     timesheet = _create_draft_timesheet(client, designer_headers, str(IDS["user_binil"]))
     entry = _add_entry(client, designer_headers, timesheet["id"], str(IDS["project"]))
@@ -102,7 +104,8 @@ def test_approved_timesheet_cannot_be_edited(client, auth_headers):
         json={"hours": 10},
         headers=designer_headers,
     )
-    assert response.status_code == 403
+    assert response.status_code == 200
+    assert float(response.json()["hours"]) == 10
 
 
 def test_reject_requires_comments(client, auth_headers):

@@ -245,9 +245,8 @@ def get_dashboard_kpis(
         _decimal(
             db.scalar(
                 select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
-                .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
                 .where(
-                    Timesheet.status == TimesheetStatus.approved,
+                    TimesheetEntry.is_deleted.is_(False),
                     TimesheetEntry.work_category == WorkCategory.productive,
                 )
             )
@@ -258,9 +257,8 @@ def get_dashboard_kpis(
         _decimal(
             db.scalar(
                 select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
-                .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
                 .where(
-                    Timesheet.status == TimesheetStatus.approved,
+                    TimesheetEntry.is_deleted.is_(False),
                     TimesheetEntry.entry_date >= month_start,
                     TimesheetEntry.entry_date <= today,
                     standard_np_hours_clause(),
@@ -331,9 +329,8 @@ def get_leave_days_this_month(db: Session) -> int:
     month_start = today.replace(day=1)
     total = db.scalar(
         select(func.coalesce(func.sum(TimesheetEntry.leave_count), 0))
-        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
-            Timesheet.status == TimesheetStatus.approved,
+            TimesheetEntry.is_deleted.is_(False),
             TimesheetEntry.entry_date >= month_start,
             TimesheetEntry.entry_date <= today,
             leave_entry_clause(),
@@ -361,9 +358,8 @@ def get_np_hours_panel(db: Session) -> DashboardNpPanel:
             func.coalesce(func.sum(TimesheetEntry.hours), 0),
         )
         .join(TimesheetEntry, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
-        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
-            Timesheet.status == TimesheetStatus.approved,
+            TimesheetEntry.is_deleted.is_(False),
             TimesheetEntry.entry_date >= month_start,
             TimesheetEntry.entry_date <= today,
             standard_np_hours_clause(),
@@ -776,7 +772,7 @@ def get_designer_availability(
             .join(TimesheetEntry, TimesheetEntry.timesheet_id == Timesheet.id)
             .where(
                 Timesheet.user_id.in_(designer_ids),
-                Timesheet.status == TimesheetStatus.approved,
+                TimesheetEntry.is_deleted.is_(False),
                 TimesheetEntry.entry_date == today,
                 leave_entry_clause(),
                 TimesheetEntry.hours > 0,

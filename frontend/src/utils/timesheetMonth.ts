@@ -72,55 +72,138 @@ export function todayIsoDate(): string {
   return formatLocalIso(new Date());
 }
 
-export interface TimesheetMonthSummary {
+/**
+ * ============================================================================
+ * CENTRAL TIMESHEET CALCULATION (single source of truth on the frontend)
+ * ----------------------------------------------------------------------------
+ * Every timesheet total shown in the app (Today / Weekly / Monthly / Billable /
+ * Non-Productive / Leave / Remaining / Efficiency) is derived here directly
+ * from the Timesheet Entries. Nothing is stored or duplicated. Approval status
+ * NEVER affects these numbers.
+ *
+ * Category rules (mirror app/core/non_productive_categories.py on the backend):
+ *   - Leave        : work_category === 'non_productive' AND (leave_count > 0
+ *                    OR non_productive_category === 'leave')
+ *   - Non-Productive: work_category === 'non_productive' AND NOT leave
+ *   - Productive   : work_category === 'productive'
+ *   - Billable     : is_billable === true (any category)
+ * ============================================================================
+ */
+
+export interface TimesheetEntryLike {
+  entry_date?: string;
+  hours: number;
+  is_billable: boolean;
+  work_category: string;
+  leave_count?: number | null;
+  non_productive_category?: string | null;
+}
+
+export function isLeaveEntry(entry: TimesheetEntryLike): boolean {
+  return (
+    entry.work_category === 'non_productive' &&
+    ((entry.leave_count ?? 0) > 0 || entry.non_productive_category === 'leave')
+  );
+}
+
+export interface TimesheetBreakdown {
+  /** All hours across productive + non-productive (excludes leave). */
+  workedHours: number;
+  productiveHours: number;
+  nonProductiveHours: number;
+  billableHours: number;
+  nonBillableHours: number;
+  leaveDays: number;
+  leaveEntries: number;
+}
+
+/** Categorize a set of entries into the canonical hour buckets. */
+export function categorizeEntries(entries: TimesheetEntryLike[]): TimesheetBreakdown {
+  let productiveHours = 0;
+  let nonProductiveHours = 0;
+  let billableHours = 0;
+  let nonBillableHours = 0;
+  let leaveDays = 0;
+  let leaveEntries = 0;
+
+  for (const entry of entries) {
+    const hours = Number(entry.hours);
+    const safeHours = Number.isFinite(hours) ? hours : 0;
+
+    if (isLeaveEntry(entry)) {
+      leaveEntries += 1;
+      leaveDays += entry.leave_count && entry.leave_count > 0 ? entry.leave_count : 1;
+      continue;
+    }
+
+    if (entry.work_category === 'non_productive') {
+      nonProductiveHours += safeHours;
+    } else {
+      productiveHours += safeHours;
+    }
+
+    if (entry.is_billable) billableHours += safeHours;
+    else nonBillableHours += safeHours;
+  }
+
+  return {
+    workedHours: productiveHours + nonProductiveHours,
+    productiveHours,
+    nonProductiveHours,
+    billableHours,
+    nonBillableHours,
+    leaveDays,
+    leaveEntries,
+  };
+}
+
+/** Sum entry hours. By default leave entries are excluded. */
+export function sumEntryHours(
+  entries: TimesheetEntryLike[],
+  options: { includeLeave?: boolean } = {},
+): number {
+  let total = 0;
+  for (const entry of entries) {
+    if (!options.includeLeave && isLeaveEntry(entry)) continue;
+    const hours = Number(entry.hours);
+    if (Number.isFinite(hours)) total += hours;
+  }
+  return total;
+}
+
+export interface TimesheetMonthSummary extends TimesheetBreakdown {
   expectedHours: number;
+  /** Monthly total = worked hours (productive + non-productive), excludes leave. */
   enteredHours: number;
   remainingHours: number;
-  billableHours: number;
-  nonProductiveHours: number;
-  leaveDays: number;
+  /** Percentage of expected hours completed (0-100+, may exceed 100). */
+  monthlyPercent: number | null;
+  /** Percentage of expected hours still remaining (0-100). */
+  remainingPercent: number | null;
   efficiencyPercent: number | null;
 }
 
 export function summarizeMonthEntries(
-  entries: Array<{
-    hours: number;
-    is_billable: boolean;
-    work_category: string;
-    leave_count?: number | null;
-    non_productive_category?: string | null;
-  }>,
+  entries: TimesheetEntryLike[],
   expectedHours: number,
 ): TimesheetMonthSummary {
-  let enteredHours = 0;
-  let billableHours = 0;
-  let nonProductiveHours = 0;
-  let leaveDays = 0;
-
-  for (const entry of entries) {
-    const hours = Number(entry.hours);
-    if (!Number.isFinite(hours)) continue;
-    enteredHours += hours;
-    if (entry.work_category === 'non_productive') {
-      if ((entry.leave_count ?? 0) > 0 || entry.non_productive_category === 'leave') {
-        leaveDays += entry.leave_count ?? 1;
-      } else {
-        nonProductiveHours += hours;
-      }
-    } else if (entry.is_billable) {
-      billableHours += hours;
-    }
-  }
+  const breakdown = categorizeEntries(entries);
+  const enteredHours = breakdown.workedHours;
+  const remainingHours = expectedHours - enteredHours;
 
   return {
+    ...breakdown,
     expectedHours,
     enteredHours,
-    remainingHours: expectedHours - enteredHours,
-    billableHours,
-    nonProductiveHours,
-    leaveDays,
+    remainingHours,
+    monthlyPercent:
+      expectedHours > 0 ? Math.round((enteredHours / expectedHours) * 100) : null,
+    remainingPercent:
+      expectedHours > 0
+        ? Math.max(0, Math.round((remainingHours / expectedHours) * 100))
+        : null,
     efficiencyPercent:
-      enteredHours > 0 ? Math.round((billableHours / enteredHours) * 100) : null,
+      enteredHours > 0 ? Math.round((breakdown.billableHours / enteredHours) * 100) : null,
   };
 }
 
@@ -134,6 +217,18 @@ export function summarizeDailyHoursFromEntries(
     totals.set(entry.entry_date, (totals.get(entry.entry_date) ?? 0) + parsed);
   }
   return totals;
+}
+
+/** Working days (excludes weekends + holidays) in the ISO week containing a date. */
+export function weekWorkingDayCount(anchorIso: string, holidayDates: Set<string>): number {
+  const start = weekStartMonday(anchorIso);
+  const days: string[] = [];
+  for (let offset = 0; offset < 7; offset += 1) {
+    const date = new Date(`${start}T12:00:00`);
+    date.setDate(date.getDate() + offset);
+    days.push(formatLocalIso(date));
+  }
+  return countWorkingDays(days, holidayDates);
 }
 
 export const GRID_COLUMNS = [

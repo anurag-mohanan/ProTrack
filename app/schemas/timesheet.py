@@ -12,6 +12,16 @@ class TimesheetApprovalRequest(BlankOptionalFieldsMixin, BaseModel):
     comments: str | None = None
 
 
+class TimesheetRecalculationReport(BaseModel):
+    users_checked: int
+    months_recalculated: int
+    entries_scanned: int
+    projects_recalculated: int
+    errors_fixed: int
+    warnings: list[str] = Field(default_factory=list)
+    execution_ms: int
+
+
 class TimesheetRejectRequest(BaseModel):
     comments: str = Field(min_length=1)
 

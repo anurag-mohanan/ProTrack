@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { Box, LinearProgress, Link, Tooltip, Typography } from '@mui/material';
+import { Box, LinearProgress, Link, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import RestoreRoundedIcon from '@mui/icons-material/RestoreRounded';
 import { IconButton } from '@mui/material';
 import { useTheme, type Theme } from '@mui/material/styles';
@@ -26,6 +26,12 @@ import {
   type HoursPerformanceTone,
 } from '../../utils/projectHoursMetrics';
 import { isActiveProjectForHealth } from '../../utils/projectHealth';
+import {
+  applyAutoFitToColumns,
+  autoFitCellSx,
+  autoFitFlexCellSx,
+} from '../../utils/dataGridAutoFit';
+import { projectTableAutoFitProfiles } from '../../utils/dataGridAutoFitProfiles';
 
 export interface ProjectTableRow extends Project {
   customerName: string;
@@ -134,7 +140,7 @@ function HoursComparisonCell({
 
   return (
     <Tooltip title={tooltipParts.join(' · ')}>
-      <Box sx={{ width: '100%', minWidth: 76, py: 0.15 }}>
+      <Box sx={{ width: '100%', py: 0.15 }}>
         <Typography
           sx={{
             fontSize: '0.7rem',
@@ -186,7 +192,7 @@ function HoursComparisonCell({
 function ProgressCell({ value }: { value: number }) {
   const pct = Math.min(100, Math.max(0, Number(value) || 0));
   return (
-    <Box sx={{ width: '100%', minWidth: 56 }}>
+    <Box sx={{ width: '100%' }}>
       <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, lineHeight: 1.15, mb: 0.15 }}>
         {formatNumber(pct, 0)}%
       </Typography>
@@ -222,8 +228,6 @@ function buildColumns(
     {
       field: 'tool_number',
       headerName: 'Tool Number',
-      width: 100,
-      minWidth: 92,
       renderHeader: () => (
         <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
           Tool Number
@@ -246,10 +250,7 @@ function buildColumns(
             textAlign: 'left',
             cursor: 'pointer',
             p: 0,
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            ...autoFitCellSx,
           }}
         >
           {params.value}
@@ -259,15 +260,10 @@ function buildColumns(
     {
       field: 'customerName',
       headerName: 'Customer',
-      flex: 1.1,
-      minWidth: 140,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
           <EntityAvatar label={String(params.value || '?')} size={20} />
-          <Box
-            component="span"
-            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.78rem' }}
-          >
+          <Box component="span" sx={{ fontSize: '0.78rem', ...autoFitFlexCellSx }}>
             {displayOrDash(params.value)}
           </Box>
         </Box>
@@ -276,7 +272,6 @@ function buildColumns(
     {
       field: 'hours_comparison',
       headerName: 'Hours',
-      width: 116,
       sortable: true,
       valueGetter: (_value, row) => hoursBurnPercent(Number(row.actual_hours), Number(row.quoted_hours)),
       renderCell: (params) => (
@@ -290,7 +285,6 @@ function buildColumns(
     {
       field: 'project_stage',
       headerName: 'Current Stage',
-      width: 128,
       renderCell: (params) => {
         const row = params.row;
         if (row.is_archived) return <ProjectStageBadge stage="preliminary" />;
@@ -303,7 +297,6 @@ function buildColumns(
     {
       field: 'execution_status',
       headerName: 'Project Status',
-      width: 118,
       renderCell: (params) => (
         <Tooltip title="Current execution state for planning, delivery, and reporting.">
           <Box component="span">
@@ -315,7 +308,6 @@ function buildColumns(
     {
       field: 'health',
       headerName: 'Health',
-      width: 84,
       renderCell: (params) => {
         if (!isActiveProjectForHealth(params.row.execution_status, Boolean(params.row.is_archived))) {
           return '—';
@@ -332,25 +324,31 @@ function buildColumns(
     {
       field: 'designerName',
       headerName: 'Designer',
-      width: 108,
       valueFormatter: (value) => displayOrDash(value),
+      renderCell: (params) => (
+        <Box component="span" sx={{ fontSize: '0.78rem', ...autoFitFlexCellSx }}>
+          {displayOrDash(params.value)}
+        </Box>
+      ),
     },
     {
       field: 'surfacerName',
       headerName: 'Surfacer',
-      width: 108,
       valueFormatter: (value) => displayOrDash(value),
+      renderCell: (params) => (
+        <Box component="span" sx={{ fontSize: '0.78rem', ...autoFitFlexCellSx }}>
+          {displayOrDash(params.value)}
+        </Box>
+      ),
     },
     {
       field: 'due_date',
       headerName: 'Due Date',
-      width: 100,
       valueFormatter: (value) => formatDate(String(value)) || '—',
     },
     {
       field: 'progress_percent',
       headerName: 'Progress',
-      width: 88,
       renderCell: (params) => (
         <Tooltip title="Completion percentage based on milestone progress.">
           <Box sx={{ width: '100%' }}>
@@ -367,12 +365,11 @@ function buildColumns(
   const actionColumn: GridColDef<ProjectTableRow> = {
     field: 'actions',
     headerName: '',
-    width: 96,
     sortable: false,
     filterable: false,
     disableColumnMenu: true,
     renderCell: (params) => (
-      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {onRestore ? (
           <Tooltip title="Restore">
             <IconButton
@@ -424,6 +421,8 @@ function ProjectTableComponent({
   onRestore,
   canDelete,
 }: ProjectTableProps) {
+  const isWide = useMediaQuery('(min-width:1920px)');
+
   const rows = useMemo(
     () => buildProjectTableRows(projects, customers, users, streams, teams),
     [projects, customers, users, streams, teams],
@@ -431,7 +430,7 @@ function ProjectTableComponent({
 
   const rowMap = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
 
-  const columns = useMemo(
+  const baseColumns = useMemo(
     () =>
       buildColumns({
         onEdit,
@@ -444,6 +443,21 @@ function ProjectTableComponent({
         onRowOpen,
       }),
     [canDelete, onArchive, onDelete, onDuplicate, onEdit, onExport, onRestore, onRowOpen],
+  );
+
+  const hasActions = Boolean(onEdit || onArchive || onRestore);
+  const columns = useMemo(
+    () =>
+      applyAutoFitToColumns(
+        baseColumns,
+        rows,
+        projectTableAutoFitProfiles({
+          hasActions,
+          restoreOnly: Boolean(onRestore && !onEdit),
+        }),
+        { wide: isWide },
+      ),
+    [baseColumns, rows, hasActions, onRestore, onEdit, isWide],
   );
 
   const tableHeight = primary

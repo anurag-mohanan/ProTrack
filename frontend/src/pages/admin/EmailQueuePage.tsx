@@ -67,8 +67,6 @@ export default function EmailQueuePage() {
     return <LoadingState message="Loading email queue…" />;
   }
 
-  const rows = query.data?.items ?? [];
-
   return (
     <Box>
       <PageHeader

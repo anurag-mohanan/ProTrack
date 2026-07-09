@@ -43,7 +43,7 @@ export default function DeletedProjectsPage() {
   const [permanentId, setPermanentId] = useState<string | null>(null);
   const [permanentCheck, setPermanentCheck] = useState<DeleteCheckResult | null>(null);
 
-  const { pagination, query: deletedQuery, items: rows } = usePaginatedQuery({
+  const { pagination, query: deletedQuery, items: rows, isEmpty } = usePaginatedQuery({
     queryKey: projectQueryKeys.deleted,
     fetcher: getDeletedProjectsPaginated,
     staleTime: QUERY_STALE_TIMES.projects,
@@ -104,7 +104,7 @@ export default function DeletedProjectsPage() {
         <ContentCard noPadding>
           <TableSkeleton rows={6} columns={5} />
         </ContentCard>
-      ) : !rows.length ? (
+      ) : isEmpty ? (
         <EmptyState title="No deleted projects" />
       ) : (
         <ContentCard noPadding>

@@ -17,7 +17,7 @@ import { usePaginatedQuery } from '../../hooks/usePaginatedQuery';
 import { formatDateTime } from '../../utils/format';
 
 export default function AuditLogsPage() {
-  const { pagination, query, items: rows } = usePaginatedQuery({
+  const { pagination, query, items: rows, isEmpty } = usePaginatedQuery({
     queryKey: ['audit-logs'],
     fetcher: fetchAuditLogsPaginated,
   });
@@ -32,7 +32,7 @@ export default function AuditLogsPage() {
         title="Audit Logs"
         subtitle="System activity including project edits, assignments, imports, and authentication events"
       />
-      {rows.length === 0 && !query.isFetching ? (
+      {isEmpty ? (
         <EmptyState
           title="No audit logs found"
           description="Activity will appear here as users work in ProTrack."

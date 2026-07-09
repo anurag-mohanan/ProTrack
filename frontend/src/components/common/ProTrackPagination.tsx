@@ -63,7 +63,8 @@ export function ProTrackPagination({
 
   const pageNumbers = useMemo(() => buildPageNumbers(page, pages), [page, pages]);
 
-  if (total === 0) {
+  // Hide footer only when there is genuinely nothing to paginate (not during initial load).
+  if (total === 0 && !loading) {
     return null;
   }
 

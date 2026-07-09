@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { keepPreviousData, useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { ListParams } from '../api/client';
 import { ensureArray, type PaginatedResponse } from '../types/pagination';
 import { usePagination } from './usePagination';
+import { useResetPageOnFilterChange } from './useResetPageOnFilterChange';
 
 export interface UsePaginatedQueryOptions<T> {
   queryKey: readonly unknown[];
@@ -39,8 +40,6 @@ export function usePaginatedQuery<T>({
     () => ({
       page: pagination.page,
       page_size: pagination.pageSize,
-      skip: (pagination.page - 1) * pagination.pageSize,
-      limit: pagination.pageSize,
       ...filters,
     }),
     [pagination.page, pagination.pageSize, filterKey, filters],
@@ -51,15 +50,7 @@ export function usePaginatedQuery<T>({
     [requestParams],
   );
 
-  // Reset to page 1 only when filters/search change — not on initial mount.
-  const previousFilterKeyRef = useRef(filterKey);
-  useEffect(() => {
-    if (previousFilterKeyRef.current === filterKey) {
-      return;
-    }
-    previousFilterKeyRef.current = filterKey;
-    pagination.resetPage();
-  }, [filterKey, pagination.resetPage]);
+  useResetPageOnFilterChange(filterKey, pagination.resetPage);
 
   const query = useQuery({
     queryKey: [...queryKey, requestKey],
@@ -70,20 +61,22 @@ export function usePaginatedQuery<T>({
     ...queryOptions,
   });
 
+  // Only apply totals from the latest fetched page — never from stale placeholder data.
   useEffect(() => {
-    if (query.data) {
-      pagination.setTotal(query.data.total_records ?? query.data.total ?? 0);
+    if (!query.data || query.isPlaceholderData) {
+      return;
     }
-  }, [query.data, pagination.setTotal]);
+    pagination.setTotal(query.data.total_records ?? query.data.total ?? 0);
+  }, [query.data, query.isPlaceholderData, pagination.setTotal]);
 
   const items = useMemo(() => {
     if (!query.data) return [];
-    // Only hide stale placeholder rows while a different page is loading.
-    if (query.isPlaceholderData && query.data.page !== pagination.page) {
-      return [];
-    }
     return ensureArray<T>(query.data.items);
-  }, [query.data, query.isPlaceholderData, pagination.page]);
+  }, [query.data]);
+
+  const isEmpty = items.length === 0 && !query.isFetching && !query.isLoading;
+  const isPageTransitioning =
+    query.isFetching && query.data != null && query.data.page !== pagination.page;
 
   return {
     pagination,
@@ -91,5 +84,7 @@ export function usePaginatedQuery<T>({
     items,
     data: query.data,
     requestParams,
+    isEmpty,
+    isPageTransitioning,
   };
 }

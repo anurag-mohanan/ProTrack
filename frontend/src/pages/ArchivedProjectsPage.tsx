@@ -41,7 +41,7 @@ export function ArchivedProjectsPage() {
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const { pagination, query: archivedQuery, items: rows } = usePaginatedQuery({
+  const { pagination, query: archivedQuery, items: rows, isEmpty } = usePaginatedQuery({
     queryKey: projectQueryKeys.archived,
     fetcher: getArchivedProjectsPaginated,
     staleTime: QUERY_STALE_TIMES.projects,
@@ -84,7 +84,7 @@ export function ArchivedProjectsPage() {
         <ContentCard noPadding>
           <TableSkeleton rows={8} columns={7} />
         </ContentCard>
-      ) : !rows.length ? (
+      ) : isEmpty ? (
         <EmptyState title="No archived projects" />
       ) : (
         <ContentCard noPadding>

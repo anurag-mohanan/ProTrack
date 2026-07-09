@@ -2,6 +2,7 @@ import { useEffect, useMemo, type ComponentProps } from 'react';
 import type { GridValidRowModel } from '@mui/x-data-grid';
 import { ensureArray } from '../../types/pagination';
 import { usePagination } from '../../hooks/usePagination';
+import { useResetPageOnFilterChange } from '../../hooks/useResetPageOnFilterChange';
 import { PaginatedDataGrid } from './PaginatedDataGrid';
 
 type PaginatedDataGridProps<R extends GridValidRowModel> = ComponentProps<
@@ -27,9 +28,7 @@ export function ClientPaginatedDataGrid<R extends GridValidRowModel = GridValidR
     pagination.setTotal(safeRows.length);
   }, [safeRows.length, pagination.setTotal]);
 
-  useEffect(() => {
-    pagination.resetPage();
-  }, [filterKey, pagination.resetPage]);
+  useResetPageOnFilterChange(filterKey, pagination.resetPage);
 
   const pagedRows = useMemo(() => {
     const start = (pagination.page - 1) * pagination.pageSize;

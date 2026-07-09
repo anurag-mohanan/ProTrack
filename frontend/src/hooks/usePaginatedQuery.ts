@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { ListParams } from '../api/client';
 import { ensureArray, type PaginatedResponse } from '../types/pagination';
 import { usePagination } from './usePagination';
@@ -12,7 +12,7 @@ export interface UsePaginatedQueryOptions<T> {
   staleTime?: number;
   queryOptions?: Omit<
     UseQueryOptions<PaginatedResponse<T>>,
-    'queryKey' | 'queryFn' | 'enabled' | 'staleTime'
+    'queryKey' | 'queryFn' | 'enabled' | 'staleTime' | 'placeholderData'
   >;
 }
 
@@ -37,10 +37,13 @@ export function usePaginatedQuery<T>({
 
   const requestParams = useMemo(
     () => ({
-      ...pagination.params,
+      page: pagination.page,
+      page_size: pagination.pageSize,
+      skip: (pagination.page - 1) * pagination.pageSize,
+      limit: pagination.pageSize,
       ...filters,
     }),
-    [pagination.params, filterKey, filters],
+    [pagination.page, pagination.pageSize, filterKey, filters],
   );
 
   const requestKey = useMemo(
@@ -48,6 +51,7 @@ export function usePaginatedQuery<T>({
     [requestParams],
   );
 
+  // Reset to page 1 only when filters/search change — never when page changes.
   useEffect(() => {
     pagination.resetPage();
   }, [filterKey, pagination.resetPage]);
@@ -57,6 +61,7 @@ export function usePaginatedQuery<T>({
     queryFn: () => fetcher(requestParams),
     enabled,
     staleTime,
+    placeholderData: keepPreviousData,
     ...queryOptions,
   });
 
@@ -66,15 +71,20 @@ export function usePaginatedQuery<T>({
     }
   }, [query.data, pagination.setTotal]);
 
-  const items = useMemo(
-    () => ensureArray<T>(query.data?.items),
-    [query.data?.items],
-  );
+  const items = useMemo(() => {
+    if (!query.data) return [];
+    // Avoid showing rows from a previous page while the next page is loading.
+    if (query.isFetching && query.data.page !== pagination.page) {
+      return [];
+    }
+    return ensureArray<T>(query.data.items);
+  }, [query.data, query.isFetching, pagination.page]);
 
   return {
     pagination,
     query,
     items,
     data: query.data,
+    requestParams,
   };
 }

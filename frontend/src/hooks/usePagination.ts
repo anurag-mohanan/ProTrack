@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ListParams } from '../api/client';
 import {
   clampPage,
@@ -45,6 +45,11 @@ function readStoredPageSize(storageKey: string, fallback: number): number {
     : fallback;
 }
 
+function computePages(total: number, pageSize: number): number {
+  if (total <= 0) return 1;
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
 export function usePagination({
   storageKey = PAGE_SIZE_STORAGE_KEY,
   defaultPageSize = DEFAULT_PAGE_SIZE,
@@ -58,16 +63,23 @@ export function usePagination({
   );
   const [totalCount, setTotalCount] = useState(total);
 
+  const totalRef = useRef(totalCount);
+  const pageSizeRef = useRef(pageSize);
+  totalRef.current = totalCount;
+  pageSizeRef.current = pageSize;
+
   useEffect(() => {
     setTotalCount(total);
   }, [total]);
 
   const pages = useMemo(
-    () => Math.max(1, Math.ceil(totalCount / pageSize)),
+    () => computePages(totalCount, pageSize),
     [totalCount, pageSize],
   );
 
+  // When the dataset shrinks, clamp the current page — never reset on unrelated updates.
   useEffect(() => {
+    if (totalCount <= 0) return;
     setPageState((current) => clampPage(current, totalCount, pageSize));
   }, [totalCount, pageSize]);
 
@@ -88,23 +100,43 @@ export function usePagination({
 
   const resetPage = useCallback(() => setPageState(1), []);
 
-  const goToPage = useCallback(
-    (target: number) => {
-      setPageState(clampPage(target, totalCount, pageSize));
-    },
-    [pageSize, totalCount],
-  );
+  const goToPage = useCallback((target: number) => {
+    setPageState((current) => {
+      const totalValue = totalRef.current;
+      const size = pageSizeRef.current;
+      const safeTarget = Math.max(1, Math.floor(target));
+
+      if (totalValue <= 0) {
+        // Allow navigation while total is still loading; clamp once total arrives.
+        return Math.max(1, safeTarget);
+      }
+
+      return clampPage(safeTarget, totalValue, size);
+    });
+  }, []);
 
   const nextPage = useCallback(() => {
-    setPageState((current) => Math.min(pages, current + 1));
-  }, [pages]);
+    setPageState((current) => {
+      const totalValue = totalRef.current;
+      const size = pageSizeRef.current;
+      const maxPage = computePages(totalValue, size);
+      return Math.min(maxPage, current + 1);
+    });
+  }, []);
 
   const previousPage = useCallback(() => {
     setPageState((current) => Math.max(1, current - 1));
   }, []);
 
   const firstPage = useCallback(() => setPageState(1), []);
-  const lastPage = useCallback(() => setPageState(pages), [pages]);
+
+  const lastPage = useCallback(() => {
+    setPageState(() => {
+      const totalValue = totalRef.current;
+      const size = pageSizeRef.current;
+      return computePages(totalValue, size);
+    });
+  }, []);
 
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = totalCount === 0 ? 0 : Math.min(page * pageSize, totalCount);
@@ -137,7 +169,7 @@ export function usePagination({
     lastPage,
     rangeStart,
     rangeEnd,
-    hasNext: page < pages,
+    hasNext: totalCount > 0 ? page < pages : false,
     hasPrevious: page > 1,
   };
 }

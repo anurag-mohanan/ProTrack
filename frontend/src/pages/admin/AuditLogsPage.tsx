@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import {
   Box,
   Paper,
@@ -15,28 +13,18 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ProTrackPagination } from '../../components/common/ProTrackPagination';
 import { fetchAuditLogsPaginated } from '../../api/activities';
-import { usePagination } from '../../hooks/usePagination';
+import { usePaginatedQuery } from '../../hooks/usePaginatedQuery';
 import { formatDateTime } from '../../utils/format';
 
 export default function AuditLogsPage() {
-  const pagination = usePagination();
-
-  const query = useQuery({
-    queryKey: ['audit-logs', pagination.params],
-    queryFn: () => fetchAuditLogsPaginated(pagination.params),
+  const { pagination, query, items: rows } = usePaginatedQuery({
+    queryKey: ['audit-logs'],
+    fetcher: fetchAuditLogsPaginated,
   });
-
-  useEffect(() => {
-    if (query.data) {
-      pagination.setTotal(query.data.total);
-    }
-  }, [query.data, pagination.setTotal]);
 
   if (query.isLoading && !query.data) {
     return <LoadingState message="Loading audit logs…" />;
   }
-
-  const rows = query.data?.items ?? [];
 
   return (
     <Box>
@@ -44,7 +32,7 @@ export default function AuditLogsPage() {
         title="Audit Logs"
         subtitle="System activity including project edits, assignments, imports, and authentication events"
       />
-      {rows.length === 0 ? (
+      {rows.length === 0 && !query.isFetching ? (
         <EmptyState
           title="No audit logs found"
           description="Activity will appear here as users work in ProTrack."

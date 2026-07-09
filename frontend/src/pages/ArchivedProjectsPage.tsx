@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Grid, TableCell, TableRow } from '@mui/material';
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -22,7 +22,7 @@ import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { ProTrackPagination } from '../components/common/ProTrackPagination';
-import { usePagination } from '../hooks/usePagination';
+import { usePaginatedQuery } from '../hooks/usePaginatedQuery';
 import {
   getArchivedProjectsPaginated,
   projectQueryKeys,
@@ -40,19 +40,12 @@ export function ArchivedProjectsPage() {
   const [selectedProject, setSelectedProject] = useState<ArchivedProjectListItem | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const pagination = usePagination();
 
-  const archivedQuery = useQuery({
-    queryKey: [...projectQueryKeys.archived, pagination.params],
-    queryFn: () => getArchivedProjectsPaginated(pagination.params),
+  const { pagination, query: archivedQuery, items: rows } = usePaginatedQuery({
+    queryKey: projectQueryKeys.archived,
+    fetcher: getArchivedProjectsPaginated,
     staleTime: QUERY_STALE_TIMES.projects,
   });
-
-  useEffect(() => {
-    if (archivedQuery.data) {
-      pagination.setTotal(archivedQuery.data.total);
-    }
-  }, [archivedQuery.data, pagination.setTotal]);
 
   const restoreMutation = useMutation({
     mutationFn: restoreProject,
@@ -76,7 +69,6 @@ export function ArchivedProjectsPage() {
     onError: (error: Error) => showError(error.message),
   });
 
-  const rows = useMemo(() => archivedQuery.data?.items ?? [], [archivedQuery.data]);
   const canDelete = canSoftDeleteProject(user?.role_name ?? '');
 
   if (archivedQuery.error) return <ErrorState error={archivedQuery.error} />;

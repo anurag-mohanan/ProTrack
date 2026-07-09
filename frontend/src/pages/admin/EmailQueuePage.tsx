@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Box,
   Chip,
@@ -14,7 +14,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
@@ -24,7 +24,7 @@ import { ProTrackPagination } from '../../components/common/ProTrackPagination';
 import { fetchEmailQueuePaginated, processEmailQueue } from '../../api/communication';
 import type { EmailMessage } from '../../api/communication';
 import { useToast } from '../../context/ToastContext';
-import { usePagination } from '../../hooks/usePagination';
+import { usePaginatedQuery } from '../../hooks/usePaginatedQuery';
 
 const STATUS_COLORS: Record<string, 'default' | 'success' | 'warning' | 'error' | 'info'> = {
   queued: 'warning',
@@ -39,23 +39,20 @@ export default function EmailQueuePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<EmailMessage | null>(null);
-  const pagination = usePagination();
 
-  const query = useQuery({
-    queryKey: ['emails', 'queue', statusFilter, search, pagination.params],
-    queryFn: () =>
-      fetchEmailQueuePaginated({
-        status: statusFilter || undefined,
-        search: search || undefined,
-        ...pagination.params,
-      }),
+  const listFilters = useMemo(
+    () => ({
+      status: statusFilter || undefined,
+      search: search || undefined,
+    }),
+    [search, statusFilter],
+  );
+
+  const { pagination, query, items: rows } = usePaginatedQuery({
+    queryKey: ['emails', 'queue'],
+    fetcher: fetchEmailQueuePaginated,
+    filters: listFilters,
   });
-
-  useEffect(() => {
-    if (query.data) {
-      pagination.setTotal(query.data.total);
-    }
-  }, [query.data, pagination.setTotal]);
 
   const processMutation = useMutation({
     mutationFn: processEmailQueue,
@@ -84,19 +81,13 @@ export default function EmailQueuePage() {
             size="small"
             label="Search"
             value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              pagination.resetPage();
-            }}
+            onChange={(event) => setSearch(event.target.value)}
           />
           <TextField
             size="small"
             label="Status filter"
             value={statusFilter}
-            onChange={(event) => {
-              setStatusFilter(event.target.value);
-              pagination.resetPage();
-            }}
+            onChange={(event) => setStatusFilter(event.target.value)}
             placeholder="queued, sent, failed"
           />
           <ProsohmButton

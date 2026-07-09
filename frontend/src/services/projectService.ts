@@ -11,7 +11,7 @@ import type {
 } from '../types';
 import { apiClient, buildQuery, type ListParams } from '../api/client';
 import {
-  isPaginatedResponse,
+  normalizePaginatedResponse,
   unwrapListResponse,
   type PaginatedResponse,
 } from '../types/pagination';
@@ -39,19 +39,8 @@ export async function getProjects(params?: ProjectListParams): Promise<Project[]
 export async function getProjectsPaginated(
   params?: ProjectListParams,
 ): Promise<PaginatedResponse<Project>> {
-  const { data } = await apiClient.get<Project[] | PaginatedResponse<Project>>(
-    `/projects${buildQuery(params)}`,
-  );
-  if (isPaginatedResponse<Project>(data)) {
-    return data;
-  }
-  return {
-    items: data,
-    total: data.length,
-    page: 1,
-    page_size: data.length || params?.page_size || params?.limit || 25,
-    pages: 1,
-  };
+  const { data } = await apiClient.get<unknown>(`/projects${buildQuery(params)}`);
+  return normalizePaginatedResponse<Project>(data);
 }
 
 export async function getArchivedProjects(
@@ -66,19 +55,8 @@ export async function getArchivedProjects(
 export async function getArchivedProjectsPaginated(
   params?: ListParams,
 ): Promise<PaginatedResponse<ArchivedProjectListItem>> {
-  const { data } = await apiClient.get<
-    ArchivedProjectListItem[] | PaginatedResponse<ArchivedProjectListItem>
-  >(`/projects/archived${buildQuery(params)}`);
-  if (isPaginatedResponse<ArchivedProjectListItem>(data)) {
-    return data;
-  }
-  return {
-    items: data,
-    total: data.length,
-    page: 1,
-    page_size: data.length || params?.page_size || params?.limit || 25,
-    pages: 1,
-  };
+  const { data } = await apiClient.get<unknown>(`/projects/archived${buildQuery(params)}`);
+  return normalizePaginatedResponse<ArchivedProjectListItem>(data);
 }
 
 export async function getDeletedProjects(params?: ListParams): Promise<Project[]> {
@@ -91,19 +69,8 @@ export async function getDeletedProjects(params?: ListParams): Promise<Project[]
 export async function getDeletedProjectsPaginated(
   params?: ListParams,
 ): Promise<PaginatedResponse<Project>> {
-  const { data } = await apiClient.get<Project[] | PaginatedResponse<Project>>(
-    `/projects/deleted${buildQuery(params)}`,
-  );
-  if (isPaginatedResponse<Project>(data)) {
-    return data;
-  }
-  return {
-    items: data,
-    total: data.length,
-    page: 1,
-    page_size: data.length || params?.page_size || params?.limit || 25,
-    pages: 1,
-  };
+  const { data } = await apiClient.get<unknown>(`/projects/deleted${buildQuery(params)}`);
+  return normalizePaginatedResponse<Project>(data);
 }
 
 export async function getProjectDetail(projectId: string): Promise<ProjectDashboard> {

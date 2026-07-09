@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Grid, TableCell, TableRow } from '@mui/material';
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { DeleteRecordDialog, type DeleteCheckResult } from '../../components/ui/design-system/DeleteRecordDialog';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -22,7 +22,7 @@ import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { QUERY_STALE_TIMES } from '../../config/queryConfig';
 import { useToast } from '../../context/ToastContext';
 import { ProTrackPagination } from '../../components/common/ProTrackPagination';
-import { usePagination } from '../../hooks/usePagination';
+import { usePaginatedQuery } from '../../hooks/usePaginatedQuery';
 import {
   getDeletedProjectsPaginated,
   getProjectDeleteCheck,
@@ -42,19 +42,12 @@ export default function DeletedProjectsPage() {
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [permanentId, setPermanentId] = useState<string | null>(null);
   const [permanentCheck, setPermanentCheck] = useState<DeleteCheckResult | null>(null);
-  const pagination = usePagination();
 
-  const deletedQuery = useQuery({
-    queryKey: [...projectQueryKeys.deleted, pagination.params],
-    queryFn: () => getDeletedProjectsPaginated(pagination.params),
+  const { pagination, query: deletedQuery, items: rows } = usePaginatedQuery({
+    queryKey: projectQueryKeys.deleted,
+    fetcher: getDeletedProjectsPaginated,
     staleTime: QUERY_STALE_TIMES.projects,
   });
-
-  useEffect(() => {
-    if (deletedQuery.data) {
-      pagination.setTotal(deletedQuery.data.total);
-    }
-  }, [deletedQuery.data, pagination.setTotal]);
 
   const restoreMutation = useMutation({
     mutationFn: restoreDeletedProject,
@@ -97,7 +90,6 @@ export default function DeletedProjectsPage() {
     }
   }
 
-  const rows = deletedQuery.data?.items ?? [];
 
   if (deletedQuery.error) return <ErrorState error={deletedQuery.error} />;
 

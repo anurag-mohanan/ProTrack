@@ -231,17 +231,6 @@ export default function UsersPage() {
     void queryClient.invalidateQueries({ queryKey: ['users'] });
   }, [queryClient]);
 
-  useEffect(() => {
-    pagination.resetPage();
-  }, [
-    appliedActiveFilter,
-    appliedEmploymentFilter,
-    appliedRoleFilter,
-    appliedTeamFilter,
-    debouncedSearch,
-    pagination.resetPage,
-  ]);
-
   const loadMetadata = useCallback(async () => {
     setMetadataLoading(true);
     try {

@@ -48,7 +48,7 @@ export default function EmailQueuePage() {
     [search, statusFilter],
   );
 
-  const { pagination, query, items: rows } = usePaginatedQuery({
+  const { pagination, query, items: rows, isEmpty } = usePaginatedQuery({
     queryKey: ['emails', 'queue'],
     fetcher: fetchEmailQueuePaginated,
     filters: listFilters,
@@ -96,7 +96,7 @@ export default function EmailQueuePage() {
             Process Queue / Retry
           </ProsohmButton>
         </Stack>
-        {rows.length === 0 ? (
+        {isEmpty ? (
           <EmptyState
             title="No emails in queue"
             description="Try adjusting your filters or process the queue to send pending messages."

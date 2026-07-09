@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Avatar,
   Box,
@@ -25,7 +26,10 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser, setUserTemporaryPassword, setUserMustChangePassword, unlockUser } from '../../api/resources';
 import { fetchDepartments } from '../../api/settings';
-import { fetchOperationalRoles, fetchTeams } from '../../api/lookups';
+import { fetchOperationalRoles, fetchTeams, fetchUsers } from '../../api/lookups';
+import { PaginatedDataGrid } from '../../components/common/PaginatedDataGrid';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { usePaginatedQuery } from '../../hooks/usePaginatedQuery';
 import { UserKpiConfiguration } from '../../components/admin/UserKpiConfiguration';
 import { useAuth } from '../../context/AuthContext';
 import { UserTeamAssignments, type UserTeamAssignmentFormValue } from '../../components/admin/UserTeamAssignments';
@@ -43,7 +47,6 @@ import {
   FormSection,
   FormSelect,
   PasswordField,
-  ProsohmDataGrid,
   FilterDrawer,
   FilterGroup,
   FilterToolbar,
@@ -125,15 +128,16 @@ const emptyForm: UserFormState = {
 };
 
 export default function UsersPage() {
+  const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
   const { user: currentUser, impersonateUser } = useAuth();
   const isAdmin = currentUser?.role_name === ROLES.ADMIN;
-  const [users, setUsers] = useState<User[]>([]);
+  const [lookupUsers, setLookupUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [operationalRoles, setOperationalRoles] = useState<Array<{ id: string; name: string; code: string; dashboard_profile: string }>>([]);
-  const [loading, setLoading] = useState(true);
+  const [metadataLoading, setMetadataLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -197,69 +201,85 @@ export default function UsersPage() {
     [roleOptions],
   );
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params: Record<string, string | boolean> = {};
-      if (appliedRoleFilter !== 'all') params.role_id = appliedRoleFilter;
-      if (appliedActiveFilter === 'active') params.is_active = true;
-      if (appliedActiveFilter === 'inactive') params.is_active = false;
+  const debouncedSearch = useDebouncedValue(search);
 
-      const [usersData, rolesData, teamsData, departmentsData, operationalRolesData] = await Promise.all([
-        usersApi.list({ ...params, limit: 500 }),
-        rolesApi.list(),
-        fetchTeams(),
-        fetchDepartments(),
-        fetchOperationalRoles(),
-      ]);
-      setUsers(usersData);
+  const listFilters = useMemo(() => {
+    const params: Record<string, string | boolean> = {};
+    if (appliedRoleFilter !== 'all') params.role_id = appliedRoleFilter;
+    if (appliedActiveFilter === 'active') params.is_active = true;
+    if (appliedActiveFilter === 'inactive') params.is_active = false;
+    if (appliedTeamFilter !== 'all') params.team_id = appliedTeamFilter;
+    if (appliedEmploymentFilter !== 'all') params.employment_type = appliedEmploymentFilter;
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    return params;
+  }, [
+    appliedActiveFilter,
+    appliedEmploymentFilter,
+    appliedRoleFilter,
+    appliedTeamFilter,
+    debouncedSearch,
+  ]);
+
+  const { pagination, query: usersQuery, items: users } = usePaginatedQuery<User>({
+    queryKey: ['users'],
+    fetcher: usersApi.listPaginated,
+    filters: listFilters,
+    enabled: !metadataLoading,
+  });
+
+  const refreshUsers = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['users'] });
+  }, [queryClient]);
+
+  useEffect(() => {
+    pagination.resetPage();
+  }, [
+    appliedActiveFilter,
+    appliedEmploymentFilter,
+    appliedRoleFilter,
+    appliedTeamFilter,
+    debouncedSearch,
+    pagination.resetPage,
+  ]);
+
+  const loadMetadata = useCallback(async () => {
+    setMetadataLoading(true);
+    try {
+      const [rolesData, teamsData, departmentsData, operationalRolesData, lookupUsersData] =
+        await Promise.all([
+          rolesApi.list(),
+          fetchTeams(),
+          fetchDepartments(),
+          fetchOperationalRoles(),
+          fetchUsers(),
+        ]);
       setRoles(rolesData);
       setTeams(teamsData);
       setDepartments(departmentsData.filter((row) => row.is_active));
       setOperationalRoles(operationalRolesData);
+      setLookupUsers(lookupUsersData);
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
-      setLoading(false);
+      setMetadataLoading(false);
     }
-  }, [appliedActiveFilter, appliedRoleFilter, showError]);
+  }, [showError]);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  const filteredUsers = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return users.filter((user) => {
-      if (term) {
-        const haystack = [user.first_name, user.last_name, user.email, userDisplayName(user)]
-          .join(' ')
-          .toLowerCase();
-        if (!haystack.includes(term)) return false;
-      }
-      if (appliedTeamFilter !== 'all') {
-        const assignedTeamIds = new Set([
-          ...(user.team_assignments?.map((row) => row.team_id) ?? []),
-          ...(user.team_id ? [user.team_id] : []),
-        ]);
-        if (!assignedTeamIds.has(appliedTeamFilter)) return false;
-      }
-      if (appliedEmploymentFilter !== 'all' && user.employment_type !== appliedEmploymentFilter) return false;
-      return true;
-    });
-  }, [appliedEmploymentFilter, appliedTeamFilter, search, users]);
+    void loadMetadata();
+  }, [loadMetadata]);
 
   const managerOptions = useMemo(
     () => [
       { value: '', label: 'No Manager' },
-      ...users
+      ...lookupUsers
         .filter((row) => row.id !== editingUser?.id)
         .map((row) => ({
           value: row.id,
           label: `${row.first_name} ${row.last_name}`,
         })),
     ],
-    [users, editingUser?.id],
+    [lookupUsers, editingUser?.id],
   );
 
   const generateTempPassword = () => {
@@ -459,7 +479,7 @@ export default function UsersPage() {
         );
       }
       setFormOpen(false);
-      await loadData();
+      await refreshUsers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -497,7 +517,7 @@ export default function UsersPage() {
           : result.message,
       );
       setTempPasswordTarget(null);
-      await loadData();
+      await refreshUsers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -512,7 +532,7 @@ export default function UsersPage() {
       await unlockUser(unlockTarget.id);
       showSuccess(`${unlockTarget.email} has been unlocked.`);
       setUnlockTarget(null);
-      await loadData();
+      await refreshUsers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -533,7 +553,7 @@ export default function UsersPage() {
           : 'User activated successfully.',
       );
       setToggleTarget(null);
-      await loadData();
+      await refreshUsers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -548,7 +568,7 @@ export default function UsersPage() {
       await forceUserPasswordChange(forceChangeTarget.id);
       showSuccess(`${forceChangeTarget.email} must change password on next login.`);
       setForceChangeTarget(null);
-      await loadData();
+      await refreshUsers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -568,7 +588,7 @@ export default function UsersPage() {
           : `${mustChangeTarget.email} no longer requires a password change.`,
       );
       setMustChangeTarget(null);
-      await loadData();
+      await refreshUsers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -598,7 +618,7 @@ export default function UsersPage() {
       await archiveUser(archiveTarget.id);
       showSuccess(`${archiveTarget.email} archived.`);
       setArchiveTarget(null);
-      await loadData();
+      await refreshUsers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -613,7 +633,7 @@ export default function UsersPage() {
       await softDeleteUser(deleteTarget.id);
       showSuccess(`${deleteTarget.email} deleted.`);
       setDeleteTarget(null);
-      await loadData();
+      await refreshUsers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -714,7 +734,7 @@ export default function UsersPage() {
     },
   ];
 
-  if (loading) return <LoadingState message="Loading users…" />;
+  if (metadataLoading && users.length === 0) return <LoadingState message="Loading users…" />;
 
   const activeFilterCount =
     (appliedRoleFilter !== 'all' ? 1 : 0) +
@@ -817,20 +837,18 @@ export default function UsersPage() {
       </FilterToolbar>
 
       <ContentCard noPadding>
-        {filteredUsers.length === 0 ? (
+        {users.length === 0 && !usersQuery.isFetching ? (
           <EmptyState title="No users found" description="Try adjusting your search or filters." />
         ) : (
-          <ProsohmDataGrid
-            rows={filteredUsers}
+          <PaginatedDataGrid
+            rows={users}
             columns={columns}
+            pagination={pagination}
+            loading={usersQuery.isFetching}
             pinLeftFields={['full_name']}
             autoHeight
-            pageSizeOptions={[25, 50, 100]}
-            initialState={{
-              pagination: { paginationModel: { pageSize: 25 } },
-            }}
             onRowOpen={(rowId) => {
-              const user = filteredUsers.find((item) => item.id === rowId);
+              const user = users.find((item) => item.id === rowId);
               if (user) setSelectedUser(user);
             }}
           />

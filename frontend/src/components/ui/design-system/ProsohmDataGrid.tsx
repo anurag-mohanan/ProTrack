@@ -1,4 +1,4 @@
-import { useMemo, type ComponentProps } from 'react';
+import { useMemo, useState, type ComponentProps } from 'react';
 import { Box, useTheme } from '@mui/material';
 import { DataGrid, type GridValidRowModel } from '@mui/x-data-grid';
 import { pinnedDataGridColumnSx, prosohmDataGridSx } from '../../../theme/componentStyles';
@@ -49,6 +49,17 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
     props.paginationModel?.pageSize ??
     (persistedPageSize > 0 ? persistedPageSize : fallbackPageSize);
   const isServerMode = props.paginationMode === 'server';
+  const isControlled = props.paginationModel !== undefined;
+  const [clientPaginationModel, setClientPaginationModel] = useState({
+    page: 0,
+    pageSize: resolvedPageSize,
+  });
+
+  const paginationModel = isControlled
+    ? props.paginationModel
+    : isServerMode
+      ? undefined
+      : clientPaginationModel;
 
   const columns = useMemo(() => {
     if (!pinLeftFields.length || !columnsProp) return columnsProp;
@@ -72,17 +83,12 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
         rowHeight={rowHeight}
         pageSizeOptions={pageSizeOptions}
         {...props}
-        paginationModel={
-          props.paginationModel ??
-          (isServerMode
-            ? undefined
-            : {
-                page: 0,
-                pageSize: resolvedPageSize,
-              })
-        }
+        paginationModel={paginationModel}
         columns={columns}
         onPaginationModelChange={(model, details) => {
+          if (!isControlled && !isServerMode) {
+            setClientPaginationModel(model);
+          }
           if (model.pageSize) {
             window.localStorage.setItem(pageSizeStorageKey, String(model.pageSize));
           }

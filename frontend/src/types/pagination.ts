@@ -10,6 +10,10 @@ export interface PaginatedResponse<T> {
   page: number;
   page_size: number;
   pages: number;
+  total_records?: number;
+  total_pages?: number;
+  has_next?: boolean;
+  has_previous?: boolean;
 }
 
 export interface PaginationParams extends ListParams {
@@ -47,4 +51,32 @@ export function toSkipLimit(page: number, pageSize: number): { skip: number; lim
 export function clampPage(page: number, total: number, pageSize: number): number {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   return Math.min(Math.max(1, page), pages);
+}
+
+export function normalizePaginatedResponse<T>(value: T[] | PaginatedResponse<T>): PaginatedResponse<T> {
+  if (isPaginatedResponse<T>(value)) {
+    const pages = value.total_pages ?? value.pages;
+    const total = value.total_records ?? value.total;
+    return {
+      ...value,
+      total,
+      pages,
+      total_records: total,
+      total_pages: pages,
+      has_next: value.has_next ?? value.page < pages,
+      has_previous: value.has_previous ?? value.page > 1,
+    };
+  }
+  const pageSize = value.length || DEFAULT_PAGE_SIZE;
+  return {
+    items: value,
+    total: value.length,
+    page: 1,
+    page_size: pageSize,
+    pages: 1,
+    total_records: value.length,
+    total_pages: 1,
+    has_next: false,
+    has_previous: false,
+  };
 }

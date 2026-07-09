@@ -2,7 +2,7 @@ from typing import Any
 from uuid import UUID
 import json
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.access_control import (
@@ -18,7 +18,7 @@ from app.core.security import hash_password
 from app.crud.base import CRUDBase
 from app.crud.team import sync_user_team_membership  # noqa: F401 — re-exported
 from app.models.enums import TeamRelationshipType
-from app.models.models import Project, Team, User
+from app.models.models import Project, Team, TeamMember, User
 from app.models.foundation import Department
 from app.schemas.identity import (
     UserCreate,
@@ -168,6 +168,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         include_archived: bool = False,
         include_deleted: bool = False,
         deleted_only: bool = False,
+        search: str | None = None,
+        team_id: UUID | None = None,
+        employment_type: str | None = None,
     ):
         stmt = select(User)
         if deleted_only:
@@ -180,6 +183,20 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             stmt = stmt.where(User.role_id == role_id)
         if is_active is not None:
             stmt = stmt.where(User.is_active == is_active)
+        if employment_type is not None:
+            stmt = stmt.where(User.employment_type == employment_type)
+        if team_id is not None:
+            assigned_user_ids = select(TeamMember.user_id).where(TeamMember.team_id == team_id)
+            stmt = stmt.where(or_(User.team_id == team_id, User.id.in_(assigned_user_ids)))
+        if search:
+            term = f"%{search.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    User.first_name.ilike(term),
+                    User.last_name.ilike(term),
+                    User.email.ilike(term),
+                )
+            )
         return stmt
 
     def query_users(
@@ -194,6 +211,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         include_deleted: bool = False,
         deleted_only: bool = False,
         sort: str | None = None,
+        search: str | None = None,
+        team_id: UUID | None = None,
+        employment_type: str | None = None,
     ) -> list[User]:
         stmt = self._user_list_stmt(
             role_id=role_id,
@@ -201,6 +221,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             include_archived=include_archived,
             include_deleted=include_deleted,
             deleted_only=deleted_only,
+            search=search,
+            team_id=team_id,
+            employment_type=employment_type,
         )
         stmt = apply_sort(stmt, User, sort or "-created_at")
         return list(db.scalars(stmt.offset(skip).limit(limit)).all())
@@ -214,6 +237,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         include_archived: bool = False,
         include_deleted: bool = False,
         deleted_only: bool = False,
+        search: str | None = None,
+        team_id: UUID | None = None,
+        employment_type: str | None = None,
     ) -> int:
         stmt = self._user_list_stmt(
             role_id=role_id,
@@ -221,6 +247,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             include_archived=include_archived,
             include_deleted=include_deleted,
             deleted_only=deleted_only,
+            search=search,
+            team_id=team_id,
+            employment_type=employment_type,
         )
         return int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
 
@@ -237,26 +266,29 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         include_archived: bool = False,
         include_deleted: bool = False,
         sort: str | None = None,
+        search: str | None = None,
+        team_id: UUID | None = None,
+        employment_type: str | None = None,
     ) -> PaginatedResponse[Any]:
         resolved_skip = skip if skip is not None else (page - 1) * page_size
         resolved_limit = limit if limit is not None else page_size
         resolved_page = (resolved_skip // resolved_limit) + 1 if resolved_limit else page
-        total = self.count_users(
-            db,
-            role_id=role_id,
-            is_active=is_active,
-            include_archived=include_archived,
-            include_deleted=include_deleted,
-        )
+        filter_kwargs = {
+            "role_id": role_id,
+            "is_active": is_active,
+            "include_archived": include_archived,
+            "include_deleted": include_deleted,
+            "search": search,
+            "team_id": team_id,
+            "employment_type": employment_type,
+        }
+        total = self.count_users(db, **filter_kwargs)
         items = self.query_users(
             db,
             skip=resolved_skip,
             limit=resolved_limit,
-            role_id=role_id,
-            is_active=is_active,
-            include_archived=include_archived,
-            include_deleted=include_deleted,
             sort=sort,
+            **filter_kwargs,
         )
         return PaginatedResponse.build(
             items=items,

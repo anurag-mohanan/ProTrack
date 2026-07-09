@@ -6,7 +6,7 @@ from math import ceil
 from typing import Any, Generic, TypeVar
 
 from fastapi import Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 500
@@ -39,6 +39,26 @@ class PaginatedResponse(BaseModel, Generic[T]):
             page_size=page_size,
             pages=pages,
         )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_records(self) -> int:
+        return self.total
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_pages(self) -> int:
+        return self.pages
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def has_next(self) -> bool:
+        return self.page < self.pages
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def has_previous(self) -> bool:
+        return self.page > 1
 
 
 class PaginationParams(BaseModel):

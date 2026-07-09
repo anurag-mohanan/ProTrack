@@ -19,7 +19,37 @@ def test_users_list_returns_paginated_response(client):
     assert "total" in payload
     assert payload["page"] == 1
     assert payload["page_size"] == 25
+    assert payload["total_records"] == payload["total"]
+    assert payload["total_pages"] == payload["pages"]
+    assert payload["has_next"] is (payload["page"] < payload["pages"])
+    assert payload["has_previous"] is False
     assert isinstance(payload["items"], list)
+
+
+def test_users_list_page_two(client):
+    headers = login(client, "admin@prosohm.com")
+    first = client.get("/api/v1/users?page=1&page_size=2", headers=headers)
+    assert first.status_code == 200
+    first_payload = first.json()
+    if first_payload["total"] <= 2:
+        return
+    second = client.get("/api/v1/users?page=2&page_size=2", headers=headers)
+    assert second.status_code == 200
+    second_payload = second.json()
+    assert second_payload["page"] == 2
+    assert second_payload["has_previous"] is True
+    first_ids = {row["id"] for row in first_payload["items"]}
+    second_ids = {row["id"] for row in second_payload["items"]}
+    assert first_ids.isdisjoint(second_ids)
+
+
+def test_users_list_search_filter(client):
+    headers = login(client, "admin@prosohm.com")
+    response = client.get("/api/v1/users?search=admin&page=1&page_size=25", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["page"] == 1
+    assert all("admin" in row["email"].lower() for row in payload["items"])
 
 
 def test_projects_list_returns_paginated_response(client):

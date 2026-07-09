@@ -1,6 +1,7 @@
 import { apiClient, buildQuery, type ListParams } from './client';
 import {
   isPaginatedResponse,
+  normalizePaginatedResponse,
   unwrapListResponse,
   type PaginatedResponse,
 } from '../types/pagination';
@@ -29,16 +30,7 @@ export function createResourceApi<
       const { data } = await apiClient.get<T[] | PaginatedResponse<T>>(
         `/${resource}${buildQuery(params)}`,
       );
-      if (isPaginatedResponse<T>(data)) {
-        return data;
-      }
-      return {
-        items: data,
-        total: data.length,
-        page: 1,
-        page_size: data.length || params?.page_size || params?.limit || 25,
-        pages: 1,
-      };
+      return normalizePaginatedResponse(data);
     },
     get: async (id: string): Promise<T> => {
       const { data } = await apiClient.get<T>(`/${resource}/${id}`);

@@ -50,16 +50,19 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
     (persistedPageSize > 0 ? persistedPageSize : fallbackPageSize);
   const isServerMode = props.paginationMode === 'server';
   const isControlled = props.paginationModel !== undefined;
+  const paginationEnabled = props.pagination === true || isServerMode;
   const [clientPaginationModel, setClientPaginationModel] = useState({
     page: 0,
     pageSize: resolvedPageSize,
   });
 
-  const paginationModel = isControlled
-    ? props.paginationModel
-    : isServerMode
-      ? undefined
-      : clientPaginationModel;
+  const paginationModel = paginationEnabled
+    ? isControlled
+      ? props.paginationModel
+      : isServerMode
+        ? props.paginationModel
+        : clientPaginationModel
+    : undefined;
 
   const columns = useMemo(() => {
     if (!pinLeftFields.length || !columnsProp) return columnsProp;
@@ -83,7 +86,9 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
         rowHeight={rowHeight}
         pageSizeOptions={pageSizeOptions}
         {...props}
-        paginationModel={paginationModel}
+        {...(paginationEnabled
+          ? { pagination: true as const, paginationModel }
+          : { paginationModel: undefined })}
         columns={columns}
         onPaginationModelChange={(model, details) => {
           if (!isControlled && !isServerMode) {

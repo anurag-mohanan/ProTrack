@@ -390,3 +390,10 @@ def test_customer_default_templates_linked(template_db):
         template = _get_template(template_db, template_name)
         assert customer is not None
         assert customer.default_project_template_id == template.id
+
+
+def test_project_template_health_check_passes(template_db):
+    from app.db.project_template_seed import validate_project_template_health
+
+    warnings = validate_project_template_health(template_db)
+    assert warnings == []

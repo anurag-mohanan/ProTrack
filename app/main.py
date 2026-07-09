@@ -11,7 +11,10 @@ from app.api.v1.api import api_router
 from app.core.config import APP_VERSION, CORS_ORIGINS, ENABLE_DEMO_SEED, INTERNAL_RELEASE, RELEASE_CANDIDATE, UPLOAD_DIR
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
-from app.db.project_template_seed import ensure_project_types_and_templates
+from app.db.project_template_seed import (
+    ensure_project_types_and_templates,
+    validate_project_template_health,
+)
 from app.db.phase7_schema_sync import ensure_phase7_foundation
 from app.db.phase8_schema_sync import ensure_phase8_foundation
 from app.db.phase9_schema_sync import ensure_phase9_foundation
@@ -90,6 +93,7 @@ async def lifespan(app: FastAPI):
     seed_session = sessionmaker(bind=engine)()
     try:
         ensure_project_types_and_templates(seed_session)
+        validate_project_template_health(seed_session)
     finally:
         seed_session.close()
     yield

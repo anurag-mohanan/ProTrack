@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { keepPreviousData, useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { ListParams } from '../api/client';
 import { ensureArray, type PaginatedResponse } from '../types/pagination';
@@ -51,8 +51,13 @@ export function usePaginatedQuery<T>({
     [requestParams],
   );
 
-  // Reset to page 1 only when filters/search change — never when page changes.
+  // Reset to page 1 only when filters/search change — not on initial mount.
+  const previousFilterKeyRef = useRef(filterKey);
   useEffect(() => {
+    if (previousFilterKeyRef.current === filterKey) {
+      return;
+    }
+    previousFilterKeyRef.current = filterKey;
     pagination.resetPage();
   }, [filterKey, pagination.resetPage]);
 
@@ -73,12 +78,12 @@ export function usePaginatedQuery<T>({
 
   const items = useMemo(() => {
     if (!query.data) return [];
-    // Avoid showing rows from a previous page while the next page is loading.
-    if (query.isFetching && query.data.page !== pagination.page) {
+    // Only hide stale placeholder rows while a different page is loading.
+    if (query.isPlaceholderData && query.data.page !== pagination.page) {
       return [];
     }
     return ensureArray<T>(query.data.items);
-  }, [query.data, query.isFetching, pagination.page]);
+  }, [query.data, query.isPlaceholderData, pagination.page]);
 
   return {
     pagination,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -32,6 +32,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { PageHeader } from '../../components/common/PageHeader';
 import { StickyFormPageLayout } from '../../components/common/StickyFormPageLayout';
 import { LoadingState } from '../../components/common/LoadingState';
+import { ErrorState } from '../../components/common/ErrorState';
 import { StickyRecordHeader } from '../../components/ui/design-system';
 import { APP_TOP_BAR_OFFSET } from '../../components/ui/design-system/StickyRecordHeader';
 import { useToast } from '../../context/ToastContext';
@@ -104,10 +105,14 @@ function createMilestoneRow(
 
 export default function ProjectTemplateEditorPage() {
   const { templateId } = useParams();
-  const isNew = templateId === 'new';
+  const location = useLocation();
+  const isNew =
+    templateId === 'new' || location.pathname.replace(/\/$/, '').endsWith('/new');
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const [loading, setLoading] = useState(!isNew);
+  const [lookupsLoading, setLookupsLoading] = useState(true);
+  const [lookupsError, setLookupsError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -127,17 +132,26 @@ export default function ProjectTemplateEditorPage() {
   };
 
   const loadLookups = useCallback(async () => {
-    const [types, customerRows, userRows] = await Promise.all([
-      fetchAdminProjectTypes(),
-      fetchCustomers(),
-      fetchUsers(),
-    ]);
-    const safeTypes = ensureArray<ProjectType>(types);
-    const safeCustomers = ensureArray<Customer>(customerRows);
-    setProjectTypes(safeTypes.filter((type) => type.is_active));
-    setCustomers(safeCustomers.filter((customer) => customer.is_active));
-    setUsers(ensureArray(userRows));
-  }, []);
+    setLookupsLoading(true);
+    setLookupsError(null);
+    try {
+      const [types, customerRows, userRows] = await Promise.all([
+        fetchAdminProjectTypes(),
+        fetchCustomers(),
+        fetchUsers(),
+      ]);
+      const safeTypes = ensureArray<ProjectType>(types);
+      const safeCustomers = ensureArray<Customer>(customerRows);
+      setProjectTypes(safeTypes.filter((type) => type.is_active));
+      setCustomers(safeCustomers.filter((customer) => customer.is_active));
+      setUsers(ensureArray(userRows));
+    } catch (error) {
+      setLookupsError(error);
+      showError(getErrorMessage(error));
+    } finally {
+      setLookupsLoading(false);
+    }
+  }, [showError]);
 
   const loadTemplate = useCallback(async () => {
     if (isNew || !templateId) return;
@@ -227,12 +241,22 @@ export default function ProjectTemplateEditorPage() {
   );
 
   const handleDiscard = () => {
-    const parsed = JSON.parse(baselineRef.current) as {
-      form: TemplateFormState;
-      milestones: MilestoneRow[];
-    };
-    setForm(parsed.form);
-    setMilestones(parsed.milestones);
+    if (!baselineRef.current) {
+      setForm(emptyForm);
+      setMilestones([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(baselineRef.current) as {
+        form: TemplateFormState;
+        milestones: MilestoneRow[];
+      };
+      setForm(parsed.form);
+      setMilestones(parsed.milestones);
+    } catch {
+      setForm(emptyForm);
+      setMilestones([]);
+    }
   };
 
   const sortedMilestones = useMemo(
@@ -364,7 +388,33 @@ export default function ProjectTemplateEditorPage() {
     }
   };
 
-  if (loading) return <LoadingState message="Loading template editor…" />;
+  if (lookupsLoading || loading) {
+    return <LoadingState message="Loading template editor…" />;
+  }
+
+  if (lookupsError) {
+    return (
+      <Box>
+        <PageHeader
+          title={isNew ? 'Create Project Template' : 'Edit Project Template'}
+          subtitle="Define milestone workflow steps for project creation"
+          action={
+            <Button
+              startIcon={<ArrowBackIcon />}
+              onClick={() => navigate('/admin/project-templates')}
+            >
+              Back
+            </Button>
+          }
+        />
+        <ErrorState
+          error={lookupsError}
+          title="Unable to load template editor"
+          onRetry={() => void loadLookups()}
+        />
+      </Box>
+    );
+  }
 
   return (
     <Box>

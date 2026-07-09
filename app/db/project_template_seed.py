@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.models import Customer, ProjectTemplate, ProjectTemplateMilestone, ProjectType
+
+logger = logging.getLogger(__name__)
 
 PROJECT_TYPE_NAMES = (
     "Mold Design",
@@ -338,3 +345,116 @@ def ensure_project_types_and_templates(session: Session) -> None:
 
     _link_customer_defaults(session, type_by_name)
     session.commit()
+
+
+def validate_project_template_health(session: Session) -> list[str]:
+    """Return warnings when required templates, milestones, or customer links are missing."""
+    warnings: list[str] = []
+
+    template_count = session.scalar(select(func.count()).select_from(ProjectTemplate)) or 0
+    if template_count == 0:
+        warnings.append("No project templates found in the database.")
+
+    milestone_count = session.scalar(select(func.count()).select_from(ProjectTemplateMilestone)) or 0
+    if milestone_count == 0:
+        warnings.append("No project template milestones found in the database.")
+
+    for definition in TEMPLATE_DEFINITIONS:
+        template = session.scalar(
+            select(ProjectTemplate)
+            .options(selectinload(ProjectTemplate.milestones))
+            .where(ProjectTemplate.name == definition["name"])
+        )
+        if template is None:
+            warnings.append(f"Missing template: {definition['name']}")
+            continue
+        if not template.is_active:
+            warnings.append(f"Template inactive: {definition['name']}")
+        expected = _expected_milestone_names(definition["milestones"])
+        actual = [
+            milestone.milestone_name
+            for milestone in sorted(template.milestones, key=lambda item: item.sort_order)
+        ]
+        if actual != expected:
+            warnings.append(
+                f"Template milestone mismatch for {definition['name']}: "
+                f"expected {len(expected)}, found {len(actual)}"
+            )
+
+    for customer_name, template_name in CUSTOMER_DEFAULT_TEMPLATES.items():
+        customer = session.scalar(select(Customer).where(Customer.name == customer_name))
+        template = session.scalar(select(ProjectTemplate).where(ProjectTemplate.name == template_name))
+        if customer is None:
+            warnings.append(f"Missing customer for default template mapping: {customer_name}")
+            continue
+        if template is None:
+            warnings.append(f"Missing template for customer mapping: {template_name}")
+            continue
+        if customer.default_project_template_id != template.id:
+            warnings.append(
+                f"Customer default template not linked: {customer_name} -> {template_name}"
+            )
+
+    for warning in warnings:
+        logger.warning("Project template health check: %s", warning)
+
+    return warnings
+
+
+def export_project_templates_to_json(
+    session: Session,
+    output_path: str | Path,
+) -> dict[str, Any]:
+    """Export all templates (with milestones) to a JSON seed file for disaster recovery."""
+    templates = session.scalars(
+        select(ProjectTemplate)
+        .options(selectinload(ProjectTemplate.milestones))
+        .order_by(ProjectTemplate.name.asc())
+    ).all()
+
+    payload: dict[str, Any] = {
+        "exported_template_count": len(templates),
+        "templates": [],
+    }
+
+    for template in templates:
+        customer_name = None
+        if template.customer_id is not None:
+            customer = session.get(Customer, template.customer_id)
+            customer_name = customer.name if customer else None
+        project_type = session.get(ProjectType, template.project_type_id)
+        milestones = sorted(template.milestones, key=lambda item: item.sort_order)
+        payload["templates"].append(
+            {
+                "name": template.name,
+                "description": template.description,
+                "project_type": project_type.name if project_type else None,
+                "customer": customer_name,
+                "is_default": template.is_default,
+                "is_active": template.is_active,
+                "milestones": [
+                    {
+                        "milestone_name": milestone.milestone_name,
+                        "description": milestone.description,
+                        "sort_order": milestone.sort_order,
+                        "default_due_offset_days": milestone.default_due_offset_days,
+                        "is_required": milestone.is_required,
+                        "is_visible": milestone.is_visible,
+                        "project_stage": milestone.project_stage,
+                        "estimated_hours": milestone.estimated_hours,
+                        "assigned_role": milestone.assigned_role,
+                        "default_assigned_user_id": (
+                            str(milestone.default_assigned_user_id)
+                            if milestone.default_assigned_user_id
+                            else None
+                        ),
+                    }
+                    for milestone in milestones
+                ],
+            }
+        )
+
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload

@@ -433,14 +433,6 @@ export default function App() {
                         }
                       />
                       <Route
-                        path="/admin/project-templates/new"
-                        element={
-                          <LazyAdminPage>
-                            <ProjectTemplateEditorPage />
-                          </LazyAdminPage>
-                        }
-                      />
-                      <Route
                         path="/admin/project-templates/:templateId"
                         element={
                           <LazyAdminPage>

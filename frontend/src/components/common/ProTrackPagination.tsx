@@ -96,7 +96,7 @@ export function ProTrackPagination({
         <IconButton
           size="small"
           aria-label="First page"
-          disabled={loading || page <= 1}
+          disabled={page <= 1}
           onClick={() => onPageChange(1)}
         >
           <FirstPageIcon fontSize="small" />
@@ -104,7 +104,7 @@ export function ProTrackPagination({
         <IconButton
           size="small"
           aria-label="Previous page"
-          disabled={loading || page <= 1}
+          disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
           <ChevronLeftIcon fontSize="small" />
@@ -121,7 +121,7 @@ export function ProTrackPagination({
               size="small"
               aria-label={`Page ${pageNumber}`}
               aria-current={pageNumber === page ? 'page' : undefined}
-              disabled={loading}
+              disabled={pageNumber === page}
               onClick={() => onPageChange(pageNumber)}
               sx={{
                 minWidth: 32,
@@ -138,7 +138,7 @@ export function ProTrackPagination({
         <IconButton
           size="small"
           aria-label="Next page"
-          disabled={loading || page >= pages}
+          disabled={page >= pages}
           onClick={() => onPageChange(page + 1)}
         >
           <ChevronRightIcon fontSize="small" />
@@ -146,7 +146,7 @@ export function ProTrackPagination({
         <IconButton
           size="small"
           aria-label="Last page"
-          disabled={loading || page >= pages}
+          disabled={page >= pages}
           onClick={() => onPageChange(pages)}
         >
           <LastPageIcon fontSize="small" />

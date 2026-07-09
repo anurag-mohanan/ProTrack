@@ -16,5 +16,6 @@ class SystemHealthRead(BaseModel):
     last_backup: datetime | None = None
     import_queue: int = 0
     failed_jobs: int = 0
+    failed_emails: int = 0
     recent_errors: list[str] = Field(default_factory=list)
     internal_release: bool = True

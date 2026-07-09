@@ -1,20 +1,28 @@
 import { Box } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { aiQueryKeys, fetchAiInsights } from '../api/ai';
 import { dashboardQueryKeys, fetchDashboardSummary } from '../api/dashboard';
+import { fetchSystemHealth } from '../api/system';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
+import { AiOperationsPanel } from '../components/ai/AiOperationsPanel';
+import { ActivityTimeline } from '../components/dashboard/ActivityTimeline';
+import { buildRoleKpiCards } from '../components/dashboard/buildRoleKpiCards';
 import { CustomerWorkloadWidget } from '../components/dashboard/CustomerWorkloadWidget';
+import { DashboardChartsSection } from '../components/dashboard/DashboardChartsSection';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
+import { DashboardLayout } from '../components/dashboard/DashboardLayout';
 import { DashboardSection } from '../components/dashboard/DashboardCards';
 import { DashboardKpiSkeleton, DashboardPanelSkeleton } from '../components/dashboard/DashboardSkeletons';
-import { DesignLeaderDashboardView } from '../components/dashboard/DesignLeaderDashboardView';
-import { ExecutiveDashboardView } from '../components/dashboard/ExecutiveDashboardView';
-import { MyTasksWidget } from '../components/dashboard/MyTasksWidget';
+import { ExecutiveKpiGrid } from '../components/dashboard/ExecutiveKpiGrid';
+import { MissingTimesheetsWidget } from '../components/dashboard/MissingTimesheetsWidget';
 import { MyProjectsWidget } from '../components/dashboard/MyProjectsWidget';
+import { MyTasksWidget } from '../components/dashboard/MyTasksWidget';
 import { ProjectsAttentionTable } from '../components/dashboard/ProjectsAttentionTable';
-import { StaffDashboardView } from '../components/dashboard/StaffDashboardView';
 import { WidgetErrorBoundary } from '../components/dashboard/WidgetErrorBoundary';
+import { DashboardPanel } from '../components/ui/design-system/DashboardPanel';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardRoleGroup } from '../utils/permissions';
@@ -27,6 +35,7 @@ const EMPTY_TASKS = {
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const roleName = user?.role_name ?? '';
   const roleGroup = getDashboardRoleGroup(roleName);
@@ -38,124 +47,185 @@ export function DashboardPage() {
     retry: 1,
   });
 
+  const systemHealthQuery = useQuery({
+    queryKey: ['system-health'],
+    queryFn: fetchSystemHealth,
+    enabled: roleGroup === 'admin',
+    staleTime: QUERY_STALE_TIMES.dashboard,
+  });
+
+  const aiInsightsQuery = useQuery({
+    queryKey: aiQueryKeys.insights(10),
+    queryFn: () => fetchAiInsights(10),
+    enabled: roleGroup !== 'staff',
+    staleTime: 5 * 60 * 1000,
+  });
+
   const summary = dashboardQuery.data;
   const loading = dashboardQuery.isLoading;
   const unavailable = dashboardQuery.isError || !summary;
+
+  const aiInsights = useMemo(
+    () =>
+      aiInsightsQuery.data ??
+      (summary?.engineering_insights ?? []).map((insight, index) => ({
+        id: `legacy-${index}`,
+        module: 'dashboard_insights',
+        category: insight.category,
+        severity: insight.severity as 'info' | 'warning' | 'error',
+        title: insight.title,
+        detail: insight.detail,
+        href: insight.href,
+        confidence: 80,
+      })),
+    [aiInsightsQuery.data, summary?.engineering_insights],
+  );
+
+  const kpiCards = useMemo(
+    () =>
+      buildRoleKpiCards({
+        roleGroup,
+        summary,
+        systemHealth: systemHealthQuery.data,
+        unavailable,
+        navigate,
+      }),
+    [roleGroup, summary, systemHealthQuery.data, unavailable, navigate],
+  );
 
   if (dashboardQuery.error) {
     return <ErrorState error={dashboardQuery.error} title="Unable to load dashboard" />;
   }
 
-  const showExecutiveLayout =
-    roleGroup === 'admin' || roleGroup === 'engineering_manager' || roleGroup === 'read_only';
-  const isAdminDashboard = roleGroup === 'admin';
-  const showDesignLeaderExtras = roleGroup === 'design_leader';
-  const showMyTasks = roleGroup === 'staff';
+  const showAiSidebar = roleGroup !== 'staff';
+  const showEngineeringCharts =
+    roleGroup === 'engineering_manager' || roleGroup === 'read_only' || roleGroup === 'design_leader';
+  const showMyProjects =
+    roleGroup === 'staff' ||
+    roleGroup === 'engineering_manager' ||
+    roleGroup === 'design_leader';
+  const myProjectRows =
+    summary?.my_project_rows?.length
+      ? summary.my_project_rows
+      : summary?.staff_metrics?.my_project_rows ?? [];
+
+  const headerProps = {
+    onNewProject: () => navigate('/projects?create=1'),
+    onTimesheet: () => navigate('/timesheets'),
+    onCustomer: () => navigate('/admin/customers?create=1'),
+    onUser: () => navigate('/admin/users?create=1'),
+    onReports: () => navigate('/reports'),
+    onAdministration: () => navigate('/admin/dashboard'),
+    onImportTimesheets: () => navigate('/admin/imports/historical-timesheets'),
+    onApproveTimesheets: () => navigate('/timesheets'),
+    onAssignDesigners: () => navigate('/projects'),
+    onOpenCurrentProject: () => navigate('/projects'),
+  };
 
   return (
     <PageContainer>
-      <DashboardHeader
-        onNewProject={() => navigate('/projects?create=1')}
-        onTimesheet={() => navigate('/timesheets')}
-        onCustomer={() => navigate('/admin/customers?create=1')}
-        onUser={() => navigate('/admin/users?create=1')}
-        onReports={() => navigate('/reports')}
-        onAdministration={() => navigate('/admin/dashboard')}
-        onImportTimesheets={() => navigate('/admin/imports/historical-timesheets')}
-        onApproveTimesheets={() => navigate('/timesheets')}
-        onAssignDesigners={() => navigate('/projects')}
-        onOpenCurrentProject={() => navigate('/projects')}
-      />
+      <DashboardHeader summary={summary} {...headerProps} />
 
-      {showExecutiveLayout ? (
-        <WidgetErrorBoundary title="executive dashboard">
-          <ExecutiveDashboardView
-            summary={summary}
-            unavailable={unavailable}
-            loading={loading}
-            navigate={navigate}
-            isAdmin={isAdminDashboard}
-          />
+      <DashboardLayout
+        sidebar={
+          showAiSidebar ? (
+            <AiOperationsPanel
+              insights={aiInsights}
+              navigate={navigate}
+              loading={aiInsightsQuery.isLoading}
+              onRefresh={() => {
+                void queryClient.invalidateQueries({ queryKey: aiQueryKeys.insights(10) });
+              }}
+            />
+          ) : undefined
+        }
+      >
+        <WidgetErrorBoundary title="KPI cards">
+          {loading ? <DashboardKpiSkeleton rows={3} /> : <ExecutiveKpiGrid cards={kpiCards} />}
         </WidgetErrorBoundary>
-      ) : (
-        <>
-          {showMyTasks ? (
-            <Box sx={{ mb: 3 }}>
-              <WidgetErrorBoundary title="my projects">
-                {loading ? (
-                  <DashboardPanelSkeleton height={220} />
-                ) : (
-                  <MyProjectsWidget
-                    rows={summary?.staff_metrics?.my_project_rows ?? []}
-                    navigate={navigate}
-                  />
-                )}
-              </WidgetErrorBoundary>
-            </Box>
-          ) : null}
 
-          <WidgetErrorBoundary title="KPI cards">
-            {loading ? (
-              <DashboardKpiSkeleton rows={2} />
-            ) : roleGroup === 'staff' ? (
-              <StaffDashboardView summary={summary} unavailable={unavailable} navigate={navigate} />
-            ) : showDesignLeaderExtras ? (
-              <DesignLeaderDashboardView summary={summary} unavailable={unavailable} navigate={navigate} />
-            ) : null}
+        {showMyProjects ? (
+          <Box sx={{ mt: 1.5 }}>
+            <WidgetErrorBoundary title="my projects">
+              {loading ? (
+                <DashboardPanelSkeleton height={200} />
+              ) : (
+                <MyProjectsWidget rows={myProjectRows} navigate={navigate} />
+              )}
+            </WidgetErrorBoundary>
+          </Box>
+        ) : null}
+
+        {showEngineeringCharts ? (
+          <WidgetErrorBoundary title="dashboard charts">
+            <DashboardChartsSection summary={summary} loading={loading} navigate={navigate} />
           </WidgetErrorBoundary>
+        ) : null}
 
-          {showDesignLeaderExtras ? (
-            <>
-              <Box sx={{ mb: 3 }}>
-                <WidgetErrorBoundary title="projects requiring attention">
-                  <DashboardSection
-                    title="Projects Requiring Attention"
-                    subtitle="Overdue, due within 7 days, on hold, or blocked"
-                  >
-                    {loading ? (
-                      <DashboardPanelSkeleton height={220} />
-                    ) : (
-                      <ProjectsAttentionTable rows={summary?.attention_projects ?? []} />
-                    )}
-                  </DashboardSection>
-                </WidgetErrorBoundary>
-              </Box>
+        {roleGroup === 'design_leader' ? (
+          <Box sx={{ mt: 1.5 }}>
+            <WidgetErrorBoundary title="projects requiring attention">
+              <DashboardSection title="Projects Requiring Attention" subtitle="Overdue, due soon, or blocked">
+                {loading ? (
+                  <DashboardPanelSkeleton height={200} />
+                ) : (
+                  <ProjectsAttentionTable rows={summary?.attention_projects ?? []} />
+                )}
+              </DashboardSection>
+            </WidgetErrorBoundary>
+          </Box>
+        ) : null}
 
-              <Box sx={{ mb: 3 }}>
-                <WidgetErrorBoundary title="customer workload">
-                  <DashboardSection
-                    title="Current Customer Workload"
-                    subtitle="Active tools in progress and assigned designers per customer"
-                  >
-                    {loading ? (
-                      <DashboardPanelSkeleton height={220} />
-                    ) : (
-                      <CustomerWorkloadWidget rows={summary?.customer_workload ?? []} compact />
-                    )}
-                  </DashboardSection>
-                </WidgetErrorBoundary>
-              </Box>
-            </>
-          ) : null}
+        {(roleGroup === 'engineering_manager' || roleGroup === 'read_only') &&
+        !loading &&
+        (summary?.missing_timesheets?.length ?? 0) > 0 ? (
+          <Box sx={{ mt: 1.5 }}>
+            <MissingTimesheetsWidget rows={summary?.missing_timesheets ?? []} />
+          </Box>
+        ) : null}
 
-          {showMyTasks ? (
-            <Box sx={{ mb: 3 }}>
-              <WidgetErrorBoundary title="my tasks">
-                <DashboardSection
-                  title="My Tasks"
-                  subtitle="Your milestones, reviews, and timesheets"
-                >
-                  {loading ? (
-                    <DashboardPanelSkeleton height={220} />
-                  ) : (
-                    <MyTasksWidget tasks={summary?.my_tasks ?? EMPTY_TASKS} />
+        {roleGroup === 'staff' ? (
+          <Box sx={{ mt: 1.5 }}>
+            <WidgetErrorBoundary title="my tasks">
+              <DashboardSection title="My Tasks" subtitle="Milestones, reviews, and timesheets">
+                {loading ? (
+                  <DashboardPanelSkeleton height={200} />
+                ) : (
+                  <MyTasksWidget tasks={summary?.my_tasks ?? EMPTY_TASKS} />
+                )}
+              </DashboardSection>
+            </WidgetErrorBoundary>
+          </Box>
+        ) : null}
+
+        {roleGroup === 'admin' ? (
+          <Box sx={{ mt: 1.5 }}>
+            <DashboardPanel title="System Activity" subtitle="Recent administration events">
+              {loading ? (
+                <DashboardPanelSkeleton height={180} />
+              ) : (
+                <ActivityTimeline
+                  activities={(summary?.activity_feed ?? []).filter(
+                    (item) => item.category === 'import' || item.category === 'user',
                   )}
-                </DashboardSection>
-              </WidgetErrorBoundary>
-            </Box>
-          ) : null}
-        </>
-      )}
+                />
+              )}
+            </DashboardPanel>
+          </Box>
+        ) : null}
+
+        {roleGroup === 'design_leader' ? (
+          <Box sx={{ mt: 1.5 }}>
+            <DashboardSection title="Customer Workload" subtitle="Active tools by customer">
+              {loading ? (
+                <DashboardPanelSkeleton height={200} />
+              ) : (
+                <CustomerWorkloadWidget rows={summary?.customer_workload ?? []} compact />
+              )}
+            </DashboardSection>
+          </Box>
+        ) : null}
+      </DashboardLayout>
     </PageContainer>
   );
 }

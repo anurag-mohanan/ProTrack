@@ -54,60 +54,68 @@ export function DashboardKpiCard({
       onClick={onClick}
       elevation={0}
       sx={{
-        minHeight: 52,
+        minHeight: 92,
         height: '100%',
         cursor: onClick ? 'pointer' : 'default',
         borderRadius: `${designTokens.radius.md}px`,
         border: '1px solid',
         borderColor: 'divider',
-        borderLeft: `3px solid ${accentColor}`,
         bgcolor: designTokens.semantic.card,
-        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
-        transition: `box-shadow ${designTokens.motion.fast}, border-color ${designTokens.motion.fast}, background-color ${designTokens.motion.fast}`,
+        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+        transition: `transform ${designTokens.motion.fast}, box-shadow ${designTokens.motion.fast}, border-color ${designTokens.motion.fast}`,
         '&:hover': onClick
           ? {
+              transform: 'translateY(-2px)',
               boxShadow: designTokens.elevation.cardHover,
+              borderColor: alpha(accentColor, 0.35),
               bgcolor: alpha(accentColor, 0.03),
             }
           : undefined,
       }}
     >
-      <CardContent sx={{ p: '6px 8px !important', '&:last-child': { pb: '6px !important' } }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 0.5 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, minWidth: 0, flex: 1 }}>
-            <Icon sx={{ fontSize: 13, color: accentColor, flexShrink: 0 }} />
-            <Typography
-              sx={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: 'text.secondary',
-                lineHeight: 1.2,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {title}
-            </Typography>
+      <CardContent sx={{ p: '10px 12px !important', '&:last-child': { pb: '10px !important' } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5 }}>
+          <Box
+            sx={{
+              width: 28,
+              height: 28,
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              bgcolor: alpha(accentColor, 0.1),
+              flexShrink: 0,
+            }}
+          >
+            <Icon sx={{ fontSize: 16, color: accentColor }} />
           </Box>
           {trend ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.15, flexShrink: 0 }}>
-              <TrendIcon sx={{ fontSize: 11, color: trendColor }} />
-              <Typography sx={{ fontSize: 9, fontWeight: 700, color: trendColor, lineHeight: 1 }}>
-                {trend.value}
-              </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.15 }}>
+              <TrendIcon sx={{ fontSize: 12, color: trendColor }} />
             </Box>
-          ) : (
-            <Box sx={{ width: 28, flexShrink: 0 }} />
-          )}
+          ) : null}
         </Box>
         <Typography
           sx={{
-            fontSize: 17,
+            fontSize: 11,
+            fontWeight: 700,
+            color: 'text.secondary',
+            lineHeight: 1.2,
+            mt: 0.75,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {title}
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: 20,
             fontWeight: 800,
             lineHeight: 1.15,
             letterSpacing: '-0.02em',
-            mt: 0.25,
+            mt: 0.35,
             fontVariantNumeric: 'tabular-nums',
           }}
           noWrap

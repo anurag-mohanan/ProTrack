@@ -1,7 +1,8 @@
 import { Box, Typography } from '@mui/material';
 import { useAuth } from '../../context/AuthContext';
-import { designTokens } from '../../theme/designTokens';
 import { formatDate } from '../../utils/format';
+import { buildDashboardSummaryLine } from '../../utils/buildDashboardSummaryLine';
+import type { DashboardSummary } from '../../types';
 import { DashboardQuickActions } from './DashboardQuickActions';
 
 function getGreeting(): string {
@@ -12,6 +13,7 @@ function getGreeting(): string {
 }
 
 interface DashboardHeaderProps {
+  summary?: DashboardSummary;
   onNewProject: () => void;
   onTimesheet: () => void;
   onCustomer: () => void;
@@ -25,6 +27,7 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({
+  summary,
   onNewProject,
   onTimesheet,
   onCustomer,
@@ -37,49 +40,60 @@ export function DashboardHeader({
   onOpenCurrentProject,
 }: DashboardHeaderProps) {
   const { displayName } = useAuth();
+  const summaryLine = buildDashboardSummaryLine(summary);
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: { xs: 'flex-start', md: 'center' },
-        flexDirection: { xs: 'column', md: 'row' },
-        gap: 1.5,
-        mb: 1.5,
-        p: 2,
-        borderRadius: `${designTokens.radius.lg}px`,
-        bgcolor: designTokens.semantic.card,
-        border: '1px solid',
-        borderColor: 'divider',
-        boxShadow: designTokens.elevation.card,
-        backgroundImage: `linear-gradient(135deg, ${designTokens.semantic.primarySoft} 0%, ${designTokens.semantic.card} 55%)`,
-      }}
-    >
-      <Box>
-        <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: '0.08em' }}>
-          Engineering Command Center
-        </Typography>
-        <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.03em', mb: 0.25 }}>
-          {getGreeting()}, {displayName}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          {formatDate(new Date().toISOString().slice(0, 10))}
-        </Typography>
-      </Box>
+    <Box sx={{ mb: 1.25 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: 1,
+          minHeight: 72,
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            variant="subtitle1"
+            sx={{ fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}
+          >
+            {getGreeting()}, {displayName}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            {formatDate(new Date().toISOString().slice(0, 10))}
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: '0.06em', mt: 0.25 }}
+          >
+            Engineering Overview
+          </Typography>
+          {summaryLine ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mt: 0.5, lineHeight: 1.4 }}
+            >
+              {summaryLine}
+            </Typography>
+          ) : null}
+        </Box>
 
-      <DashboardQuickActions
-        onNewProject={onNewProject}
-        onTimesheet={onTimesheet}
-        onCustomer={onCustomer}
-        onUser={onUser}
-        onReports={onReports}
-        onAdministration={onAdministration}
-        onImportTimesheets={onImportTimesheets}
-        onApproveTimesheets={onApproveTimesheets}
-        onAssignDesigners={onAssignDesigners}
-        onOpenCurrentProject={onOpenCurrentProject}
-      />
+        <DashboardQuickActions
+          onNewProject={onNewProject}
+          onTimesheet={onTimesheet}
+          onCustomer={onCustomer}
+          onUser={onUser}
+          onReports={onReports}
+          onAdministration={onAdministration}
+          onImportTimesheets={onImportTimesheets}
+          onApproveTimesheets={onApproveTimesheets}
+          onAssignDesigners={onAssignDesigners}
+          onOpenCurrentProject={onOpenCurrentProject}
+        />
+      </Box>
     </Box>
   );
 }

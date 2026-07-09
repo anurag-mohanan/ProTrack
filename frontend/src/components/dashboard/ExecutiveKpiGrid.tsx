@@ -1,4 +1,4 @@
-import { Box, Typography } from '@mui/material';
+import { Box } from '@mui/material';
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
 import DomainRoundedIcon from '@mui/icons-material/DomainRounded';
 import FolderOpenRoundedIcon from '@mui/icons-material/FolderOpenRounded';
@@ -217,44 +217,33 @@ export function buildFlatKpiSections(cards: DashboardKpiItem[]): DashboardKpiSec
   return [{ title: 'Overview', cards }];
 }
 
-const sectionGridSx = {
+const kpiGridSx = {
   display: 'grid',
   gridTemplateColumns: {
     xs: 'repeat(2, minmax(0, 1fr))',
     sm: 'repeat(3, minmax(0, 1fr))',
     md: 'repeat(4, minmax(0, 1fr))',
     lg: 'repeat(5, minmax(0, 1fr))',
-    xl: 'repeat(6, minmax(0, 1fr))',
+    xl: 'repeat(6, minmax(180px, 1fr))',
   },
-  gap: 0.5,
+  gap: 1,
 };
 
-export function ExecutiveKpiGrid({ sections }: { sections: DashboardKpiSection[] }) {
+export function ExecutiveKpiGrid({
+  sections,
+  cards,
+}: {
+  sections?: DashboardKpiSection[];
+  cards?: DashboardKpiItem[];
+}) {
+  const flatCards = cards ?? sections?.flatMap((section) => section.cards) ?? [];
   return (
-    <Box sx={{ mb: 1.5 }}>
-      {sections.map((section) => (
-        <Box key={section.title} sx={{ mb: 0.75 }}>
-          <Typography
-            variant="caption"
-            sx={{
-              fontWeight: 700,
-              color: 'text.secondary',
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-              fontSize: 10,
-              mb: 0.4,
-              display: 'block',
-            }}
-          >
-            {section.title}
-          </Typography>
-          <Box sx={sectionGridSx}>
-            {section.cards.map((card) => (
-              <DashboardKpiCard key={`${section.title}-${card.title}`} {...card} />
-            ))}
-          </Box>
-        </Box>
-      ))}
+    <Box sx={{ mb: 1 }}>
+      <Box sx={kpiGridSx}>
+        {flatCards.map((card) => (
+          <DashboardKpiCard key={card.title} {...card} />
+        ))}
+      </Box>
     </Box>
   );
 }

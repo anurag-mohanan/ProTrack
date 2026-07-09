@@ -13,6 +13,7 @@ export interface SystemHealth {
   last_backup: string | null;
   import_queue: number;
   failed_jobs: number;
+  failed_emails?: number;
   recent_errors: string[];
   internal_release: boolean;
 }

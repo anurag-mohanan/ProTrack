@@ -12,7 +12,7 @@ import type { StaffProjectRow } from '../../types';
 import { navigateWithBack } from '../../hooks/useBackNavigation';
 import { DashboardPanel } from '../ui/design-system/DashboardPanel';
 import { formatDate, formatNumber } from '../../utils/format';
-import { ProjectStageBadge } from '../ui/design-system';
+import { HealthBadge, ProjectStageBadge } from '../ui/design-system';
 
 interface MyProjectsWidgetProps {
   rows: StaffProjectRow[];
@@ -41,8 +41,8 @@ export function MyProjectsWidget({ rows, navigate }: MyProjectsWidgetProps) {
               <TableCell>Current Stage</TableCell>
               <TableCell>Due Date</TableCell>
               <TableCell align="right">Progress</TableCell>
-              <TableCell align="right">Hours Logged</TableCell>
-              <TableCell align="right">Remaining Planned</TableCell>
+              <TableCell>Hours Used</TableCell>
+              <TableCell>Health</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -61,7 +61,9 @@ export function MyProjectsWidget({ rows, navigate }: MyProjectsWidgetProps) {
                 <TableCell>{formatDate(row.due_date ?? undefined) || '—'}</TableCell>
                 <TableCell align="right">{formatNumber(row.progress_percent, 0)}%</TableCell>
                 <TableCell align="right">{formatNumber(row.hours_logged, 1)}</TableCell>
-                <TableCell align="right">{formatNumber(row.remaining_planned_hours, 1)}</TableCell>
+                <TableCell>
+                  {row.health ? <HealthBadge health={row.health as never} /> : '—'}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

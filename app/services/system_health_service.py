@@ -104,6 +104,21 @@ def get_system_health(db: Session) -> SystemHealthRead:
     ).all()
     recent_errors = [str(row) for row in error_rows if row]
 
+    failed_emails = 0
+    try:
+        from app.models.foundation import EmailMessage
+
+        failed_emails = int(
+            db.scalar(
+                select(func.count())
+                .select_from(EmailMessage)
+                .where(EmailMessage.status == "failed")
+            )
+            or 0
+        )
+    except Exception:
+        failed_emails = 0
+
     return SystemHealthRead(
         backend_status=backend_status,
         database_status=database_status,
@@ -117,6 +132,7 @@ def get_system_health(db: Session) -> SystemHealthRead:
         last_backup=None,
         import_queue=import_queue,
         failed_jobs=failed_jobs,
+        failed_emails=failed_emails,
         recent_errors=recent_errors,
         internal_release=INTERNAL_RELEASE,
     )

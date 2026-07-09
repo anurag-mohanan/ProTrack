@@ -116,7 +116,7 @@ export function ExecutiveDashboardView({
               <ExecutiveKpiGrid sections={kpiSections} />
             </Grid>
             <Grid size={{ xs: 12, xl: 3 }}>
-              <AiOperationsPanel insights={aiInsights} navigate={navigate} compact />
+              <AiOperationsPanel insights={aiInsights} navigate={navigate} />
             </Grid>
           </Grid>
         </>

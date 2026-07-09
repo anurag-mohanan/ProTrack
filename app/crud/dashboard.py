@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.crud.base import Session
 from app.core.non_productive_categories import leave_entry_clause, standard_np_hours_clause
@@ -69,6 +69,8 @@ from app.services.dashboard_service import (
 )
 from app.services.notification_service import count_unread_notifications
 from app.services.engineering_insights_service import generate_engineering_insights
+from app.services.ai.base import AiContext
+from app.services.ai.context import count_overdue_milestones
 from app.services.timesheet_compliance_service import get_missing_timesheet_rows
 from app.services.project_calculation_service import (
     aggregate_portfolio_hours,
@@ -413,6 +415,24 @@ def get_dashboard_summary(
         for row in stage_rows
     ]
 
+    projects_due_today = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(
+                Project.is_deleted.is_(False),
+                Project.is_archived.is_(False),
+                Project.execution_status.in_(_ACTIVE_EXECUTION_STATUSES),
+                Project.due_date == today,
+                *stage,
+                *team,
+            )
+        )
+        or 0
+    )
+    late_milestones = count_overdue_milestones(AiContext(db=db, actor=user, today=today))
+    my_project_rows = _get_my_project_rows(db, user)
+
     return DashboardSummary(
         total_projects=total_projects,
         active_projects=active,
@@ -424,6 +444,7 @@ def get_dashboard_summary(
         not_started_projects=0,
         in_progress_projects=being_worked_on,
         projects_due_this_week=engineering_kpis.projects_due_this_week,
+        projects_due_today=projects_due_today,
         overdue_projects=engineering_kpis.overdue_projects,
         completed_this_month=engineering_kpis.completed_this_month,
         billable_hours=billable_hours,
@@ -461,7 +482,46 @@ def get_dashboard_summary(
         staff_metrics=staff_metrics,
         engineering_insights=engineering_insights,
         missing_timesheets=missing_timesheets,
+        late_milestones=late_milestones,
+        my_project_rows=my_project_rows,
     )
+
+
+def _get_my_project_rows(db: Session, user: User) -> list[StaffProjectRow]:
+    projects = db.scalars(
+        select(Project)
+        .where(
+            or_(
+                Project.designer_id == user.id,
+                Project.surfacer_id == user.id,
+                Project.design_leader_id == user.id,
+            ),
+            Project.is_deleted.is_(False),
+            Project.is_archived.is_(False),
+            Project.execution_status != ExecutionStatus.completed,
+        )
+        .order_by(Project.due_date.asc().nullslast())
+        .limit(12)
+    ).all()
+    rows: list[StaffProjectRow] = []
+    for project in projects:
+        project_read = build_project_read(db, project)
+        rows.append(
+            StaffProjectRow(
+                project_id=project.id,
+                tool_number=project.tool_number,
+                customer_name=project_read.customer_name or "—",
+                current_stage=project.project_stage.value if project.project_stage else "—",
+                due_date=project.due_date,
+                progress_percent=_decimal(project_read.progress_percent),
+                hours_logged=_round_hours(_decimal(project.actual_hours)),
+                remaining_planned_hours=_round_hours(
+                    max(_decimal(0), _decimal(project.quoted_hours) - _decimal(project.actual_hours))
+                ),
+                health=project.health.value if project.health else None,
+            )
+        )
+    return rows
 
 
 def _get_operational_metrics(db: Session, user: User) -> DashboardOperationalMetrics:
@@ -587,6 +647,7 @@ def _get_staff_metrics(db: Session, user: User) -> StaffDashboardMetrics | None:
                     remaining_planned_hours=_round_hours(
                         max(_decimal(0), _decimal(project.quoted_hours) - _decimal(project.actual_hours))
                     ),
+                    health=project.health.value if project.health else None,
                 )
             )(build_project_read(db, project))
             for project in projects

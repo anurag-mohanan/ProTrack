@@ -184,6 +184,7 @@ class StaffProjectRow(BaseModel):
     progress_percent: Decimal = Decimal("0")
     hours_logged: Decimal = Decimal("0")
     remaining_planned_hours: Decimal = Decimal("0")
+    health: str | None = None
 
 
 class EngineeringInsight(BaseModel):
@@ -228,6 +229,7 @@ class DashboardSummary(BaseModel):
     completed_projects: int = 0
     archived_projects: int = 0
     projects_due_this_week: int = 0
+    projects_due_today: int = 0
     overdue_projects: int = 0
     completed_this_month: int = 0
     # Legacy fields retained for compatibility
@@ -274,6 +276,8 @@ class DashboardSummary(BaseModel):
     staff_metrics: StaffDashboardMetrics | None = None
     engineering_insights: list[EngineeringInsight] = Field(default_factory=list)
     missing_timesheets: list[MissingTimesheetRow] = Field(default_factory=list)
+    late_milestones: int = 0
+    my_project_rows: list[StaffProjectRow] = Field(default_factory=list)
 
 
 class DashboardFuturePlaceholders(BaseModel):

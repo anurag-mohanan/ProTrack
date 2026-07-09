@@ -11,6 +11,7 @@ export interface DashboardSummary {
   completed_projects: number;
   archived_projects: number;
   projects_due_this_week: number;
+  projects_due_today?: number;
   overdue_projects: number;
   completed_this_month: number;
   not_started_projects: number;
@@ -50,6 +51,8 @@ export interface DashboardSummary {
   staff_metrics?: StaffDashboardMetrics | null;
   engineering_insights?: EngineeringInsight[];
   missing_timesheets?: MissingTimesheetRow[];
+  late_milestones?: number;
+  my_project_rows?: StaffProjectRow[];
 }
 
 export interface DashboardOperationalMetrics {
@@ -67,6 +70,7 @@ export interface StaffProjectRow {
   progress_percent: number;
   hours_logged: number;
   remaining_planned_hours: number;
+  health?: string | null;
 }
 
 export interface EngineeringInsight {

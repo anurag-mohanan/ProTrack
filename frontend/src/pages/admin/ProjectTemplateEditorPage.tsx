@@ -84,12 +84,19 @@ const ASSIGNED_ROLE_OPTIONS = [
   'Engineering Manager',
 ] as const;
 
+function generateRowKey(): string {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `milestone-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function createMilestoneRow(
   partial?: Partial<MilestoneRow>,
   sortOrder = 1,
 ): MilestoneRow {
   return {
-    key: partial?.key ?? crypto.randomUUID(),
+    key: partial?.key ?? generateRowKey(),
     milestone_name: partial?.milestone_name ?? '',
     description: partial?.description ?? '',
     sort_order: partial?.sort_order ?? sortOrder,
@@ -308,7 +315,7 @@ export default function ProjectTemplateEditorPage() {
         createMilestoneRow(
           {
             ...row,
-            key: crypto.randomUUID(),
+            key: generateRowKey(),
             milestone_name: `${row.milestone_name} (Copy)`,
           },
           current.length + 1,

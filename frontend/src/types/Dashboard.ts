@@ -53,6 +53,7 @@ export interface DashboardSummary {
   missing_timesheets?: MissingTimesheetRow[];
   late_milestones?: number;
   my_project_rows?: StaffProjectRow[];
+  widget_errors?: Record<string, string>;
 }
 
 export interface DashboardOperationalMetrics {

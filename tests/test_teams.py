@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from tests.conftest import IDS, login
+from tests.conftest import IDS, list_items, login
 
 
 def test_team_crud_and_members(client, session):
@@ -87,14 +87,14 @@ def test_project_team_assignment_and_filters(client):
         headers=client.auth_headers,
     )
     assert by_team.status_code == 200
-    assert len(by_team.json()) == 1
+    assert len(list_items(by_team)) == 1
 
     by_customer = client.get(
         f"/api/v1/projects?customer_ids={IDS['customer']}",
         headers=client.auth_headers,
     )
     assert by_customer.status_code == 200
-    assert len(by_customer.json()) >= 1
+    assert len(list_items(by_customer)) >= 1
 
 
 def test_dashboard_team_filter(client):

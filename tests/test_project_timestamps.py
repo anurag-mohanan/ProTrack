@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import text
 
 from app.db.schema_sync import ensure_project_timestamps
-from tests.conftest import IDS, login
+from tests.conftest import IDS, list_items, login
 
 
 def test_get_projects_list_returns_timestamps(client, test_engine):
@@ -12,10 +12,9 @@ def test_get_projects_list_returns_timestamps(client, test_engine):
     headers = login(client, "admin@prosohm.com")
     response = client.get("/api/v1/projects", headers=headers)
     assert response.status_code == 200, response.text
-    assert response.json()
-    assert all(
-        item["created_at"] and item["updated_at"] for item in response.json()
-    )
+    projects = list_items(response)
+    assert projects
+    assert all(item["created_at"] and item["updated_at"] for item in projects)
 
 
 def test_create_project_sets_timestamps(client, test_session_factory):

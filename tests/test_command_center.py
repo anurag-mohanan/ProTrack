@@ -4,12 +4,14 @@ from uuid import UUID
 
 import pytest
 
+from tests.conftest import list_items
+
 
 @pytest.fixture
 def sample_project_id(client, auth_headers) -> str:
     response = client.get("/api/v1/projects", headers=auth_headers)
     assert response.status_code == 200
-    projects = response.json()
+    projects = list_items(response)
     assert projects, "Expected at least one seeded project"
     return projects[0]["id"]
 

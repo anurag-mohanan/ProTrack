@@ -29,7 +29,7 @@ export class WidgetErrorBoundary extends Component<
       return (
         <Paper variant="outlined" sx={{ borderRadius: 3, p: 2.5 }}>
           <Typography variant="body2" color="text.secondary">
-            No data available.
+            Unable to load this widget.
           </Typography>
         </Paper>
       );

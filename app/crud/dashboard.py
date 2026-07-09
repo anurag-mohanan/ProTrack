@@ -69,8 +69,7 @@ from app.services.dashboard_service import (
 )
 from app.services.notification_service import count_unread_notifications
 from app.services.engineering_insights_service import generate_engineering_insights
-from app.services.ai.base import AiContext
-from app.services.ai.context import count_overdue_milestones
+from app.services.ai.context import build_ai_context, count_overdue_milestones
 from app.services.timesheet_compliance_service import get_missing_timesheet_rows
 from app.services.project_calculation_service import (
     aggregate_portfolio_hours,
@@ -155,6 +154,7 @@ def get_dashboard_summary(
     team_id: UUID | None = None,
     team_ids: list[UUID] | None = None,
 ) -> DashboardSummary:
+    widget_errors: dict[str, str] = {}
     visible = _visible_projects_clause()
     stage = ()
     if project_stage is not None:
@@ -261,8 +261,16 @@ def get_dashboard_summary(
 
     green_projects, yellow_projects, red_projects = count_projects_by_health(db)
 
-    engineering_kpis = get_dashboard_kpis(
-        db, project_stage=project_stage, team_id=team_id
+    engineering_kpis = safe_dashboard_call(
+        "engineering_kpis",
+        lambda: get_dashboard_kpis(
+            db,
+            project_stage=project_stage,
+            team_id=team_id,
+            team_ids=team_ids,
+        ),
+        DashboardKpis(),
+        errors=widget_errors,
     )
 
     billable_hours = _round_hours(
@@ -294,6 +302,7 @@ def get_dashboard_summary(
         "leave_days_this_month",
         lambda: get_leave_days_this_month(db),
         0,
+        errors=widget_errors,
     )
     non_billable_hours = _round_hours(
         _decimal(
@@ -317,53 +326,77 @@ def get_dashboard_summary(
 
     attention_projects = safe_dashboard_call(
         "attention_projects",
-        lambda: get_attention_projects(db, limit=25, team_id=team_id),
+        lambda: get_attention_projects(
+            db,
+            limit=25,
+            team_id=team_id,
+            team_ids=team_ids,
+        ),
         [],
+        errors=widget_errors,
     )
     my_tasks = safe_dashboard_call(
         "my_tasks",
         lambda: get_dashboard_my_tasks(db, user),
         DashboardMyTasks(),
+        errors=widget_errors,
     )
     recent_activity = safe_dashboard_call(
         "recent_activity",
         lambda: get_dashboard_recent_activity(db, limit=20),
         [],
+        errors=widget_errors,
     )
     activity_feed = safe_dashboard_call(
         "activity_feed",
         lambda: get_dashboard_activity_feed(db, limit=20),
         [],
+        errors=widget_errors,
     )
     customer_workload = safe_dashboard_call(
         "customer_workload",
-        lambda: get_customer_workload(db, team_id=team_id),
+        lambda: get_customer_workload(db, team_id=team_id, team_ids=team_ids),
         [],
+        errors=widget_errors,
     )
     designer_summary, designer_availability = safe_dashboard_call(
         "designer_availability",
-        lambda: get_designer_availability(db, team_id=team_id),
+        lambda: get_designer_availability(db, team_id=team_id, team_ids=team_ids),
         (DashboardDesignerAvailabilitySummary(), []),
+        errors=widget_errors,
     )
     team_summary = safe_dashboard_call(
         "team_summary",
-        lambda: get_team_summary(db, team_id=team_id),
+        lambda: get_team_summary(db, team_id=team_id, team_ids=team_ids),
         [],
+        errors=widget_errors,
     )
     np_hours_panel = safe_dashboard_call(
         "np_hours_panel",
         lambda: get_np_hours_panel(db),
         None,
+        errors=widget_errors,
     )
     if np_hours_panel is None:
         np_hours_panel = DashboardNpPanel()
 
-    operational_metrics = _get_operational_metrics(db, user)
-    staff_metrics = _get_staff_metrics(db, user)
+    operational_metrics = safe_dashboard_call(
+        "operational_metrics",
+        lambda: _get_operational_metrics(db, user),
+        DashboardOperationalMetrics(),
+        errors=widget_errors,
+    )
+    staff_metrics = safe_dashboard_call(
+        "staff_metrics",
+        lambda: _get_staff_metrics(db, user),
+        None,
+        errors=widget_errors,
+    )
     engineering_insights = safe_dashboard_call(
         "engineering_insights",
         lambda: generate_engineering_insights(db),
         [],
+        errors=widget_errors,
     )
     role_name = normalize_role_name(get_role_name(db, user))
     missing_timesheets: list[MissingTimesheetRow] = []
@@ -372,6 +405,7 @@ def get_dashboard_summary(
             "missing_timesheets",
             lambda: get_missing_timesheet_rows(db),
             [],
+            errors=widget_errors,
         )
 
     today = date.today()
@@ -433,8 +467,20 @@ def get_dashboard_summary(
         )
         or 0
     )
-    late_milestones = count_overdue_milestones(AiContext(db=db, actor=user, today=today))
-    my_project_rows = _get_my_project_rows(db, user)
+    late_milestones = safe_dashboard_call(
+        "late_milestones",
+        lambda: count_overdue_milestones(build_ai_context(db, user=user, today=today)),
+        0,
+        errors=widget_errors,
+    )
+    my_project_rows = safe_dashboard_call(
+        "my_project_rows",
+        lambda: _get_my_project_rows(db, user),
+        [],
+        errors=widget_errors,
+    )
+
+    team_scoped = team_id is not None or bool(team_ids)
 
     return DashboardSummary(
         total_projects=total_projects,
@@ -443,7 +489,7 @@ def get_dashboard_summary(
         on_hold_projects=on_hold,
         cancelled_projects=cancelled,
         completed_projects=completed,
-        archived_projects=engineering_kpis.archived_projects if team_id is None else archived,
+        archived_projects=engineering_kpis.archived_projects if not team_scoped else archived,
         not_started_projects=0,
         in_progress_projects=being_worked_on,
         projects_due_this_week=engineering_kpis.projects_due_this_week,
@@ -487,6 +533,7 @@ def get_dashboard_summary(
         missing_timesheets=missing_timesheets,
         late_milestones=late_milestones,
         my_project_rows=my_project_rows,
+        widget_errors=widget_errors,
     )
 
 

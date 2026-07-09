@@ -278,6 +278,7 @@ class DashboardSummary(BaseModel):
     missing_timesheets: list[MissingTimesheetRow] = Field(default_factory=list)
     late_milestones: int = 0
     my_project_rows: list[StaffProjectRow] = Field(default_factory=list)
+    widget_errors: dict[str, str] = Field(default_factory=dict)
 
 
 class DashboardFuturePlaceholders(BaseModel):

@@ -107,7 +107,12 @@ def _stage_clause(project_stage: ProjectStage | None):
     return (Project.project_stage == project_stage,)
 
 
-def _team_clause(team_id: UUID | None):
+def _team_clause(
+    team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
+):
+    if team_ids:
+        return (Project.team_id.in_(team_ids),)
     if team_id is None:
         return ()
     return (Project.team_id == team_id,)
@@ -178,6 +183,7 @@ def get_dashboard_kpis(
     *,
     project_stage: ProjectStage | None = None,
     team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
 ) -> DashboardKpis:
     """Reliable engineering KPIs from aggregate SQL — no user-specific estimates."""
     today = date.today()
@@ -185,7 +191,7 @@ def get_dashboard_kpis(
     due_cutoff = today + timedelta(days=7)
     visible = _visible_projects_clause()
     stage = _stage_clause(project_stage)
-    team = _team_clause(team_id)
+    team = _team_clause(team_id, team_ids)
     active = _active_project_clause(project_stage) + team
     not_completed = Project.execution_status != ExecutionStatus.completed
     being_worked_on = and_(
@@ -391,11 +397,12 @@ def get_attention_projects(
     *,
     limit: int = 10,
     team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
 ) -> list[ProjectAttentionRow]:
     today = date.today()
     due_soon_cutoff = today + timedelta(days=7)
     visibility = _visible_projects_clause()
-    team = _team_clause(team_id)
+    team = _team_clause(team_id, team_ids)
 
     candidates = db.scalars(
         select(Project)
@@ -563,11 +570,29 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
     )
 
 
-def safe_dashboard_call(name: str, fn, default):
+def safe_dashboard_call(
+    name: str,
+    fn,
+    default,
+    *,
+    errors: dict[str, str] | None = None,
+):
+    import time
+
+    started = time.perf_counter()
     try:
         return fn()
-    except Exception:
-        logger.exception("Dashboard section failed: %s", name)
+    except Exception as exc:
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        logger.exception(
+            "Dashboard section failed: %s | elapsed=%dms | %s: %s",
+            name,
+            elapsed_ms,
+            type(exc).__name__,
+            exc,
+        )
+        if errors is not None:
+            errors[name] = f"{type(exc).__name__}: {exc}"
         return default
 
 
@@ -683,9 +708,10 @@ def get_customer_workload(
     db: Session,
     *,
     team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
     limit: int = 20,
 ) -> list[DashboardCustomerWorkloadRow]:
-    team = _team_clause(team_id)
+    team = _team_clause(team_id, team_ids)
     active_statuses = (
         ExecutionStatus.currently_being_worked_on,
         ExecutionStatus.on_hold,
@@ -725,17 +751,25 @@ def get_customer_workload(
     ]
 
 
-def _designer_user_ids_for_team(db: Session, team_id: UUID | None) -> set[UUID] | None:
-    if team_id is None:
+def _designer_user_ids_for_team(
+    db: Session,
+    team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
+) -> set[UUID] | None:
+    scoped_ids = team_ids or ([team_id] if team_id is not None else None)
+    if not scoped_ids:
         return None
     member_ids = set(
         db.scalars(
-            select(TeamMember.user_id).where(TeamMember.team_id == team_id)
+            select(TeamMember.user_id).where(TeamMember.team_id.in_(scoped_ids))
         ).all()
     )
     assigned_ids = set(
         db.scalars(
-            select(User.id).where(User.team_id == team_id, User.is_deleted.is_(False))
+            select(User.id).where(
+                User.team_id.in_(scoped_ids),
+                User.is_deleted.is_(False),
+            )
         ).all()
     )
     return member_ids | assigned_ids
@@ -745,9 +779,10 @@ def get_designer_availability(
     db: Session,
     *,
     team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
 ) -> tuple[DashboardDesignerAvailabilitySummary, list[DashboardDesignerAvailabilityRow]]:
     today = date.today()
-    team_user_ids = _designer_user_ids_for_team(db, team_id)
+    team_user_ids = _designer_user_ids_for_team(db, team_id, team_ids)
 
     designers = db.scalars(
         select(User)
@@ -898,11 +933,15 @@ def get_team_summary(
     db: Session,
     *,
     team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
 ) -> list[DashboardTeamSummaryRow]:
     teams = db.scalars(
         select(Team).where(Team.is_active.is_(True)).order_by(Team.name)
     ).all()
-    if team_id is not None:
+    if team_ids:
+        scoped = set(team_ids)
+        teams = [team for team in teams if team.id in scoped]
+    elif team_id is not None:
         teams = [team for team in teams if team.id == team_id]
 
     active_statuses = (

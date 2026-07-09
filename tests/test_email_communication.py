@@ -40,6 +40,9 @@ def test_email_preview_endpoint(client, auth_headers):
     assert "Alex" in body["body_html"]
 
 
+from tests.conftest import list_items
+
+
 def test_email_queue_lists_messages(client, auth_headers, session):
     session.add(
         EmailMessage(
@@ -54,7 +57,7 @@ def test_email_queue_lists_messages(client, auth_headers, session):
 
     response = client.get("/api/v1/emails/queue", headers=auth_headers)
     assert response.status_code == 200
-    assert any(item["subject"] == "Queued test" for item in response.json())
+    assert any(item["subject"] == "Queued test" for item in list_items(response))
 
 
 def test_template_renderer():

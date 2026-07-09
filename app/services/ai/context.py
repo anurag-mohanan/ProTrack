@@ -2,17 +2,41 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 from sqlalchemy.orm import Session
 
 from app.models.enums import ExecutionStatus, MilestoneStatus, TimesheetStatus
 from app.models.intelligence import EngineeringChange
 from app.models.enums import EngineeringChangeStatus
 from app.models.models import Customer, Milestone, Project, Role, Timesheet, TimesheetEntry, User
+from datetime import date
+
+from app.models.models import User
 from app.services.ai.base import AiContext, round_hours
+
+
+def build_ai_context(
+    db: Session,
+    *,
+    user: User | None = None,
+    today: date | None = None,
+) -> AiContext:
+    """Build AiContext from a User — avoids invalid ``actor=`` kwargs."""
+    actor_id = user.id if user is not None else None
+    actor_name: str | None = None
+    if user is not None:
+        parts = [user.first_name or "", user.last_name or ""]
+        actor_name = " ".join(part for part in parts if part).strip() or user.email
+    return AiContext(
+        db=db,
+        today=today or date.today(),
+        actor_id=actor_id,
+        actor_name=actor_name,
+    )
 
 ACTIVE_STATUSES = (
     ExecutionStatus.planning,

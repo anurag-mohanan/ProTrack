@@ -3,12 +3,19 @@
 from sqlalchemy import select
 
 from app.models.models import Stream, TaskType
+from tests.conftest import list_items
+
+
+def _first_stream_id(client) -> str:
+    response = client.get("/api/v1/streams", headers=client.auth_headers)
+    assert response.status_code == 200
+    streams = list_items(response)
+    assert streams, "Expected at least one stream"
+    return streams[0]["id"]
 
 
 def test_create_task_type_success(client):
-    stream = client.get("/api/v1/streams", headers=client.auth_headers)
-    assert stream.status_code == 200
-    stream_id = stream.json()[0]["id"]
+    stream_id = _first_stream_id(client)
 
     response = client.post(
         "/api/v1/task-types",
@@ -32,7 +39,7 @@ def test_create_task_type_success(client):
 
 
 def test_create_task_type_duplicate_returns_409(client):
-    stream_id = client.get("/api/v1/streams", headers=client.auth_headers).json()[0]["id"]
+    stream_id = _first_stream_id(client)
     payload = {
         "name": "DuplicateTask",
         "stream_id": stream_id,
@@ -87,7 +94,7 @@ def test_create_task_type_inactive_stream_returns_422(client, session):
 
 
 def test_create_task_type_empty_description(client):
-    stream_id = client.get("/api/v1/streams", headers=client.auth_headers).json()[0]["id"]
+    stream_id = _first_stream_id(client)
     response = client.post(
         "/api/v1/task-types",
         headers=client.auth_headers,
@@ -104,7 +111,7 @@ def test_create_task_type_empty_description(client):
 
 
 def test_create_task_type_with_description(client):
-    stream_id = client.get("/api/v1/streams", headers=client.auth_headers).json()[0]["id"]
+    stream_id = _first_stream_id(client)
     response = client.post(
         "/api/v1/task-types",
         headers=client.auth_headers,
@@ -124,7 +131,7 @@ def test_create_task_type_with_description(client):
 
 
 def test_update_task_type(client, session):
-    stream_id = client.get("/api/v1/streams", headers=client.auth_headers).json()[0]["id"]
+    stream_id = _first_stream_id(client)
     created = client.post(
         "/api/v1/task-types",
         headers=client.auth_headers,

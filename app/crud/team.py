@@ -6,6 +6,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProTrackValidationError
+from app.models.enums import TeamRelationshipType
 from app.crud.base import CRUDBase
 from app.models.models import Project, Team, TeamMember, User
 from app.schemas.team import (
@@ -16,39 +17,11 @@ from app.schemas.team import (
     TeamRead,
     TeamUpdate,
 )
+from app.services.user_team_service import sync_user_team_membership
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def sync_user_team_membership(
-    db: Session,
-    user_id: UUID,
-    team_id: UUID | None,
-) -> None:
-    """Keep TeamMember rows and User.team_id in sync with primary team assignment."""
-    user = db.get(User, user_id)
-    if user is None:
-        raise ProTrackValidationError("User not found")
-
-    if team_id is not None:
-        team = db.get(Team, team_id)
-        if team is None or not team.is_active:
-            raise ProTrackValidationError("team_id must reference an active team")
-
-    user.team_id = team_id
-    db.add(user)
-    db.execute(delete(TeamMember).where(TeamMember.user_id == user_id))
-    if team_id is not None:
-        db.add(
-            TeamMember(
-                team_id=team_id,
-                user_id=user_id,
-                joined_at=_utcnow(),
-            )
-        )
-    db.flush()
 
 
 def _user_display(user: User | None) -> str:
@@ -89,6 +62,8 @@ def build_team_member_read(db: Session, member: TeamMember) -> TeamMemberRead:
         team_id=member.team_id,
         user_id=member.user_id,
         role_within_team=member.role_within_team,
+        relationship_type=member.relationship_type,
+        is_primary=member.is_primary,
         joined_at=member.joined_at,
         created_at=member.created_at,
         updated_at=member.updated_at,
@@ -208,6 +183,8 @@ class CRUDTeam(CRUDBase[Team, TeamCreate, TeamUpdate]):
             team_id=team_id,
             user_id=obj_in.user_id,
             role_within_team=obj_in.role_within_team,
+            relationship_type=obj_in.relationship_type,
+            is_primary=False,
             joined_at=_utcnow(),
         )
         db.add(member)

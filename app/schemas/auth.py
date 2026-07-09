@@ -25,6 +25,8 @@ class TokenPayload(BaseModel):
     permissions: list[str] = Field(default_factory=list)
     team_id: UUID | None = None
     team_name: str | None = None
+    team_ids: list[UUID] = Field(default_factory=list)
+    team_names: list[str] = Field(default_factory=list)
     impersonator_id: UUID | None = None
 
 
@@ -37,6 +39,10 @@ class CurrentUserRead(BaseModel):
     last_name: str
     role_id: UUID
     role_name: str
+    team_id: UUID | None = None
+    team_name: str | None = None
+    team_ids: list[UUID] = Field(default_factory=list)
+    team_names: list[str] = Field(default_factory=list)
     is_active: bool
     must_change_password: bool
     last_login: datetime | None = None

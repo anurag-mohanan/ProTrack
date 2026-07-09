@@ -59,6 +59,7 @@ from app.schemas.project import (
 from app.schemas.communication import EmailMessageRead
 from app.services.email.engine import list_email_messages
 from app.services.command_center_service import get_project_command_center
+from app.services.activity_service import log_activity
 from app.services.project_lifecycle_service import (
     archive_project,
     get_project_delete_dependencies,

@@ -19,6 +19,15 @@ export interface Role {
   updated_at: string;
 }
 
+export interface UserTeamAssignment {
+  id?: string;
+  team_id: string;
+  team_name?: string;
+  relationship_type: 'member' | 'team_leader' | 'engineering_manager' | 'reviewer';
+  is_primary: boolean;
+  created_at?: string;
+}
+
 export interface User {
   id: string;
   first_name: string;
@@ -28,6 +37,8 @@ export interface User {
   role_name?: string;
   team_id?: string | null;
   team_name?: string | null;
+  team_names?: string[];
+  team_assignments?: UserTeamAssignment[];
   department_id?: string | null;
   department_name?: string | null;
   working_hours_per_day?: number;

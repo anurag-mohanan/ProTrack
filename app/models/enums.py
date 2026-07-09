@@ -85,6 +85,13 @@ class UserAvailabilityStatus(enum.Enum):
     unavailable = "unavailable"
 
 
+class TeamRelationshipType(enum.Enum):
+    member = "member"
+    team_leader = "team_leader"
+    engineering_manager = "engineering_manager"
+    reviewer = "reviewer"
+
+
 class DueDateCalculationMode(enum.Enum):
     from_start = "from_start"
     from_previous_milestone = "from_previous_milestone"

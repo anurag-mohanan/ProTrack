@@ -153,13 +153,16 @@ def get_dashboard_summary(
     *,
     project_stage: ProjectStage | None = None,
     team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
 ) -> DashboardSummary:
     visible = _visible_projects_clause()
     stage = ()
     if project_stage is not None:
         stage = (Project.project_stage == project_stage,)
     team = ()
-    if team_id is not None:
+    if team_ids:
+        team = (Project.team_id.in_(team_ids),)
+    elif team_id is not None:
         team = (Project.team_id == team_id,)
     total_projects = int(
         db.scalar(

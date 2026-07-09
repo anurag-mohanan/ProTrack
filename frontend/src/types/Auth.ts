@@ -37,4 +37,8 @@ export interface CurrentUser {
   special_permissions?: string[];
   resolved_modules?: string[];
   resolved_special_permissions?: string[];
+  team_id?: string | null;
+  team_name?: string | null;
+  team_ids?: string[];
+  team_names?: string[];
 }

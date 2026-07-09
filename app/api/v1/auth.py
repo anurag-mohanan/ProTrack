@@ -37,6 +37,7 @@ from app.schemas.auth import (
 )
 from app.core.release_mode import effective_must_change_password
 from app.services.activity_service import log_activity
+from app.services.user_team_service import list_user_team_assignments
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
@@ -68,11 +69,31 @@ def get_token_payload(
         ) from exc
 
 
-def _team_context(db: Session, user: User) -> tuple[UUID | None, str | None]:
-    if user.team_id is None:
-        return None, None
-    team = db.get(Team, user.team_id)
-    return user.team_id, team.name if team is not None else None
+def _team_context(db: Session, user: User) -> tuple[UUID | None, str | None, list[UUID], list[str]]:
+    assignments = list_user_team_assignments(db, user.id)
+    team_ids: list[UUID] = []
+    team_names: list[str] = []
+    primary_team_id: UUID | None = user.team_id
+    primary_team_name: str | None = None
+    for membership in assignments:
+        team = db.get(Team, membership.team_id)
+        if team is None:
+            continue
+        team_ids.append(team.id)
+        team_names.append(team.name)
+        if membership.is_primary or membership.team_id == user.team_id:
+            primary_team_id = team.id
+            primary_team_name = team.name
+    if primary_team_id is not None and primary_team_name is None:
+        team = db.get(Team, primary_team_id)
+        primary_team_name = team.name if team is not None else None
+    if not team_ids and user.team_id is not None:
+        team = db.get(Team, user.team_id)
+        if team is not None:
+            team_ids = [team.id]
+            team_names = [team.name]
+            primary_team_name = team.name
+    return primary_team_id, primary_team_name, team_ids, team_names
 
 
 def _issue_token(
@@ -82,7 +103,7 @@ def _issue_token(
     impersonator_id: UUID | None = None,
 ) -> Token:
     role_name = get_role_name(db, user)
-    team_id, team_name = _team_context(db, user)
+    team_id, team_name, team_ids, team_names = _team_context(db, user)
     try:
         access_token = create_access_token(
             user_id=user.id,
@@ -92,6 +113,8 @@ def _issue_token(
             permissions=get_user_permission_keys(db, user),
             team_id=team_id,
             team_name=team_name,
+            team_ids=team_ids,
+            team_names=team_names,
             impersonator_id=impersonator_id,
         )
     except Exception:
@@ -156,6 +179,7 @@ def _build_current_user_read(
         if impersonator is not None:
             impersonator_name = f"{impersonator.first_name} {impersonator.last_name}"
     role_name = get_role_name(db, user)
+    _, team_name, team_ids, team_names = _team_context(db, user)
     return CurrentUserRead(
         id=user.id,
         email=user.email,
@@ -163,6 +187,10 @@ def _build_current_user_read(
         last_name=user.last_name,
         role_id=user.role_id,
         role_name=role_name,
+        team_id=user.team_id,
+        team_name=team_name,
+        team_ids=team_ids,
+        team_names=team_names,
         is_active=user.is_active,
         must_change_password=effective_must_change_password(user.must_change_password),
         last_login=user.last_login,

@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
+from app.models.enums import TeamRelationshipType
 from pydantic import BaseModel, Field
 
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
@@ -36,6 +37,8 @@ class TeamRead(TeamBase, TimestampSchema):
 class TeamMemberBase(BaseModel):
     user_id: UUID
     role_within_team: str | None = Field(default=None, max_length=100)
+    relationship_type: TeamRelationshipType = TeamRelationshipType.member
+    is_primary: bool = False
 
 
 class TeamMemberCreate(BlankOptionalFieldsMixin, TeamMemberBase):
@@ -44,6 +47,8 @@ class TeamMemberCreate(BlankOptionalFieldsMixin, TeamMemberBase):
 
 class TeamMemberUpdate(BlankOptionalFieldsMixin, BaseModel):
     role_within_team: str | None = Field(default=None, max_length=100)
+    relationship_type: TeamRelationshipType | None = None
+    is_primary: bool | None = None
 
 
 class TeamMemberRead(TeamMemberBase, TimestampSchema):

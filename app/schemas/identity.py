@@ -10,6 +10,7 @@ from app.core.password_policy import validate_password_strength
 from app.models.enums import (
     EmploymentType,
     SkillLevel,
+    TeamRelationshipType,
     UserAvailabilityStatus,
 )
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
@@ -31,6 +32,22 @@ class RoleUpdate(BlankOptionalFieldsMixin, BaseModel):
 
 class RoleRead(RoleBase, TimestampSchema):
     pass
+
+
+class UserTeamAssignmentBase(BaseModel):
+    team_id: UUID
+    relationship_type: TeamRelationshipType = TeamRelationshipType.member
+    is_primary: bool = False
+
+
+class UserTeamAssignmentWrite(BlankOptionalFieldsMixin, UserTeamAssignmentBase):
+    pass
+
+
+class UserTeamAssignmentRead(UserTeamAssignmentBase):
+    id: UUID
+    team_name: str
+    created_at: datetime | None = None
 
 
 class UserBase(BaseModel):
@@ -60,6 +77,7 @@ class UserCreate(BlankOptionalFieldsMixin, UserBase):
     must_change_password: bool = True
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None
+    team_assignments: list[UserTeamAssignmentWrite] | None = None
 
 
 class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
@@ -83,6 +101,7 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     max_allocation_percent: int | None = Field(default=None, ge=0, le=100)
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None
+    team_assignments: list[UserTeamAssignmentWrite] | None = None
 
 
 class ResetPasswordRequest(BaseModel):
@@ -109,6 +128,8 @@ class MustChangePasswordRequest(BaseModel):
 class UserRead(UserBase, TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
     team_name: str | None = None
+    team_assignments: list[UserTeamAssignmentRead] = Field(default_factory=list)
+    team_names: list[str] = Field(default_factory=list)
     department_name: str | None = None
     manager_name: str | None = None
     active_projects_count: int = 0

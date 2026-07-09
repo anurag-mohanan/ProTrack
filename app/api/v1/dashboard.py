@@ -1,11 +1,13 @@
 from uuid import UUID
-
 from datetime import date
+
+from fastapi import Query
 
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import APIRouter, Depends, HTTPException, Session, get_db, get_object_or_404, status
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import can_update_project, FULL_ACCESS_ROLES, DESIGN_LEADER, get_role_name, normalize_role_name
+from app.core.team_access import resolve_team_scope
 from app.crud import project as project_crud
 from app.crud.dashboard import (
     get_dashboard_overview,
@@ -72,11 +74,21 @@ router = APIRouter(
 def dashboard_summary(
     project_stage: ProjectStage | None = None,
     team_id: UUID | None = None,
+    team_ids: list[UUID] | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    scoped_team_ids = resolve_team_scope(
+        db,
+        current_user,
+        team_id=team_id,
+        team_ids=team_ids,
+    )
     return get_dashboard_summary(
-        db, current_user, project_stage=project_stage, team_id=team_id
+        db,
+        current_user,
+        project_stage=project_stage,
+        team_ids=list(scoped_team_ids) if scoped_team_ids is not None else None,
     )
 
 

@@ -16,10 +16,16 @@ from app.core.permissions import get_role_name, project_assignment_filter
 from app.core.pagination import PaginatedResponse, apply_sort
 from app.core.security import hash_password
 from app.crud.base import CRUDBase
-from app.crud.team import sync_user_team_membership
+from app.crud.team import sync_user_team_membership  # noqa: F401 — re-exported
+from app.models.enums import TeamRelationshipType
 from app.models.models import Project, Team, User
 from app.models.foundation import Department
-from app.schemas.identity import UserCreate, UserRead, UserUpdate
+from app.schemas.identity import UserCreate, UserRead, UserUpdate, UserTeamAssignmentRead
+from app.services.user_team_service import (
+    UserTeamAssignmentInput,
+    list_user_team_assignments,
+    sync_user_team_assignments,
+)
 
 
 def count_user_active_projects(db: Session, user: User) -> int:
@@ -47,6 +53,23 @@ def build_user_read(db: Session, user: User) -> UserRead:
     if user.team_id is not None:
         team = db.get(Team, user.team_id)
         team_name = team.name if team else None
+    team_assignments: list[UserTeamAssignmentRead] = []
+    team_names: list[str] = []
+    for membership in list_user_team_assignments(db, user.id):
+        team = db.get(Team, membership.team_id)
+        if team is None:
+            continue
+        team_names.append(team.name)
+        team_assignments.append(
+            UserTeamAssignmentRead(
+                id=membership.id,
+                team_id=membership.team_id,
+                team_name=team.name,
+                relationship_type=membership.relationship_type,
+                is_primary=membership.is_primary,
+                created_at=membership.created_at,
+            )
+        )
     department_name = None
     if user.department_id is not None:
         department = db.get(Department, user.department_id)
@@ -59,6 +82,8 @@ def build_user_read(db: Session, user: User) -> UserRead:
     return UserRead.model_validate(user, from_attributes=True).model_copy(
         update={
             "team_name": team_name,
+            "team_names": team_names,
+            "team_assignments": team_assignments,
             "department_name": department_name,
             "manager_name": manager_name,
             "active_projects_count": count_user_active_projects(db, user),
@@ -79,6 +104,42 @@ def _apply_access_payload(data: dict[str, Any]) -> dict[str, Any]:
             payload.pop("special_permissions")
         )
     return payload
+
+
+def _parse_team_assignments(raw: object) -> list[UserTeamAssignmentInput] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        return None
+    parsed: list[UserTeamAssignmentInput] = []
+    for row in raw:
+        if isinstance(row, UserTeamAssignmentInput):
+            parsed.append(row)
+            continue
+        if hasattr(row, "team_id"):
+            relationship = getattr(row, "relationship_type", TeamRelationshipType.member)
+            if isinstance(relationship, str):
+                relationship = TeamRelationshipType(relationship)
+            parsed.append(
+                UserTeamAssignmentInput(
+                    team_id=row.team_id,
+                    relationship_type=relationship,
+                    is_primary=bool(getattr(row, "is_primary", False)),
+                )
+            )
+            continue
+        if isinstance(row, dict):
+            relationship = row.get("relationship_type", TeamRelationshipType.member)
+            if isinstance(relationship, str):
+                relationship = TeamRelationshipType(relationship)
+            parsed.append(
+                UserTeamAssignmentInput(
+                    team_id=row["team_id"],  # type: ignore[arg-type]
+                    relationship_type=relationship,  # type: ignore[arg-type]
+                    is_primary=bool(row.get("is_primary", False)),
+                )
+            )
+    return parsed
 
 
 class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
@@ -189,15 +250,23 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
 
     def create(self, db: Session, *, obj_in: UserCreate) -> User:
         data = _apply_access_payload(obj_in.model_dump(exclude={"password"}))
+        team_assignments = data.pop("team_assignments", None)
         team_id = data.pop("team_id", None)
         db_obj = User(
             **data,
-            team_id=team_id,
+            team_id=None,
             password_hash=hash_password(obj_in.password),
         )
         db.add(db_obj)
         db.flush()
-        sync_user_team_membership(db, db_obj.id, team_id)
+        if team_assignments is not None:
+            sync_user_team_assignments(
+                db,
+                db_obj.id,
+                assignments=_parse_team_assignments(team_assignments),
+            )
+        else:
+            sync_user_team_membership(db, db_obj.id, team_id)
         db.commit()
         db.refresh(db_obj)
         return db_obj
@@ -219,9 +288,19 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             update_data["must_change_password"] = True
         team_id_provided = "team_id" in update_data
         team_id = update_data.pop("team_id", None) if team_id_provided else None
+        team_assignments_provided = "team_assignments" in update_data
+        team_assignments = update_data.pop("team_assignments", None)
         update_data = _apply_access_payload(update_data)
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
-        if team_id_provided:
+        if team_assignments_provided:
+            sync_user_team_assignments(
+                db,
+                updated.id,
+                assignments=_parse_team_assignments(team_assignments),
+            )
+            db.commit()
+            db.refresh(updated)
+        elif team_id_provided:
             sync_user_team_membership(db, updated.id, team_id)
             db.commit()
             db.refresh(updated)

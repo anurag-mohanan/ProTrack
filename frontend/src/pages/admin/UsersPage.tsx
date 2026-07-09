@@ -27,6 +27,7 @@ import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archive
 import { fetchDepartments } from '../../api/settings';
 import { fetchTeams } from '../../api/lookups';
 import { useAuth } from '../../context/AuthContext';
+import { UserTeamAssignments, type UserTeamAssignmentFormValue } from '../../components/admin/UserTeamAssignments';
 import { UserAccessControlSection } from '../../components/admin/UserAccessControlSection';
 import type { ModuleKey, SpecialPermissionKey } from '../../config/accessControl';
 import { ROLES, defaultModulesForRole, defaultSpecialPermissionsForRole } from '../../utils/permissions';
@@ -63,6 +64,7 @@ interface UserFormState {
   manager_id: string;
   role_id: string;
   team_id: string;
+  team_assignments: UserTeamAssignmentFormValue[];
   department_id: string;
   working_hours_per_day: number;
   working_days: string;
@@ -89,6 +91,7 @@ const emptyForm: UserFormState = {
   manager_id: '',
   role_id: '',
   team_id: '',
+  team_assignments: [],
   department_id: '',
   working_hours_per_day: 8,
   working_days: 'Mon,Tue,Wed,Thu,Fri',
@@ -216,19 +219,17 @@ export default function UsersPage() {
           .toLowerCase();
         if (!haystack.includes(term)) return false;
       }
-      if (appliedTeamFilter !== 'all' && user.team_id !== appliedTeamFilter) return false;
+      if (appliedTeamFilter !== 'all') {
+        const assignedTeamIds = new Set([
+          ...(user.team_assignments?.map((row) => row.team_id) ?? []),
+          ...(user.team_id ? [user.team_id] : []),
+        ]);
+        if (!assignedTeamIds.has(appliedTeamFilter)) return false;
+      }
       if (appliedEmploymentFilter !== 'all' && user.employment_type !== appliedEmploymentFilter) return false;
       return true;
     });
   }, [appliedEmploymentFilter, appliedTeamFilter, search, users]);
-
-  const teamOptions = useMemo(
-    () => [
-      { value: '', label: 'No Team' },
-      ...teams.map((team) => ({ value: team.id, label: team.name })),
-    ],
-    [teams],
-  );
 
   const managerOptions = useMemo(
     () => [
@@ -282,6 +283,23 @@ export default function UsersPage() {
       manager_id: user.manager_id ?? '',
       role_id: user.role_id,
       team_id: user.team_id ?? '',
+      team_assignments:
+        user.team_assignments?.map((row) => ({
+          team_id: row.team_id,
+          team_name: row.team_name ?? teams.find((team) => team.id === row.team_id)?.name ?? '',
+          relationship_type: row.relationship_type,
+          is_primary: row.is_primary,
+        })) ??
+        (user.team_id
+          ? [
+              {
+                team_id: user.team_id,
+                team_name: user.team_name ?? '',
+                relationship_type: 'member' as const,
+                is_primary: true,
+              },
+            ]
+          : []),
       department_id: user.department_id ?? '',
       working_hours_per_day: user.working_hours_per_day ?? 8,
       working_days: user.working_days ?? 'Mon,Tue,Wed,Thu,Fri',
@@ -321,10 +339,7 @@ export default function UsersPage() {
       { key: 'role_id', label: 'Role' },
     ];
     if (!editingUser) {
-      requiredFields.push(
-        { key: 'team_id', label: 'Team' },
-        { key: 'employment_type', label: 'Employment type' },
-      );
+      requiredFields.push({ key: 'employment_type', label: 'Employment type' });
     }
     const validationError = validateRequiredFields(form, requiredFields);
     if (validationError) {
@@ -343,8 +358,24 @@ export default function UsersPage() {
       }
     }
 
+    if (!editingUser && form.team_assignments.length === 0) {
+      showError('Select at least one team and mark a primary team.');
+      return;
+    }
+    if (form.team_assignments.length > 0 && !form.team_assignments.some((row) => row.is_primary)) {
+      showError('Mark one team as the primary team.');
+      return;
+    }
+
     setSaving(true);
     try {
+      const teamAssignmentsPayload = form.team_assignments.map((row) => ({
+        team_id: row.team_id,
+        relationship_type: row.relationship_type,
+        is_primary: row.is_primary,
+      }));
+      const primaryTeamId =
+        form.team_assignments.find((row) => row.is_primary)?.team_id ?? optionalUuid(form.team_id);
       const identityPayload = {
         phone: optionalString(form.phone),
         designation: optionalString(form.designation),
@@ -356,7 +387,8 @@ export default function UsersPage() {
           last_name: form.last_name,
           email: form.email,
           role_id: form.role_id,
-          team_id: optionalUuid(form.team_id),
+          team_id: primaryTeamId,
+          team_assignments: teamAssignmentsPayload,
           is_active: form.is_active,
           ...identityPayload,
           ...buildCapacityPayload(),
@@ -373,7 +405,8 @@ export default function UsersPage() {
           last_name: form.last_name,
           email: form.email,
           role_id: form.role_id,
-          team_id: optionalUuid(form.team_id),
+          team_id: primaryTeamId,
+          team_assignments: teamAssignmentsPayload,
           password,
           must_change_password: form.generate_temporary_password,
           is_active: form.is_active,
@@ -588,10 +621,13 @@ export default function UsersPage() {
     },
     {
       field: 'team_name',
-      headerName: 'Team',
-      flex: 1,
-      minWidth: 120,
-      valueGetter: (_value, row) => formatDisplayValue(row.team_name),
+      headerName: 'Teams',
+      flex: 1.2,
+      minWidth: 160,
+      valueGetter: (_value, row) =>
+        row.team_names?.length
+          ? row.team_names.join(', ')
+          : formatDisplayValue(row.team_name),
     },
     {
       field: 'employment_type',
@@ -838,17 +874,16 @@ export default function UsersPage() {
                 }}
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormSelect
-                label="Team"
-                required={!editingUser}
-                searchable
-                value={form.team_id}
-                options={teamOptions}
-                onChange={(event) =>
+            <Grid size={{ xs: 12 }}>
+              <UserTeamAssignments
+                teams={teams.map((team) => ({ id: team.id, name: team.name }))}
+                value={form.team_assignments}
+                onChange={(team_assignments) =>
                   setForm((current) => ({
                     ...current,
-                    team_id: String(event.target.value),
+                    team_assignments,
+                    team_id:
+                      team_assignments.find((row) => row.is_primary)?.team_id ?? '',
                   }))
                 }
               />

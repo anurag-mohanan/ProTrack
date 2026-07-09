@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import APIRouter, Depends, HTTPException, Query, Session, get_db, status
+from app.core.pagination import PaginatedResponse, pagination_query, PaginationParams
 from app.models.enums import ActivityAction
 from app.models.models import Activity, Milestone, Project, TimesheetEntry, User
 from app.schemas.timesheet import ActivityRead
@@ -52,13 +53,12 @@ def _project_activity_query(db: Session, project_id: UUID):
     )
 
 
-@router.get("", response_model=list[ActivityRead])
+@router.get("", response_model=PaginatedResponse[ActivityRead])
 def list_activities(
     project_id: UUID | None = None,
     user_id: UUID | None = None,
     action: ActivityAction | None = None,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=200),
+    pagination: PaginationParams = Depends(pagination_query),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -82,8 +82,18 @@ def list_activities(
         query = select(Activity).order_by(Activity.created_at.desc())
     if action is not None:
         query = query.where(Activity.action == action)
-    rows = db.scalars(query.offset(skip).limit(limit)).all()
-    return [_activity_to_read(db, row) for row in rows]
+    count_query = select(func.count()).select_from(query.order_by(None).subquery())
+    total = int(db.scalar(count_query) or 0)
+    rows = db.scalars(
+        query.offset(pagination.skip).limit(pagination.limit)
+    ).all()
+    items = [_activity_to_read(db, row) for row in rows]
+    return PaginatedResponse.build(
+        items=items,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
 
 
 @router.get("/project/{project_id}", response_model=list[ActivityRead])

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Chip,
@@ -19,9 +19,12 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { LoadingState } from '../../components/common/LoadingState';
-import { fetchEmailQueue, processEmailQueue } from '../../api/communication';
+import { EmptyState } from '../../components/common/EmptyState';
+import { ProTrackPagination } from '../../components/common/ProTrackPagination';
+import { fetchEmailQueuePaginated, processEmailQueue } from '../../api/communication';
 import type { EmailMessage } from '../../api/communication';
 import { useToast } from '../../context/ToastContext';
+import { usePagination } from '../../hooks/usePagination';
 
 const STATUS_COLORS: Record<string, 'default' | 'success' | 'warning' | 'error' | 'info'> = {
   queued: 'warning',
@@ -36,11 +39,23 @@ export default function EmailQueuePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<EmailMessage | null>(null);
+  const pagination = usePagination();
 
   const query = useQuery({
-    queryKey: ['emails', 'queue', statusFilter, search],
-    queryFn: () => fetchEmailQueue({ status: statusFilter || undefined, search: search || undefined }),
+    queryKey: ['emails', 'queue', statusFilter, search, pagination.params],
+    queryFn: () =>
+      fetchEmailQueuePaginated({
+        status: statusFilter || undefined,
+        search: search || undefined,
+        ...pagination.params,
+      }),
   });
+
+  useEffect(() => {
+    if (query.data) {
+      pagination.setTotal(query.data.total);
+    }
+  }, [query.data, pagination.setTotal]);
 
   const processMutation = useMutation({
     mutationFn: processEmailQueue,
@@ -51,7 +66,11 @@ export default function EmailQueuePage() {
     onError: (error: Error) => showError(error.message),
   });
 
-  if (query.isLoading) return <LoadingState message="Loading email queue…" />;
+  if (query.isLoading && !query.data) {
+    return <LoadingState message="Loading email queue…" />;
+  }
+
+  const rows = query.data?.items ?? [];
 
   return (
     <Box>
@@ -65,13 +84,19 @@ export default function EmailQueuePage() {
             size="small"
             label="Search"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              pagination.resetPage();
+            }}
           />
           <TextField
             size="small"
             label="Status filter"
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            onChange={(event) => {
+              setStatusFilter(event.target.value);
+              pagination.resetPage();
+            }}
             placeholder="queued, sent, failed"
           />
           <ProsohmButton
@@ -82,43 +107,63 @@ export default function EmailQueuePage() {
             Process Queue / Retry
           </ProsohmButton>
         </Stack>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Date</TableCell>
-              <TableCell>Recipient</TableCell>
-              <TableCell>Subject</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Retries</TableCell>
-              <TableCell>Last error</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {(query.data ?? []).map((message) => (
-              <TableRow
-                key={message.id}
-                hover
-                sx={{ cursor: 'pointer' }}
-                onClick={() => setSelected(message)}
-              >
-                <TableCell>{new Date(message.created_at).toLocaleString()}</TableCell>
-                <TableCell>{message.recipients_display}</TableCell>
-                <TableCell>{message.subject}</TableCell>
-                <TableCell>
-                  <Chip
-                    size="small"
-                    label={message.status}
-                    color={STATUS_COLORS[message.status] ?? 'default'}
-                  />
-                </TableCell>
-                <TableCell>
-                  {message.retry_count}/{message.max_retries}
-                </TableCell>
-                <TableCell>{message.last_error ?? '—'}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {rows.length === 0 ? (
+          <EmptyState
+            title="No emails in queue"
+            description="Try adjusting your filters or process the queue to send pending messages."
+          />
+        ) : (
+          <>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Recipient</TableCell>
+                  <TableCell>Subject</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Retries</TableCell>
+                  <TableCell>Last error</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((message) => (
+                  <TableRow
+                    key={message.id}
+                    hover
+                    sx={{ cursor: 'pointer' }}
+                    onClick={() => setSelected(message)}
+                  >
+                    <TableCell>{new Date(message.created_at).toLocaleString()}</TableCell>
+                    <TableCell>{message.recipients_display}</TableCell>
+                    <TableCell>{message.subject}</TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={message.status}
+                        color={STATUS_COLORS[message.status] ?? 'default'}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {message.retry_count}/{message.max_retries}
+                    </TableCell>
+                    <TableCell>{message.last_error ?? '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <ProTrackPagination
+              page={pagination.page}
+              pageSize={pagination.pageSize}
+              total={pagination.total}
+              pages={pagination.pages}
+              rangeStart={pagination.rangeStart}
+              rangeEnd={pagination.rangeEnd}
+              loading={query.isFetching}
+              onPageChange={pagination.goToPage}
+              onPageSizeChange={pagination.setPageSize}
+            />
+          </>
+        )}
       </ContentCard>
 
       <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} maxWidth="md" fullWidth>

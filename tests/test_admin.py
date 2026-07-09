@@ -1,13 +1,13 @@
 import uuid
 
-from tests.conftest import DEFAULT_PASSWORD, IDS, login
+from tests.conftest import DEFAULT_PASSWORD, IDS, list_items, login
 
 
 def test_admin_can_list_users(client):
     headers = login(client, "admin@prosohm.com")
     response = client.get("/api/v1/users", headers=headers)
     assert response.status_code == 200
-    assert len(response.json()) >= 1
+    assert len(list_items(response)) >= 1
 
 
 def test_engineering_manager_forbidden_from_admin_users(client):
@@ -31,7 +31,7 @@ def test_designer_can_use_lookup_users(client):
 def test_create_user_and_login(client, production_release):
     headers = login(client, "admin@prosohm.com")
     roles = client.get("/api/v1/roles", headers=headers)
-    designer_role = next(r for r in roles.json() if r["name"] == "Designer")
+    designer_role = next(r for r in list_items(roles) if r["name"] == "Designer")
 
     email = f"new.user.{uuid.uuid4().hex[:8]}@prosohm.com"
     create = client.post(
@@ -75,7 +75,7 @@ def test_create_user_and_login(client, production_release):
 def test_reset_password_and_change_password(client):
     headers = login(client, "admin@prosohm.com")
     roles = client.get("/api/v1/roles", headers=headers)
-    designer_role = next(r for r in roles.json() if r["name"] == "Designer")
+    designer_role = next(r for r in list_items(roles) if r["name"] == "Designer")
     email = f"reset.user.{uuid.uuid4().hex[:8]}@prosohm.com"
     create = client.post(
         "/api/v1/users",
@@ -128,7 +128,7 @@ def test_user_delete_disabled(client):
 def test_deactivate_user(client):
     headers = login(client, "admin@prosohm.com")
     roles = client.get("/api/v1/roles", headers=headers)
-    designer_role = next(r for r in roles.json() if r["name"] == "Designer")
+    designer_role = next(r for r in list_items(roles) if r["name"] == "Designer")
     email = f"inactive.{uuid.uuid4().hex[:8]}@prosohm.com"
     create = client.post(
         "/api/v1/users",
@@ -155,7 +155,7 @@ def test_deactivate_user(client):
 def test_system_role_delete_forbidden(client):
     headers = login(client, "admin@prosohm.com")
     roles = client.get("/api/v1/roles", headers=headers)
-    admin_role = next(r for r in roles.json() if r["name"] == "Admin")
+    admin_role = next(r for r in list_items(roles) if r["name"] == "Admin")
     response = client.delete(f"/api/v1/roles/{admin_role['id']}", headers=headers)
     assert response.status_code == 403
 

@@ -1,4 +1,6 @@
 import { apiClient } from './client';
+import type { PaginatedResponse } from '../types/pagination';
+import { isPaginatedResponse, unwrapListResponse } from '../types/pagination';
 
 export interface EmailAttachmentMeta {
   name: string;
@@ -38,9 +40,36 @@ export interface EmailPreviewPayload {
 export async function fetchEmailQueue(params?: {
   status?: string;
   search?: string;
+  page?: number;
+  page_size?: number;
 }): Promise<EmailMessage[]> {
-  const { data } = await apiClient.get<EmailMessage[]>('/emails/queue', { params });
-  return data;
+  const { data } = await apiClient.get<EmailMessage[] | PaginatedResponse<EmailMessage>>(
+    '/emails/queue',
+    { params },
+  );
+  return unwrapListResponse(data);
+}
+
+export async function fetchEmailQueuePaginated(params?: {
+  status?: string;
+  search?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<PaginatedResponse<EmailMessage>> {
+  const { data } = await apiClient.get<EmailMessage[] | PaginatedResponse<EmailMessage>>(
+    '/emails/queue',
+    { params },
+  );
+  if (isPaginatedResponse<EmailMessage>(data)) {
+    return data;
+  }
+  return {
+    items: data,
+    total: data.length,
+    page: 1,
+    page_size: data.length || params?.page_size || 25,
+    pages: 1,
+  };
 }
 
 export async function fetchEmailHistory(params?: {

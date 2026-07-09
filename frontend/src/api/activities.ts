@@ -1,4 +1,6 @@
 import { apiClient, buildQuery } from './client';
+import type { PaginatedResponse } from '../types/pagination';
+import { isPaginatedResponse, unwrapListResponse } from '../types/pagination';
 
 export interface ActivityRead {
   id: string;
@@ -14,9 +16,34 @@ export interface ActivityRead {
 }
 
 export async function fetchAuditLogs(options?: {
+  page?: number;
+  page_size?: number;
   skip?: number;
   limit?: number;
 }): Promise<ActivityRead[]> {
-  const { data } = await apiClient.get<ActivityRead[]>(`/activities${buildQuery(options)}`);
-  return data;
+  const { data } = await apiClient.get<ActivityRead[] | PaginatedResponse<ActivityRead>>(
+    `/activities${buildQuery(options)}`,
+  );
+  return unwrapListResponse(data);
+}
+
+export async function fetchAuditLogsPaginated(options?: {
+  page?: number;
+  page_size?: number;
+  skip?: number;
+  limit?: number;
+}): Promise<PaginatedResponse<ActivityRead>> {
+  const { data } = await apiClient.get<ActivityRead[] | PaginatedResponse<ActivityRead>>(
+    `/activities${buildQuery(options)}`,
+  );
+  if (isPaginatedResponse<ActivityRead>(data)) {
+    return data;
+  }
+  return {
+    items: data,
+    total: data.length,
+    page: 1,
+    page_size: data.length || options?.page_size || options?.limit || 25,
+    pages: 1,
+  };
 }

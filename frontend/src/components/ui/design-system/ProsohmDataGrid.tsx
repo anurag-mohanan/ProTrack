@@ -4,6 +4,7 @@ import { DataGrid, type GridValidRowModel } from '@mui/x-data-grid';
 import { pinnedDataGridColumnSx, prosohmDataGridSx } from '../../../theme/componentStyles';
 import { PINNED_LEFT_CELL_CLASS } from '../../../theme/componentStyles';
 import { usePreferences } from '../../../context/PreferencesContext';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../types/pagination';
 
 type DataGridProps<R extends GridValidRowModel> = ComponentProps<typeof DataGrid<R>>;
 
@@ -25,6 +26,7 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
   columns: columnsProp,
   pinLeftFields = [],
   pageSizeStorageKey = 'protrack:grid:page-size',
+  pageSizeOptions = PAGE_SIZE_OPTIONS,
   dense = false,
   ...props
 }: ProsohmDataGridProps<R>) {
@@ -36,16 +38,17 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
   const rowHeight = dense ? 42 : compactPreference ? 44 : 52;
   const headerHeight = dense ? 40 : compactPreference ? 42 : 48;
   const persistedPageSize = Number(window.localStorage.getItem(pageSizeStorageKey) ?? 0);
-  const defaultOption = props.pageSizeOptions?.[0];
+  const defaultOption = pageSizeOptions[0];
   const fallbackPageSize =
     typeof defaultOption === 'number'
       ? defaultOption
       : defaultOption && 'value' in defaultOption
         ? Number(defaultOption.value)
-        : 25;
+        : DEFAULT_PAGE_SIZE;
   const resolvedPageSize =
     props.paginationModel?.pageSize ??
     (persistedPageSize > 0 ? persistedPageSize : fallbackPageSize);
+  const isServerMode = props.paginationMode === 'server';
 
   const columns = useMemo(() => {
     if (!pinLeftFields.length || !columnsProp) return columnsProp;
@@ -67,12 +70,16 @@ export function ProsohmDataGrid<R extends GridValidRowModel = GridValidRowModel>
         disableRowSelectionOnClick
         columnHeaderHeight={headerHeight}
         rowHeight={rowHeight}
+        pageSizeOptions={pageSizeOptions}
         {...props}
         paginationModel={
-          props.paginationModel ?? {
-            page: 0,
-            pageSize: resolvedPageSize,
-          }
+          props.paginationModel ??
+          (isServerMode
+            ? undefined
+            : {
+                page: 0,
+                pageSize: resolvedPageSize,
+              })
         }
         columns={columns}
         onPaginationModelChange={(model, details) => {

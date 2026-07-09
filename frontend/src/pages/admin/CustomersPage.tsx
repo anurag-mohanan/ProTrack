@@ -327,9 +327,9 @@ export default function CustomersPage() {
           columns={columns}
           pinLeftFields={['name']}
           autoHeight
-          pageSizeOptions={[10, 25, 50]}
+          pageSizeOptions={[25, 50, 100]}
           initialState={{
-            pagination: { paginationModel: { pageSize: 10 } },
+            pagination: { paginationModel: { pageSize: 25 } },
           }}
           onRowOpen={(rowId) => {
             const customer = filteredCustomers.find((item) => item.id === rowId);

@@ -489,10 +489,10 @@ function ProjectTableComponent({
             }
           : undefined
       }
-      paginationModel={{ pageSize: PAGE_SIZE, page: 0 }}
       pageSizeOptions={[25, 50, 100]}
       disableColumnMenu={false}
       initialState={{
+        pagination: { paginationModel: { pageSize: PAGE_SIZE, page: 0 } },
         sorting: { sortModel: [] },
         columns: {
           columnVisibilityModel: {

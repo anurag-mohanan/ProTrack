@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db, get_object_or_404
+from app.core.pagination import PaginatedResponse, pagination_query, PaginationParams
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import can_view_deleted_projects, is_admin
 from app.core.auth_constants import SOFT_LAUNCH_PASSWORD
@@ -58,14 +59,13 @@ def _generate_temporary_password(length: int = 12) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-@router.get("", response_model=list[UserRead])
+@router.get("", response_model=PaginatedResponse[UserRead])
 def list_users(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
     role_id: UUID | None = None,
     is_active: bool | None = None,
     include_archived: bool = False,
     include_deleted: bool = False,
+    pagination: PaginationParams = Depends(pagination_query),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -74,25 +74,29 @@ def list_users(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         )
-    users = user_crud.get_multi(db, skip=skip, limit=limit)
-    filtered: list[User] = []
-    for row in users:
-        if row.is_deleted and not include_deleted:
-            continue
-        if row.is_archived and not include_archived and not row.is_deleted:
-            continue
-        if role_id is not None and row.role_id != role_id:
-            continue
-        if is_active is not None and row.is_active != is_active:
-            continue
-        filtered.append(row)
-    return [build_user_read(db, row) for row in filtered]
+    result = user_crud.query_users_paginated(
+        db,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        skip=pagination.skip,
+        limit=pagination.limit,
+        role_id=role_id,
+        is_active=is_active,
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        sort=pagination.sort,
+    )
+    return PaginatedResponse.build(
+        items=[build_user_read(db, row) for row in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+    )
 
 
-@router.get("/deleted", response_model=list[UserRead])
+@router.get("/deleted", response_model=PaginatedResponse[UserRead])
 def list_deleted_users(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    pagination: PaginationParams = Depends(pagination_query),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -101,9 +105,24 @@ def list_deleted_users(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         )
-    users = user_crud.get_multi(db, skip=0, limit=10000)
-    deleted = [row for row in users if row.is_deleted]
-    return [build_user_read(db, row) for row in deleted[skip : skip + limit]]
+    resolved_skip = pagination.skip
+    resolved_limit = pagination.limit
+    total = user_crud.count_users(db, deleted_only=True)
+    users = user_crud.query_users(
+        db,
+        skip=resolved_skip,
+        limit=resolved_limit,
+        deleted_only=True,
+        include_deleted=True,
+        include_archived=True,
+        sort=pagination.sort,
+    )
+    return PaginatedResponse.build(
+        items=[build_user_read(db, row) for row in users],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
 
 
 @router.get("/{record_id}", response_model=UserRead)

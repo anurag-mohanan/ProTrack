@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Grid, TableCell, TableRow } from '@mui/material';
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,8 +21,10 @@ import {
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { QUERY_STALE_TIMES } from '../../config/queryConfig';
 import { useToast } from '../../context/ToastContext';
+import { ProTrackPagination } from '../../components/common/ProTrackPagination';
+import { usePagination } from '../../hooks/usePagination';
 import {
-  getDeletedProjects,
+  getDeletedProjectsPaginated,
   getProjectDeleteCheck,
   permanentDeleteProject,
   projectQueryKeys,
@@ -40,12 +42,19 @@ export default function DeletedProjectsPage() {
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [permanentId, setPermanentId] = useState<string | null>(null);
   const [permanentCheck, setPermanentCheck] = useState<DeleteCheckResult | null>(null);
+  const pagination = usePagination();
 
   const deletedQuery = useQuery({
-    queryKey: projectQueryKeys.deleted,
-    queryFn: () => getDeletedProjects({ limit: 500 }),
+    queryKey: [...projectQueryKeys.deleted, pagination.params],
+    queryFn: () => getDeletedProjectsPaginated(pagination.params),
     staleTime: QUERY_STALE_TIMES.projects,
   });
+
+  useEffect(() => {
+    if (deletedQuery.data) {
+      pagination.setTotal(deletedQuery.data.total);
+    }
+  }, [deletedQuery.data, pagination.setTotal]);
 
   const restoreMutation = useMutation({
     mutationFn: restoreDeletedProject,
@@ -88,6 +97,8 @@ export default function DeletedProjectsPage() {
     }
   }
 
+  const rows = deletedQuery.data?.items ?? [];
+
   if (deletedQuery.error) return <ErrorState error={deletedQuery.error} />;
 
   return (
@@ -101,7 +112,7 @@ export default function DeletedProjectsPage() {
         <ContentCard noPadding>
           <TableSkeleton rows={6} columns={5} />
         </ContentCard>
-      ) : !deletedQuery.data?.length ? (
+      ) : !rows.length ? (
         <EmptyState title="No deleted projects" />
       ) : (
         <ContentCard noPadding>
@@ -115,7 +126,7 @@ export default function DeletedProjectsPage() {
               </TableRow>
             }
           >
-            {deletedQuery.data.map((project) => (
+            {rows.map((project) => (
               <ClickableTableRow
                 key={project.id}
                 selected={selectedProject?.id === project.id}
@@ -132,6 +143,17 @@ export default function DeletedProjectsPage() {
               </ClickableTableRow>
             ))}
           </ProsohmTable>
+          <ProTrackPagination
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            total={pagination.total}
+            pages={pagination.pages}
+            rangeStart={pagination.rangeStart}
+            rangeEnd={pagination.rangeEnd}
+            loading={deletedQuery.isFetching}
+            onPageChange={pagination.goToPage}
+            onPageSizeChange={pagination.setPageSize}
+          />
         </ContentCard>
       )}
 

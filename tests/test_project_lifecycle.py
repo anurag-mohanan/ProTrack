@@ -1,12 +1,12 @@
 """Tests for project archive, restore, soft delete, and permanent delete."""
 
-from tests.conftest import IDS, login
+from tests.conftest import IDS, list_items, login
 
 
 def test_list_projects_defaults_to_all_non_deleted(client):
     response = client.get("/api/v1/projects", headers=client.auth_headers)
     assert response.status_code == 200
-    projects = response.json()
+    projects = list_items(response)
     assert len(projects) == 1
     assert projects[0]["tool_number"] == "T-100"
 
@@ -17,8 +17,8 @@ def test_list_projects_lifecycle_active_filters_in_progress(client):
         headers=client.auth_headers,
     )
     assert response.status_code == 200
-    assert len(response.json()) == 1
-    assert response.json()[0]["tool_number"] == "T-100"
+    assert len(list_items(response)) == 1
+    assert list_items(response)[0]["tool_number"] == "T-100"
 
 
 def test_list_projects_lifecycle_all_with_limit_500(client):
@@ -27,7 +27,7 @@ def test_list_projects_lifecycle_all_with_limit_500(client):
         headers=client.auth_headers,
     )
     assert response.status_code == 200
-    assert len(response.json()) >= 1
+    assert len(list_items(response)) >= 1
 
 
 def test_list_projects_lifecycle_all_includes_completed(client):
@@ -45,15 +45,15 @@ def test_list_projects_lifecycle_all_includes_completed(client):
         headers=client.auth_headers,
     )
     assert active.status_code == 200
-    assert active.json() == []
+    assert list_items(active) == []
 
     all_projects = client.get(
         "/api/v1/projects?lifecycle=all",
         headers=client.auth_headers,
     )
     assert all_projects.status_code == 200
-    assert len(all_projects.json()) == 1
-    assert all_projects.json()[0]["execution_status"] == "completed"
+    assert len(list_items(all_projects)) == 1
+    assert list_items(all_projects)[0]["execution_status"] == "completed"
 
 
 def test_list_projects_lifecycle_all_includes_archived(client):
@@ -69,15 +69,15 @@ def test_list_projects_lifecycle_all_includes_archived(client):
         headers=client.auth_headers,
     )
     assert completed.status_code == 200
-    assert completed.json() == []
+    assert list_items(completed) == []
 
     all_projects = client.get(
         "/api/v1/projects?lifecycle=all",
         headers=client.auth_headers,
     )
     assert all_projects.status_code == 200
-    assert len(all_projects.json()) == 1
-    assert all_projects.json()[0]["is_archived"] is True
+    assert len(list_items(all_projects)) == 1
+    assert list_items(all_projects)[0]["is_archived"] is True
 
 
 def test_archive_and_restore_project(client):
@@ -97,14 +97,14 @@ def test_archive_and_restore_project(client):
         headers=client.auth_headers,
     )
     assert active.status_code == 200
-    assert active.json() == []
+    assert list_items(active) == []
 
     archived_list = client.get(
         "/api/v1/projects/archived",
         headers=client.auth_headers,
     )
     assert archived_list.status_code == 200
-    assert len(archived_list.json()) == 1
+    assert len(list_items(archived_list)) == 1
 
     restore = client.post(
         f"/api/v1/projects/{project_id}/restore",
@@ -117,7 +117,7 @@ def test_archive_and_restore_project(client):
         "/api/v1/projects?lifecycle=active",
         headers=client.auth_headers,
     )
-    assert len(active_after.json()) == 1
+    assert len(list_items(active_after)) == 1
 
 
 def test_soft_delete_restore_and_permanent_delete_blocked(client, session):
@@ -141,7 +141,7 @@ def test_soft_delete_restore_and_permanent_delete_blocked(client, session):
         headers=client.auth_headers,
     )
     assert deleted_list.status_code == 200
-    assert len(deleted_list.json()) == 1
+    assert len(list_items(deleted_list)) == 1
 
     check = client.get(
         f"/api/v1/projects/{project_id}/delete-check",
@@ -226,15 +226,15 @@ def test_cancelled_projects_lifecycle_and_restore(client):
         headers=client.auth_headers,
     )
     assert active.status_code == 200
-    assert active.json() == []
+    assert list_items(active) == []
 
     cancelled = client.get(
         "/api/v1/projects?lifecycle=cancelled",
         headers=client.auth_headers,
     )
     assert cancelled.status_code == 200
-    assert len(cancelled.json()) == 1
-    assert cancelled.json()[0]["execution_status"] == "cancelled"
+    assert len(list_items(cancelled)) == 1
+    assert list_items(cancelled)[0]["execution_status"] == "cancelled"
 
     restore = client.patch(
         f"/api/v1/projects/{project_id}",
@@ -247,7 +247,7 @@ def test_cancelled_projects_lifecycle_and_restore(client):
         "/api/v1/projects?lifecycle=active",
         headers=client.auth_headers,
     )
-    assert len(active_after.json()) == 1
+    assert len(list_items(active_after)) == 1
 
 
 def test_cancelled_projects_excluded_from_dashboard_active_count(client):

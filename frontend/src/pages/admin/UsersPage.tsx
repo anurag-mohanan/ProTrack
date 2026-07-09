@@ -752,9 +752,9 @@ export default function UsersPage() {
             columns={columns}
             pinLeftFields={['full_name']}
             autoHeight
-            pageSizeOptions={[10, 25, 50]}
+            pageSizeOptions={[25, 50, 100]}
             initialState={{
-              pagination: { paginationModel: { pageSize: 10 } },
+              pagination: { paginationModel: { pageSize: 25 } },
             }}
             onRowOpen={(rowId) => {
               const user = filteredUsers.find((item) => item.id === rowId);

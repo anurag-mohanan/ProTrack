@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db, get_object_or_404
 from app.core.exceptions import ProTrackValidationError
+from app.core.pagination import PaginatedResponse, pagination_query, PaginationParams
 from app.crud.base import CRUDBase
 from app.models.enums import ExecutionStatus, ProjectLifecycleFilter, ProjectStage, TimesheetStatus
 from app.models.models import User
@@ -98,10 +99,9 @@ def build_crud_router(
 
     router = APIRouter(prefix=prefix, tags=tags, dependencies=dependencies)  # type: ignore[arg-type]
 
-    @router.get("", response_model=list[schema_read])
+    @router.get("", response_model=PaginatedResponse[schema_read])
     def list_records(
-        skip: int = Query(0, ge=0),
-        limit: int = Query(100, ge=1, le=500),
+        pagination: PaginationParams = Depends(pagination_query),
         filters: filters_model = Depends(),  # type: ignore[valid-type]
         db: Session = Depends(get_db),
     ):
@@ -110,7 +110,15 @@ def build_crud_router(
             for key, value in filters.model_dump().items()
             if value is not None
         }
-        return crud.get_multi(db, skip=skip, limit=limit, filters=active_filters)
+        return crud.get_multi_paginated(
+            db,
+            page=pagination.page,
+            page_size=pagination.page_size,
+            skip=pagination.skip,
+            limit=pagination.limit,
+            filters=active_filters,
+            sort=pagination.sort,
+        )
 
     @router.get("/{record_id}", response_model=schema_read)
     def get_record(record_id: UUID, db: Session = Depends(get_db)):

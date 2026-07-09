@@ -19,7 +19,8 @@ from app.schemas.communication import (
 )
 from app.schemas.settings import ManualEmailRequest
 from app.services.communication_service import send_customer_template_email, send_one_click_email
-from app.services.email.engine import EmailService, list_email_messages
+from app.core.pagination import PaginatedResponse, pagination_query, PaginationParams
+from app.services.email.engine import EmailService, count_email_messages, list_email_messages
 from app.services.email.template_renderer import EMAIL_TEMPLATE_VARIABLES, preview_template
 from app.services.email_digest_service import (
     queue_daily_engineering_summary,
@@ -77,30 +78,50 @@ def preview_email_template(payload: EmailPreviewRequest):
     return EmailPreviewResponse(**rendered)
 
 
-@router.get("/queue", response_model=list[EmailMessageRead], dependencies=_manager_roles)
+@router.get("/queue", response_model=PaginatedResponse[EmailMessageRead], dependencies=_manager_roles)
 def get_email_queue(
     db: Session = Depends(get_db),
     status_filter: str | None = Query(default=None, alias="status"),
     search: str | None = None,
-    limit: int = Query(default=100, le=500),
+    pagination: PaginationParams = Depends(pagination_query),
 ):
-    return [
-        _serialize_email_message(message)
-        for message in list_email_messages(db, status=status_filter, search=search, limit=limit)
-    ]
+    total = count_email_messages(db, status=status_filter, search=search)
+    messages = list_email_messages(
+        db,
+        status=status_filter,
+        search=search,
+        skip=pagination.skip,
+        limit=pagination.limit,
+    )
+    return PaginatedResponse.build(
+        items=[_serialize_email_message(message) for message in messages],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
 
 
-@router.get("/history", response_model=list[EmailMessageRead], dependencies=_manager_roles)
+@router.get("/history", response_model=PaginatedResponse[EmailMessageRead], dependencies=_manager_roles)
 def get_email_history(
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
     search: str | None = None,
-    limit: int = Query(default=100, le=500),
+    pagination: PaginationParams = Depends(pagination_query),
 ):
-    return [
-        _serialize_email_message(message)
-        for message in list_email_messages(db, project_id=project_id, search=search, limit=limit)
-    ]
+    total = count_email_messages(db, project_id=project_id, search=search)
+    messages = list_email_messages(
+        db,
+        project_id=project_id,
+        search=search,
+        skip=pagination.skip,
+        limit=pagination.limit,
+    )
+    return PaginatedResponse.build(
+        items=[_serialize_email_message(message) for message in messages],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
 
 
 @router.post("/queue/process", dependencies=[Depends(require_roles("Admin", "Engineering Manager"))])

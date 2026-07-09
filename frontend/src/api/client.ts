@@ -128,8 +128,11 @@ apiClient.interceptors.response.use(
 export { setAccessToken, clearAccessToken, getAccessToken };
 
 export interface ListParams {
+  page?: number;
+  page_size?: number;
   skip?: number;
   limit?: number;
+  sort?: string;
   [key: string]: string | number | boolean | string[] | undefined;
 }
 

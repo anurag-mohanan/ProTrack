@@ -311,9 +311,10 @@ def list_email_messages(
     project_id: UUID | None = None,
     search: str | None = None,
     status: str | None = None,
-    limit: int = 100,
+    skip: int = 0,
+    limit: int = 25,
 ) -> list[EmailMessage]:
-    query = select(EmailMessage).order_by(EmailMessage.created_at.desc()).limit(limit)
+    query = select(EmailMessage).order_by(EmailMessage.created_at.desc())
     if project_id is not None:
         query = query.where(EmailMessage.project_id == project_id)
     if status:
@@ -327,4 +328,30 @@ def list_email_messages(
                 EmailMessage.template_slug.ilike(pattern),
             )
         )
-    return list(db.scalars(query).all())
+    return list(db.scalars(query.offset(skip).limit(limit)).all())
+
+
+def count_email_messages(
+    db: Session,
+    *,
+    project_id: UUID | None = None,
+    search: str | None = None,
+    status: str | None = None,
+) -> int:
+    from sqlalchemy import func
+
+    query = select(EmailMessage)
+    if project_id is not None:
+        query = query.where(EmailMessage.project_id == project_id)
+    if status:
+        query = query.where(EmailMessage.status == status)
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.where(
+            or_(
+                EmailMessage.subject.ilike(pattern),
+                EmailMessage.recipients_display.ilike(pattern),
+                EmailMessage.template_slug.ilike(pattern),
+            )
+        )
+    return int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)

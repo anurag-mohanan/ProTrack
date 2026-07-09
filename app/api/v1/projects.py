@@ -13,6 +13,7 @@ from app.api.deps import (
     get_object_or_404,
     status,
 )
+from app.core.pagination import PaginatedResponse, pagination_query, PaginationParams
 from app.api.v1.router_factory import ProjectFilters
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import (
@@ -116,10 +117,9 @@ def _list_projects(
     db: Session,
     current_user: User,
     *,
-    skip: int,
-    limit: int,
+    pagination: PaginationParams,
     filters: ProjectFilters,
-) -> list[ProjectRead]:
+) -> PaginatedResponse[ProjectRead]:
     if filters.lifecycle == ProjectLifecycleFilter.deleted:
         if not can_view_deleted_projects(db, current_user):
             raise HTTPException(
@@ -133,13 +133,24 @@ def _list_projects(
     if role_name not in READ_ALL_PROJECT_ROLES:
         assignment_clause = project_assignment_filter(current_user, role_name)
         if assignment_clause is None:
-            return []
+            return PaginatedResponse.build(
+                items=[],
+                total=0,
+                page=pagination.page,
+                page_size=pagination.page_size,
+            )
 
+    total = project.count_projects(
+        db,
+        lifecycle=lifecycle,
+        filters=active_filters,
+        assignment_clause=assignment_clause,
+    )
     rows = project.query_projects(
         db,
         lifecycle=lifecycle,
-        skip=skip,
-        limit=limit,
+        skip=pagination.skip,
+        limit=pagination.limit,
         filters=active_filters,
         assignment_clause=assignment_clause,
     )
@@ -147,13 +158,18 @@ def _list_projects(
         rows = [row for row in rows if can_read_project(db, current_user, row)]
     from app.crud.project_metrics import build_project_reads
 
-    return build_project_reads(db, rows)
+    items = build_project_reads(db, rows)
+    return PaginatedResponse.build(
+        items=items,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
 
 
-@router.get("", response_model=list[ProjectRead])
+@router.get("", response_model=PaginatedResponse[ProjectRead])
 def list_projects(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    pagination: PaginationParams = Depends(pagination_query),
     customer_id: UUID | None = None,
     customer_ids: list[UUID] | None = Query(None),
     customer_contact_id: UUID | None = None,
@@ -185,13 +201,12 @@ def list_projects(
         project_stage=project_stage,
         lifecycle=lifecycle,
     )
-    return _list_projects(db, current_user, skip=skip, limit=limit, filters=filters)
+    return _list_projects(db, current_user, pagination=pagination, filters=filters)
 
 
-@router.get("/archived", response_model=list[ArchivedProjectListItem])
+@router.get("/archived", response_model=PaginatedResponse[ArchivedProjectListItem])
 def list_archived_projects(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    pagination: PaginationParams = Depends(pagination_query),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -200,33 +215,45 @@ def list_archived_projects(
     if role_name not in READ_ALL_PROJECT_ROLES:
         assignment_clause = project_assignment_filter(current_user, role_name)
         if assignment_clause is None:
-            return []
+            return PaginatedResponse.build(
+                items=[],
+                total=0,
+                page=pagination.page,
+                page_size=pagination.page_size,
+            )
+    total = project.count_projects(
+        db,
+        lifecycle=ProjectLifecycleFilter.archived,
+        assignment_clause=assignment_clause,
+    )
     items = project.get_archived_list(
-        db, skip=skip, limit=limit, assignment_clause=assignment_clause
+        db,
+        skip=pagination.skip,
+        limit=pagination.limit,
+        assignment_clause=assignment_clause,
     )
     if role_name not in READ_ALL_PROJECT_ROLES:
-        return [
+        items = [
             item
             for item in items
             if can_read_project(db, current_user, project.get(db, item.id))
         ]
-    return items
+    return PaginatedResponse.build(
+        items=items,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
 
 
-@router.get("/deleted", response_model=list[ProjectRead])
+@router.get("/deleted", response_model=PaginatedResponse[ProjectRead])
 def list_deleted_projects(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    pagination: PaginationParams = Depends(pagination_query),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not can_view_deleted_projects(db, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
-        )
     filters = ProjectFilters(lifecycle=ProjectLifecycleFilter.deleted)
-    return _list_projects(db, current_user, skip=skip, limit=limit, filters=filters)
+    return _list_projects(db, current_user, pagination=pagination, filters=filters)
 
 
 @router.get("/{record_id}", response_model=ProjectRead)

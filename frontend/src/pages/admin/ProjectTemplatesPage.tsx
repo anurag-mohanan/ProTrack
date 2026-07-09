@@ -211,8 +211,8 @@ export default function ProjectTemplatesPage() {
           rows={filteredTemplates}
           columns={columns}
           autoHeight
-          pageSizeOptions={[10, 25, 50]}
-          initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+          pageSizeOptions={[25, 50, 100]}
+          initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           onRowOpen={(rowId) => {
             const template = filteredTemplates.find((item) => item.id === rowId);
             if (template) setSelectedTemplate(template);

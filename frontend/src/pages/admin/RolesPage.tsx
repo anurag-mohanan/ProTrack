@@ -246,9 +246,9 @@ export default function RolesPage() {
           rows={filteredRoles}
           columns={columns}
           autoHeight
-          pageSizeOptions={[10, 25, 50]}
+          pageSizeOptions={[25, 50, 100]}
           initialState={{
-            pagination: { paginationModel: { pageSize: 10 } },
+            pagination: { paginationModel: { pageSize: 25 } },
           }}
           onRowOpen={(rowId) => {
             const role = filteredRoles.find((item) => item.id === rowId);

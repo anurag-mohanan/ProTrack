@@ -13,6 +13,7 @@ from app.core.access_control import (
     serialize_special_permissions,
 )
 from app.core.permissions import get_role_name, project_assignment_filter
+from app.core.pagination import PaginatedResponse, apply_sort
 from app.core.security import hash_password
 from app.crud.base import CRUDBase
 from app.crud.team import sync_user_team_membership
@@ -81,6 +82,111 @@ def _apply_access_payload(data: dict[str, Any]) -> dict[str, Any]:
 
 
 class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
+    def _user_list_stmt(
+        self,
+        *,
+        role_id: UUID | None = None,
+        is_active: bool | None = None,
+        include_archived: bool = False,
+        include_deleted: bool = False,
+        deleted_only: bool = False,
+    ):
+        stmt = select(User)
+        if deleted_only:
+            stmt = stmt.where(User.is_deleted.is_(True))
+        elif not include_deleted:
+            stmt = stmt.where(User.is_deleted.is_(False))
+        if not include_archived and not deleted_only:
+            stmt = stmt.where(User.is_archived.is_(False))
+        if role_id is not None:
+            stmt = stmt.where(User.role_id == role_id)
+        if is_active is not None:
+            stmt = stmt.where(User.is_active == is_active)
+        return stmt
+
+    def query_users(
+        self,
+        db: Session,
+        *,
+        skip: int = 0,
+        limit: int = 25,
+        role_id: UUID | None = None,
+        is_active: bool | None = None,
+        include_archived: bool = False,
+        include_deleted: bool = False,
+        deleted_only: bool = False,
+        sort: str | None = None,
+    ) -> list[User]:
+        stmt = self._user_list_stmt(
+            role_id=role_id,
+            is_active=is_active,
+            include_archived=include_archived,
+            include_deleted=include_deleted,
+            deleted_only=deleted_only,
+        )
+        stmt = apply_sort(stmt, User, sort or "-created_at")
+        return list(db.scalars(stmt.offset(skip).limit(limit)).all())
+
+    def count_users(
+        self,
+        db: Session,
+        *,
+        role_id: UUID | None = None,
+        is_active: bool | None = None,
+        include_archived: bool = False,
+        include_deleted: bool = False,
+        deleted_only: bool = False,
+    ) -> int:
+        stmt = self._user_list_stmt(
+            role_id=role_id,
+            is_active=is_active,
+            include_archived=include_archived,
+            include_deleted=include_deleted,
+            deleted_only=deleted_only,
+        )
+        return int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+
+    def query_users_paginated(
+        self,
+        db: Session,
+        *,
+        page: int = 1,
+        page_size: int = 25,
+        skip: int | None = None,
+        limit: int | None = None,
+        role_id: UUID | None = None,
+        is_active: bool | None = None,
+        include_archived: bool = False,
+        include_deleted: bool = False,
+        sort: str | None = None,
+    ) -> PaginatedResponse[Any]:
+        resolved_skip = skip if skip is not None else (page - 1) * page_size
+        resolved_limit = limit if limit is not None else page_size
+        resolved_page = (resolved_skip // resolved_limit) + 1 if resolved_limit else page
+        total = self.count_users(
+            db,
+            role_id=role_id,
+            is_active=is_active,
+            include_archived=include_archived,
+            include_deleted=include_deleted,
+        )
+        items = self.query_users(
+            db,
+            skip=resolved_skip,
+            limit=resolved_limit,
+            role_id=role_id,
+            is_active=is_active,
+            include_archived=include_archived,
+            include_deleted=include_deleted,
+            sort=sort,
+        )
+        return PaginatedResponse.build(
+            items=items,
+            total=total,
+            page=resolved_page,
+            page_size=resolved_limit,
+        )
+
     def create(self, db: Session, *, obj_in: UserCreate) -> User:
         data = _apply_access_payload(obj_in.model_dump(exclude={"password"}))
         team_id = data.pop("team_id", None)

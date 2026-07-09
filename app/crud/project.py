@@ -7,6 +7,7 @@ from sqlalchemy import Select, func
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import ProTrackValidationError
+from app.core.pagination import PaginatedResponse
 from app.crud.base import CRUDBase, Session, select
 from app.crud.project_metrics import build_project_read, build_project_reads
 from app.models.enums import (
@@ -495,16 +496,13 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             return None
         return build_project_read(db, db_project)
 
-    def query_projects(
+    def _build_project_query(
         self,
-        db: Session,
         *,
         lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all,
-        skip: int = 0,
-        limit: int = 100,
         filters: dict[str, Any] | None = None,
         assignment_clause=None,
-    ) -> list[Project]:
+    ) -> Select[tuple[Project]]:
         stmt: Select[tuple[Project]] = select(Project)
         stmt = apply_lifecycle_filter(stmt, lifecycle)
         if assignment_clause is not None:
@@ -525,6 +523,38 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
                 if not hasattr(Project, field):
                     continue
                 stmt = stmt.where(getattr(Project, field) == value)
+        return stmt
+
+    def count_projects(
+        self,
+        db: Session,
+        *,
+        lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all,
+        filters: dict[str, Any] | None = None,
+        assignment_clause=None,
+    ) -> int:
+        stmt = self._build_project_query(
+            lifecycle=lifecycle,
+            filters=filters,
+            assignment_clause=assignment_clause,
+        )
+        return int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+
+    def query_projects(
+        self,
+        db: Session,
+        *,
+        lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all,
+        skip: int = 0,
+        limit: int = 100,
+        filters: dict[str, Any] | None = None,
+        assignment_clause=None,
+    ) -> list[Project]:
+        stmt = self._build_project_query(
+            lifecycle=lifecycle,
+            filters=filters,
+            assignment_clause=assignment_clause,
+        )
         stmt = apply_lifecycle_sort(stmt, lifecycle).offset(skip).limit(limit)
         return list(db.scalars(stmt).all())
 

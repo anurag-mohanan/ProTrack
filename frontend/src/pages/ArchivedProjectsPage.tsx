@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Grid, TableCell, TableRow } from '@mui/material';
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,8 +21,10 @@ import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { ProTrackPagination } from '../components/common/ProTrackPagination';
+import { usePagination } from '../hooks/usePagination';
 import {
-  getArchivedProjects,
+  getArchivedProjectsPaginated,
   projectQueryKeys,
   restoreProject,
   softDeleteProject,
@@ -38,12 +40,19 @@ export function ArchivedProjectsPage() {
   const [selectedProject, setSelectedProject] = useState<ArchivedProjectListItem | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const pagination = usePagination();
 
   const archivedQuery = useQuery({
-    queryKey: projectQueryKeys.archived,
-    queryFn: () => getArchivedProjects({ limit: 500 }),
+    queryKey: [...projectQueryKeys.archived, pagination.params],
+    queryFn: () => getArchivedProjectsPaginated(pagination.params),
     staleTime: QUERY_STALE_TIMES.projects,
   });
+
+  useEffect(() => {
+    if (archivedQuery.data) {
+      pagination.setTotal(archivedQuery.data.total);
+    }
+  }, [archivedQuery.data, pagination.setTotal]);
 
   const restoreMutation = useMutation({
     mutationFn: restoreProject,
@@ -67,7 +76,7 @@ export function ArchivedProjectsPage() {
     onError: (error: Error) => showError(error.message),
   });
 
-  const rows = useMemo(() => archivedQuery.data ?? [], [archivedQuery.data]);
+  const rows = useMemo(() => archivedQuery.data?.items ?? [], [archivedQuery.data]);
   const canDelete = canSoftDeleteProject(user?.role_name ?? '');
 
   if (archivedQuery.error) return <ErrorState error={archivedQuery.error} />;
@@ -118,6 +127,17 @@ export function ArchivedProjectsPage() {
               </ClickableTableRow>
             ))}
           </ProsohmTable>
+          <ProTrackPagination
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            total={pagination.total}
+            pages={pagination.pages}
+            rangeStart={pagination.rangeStart}
+            rangeEnd={pagination.rangeEnd}
+            loading={archivedQuery.isFetching}
+            onPageChange={pagination.goToPage}
+            onPageSizeChange={pagination.setPageSize}
+          />
         </ContentCard>
       )}
 

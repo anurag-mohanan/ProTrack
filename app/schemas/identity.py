@@ -10,6 +10,7 @@ from app.core.password_policy import validate_password_strength
 from app.models.enums import (
     EmploymentType,
     SkillLevel,
+    TaskTypeFunctionCategory,
     TeamRelationshipType,
     UserAvailabilityStatus,
 )
@@ -50,6 +51,30 @@ class UserTeamAssignmentRead(UserTeamAssignmentBase):
     created_at: datetime | None = None
 
 
+class OperationalRoleTypeRead(BaseModel):
+    id: UUID
+    code: str
+    name: str
+    description: str | None = None
+    dashboard_profile: str
+    default_kpi_engineering_productivity: bool = True
+    default_kpi_capacity_planning: bool = True
+    default_kpi_utilization: bool = True
+    default_kpi_workload_planning: bool = True
+    default_kpi_dashboard_productivity: bool = True
+
+
+class UserKpiConfiguration(BaseModel):
+    operational_role_type_id: UUID | None = None
+    operational_role_name: str | None = None
+    dashboard_profile: str = "engineering"
+    kpi_engineering_productivity: bool = True
+    kpi_capacity_planning: bool = True
+    kpi_utilization: bool = True
+    kpi_workload_planning: bool = True
+    kpi_dashboard_productivity: bool = True
+
+
 class UserBase(BaseModel):
     role_id: UUID
     email: EmailStr
@@ -70,6 +95,12 @@ class UserBase(BaseModel):
     leaving_date: date | None = None
     availability_status: UserAvailabilityStatus = UserAvailabilityStatus.available
     max_allocation_percent: int = 100
+    operational_role_type_id: UUID | None = None
+    kpi_engineering_productivity: bool = True
+    kpi_capacity_planning: bool = True
+    kpi_utilization: bool = True
+    kpi_workload_planning: bool = True
+    kpi_dashboard_productivity: bool = True
 
 
 class UserCreate(BlankOptionalFieldsMixin, UserBase):
@@ -99,6 +130,13 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     leaving_date: date | None = None
     availability_status: UserAvailabilityStatus | None = None
     max_allocation_percent: int | None = Field(default=None, ge=0, le=100)
+    operational_role_type_id: UUID | None = None
+    kpi_engineering_productivity: bool | None = None
+    kpi_capacity_planning: bool | None = None
+    kpi_utilization: bool | None = None
+    kpi_workload_planning: bool | None = None
+    kpi_dashboard_productivity: bool | None = None
+    reset_kpi_defaults: bool = False
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None
     team_assignments: list[UserTeamAssignmentWrite] | None = None
@@ -145,6 +183,7 @@ class UserRead(UserBase, TimestampSchema):
     special_permissions: list[str] | None = None
     resolved_modules: list[str] = Field(default_factory=list)
     resolved_special_permissions: list[str] = Field(default_factory=list)
+    kpi_configuration: UserKpiConfiguration | None = None
 
     @field_validator("module_access", "special_permissions", mode="before")
     @classmethod

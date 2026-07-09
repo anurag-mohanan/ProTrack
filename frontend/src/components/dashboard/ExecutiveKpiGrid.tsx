@@ -201,7 +201,7 @@ export function buildExecutiveKpiSections({
           onClick: () => navigate('/workload'),
         },
         {
-          title: 'Team Productivity',
+          title: 'Engineering Productivity',
           value: dash(`${productivity}%`),
           icon: SpeedRoundedIcon,
           accent: productivity >= 80 ? 'success' : 'warning',

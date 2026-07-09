@@ -39,6 +39,16 @@ export async function fetchNonProductiveCodes(): Promise<NonProductiveCode[]> {
   return data;
 }
 
+export async function fetchOperationalRoles() {
+  const { data } = await apiClient.get<Array<{
+    id: string;
+    code: string;
+    name: string;
+    dashboard_profile: string;
+  }>>('/lookups/operational-roles');
+  return data;
+}
+
 export async function fetchTeams() {
   const { data } = await apiClient.get<import('../types/Team').Team[]>('/lookups/teams');
   return data;

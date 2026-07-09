@@ -49,6 +49,44 @@ export async function fetchDashboardSummary(
   return data;
 }
 
+export interface ManagementKpis {
+  projects_managed: number;
+  projects_delivered: number;
+  overdue_projects: number;
+  pending_reviews: number;
+  pending_milestone_approvals: number;
+  upcoming_deliveries: number;
+  timesheet_compliance_pending: number;
+  team_utilization_percent?: number | null;
+  high_risk_projects: number;
+}
+
+export interface AdministrationKpis {
+  active_users: number;
+  import_queue: number;
+  failed_jobs: number;
+  failed_emails: number;
+  backups_count: number;
+  last_backup?: string | null;
+  audit_actions_7d: number;
+  emails_sent: number;
+  backend_status: string;
+  database_status: string;
+}
+
+export interface RoleKpiSnapshot {
+  dashboard_profile: string;
+  management?: ManagementKpis | null;
+  administration?: AdministrationKpis | null;
+  engineering_productivity_user_count: number;
+  capacity_planning_user_count: number;
+}
+
+export async function fetchRoleKpis(): Promise<RoleKpiSnapshot> {
+  const { data } = await apiClient.get<RoleKpiSnapshot>('/dashboard/role-kpis');
+  return data;
+}
+
 export async function fetchTeamResourcePlanning(teamId?: string) {
   const { data } = await apiClient.get<import('../types/Team').TeamResourcePlanningRow[]>(
     `/dashboard/resource-planning${buildQuery({ team_id: teamId })}`,
@@ -85,4 +123,5 @@ export const dashboardQueryKeys = {
   recentActivity: ['dashboard', 'recent-activity'] as const,
   myTasks: ['dashboard', 'my-tasks'] as const,
   overview: ['dashboard', 'overview'] as const,
+  roleKpis: ['dashboard', 'role-kpis'] as const,
 };

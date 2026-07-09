@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { aiQueryKeys, fetchAiInsights } from '../api/ai';
-import { dashboardQueryKeys, fetchDashboardSummary } from '../api/dashboard';
+import { dashboardQueryKeys, fetchDashboardSummary, fetchRoleKpis } from '../api/dashboard';
 import { fetchSystemHealth } from '../api/system';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
@@ -61,6 +61,13 @@ export function DashboardPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const roleKpisQuery = useQuery({
+    queryKey: dashboardQueryKeys.roleKpis,
+    queryFn: fetchRoleKpis,
+    staleTime: QUERY_STALE_TIMES.dashboard,
+    retry: 1,
+  });
+
   const summary = dashboardQuery.data;
   const loading = dashboardQuery.isLoading;
   const unavailable = dashboardQuery.isError || !summary;
@@ -87,10 +94,11 @@ export function DashboardPage() {
         roleGroup,
         summary,
         systemHealth: systemHealthQuery.data,
+        roleKpis: roleKpisQuery.data,
         unavailable,
         navigate,
       }),
-    [roleGroup, summary, systemHealthQuery.data, unavailable, navigate],
+    [roleGroup, summary, systemHealthQuery.data, roleKpisQuery.data, unavailable, navigate],
   );
 
   if (dashboardQuery.error) {

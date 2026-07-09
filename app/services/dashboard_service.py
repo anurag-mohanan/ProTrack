@@ -63,6 +63,7 @@ from app.schemas.dashboard import (
 )
 from app.schemas.timesheet import ActivityRead
 from app.services.holiday_service import is_holiday
+from app.services.kpi_participation import capacity_planning_users, utilization_users
 
 logger = logging.getLogger(__name__)
 
@@ -784,23 +785,12 @@ def get_designer_availability(
     today = date.today()
     team_user_ids = _designer_user_ids_for_team(db, team_id, team_ids)
 
-    designers = db.scalars(
-        select(User)
-        .join(Role, User.role_id == Role.id)
-        .where(
-            Role.name.in_(WORKLOAD_ROLES),
-            User.is_active.is_(True),
-            User.is_archived.is_(False),
-            User.is_deleted.is_(False),
-        )
-        .order_by(User.last_name, User.first_name)
-    ).all()
+    designers = utilization_users(db)
     if team_user_ids is not None:
         designers = [designer for designer in designers if designer.id in team_user_ids]
-
+    designers.sort(key=lambda person: (person.last_name or "", person.first_name or ""))
     if not designers:
         return DashboardDesignerAvailabilitySummary(), []
-
     designer_ids = [designer.id for designer in designers]
 
     leave_ids = set(

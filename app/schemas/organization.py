@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import DueDateCalculationMode, NonProductiveCodeCategory
+from app.models.enums import DueDateCalculationMode, NonProductiveCodeCategory, TaskTypeFunctionCategory
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
@@ -102,6 +102,7 @@ class TaskTypeBase(BaseModel):
     description: str | None = None
     is_billable: bool = True
     is_active: bool = True
+    function_category: TaskTypeFunctionCategory = TaskTypeFunctionCategory.engineering
 
 
 class TaskTypeCreate(BlankOptionalFieldsMixin, TaskTypeBase):
@@ -114,6 +115,7 @@ class TaskTypeUpdate(BlankOptionalFieldsMixin, BaseModel):
     description: str | None = None
     is_billable: bool | None = None
     is_active: bool | None = None
+    function_category: TaskTypeFunctionCategory | None = None
 
 
 class TaskTypeRead(TaskTypeBase, TimestampSchema):

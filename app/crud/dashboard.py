@@ -70,6 +70,7 @@ from app.services.dashboard_service import (
 from app.services.notification_service import count_unread_notifications
 from app.services.engineering_insights_service import generate_engineering_insights
 from app.services.ai.context import build_ai_context, count_overdue_milestones
+from app.services.kpi_participation import kpi_user_ids_subquery, workload_planning_users
 from app.services.timesheet_compliance_service import get_missing_timesheet_rows
 from app.services.project_calculation_service import (
     aggregate_portfolio_hours,
@@ -273,6 +274,8 @@ def get_dashboard_summary(
         errors=widget_errors,
     )
 
+    engineering_user_ids = kpi_user_ids_subquery("engineering_productivity")
+
     billable_hours = _round_hours(
         _decimal(
             db.scalar(
@@ -280,6 +283,7 @@ def get_dashboard_summary(
                 .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
                 .where(
                     Timesheet.status == TimesheetStatus.approved,
+                    Timesheet.user_id.in_(engineering_user_ids),
                     TimesheetEntry.work_category == WorkCategory.productive,
                     TimesheetEntry.is_billable.is_(True),
                 )
@@ -293,6 +297,7 @@ def get_dashboard_summary(
                 .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
                 .where(
                     Timesheet.status == TimesheetStatus.approved,
+                    Timesheet.user_id.in_(engineering_user_ids),
                     standard_np_hours_clause(),
                 )
             )
@@ -311,6 +316,7 @@ def get_dashboard_summary(
                 .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
                 .where(
                     Timesheet.status == TimesheetStatus.approved,
+                    Timesheet.user_id.in_(engineering_user_ids),
                     TimesheetEntry.work_category == WorkCategory.productive,
                     TimesheetEntry.is_billable.is_(False),
                 )
@@ -714,17 +720,7 @@ def _get_staff_metrics(db: Session, user: User) -> StaffDashboardMetrics | None:
 
 def get_designer_workload(db: Session) -> list[DesignerWorkload]:
     week_start, week_end = _current_week_bounds()
-    users = db.scalars(
-        select(User)
-        .join(Role, User.role_id == Role.id)
-        .where(
-            Role.name.in_(WORKLOAD_ROLES),
-            User.is_active.is_(True),
-            User.is_archived.is_(False),
-            User.is_deleted.is_(False),
-        )
-        .order_by(User.last_name, User.first_name)
-    ).all()
+    users = workload_planning_users(db)
 
     workload: list[DesignerWorkload] = []
     for user in users:

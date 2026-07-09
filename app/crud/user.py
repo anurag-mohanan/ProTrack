@@ -20,7 +20,14 @@ from app.crud.team import sync_user_team_membership  # noqa: F401 — re-exporte
 from app.models.enums import TeamRelationshipType
 from app.models.models import Project, Team, User
 from app.models.foundation import Department
-from app.schemas.identity import UserCreate, UserRead, UserUpdate, UserTeamAssignmentRead
+from app.schemas.identity import (
+    UserCreate,
+    UserKpiConfiguration,
+    UserRead,
+    UserUpdate,
+    UserTeamAssignmentRead,
+)
+from app.services.kpi_participation import apply_defaults_for_user, get_user_dashboard_profile
 from app.services.user_team_service import (
     UserTeamAssignmentInput,
     list_user_team_assignments,
@@ -91,6 +98,16 @@ def build_user_read(db: Session, user: User) -> UserRead:
             "special_permissions": parse_access_list(user.special_permissions),
             "resolved_modules": resolve_user_modules(user, role_name),
             "resolved_special_permissions": resolve_user_special_permissions(user, role_name),
+            "kpi_configuration": UserKpiConfiguration(
+                operational_role_type_id=user.operational_role_type_id,
+                operational_role_name=user.operational_role_type.name if user.operational_role_type else None,
+                dashboard_profile=get_user_dashboard_profile(user),
+                kpi_engineering_productivity=user.kpi_engineering_productivity,
+                kpi_capacity_planning=user.kpi_capacity_planning,
+                kpi_utilization=user.kpi_utilization,
+                kpi_workload_planning=user.kpi_workload_planning,
+                kpi_dashboard_productivity=user.kpi_dashboard_productivity,
+            ),
         }
     )
 
@@ -259,6 +276,21 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         )
         db.add(db_obj)
         db.flush()
+        apply_defaults_for_user(
+            db,
+            db_obj,
+            operational_role_type_id=data.get("operational_role_type_id"),
+            reset_kpi_flags=not any(
+                data.get(flag) is not None
+                for flag in (
+                    "kpi_engineering_productivity",
+                    "kpi_capacity_planning",
+                    "kpi_utilization",
+                    "kpi_workload_planning",
+                    "kpi_dashboard_productivity",
+                )
+            ),
+        )
         if team_assignments is not None:
             sync_user_team_assignments(
                 db,
@@ -290,8 +322,16 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         team_id = update_data.pop("team_id", None) if team_id_provided else None
         team_assignments_provided = "team_assignments" in update_data
         team_assignments = update_data.pop("team_assignments", None)
+        reset_kpi_defaults = update_data.pop("reset_kpi_defaults", False)
         update_data = _apply_access_payload(update_data)
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
+        if reset_kpi_defaults or "operational_role_type_id" in update_data or "role_id" in update_data:
+            apply_defaults_for_user(
+                db,
+                updated,
+                operational_role_type_id=updated.operational_role_type_id,
+                reset_kpi_flags=reset_kpi_defaults,
+            )
         if team_assignments_provided:
             sync_user_team_assignments(
                 db,

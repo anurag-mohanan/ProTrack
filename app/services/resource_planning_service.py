@@ -22,7 +22,8 @@ from app.schemas.resource_planning import (
     ResourcePlanningPeriod,
     UnassignedProjectBlock,
 )
-from app.services.dashboard_service import WORKLOAD_ROLES, _batch_current_milestones
+from app.services.dashboard_service import _batch_current_milestones
+from app.services.kpi_participation import capacity_planning_users
 from app.services.holiday_service import is_holiday_cached, load_holiday_dates
 from app.services.project_calculation_service import batch_calculate_hours
 
@@ -212,17 +213,7 @@ def get_resource_planning_grid(
     team_user_ids = _designer_user_ids_for_team(db, team_id)
     holidays = load_holiday_dates(db, anchor, end_date)
 
-    designers = db.scalars(
-        select(User)
-        .join(Role, User.role_id == Role.id)
-        .where(
-            Role.name.in_(WORKLOAD_ROLES),
-            User.is_active.is_(True),
-            User.is_archived.is_(False),
-            User.is_deleted.is_(False),
-        )
-        .order_by(User.last_name, User.first_name)
-    ).all()
+    designers = capacity_planning_users(db)
     if team_user_ids is not None:
         designers = [designer for designer in designers if designer.id in team_user_ids]
 

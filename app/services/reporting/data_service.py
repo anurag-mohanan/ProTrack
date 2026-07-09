@@ -48,7 +48,7 @@ from app.services.holiday_service import load_holiday_dates
 from app.services.project_calculation_service import calculate_hours, calculate_progress
 from app.services.reporting.periods import build_report_period
 
-DESIGN_ROLES = ("Designer", "Senior Designer", "Junior Designer", "Surfacer", "Design Leader")
+from app.services.kpi_participation import engineering_productivity_users
 
 
 def _pct(numerator: Decimal, denominator: Decimal) -> Decimal:
@@ -108,18 +108,7 @@ def _entry_base_filters(start: date, end: date):
 
 
 def _active_designers(db: Session) -> list[User]:
-    return list(
-        db.scalars(
-            select(User)
-            .join(Role, User.role_id == Role.id)
-            .where(
-                Role.name.in_(DESIGN_ROLES),
-                User.is_active.is_(True),
-                User.is_deleted.is_(False),
-            )
-            .order_by(User.first_name, User.last_name)
-        ).all()
-    )
+    return engineering_productivity_users(db)
 
 
 def build_engineering_report(

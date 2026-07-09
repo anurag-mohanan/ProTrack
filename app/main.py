@@ -19,6 +19,7 @@ from app.db.phase10_milestone_schema_sync import ensure_phase10_milestone_founda
 from app.db.phase11_email_schema_sync import ensure_email_foundation
 from app.db.phase12_email_communication_schema_sync import ensure_email_communication_foundation
 from app.db.phase13_multi_team_schema_sync import ensure_phase13_multi_team_foundation
+from app.db.phase14_kpi_schema_sync import ensure_phase14_kpi_foundation
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -74,6 +75,7 @@ async def lifespan(app: FastAPI):
     ensure_timesheet_entry_soft_delete(engine)
     ensure_non_productive_codes(engine)
     ensure_timesheet_entry_leave_count(engine)
+    ensure_phase14_kpi_foundation(engine)
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
     ensure_phase8_foundation(engine)

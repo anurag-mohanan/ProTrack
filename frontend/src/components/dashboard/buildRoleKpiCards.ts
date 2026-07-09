@@ -17,6 +17,7 @@ import TimerRoundedIcon from '@mui/icons-material/TimerRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import type { NavigateFunction } from 'react-router-dom';
+import type { RoleKpiSnapshot } from '../../api/dashboard';
 import type { DashboardSummary } from '../../types';
 import type { SystemHealth } from '../../api/system';
 import type { DashboardRoleGroup } from '../../utils/permissions';
@@ -36,6 +37,7 @@ interface BuildRoleKpiCardsOptions {
   roleGroup: DashboardRoleGroup;
   summary: DashboardSummary | undefined;
   systemHealth: SystemHealth | undefined;
+  roleKpis: RoleKpiSnapshot | undefined;
   unavailable: boolean;
   navigate: NavigateFunction;
 }
@@ -52,17 +54,22 @@ export function buildRoleKpiCards({
   roleGroup,
   summary,
   systemHealth,
+  roleKpis,
   unavailable,
   navigate,
 }: BuildRoleKpiCardsOptions): DashboardKpiItem[] {
-  if (roleGroup === 'admin') {
-    return buildAdminKpiCards({ systemHealth, summary, unavailable, navigate });
+  const profile = roleKpis?.dashboard_profile;
+  if (roleGroup === 'admin' || profile === 'administration') {
+    return buildAdminKpiCards({ systemHealth, summary, roleKpis, unavailable, navigate });
+  }
+  if (roleGroup === 'engineering_manager' || profile === 'management') {
+    return buildManagementKpiCards({ summary, roleKpis, unavailable, navigate });
   }
   if (roleGroup === 'staff') {
     return buildStaffKpiCards({ summary, unavailable, navigate });
   }
   if (roleGroup === 'design_leader') {
-    return buildDesignLeaderKpiCards({ summary, unavailable, navigate });
+    return buildDesignLeaderKpiCards({ summary, roleKpis, unavailable, navigate });
   }
   return buildExecutiveKpiCards({ summary, unavailable, navigate });
 }
@@ -177,7 +184,7 @@ function buildExecutiveKpiCards({
       onClick: () => navigate('/workload'),
     },
     {
-      title: 'Team Productivity',
+      title: 'Engineering Productivity',
       value: dash(`${teamProductivityPercent(summary)}%`, unavailable),
       icon: SpeedRoundedIcon,
       accent: 'info',
@@ -227,18 +234,126 @@ function buildExecutiveKpiCards({
   ];
 }
 
+function buildManagementKpiCards({
+  summary,
+  roleKpis,
+  unavailable,
+  navigate,
+}: {
+  summary: DashboardSummary | undefined;
+  roleKpis: RoleKpiSnapshot | undefined;
+  unavailable: boolean;
+  navigate: NavigateFunction;
+}): DashboardKpiItem[] {
+  const mgmt = roleKpis?.management;
+  const highRisk = mgmt?.high_risk_projects ?? (summary?.red_projects ?? 0) + (summary?.yellow_projects ?? 0);
+  const missingTs = mgmt?.timesheet_compliance_pending ?? summary?.missing_timesheets?.length ?? 0;
+
+  return [
+    {
+      title: 'Projects Managed',
+      value: n(mgmt?.projects_managed ?? summary?.active_projects ?? 0, unavailable),
+      icon: FolderOpenRoundedIcon,
+      accent: 'primary',
+      trend: STABLE_TREND,
+      onClick: () => navigate('/projects?lifecycle=active'),
+    },
+    {
+      title: 'Projects Delivered',
+      value: n(mgmt?.projects_delivered ?? summary?.completed_this_month ?? 0, unavailable),
+      icon: CheckCircleOutlineRoundedIcon,
+      accent: 'success',
+      trend: STABLE_TREND,
+      onClick: () => navigate('/projects?completed=month'),
+    },
+    {
+      title: 'Overdue Projects',
+      value: n(mgmt?.overdue_projects ?? summary?.overdue_projects ?? 0, unavailable),
+      icon: WarningAmberRoundedIcon,
+      accent: (mgmt?.overdue_projects ?? summary?.overdue_projects ?? 0) > 0 ? 'error' : undefined,
+      trend: STABLE_TREND,
+      onClick: () => navigate('/projects?due=overdue'),
+    },
+    {
+      title: 'Pending Reviews',
+      value: n(mgmt?.pending_reviews ?? 0, unavailable),
+      icon: CheckCircleOutlineRoundedIcon,
+      accent: (mgmt?.pending_reviews ?? 0) > 0 ? 'warning' : undefined,
+      trend: STABLE_TREND,
+      onClick: () => navigate('/timesheets'),
+    },
+    {
+      title: 'Milestone Approvals',
+      value: n(mgmt?.pending_milestone_approvals ?? summary?.late_milestones ?? 0, unavailable),
+      icon: ScheduleRoundedIcon,
+      accent: (mgmt?.pending_milestone_approvals ?? 0) > 0 ? 'warning' : undefined,
+      trend: STABLE_TREND,
+      onClick: () => navigate('/projects'),
+    },
+    {
+      title: 'Upcoming Deliveries',
+      value: n(mgmt?.upcoming_deliveries ?? summary?.projects_due_this_week ?? 0, unavailable),
+      icon: TrendingUpRoundedIcon,
+      accent: 'info',
+      trend: STABLE_TREND,
+      onClick: () => navigate('/projects?due=week'),
+    },
+    {
+      title: 'High Risk Projects',
+      value: n(highRisk, unavailable),
+      icon: ErrorOutlineRoundedIcon,
+      accent: highRisk > 0 ? 'error' : undefined,
+      trend: STABLE_TREND,
+      onClick: () => navigate('/projects?health=red'),
+    },
+    {
+      title: 'Missing Timesheets',
+      value: n(missingTs, unavailable),
+      icon: ScheduleRoundedIcon,
+      accent: missingTs > 0 ? 'warning' : undefined,
+      trend: STABLE_TREND,
+      onClick: () => navigate('/timesheets'),
+    },
+    {
+      title: 'Team Utilization',
+      value: dash(
+        mgmt?.team_utilization_percent != null
+          ? `${Math.round(mgmt.team_utilization_percent)}%`
+          : `${designerUtilizationPercent(summary)}%`,
+        unavailable,
+      ),
+      icon: GroupsRoundedIcon,
+      accent: 'info',
+      trend: STABLE_TREND,
+      onClick: () => navigate('/resource-planning'),
+    },
+    {
+      title: 'Engineering Members',
+      value: n(roleKpis?.engineering_productivity_user_count ?? 0, unavailable),
+      icon: PeopleRoundedIcon,
+      accent: 'primary',
+      trend: STABLE_TREND,
+      onClick: () => navigate('/admin/users'),
+    },
+  ];
+}
+
 function buildAdminKpiCards({
   systemHealth,
   summary,
+  roleKpis,
   unavailable,
   navigate,
-}: Pick<BuildRoleKpiCardsOptions, 'summary' | 'systemHealth' | 'unavailable' | 'navigate'>): DashboardKpiItem[] {
-  const dbOk = systemHealth?.database_status === 'ok';
-  const svcOk = systemHealth?.backend_status === 'ok' && systemHealth?.api_status === 'ok';
+}: Pick<BuildRoleKpiCardsOptions, 'summary' | 'systemHealth' | 'roleKpis' | 'unavailable' | 'navigate'>): DashboardKpiItem[] {
+  const admin = roleKpis?.administration;
+  const dbOk = (admin?.database_status ?? systemHealth?.database_status) === 'ok';
+  const svcOk =
+    (admin?.backend_status ?? systemHealth?.backend_status) === 'ok' &&
+    systemHealth?.api_status === 'ok';
   return [
     {
       title: 'Active Users',
-      value: n(systemHealth?.active_users ?? 0, unavailable),
+      value: n(admin?.active_users ?? systemHealth?.active_users ?? 0, unavailable),
       icon: PeopleRoundedIcon,
       accent: 'primary',
       trend: STABLE_TREND,
@@ -262,7 +377,7 @@ function buildAdminKpiCards({
     },
     {
       title: 'Import Queue',
-      value: n(systemHealth?.import_queue ?? summary?.operational_metrics?.pending_import_jobs ?? 0, unavailable),
+      value: n(admin?.import_queue ?? systemHealth?.import_queue ?? summary?.operational_metrics?.pending_import_jobs ?? 0, unavailable),
       icon: ScheduleRoundedIcon,
       accent: (systemHealth?.import_queue ?? 0) > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
@@ -270,19 +385,35 @@ function buildAdminKpiCards({
     },
     {
       title: 'Failed Emails',
-      value: n(systemHealth?.failed_emails ?? 0, unavailable),
+      value: n(admin?.failed_emails ?? systemHealth?.failed_emails ?? 0, unavailable),
       icon: EmailRoundedIcon,
       accent: (systemHealth?.failed_emails ?? 0) > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
       onClick: () => navigate('/admin/settings/email-queue'),
     },
     {
-      title: 'Pending Backups',
-      value: dash(systemHealth?.last_backup ? 'Current' : 'Review', unavailable),
+      title: 'Backups',
+      value: n(admin?.backups_count ?? 0, unavailable),
       icon: StorageRoundedIcon,
-      accent: systemHealth?.last_backup ? 'success' : 'warning',
+      accent: (admin?.last_backup ?? systemHealth?.last_backup) ? 'success' : 'warning',
       trend: STABLE_TREND,
       onClick: () => navigate('/admin/settings/backup'),
+    },
+    {
+      title: 'Emails Sent',
+      value: n(admin?.emails_sent ?? 0, unavailable),
+      icon: EmailRoundedIcon,
+      accent: 'info',
+      trend: STABLE_TREND,
+      onClick: () => navigate('/admin/settings/email-queue'),
+    },
+    {
+      title: 'Audit Actions (7d)',
+      value: n(admin?.audit_actions_7d ?? 0, unavailable),
+      icon: DnsRoundedIcon,
+      accent: 'primary',
+      trend: STABLE_TREND,
+      onClick: () => navigate('/admin/audit/logs'),
     },
     {
       title: 'Storage Usage',
@@ -362,10 +493,16 @@ function buildStaffKpiCards({
 
 function buildDesignLeaderKpiCards({
   summary,
+  roleKpis,
   unavailable,
   navigate,
-}: Omit<BuildRoleKpiCardsOptions, 'roleGroup' | 'systemHealth'>): DashboardKpiItem[] {
-  const pendingReviews = summary?.my_tasks.pending_reviews?.length ?? 0;
+}: {
+  summary: DashboardSummary | undefined;
+  roleKpis: RoleKpiSnapshot | undefined;
+  unavailable: boolean;
+  navigate: NavigateFunction;
+}): DashboardKpiItem[] {
+  const pendingReviews = roleKpis?.management?.pending_reviews ?? summary?.my_tasks.pending_reviews?.length ?? 0;
   const pendingTimesheets = summary?.my_tasks.pending_approvals.length ?? 0;
   return [
     {

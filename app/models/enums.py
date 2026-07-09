@@ -92,6 +92,19 @@ class TeamRelationshipType(enum.Enum):
     reviewer = "reviewer"
 
 
+class DashboardProfile(enum.Enum):
+    engineering = "engineering"
+    management = "management"
+    administration = "administration"
+
+
+class TaskTypeFunctionCategory(enum.Enum):
+    engineering = "engineering"
+    management = "management"
+    administration = "administration"
+    non_productive = "non_productive"
+
+
 class DueDateCalculationMode(enum.Enum):
     from_start = "from_start"
     from_previous_milestone = "from_previous_milestone"

@@ -37,7 +37,15 @@ interface TaskTypeFormState {
   description: string;
   is_billable: boolean;
   is_active: boolean;
+  function_category: 'engineering' | 'management' | 'administration' | 'non_productive';
 }
+
+const FUNCTION_CATEGORY_OPTIONS = [
+  { value: 'engineering', label: 'Engineering' },
+  { value: 'management', label: 'Management' },
+  { value: 'administration', label: 'Administration' },
+  { value: 'non_productive', label: 'Non-Productive' },
+] as const;
 
 const emptyForm: TaskTypeFormState = {
   name: '',
@@ -45,6 +53,7 @@ const emptyForm: TaskTypeFormState = {
   description: '',
   is_billable: true,
   is_active: true,
+  function_category: 'engineering',
 };
 
 export default function TaskTypesPage() {
@@ -117,6 +126,7 @@ export default function TaskTypesPage() {
       description: taskType.description ?? '',
       is_billable: taskType.is_billable,
       is_active: taskType.is_active,
+      function_category: taskType.function_category ?? 'engineering',
     });
     setFormOpen(true);
   };
@@ -139,6 +149,7 @@ export default function TaskTypesPage() {
         description: optionalString(form.description),
         is_billable: form.is_billable,
         is_active: form.is_active,
+        function_category: form.function_category,
       };
       if (editingTaskType) {
         await taskTypesApi.update(editingTaskType.id, payload);
@@ -166,6 +177,19 @@ export default function TaskTypesPage() {
       renderCell: (params) => (
         <Chip
           label={formatCellValue(streamMap.get(params.value as string))}
+          size="small"
+          variant="outlined"
+        />
+      ),
+    },
+    {
+      field: 'function_category',
+      headerName: 'Category',
+      flex: 0.9,
+      minWidth: 130,
+      renderCell: (params) => (
+        <Chip
+          label={String(params.value ?? 'engineering').replace('_', ' ')}
           size="small"
           variant="outlined"
         />
@@ -312,6 +336,20 @@ export default function TaskTypesPage() {
               }
               multiline
               minRows={3}
+            />
+            <FormSelect
+              label="Function Category"
+              value={form.function_category}
+              options={FUNCTION_CATEGORY_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label,
+              }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  function_category: String(event.target.value) as TaskTypeFormState['function_category'],
+                }))
+              }
             />
             <FormControlLabel
               control={

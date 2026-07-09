@@ -25,7 +25,8 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser, setUserTemporaryPassword, setUserMustChangePassword, unlockUser } from '../../api/resources';
 import { fetchDepartments } from '../../api/settings';
-import { fetchTeams } from '../../api/lookups';
+import { fetchOperationalRoles, fetchTeams } from '../../api/lookups';
+import { UserKpiConfiguration } from '../../components/admin/UserKpiConfiguration';
 import { useAuth } from '../../context/AuthContext';
 import { UserTeamAssignments, type UserTeamAssignmentFormValue } from '../../components/admin/UserTeamAssignments';
 import { UserAccessControlSection } from '../../components/admin/UserAccessControlSection';
@@ -80,6 +81,13 @@ interface UserFormState {
   is_active: boolean;
   module_access: ModuleKey[];
   special_permissions: SpecialPermissionKey[];
+  operational_role_type_id: string;
+  kpi_engineering_productivity: boolean;
+  kpi_capacity_planning: boolean;
+  kpi_utilization: boolean;
+  kpi_workload_planning: boolean;
+  kpi_dashboard_productivity: boolean;
+  reset_kpi_defaults: boolean;
 }
 
 const emptyForm: UserFormState = {
@@ -107,6 +115,13 @@ const emptyForm: UserFormState = {
   is_active: true,
   module_access: [],
   special_permissions: [],
+  operational_role_type_id: '',
+  kpi_engineering_productivity: true,
+  kpi_capacity_planning: true,
+  kpi_utilization: true,
+  kpi_workload_planning: true,
+  kpi_dashboard_productivity: true,
+  reset_kpi_defaults: true,
 };
 
 export default function UsersPage() {
@@ -117,6 +132,7 @@ export default function UsersPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [operationalRoles, setOperationalRoles] = useState<Array<{ id: string; name: string; code: string; dashboard_profile: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -189,16 +205,18 @@ export default function UsersPage() {
       if (appliedActiveFilter === 'active') params.is_active = true;
       if (appliedActiveFilter === 'inactive') params.is_active = false;
 
-      const [usersData, rolesData, teamsData, departmentsData] = await Promise.all([
+      const [usersData, rolesData, teamsData, departmentsData, operationalRolesData] = await Promise.all([
         usersApi.list({ ...params, limit: 500 }),
         rolesApi.list(),
         fetchTeams(),
         fetchDepartments(),
+        fetchOperationalRoles(),
       ]);
       setUsers(usersData);
       setRoles(rolesData);
       setTeams(teamsData);
       setDepartments(departmentsData.filter((row) => row.is_active));
+      setOperationalRoles(operationalRolesData);
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -315,9 +333,26 @@ export default function UsersPage() {
       is_active: user.is_active,
       module_access: (user.resolved_modules ?? user.module_access ?? defaultModulesForRole(roleMap.get(user.role_id) ?? '')) as ModuleKey[],
       special_permissions: (user.resolved_special_permissions ?? user.special_permissions ?? defaultSpecialPermissionsForRole(roleMap.get(user.role_id) ?? '')) as SpecialPermissionKey[],
+      operational_role_type_id: user.kpi_configuration?.operational_role_type_id ?? user.operational_role_type_id ?? '',
+      kpi_engineering_productivity: user.kpi_configuration?.kpi_engineering_productivity ?? user.kpi_engineering_productivity ?? true,
+      kpi_capacity_planning: user.kpi_configuration?.kpi_capacity_planning ?? user.kpi_capacity_planning ?? true,
+      kpi_utilization: user.kpi_configuration?.kpi_utilization ?? user.kpi_utilization ?? true,
+      kpi_workload_planning: user.kpi_configuration?.kpi_workload_planning ?? user.kpi_workload_planning ?? true,
+      kpi_dashboard_productivity: user.kpi_configuration?.kpi_dashboard_productivity ?? user.kpi_dashboard_productivity ?? true,
+      reset_kpi_defaults: false,
     });
     setFormOpen(true);
   };
+
+  const buildKpiPayload = () => ({
+    operational_role_type_id: optionalUuid(form.operational_role_type_id),
+    kpi_engineering_productivity: form.kpi_engineering_productivity,
+    kpi_capacity_planning: form.kpi_capacity_planning,
+    kpi_utilization: form.kpi_utilization,
+    kpi_workload_planning: form.kpi_workload_planning,
+    kpi_dashboard_productivity: form.kpi_dashboard_productivity,
+    reset_kpi_defaults: form.reset_kpi_defaults,
+  });
 
   const buildCapacityPayload = () => ({
     department_id: optionalUuid(form.department_id),
@@ -392,6 +427,7 @@ export default function UsersPage() {
           is_active: form.is_active,
           ...identityPayload,
           ...buildCapacityPayload(),
+          ...buildKpiPayload(),
           module_access: form.module_access,
           special_permissions: form.special_permissions,
         });
@@ -412,6 +448,7 @@ export default function UsersPage() {
           is_active: form.is_active,
           ...identityPayload,
           ...buildCapacityPayload(),
+          ...buildKpiPayload(),
           module_access: form.module_access,
           special_permissions: form.special_permissions,
         } as Partial<User> & { password: string; must_change_password?: boolean });
@@ -982,6 +1019,25 @@ export default function UsersPage() {
               </>
             ) : null}
           </FormSection>
+
+          <UserKpiConfiguration
+            operationalRoles={operationalRoles}
+            value={{
+              operational_role_type_id: form.operational_role_type_id,
+              kpi_engineering_productivity: form.kpi_engineering_productivity,
+              kpi_capacity_planning: form.kpi_capacity_planning,
+              kpi_utilization: form.kpi_utilization,
+              kpi_workload_planning: form.kpi_workload_planning,
+              kpi_dashboard_productivity: form.kpi_dashboard_productivity,
+              reset_kpi_defaults: form.reset_kpi_defaults,
+            }}
+            onChange={(next) =>
+              setForm((current) => ({
+                ...current,
+                ...next,
+              }))
+            }
+          />
 
           <UserAccessControlSection
             roleName={roleMap.get(form.role_id) ?? ROLES.DESIGNER}

@@ -13,7 +13,7 @@ from app.models.intelligence import EngineeringChange
 from app.models.models import Milestone, Project, Role, Timesheet, TimesheetEntry, User
 from app.schemas.ai import ProductivityMetrics
 from app.services.ai.base import AiContext, AiModule, round_hours
-from app.services.ai.context import DESIGN_ROLES
+from app.services.kpi_participation import engineering_productivity_users
 
 
 class ProductivityAnalyticsModule(AiModule):
@@ -24,21 +24,11 @@ class ProductivityAnalyticsModule(AiModule):
         team_id = kwargs.get("team_id")
         month_start = ctx.today.replace(day=1)
 
-        users_stmt = (
-            select(User)
-            .join(Role, User.role_id == Role.id)
-            .where(
-                Role.name.in_(DESIGN_ROLES),
-                User.is_active.is_(True),
-                User.is_deleted.is_(False),
-            )
-        )
+        users = engineering_productivity_users(ctx.db)
         if user_id:
-            users_stmt = users_stmt.where(User.id == UUID(str(user_id)))
+            users = [person for person in users if person.id == UUID(str(user_id))]
         if team_id:
-            users_stmt = users_stmt.where(User.team_id == UUID(str(team_id)))
-
-        users = list(ctx.db.scalars(users_stmt).all())
+            users = [person for person in users if person.team_id == UUID(str(team_id))]
         results: list[ProductivityMetrics] = []
 
         for person in users:

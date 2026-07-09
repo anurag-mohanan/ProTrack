@@ -44,13 +44,7 @@ ACTIVE_STATUSES = (
     ExecutionStatus.on_hold,
 )
 
-DESIGN_ROLES = (
-    "Senior Designer",
-    "Designer",
-    "Junior Designer",
-    "Surfacer",
-    "Design Leader",
-)
+from app.services.kpi_participation import engineering_productivity_users
 
 
 def get_active_projects(ctx: AiContext) -> list[Project]:
@@ -120,16 +114,7 @@ def get_designer_utilization(ctx: AiContext) -> list[dict]:
         return cached
 
     week_end = ctx.week_end or ctx.today
-    users = ctx.db.scalars(
-        select(User)
-        .join(Role, User.role_id == Role.id)
-        .where(
-            Role.name.in_(DESIGN_ROLES),
-            User.is_active.is_(True),
-            User.is_archived.is_(False),
-            User.is_deleted.is_(False),
-        )
-    ).all()
+    users = engineering_productivity_users(ctx.db)
 
     rows: list[dict] = []
     capacity = 40.0

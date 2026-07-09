@@ -33,6 +33,7 @@ from app.schemas.reports import (
     TimesheetExportReportRow,
     TopNpActivityReportRow,
 )
+from app.services.kpi_participation import engineering_productivity_users, utilization_users
 from app.services.project_calculation_service import calculate_hours
 
 
@@ -245,7 +246,7 @@ def get_milestone_completion_report(
 
 
 def get_designer_productivity_report(db: Session) -> list[DesignerProductivityReportRow]:
-    users = db.scalars(select(User).where(User.is_active.is_(True))).all()
+    users = engineering_productivity_users(db)
     report: list[DesignerProductivityReportRow] = []
     for user in users:
         timesheets = db.scalars(
@@ -365,7 +366,7 @@ def get_non_productive_hours_report(db: Session) -> list[NonProductiveHoursRepor
 
 
 def get_billable_utilization_report(db: Session) -> list[BillableUtilizationReportRow]:
-    users = db.scalars(select(User).where(User.is_active.is_(True))).all()
+    users = utilization_users(db)
     report: list[BillableUtilizationReportRow] = []
     for user in users:
         entries = db.scalars(

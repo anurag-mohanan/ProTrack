@@ -65,6 +65,22 @@ export interface User {
   special_permissions?: string[] | null;
   resolved_modules?: string[];
   resolved_special_permissions?: string[];
+  operational_role_type_id?: string | null;
+  kpi_engineering_productivity?: boolean;
+  kpi_capacity_planning?: boolean;
+  kpi_utilization?: boolean;
+  kpi_workload_planning?: boolean;
+  kpi_dashboard_productivity?: boolean;
+  kpi_configuration?: {
+    operational_role_type_id?: string | null;
+    operational_role_name?: string | null;
+    dashboard_profile?: string;
+    kpi_engineering_productivity?: boolean;
+    kpi_capacity_planning?: boolean;
+    kpi_utilization?: boolean;
+    kpi_workload_planning?: boolean;
+    kpi_dashboard_productivity?: boolean;
+  };
   created_at?: string;
   updated_at?: string;
 }
@@ -94,6 +110,7 @@ export interface TaskType {
   description: string | null;
   is_billable: boolean;
   is_active: boolean;
+  function_category?: 'engineering' | 'management' | 'administration' | 'non_productive';
 }
 
 export interface Stream {

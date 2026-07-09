@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { ListParams } from '../api/client';
-import type { PaginatedResponse } from '../types/pagination';
+import { ensureArray, type PaginatedResponse } from '../types/pagination';
 import { usePagination } from './usePagination';
 
 export interface UsePaginatedQueryOptions<T> {
@@ -16,6 +16,13 @@ export interface UsePaginatedQueryOptions<T> {
   >;
 }
 
+function serializeParams(params: ListParams): string {
+  const entries = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== '')
+    .sort(([left], [right]) => left.localeCompare(right));
+  return JSON.stringify(entries);
+}
+
 export function usePaginatedQuery<T>({
   queryKey,
   fetcher,
@@ -26,22 +33,27 @@ export function usePaginatedQuery<T>({
 }: UsePaginatedQueryOptions<T>) {
   const pagination = usePagination();
 
+  const filterKey = useMemo(() => serializeParams(filters), [filters]);
+
   const requestParams = useMemo(
     () => ({
       ...pagination.params,
       ...filters,
     }),
-    [pagination.params, filters],
+    [pagination.params, filterKey, filters],
   );
 
-  const filterKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const requestKey = useMemo(
+    () => serializeParams(requestParams),
+    [requestParams],
+  );
 
   useEffect(() => {
     pagination.resetPage();
   }, [filterKey, pagination.resetPage]);
 
   const query = useQuery({
-    queryKey: [...queryKey, requestParams],
+    queryKey: [...queryKey, requestKey],
     queryFn: () => fetcher(requestParams),
     enabled,
     staleTime,
@@ -50,14 +62,19 @@ export function usePaginatedQuery<T>({
 
   useEffect(() => {
     if (query.data) {
-      pagination.setTotal(query.data.total_records ?? query.data.total);
+      pagination.setTotal(query.data.total_records ?? query.data.total ?? 0);
     }
   }, [query.data, pagination.setTotal]);
+
+  const items = useMemo(
+    () => ensureArray<T>(query.data?.items),
+    [query.data?.items],
+  );
 
   return {
     pagination,
     query,
-    items: query.data?.items ?? [],
+    items,
     data: query.data,
   };
 }

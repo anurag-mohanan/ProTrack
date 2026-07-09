@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Chip, IconButton, Stack, Tooltip } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -11,6 +11,8 @@ import { PageContainer } from '../../components/common/PageContainer';
 import { PaginatedDataGrid } from '../../components/common/PaginatedDataGrid';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
+import { EmptyState } from '../../components/common/EmptyState';
+import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import {
@@ -21,7 +23,6 @@ import {
 } from '../../api/projectTemplates';
 import type { ProjectTemplate } from '../../types/ProjectTemplate';
 import { ContentCard } from '../../components/ui/cards';
-import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
   DrawerQuickActions,
   FormField,
@@ -44,14 +45,29 @@ export default function ProjectTemplatesPage() {
   const { showSuccess, showError } = useToast();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [selectedTemplate, setSelectedTemplate] = useState<ProjectTemplate | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
+
+  const listFilters = useMemo(() => {
+    const params: Record<string, string> = {};
+    if (debouncedSearch.trim()) {
+      params.search = debouncedSearch.trim();
+    }
+    return params;
+  }, [debouncedSearch]);
 
   const { pagination, query, items: templates } = usePaginatedQuery({
     queryKey: ['project-templates'],
     fetcher: fetchProjectTemplatesPaginated,
-    filters: debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {},
+    filters: listFilters,
   });
+
+  useEffect(() => {
+    if (query.error) {
+      showError(getErrorMessage(query.error));
+    }
+  }, [query.error, showError]);
+
+  const [selectedTemplate, setSelectedTemplate] = useState<ProjectTemplate | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const reload = useCallback(async () => {
     await query.refetch();
@@ -228,17 +244,29 @@ export default function ProjectTemplatesPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <PaginatedDataGrid
-          rows={templates}
-          columns={columns}
-          loading={query.isFetching}
-          autoHeight
-          pagination={pagination}
-          paginationLabel="templates"
-          onRowOpen={(rowId) => {
-            navigate(`/admin/project-templates/${rowId}`);
-          }}
-        />
+        {query.isError ? (
+          <EmptyState
+            title="Unable to load templates"
+            description={getErrorMessage(query.error)}
+            action={
+              <ProsohmButton buttonVariant="outlined" onClick={() => void query.refetch()}>
+                Retry
+              </ProsohmButton>
+            }
+          />
+        ) : (
+          <PaginatedDataGrid
+            rows={templates}
+            columns={columns}
+            loading={query.isFetching}
+            autoHeight
+            pagination={pagination}
+            paginationLabel="templates"
+            onRowOpen={(rowId) => {
+              navigate(`/admin/project-templates/${rowId}`);
+            }}
+          />
+        )}
       </ContentCard>
 
       <RecordDetailDrawer

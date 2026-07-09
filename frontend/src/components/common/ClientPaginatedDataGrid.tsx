@@ -1,5 +1,6 @@
 import { useEffect, useMemo, type ComponentProps } from 'react';
 import type { GridValidRowModel } from '@mui/x-data-grid';
+import { ensureArray } from '../../types/pagination';
 import { usePagination } from '../../hooks/usePagination';
 import { PaginatedDataGrid } from './PaginatedDataGrid';
 
@@ -9,7 +10,7 @@ type PaginatedDataGridProps<R extends GridValidRowModel> = ComponentProps<
 
 export interface ClientPaginatedDataGridProps<R extends GridValidRowModel = GridValidRowModel>
   extends Omit<PaginatedDataGridProps<R>, 'pagination' | 'rows'> {
-  rows: R[];
+  rows: unknown;
   /** Reset to page 1 when filters/search change. */
   filterKey?: string | number;
 }
@@ -20,10 +21,11 @@ export function ClientPaginatedDataGrid<R extends GridValidRowModel = GridValidR
   ...gridProps
 }: ClientPaginatedDataGridProps<R>) {
   const pagination = usePagination();
+  const safeRows = useMemo(() => ensureArray<R>(rows), [rows]);
 
   useEffect(() => {
-    pagination.setTotal(rows.length);
-  }, [rows.length, pagination.setTotal]);
+    pagination.setTotal(safeRows.length);
+  }, [safeRows.length, pagination.setTotal]);
 
   useEffect(() => {
     pagination.resetPage();
@@ -31,8 +33,8 @@ export function ClientPaginatedDataGrid<R extends GridValidRowModel = GridValidR
 
   const pagedRows = useMemo(() => {
     const start = (pagination.page - 1) * pagination.pageSize;
-    return rows.slice(start, start + pagination.pageSize);
-  }, [rows, pagination.page, pagination.pageSize]);
+    return safeRows.slice(start, start + pagination.pageSize);
+  }, [safeRows, pagination.page, pagination.pageSize]);
 
   return (
     <PaginatedDataGrid

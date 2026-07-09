@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 import type { GridValidRowModel } from '@mui/x-data-grid';
+import { ensureArray } from '../../types/pagination';
 import { ProsohmDataGrid } from '../ui/design-system/ProsohmDataGrid';
 import { ProTrackPagination } from './ProTrackPagination';
 import type { UsePaginationResult } from '../../hooks/usePagination';
@@ -17,14 +18,17 @@ export function PaginatedDataGrid<R extends GridValidRowModel = GridValidRowMode
   pagination,
   loading = false,
   paginationLabel = 'records',
+  rows,
   ...gridProps
 }: PaginatedDataGridProps<R>) {
+  const safeRows = ensureArray<R>(rows);
+
   return (
     <>
       <ProsohmDataGrid
         {...gridProps}
-        loading={loading || gridProps.loading}
-        pagination={false}
+        rows={safeRows}
+        loading={loading}
         hideFooter
       />
       <ProTrackPagination

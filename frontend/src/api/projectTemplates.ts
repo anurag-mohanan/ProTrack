@@ -1,5 +1,6 @@
 import { apiClient, buildQuery, type ListParams } from './client';
 import {
+  ensureArray,
   normalizePaginatedResponse,
   unwrapListResponse,
   type PaginatedResponse,
@@ -14,13 +15,13 @@ import type {
 } from '../types/ProjectTemplate';
 
 export async function fetchProjectTypes(): Promise<ProjectType[]> {
-  const { data } = await apiClient.get<ProjectType[]>('/lookups/project-types');
-  return data;
+  const { data } = await apiClient.get<unknown>('/lookups/project-types');
+  return ensureArray<ProjectType>(data);
 }
 
 export async function fetchAdminProjectTypes(): Promise<ProjectType[]> {
-  const { data } = await apiClient.get<ProjectType[]>('/project-types');
-  return data;
+  const { data } = await apiClient.get<unknown>('/project-types');
+  return ensureArray<ProjectType>(data);
 }
 
 export async function createProjectType(payload: {
@@ -45,19 +46,19 @@ export async function deleteProjectType(id: string): Promise<void> {
 }
 
 export async function fetchProjectTemplates(params?: ListParams): Promise<ProjectTemplate[]> {
-  const { data } = await apiClient.get<ProjectTemplate[] | PaginatedResponse<ProjectTemplate>>(
+  const { data } = await apiClient.get<unknown>(
     `/project-templates${buildQuery({ limit: 500, ...params })}`,
   );
-  return unwrapListResponse(data);
+  return unwrapListResponse<ProjectTemplate>(data);
 }
 
 export async function fetchProjectTemplatesPaginated(
   params?: ListParams,
 ): Promise<PaginatedResponse<ProjectTemplate>> {
-  const { data } = await apiClient.get<ProjectTemplate[] | PaginatedResponse<ProjectTemplate>>(
+  const { data } = await apiClient.get<unknown>(
     `/project-templates${buildQuery(params)}`,
   );
-  return normalizePaginatedResponse(data);
+  return normalizePaginatedResponse<ProjectTemplate>(data);
 }
 
 export async function fetchProjectTemplate(id: string): Promise<ProjectTemplateDetail> {

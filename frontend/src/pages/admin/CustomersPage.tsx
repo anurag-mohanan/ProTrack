@@ -23,6 +23,7 @@ import { getErrorMessage } from '../../api/client';
 import { contactsApi, customersApi } from '../../api/resources';
 import { fetchTeams } from '../../api/lookups';
 import { fetchProjectTemplates, fetchProjectTypes } from '../../api/projectTemplates';
+import { ensureArray } from '../../types/pagination';
 import type { Contact, Customer } from '../../types';
 import type { ProjectTemplate, ProjectType } from '../../types/ProjectTemplate';
 import type { Team } from '../../types/Team';
@@ -125,11 +126,16 @@ export default function CustomersPage() {
           fetchProjectTypes(),
           fetchProjectTemplates(),
         ]);
-      setCustomers(customersData);
-      setContacts(contactsData);
-      setTeams(teamsData.filter((team) => team.is_active));
-      setProjectTypes(typesData.filter((type) => type.is_active));
-      setProjectTemplates(templatesData.filter((template) => template.is_active));
+      const safeCustomers = ensureArray<Customer>(customersData);
+      const safeContacts = ensureArray<Contact>(contactsData);
+      const safeTeams = ensureArray<Team>(teamsData);
+      const safeTypes = ensureArray<ProjectType>(typesData);
+      const safeTemplates = ensureArray<ProjectTemplate>(templatesData);
+      setCustomers(safeCustomers);
+      setContacts(safeContacts);
+      setTeams(safeTeams.filter((team) => team.is_active));
+      setProjectTypes(safeTypes.filter((type) => type.is_active));
+      setProjectTemplates(safeTemplates.filter((template) => template.is_active));
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {

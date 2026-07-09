@@ -4,6 +4,7 @@ import { AdminSidebar, ADMIN_DRAWER_WIDTH } from '../components/layout/AdminSide
 import { AdminTopBar } from '../components/layout/AdminTopBar';
 import { AppFooter } from '../components/layout/AppFooter';
 import { ImpersonationBanner } from '../components/layout/ImpersonationBanner';
+import { PageErrorBoundary } from '../components/common/PageErrorBoundary';
 import { useAuth } from '../context/AuthContext';
 
 export function AdminLayout() {
@@ -39,7 +40,9 @@ export function AdminLayout() {
           >
             <Toolbar sx={{ minHeight: '64px !important' }} />
             <Box sx={{ flexGrow: 1, p: { xs: 1.5, md: 2 }, minWidth: 0 }}>
-              <Outlet />
+              <PageErrorBoundary title="This admin section could not be loaded.">
+                <Outlet />
+              </PageErrorBoundary>
             </Box>
             <AppFooter />
           </Box>

@@ -5,6 +5,7 @@ import { AppSidebar, DRAWER_WIDTH } from '../components/layout/AppSidebar';
 import { AppFooter } from '../components/layout/AppFooter';
 import { AppTopBar } from '../components/layout/AppTopBar';
 import { ImpersonationBanner } from '../components/layout/ImpersonationBanner';
+import { PageErrorBoundary } from '../components/common/PageErrorBoundary';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -88,7 +89,9 @@ export function MainLayout() {
           >
             <Toolbar sx={{ minHeight: '64px !important' }} />
             <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, minWidth: 0 }}>
-              <Outlet />
+              <PageErrorBoundary title="This section could not be loaded.">
+                <Outlet />
+              </PageErrorBoundary>
             </Box>
             <AppFooter />
           </Box>

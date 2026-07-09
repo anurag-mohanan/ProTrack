@@ -22,6 +22,7 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import AddIcon from '@mui/icons-material/Add';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -35,13 +36,14 @@ import { StickyRecordHeader } from '../../components/ui/design-system';
 import { APP_TOP_BAR_OFFSET } from '../../components/ui/design-system/StickyRecordHeader';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
-import { fetchUsers } from '../../api/lookups';
+import { fetchCustomers, fetchUsers } from '../../api/lookups';
 import {
   createProjectTemplate,
   fetchAdminProjectTypes,
   fetchProjectTemplate,
   updateProjectTemplate,
 } from '../../api/projectTemplates';
+import { ensureArray } from '../../types/pagination';
 import type {
   ProjectTemplateMilestoneInput,
   ProjectType,
@@ -130,9 +132,11 @@ export default function ProjectTemplateEditorPage() {
       fetchCustomers(),
       fetchUsers(),
     ]);
-    setProjectTypes(types.filter((type) => type.is_active));
-    setCustomers(customerRows.filter((customer) => customer.is_active));
-    setUsers(userRows);
+    const safeTypes = ensureArray<ProjectType>(types);
+    const safeCustomers = ensureArray<Customer>(customerRows);
+    setProjectTypes(safeTypes.filter((type) => type.is_active));
+    setCustomers(safeCustomers.filter((customer) => customer.is_active));
+    setUsers(ensureArray(userRows));
   }, []);
 
   const loadTemplate = useCallback(async () => {

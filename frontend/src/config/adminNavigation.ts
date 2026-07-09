@@ -169,7 +169,7 @@ const ALL_AUDIT_ITEMS: AdminHubItem[] = [
   { id: 'deleted-users', title: 'Deleted Users', description: 'Review and restore deleted user accounts.', icon: PeopleIcon, path: '/admin/deleted-users' },
   { id: 'deleted-timesheets', title: 'Deleted Timesheet Entries', description: 'Audit and restore soft-deleted timesheet rows.', icon: ScheduleIcon, path: '/admin/deleted-timesheet-entries' },
   { id: 'archived-records', title: 'Archived Records', description: 'Review archived engineering projects.', icon: ArchiveIcon, path: '/projects/archived' },
-  { id: 'system-health', title: 'System Health', description: 'Version, services, and runtime status.', icon: MonitorHeartIcon, path: '/admin/system' },
+  { id: 'system-health', title: 'System Health', description: 'Operations center — services, diagnostics, backups, and alerts.', icon: MonitorHeartIcon, path: '/admin/system' },
   { id: 'rebuild-timesheet-stats', title: 'Rebuild Timesheet Statistics', description: 'Recalculate all timesheet summaries and repair data.', icon: RefreshIcon, path: '/admin/rebuild-timesheet-stats' },
   { id: 'import-history', title: 'Import History', description: 'Historical import audit trail.', icon: WorkHistoryIcon, path: '/admin/imports/historical-timesheets#history' },
 ];

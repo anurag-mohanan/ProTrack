@@ -127,7 +127,8 @@ function AdminHistoricalTimesheetImportRoute() {
 
 function AdminSystemRoute() {
   const { user } = useAuth();
-  if (!accessContextFromUser(user).role_name || user?.role_name !== ROLES.ADMIN) {
+  const role = user?.role_name ?? '';
+  if (role !== ROLES.ADMIN && role !== ROLES.ENGINEERING_MANAGER) {
     return <Navigate to="/admin/dashboard" replace />;
   }
   return (

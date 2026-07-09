@@ -10,6 +10,7 @@ from app.core.config import APP_VERSION, INTERNAL_RELEASE, RELEASE_CANDIDATE, UP
 from app.models.enums import ActivityAction
 from app.models.models import Activity, TimesheetImportHistory, User
 from app.schemas.system import SystemHealthRead
+from app.services.backup_service import list_database_backups
 
 
 def _format_bytes(value: int) -> str:
@@ -119,6 +120,14 @@ def get_system_health(db: Session) -> SystemHealthRead:
     except Exception:
         failed_emails = 0
 
+    last_backup = None
+    backups = list_database_backups()
+    if backups:
+        try:
+            last_backup = datetime.fromisoformat(backups[0]["modified_at"])
+        except (KeyError, ValueError):
+            last_backup = None
+
     return SystemHealthRead(
         backend_status=backend_status,
         database_status=database_status,
@@ -129,7 +138,7 @@ def get_system_health(db: Session) -> SystemHealthRead:
         active_users=active_users,
         storage_usage_bytes=storage_bytes,
         storage_usage_label=_format_bytes(storage_bytes),
-        last_backup=None,
+        last_backup=last_backup,
         import_queue=import_queue,
         failed_jobs=failed_jobs,
         failed_emails=failed_emails,

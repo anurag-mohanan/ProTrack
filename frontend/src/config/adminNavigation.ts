@@ -170,11 +170,23 @@ const ALL_AUDIT_ITEMS: AdminHubItem[] = [
   { id: 'deleted-timesheets', title: 'Deleted Timesheet Entries', description: 'Audit and restore soft-deleted timesheet rows.', icon: ScheduleIcon, path: '/admin/deleted-timesheet-entries' },
   { id: 'archived-records', title: 'Archived Records', description: 'Review archived engineering projects.', icon: ArchiveIcon, path: '/projects/archived' },
   { id: 'system-health', title: 'System Health', description: 'Operations center — services, diagnostics, backups, and alerts.', icon: MonitorHeartIcon, path: '/admin/system' },
+  { id: 'developer-diagnostics', title: 'Diagnostics', description: 'Hidden developer diagnostics and release validation center.', icon: MonitorHeartIcon, path: '/admin/system/diagnostics' },
+  { id: 'diagnostics-database', title: 'Database', description: 'Database diagnostics and foreign-key validation.', icon: BackupIcon, path: '/admin/system/diagnostics#database' },
+  { id: 'diagnostics-api', title: 'API Monitor', description: 'Endpoint health, response-time, and failure tracking.', icon: AssessmentIcon, path: '/admin/system/diagnostics#api-monitor' },
+  { id: 'diagnostics-background', title: 'Background Services', description: 'Worker and scheduler status with uptime.', icon: RefreshIcon, path: '/admin/system/diagnostics#background-services' },
+  { id: 'diagnostics-logs', title: 'Logs', description: 'Runtime error grouping and live logs.', icon: HistoryIcon, path: '/admin/system/diagnostics#logs' },
   { id: 'rebuild-timesheet-stats', title: 'Rebuild Timesheet Statistics', description: 'Recalculate all timesheet summaries and repair data.', icon: RefreshIcon, path: '/admin/rebuild-timesheet-stats' },
   { id: 'import-history', title: 'Import History', description: 'Historical import audit trail.', icon: WorkHistoryIcon, path: '/admin/imports/historical-timesheets#history' },
 ];
 
 export const ADMIN_AUDIT_ITEMS: AdminHubItem[] = ALL_AUDIT_ITEMS;
+
+export const getAdminAuditItems = (roleName: string): AdminHubItem[] => {
+  if (roleName === ROLES.ADMIN) {
+    return ALL_AUDIT_ITEMS;
+  }
+  return ALL_AUDIT_ITEMS.filter((item) => !item.id.startsWith('diagnostics-') && item.id !== 'developer-diagnostics');
+};
 
 export const ADMIN_REPORT_ITEMS: AdminHubItem[] = [
   { id: 'import-history', title: 'Import History', description: 'Historical import audit.', icon: HistoryIcon, path: '/admin/imports/historical-timesheets#history' },

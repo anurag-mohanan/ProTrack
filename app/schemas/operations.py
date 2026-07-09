@@ -228,3 +228,122 @@ class OperationsCenterSnapshot(BaseModel):
     alerts: list[HealthAlert] = Field(default_factory=list)
     application_version: str
     release_candidate: str
+
+
+class TableDiagnosticsRow(BaseModel):
+    table: str
+    records: int = 0
+    status: HealthLevel = "unknown"
+    last_updated: datetime | None = None
+    missing_fk: int = 0
+    duplicate_keys: int = 0
+    issues: int = 0
+
+
+class RelationshipDiagnosticsRow(BaseModel):
+    name: str
+    status: Literal["pass", "fail", "warning"]
+    broken_references: int = 0
+    detail: str | None = None
+
+
+class DefaultDataCheckRow(BaseModel):
+    name: str
+    status: Literal["pass", "warning", "fail"]
+    detail: str | None = None
+    restore_action: str | None = None
+
+
+class CustomerTemplateValidationRow(BaseModel):
+    customer: str
+    template_name: str
+    expected_milestones: int
+    actual_milestones: int
+    status: Literal["pass", "warning", "fail"]
+    missing_milestones: list[str] = Field(default_factory=list)
+
+
+class ApiDiagnosticsRow(BaseModel):
+    method: str
+    endpoint: str
+    status: Literal["pass", "warning", "fail"]
+    response_time_ms: int = 0
+    payload_size_bytes: int = 0
+    last_error: str | None = None
+
+
+class CrudVerificationRow(BaseModel):
+    resource: str
+    read: bool = False
+    create: bool = False
+    update: bool = False
+    delete: bool = False
+    search: bool = False
+    sort: bool = False
+    pagination: bool = False
+    filters: bool = False
+
+
+class PaginationVerificationRow(BaseModel):
+    resource: str
+    status: Literal["pass", "warning", "fail"]
+    page_1_rows: int = 0
+    page_2_rows: int = 0
+    page_3_rows: int = 0
+    total_records: int = 0
+    total_pages: int = 0
+    detail: str | None = None
+
+
+class RuntimeErrorSummaryRow(BaseModel):
+    error_key: str
+    category: str
+    count: int = 0
+    severity: Literal["info", "warning", "critical"] = "warning"
+    last_seen_at: datetime | None = None
+    sample_message: str | None = None
+
+
+class VersionDiagnostics(BaseModel):
+    application_version: str
+    build_number: str | None = None
+    git_commit: str | None = None
+    release_date: str | None = None
+    database_version: str | None = None
+    python_version: str
+    node_version: str | None = None
+    react_version: str | None = None
+    fastapi_version: str | None = None
+    sqlite_version: str | None = None
+
+
+class ReleaseValidationReport(BaseModel):
+    generated_at: datetime
+    pages_tested: int = 0
+    api_tested: int = 0
+    database_checks: int = 0
+    passed: int = 0
+    warnings: int = 0
+    critical: int = 0
+    status: Literal["ready", "warning", "blocked"] = "ready"
+    status_label: str = "READY FOR INTERNAL RELEASE"
+    duration_ms: int = 0
+    modules: list[DiagnosticResult] = Field(default_factory=list)
+
+
+class DeveloperDiagnosticsSummary(BaseModel):
+    generated_at: datetime
+    overall_status: HealthLevel
+    overall_score: int = 0
+    last_checked: datetime
+    summary_cards: list[ServiceCard] = Field(default_factory=list)
+    database_tables: list[TableDiagnosticsRow] = Field(default_factory=list)
+    relationships: list[RelationshipDiagnosticsRow] = Field(default_factory=list)
+    default_data: list[DefaultDataCheckRow] = Field(default_factory=list)
+    customer_templates: list[CustomerTemplateValidationRow] = Field(default_factory=list)
+    api_monitor: list[ApiDiagnosticsRow] = Field(default_factory=list)
+    crud_checks: list[CrudVerificationRow] = Field(default_factory=list)
+    pagination_checks: list[PaginationVerificationRow] = Field(default_factory=list)
+    runtime_errors: list[RuntimeErrorSummaryRow] = Field(default_factory=list)
+    release_validation: ReleaseValidationReport | None = None
+    version: VersionDiagnostics

@@ -187,6 +187,123 @@ export interface DiagnosticsReport {
   results: DiagnosticResult[];
 }
 
+export interface TableDiagnosticsRow {
+  table: string;
+  records: number;
+  status: HealthLevel;
+  last_updated: string | null;
+  missing_fk: number;
+  duplicate_keys: number;
+  issues: number;
+}
+
+export interface RelationshipDiagnosticsRow {
+  name: string;
+  status: 'pass' | 'warning' | 'fail';
+  broken_references: number;
+  detail?: string | null;
+}
+
+export interface DefaultDataCheckRow {
+  name: string;
+  status: 'pass' | 'warning' | 'fail';
+  detail?: string | null;
+  restore_action?: string | null;
+}
+
+export interface CustomerTemplateValidationRow {
+  customer: string;
+  template_name: string;
+  expected_milestones: number;
+  actual_milestones: number;
+  status: 'pass' | 'warning' | 'fail';
+  missing_milestones: string[];
+}
+
+export interface CrudVerificationRow {
+  resource: string;
+  read: boolean;
+  create: boolean;
+  update: boolean;
+  delete: boolean;
+  search: boolean;
+  sort: boolean;
+  pagination: boolean;
+  filters: boolean;
+}
+
+export interface PaginationVerificationRow {
+  resource: string;
+  status: 'pass' | 'warning' | 'fail';
+  page_1_rows: number;
+  page_2_rows: number;
+  page_3_rows: number;
+  total_records: number;
+  total_pages: number;
+  detail?: string | null;
+}
+
+export interface RuntimeErrorSummaryRow {
+  error_key: string;
+  category: string;
+  count: number;
+  severity: 'info' | 'warning' | 'critical';
+  last_seen_at: string | null;
+  sample_message?: string | null;
+}
+
+export interface VersionDiagnostics {
+  application_version: string;
+  build_number?: string | null;
+  git_commit?: string | null;
+  release_date?: string | null;
+  database_version?: string | null;
+  python_version: string;
+  node_version?: string | null;
+  react_version?: string | null;
+  fastapi_version?: string | null;
+  sqlite_version?: string | null;
+}
+
+export interface ReleaseValidationReport {
+  generated_at: string;
+  pages_tested: number;
+  api_tested: number;
+  database_checks: number;
+  passed: number;
+  warnings: number;
+  critical: number;
+  status: 'ready' | 'warning' | 'blocked';
+  status_label: string;
+  duration_ms: number;
+  modules: DiagnosticResult[];
+}
+
+export interface DeveloperDiagnosticsSummary {
+  generated_at: string;
+  overall_status: HealthLevel;
+  overall_score: number;
+  last_checked: string;
+  summary_cards: ServiceCard[];
+  database_tables: TableDiagnosticsRow[];
+  relationships: RelationshipDiagnosticsRow[];
+  default_data: DefaultDataCheckRow[];
+  customer_templates: CustomerTemplateValidationRow[];
+  api_monitor: Array<{
+    method: string;
+    endpoint: string;
+    status: 'pass' | 'warning' | 'fail';
+    response_time_ms: number;
+    payload_size_bytes: number;
+    last_error?: string | null;
+  }>;
+  crud_checks: CrudVerificationRow[];
+  pagination_checks: PaginationVerificationRow[];
+  runtime_errors: RuntimeErrorSummaryRow[];
+  release_validation?: ReleaseValidationReport | null;
+  version: VersionDiagnostics;
+}
+
 export interface LogLine {
   timestamp?: string | null;
   level: string;
@@ -233,9 +350,21 @@ export async function fetchOperationsLogs(category: string, limit = 100): Promis
   return data;
 }
 
+export async function fetchDeveloperDiagnosticsSummary(): Promise<DeveloperDiagnosticsSummary> {
+  const { data } = await apiClient.get<DeveloperDiagnosticsSummary>('/system/diagnostics/summary');
+  return data;
+}
+
+export async function runReleaseValidation(): Promise<ReleaseValidationReport> {
+  const { data } = await apiClient.post<ReleaseValidationReport>('/system/diagnostics/release-validation');
+  return data;
+}
+
 export const operationsQueryKeys = {
   all: ['operations'] as const,
   snapshot: ['operations', 'snapshot'] as const,
   history: (period: string) => ['operations', 'history', period] as const,
   logs: (category: string) => ['operations', 'logs', category] as const,
+  diagnosticsSummary: ['operations', 'diagnostics-summary'] as const,
+  releaseValidation: ['operations', 'release-validation'] as const,
 };

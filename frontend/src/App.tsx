@@ -61,6 +61,7 @@ const SecuritySettingsPage = lazy(() => import('./pages/admin/SecuritySettingsPa
 const EngineeringCalendarPage = lazy(() => import('./pages/EngineeringCalendarPage'));
 const AdminAuditHubPage = lazy(() => import('./pages/admin/AdminAuditHubPage'));
 const AdminSystemPage = lazy(() => import('./pages/admin/AdminSystemPage'));
+const DeveloperDiagnosticsPage = lazy(() => import('./pages/admin/DeveloperDiagnosticsPage'));
 const ContactsAdminPage = lazy(() => import('./pages/admin/ContactsPage'));
 const CustomersAdminPage = lazy(() => import('./pages/admin/CustomersPage'));
 const DeletedProjectsAdminPage = lazy(() => import('./pages/admin/DeletedProjectsPage'));
@@ -128,12 +129,25 @@ function AdminHistoricalTimesheetImportRoute() {
 function AdminSystemRoute() {
   const { user } = useAuth();
   const role = user?.role_name ?? '';
-  if (role !== ROLES.ADMIN && role !== ROLES.ENGINEERING_MANAGER) {
+  if (role !== ROLES.ADMIN) {
     return <Navigate to="/admin/dashboard" replace />;
   }
   return (
     <LazyAdmin>
       <AdminSystemPage />
+    </LazyAdmin>
+  );
+}
+
+function AdminDiagnosticsRoute() {
+  const { user } = useAuth();
+  const role = user?.role_name ?? '';
+  if (role !== ROLES.ADMIN) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+  return (
+    <LazyAdmin>
+      <DeveloperDiagnosticsPage />
     </LazyAdmin>
   );
 }
@@ -359,6 +373,7 @@ export default function App() {
                         }
                       />
                       <Route path="/admin/system" element={<AdminSystemRoute />} />
+                      <Route path="/admin/system/diagnostics" element={<AdminDiagnosticsRoute />} />
 
                       <Route
                         path="/admin/users"

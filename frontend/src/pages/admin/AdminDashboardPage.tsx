@@ -4,11 +4,11 @@ import { AdminSearchBar } from '../../components/admin/AdminSearchBar';
 import { AdminSectionCards } from '../../components/admin/AdminSectionCards';
 import { ContentCard } from '../../components/ui/cards';
 import {
-  ADMIN_AUDIT_ITEMS,
   ADMIN_CREATE_ACTIONS,
   ADMIN_IMPORT_ALL_ITEMS,
   ADMIN_MANAGE_ITEMS,
   ADMIN_SETTINGS_ITEMS,
+  getAdminAuditItems,
 } from '../../config/adminNavigation';
 import { useAuth } from '../../context/AuthContext';
 
@@ -37,7 +37,7 @@ export default function AdminDashboardPage() {
         compact
       />
       <AdminSectionCards title="Settings" items={ADMIN_SETTINGS_ITEMS} compact />
-      <AdminSectionCards title="Audit" items={ADMIN_AUDIT_ITEMS} compact />
+      <AdminSectionCards title="Audit" items={getAdminAuditItems(roleName)} compact />
     </Box>
   );
 }

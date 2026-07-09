@@ -101,7 +101,7 @@ export function usePagination({
   const resetPage = useCallback(() => setPageState(1), []);
 
   const goToPage = useCallback((target: number) => {
-    setPageState((current) => {
+    setPageState(() => {
       const totalValue = totalRef.current;
       const size = pageSizeRef.current;
       const safeTarget = Math.max(1, Math.floor(target));

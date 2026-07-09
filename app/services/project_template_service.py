@@ -136,8 +136,32 @@ def resolve_template_for_import(
     )
 
 
-def create_milestones_from_template(
-    db: Session,
+from app.services.milestone_assignment_service import resolve_auto_assigned_user_id
+
+
+def resolve_template_assigned_user(
+    project: Project,
+    *,
+    assigned_role: str | None,
+    default_assigned_user_id: UUID | None,
+) -> UUID | None:
+    if default_assigned_user_id is not None:
+        return default_assigned_user_id
+    if not assigned_role:
+        return resolve_auto_assigned_user_id(project, "")
+    normalized = assigned_role.strip().lower()
+    if normalized in {"designer", "senior designer", "junior designer"}:
+        return project.designer_id
+    if normalized == "surfacer":
+        return project.surfacer_id
+    if normalized in {"design leader", "team leader", "engineering manager"}:
+        return project.design_leader_id
+    if "feasibility" in normalized:
+        return project.surfacer_id
+    return resolve_auto_assigned_user_id(project, assigned_role)
+
+
+def create_milestones_from_template(    db: Session,
     *,
     project: Project,
     template: ProjectTemplate,
@@ -156,9 +180,21 @@ def create_milestones_from_template(
         )
 
     for template_milestone in template_milestones:
+        if template_milestone.is_visible is False:
+            continue
         due_date = None
         if template_milestone.default_due_offset_days is not None:
             due_date = anchor + timedelta(days=template_milestone.default_due_offset_days)
+        assigned_user_id = resolve_template_assigned_user(
+            project,
+            assigned_role=template_milestone.assigned_role,
+            default_assigned_user_id=template_milestone.default_assigned_user_id,
+        )
+        if assigned_user_id is None and template_milestone.assigned_role:
+            assigned_user_id = resolve_auto_assigned_user_id(
+                project,
+                template_milestone.milestone_name,
+            )
         db.add(
             Milestone(
                 project_id=project.id,
@@ -168,6 +204,8 @@ def create_milestones_from_template(
                 sort_order=template_milestone.sort_order,
                 due_date=due_date,
                 planned_hours=template_milestone.estimated_hours or Decimal("0"),
+                assigned_user_id=assigned_user_id,
+                assignment_manual=template_milestone.default_assigned_user_id is not None,
             )
         )
     from app.services.milestone_workspace_service import recalculate_project_planned_hours
@@ -175,6 +213,51 @@ def create_milestones_from_template(
 
     recalculate_project_planned_hours(db, project.id)
     sync_milestone_assignments(db, project.id)
+
+
+def apply_template_to_project(
+    db: Session,
+    *,
+    project: Project,
+    template: ProjectTemplate,
+    anchor_date: date | None = None,
+) -> None:
+    from app.models.models import TimesheetEntry
+
+    existing_milestones = list(
+        db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
+    )
+    milestone_ids = [row.id for row in existing_milestones]
+    if milestone_ids:
+        logged_count = int(
+            db.scalar(
+                select(func.count())
+                .select_from(TimesheetEntry)
+                .where(
+                    TimesheetEntry.milestone_id.in_(milestone_ids),
+                    TimesheetEntry.is_deleted.is_(False),
+                )
+            )
+            or 0
+        )
+        if logged_count > 0:
+            raise ProTrackValidationError(
+                "Cannot replace milestones while timesheet hours are logged against them"
+            )
+    for milestone in existing_milestones:
+        db.delete(milestone)
+    db.flush()
+
+    project.project_template_id = template.id
+    if project.team_id is None and template.default_team_id is not None:
+        project.team_id = template.default_team_id
+        db.add(project)
+    create_milestones_from_template(
+        db,
+        project=project,
+        template=template,
+        anchor_date=anchor_date,
+    )
 
 
 def template_is_in_use(db: Session, template_id: UUID) -> bool:

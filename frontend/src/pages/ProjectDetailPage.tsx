@@ -60,7 +60,7 @@ import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordH
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { archiveProject, invalidateProjectCalculationQueries, restoreProject } from '../services/projectService';
+import { archiveProject, applyProjectTemplate, invalidateProjectCalculationQueries, restoreProject } from '../services/projectService';
 import { formatCellValue, formatDisplayValue, formatDate, formatNumber } from '../utils/format';
 import { canArchiveProject } from '../utils/permissions';
 
@@ -91,6 +91,7 @@ export function ProjectDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
+  const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
   const [folderOpen, setFolderOpen] = useState(false);
   const [ecOpen, setEcOpen] = useState(false);
   const [folderForm, setFolderForm] = useState({
@@ -126,6 +127,16 @@ export function ProjectDetailPage() {
     mutationFn: () => restoreProject(id),
     onSuccess: () => {
       showSuccess('Project restored');
+      invalidate();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const applyTemplateMutation = useMutation({
+    mutationFn: () => applyProjectTemplate(id),
+    onSuccess: () => {
+      showSuccess('Project template applied. Milestones were regenerated.');
+      setApplyTemplateOpen(false);
       invalidate();
     },
     onError: (error: Error) => showError(error.message),
@@ -355,6 +366,15 @@ export function ProjectDetailPage() {
             subtitle="Engineering workflow milestones"
             icon={TimelineRoundedIcon}
           >
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setApplyTemplateOpen(true)}
+              >
+                Apply Project Template
+              </Button>
+            </Box>
             <WorkflowTimeline steps={data.timeline} />
           </CollapsiblePanel>
         </Grid>
@@ -695,6 +715,17 @@ export function ProjectDetailPage() {
             invalidate();
           });
         }}
+      />
+
+      <ConfirmDialog
+        open={applyTemplateOpen}
+        title="Apply Project Template?"
+        message="This will replace all existing milestones with the milestones from the project's template. This action cannot be undone if no timesheet hours are logged against current milestones."
+        confirmLabel="Apply Template"
+        danger
+        loading={applyTemplateMutation.isPending}
+        onClose={() => setApplyTemplateOpen(false)}
+        onConfirm={() => applyTemplateMutation.mutate()}
       />
 
       <ConfirmDialog

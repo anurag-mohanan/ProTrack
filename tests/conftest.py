@@ -189,8 +189,8 @@ def _seed_database(session) -> Milestone:
     session.add(
         Customer(
             id=IDS["customer"],
-            name="TI Automotive",
-            code="TI",
+            name="Prosohm Test Customer",
+            code="PTC",
             is_active=True,
         )
     )

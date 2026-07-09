@@ -11,7 +11,7 @@ import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchContacts, fetchCustomers, fetchStreams, fetchTeams, fetchUsers } from '../../api/lookups';
-import { fetchMatchingProjectTemplates, fetchProjectTypes } from '../../api/projectTemplates';
+import { fetchMatchingProjectTemplates, fetchProjectTemplate, fetchProjectTypes } from '../../api/projectTemplates';
 import {
   createProject,
   invalidateProjectCalculationQueries,
@@ -297,6 +297,40 @@ export function ProjectFormDialog({
     [form.project_template_id, matchingTemplates],
   );
 
+  const templatePreviewQuery = useQuery({
+    queryKey: ['project-template-preview', form.project_template_id],
+    queryFn: () => fetchProjectTemplate(form.project_template_id),
+    enabled: open && !isEdit && Boolean(form.project_template_id),
+  });
+
+  const previewMilestones = useMemo(
+    () =>
+      (templatePreviewQuery.data?.milestones ?? [])
+        .filter((row) => row.is_visible !== false)
+        .slice()
+        .sort((left, right) => left.sort_order - right.sort_order),
+    [templatePreviewQuery.data?.milestones],
+  );
+
+  useEffect(() => {
+    if (isEdit || !open || !form.customer_id || !form.project_type_id) return;
+    if (form.project_template_id) return;
+    const customer = activeCustomers.find((item) => item.id === form.customer_id);
+    if (customer?.default_project_template_id) {
+      setForm((current) => ({
+        ...current,
+        project_template_id: customer.default_project_template_id ?? '',
+      }));
+    }
+  }, [
+    activeCustomers,
+    form.customer_id,
+    form.project_template_id,
+    form.project_type_id,
+    isEdit,
+    open,
+  ]);
+
   useEffect(() => {
     if (isEdit || !open) return;
     if (!form.customer_id || !form.project_type_id) {
@@ -569,10 +603,30 @@ export function ProjectFormDialog({
               </Grid>
             {selectedTemplate ? (
               <Grid size={{ xs: 12 }}>
-                <Typography variant="body2" color="text.secondary">
-                  {selectedTemplate.milestone_count} milestones will be created from this
-                  template.
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  {previewMilestones.length || selectedTemplate.milestone_count} milestones will be
+                  created from this template.
                 </Typography>
+                {previewMilestones.length ? (
+                  <Box
+                    component="ol"
+                    sx={{
+                      m: 0,
+                      pl: 2.5,
+                      color: 'text.secondary',
+                      fontSize: '0.875rem',
+                      maxHeight: 180,
+                      overflow: 'auto',
+                    }}
+                  >
+                    {previewMilestones.map((milestone) => (
+                      <Box component="li" key={`${milestone.sort_order}-${milestone.milestone_name}`}>
+                        {milestone.sort_order}. {milestone.milestone_name}
+                        {milestone.assigned_role ? ` — ${milestone.assigned_role}` : ''}
+                      </Box>
+                    ))}
+                  </Box>
+                ) : null}
               </Grid>
             ) : null}
             </CollapsibleFormSection>

@@ -26,13 +26,14 @@ from app.services.master_data_delete_service import (
 
 router = APIRouter(prefix="/project-templates", tags=["project-templates"])
 admin_access = Depends(require_roles("Admin"))
-write_access = Depends(require_roles("Admin", "Engineering Manager"))
+write_access = Depends(require_roles("Admin"))
 
 
 def _build_template_read(
     template,
     *,
     milestone_count: int | None = None,
+    projects_using_count: int = 0,
 ) -> ProjectTemplateRead:
     count = milestone_count if milestone_count is not None else len(template.milestones)
     return ProjectTemplateRead(
@@ -41,11 +42,13 @@ def _build_template_read(
         description=template.description,
         project_type_id=template.project_type_id,
         customer_id=template.customer_id,
+        default_team_id=template.default_team_id,
         is_default=template.is_default,
         is_active=template.is_active,
         created_at=template.created_at,
         updated_at=template.updated_at,
         milestone_count=count,
+        projects_using_count=projects_using_count,
         project_type_name=template.project_type.name if template.project_type else None,
         customer_name=template.customer.name if template.customer else None,
     )
@@ -93,7 +96,7 @@ def match_project_templates(
 @router.get(
     "",
     response_model=list[ProjectTemplateRead],
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 def list_project_templates(
     skip: int = Query(0, ge=0),
@@ -102,15 +105,21 @@ def list_project_templates(
 ):
     rows = project_template_crud.get_multi_with_counts(db, skip=skip, limit=limit)
     result: list[ProjectTemplateRead] = []
-    for template, milestone_count in rows:
-        result.append(_build_template_read(template, milestone_count=milestone_count))
+    for template, milestone_count, projects_using_count in rows:
+        result.append(
+            _build_template_read(
+                template,
+                milestone_count=milestone_count,
+                projects_using_count=projects_using_count,
+            )
+        )
     return result
 
 
 @router.get(
     "/{record_id}",
     response_model=ProjectTemplateDetailRead,
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 def get_project_template(record_id: UUID, db: Session = Depends(get_db)):
     template = project_template_crud.get_with_milestones(db, record_id)
@@ -135,7 +144,7 @@ def delete_check(record_id: UUID, db: Session = Depends(get_db)):
     "",
     response_model=ProjectTemplateDetailRead,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 def create_project_template(
     obj_in: ProjectTemplateCreate,
@@ -148,7 +157,7 @@ def create_project_template(
 @router.patch(
     "/{record_id}",
     response_model=ProjectTemplateDetailRead,
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 def update_project_template(
     record_id: UUID,
@@ -168,7 +177,7 @@ def update_project_template(
 @router.post(
     "/{record_id}/duplicate",
     response_model=ProjectTemplateDetailRead,
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 def duplicate_project_template(record_id: UUID, db: Session = Depends(get_db)):
     try:
@@ -181,7 +190,7 @@ def duplicate_project_template(record_id: UUID, db: Session = Depends(get_db)):
 @router.post(
     "/{record_id}/deactivate",
     response_model=ProjectTemplateRead,
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 def deactivate_project_template(record_id: UUID, db: Session = Depends(get_db)):
     try:

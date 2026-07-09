@@ -118,6 +118,12 @@ export default function ProjectTemplatesPage() {
       width: 110,
     },
     {
+      field: 'projects_using_count',
+      headerName: 'Projects Using',
+      width: 130,
+      valueGetter: (_value, row) => row.projects_using_count ?? 0,
+    },
+    {
       field: 'is_default',
       headerName: 'Default',
       width: 90,
@@ -214,8 +220,7 @@ export default function ProjectTemplatesPage() {
           pageSizeOptions={[25, 50, 100]}
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           onRowOpen={(rowId) => {
-            const template = filteredTemplates.find((item) => item.id === rowId);
-            if (template) setSelectedTemplate(template);
+            navigate(`/admin/project-templates/${rowId}`);
           }}
         />
       </ContentCard>

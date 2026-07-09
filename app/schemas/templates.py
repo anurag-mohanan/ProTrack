@@ -33,8 +33,11 @@ class ProjectTemplateMilestoneBase(BaseModel):
     sort_order: int = 0
     default_due_offset_days: int | None = None
     is_required: bool = True
+    is_visible: bool = True
     project_stage: ProjectStage | None = None
     estimated_hours: Decimal | None = None
+    assigned_role: str | None = Field(default=None, max_length=100)
+    default_assigned_user_id: UUID | None = None
 
 
 class ProjectTemplateMilestoneCreate(BlankOptionalFieldsMixin, ProjectTemplateMilestoneBase):
@@ -47,8 +50,11 @@ class ProjectTemplateMilestoneUpdate(BlankOptionalFieldsMixin, BaseModel):
     sort_order: int | None = None
     default_due_offset_days: int | None = None
     is_required: bool | None = None
+    is_visible: bool | None = None
     project_stage: ProjectStage | None = None
     estimated_hours: Decimal | None = None
+    assigned_role: str | None = Field(default=None, max_length=100)
+    default_assigned_user_id: UUID | None = None
 
 
 class ProjectTemplateMilestoneRead(ProjectTemplateMilestoneBase, TimestampSchema):
@@ -82,6 +88,7 @@ class ProjectTemplateUpdate(BlankOptionalFieldsMixin, BaseModel):
 
 class ProjectTemplateRead(ProjectTemplateBase, TimestampSchema):
     milestone_count: int = 0
+    projects_using_count: int = 0
     project_type_name: str | None = None
     customer_name: str | None = None
 

@@ -21,7 +21,9 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
@@ -33,7 +35,7 @@ import { StickyRecordHeader } from '../../components/ui/design-system';
 import { APP_TOP_BAR_OFFSET } from '../../components/ui/design-system/StickyRecordHeader';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
-import { fetchCustomers } from '../../api/lookups';
+import { fetchUsers } from '../../api/lookups';
 import {
   createProjectTemplate,
   fetchAdminProjectTypes,
@@ -69,6 +71,16 @@ const emptyForm: TemplateFormState = {
   is_active: true,
 };
 
+const ASSIGNED_ROLE_OPTIONS = [
+  'Designer',
+  'Senior Designer',
+  'Junior Designer',
+  'Surfacer',
+  'Design Leader',
+  'Team Leader',
+  'Engineering Manager',
+] as const;
+
 function createMilestoneRow(
   partial?: Partial<MilestoneRow>,
   sortOrder = 1,
@@ -80,8 +92,11 @@ function createMilestoneRow(
     sort_order: partial?.sort_order ?? sortOrder,
     default_due_offset_days: partial?.default_due_offset_days ?? null,
     is_required: partial?.is_required ?? true,
+    is_visible: partial?.is_visible ?? true,
     project_stage: partial?.project_stage ?? '',
     estimated_hours: partial?.estimated_hours ?? null,
+    assigned_role: partial?.assigned_role ?? 'Designer',
+    default_assigned_user_id: partial?.default_assigned_user_id ?? null,
   };
 }
 
@@ -94,6 +109,7 @@ export default function ProjectTemplateEditorPage() {
   const [saving, setSaving] = useState(false);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [users, setUsers] = useState<Array<{ id: string; first_name: string; last_name: string }>>([]);
   const [form, setForm] = useState<TemplateFormState>(emptyForm);
   const [milestones, setMilestones] = useState<MilestoneRow[]>([]);
   const [editingMilestoneKey, setEditingMilestoneKey] = useState<string | null>(null);
@@ -109,12 +125,14 @@ export default function ProjectTemplateEditorPage() {
   };
 
   const loadLookups = useCallback(async () => {
-    const [types, customerRows] = await Promise.all([
+    const [types, customerRows, userRows] = await Promise.all([
       fetchAdminProjectTypes(),
       fetchCustomers(),
+      fetchUsers(),
     ]);
     setProjectTypes(types.filter((type) => type.is_active));
     setCustomers(customerRows.filter((customer) => customer.is_active));
+    setUsers(userRows);
   }, []);
 
   const loadTemplate = useCallback(async () => {
@@ -142,8 +160,11 @@ export default function ProjectTemplateEditorPage() {
               sort_order: milestone.sort_order,
               default_due_offset_days: milestone.default_due_offset_days,
               is_required: milestone.is_required,
+              is_visible: milestone.is_visible ?? true,
               project_stage: milestone.project_stage ?? '',
               estimated_hours: milestone.estimated_hours ?? null,
+              assigned_role: milestone.assigned_role ?? 'Designer',
+              default_assigned_user_id: milestone.default_assigned_user_id ?? null,
             }),
           ),
       );
@@ -167,8 +188,11 @@ export default function ProjectTemplateEditorPage() {
               sort_order: milestone.sort_order,
               default_due_offset_days: milestone.default_due_offset_days,
               is_required: milestone.is_required,
+              is_visible: milestone.is_visible ?? true,
               project_stage: milestone.project_stage ?? '',
               estimated_hours: milestone.estimated_hours ?? null,
+              assigned_role: milestone.assigned_role ?? 'Designer',
+              default_assigned_user_id: milestone.default_assigned_user_id ?? null,
             }),
           ),
       );
@@ -249,6 +273,31 @@ export default function ProjectTemplateEditorPage() {
     );
   };
 
+  const duplicateMilestone = (row: MilestoneRow) => {
+    setMilestones((current) =>
+      reindexMilestones([
+        ...current,
+        createMilestoneRow(
+          {
+            ...row,
+            key: crypto.randomUUID(),
+            milestone_name: `${row.milestone_name} (Copy)`,
+          },
+          current.length + 1,
+        ),
+      ]),
+    );
+  };
+
+  const moveMilestone = (index: number, direction: -1 | 1) => {
+    const ordered = sortedMilestones.slice();
+    const target = index + direction;
+    if (target < 0 || target >= ordered.length) return;
+    const [moved] = ordered.splice(index, 1);
+    ordered.splice(target, 0, moved);
+    setMilestones(reindexMilestones(ordered));
+  };
+
   const handleDragStart = (index: number) => {
     setDragIndex(index);
   };
@@ -286,7 +335,12 @@ export default function ProjectTemplateEditorPage() {
         customer_id: form.customer_id || null,
         is_default: form.is_default,
         is_active: form.is_active,
-        milestones: sortedMilestones.map(({ key: _key, ...milestone }) => milestone),
+        milestones: sortedMilestones.map(({ key: _key, ...milestone }) => ({
+          ...milestone,
+          project_stage: milestone.project_stage || null,
+          assigned_role: milestone.assigned_role || null,
+          default_assigned_user_id: milestone.default_assigned_user_id || null,
+        })),
       };
 
       if (isNew) {
@@ -446,10 +500,11 @@ export default function ProjectTemplateEditorPage() {
               <TableCell>Milestone Name</TableCell>
               <TableCell>Description</TableCell>
               <TableCell width={120}>Due Offset</TableCell>
-              <TableCell width={120}>Stage</TableCell>
+              <TableCell width={120}>Assigned Role</TableCell>
               <TableCell width={120}>Est. Hours</TableCell>
               <TableCell width={90}>Required</TableCell>
-              <TableCell width={100}>Actions</TableCell>
+              <TableCell width={90}>Visible</TableCell>
+              <TableCell width={140}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -470,10 +525,30 @@ export default function ProjectTemplateEditorPage() {
                 <TableCell>{row.milestone_name}</TableCell>
                 <TableCell>{formatCellValue(row.description)}</TableCell>
                 <TableCell>{formatCellValue(row.default_due_offset_days)}</TableCell>
-                <TableCell>{formatCellValue(row.project_stage)}</TableCell>
+                <TableCell>{formatCellValue(row.assigned_role)}</TableCell>
                 <TableCell>{formatCellValue(row.estimated_hours)}</TableCell>
                 <TableCell>{row.is_required ? 'Yes' : 'No'}</TableCell>
+                <TableCell>{row.is_visible !== false ? 'Yes' : 'No'}</TableCell>
                 <TableCell>
+                  <Tooltip title="Move up">
+                    <IconButton size="small" disabled={index === 0} onClick={() => moveMilestone(index, -1)}>
+                      <ArrowUpwardIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Move down">
+                    <IconButton
+                      size="small"
+                      disabled={index === sortedMilestones.length - 1}
+                      onClick={() => moveMilestone(index, 1)}
+                    >
+                      <ArrowDownwardIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Duplicate">
+                    <IconButton size="small" onClick={() => duplicateMilestone(row)}>
+                      <ContentCopyIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                   <Tooltip title="Edit">
                     <IconButton size="small" onClick={() => openEditMilestone(row)}>
                       <EditIcon fontSize="small" />
@@ -539,23 +614,46 @@ export default function ProjectTemplateEditorPage() {
                   fullWidth
                 />
               </Grid>
-              <Grid size={{ xs: 12, md: 2 }}>
+              <Grid size={{ xs: 12, md: 3 }}>
                 <FormControl fullWidth>
-                  <InputLabel>Stage</InputLabel>
+                  <InputLabel>Assigned Role</InputLabel>
                   <Select
-                    label="Stage"
-                    value={milestoneDraft.project_stage ?? ''}
+                    label="Assigned Role"
+                    value={milestoneDraft.assigned_role ?? 'Designer'}
                     onChange={(event) =>
                       setMilestoneDraft((current) => ({
                         ...current,
-                        project_stage: String(event.target.value),
+                        assigned_role: String(event.target.value),
                       }))
                     }
                   >
-                    <MenuItem value="">None</MenuItem>
-                    <MenuItem value="preliminary">Preliminary</MenuItem>
-                    <MenuItem value="intermediate">Intermediate</MenuItem>
-                    <MenuItem value="final">Final</MenuItem>
+                    {ASSIGNED_ROLE_OPTIONS.map((role) => (
+                      <MenuItem key={role} value={role}>
+                        {role}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Default User (optional)</InputLabel>
+                  <Select
+                    label="Default User (optional)"
+                    value={milestoneDraft.default_assigned_user_id ?? ''}
+                    onChange={(event) =>
+                      setMilestoneDraft((current) => ({
+                        ...current,
+                        default_assigned_user_id: String(event.target.value) || null,
+                      }))
+                    }
+                  >
+                    <MenuItem value="">Auto from role</MenuItem>
+                    {users.map((user) => (
+                      <MenuItem key={user.id} value={user.id}>
+                        {user.first_name} {user.last_name}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
               </Grid>
@@ -588,7 +686,23 @@ export default function ProjectTemplateEditorPage() {
                       }
                     />
                   }
-                  label="Required"
+                  label="Mandatory"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 2 }} sx={{ display: 'flex', alignItems: 'center' }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={milestoneDraft.is_visible !== false}
+                      onChange={(event) =>
+                        setMilestoneDraft((current) => ({
+                          ...current,
+                          is_visible: event.target.checked,
+                        }))
+                      }
+                    />
+                  }
+                  label="Visible"
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>

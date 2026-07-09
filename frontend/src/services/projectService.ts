@@ -159,6 +159,16 @@ export async function permanentDeleteProject(projectId: string): Promise<void> {
   await apiClient.delete(`/projects/${projectId}/permanent`);
 }
 
+export async function applyProjectTemplate(
+  projectId: string,
+  projectTemplateId?: string,
+): Promise<Project> {
+  const { data } = await apiClient.post<Project>(`/projects/${projectId}/apply-template`, {
+    project_template_id: projectTemplateId ?? null,
+  });
+  return data;
+}
+
 export const projectQueryKeys = {
   all: ['projects'] as const,
   list: (params?: ProjectListParams) =>

@@ -13,8 +13,11 @@ export interface ProjectTemplateMilestone extends Timestamped {
   sort_order: number;
   default_due_offset_days: number | null;
   is_required: boolean;
+  is_visible?: boolean;
   project_stage?: string | null;
   estimated_hours?: number | null;
+  assigned_role?: string | null;
+  default_assigned_user_id?: string | null;
 }
 
 export interface ProjectTemplate extends Timestamped {
@@ -22,9 +25,11 @@ export interface ProjectTemplate extends Timestamped {
   description: string | null;
   project_type_id: string;
   customer_id: string | null;
+  default_team_id?: string | null;
   is_default: boolean;
   is_active: boolean;
   milestone_count: number;
+  projects_using_count?: number;
   project_type_name?: string | null;
   customer_name?: string | null;
 }
@@ -51,8 +56,11 @@ export interface ProjectTemplateMilestoneInput {
   sort_order: number;
   default_due_offset_days?: number | null;
   is_required?: boolean;
+  is_visible?: boolean;
   project_stage?: string | null;
   estimated_hours?: number | null;
+  assigned_role?: string | null;
+  default_assigned_user_id?: string | null;
 }
 
 export interface ProjectTemplateCreatePayload {

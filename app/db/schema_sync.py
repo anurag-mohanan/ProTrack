@@ -264,6 +264,14 @@ def ensure_admin_schema(engine: Engine) -> None:
 def ensure_project_template_schema(engine: Engine) -> None:
     dialect = engine.dialect.name
 
+    milestone_columns_sqlite = (
+        ("project_stage", "VARCHAR(32)"),
+        ("estimated_hours", "NUMERIC(8, 2)"),
+        ("assigned_role", "VARCHAR(100)"),
+        ("default_assigned_user_id", "BLOB"),
+        ("is_visible", "BOOLEAN NOT NULL DEFAULT 1"),
+    )
+
     if dialect == "sqlite":
         if not _sqlite_has_column(engine, "projects", "project_type_id"):
             with engine.begin() as connection:
@@ -275,6 +283,15 @@ def ensure_project_template_schema(engine: Engine) -> None:
                 connection.execute(
                     text("ALTER TABLE projects ADD COLUMN project_template_id BLOB")
                 )
+        for column_name, column_type in milestone_columns_sqlite:
+            if not _sqlite_has_column(engine, "project_template_milestones", column_name):
+                with engine.begin() as connection:
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE project_template_milestones "
+                            f"ADD COLUMN {column_name} {column_type}"
+                        )
+                    )
         return
 
     if dialect == "postgresql":
@@ -284,6 +301,44 @@ def ensure_project_template_schema(engine: Engine) -> None:
                     "ALTER TABLE projects "
                     "ADD COLUMN IF NOT EXISTS project_type_id UUID "
                     "REFERENCES project_types(id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE projects "
+                    "ADD COLUMN IF NOT EXISTS project_template_id UUID "
+                    "REFERENCES project_templates(id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE project_template_milestones "
+                    "ADD COLUMN IF NOT EXISTS project_stage VARCHAR(32)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE project_template_milestones "
+                    "ADD COLUMN IF NOT EXISTS estimated_hours NUMERIC(8, 2)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE project_template_milestones "
+                    "ADD COLUMN IF NOT EXISTS assigned_role VARCHAR(100)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE project_template_milestones "
+                    "ADD COLUMN IF NOT EXISTS default_assigned_user_id UUID "
+                    "REFERENCES users(id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "ALTER TABLE project_template_milestones "
+                    "ADD COLUMN IF NOT EXISTS is_visible BOOLEAN NOT NULL DEFAULT TRUE"
                 )
             )
 def ensure_project_stage_and_execution_status(engine: Engine) -> None:

@@ -8,6 +8,7 @@ from app.core.exceptions import ProTrackValidationError
 from app.crud.base import CRUDBase
 from app.models.models import (
     Customer,
+    Project,
     ProjectTemplate,
     ProjectTemplateMilestone,
     ProjectType,
@@ -42,6 +43,27 @@ def _validate_template_references(
             )
 
 
+def _milestone_from_schema(
+    template: ProjectTemplate,
+    milestone: ProjectTemplateMilestoneCreate,
+    *,
+    index: int,
+) -> ProjectTemplateMilestone:
+    return ProjectTemplateMilestone(
+        project_template_id=template.id,
+        milestone_name=milestone.milestone_name,
+        description=milestone.description,
+        sort_order=milestone.sort_order or index,
+        default_due_offset_days=milestone.default_due_offset_days,
+        is_required=milestone.is_required,
+        is_visible=milestone.is_visible,
+        project_stage=milestone.project_stage,
+        estimated_hours=milestone.estimated_hours,
+        assigned_role=milestone.assigned_role,
+        default_assigned_user_id=milestone.default_assigned_user_id,
+    )
+
+
 def _replace_milestones(
     db: Session,
     template: ProjectTemplate,
@@ -52,16 +74,7 @@ def _replace_milestones(
     db.flush()
 
     for index, milestone in enumerate(milestones, start=1):
-        db.add(
-            ProjectTemplateMilestone(
-                project_template_id=template.id,
-                milestone_name=milestone.milestone_name,
-                description=milestone.description,
-                sort_order=milestone.sort_order or index,
-                default_due_offset_days=milestone.default_due_offset_days,
-                is_required=milestone.is_required,
-            )
-        )
+        db.add(_milestone_from_schema(template, milestone, index=index))
 
 
 class CRUDProjectTemplate(
@@ -86,7 +99,7 @@ class CRUDProjectTemplate(
         *,
         skip: int = 0,
         limit: int = 500,
-    ) -> list[tuple[ProjectTemplate, int]]:
+    ) -> list[tuple[ProjectTemplate, int, int]]:
         milestone_count = func.count(ProjectTemplateMilestone.id).label("milestone_count")
         rows = db.execute(
             select(ProjectTemplate, milestone_count)
@@ -103,7 +116,24 @@ class CRUDProjectTemplate(
             .offset(skip)
             .limit(limit)
         ).all()
-        return [(template, int(count)) for template, count in rows]
+        template_ids = [template.id for template, _ in rows]
+        usage_counts: dict[UUID, int] = {}
+        if template_ids:
+            usage_rows = db.execute(
+                select(Project.project_template_id, func.count())
+                .where(
+                    Project.project_template_id.in_(template_ids),
+                    Project.is_deleted.is_(False),
+                )
+                .group_by(Project.project_template_id)
+            ).all()
+            usage_counts = {
+                template_id: int(count) for template_id, count in usage_rows if template_id
+            }
+        return [
+            (template, int(count), usage_counts.get(template.id, 0))
+            for template, count in rows
+        ]
 
     @override
     def create(self, db: Session, *, obj_in: ProjectTemplateCreate) -> ProjectTemplate:
@@ -197,6 +227,7 @@ class CRUDProjectTemplate(
             description=source.description,
             project_type_id=source.project_type_id,
             customer_id=source.customer_id,
+            default_team_id=source.default_team_id,
             is_default=False,
             is_active=True,
         )
@@ -212,6 +243,11 @@ class CRUDProjectTemplate(
                     sort_order=milestone.sort_order,
                     default_due_offset_days=milestone.default_due_offset_days,
                     is_required=milestone.is_required,
+                    is_visible=milestone.is_visible,
+                    project_stage=milestone.project_stage,
+                    estimated_hours=milestone.estimated_hours,
+                    assigned_role=milestone.assigned_role,
+                    default_assigned_user_id=milestone.default_assigned_user_id,
                 )
             )
 

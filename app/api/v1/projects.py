@@ -1,6 +1,12 @@
 import json
 import logging
+from pydantic import BaseModel
 from uuid import UUID
+
+from app.services.project_template_service import (
+    apply_template_to_project,
+    resolve_template,
+)
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import (
@@ -76,6 +82,10 @@ router = APIRouter(
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ApplyProjectTemplateRequest(BaseModel):
+    project_template_id: UUID | None = None
 
 
 def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
@@ -572,6 +582,46 @@ def update_project(
             entity_id=db_project.id,
             action=ActivityAction.project_updated,
             new_value=db_project.code,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return project.get_read(db, record_id)
+
+
+@router.post("/{record_id}/apply-template", response_model=ProjectRead)
+def apply_project_template_endpoint(
+    record_id: UUID,
+    payload: ApplyProjectTemplateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    if db_project.project_type_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Project type is required before applying a template",
+        )
+    try:
+        template = resolve_template(
+            db,
+            project_type_id=db_project.project_type_id,
+            customer_id=db_project.customer_id,
+            template_id=payload.project_template_id or db_project.project_template_id,
+        )
+        apply_template_to_project(db, project=db_project, template=template)
+        db.commit()
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.project,
+            entity_id=db_project.id,
+            action=ActivityAction.project_updated,
+            new_value=f"Applied template: {template.name}",
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc

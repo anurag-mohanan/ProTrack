@@ -165,6 +165,81 @@ def test_template_update_affects_new_projects_only(client, template_db):
     assert [milestone.name for milestone in new_milestones] == ["Kickoff", "Delivery"]
 
 
+def test_template_milestone_fields_persist(client, template_db):
+    mold_type = _get_project_type(template_db, "Mold Design")
+    response = client.post(
+        "/api/v1/project-templates",
+        json={
+            "name": "Field Persistence Template",
+            "project_type_id": str(mold_type.id),
+            "milestones": [
+                {
+                    "milestone_name": "Design Review",
+                    "sort_order": 1,
+                    "is_required": True,
+                    "is_visible": True,
+                    "estimated_hours": "12.50",
+                    "assigned_role": "Designer",
+                    "project_stage": "intermediate",
+                }
+            ],
+        },
+        headers=client.auth_headers,
+    )
+    assert response.status_code == 201, response.text
+    template_id = response.json()["id"]
+    detail = client.get(
+        f"/api/v1/project-templates/{template_id}",
+        headers=client.auth_headers,
+    ).json()
+    milestone = detail["milestones"][0]
+    assert milestone["estimated_hours"] == "12.50"
+    assert milestone["assigned_role"] == "Designer"
+    assert milestone["project_stage"] == "intermediate"
+
+
+def test_apply_template_replaces_milestones(client, template_db):
+    mold_type = _get_project_type(template_db, "Mold Design")
+    general = _get_template(template_db, "General Mold Design")
+    payload = _create_project_payload(
+        template_db,
+        customer_id=IDS["customer"],
+        contact_id=IDS["contact"],
+        project_type_id=mold_type.id,
+        template_id=general.id,
+    )
+    create_response = client.post(
+        "/api/v1/projects", json=payload, headers=client.auth_headers
+    )
+    assert create_response.status_code == 201, create_response.text
+    project_id = create_response.json()["id"]
+
+    client.patch(
+        f"/api/v1/project-templates/{general.id}",
+        json={
+            "milestones": [
+                {"milestone_name": "Kickoff", "sort_order": 1, "is_required": True},
+                {"milestone_name": "Delivery", "sort_order": 2, "is_required": True},
+            ]
+        },
+        headers=client.auth_headers,
+    )
+
+    apply_response = client.post(
+        f"/api/v1/projects/{project_id}/apply-template",
+        json={},
+        headers=client.auth_headers,
+    )
+    assert apply_response.status_code == 200, apply_response.text
+
+    milestones = template_db.scalars(
+        select(Milestone)
+        .where(Milestone.project_id == uuid.UUID(project_id))
+        .order_by(Milestone.sort_order)
+    ).all()
+    assert [milestone.name for milestone in milestones] == ["Kickoff", "Delivery"]
+
+
 def test_duplicate_template(client, template_db):
     source = _get_template(template_db, "General Mold Design")
     response = client.post(
@@ -180,11 +255,26 @@ def test_duplicate_template(client, template_db):
 
 def test_delete_template_in_use_is_blocked(client, template_db):
     mold_type = _get_project_type(template_db, "Mold Design")
-    ti_template = _get_template(template_db, "TI Automotive Mold Design")
+    ti_template = _get_template(template_db, "TI Automotive Template")
+    ti_customer = template_db.scalar(select(Customer).where(Customer.name == "TI Automotive"))
+    assert ti_customer is not None
+    if not ti_customer.contacts:
+        from app.models.models import Contact
+
+        contact = Contact(
+            customer_id=ti_customer.id,
+            first_name="TI",
+            last_name="Contact",
+            is_primary=True,
+            is_active=True,
+        )
+        template_db.add(contact)
+        template_db.commit()
+    contact = ti_customer.contacts[0]
     payload = _create_project_payload(
         template_db,
-        customer_id=IDS["customer"],
-        contact_id=IDS["contact"],
+        customer_id=ti_customer.id,
+        contact_id=contact.id,
         project_type_id=mold_type.id,
         template_id=ti_template.id,
     )

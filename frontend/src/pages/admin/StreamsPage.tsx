@@ -5,6 +5,7 @@ import StreamOutlinedIcon from '@mui/icons-material/StreamOutlined';
 import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
+import { ClientPaginatedDataGrid } from '../../components/common/ClientPaginatedDataGrid';
 import { LoadingState } from '../../components/common/LoadingState';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { useToast } from '../../context/ToastContext';
@@ -18,7 +19,6 @@ import {
   FormDrawer,
   FormField,
   FormSection,
-  ProsohmDataGrid,
   RecordDetailDrawer,
   SearchToolbar,
   TableRowActions,
@@ -58,7 +58,7 @@ export default function StreamsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      setStreams(await streamsApi.list());
+      setStreams(await streamsApi.list({ limit: 500 }));
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -201,14 +201,11 @@ export default function StreamsPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <ProsohmDataGrid
+        <ClientPaginatedDataGrid
           rows={filteredStreams}
           columns={columns}
           autoHeight
-          pageSizeOptions={[25, 50, 100]}
-          initialState={{
-            pagination: { paginationModel: { pageSize: 25 } },
-          }}
+          filterKey={search}
           onRowOpen={(rowId) => {
             const stream = filteredStreams.find((item) => item.id === rowId);
             if (stream) setSelectedStream(stream);

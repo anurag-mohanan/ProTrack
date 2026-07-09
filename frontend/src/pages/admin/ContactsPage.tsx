@@ -6,6 +6,7 @@ import type { GridColDef } from '@mui/x-data-grid';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
+import { ClientPaginatedDataGrid } from '../../components/common/ClientPaginatedDataGrid';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -23,7 +24,6 @@ import {
   FormField,
   FormSection,
   FormSelect,
-  ProsohmDataGrid,
   RecordDetailDrawer,
   FilterDrawer,
   FilterToolbar,
@@ -97,8 +97,8 @@ export default function ContactsPage() {
       const contactParams =
         appliedCustomerFilter !== 'all' ? { customer_id: appliedCustomerFilter } : undefined;
       const [contactsData, customersData, contactTypesData] = await Promise.all([
-        contactsApi.list(contactParams),
-        customersApi.list(),
+          contactsApi.list({ ...contactParams, limit: 500 }),
+        customersApi.list({ limit: 500 }),
         fetchContactTypes(),
       ]);
       setContacts(contactsData);
@@ -338,14 +338,11 @@ export default function ContactsPage() {
       </FilterToolbar>
 
       <ContentCard noPadding>
-        <ProsohmDataGrid
+        <ClientPaginatedDataGrid
           rows={filteredContacts}
           columns={columns}
           autoHeight
-          pageSizeOptions={[25, 50, 100]}
-          initialState={{
-            pagination: { paginationModel: { pageSize: 25 } },
-          }}
+          filterKey={`${search}:${appliedCustomerFilter}`}
           onRowOpen={(rowId) => {
             const contact = filteredContacts.find((item) => item.id === rowId);
             if (contact) setSelectedContact(contact);

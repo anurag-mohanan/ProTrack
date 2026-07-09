@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.models import Customer, ProjectTemplate, ProjectTemplateMilestone, ProjectType
 
@@ -248,6 +248,27 @@ def _add_milestones(
         )
 
 
+def _expected_milestone_names(milestones: list[MilestoneDef]) -> list[str]:
+    return [name for name, *_rest in milestones]
+
+
+def _sync_template_milestones(
+    session: Session,
+    template: ProjectTemplate,
+    milestones: list[MilestoneDef],
+) -> None:
+    existing_names = [
+        milestone.milestone_name
+        for milestone in sorted(template.milestones, key=lambda item: item.sort_order)
+    ]
+    if existing_names == _expected_milestone_names(milestones):
+        return
+    for existing in list(template.milestones):
+        session.delete(existing)
+    session.flush()
+    _add_milestones(session, template, milestones)
+
+
 def _rename_legacy_templates(session: Session) -> None:
     for old_name, new_name in LEGACY_TEMPLATE_NAMES.items():
         legacy = session.scalar(select(ProjectTemplate).where(ProjectTemplate.name == old_name))
@@ -292,9 +313,15 @@ def ensure_project_types_and_templates(session: Session) -> None:
             customer_id = customer.id if customer else None
 
         existing = session.scalar(
-            select(ProjectTemplate).where(ProjectTemplate.name == definition["name"])
+            select(ProjectTemplate)
+            .options(selectinload(ProjectTemplate.milestones))
+            .where(ProjectTemplate.name == definition["name"])
         )
         if existing is not None:
+            if customer_id is not None and existing.customer_id != customer_id:
+                existing.customer_id = customer_id
+                session.add(existing)
+            _sync_template_milestones(session, existing, definition["milestones"])
             continue
 
         template = ProjectTemplate(

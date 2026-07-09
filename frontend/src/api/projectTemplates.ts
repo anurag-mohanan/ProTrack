@@ -1,4 +1,9 @@
-import { apiClient, buildQuery } from './client';
+import { apiClient, buildQuery, type ListParams } from './client';
+import {
+  normalizePaginatedResponse,
+  unwrapListResponse,
+  type PaginatedResponse,
+} from '../types/pagination';
 import type {
   ProjectTemplate,
   ProjectTemplateCreatePayload,
@@ -39,9 +44,20 @@ export async function deleteProjectType(id: string): Promise<void> {
   await apiClient.delete(`/project-types/${id}`);
 }
 
-export async function fetchProjectTemplates(): Promise<ProjectTemplate[]> {
-  const { data } = await apiClient.get<ProjectTemplate[]>('/project-templates');
-  return data;
+export async function fetchProjectTemplates(params?: ListParams): Promise<ProjectTemplate[]> {
+  const { data } = await apiClient.get<ProjectTemplate[] | PaginatedResponse<ProjectTemplate>>(
+    `/project-templates${buildQuery({ limit: 500, ...params })}`,
+  );
+  return unwrapListResponse(data);
+}
+
+export async function fetchProjectTemplatesPaginated(
+  params?: ListParams,
+): Promise<PaginatedResponse<ProjectTemplate>> {
+  const { data } = await apiClient.get<ProjectTemplate[] | PaginatedResponse<ProjectTemplate>>(
+    `/project-templates${buildQuery(params)}`,
+  );
+  return normalizePaginatedResponse(data);
 }
 
 export async function fetchProjectTemplate(id: string): Promise<ProjectTemplateDetail> {
@@ -77,6 +93,13 @@ export async function duplicateProjectTemplate(id: string): Promise<ProjectTempl
 export async function deactivateProjectTemplate(id: string): Promise<ProjectTemplate> {
   const { data } = await apiClient.post<ProjectTemplate>(
     `/project-templates/${id}/deactivate`,
+  );
+  return data;
+}
+
+export async function reactivateProjectTemplate(id: string): Promise<ProjectTemplate> {
+  const { data } = await apiClient.post<ProjectTemplate>(
+    `/project-templates/${id}/reactivate`,
   );
   return data;
 }

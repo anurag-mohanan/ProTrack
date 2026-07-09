@@ -1,10 +1,11 @@
-from typing import override
+from typing import Any, override
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import ProTrackValidationError
+from app.core.pagination import PaginatedResponse
 from app.crud.base import CRUDBase
 from app.models.models import (
     Customer,
@@ -99,9 +100,10 @@ class CRUDProjectTemplate(
         *,
         skip: int = 0,
         limit: int = 500,
+        search: str | None = None,
     ) -> list[tuple[ProjectTemplate, int, int]]:
         milestone_count = func.count(ProjectTemplateMilestone.id).label("milestone_count")
-        rows = db.execute(
+        stmt = (
             select(ProjectTemplate, milestone_count)
             .outerjoin(
                 ProjectTemplateMilestone,
@@ -112,9 +114,15 @@ class CRUDProjectTemplate(
                 selectinload(ProjectTemplate.customer),
             )
             .group_by(ProjectTemplate.id)
-            .order_by(ProjectTemplate.name)
-            .offset(skip)
-            .limit(limit)
+        )
+        if search:
+            term = f"%{search.strip()}%"
+            stmt = stmt.where(
+                ProjectTemplate.name.ilike(term)
+                | ProjectTemplate.description.ilike(term)
+            )
+        rows = db.execute(
+            stmt.order_by(ProjectTemplate.name).offset(skip).limit(limit)
         ).all()
         template_ids = [template.id for template, _ in rows]
         usage_counts: dict[UUID, int] = {}
@@ -134,6 +142,43 @@ class CRUDProjectTemplate(
             (template, int(count), usage_counts.get(template.id, 0))
             for template, count in rows
         ]
+
+    def count_list(self, db: Session, *, search: str | None = None) -> int:
+        stmt = select(func.count()).select_from(ProjectTemplate)
+        if search:
+            term = f"%{search.strip()}%"
+            stmt = stmt.where(
+                ProjectTemplate.name.ilike(term)
+                | ProjectTemplate.description.ilike(term)
+            )
+        return int(db.scalar(stmt) or 0)
+
+    def get_multi_paginated_with_counts(
+        self,
+        db: Session,
+        *,
+        page: int = 1,
+        page_size: int = 25,
+        skip: int | None = None,
+        limit: int | None = None,
+        search: str | None = None,
+    ) -> PaginatedResponse[Any]:
+        resolved_skip = skip if skip is not None else (page - 1) * page_size
+        resolved_limit = limit if limit is not None else page_size
+        resolved_page = (resolved_skip // resolved_limit) + 1 if resolved_limit else page
+        total = self.count_list(db, search=search)
+        rows = self.get_multi_with_counts(
+            db,
+            skip=resolved_skip,
+            limit=resolved_limit,
+            search=search,
+        )
+        return PaginatedResponse.build(
+            items=rows,
+            total=total,
+            page=resolved_page,
+            page_size=resolved_limit,
+        )
 
     @override
     def create(self, db: Session, *, obj_in: ProjectTemplateCreate) -> ProjectTemplate:
@@ -260,6 +305,12 @@ class CRUDProjectTemplate(
         if db_obj is None:
             raise ProTrackValidationError("Project template not found")
         return self.update(db, db_obj=db_obj, obj_in={"is_active": False})
+
+    def reactivate(self, db: Session, *, template_id: UUID) -> ProjectTemplate:
+        db_obj = self.get(db, template_id)
+        if db_obj is None:
+            raise ProTrackValidationError("Project template not found")
+        return self.update(db, db_obj=db_obj, obj_in={"is_active": True})
 
 
 project_template = CRUDProjectTemplate(ProjectTemplate)

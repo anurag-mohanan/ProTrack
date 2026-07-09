@@ -5,6 +5,7 @@ import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
+import { ClientPaginatedDataGrid } from '../../components/common/ClientPaginatedDataGrid';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -20,7 +21,6 @@ import {
   FormField,
   FormSection,
   FormSelect,
-  ProsohmDataGrid,
   RecordDetailDrawer,
   SearchToolbar,
   TableRowActions,
@@ -79,8 +79,8 @@ export default function TaskTypesPage() {
     setLoading(true);
     try {
       const [taskTypesData, streamsData] = await Promise.all([
-        taskTypesApi.list(),
-        streamsApi.list(),
+        taskTypesApi.list({ limit: 500 }),
+        streamsApi.list({ limit: 500 }),
       ]);
       setTaskTypes(taskTypesData);
       setStreams(streamsData);
@@ -279,14 +279,11 @@ export default function TaskTypesPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <ProsohmDataGrid
+        <ClientPaginatedDataGrid
           rows={filteredTaskTypes}
           columns={columns}
           autoHeight
-          pageSizeOptions={[25, 50, 100]}
-          initialState={{
-            pagination: { paginationModel: { pageSize: 25 } },
-          }}
+          filterKey={search}
           onRowOpen={(rowId) => {
             const taskType = filteredTaskTypes.find((item) => item.id === rowId);
             if (taskType) setSelectedTaskType(taskType);

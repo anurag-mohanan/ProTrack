@@ -34,6 +34,12 @@ export function usePaginatedQuery<T>({
     [pagination.params, filters],
   );
 
+  const filterKey = useMemo(() => JSON.stringify(filters), [filters]);
+
+  useEffect(() => {
+    pagination.resetPage();
+  }, [filterKey, pagination.resetPage]);
+
   const query = useQuery({
     queryKey: [...queryKey, requestParams],
     queryFn: () => fetcher(requestParams),

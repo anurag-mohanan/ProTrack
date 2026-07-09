@@ -321,3 +321,72 @@ def test_project_types_admin_crud(client, template_db):
     list_response = client.get("/api/v1/project-types", headers=client.auth_headers)
     assert list_response.status_code == 200
     assert any(row["id"] == project_type_id for row in list_response.json())
+
+
+@pytest.mark.parametrize(
+    ("template_name", "expected_milestones"),
+    [
+        (
+            "TI Automotive Template",
+            [
+                "Blockout",
+                "GT1",
+                "Roughing",
+                "GT2",
+                "Intermediate",
+                "GT3",
+                "EOI 4",
+                "EOI 5",
+                "EOI 6",
+                "Final",
+                "GT4",
+                "Plaques",
+            ],
+        ),
+        (
+            "Crest Mold Technologies Template",
+            [
+                "Blockout",
+                "Roughing",
+                "Intermediate",
+                "Engraving Proposal",
+                "Final",
+                "Files Released",
+                "BOM",
+                "Plaques",
+            ],
+        ),
+        (
+            "B & B Tool & Mould Template",
+            [
+                "Blockout",
+                "Roughing",
+                "Intermediate",
+                "Engraving Proposal",
+                "Final",
+                "Files Released",
+                "BOM",
+                "Plaques",
+            ],
+        ),
+    ],
+)
+def test_customer_template_milestones(template_db, template_name, expected_milestones):
+    template = _get_template(template_db, template_name)
+    names = [
+        milestone.milestone_name
+        for milestone in sorted(template.milestones, key=lambda item: item.sort_order)
+    ]
+    assert names == expected_milestones
+
+
+def test_customer_default_templates_linked(template_db):
+    for customer_name, template_name in {
+        "TI Automotive": "TI Automotive Template",
+        "Crest Mold Technologies (CMT)": "Crest Mold Technologies Template",
+        "B & B Tool & Mould": "B & B Tool & Mould Template",
+    }.items():
+        customer = template_db.scalar(select(Customer).where(Customer.name == customer_name))
+        template = _get_template(template_db, template_name)
+        assert customer is not None
+        assert customer.default_project_template_id == template.id

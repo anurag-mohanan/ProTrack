@@ -1,5 +1,8 @@
 """Tests for standardized pagination responses."""
 
+from sqlalchemy import select
+
+from app.models.models import ProjectTemplate
 from tests.conftest import login
 
 
@@ -77,3 +80,60 @@ def test_customers_factory_pagination(client):
     payload = response.json()
     assert payload["page"] == 2
     assert payload["page_size"] == 25
+
+
+def test_project_templates_list_paginated(client, session):
+    from app.db.project_template_seed import ensure_project_types_and_templates
+
+    ensure_project_types_and_templates(session)
+    headers = login(client, "admin@prosohm.com")
+    response = client.get("/api/v1/project-templates?page=1&page_size=2", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert "items" in payload
+    assert payload["page"] == 1
+    assert payload["page_size"] == 2
+    assert len(payload["items"]) <= 2
+    if payload["total"] > 2:
+        page_two = client.get("/api/v1/project-templates?page=2&page_size=2", headers=headers)
+        assert page_two.status_code == 200
+        assert page_two.json()["page"] == 2
+        assert page_two.json()["has_previous"] is True
+
+
+def test_project_templates_search(client, session):
+    from app.db.project_template_seed import ensure_project_types_and_templates
+
+    ensure_project_types_and_templates(session)
+    headers = login(client, "admin@prosohm.com")
+    response = client.get(
+        "/api/v1/project-templates?search=TI%20Automotive&page=1&page_size=25",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert any("TI Automotive" in item["name"] for item in payload["items"])
+
+
+def test_project_template_reactivate(client, session):
+    from app.db.project_template_seed import ensure_project_types_and_templates
+
+    ensure_project_types_and_templates(session)
+    headers = login(client, "admin@prosohm.com")
+    general = session.scalar(
+        select(ProjectTemplate).where(ProjectTemplate.name == "General Mold Design")
+    )
+    assert general is not None
+    deactivate = client.post(
+        f"/api/v1/project-templates/{general.id}/deactivate",
+        headers=headers,
+    )
+    assert deactivate.status_code == 200
+    assert deactivate.json()["is_active"] is False
+
+    reactivate = client.post(
+        f"/api/v1/project-templates/{general.id}/reactivate",
+        headers=headers,
+    )
+    assert reactivate.status_code == 200
+    assert reactivate.json()["is_active"] is True

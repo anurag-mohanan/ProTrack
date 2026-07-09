@@ -15,6 +15,7 @@ import type { GridColDef } from '@mui/x-data-grid';
 import { Link as RouterLink } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
+import { ClientPaginatedDataGrid } from '../../components/common/ClientPaginatedDataGrid';
 import { LoadingState } from '../../components/common/LoadingState';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { useToast } from '../../context/ToastContext';
@@ -34,7 +35,6 @@ import {
   FormField,
   FormSection,
   FormSelect,
-  ProsohmDataGrid,
   RecordDetailDrawer,
   SearchToolbar,
   StickyRecordHeader,
@@ -120,7 +120,7 @@ export default function CustomersPage() {
       const [customersData, contactsData, teamsData, typesData, templatesData] =
         await Promise.all([
           customersApi.list({ limit: 500 }),
-          contactsApi.list(),
+          contactsApi.list({ limit: 500 }),
           fetchTeams(),
           fetchProjectTypes(),
           fetchProjectTemplates(),
@@ -322,15 +322,12 @@ export default function CustomersPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <ProsohmDataGrid
+        <ClientPaginatedDataGrid
           rows={filteredCustomers}
           columns={columns}
           pinLeftFields={['name']}
           autoHeight
-          pageSizeOptions={[25, 50, 100]}
-          initialState={{
-            pagination: { paginationModel: { pageSize: 25 } },
-          }}
+          filterKey={search}
           onRowOpen={(rowId) => {
             const customer = filteredCustomers.find((item) => item.id === rowId);
             if (customer) setSelectedCustomer(customer);

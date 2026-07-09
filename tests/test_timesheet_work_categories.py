@@ -68,7 +68,7 @@ def test_productive_entry_auto_fills_customer_and_defaults_billable(client):
     assert response.status_code == 201
     body = response.json()
     assert body["customer_id"] == str(IDS["customer"])
-    assert body["customer_name"] == "TI Automotive"
+    assert body["customer_name"] == "Prosohm Test Customer"
     assert body["is_billable"] is True
     assert body["project_tool_number"] == "T-100"
 

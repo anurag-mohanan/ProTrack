@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
 from app.core.exceptions import ProTrackValidationError
+from app.core.pagination import PaginatedResponse, pagination_query, PaginationParams
 from app.crud.project_template import project_template as project_template_crud
 from app.models.models import User
 from app.schemas.delete_check import DeleteCheckResponse
@@ -95,25 +96,36 @@ def match_project_templates(
 
 @router.get(
     "",
-    response_model=list[ProjectTemplateRead],
+    response_model=PaginatedResponse[ProjectTemplateRead],
     dependencies=[Depends(require_roles("Admin"))],
 )
 def list_project_templates(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    pagination: PaginationParams = Depends(pagination_query),
+    search: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    rows = project_template_crud.get_multi_with_counts(db, skip=skip, limit=limit)
-    result: list[ProjectTemplateRead] = []
-    for template, milestone_count, projects_using_count in rows:
-        result.append(
-            _build_template_read(
-                template,
-                milestone_count=milestone_count,
-                projects_using_count=projects_using_count,
-            )
+    page = project_template_crud.get_multi_paginated_with_counts(
+        db,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        skip=pagination.skip,
+        limit=pagination.limit,
+        search=search,
+    )
+    items = [
+        _build_template_read(
+            template,
+            milestone_count=milestone_count,
+            projects_using_count=projects_using_count,
         )
-    return result
+        for template, milestone_count, projects_using_count in page.items
+    ]
+    return PaginatedResponse.build(
+        items=items,
+        total=page.total,
+        page=page.page,
+        page_size=page.page_size,
+    )
 
 
 @router.get(
@@ -195,6 +207,19 @@ def duplicate_project_template(record_id: UUID, db: Session = Depends(get_db)):
 def deactivate_project_template(record_id: UUID, db: Session = Depends(get_db)):
     try:
         template = project_template_crud.deactivate(db, template_id=record_id)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return _build_template_read(template)
+
+
+@router.post(
+    "/{record_id}/reactivate",
+    response_model=ProjectTemplateRead,
+    dependencies=[Depends(require_roles("Admin"))],
+)
+def reactivate_project_template(record_id: UUID, db: Session = Depends(get_db)):
+    try:
+        template = project_template_crud.reactivate(db, template_id=record_id)
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return _build_template_read(template)

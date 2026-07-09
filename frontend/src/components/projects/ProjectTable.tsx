@@ -5,8 +5,8 @@ import { IconButton } from '@mui/material';
 import { useTheme, type Theme } from '@mui/material/styles';
 import type { GridColDef } from '@mui/x-data-grid';
 import type { Customer, Project, Stream, Team, User } from '../../types';
+import { ClientPaginatedDataGrid } from '../common/ClientPaginatedDataGrid';
 import {
-  ProsohmDataGrid,
   EntityAvatar,
   ExecutionStatusBadge,
   HealthBadge,
@@ -467,13 +467,15 @@ function ProjectTableComponent({
       : undefined;
 
   return (
-    <ProsohmDataGrid
+    <ClientPaginatedDataGrid
       key={`project-grid-${gridSessionKey}`}
       rows={rows}
       columns={columns}
       pinLeftFields={['tool_number']}
       autoHeight={!tableHeight}
       dense
+      filterKey={gridSessionKey}
+      paginationLabel="projects"
       sx={
         tableHeight
           ? {
@@ -492,7 +494,6 @@ function ProjectTableComponent({
       pageSizeOptions={[25, 50, 100]}
       disableColumnMenu={false}
       initialState={{
-        pagination: { paginationModel: { pageSize: PAGE_SIZE, page: 0 } },
         sorting: { sortModel: [] },
         columns: {
           columnVisibilityModel: {

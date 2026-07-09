@@ -42,6 +42,8 @@ interface BuildRoleKpiCardsOptions {
   navigate: NavigateFunction;
 }
 
+type SummaryCardsOptions = Pick<BuildRoleKpiCardsOptions, 'summary' | 'unavailable' | 'navigate'>;
+
 function dash(value: string, unavailable: boolean) {
   return unavailable ? '—' : value;
 }
@@ -78,7 +80,7 @@ function buildExecutiveKpiCards({
   summary,
   unavailable,
   navigate,
-}: Omit<BuildRoleKpiCardsOptions, 'roleGroup' | 'systemHealth'>): DashboardKpiItem[] {
+}: SummaryCardsOptions): DashboardKpiItem[] {
   const quoted = Number(summary?.total_quoted_hours_active ?? 0);
   const actual = Number(summary?.total_actual_hours_productive ?? 0);
   const quotedVsActual =
@@ -438,7 +440,7 @@ function buildStaffKpiCards({
   summary,
   unavailable,
   navigate,
-}: Omit<BuildRoleKpiCardsOptions, 'roleGroup' | 'systemHealth'>): DashboardKpiItem[] {
+}: SummaryCardsOptions): DashboardKpiItem[] {
   const metrics = summary?.staff_metrics;
   return [
     {

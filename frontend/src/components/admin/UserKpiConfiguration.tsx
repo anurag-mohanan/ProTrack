@@ -1,9 +1,7 @@
 import {
-  FormControl,
   FormControlLabel,
   FormHelperText,
   Grid,
-  MenuItem,
   Switch,
   Tooltip,
   Typography,
@@ -26,6 +24,11 @@ export interface OperationalRoleOption {
   name: string;
   code: string;
   dashboard_profile: string;
+}
+
+interface RoleSelectOption {
+  value: string;
+  label: string;
 }
 
 const KPI_FIELDS: Array<{
@@ -83,6 +86,10 @@ export function UserKpiConfiguration({
   onChange,
 }: UserKpiConfigurationProps) {
   const selectedRole = operationalRoles.find((role) => role.id === value.operational_role_type_id);
+  const roleOptions: RoleSelectOption[] = [
+    { value: '', label: 'Select operational role' },
+    ...operationalRoles.map((role) => ({ value: role.id, label: role.name })),
+  ];
 
   return (
     <FormSection title="KPI Configuration" subtitle="Operational role and participation in engineering metrics">
@@ -90,6 +97,7 @@ export function UserKpiConfiguration({
         <Grid size={{ xs: 12, md: 6 }}>
           <FormSelect
             label="Operational Role"
+            options={roleOptions}
             value={value.operational_role_type_id}
             onChange={(event) =>
               onChange({
@@ -98,14 +106,7 @@ export function UserKpiConfiguration({
                 reset_kpi_defaults: true,
               })
             }
-          >
-            <MenuItem value="">Select operational role</MenuItem>
-            {operationalRoles.map((role) => (
-              <MenuItem key={role.id} value={role.id}>
-                {role.name}
-              </MenuItem>
-            ))}
-          </FormSelect>
+          />
           {selectedRole ? (
             <FormHelperText>
               Dashboard profile: {selectedRole.dashboard_profile.replace('_', ' ')}
@@ -125,19 +126,17 @@ export function UserKpiConfiguration({
         </Grid>
         {KPI_FIELDS.map((field) => (
           <Grid key={field.key} size={{ xs: 12, sm: 6 }}>
-            <FormControl fullWidth>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={Boolean(value[field.key])}
-                    onChange={(event) =>
-                      onChange({ ...value, [field.key]: event.target.checked, reset_kpi_defaults: false })
-                    }
-                  />
-                }
-                label={<LabelWithTip label={field.label} tooltip={field.tooltip} />}
-              />
-            </FormControl>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={Boolean(value[field.key])}
+                  onChange={(event) =>
+                    onChange({ ...value, [field.key]: event.target.checked, reset_kpi_defaults: false })
+                  }
+                />
+              }
+              label={<LabelWithTip label={field.label} tooltip={field.tooltip} />}
+            />
           </Grid>
         ))}
         <Grid size={{ xs: 12 }}>

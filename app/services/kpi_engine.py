@@ -8,14 +8,103 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import ExecutionStatus, MilestoneStatus, TimesheetStatus
-from app.models.models import Activity, Milestone, Project, Timesheet, User
-from app.schemas.kpi import AdministrationKpis, ManagementKpis
+from app.core.permissions import (
+    DESIGN_LEADER,
+    ENGINEERING_MANAGER,
+    get_role_name,
+    normalize_role_name,
+)
+from app.core.team_access import team_member_user_ids
+from app.models.enums import ExecutionStatus, MilestoneStatus, TeamRelationshipType, TimesheetStatus
+from app.models.models import Activity, Milestone, Project, Team, TeamMember, Timesheet, User
+from app.schemas.kpi import AdministrationKpis, LeadershipScopeKpis, ManagementKpis
+from app.services.user_team_service import get_user_team_ids
+
+
+def _active_user_filters():
+    return (
+        User.is_active.is_(True),
+        User.is_archived.is_(False),
+        User.is_deleted.is_(False),
+    )
+
+
+def _led_team_ids(db: Session, user: User) -> set[UUID]:
+    """Teams where the user is the designated team lead or has a leadership membership."""
+    lead_ids = set(
+        db.scalars(
+            select(Team.id).where(
+                Team.team_lead_id == user.id,
+                Team.is_active.is_(True),
+            )
+        ).all()
+    )
+    membership_ids = set(
+        db.scalars(
+            select(TeamMember.team_id)
+            .join(Team, Team.id == TeamMember.team_id)
+            .where(
+                TeamMember.user_id == user.id,
+                Team.is_active.is_(True),
+                TeamMember.relationship_type.in_(
+                    (
+                        TeamRelationshipType.team_leader,
+                        TeamRelationshipType.engineering_manager,
+                    )
+                ),
+            )
+        ).all()
+    )
+    return lead_ids | membership_ids
+
+
+def get_leadership_scope(db: Session, user: User) -> LeadershipScopeKpis:
+    """Resolve managed teams and people under the current leader."""
+    role_name = normalize_role_name(get_role_name(db, user))
+    show_teams = role_name in {ENGINEERING_MANAGER, DESIGN_LEADER}
+    led_teams = _led_team_ids(db, user)
+    assigned = get_user_team_ids(db, user.id)
+
+    managed_team_ids: set[UUID] = set()
+    if show_teams:
+        # Engineering managers / design leaders manage their assigned teams.
+        candidate_ids = assigned | led_teams
+        if candidate_ids:
+            managed_team_ids = set(
+                db.scalars(
+                    select(Team.id).where(
+                        Team.id.in_(candidate_ids),
+                        Team.is_active.is_(True),
+                    )
+                ).all()
+            )
+    else:
+        managed_team_ids = led_teams
+
+    member_ids = team_member_user_ids(db, list(managed_team_ids))
+    member_ids.discard(user.id)
+    team_members_under = 0
+    if member_ids:
+        team_members_under = int(
+            db.scalar(
+                select(func.count())
+                .select_from(User)
+                .where(User.id.in_(member_ids), *_active_user_filters())
+            )
+            or 0
+        )
+
+    return LeadershipScopeKpis(
+        teams_managed=len(managed_team_ids),
+        team_members_under=team_members_under,
+        show_teams_managed=show_teams,
+        is_team_leader=bool(led_teams) and not show_teams,
+    )
 
 
 def get_management_kpis(db: Session, user: User) -> ManagementKpis:
     today = date.today()
-    week_ago = today - timedelta(days=7)
+    leadership = get_leadership_scope(db, user)
 
     managed_filter = or_(
         Project.design_leader_id == user.id,
@@ -123,6 +212,8 @@ def get_management_kpis(db: Session, user: User) -> ManagementKpis:
         pending_milestone_approvals=pending_milestones,
         upcoming_deliveries=upcoming_deliveries,
         timesheet_compliance_pending=pending_reviews,
+        teams_managed=leadership.teams_managed,
+        team_members_under=leadership.team_members_under,
     )
 
 
@@ -134,7 +225,11 @@ def get_administration_kpis(db: Session) -> AdministrationKpis:
     backups = list_database_backups()
 
     audit_actions = int(
-        db.scalar(select(func.count()).select_from(Activity).where(Activity.created_at >= datetime.now(UTC) - timedelta(days=7)))
+        db.scalar(
+            select(func.count())
+            .select_from(Activity)
+            .where(Activity.created_at >= datetime.now(UTC) - timedelta(days=7))
+        )
         or 0
     )
 

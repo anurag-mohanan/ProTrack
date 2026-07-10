@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Box, Paper, Typography } from '@mui/material';
 import { designTokens } from '../../../theme/designTokens';
+import { chartTheme } from '../../../theme/chartTheme';
 
 interface DashboardPanelProps {
   title?: string;
@@ -9,6 +10,8 @@ interface DashboardPanelProps {
   children: ReactNode;
   noPadding?: boolean;
   height?: number | string;
+  /** Soft, borderless surface for modern chart cards. */
+  variant?: 'default' | 'minimal';
 }
 
 export function DashboardPanel({
@@ -18,45 +21,65 @@ export function DashboardPanel({
   children,
   noPadding = false,
   height,
+  variant = 'default',
 }: DashboardPanelProps) {
+  const minimal = variant === 'minimal';
+
   return (
     <Paper
       elevation={0}
       sx={{
-        borderRadius: `${designTokens.radius.lg}px`,
+        borderRadius: minimal ? 3 : `${designTokens.radius.lg}px`,
         border: '1px solid',
-        borderColor: 'divider',
-        boxShadow: designTokens.elevation.card,
-        bgcolor: designTokens.semantic.card,
+        borderColor: minimal ? chartTheme.surface.hairline : 'divider',
+        boxShadow: minimal ? 'none' : designTokens.elevation.card,
+        bgcolor: minimal ? chartTheme.surface.card : designTokens.semantic.card,
         height,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        transition: `box-shadow ${designTokens.motion.normal}`,
-        '&:hover': {
-          boxShadow: designTokens.elevation.cardHover,
-        },
+        transition: `border-color ${designTokens.motion.normal}, box-shadow ${designTokens.motion.normal}`,
+        '&:hover': minimal
+          ? { borderColor: 'rgba(15, 23, 42, 0.12)' }
+          : { boxShadow: designTokens.elevation.cardHover },
       }}
     >
       {title ? (
         <Box
           sx={{
-            px: 2.5,
-            py: 2,
+            px: minimal ? 2.25 : 2.5,
+            pt: minimal ? 2 : 2,
+            pb: minimal ? 1 : 2,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'flex-start',
             gap: 2,
-            borderBottom: '1px solid',
+            borderBottom: minimal ? 'none' : '1px solid',
             borderColor: 'divider',
           }}
         >
           <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '-0.01em' }}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: minimal ? 600 : 700,
+                letterSpacing: '-0.02em',
+                fontSize: minimal ? '0.9375rem' : undefined,
+                color: chartTheme.ink.primary,
+              }}
+            >
               {title}
             </Typography>
             {subtitle ? (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  mt: 0.25,
+                  fontSize: minimal ? '0.75rem' : undefined,
+                  color: chartTheme.ink.tertiary,
+                  fontWeight: 500,
+                }}
+              >
                 {subtitle}
               </Typography>
             ) : null}
@@ -64,7 +87,9 @@ export function DashboardPanel({
           {action}
         </Box>
       ) : null}
-      <Box sx={{ p: noPadding ? 0 : 2.5, flex: 1, minHeight: 0 }}>{children}</Box>
+      <Box sx={{ p: noPadding ? 0 : minimal ? 2.25 : 2.5, pt: minimal && title ? 1 : undefined, flex: 1, minHeight: 0 }}>
+        {children}
+      </Box>
     </Paper>
   );
 }

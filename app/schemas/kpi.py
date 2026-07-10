@@ -37,6 +37,17 @@ class ManagementKpis(BaseModel):
     timesheet_compliance_pending: int = 0
     team_utilization_percent: float | None = None
     high_risk_projects: int = 0
+    teams_managed: int = 0
+    team_members_under: int = 0
+
+
+class LeadershipScopeKpis(BaseModel):
+    """Teams and people in the current user's leadership span."""
+
+    teams_managed: int = 0
+    team_members_under: int = 0
+    show_teams_managed: bool = False
+    is_team_leader: bool = False
 
 
 class AdministrationKpis(BaseModel):
@@ -56,5 +67,6 @@ class RoleKpiSnapshot(BaseModel):
     dashboard_profile: str
     management: ManagementKpis | None = None
     administration: AdministrationKpis | None = None
+    leadership: LeadershipScopeKpis | None = None
     engineering_productivity_user_count: int = 0
     capacity_planning_user_count: int = 0

@@ -61,6 +61,15 @@ export interface ManagementKpis {
   timesheet_compliance_pending: number;
   team_utilization_percent?: number | null;
   high_risk_projects: number;
+  teams_managed?: number;
+  team_members_under?: number;
+}
+
+export interface LeadershipScopeKpis {
+  teams_managed: number;
+  team_members_under: number;
+  show_teams_managed: boolean;
+  is_team_leader: boolean;
 }
 
 export interface AdministrationKpis {
@@ -80,6 +89,7 @@ export interface RoleKpiSnapshot {
   dashboard_profile: string;
   management?: ManagementKpis | null;
   administration?: AdministrationKpis | null;
+  leadership?: LeadershipScopeKpis | null;
   engineering_productivity_user_count: number;
   capacity_planning_user_count: number;
 }

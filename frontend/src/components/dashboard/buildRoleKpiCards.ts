@@ -86,7 +86,10 @@ export function buildRoleKpiCards({
     );
   }
   if (roleGroup === 'staff') {
-    return filterAccessibleKpiCards(buildStaffKpiCards({ summary, unavailable, navigate }), access);
+    return filterAccessibleKpiCards(
+      buildStaffKpiCards({ summary, roleKpis, unavailable, navigate }),
+      access,
+    );
   }
   if (roleGroup === 'design_leader') {
     return filterAccessibleKpiCards(
@@ -290,10 +293,31 @@ function buildManagementKpiCards({
   navigate: NavigateFunction;
 }): DashboardKpiItem[] {
   const mgmt = roleKpis?.management;
+  const leadership = roleKpis?.leadership;
+  const teamsManaged = leadership?.teams_managed ?? mgmt?.teams_managed ?? 0;
+  const teamMembersUnder = leadership?.team_members_under ?? mgmt?.team_members_under ?? 0;
   const highRisk = mgmt?.high_risk_projects ?? (summary?.red_projects ?? 0) + (summary?.yellow_projects ?? 0);
   const missingTs = mgmt?.timesheet_compliance_pending ?? summary?.missing_timesheets?.length ?? 0;
 
   return [
+    {
+      title: 'Teams Managed',
+      value: n(teamsManaged, unavailable),
+      icon: GroupsRoundedIcon,
+      accent: 'primary',
+      trend: STABLE_TREND,
+      destination: '/projects',
+      onClick: () => navigate('/projects'),
+    },
+    {
+      title: 'Team Members',
+      value: n(teamMembersUnder, unavailable),
+      icon: PeopleRoundedIcon,
+      accent: 'info',
+      trend: STABLE_TREND,
+      destination: '/workload',
+      onClick: () => navigate('/workload'),
+    },
     {
       title: 'Projects Managed',
       value: n(mgmt?.projects_managed ?? summary?.active_projects ?? 0, unavailable),
@@ -379,15 +403,6 @@ function buildManagementKpiCards({
       trend: STABLE_TREND,
       destination: '/resource-planning',
       onClick: () => navigate('/resource-planning'),
-    },
-    {
-      title: 'Engineering Members',
-      value: n(roleKpis?.engineering_productivity_user_count ?? 0, unavailable),
-      icon: PeopleRoundedIcon,
-      accent: 'primary',
-      trend: STABLE_TREND,
-      destination: '/admin/users',
-      onClick: () => navigate('/admin/users'),
     },
   ];
 }
@@ -500,11 +515,32 @@ function buildAdminKpiCards({
 
 function buildStaffKpiCards({
   summary,
+  roleKpis,
   unavailable,
   navigate,
-}: SummaryCardsOptions): DashboardKpiItem[] {
+}: {
+  summary: DashboardSummary | undefined;
+  roleKpis: RoleKpiSnapshot | undefined;
+  unavailable: boolean;
+  navigate: NavigateFunction;
+}): DashboardKpiItem[] {
   const metrics = summary?.staff_metrics;
-  return [
+  const leadership = roleKpis?.leadership;
+  const cards: DashboardKpiItem[] = [];
+
+  if (leadership?.is_team_leader) {
+    cards.push({
+      title: 'Team Members',
+      value: n(leadership.team_members_under, unavailable),
+      icon: PeopleRoundedIcon,
+      accent: 'primary',
+      trend: STABLE_TREND,
+      destination: '/projects',
+      onClick: () => navigate('/projects'),
+    });
+  }
+
+  cards.push(
     {
       title: 'My Projects',
       value: n(metrics?.my_projects ?? 0, unavailable),
@@ -558,7 +594,9 @@ function buildStaffKpiCards({
       destination: '/timesheets',
       onClick: () => navigate('/timesheets'),
     },
-  ];
+  );
+
+  return cards;
 }
 
 function buildDesignLeaderKpiCards({
@@ -574,7 +612,30 @@ function buildDesignLeaderKpiCards({
 }): DashboardKpiItem[] {
   const pendingReviews = roleKpis?.management?.pending_reviews ?? summary?.my_tasks.pending_reviews?.length ?? 0;
   const pendingTimesheets = summary?.my_tasks.pending_approvals.length ?? 0;
+  const leadership = roleKpis?.leadership;
+  const teamsManaged = leadership?.teams_managed ?? roleKpis?.management?.teams_managed ?? 0;
+  const teamMembersUnder =
+    leadership?.team_members_under ?? roleKpis?.management?.team_members_under ?? 0;
+
   return [
+    {
+      title: 'Teams Managed',
+      value: n(teamsManaged, unavailable),
+      icon: GroupsRoundedIcon,
+      accent: 'primary',
+      trend: STABLE_TREND,
+      destination: '/projects',
+      onClick: () => navigate('/projects'),
+    },
+    {
+      title: 'Team Members',
+      value: n(teamMembersUnder, unavailable),
+      icon: PeopleRoundedIcon,
+      accent: 'info',
+      trend: STABLE_TREND,
+      destination: '/workload',
+      onClick: () => navigate('/workload'),
+    },
     {
       title: 'Team Projects',
       value: n(summary?.active_projects ?? 0, unavailable),

@@ -1,36 +1,9 @@
-import { Box, Chip, Stack, Typography } from '@mui/material';
+import { Box, Stack, Typography } from '@mui/material';
 import type {
   DashboardDesignerAvailabilityRow,
   DashboardDesignerAvailabilitySummary,
 } from '../../types';
-import { designTokens } from '../../theme/designTokens';
-import { EmptyState } from '../common/EmptyState';
-
-const STATUS_META: Record<
-  DashboardDesignerAvailabilityRow['status'],
-  { label: string; color: string; soft: string }
-> = {
-  available: {
-    label: 'Open',
-    color: designTokens.semantic.success,
-    soft: designTokens.semantic.successSoft,
-  },
-  working: {
-    label: 'Assigned',
-    color: designTokens.semantic.primary,
-    soft: designTokens.semantic.primarySoft,
-  },
-  on_hold: {
-    label: 'On hold',
-    color: designTokens.semantic.warning,
-    soft: designTokens.semantic.warningSoft,
-  },
-  leave: {
-    label: 'Leave',
-    color: designTokens.semantic.neutral,
-    soft: designTokens.semantic.neutralSoft,
-  },
-};
+import { chartTheme } from '../../theme/chartTheme';
 
 interface ResourceAvailabilityPanelProps {
   summary?: DashboardDesignerAvailabilitySummary;
@@ -41,11 +14,9 @@ interface ResourceAvailabilityPanelProps {
 export function ResourceAvailabilityPanel({
   summary,
   rows,
-  limit = 6,
+  limit = 5,
 }: ResourceAvailabilityPanelProps) {
-  const openRows = rows
-    .filter((row) => row.status === 'available')
-    .slice(0, limit);
+  const openRows = rows.filter((row) => row.status === 'available').slice(0, limit);
 
   const totals = summary ?? {
     total_designers: rows.length,
@@ -54,94 +25,164 @@ export function ResourceAvailabilityPanel({
     on_leave: rows.filter((row) => row.status === 'leave').length,
   };
 
-  return (
-    <Stack spacing={1.75} sx={{ height: '100%' }}>
-      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-        <Chip
-          size="small"
-          label={`${totals.available} open`}
-          sx={{
-            fontWeight: 700,
-            bgcolor: designTokens.semantic.successSoft,
-            color: designTokens.semantic.success,
-          }}
-        />
-        <Chip
-          size="small"
-          label={`${totals.allocated} assigned`}
-          sx={{
-            fontWeight: 700,
-            bgcolor: designTokens.semantic.primarySoft,
-            color: designTokens.semantic.primary,
-          }}
-        />
-        <Chip
-          size="small"
-          label={`${totals.on_leave} leave`}
-          sx={{
-            fontWeight: 700,
-            bgcolor: designTokens.semantic.neutralSoft,
-            color: designTokens.semantic.neutral,
-          }}
-        />
-      </Stack>
+  const pool = Math.max(totals.total_designers, 1);
+  const segments = [
+    { key: 'open', value: totals.available, color: chartTheme.availability.open },
+    { key: 'assigned', value: totals.allocated, color: chartTheme.availability.assigned },
+    { key: 'leave', value: totals.on_leave, color: chartTheme.availability.leave },
+  ];
 
-      {openRows.length === 0 ? (
-        <EmptyState
-          title="No open capacity"
-          description="All designers are assigned, on hold, or on leave."
-        />
-      ) : (
-        <Stack spacing={1.25}>
-          {openRows.map((row) => {
-            const meta = STATUS_META[row.status];
+  return (
+    <Stack spacing={2.25} sx={{ height: '100%', py: 0.25 }}>
+      <Box>
+        <Box
+          sx={{
+            display: 'flex',
+            height: 10,
+            borderRadius: 999,
+            overflow: 'hidden',
+            bgcolor: chartTheme.surface.track,
+            mb: 1.5,
+          }}
+        >
+          {segments.map((segment) => {
+            const pct = (segment.value / pool) * 100;
+            if (pct <= 0) return null;
             return (
               <Box
-                key={row.user_id}
+                key={segment.key}
                 sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 1.5,
-                  px: 1.25,
-                  py: 1,
-                  borderRadius: `${designTokens.radius.md}px`,
-                  bgcolor: meta.soft,
-                  border: '1px solid',
-                  borderColor: 'divider',
+                  width: `${pct}%`,
+                  bgcolor: segment.color,
+                  minWidth: pct > 0 ? 3 : 0,
                 }}
-              >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontWeight: 700,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                    title={row.designer_name}
-                  >
-                    {row.designer_name}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Ready for assignment
-                  </Typography>
-                </Box>
-                <Chip
-                  size="small"
-                  label={meta.label}
-                  sx={{
-                    fontWeight: 700,
-                    bgcolor: '#fff',
-                    color: meta.color,
-                    border: '1px solid',
-                    borderColor: meta.color,
-                  }}
-                />
-              </Box>
+              />
             );
           })}
+        </Box>
+        <Box sx={{ display: 'flex', gap: 2.5 }}>
+          {[
+            { label: 'Open', value: totals.available, color: chartTheme.availability.open },
+            { label: 'Assigned', value: totals.allocated, color: chartTheme.availability.assigned },
+            { label: 'Leave', value: totals.on_leave, color: chartTheme.availability.leave },
+          ].map((item) => (
+            <Box key={item.label}>
+              <Typography
+                sx={{
+                  fontSize: '1.125rem',
+                  fontWeight: 700,
+                  letterSpacing: '-0.02em',
+                  color: item.color,
+                  lineHeight: 1.1,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {item.value}
+              </Typography>
+              <Typography
+                sx={{
+                  mt: 0.25,
+                  fontSize: '0.65rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  color: chartTheme.ink.tertiary,
+                }}
+              >
+                {item.label}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+
+      {openRows.length === 0 ? (
+        <Box
+          sx={{
+            py: 2.5,
+            px: 2,
+            textAlign: 'center',
+            borderRadius: 2,
+            bgcolor: chartTheme.surface.muted,
+          }}
+        >
+          <Typography sx={{ fontSize: '0.8125rem', fontWeight: 600, color: chartTheme.ink.primary }}>
+            No open capacity
+          </Typography>
+          <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: chartTheme.ink.tertiary }}>
+            Everyone is assigned or on leave
+          </Typography>
+        </Box>
+      ) : (
+        <Stack spacing={1}>
+          <Typography
+            sx={{
+              fontSize: '0.65rem',
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: chartTheme.ink.tertiary,
+            }}
+          >
+            Ready now
+          </Typography>
+          {openRows.map((row) => (
+            <Box
+              key={row.user_id}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.25,
+                py: 0.75,
+              }}
+            >
+              <Box
+                sx={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  bgcolor: chartTheme.availability.openSoft,
+                  color: chartTheme.availability.open,
+                  display: 'grid',
+                  placeItems: 'center',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                {row.designer_name
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((part) => part[0]?.toUpperCase() ?? '')
+                  .join('')}
+              </Box>
+              <Typography
+                sx={{
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  color: chartTheme.ink.primary,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={row.designer_name}
+              >
+                {row.designer_name}
+              </Typography>
+              <Typography
+                sx={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  color: chartTheme.availability.open,
+                }}
+              >
+                Open
+              </Typography>
+            </Box>
+          ))}
         </Stack>
       )}
     </Stack>

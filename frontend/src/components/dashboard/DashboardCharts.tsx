@@ -1,31 +1,165 @@
 import { Box, Stack, Tooltip, Typography } from '@mui/material';
-import { BarChart } from '@mui/x-charts/BarChart';
-import { PieChart } from '@mui/x-charts/PieChart';
 import type { DashboardCustomerWorkloadRow, DashboardProjectStageRow } from '../../types';
 import { PROJECT_STAGE_LABELS } from '../../types/common';
-import { designTokens } from '../../theme/designTokens';
+import { chartTheme } from '../../theme/chartTheme';
 import { formatNumber } from '../../utils/format';
 
-const STAGE_CHART_COLORS: Record<string, string> = {
-  preliminary: designTokens.stage.preliminary.main,
-  intermediate: designTokens.stage.intermediate.main,
-  final: designTokens.stage.final.main,
-};
-
-function truncateLabel(value: string, max = 14): string {
+function truncateLabel(value: string, max = 18): string {
   const trimmed = value.trim();
   if (trimmed.length <= max) return trimmed;
   return `${trimmed.slice(0, max - 1)}…`;
 }
 
-function niceAxisMax(value: number): number {
-  if (value <= 0) return 10;
-  const padded = value * 1.12;
-  const magnitude = 10 ** Math.floor(Math.log10(padded));
-  const normalized = padded / magnitude;
-  const nice =
-    normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-  return nice * magnitude;
+function DonutRing({
+  segments,
+  total,
+  centerLabel,
+  size = 148,
+}: {
+  segments: Array<{ id: string; value: number; color: string; label: string }>;
+  total: number;
+  centerLabel: string;
+  size?: number;
+}) {
+  const stroke = 14;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+
+  return (
+    <Box sx={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={chartTheme.surface.track}
+          strokeWidth={stroke}
+        />
+        {segments.map((segment) => {
+          const share = total > 0 ? segment.value / total : 0;
+          const length = share * circumference;
+          const dashOffset = -offset;
+          offset += length;
+          return (
+            <circle
+              key={segment.id}
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke={segment.color}
+              strokeWidth={stroke}
+              strokeDasharray={`${length} ${circumference - length}`}
+              strokeDashoffset={dashOffset}
+              strokeLinecap="butt"
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          );
+        })}
+      </svg>
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          display: 'grid',
+          placeItems: 'center',
+          textAlign: 'center',
+          pointerEvents: 'none',
+        }}
+      >
+        <Box>
+          <Typography
+            sx={{
+              fontSize: '1.5rem',
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              color: chartTheme.ink.primary,
+              lineHeight: 1,
+            }}
+          >
+            {total}
+          </Typography>
+          <Typography
+            sx={{
+              mt: 0.35,
+              fontSize: '0.65rem',
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: chartTheme.ink.tertiary,
+            }}
+          >
+            {centerLabel}
+          </Typography>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+function LegendList({
+  items,
+}: {
+  items: Array<{ id: string; label: string; value: number; color: string; total: number }>;
+}) {
+  return (
+    <Stack spacing={1.25} sx={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
+      {items.map((item) => {
+        const pct = item.total > 0 ? Math.round((item.value / item.total) * 100) : 0;
+        return (
+          <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <Box
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                bgcolor: item.color,
+                flexShrink: 0,
+              }}
+            />
+            <Typography
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                fontSize: '0.8125rem',
+                fontWeight: 500,
+                color: chartTheme.ink.secondary,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {item.label}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: '0.8125rem',
+                fontWeight: 700,
+                color: chartTheme.ink.primary,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {item.value}
+            </Typography>
+            <Typography
+              sx={{
+                width: 36,
+                textAlign: 'right',
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                color: chartTheme.ink.tertiary,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {pct}%
+            </Typography>
+          </Box>
+        );
+      })}
+    </Stack>
+  );
 }
 
 interface ProjectStageChartProps {
@@ -33,64 +167,28 @@ interface ProjectStageChartProps {
   height?: number;
 }
 
-export function ProjectStageChart({ rows, height = 260 }: ProjectStageChartProps) {
+export function ProjectStageChart({ rows }: ProjectStageChartProps) {
   if (!rows.length) return null;
 
-  const data = rows.map((row) => ({
+  const order = ['preliminary', 'intermediate', 'final'] as const;
+  const sorted = [...rows].sort(
+    (a, b) => order.indexOf(a.project_stage as (typeof order)[number]) - order.indexOf(b.project_stage as (typeof order)[number]),
+  );
+
+  const segments = sorted.map((row) => ({
     id: row.project_stage,
     value: row.project_count,
     label: PROJECT_STAGE_LABELS[row.project_stage],
-    color: STAGE_CHART_COLORS[row.project_stage] ?? designTokens.semantic.neutral,
+    color:
+      chartTheme.stage[row.project_stage as keyof typeof chartTheme.stage] ??
+      chartTheme.ink.tertiary,
   }));
-  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const total = segments.reduce((sum, item) => sum + item.value, 0);
 
   return (
-    <Box sx={{ position: 'relative', width: '100%', height }}>
-      <PieChart
-        series={[
-          {
-            data,
-            innerRadius: 54,
-            outerRadius: 88,
-            paddingAngle: 2,
-            cornerRadius: 4,
-            arcLabel: (item) => (item.value > 0 ? `${item.value}` : ''),
-            arcLabelMinAngle: 18,
-            highlightScope: { fade: 'global', highlight: 'item' },
-            valueFormatter: (item) =>
-              `${item.value} · ${total > 0 ? Math.round((item.value / total) * 100) : 0}%`,
-          },
-        ]}
-        height={height}
-        margin={{ top: 8, bottom: 8, left: 8, right: 110 }}
-        slotProps={{
-          legend: {
-            direction: 'vertical',
-            position: { vertical: 'middle', horizontal: 'end' },
-          },
-        }}
-        sx={{
-          '& .MuiChartsLegend-label': { fontSize: 12, fontWeight: 600 },
-          '& .MuiPieArcLabel-root': { fontSize: 11, fontWeight: 700, fill: '#fff' },
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          left: '28%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)',
-          textAlign: 'center',
-          pointerEvents: 'none',
-        }}
-      >
-        <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
-          {total}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-          Active
-        </Typography>
-      </Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, minHeight: 180 }}>
+      <DonutRing segments={segments} total={total} centerLabel="Active" />
+      <LegendList items={segments.map((s) => ({ ...s, total }))} />
     </Box>
   );
 }
@@ -108,62 +206,22 @@ export function ProjectHealthChart({
   yellow,
   red,
   grey = 0,
-  height = 220,
 }: ProjectHealthChartProps) {
-  const data = [
-    { id: 'green', value: green, label: 'Green', color: designTokens.health.green.main },
-    { id: 'yellow', value: yellow, label: 'Amber', color: designTokens.health.yellow.main },
-    { id: 'red', value: red, label: 'Red', color: designTokens.health.red.main },
-    { id: 'grey', value: grey, label: 'Unrated', color: designTokens.health.grey.main },
+  const segments = [
+    { id: 'green', value: green, label: 'On track', color: chartTheme.health.green },
+    { id: 'yellow', value: yellow, label: 'At risk', color: chartTheme.health.yellow },
+    { id: 'red', value: red, label: 'Critical', color: chartTheme.health.red },
+    { id: 'grey', value: grey, label: 'Unrated', color: chartTheme.health.grey },
   ].filter((item) => item.value > 0);
 
-  if (!data.length) return null;
+  if (!segments.length) return null;
 
-  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const total = segments.reduce((sum, item) => sum + item.value, 0);
 
   return (
-    <Box sx={{ position: 'relative', width: '100%', height }}>
-      <PieChart
-        series={[
-          {
-            data,
-            innerRadius: 54,
-            outerRadius: 88,
-            paddingAngle: 3,
-            cornerRadius: 4,
-            arcLabel: (item) => (item.value > 0 ? `${item.value}` : ''),
-            arcLabelMinAngle: 16,
-            valueFormatter: (item) =>
-              `${item.value} · ${total > 0 ? Math.round((item.value / total) * 100) : 0}%`,
-          },
-        ]}
-        height={height}
-        margin={{ top: 8, bottom: 8, left: 8, right: 110 }}
-        slotProps={{
-          legend: { direction: 'vertical', position: { vertical: 'middle', horizontal: 'end' } },
-        }}
-        sx={{
-          '& .MuiChartsLegend-label': { fontSize: 12, fontWeight: 600 },
-          '& .MuiPieArcLabel-root': { fontSize: 11, fontWeight: 700, fill: '#fff' },
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          left: '28%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)',
-          textAlign: 'center',
-          pointerEvents: 'none',
-        }}
-      >
-        <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
-          {total}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-          Projects
-        </Typography>
-      </Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, minHeight: 180 }}>
+      <DonutRing segments={segments} total={total} centerLabel="Projects" />
+      <LegendList items={segments.map((s) => ({ ...s, total }))} />
     </Box>
   );
 }
@@ -176,8 +234,7 @@ interface CustomerWorkloadChartProps {
 
 export function CustomerWorkloadChart({
   rows,
-  height = 260,
-  limit = 6,
+  limit = 5,
 }: CustomerWorkloadChartProps) {
   const top = [...rows]
     .sort((a, b) => b.actual_hours - a.actual_hours)
@@ -185,61 +242,78 @@ export function CustomerWorkloadChart({
 
   if (!top.length) return null;
 
-  const maxHours = Math.max(...top.map((row) => row.actual_hours), 0);
-  const labels = top.map((row) => truncateLabel(row.customer_name, 16));
-  const fullNames = top.map((row) => row.customer_name);
+  const maxHours = Math.max(...top.map((row) => row.actual_hours), 1);
 
   return (
-    <Box sx={{ width: '100%', height }}>
-      <BarChart
-        height={height}
-        layout="horizontal"
-        yAxis={[
-          {
-            scaleType: 'band',
-            data: labels,
-            width: 112,
-            tickLabelStyle: { fontSize: 11, fontWeight: 600 },
-          },
-        ]}
-        xAxis={[
-          {
-            min: 0,
-            max: niceAxisMax(maxHours),
-            valueFormatter: (value: number | null) =>
-              value == null ? '' : formatNumber(value, value >= 100 ? 0 : 1),
-          },
-        ]}
-        series={[
-          {
-            data: top.map((row) => row.actual_hours),
-            label: 'Hours logged',
-            color: designTokens.semantic.primary,
-            valueFormatter: (value, context) => {
-              if (value == null) return '';
-              const name = fullNames[context.dataIndex] ?? '';
-              return `${formatNumber(value, 1)}h${name ? ` · ${name}` : ''}`;
-            },
-          },
-        ]}
-        grid={{ vertical: true }}
-        margin={{ left: 8, right: 20, top: 12, bottom: 28 }}
-        sx={{
-          '& .MuiChartsAxis-tickLabel': { fontSize: 11, fontWeight: 600 },
-          '& .MuiBarElement-root': { rx: 4 },
-          '& .MuiChartsLegend-root': { display: 'none' },
-        }}
-      />
-      <Stack direction="row" spacing={1} sx={{ mt: -0.5, flexWrap: 'wrap', gap: 0.5 }}>
-        {top.map((row) => (
-          <Tooltip key={row.customer_id} title={`${row.customer_name}: ${formatNumber(row.actual_hours, 1)}h · ${row.active_tools} tools`}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-              {truncateLabel(row.customer_name, 10)} {formatNumber(row.actual_hours, 0)}h
-            </Typography>
+    <Stack spacing={1.75} sx={{ py: 0.5 }}>
+      {top.map((row, index) => {
+        const widthPct = Math.max(6, (row.actual_hours / maxHours) * 100);
+        const color =
+          chartTheme.workload[
+            Math.min(index, chartTheme.workload.length - 1)
+          ];
+        return (
+          <Tooltip
+            key={row.customer_id}
+            title={`${row.customer_name} · ${formatNumber(row.actual_hours, 1)}h · ${row.active_tools} tools`}
+          >
+            <Box>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  gap: 1,
+                  mb: 0.75,
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    color: chartTheme.ink.primary,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {truncateLabel(row.customer_name, 22)}
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    color: chartTheme.ink.secondary,
+                    fontVariantNumeric: 'tabular-nums',
+                    flexShrink: 0,
+                  }}
+                >
+                  {formatNumber(row.actual_hours, 0)}h
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  height: 8,
+                  borderRadius: 999,
+                  bgcolor: chartTheme.surface.track,
+                  overflow: 'hidden',
+                }}
+              >
+                <Box
+                  sx={{
+                    width: `${widthPct}%`,
+                    height: '100%',
+                    borderRadius: 999,
+                    bgcolor: color,
+                    transition: 'width 0.35s ease',
+                  }}
+                />
+              </Box>
+            </Box>
           </Tooltip>
-        ))}
-      </Stack>
-    </Box>
+        );
+      })}
+    </Stack>
   );
 }
 
@@ -254,61 +328,138 @@ export function HoursSummaryChart({
   billableHours,
   nonBillableHours,
   npHours,
-  height = 220,
 }: HoursSummaryChartProps) {
   const data = [
-    { label: 'Billable', value: billableHours, color: designTokens.semantic.success },
-    { label: 'Non-Billable', value: nonBillableHours, color: designTokens.semantic.primary },
-    { label: 'NP Hours', value: npHours, color: designTokens.semantic.warning },
+    {
+      label: 'Billable',
+      value: billableHours,
+      color: chartTheme.hours.billable,
+      soft: chartTheme.hours.billableSoft,
+    },
+    {
+      label: 'Non-billable',
+      value: nonBillableHours,
+      color: chartTheme.hours.nonBillable,
+      soft: chartTheme.hours.nonBillableSoft,
+    },
+    {
+      label: 'NP',
+      value: npHours,
+      color: chartTheme.hours.np,
+      soft: chartTheme.hours.npSoft,
+    },
   ];
 
-  const maxValue = Math.max(...data.map((item) => item.value), 0);
-  if (maxValue <= 0) return null;
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  if (total <= 0) return null;
 
   return (
-    <Box sx={{ width: '100%', height }}>
-      <BarChart
-        height={height}
-        xAxis={[
-          {
-            scaleType: 'band',
-            data: data.map((item) => item.label),
-            tickLabelStyle: { fontSize: 11, fontWeight: 600 },
-          },
-        ]}
-        yAxis={[
-          {
-            min: 0,
-            max: niceAxisMax(maxValue),
-            valueFormatter: (value: number | null) =>
-              value == null ? '' : formatNumber(value, value >= 1000 ? 0 : 1),
-          },
-        ]}
-        series={[
-          {
-            data: data.map((item) => item.value),
-            label: 'Hours',
-            valueFormatter: (value) => (value == null ? '' : `${formatNumber(value, 1)}h`),
-          },
-        ]}
-        colors={data.map((item) => item.color)}
-        grid={{ horizontal: true }}
-        margin={{ left: 52, right: 12, top: 16, bottom: 36 }}
-        sx={{
-          '& .MuiBarElement-root': { rx: 4 },
-          '& .MuiChartsLegend-root': { display: 'none' },
-        }}
-      />
-      <Stack direction="row" spacing={2} sx={{ mt: -0.5, justifyContent: 'center' }}>
-        {data.map((item) => (
-          <Stack key={item.label} direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: item.color }} />
-            <Typography variant="caption" sx={{ fontWeight: 700 }}>
-              {item.label} {formatNumber(item.value, 0)}h
-            </Typography>
-          </Stack>
-        ))}
+    <Stack spacing={2.25} sx={{ py: 0.5 }}>
+      <Box>
+        <Typography
+          sx={{
+            fontSize: '0.65rem',
+            fontWeight: 600,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            color: chartTheme.ink.tertiary,
+            mb: 1,
+          }}
+        >
+          Share of total hours
+        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            height: 12,
+            borderRadius: 999,
+            overflow: 'hidden',
+            bgcolor: chartTheme.surface.track,
+          }}
+        >
+          {data.map((item) => {
+            const pct = (item.value / total) * 100;
+            if (pct <= 0) return null;
+            return (
+              <Tooltip
+                key={item.label}
+                title={`${item.label}: ${formatNumber(item.value, 1)}h (${Math.round(pct)}%)`}
+              >
+                <Box
+                  sx={{
+                    width: `${pct}%`,
+                    bgcolor: item.color,
+                    minWidth: pct > 0 ? 4 : 0,
+                    transition: 'width 0.35s ease',
+                  }}
+                />
+              </Tooltip>
+            );
+          })}
+        </Box>
+      </Box>
+
+      <Stack spacing={1.25}>
+        {data.map((item) => {
+          const pct = Math.round((item.value / total) * 100);
+          return (
+            <Box
+              key={item.label}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                px: 1.5,
+                py: 1.25,
+                borderRadius: 2,
+                bgcolor: item.soft,
+              }}
+            >
+              <Box
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  bgcolor: item.color,
+                  flexShrink: 0,
+                }}
+              />
+              <Typography
+                sx={{
+                  flex: 1,
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  color: chartTheme.ink.primary,
+                }}
+              >
+                {item.label}
+              </Typography>
+              <Typography
+                sx={{
+                  fontSize: '0.8125rem',
+                  fontWeight: 700,
+                  color: chartTheme.ink.primary,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {formatNumber(item.value, 0)}h
+              </Typography>
+              <Typography
+                sx={{
+                  width: 40,
+                  textAlign: 'right',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: chartTheme.ink.secondary,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {pct}%
+              </Typography>
+            </Box>
+          );
+        })}
       </Stack>
-    </Box>
+    </Stack>
   );
 }

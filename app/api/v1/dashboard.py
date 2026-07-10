@@ -39,7 +39,7 @@ from app.crud.team_reports import get_team_resource_planning
 from app.services.notification_service import create_notification
 from app.services.resource_planning_service import get_resource_planning_grid
 from app.schemas.kpi import RoleKpiSnapshot
-from app.services.kpi_engine import get_administration_kpis, get_management_kpis
+from app.services.kpi_engine import get_administration_kpis, get_leadership_scope, get_management_kpis
 from app.services.kpi_participation import (
     capacity_planning_users,
     engineering_productivity_users,
@@ -111,6 +111,7 @@ def dashboard_role_kpis(
         dashboard_profile=profile,
         engineering_productivity_user_count=len(engineering_productivity_users(db)),
         capacity_planning_user_count=len(capacity_planning_users(db)),
+        leadership=get_leadership_scope(db, current_user),
     )
     if is_management_user(current_user) or profile == "management":
         snapshot.management = get_management_kpis(db, current_user)

@@ -454,6 +454,13 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         if isinstance(next_code, str) or next_code is None:
             _validate_code_unique(db, next_code, exclude_id=db_obj.id)
 
+        if "project_template_id" in update_data:
+            requested_template_id = update_data.pop("project_template_id")
+            if requested_template_id != db_obj.project_template_id:
+                raise ProTrackValidationError(
+                    "Use Change Project Template to replace milestones from a different template"
+                )
+
         if "execution_status" in update_data:
             new_status = update_data["execution_status"]
             if new_status == ExecutionStatus.completed and db_obj.completed_at is None:

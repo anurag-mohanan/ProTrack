@@ -52,6 +52,8 @@ export interface Project extends Timestamped {
   surfacer_name?: string | null;
   team_name?: string | null;
   project_type_name?: string | null;
+  can_change_template?: boolean;
+  template_change_blocked_reason?: string | null;
 }
 
 export interface ArchivedProjectListItem extends Omit<Project, 'design_leader_name'> {

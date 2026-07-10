@@ -11,6 +11,7 @@ from app.services.project_calculation_service import (
     batch_calculate_progress,
     calculate_progress,
 )
+from app.services.project_template_service import can_change_project_template
 
 
 def _full_name(user: User | None) -> str | None:
@@ -93,11 +94,14 @@ def build_project_read(db: Session, project: Project) -> ProjectRead:
     progress = calculate_progress(db, project)
     milestone_names = _batch_current_milestones(db, [project.id])
     names = _batch_display_names(db, [project])
+    can_change, blocked_reason = can_change_project_template(db, project.id)
     return ProjectRead.model_validate(project, from_attributes=True).model_copy(
         update={
             "progress_percent": progress.progress_percent,
             "health": project.health,
             "current_milestone": milestone_names.get(project.id),
+            "can_change_template": can_change,
+            "template_change_blocked_reason": blocked_reason,
             **_name_updates(project, names),
         }
     )
@@ -111,14 +115,19 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
     progress_by_project = batch_calculate_progress(db, project_ids)
     milestone_names = _batch_current_milestones(db, project_ids)
     names = _batch_display_names(db, projects)
-    return [
-        ProjectRead.model_validate(project, from_attributes=True).model_copy(
-            update={
-                "progress_percent": progress_by_project[project.id].progress_percent,
-                "health": project.health,
-                "current_milestone": milestone_names.get(project.id),
-                **_name_updates(project, names),
-            }
+    reads: list[ProjectRead] = []
+    for project in projects:
+        can_change, blocked_reason = can_change_project_template(db, project.id)
+        reads.append(
+            ProjectRead.model_validate(project, from_attributes=True).model_copy(
+                update={
+                    "progress_percent": progress_by_project[project.id].progress_percent,
+                    "health": project.health,
+                    "current_milestone": milestone_names.get(project.id),
+                    "can_change_template": can_change,
+                    "template_change_blocked_reason": blocked_reason,
+                    **_name_updates(project, names),
+                }
+            )
         )
-        for project in projects
-    ]
+    return reads

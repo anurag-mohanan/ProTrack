@@ -44,6 +44,7 @@ import { PageHeader } from '../components/common/PageHeader';
 import {
   ProjectStageChip,
 } from '../components/common/StatusChip';
+import { ChangeProjectTemplateDialog } from '../components/projects/ChangeProjectTemplateDialog';
 import { MilestoneFormDialog } from '../components/projects/MilestoneFormDialog';
 import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
 import { AppCard, CollapsiblePanel, FormDrawer, FormField, PriorityBadge, StickyRecordHeader } from '../components/ui/design-system';
@@ -60,7 +61,7 @@ import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordH
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { archiveProject, applyProjectTemplate, invalidateProjectCalculationQueries, restoreProject } from '../services/projectService';
+import { archiveProject, invalidateProjectCalculationQueries, restoreProject } from '../services/projectService';
 import { formatCellValue, formatDisplayValue, formatDate, formatNumber } from '../utils/format';
 import { canArchiveProject } from '../utils/permissions';
 
@@ -91,7 +92,7 @@ export function ProjectDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
-  const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
+  const [changeTemplateOpen, setChangeTemplateOpen] = useState(false);
   const [folderOpen, setFolderOpen] = useState(false);
   const [ecOpen, setEcOpen] = useState(false);
   const [folderForm, setFolderForm] = useState({
@@ -127,16 +128,6 @@ export function ProjectDetailPage() {
     mutationFn: () => restoreProject(id),
     onSuccess: () => {
       showSuccess('Project restored');
-      invalidate();
-    },
-    onError: (error: Error) => showError(error.message),
-  });
-
-  const applyTemplateMutation = useMutation({
-    mutationFn: () => applyProjectTemplate(id),
-    onSuccess: () => {
-      showSuccess('Project template applied. Milestones were regenerated.');
-      setApplyTemplateOpen(false);
       invalidate();
     },
     onError: (error: Error) => showError(error.message),
@@ -370,9 +361,9 @@ export function ProjectDetailPage() {
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => setApplyTemplateOpen(true)}
+                onClick={() => setChangeTemplateOpen(true)}
               >
-                Apply Project Template
+                Change Template
               </Button>
             </Box>
             <WorkflowTimeline steps={data.timeline} />
@@ -717,15 +708,21 @@ export function ProjectDetailPage() {
         }}
       />
 
-      <ConfirmDialog
-        open={applyTemplateOpen}
-        title="Apply Project Template?"
-        message="This will replace all existing milestones with the milestones from the project's template. This action cannot be undone if no timesheet hours are logged against current milestones."
-        confirmLabel="Apply Template"
-        danger
-        loading={applyTemplateMutation.isPending}
-        onClose={() => setApplyTemplateOpen(false)}
-        onConfirm={() => applyTemplateMutation.mutate()}
+      <ChangeProjectTemplateDialog
+        open={changeTemplateOpen}
+        projectId={project.id}
+        customerId={project.customer_id}
+        projectTypeId={project.project_type_id ?? ''}
+        currentTemplateId={project.project_template_id}
+        canChangeTemplate={project.can_change_template ?? true}
+        blockedReason={project.template_change_blocked_reason}
+        onClose={() => setChangeTemplateOpen(false)}
+        onApplied={() => {
+          showSuccess('Project template changed. Milestones were regenerated.');
+          setChangeTemplateOpen(false);
+          invalidate();
+        }}
+        onError={(message) => showError(message)}
       />
 
       <ConfirmDialog

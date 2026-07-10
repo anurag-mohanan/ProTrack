@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Grid, Typography } from '@mui/material';
+import { Box, Grid, Typography, Alert } from '@mui/material';
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined';
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
@@ -32,6 +32,8 @@ import {
 } from '../ui/design-system';
 import { userDisplayName } from '../../utils/format';
 import { optionalString, optionalUuid, optionalNumber, validateRequiredFields, isBlankDisplayValue } from '../../utils/formValues';
+import { ChangeProjectTemplateDialog } from './ChangeProjectTemplateDialog';
+import { ProsohmButton } from '../ui/ProsohmButton';
 import { useToast } from '../../context/ToastContext';
 
 interface ProjectFormValues {
@@ -124,8 +126,9 @@ export function ProjectFormDialog({
 }: ProjectFormDialogProps) {
   const isEdit = Boolean(project);
   const queryClient = useQueryClient();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const [form, setForm] = useState<ProjectFormValues>(emptyForm);
+  const [changeTemplateOpen, setChangeTemplateOpen] = useState(false);
   const baselineRef = useRef('');
 
   const serializeForm = (values: ProjectFormValues) => JSON.stringify(values);
@@ -179,7 +182,11 @@ export function ProjectFormDialog({
         customer_id: form.customer_id,
         project_type_id: form.project_type_id,
       }),
-    enabled: open && !isEdit && Boolean(form.customer_id) && Boolean(form.project_type_id),
+    enabled:
+      open &&
+      Boolean(form.customer_id) &&
+      Boolean(form.project_type_id) &&
+      (!isEdit || Boolean(project?.can_change_template)),
   });
 
   useEffect(() => {
@@ -303,6 +310,11 @@ export function ProjectFormDialog({
     [matchingTemplatesQuery.data],
   );
 
+  const currentTemplateName = useMemo(() => {
+    const match = matchingTemplates.find((template) => template.id === project?.project_template_id);
+    return match?.name ?? null;
+  }, [matchingTemplates, project?.project_template_id]);
+
   const selectedTemplate = useMemo(
     () => matchingTemplates.find((template) => template.id === form.project_template_id),
     [form.project_template_id, matchingTemplates],
@@ -414,6 +426,7 @@ export function ProjectFormDialog({
   }, [activeCustomers, form.customer_id, project]);
 
   return (
+    <>
     <FormDrawer
       open={open}
       onClose={onClose}
@@ -909,6 +922,35 @@ export function ProjectFormDialog({
           </CollapsibleFormSection>
         )}
 
+        {isEdit && project?.project_type_id ? (
+          <CollapsibleFormSection
+            sectionId="template-change"
+            storageKey={PROJECT_SECTION_STORAGE_KEY}
+            title="Project Template"
+            subtitle="Change workflow before milestones are completed"
+            icon={TimelineOutlinedIcon}
+          >
+            <Grid size={{ xs: 12 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                Current template:{' '}
+                <strong>{currentTemplateName ?? 'Not set'}</strong>
+              </Typography>
+              {project.can_change_template === false ? (
+                <Alert severity="info" sx={{ mb: 1.5 }}>
+                  {project.template_change_blocked_reason ??
+                    'Template cannot be changed after milestone work has started.'}
+                </Alert>
+              ) : null}
+              <ProsohmButton
+                buttonVariant="outlined"
+                onClick={() => setChangeTemplateOpen(true)}
+              >
+                Change Template
+              </ProsohmButton>
+            </Grid>
+          </CollapsibleFormSection>
+        ) : null}
+
         <CollapsibleFormSection
           sectionId="notes"
           storageKey={PROJECT_SECTION_STORAGE_KEY}
@@ -954,5 +996,27 @@ export function ProjectFormDialog({
         ) : null}
       </Box>
     </FormDrawer>
+
+    {isEdit && project?.project_type_id ? (
+      <ChangeProjectTemplateDialog
+        open={changeTemplateOpen}
+        projectId={project.id}
+        customerId={project.customer_id}
+        projectTypeId={project.project_type_id}
+        currentTemplateId={project.project_template_id}
+        currentTemplateName={currentTemplateName}
+        canChangeTemplate={project.can_change_template ?? true}
+        blockedReason={project.template_change_blocked_reason}
+        onClose={() => setChangeTemplateOpen(false)}
+        onApplied={() => {
+          showSuccess('Project template changed. Milestones were regenerated.');
+          setChangeTemplateOpen(false);
+          void queryClient.invalidateQueries({ queryKey: ['projects'] });
+          onUpdated?.(project.id);
+        }}
+        onError={(message) => showError(message)}
+      />
+    ) : null}
+    </>
   );
 }

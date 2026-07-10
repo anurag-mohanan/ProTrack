@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db.project_template_seed import ensure_project_types_and_templates
+from app.models.enums import MilestoneStatus
 from app.models.models import Customer, Milestone, ProjectTemplate, ProjectType
 from tests.conftest import IDS
 
@@ -397,3 +398,60 @@ def test_project_template_health_check_passes(template_db):
 
     warnings = validate_project_template_health(template_db)
     assert warnings == []
+
+
+def test_apply_template_blocked_after_completed_milestone(client, template_db):
+    mold_type = _get_project_type(template_db, "Mold Design")
+    general = _get_template(template_db, "General Mold Design")
+    payload = _create_project_payload(
+        template_db,
+        customer_id=IDS["customer"],
+        contact_id=IDS["contact"],
+        project_type_id=mold_type.id,
+        template_id=general.id,
+    )
+    create_response = client.post(
+        "/api/v1/projects", json=payload, headers=client.auth_headers
+    )
+    assert create_response.status_code == 201, create_response.text
+    project_id = create_response.json()["id"]
+
+    milestone = template_db.scalar(
+        select(Milestone).where(Milestone.project_id == uuid.UUID(project_id))
+    )
+    assert milestone is not None
+    milestone.status = MilestoneStatus.completed
+    template_db.commit()
+
+    apply_response = client.post(
+        f"/api/v1/projects/{project_id}/apply-template",
+        json={"project_template_id": str(general.id)},
+        headers=client.auth_headers,
+    )
+    assert apply_response.status_code == 422
+    assert "completed" in apply_response.json()["detail"].lower()
+
+
+def test_project_read_exposes_template_change_eligibility(client, template_db):
+    mold_type = _get_project_type(template_db, "Mold Design")
+    general = _get_template(template_db, "General Mold Design")
+    payload = _create_project_payload(
+        template_db,
+        customer_id=IDS["customer"],
+        contact_id=IDS["contact"],
+        project_type_id=mold_type.id,
+        template_id=general.id,
+    )
+    create_response = client.post(
+        "/api/v1/projects", json=payload, headers=client.auth_headers
+    )
+    project_id = create_response.json()["id"]
+
+    read_response = client.get(
+        f"/api/v1/projects/{project_id}",
+        headers=client.auth_headers,
+    )
+    assert read_response.status_code == 200
+    body = read_response.json()
+    assert body["can_change_template"] is True
+    assert body["template_change_blocked_reason"] is None

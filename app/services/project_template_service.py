@@ -16,6 +16,7 @@ from app.models.models import (
     ProjectTemplate,
     ProjectTemplateMilestone,
     ProjectType,
+    TimesheetEntry,
 )
 
 
@@ -215,6 +216,72 @@ def create_milestones_from_template(    db: Session,
     sync_milestone_assignments(db, project.id)
 
 
+def project_has_completed_milestones(db: Session, project_id: UUID) -> bool:
+    completed = db.scalar(
+        select(func.count())
+        .select_from(Milestone)
+        .where(
+            Milestone.project_id == project_id,
+            Milestone.status == MilestoneStatus.completed,
+        )
+    )
+    return int(completed or 0) > 0
+
+
+def project_has_logged_milestone_hours(db: Session, project_id: UUID) -> bool:
+    milestone_ids = list(
+        db.scalars(select(Milestone.id).where(Milestone.project_id == project_id)).all()
+    )
+    if not milestone_ids:
+        return False
+    logged_count = int(
+        db.scalar(
+            select(func.count())
+            .select_from(TimesheetEntry)
+            .where(
+                TimesheetEntry.milestone_id.in_(milestone_ids),
+                TimesheetEntry.is_deleted.is_(False),
+            )
+        )
+        or 0
+    )
+    return logged_count > 0
+
+
+def get_template_change_blockers(db: Session, project_id: UUID) -> list[str]:
+    blockers: list[str] = []
+    if project_has_completed_milestones(db, project_id):
+        blockers.append(
+            "At least one milestone has been marked completed"
+        )
+    if project_has_logged_milestone_hours(db, project_id):
+        blockers.append(
+            "Timesheet hours are logged against current milestones"
+        )
+    return blockers
+
+
+def can_change_project_template(db: Session, project_id: UUID) -> tuple[bool, str | None]:
+    blockers = get_template_change_blockers(db, project_id)
+    if not blockers:
+        return True, None
+    return False, blockers[0]
+
+
+def assert_can_change_project_template(db: Session, project_id: UUID) -> None:
+    blockers = get_template_change_blockers(db, project_id)
+    if not blockers:
+        return
+    if project_has_completed_milestones(db, project_id):
+        raise ProTrackValidationError(
+            "Cannot change the project template after a milestone has been marked completed"
+        )
+    if project_has_logged_milestone_hours(db, project_id):
+        raise ProTrackValidationError(
+            "Cannot replace milestones while timesheet hours are logged against them"
+        )
+
+
 def apply_template_to_project(
     db: Session,
     *,
@@ -222,28 +289,16 @@ def apply_template_to_project(
     template: ProjectTemplate,
     anchor_date: date | None = None,
 ) -> None:
-    from app.models.models import TimesheetEntry
+    assert_can_change_project_template(db, project.id)
 
     existing_milestones = list(
         db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
     )
     milestone_ids = [row.id for row in existing_milestones]
-    if milestone_ids:
-        logged_count = int(
-            db.scalar(
-                select(func.count())
-                .select_from(TimesheetEntry)
-                .where(
-                    TimesheetEntry.milestone_id.in_(milestone_ids),
-                    TimesheetEntry.is_deleted.is_(False),
-                )
-            )
-            or 0
+    if milestone_ids and project_has_logged_milestone_hours(db, project.id):
+        raise ProTrackValidationError(
+            "Cannot replace milestones while timesheet hours are logged against them"
         )
-        if logged_count > 0:
-            raise ProTrackValidationError(
-                "Cannot replace milestones while timesheet hours are logged against them"
-            )
     for milestone in existing_milestones:
         db.delete(milestone)
     db.flush()

@@ -30,6 +30,10 @@ import {
 } from './timesheetToolOptions';
 import type { NonProductiveCode } from '../../types';
 import { todayIsoDate } from '../../utils/timesheetMonth';
+import {
+  resolveTaskTypeIdForProject,
+  taskTypesForProjectStream,
+} from '../../utils/timesheetTaskTypes';
 
 export interface TimesheetEntryFormValues {
   entryDate: string;
@@ -151,17 +155,22 @@ export function TimesheetEntryForm({
 
   const taskOptions = useMemo(() => {
     if (selectedTool?.kind !== 'project') return [];
-    const active = taskTypes.filter((task) => task.is_active !== false);
-    if (!selectedProject) return active;
-    // Prefer the selected project's stream, but never hide the rest so the
-    // Task dropdown is always populated when active task types exist.
-    return [...active].sort((left, right) => {
-      const leftMatch = left.stream_id === selectedProject.stream_id ? 0 : 1;
-      const rightMatch = right.stream_id === selectedProject.stream_id ? 0 : 1;
-      if (leftMatch !== rightMatch) return leftMatch - rightMatch;
-      return left.name.localeCompare(right.name);
-    });
-  }, [selectedProject, selectedTool, taskTypes]);
+    return taskTypesForProjectStream(taskTypes, selectedProject?.stream_id).sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+  }, [selectedProject?.stream_id, selectedTool, taskTypes]);
+
+  useEffect(() => {
+    if (selectedTool?.kind !== 'project') return;
+    const resolved = resolveTaskTypeIdForProject(
+      taskTypes,
+      selectedProject?.stream_id,
+      form.taskTypeId,
+    );
+    if (resolved !== form.taskTypeId) {
+      setForm((current) => ({ ...current, taskTypeId: resolved }));
+    }
+  }, [selectedProject?.stream_id, selectedTool?.kind, selectedTool?.value, taskTypes]);
 
   const projectedDailyTotal =
     (dailyTotals.get(form.entryDate) ?? 0) -
@@ -202,10 +211,17 @@ export function TimesheetEntryForm({
   };
 
   const handleToolChange = (option: TimesheetToolOption | null) => {
+    const project =
+      option?.kind === 'project'
+        ? projects.find((item) => item.id === option.projectId) ?? null
+        : null;
     setForm((current) => ({
       ...current,
       toolValue: option?.value ?? '',
-      taskTypeId: option?.kind === 'project' ? current.taskTypeId : '',
+      taskTypeId:
+        option?.kind === 'project'
+          ? resolveTaskTypeIdForProject(taskTypes, project?.stream_id, current.taskTypeId)
+          : '',
       contributionReason: option?.kind === 'project' ? current.contributionReason : '',
       isBillable: isLeaveToolOption(option)
         ? false
@@ -251,6 +267,13 @@ export function TimesheetEntryForm({
         <Alert severity="info" sx={{ mb: 1, py: 0 }}>
           No tool numbers loaded ({projects.length} live projects, {npCodes.length} NP codes).
           Check that lookup data has loaded.
+        </Alert>
+      ) : null}
+
+      {selectedTool?.kind === 'project' && selectedProject && taskOptions.length === 0 ? (
+        <Alert severity="warning" sx={{ mb: 1, py: 0 }}>
+          No task types are configured for this project&apos;s stream. Ask an administrator to add
+          task types for the stream.
         </Alert>
       ) : null}
 

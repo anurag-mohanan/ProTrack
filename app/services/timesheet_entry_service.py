@@ -24,6 +24,7 @@ from app.models.models import (
     User,
 )
 from app.schemas.timesheet import TimesheetEntryCreate, TimesheetEntryUpdate
+from app.services.task_type_matching_service import resolve_auto_create_stream_id
 
 ACTIVE_PROJECT_STATUSES = (
     ExecutionStatus.currently_being_worked_on,
@@ -116,8 +117,12 @@ def normalize_entry_payload(
         task_type = db.get(TaskType, task_type_id)
         if task_type is None or not task_type.is_active:
             raise ProTrackValidationError("Task type not found or inactive")
-        if task_type.stream_id != project.stream_id:
-            raise ProTrackValidationError("Task type must belong to the project stream")
+        project_stream_id = project.stream_id or resolve_auto_create_stream_id(db)
+        if project_stream_id is not None and task_type.stream_id != project_stream_id:
+            raise ProTrackValidationError(
+                "Task type must belong to the project stream. "
+                "Select a task that matches this project's engineering stream."
+            )
 
         milestone_id = data.get("milestone_id")
         if milestone_id is not None:

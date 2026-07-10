@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import type { TaskType, TimesheetEntry } from '../../types';
 import type { TimesheetProjectLookup } from '../../types/TimesheetEntry';
+import { taskTypesForProjectStream } from '../../utils/timesheetTaskTypes';
 import {
   dayName,
   GRID_COLUMNS,
@@ -257,14 +258,10 @@ function TimesheetMonthGridComponent({
                     slotProps={{ input: { sx: { fontSize: 13 } } }}
                   >
                     <MenuItem value="">Select task</MenuItem>
-                    {taskTypes
-                      .filter(
-                        (task) =>
-                          !row.projectId ||
-                          task.stream_id ===
-                            projects.find((project) => project.id === row.projectId)?.stream_id,
-                      )
-                      .map((task) => (
+                    {taskTypesForProjectStream(
+                      taskTypes,
+                      projects.find((project) => project.id === row.projectId)?.stream_id,
+                    ).map((task) => (
                         <MenuItem key={task.id} value={task.id}>
                           {task.name}
                         </MenuItem>

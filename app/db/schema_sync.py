@@ -649,27 +649,32 @@ def ensure_non_productive_codes(engine: Engine) -> None:
 def ensure_standard_task_types(engine: Engine) -> None:
     session = sessionmaker(bind=engine)()
     try:
-        stream = session.scalar(select(Stream).where(Stream.name == "Mold Design"))
-        if stream is None:
-            return
-        existing_names = {
-            row.name
-            for row in session.scalars(
-                select(TaskType).where(TaskType.stream_id == stream.id)
+        streams = list(
+            session.scalars(
+                select(Stream).where(Stream.is_active.is_(True)).order_by(Stream.name)
             ).all()
-        }
-        for name, description in STANDARD_TASK_TYPE_NAMES:
-            if name in existing_names:
-                continue
-            session.add(
-                TaskType(
-                    stream_id=stream.id,
-                    name=name,
-                    description=description,
-                    is_billable=True,
-                    is_active=True,
+        )
+        if not streams:
+            return
+        for stream in streams:
+            existing_names = {
+                row.name
+                for row in session.scalars(
+                    select(TaskType).where(TaskType.stream_id == stream.id)
+                ).all()
+            }
+            for name, description in STANDARD_TASK_TYPE_NAMES:
+                if name in existing_names:
+                    continue
+                session.add(
+                    TaskType(
+                        stream_id=stream.id,
+                        name=name,
+                        description=description,
+                        is_billable=True,
+                        is_active=True,
+                    )
                 )
-            )
         session.commit()
     finally:
         session.close()

@@ -1,5 +1,5 @@
 import type { CurrentUser } from '../types/Auth';
-import { canDeleteRecords } from './permissions';
+import { canDeleteRecords, getDashboardRoleGroup } from './permissions';
 
 /** Team IDs used to scope project portfolio metrics for leaders (not full-access admins). */
 export function getLeaderTeamScopeIds(user: CurrentUser | null | undefined): string[] {
@@ -15,4 +15,24 @@ export function shouldScopeProjectsByLeaderTeams(
 ): boolean {
   if (canDeleteRecords(roleName)) return false;
   return getLeaderTeamScopeIds(user).length > 0;
+}
+
+/** Leaders with assigned teams always get per-team sections; others group when multiple teams exist. */
+export function shouldGroupProjectsByTeamForUser(
+  roleName: string,
+  user: CurrentUser | null | undefined,
+  distinctTeamGroupCount: number,
+): boolean {
+  const leaderTeamIds = getLeaderTeamScopeIds(user);
+  if (shouldScopeProjectsByLeaderTeams(roleName, user) && leaderTeamIds.length > 0) {
+    return true;
+  }
+  const roleGroup = getDashboardRoleGroup(roleName);
+  if (
+    (roleGroup === 'engineering_manager' || roleGroup === 'design_leader') &&
+    distinctTeamGroupCount > 1
+  ) {
+    return true;
+  }
+  return distinctTeamGroupCount > 1;
 }

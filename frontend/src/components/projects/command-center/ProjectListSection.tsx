@@ -84,7 +84,13 @@ export function ProjectListSection({
         <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
           {sectionTitle}
         </Typography>
-        {table}
+        {projects.length ? (
+          table
+        ) : (
+          <Typography variant="body2" color="text.secondary" sx={{ px: 0.5, py: 1 }}>
+            No projects in this section.
+          </Typography>
+        )}
       </Box>
     );
   }

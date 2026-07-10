@@ -6,6 +6,12 @@ export interface ProjectTeamGroup {
   projects: Project[];
 }
 
+export interface GroupProjectsByTeamOptions {
+  /** When set, sections follow this order and include empty managed teams. */
+  leaderTeamIds?: string[];
+  includeEmptyLeaderTeams?: boolean;
+}
+
 function buildUsersById(users: User[]): Map<string, User> {
   return new Map(users.map((user) => [user.id, user]));
 }
@@ -39,6 +45,7 @@ export function groupProjectsByTeam(
   projects: Project[],
   teams: Team[],
   users: User[] = [],
+  options: GroupProjectsByTeamOptions = {},
 ): ProjectTeamGroup[] {
   const teamNameById = new Map(teams.map((team) => [team.id, team.name]));
   const usersById = buildUsersById(users);
@@ -51,13 +58,45 @@ export function groupProjectsByTeam(
     else groups.set(key, [project]);
   }
 
-  return [...groups.entries()]
-    .map(([teamId, teamProjects]) => ({
+  const baseGroups = [...groups.entries()].map(([teamId, teamProjects]) => ({
+    teamId,
+    teamName: teamId ? teamNameById.get(teamId) ?? 'Unknown team' : 'Unassigned',
+    projects: teamProjects,
+  }));
+
+  const leaderTeamIds = options.leaderTeamIds ?? [];
+  const includeEmptyLeaderTeams =
+    options.includeEmptyLeaderTeams ?? leaderTeamIds.length > 0;
+
+  if (!leaderTeamIds.length) {
+    return baseGroups.sort((left, right) => left.teamName.localeCompare(right.teamName));
+  }
+
+  const byTeamId = new Map(
+    baseGroups
+      .filter((group) => group.teamId != null)
+      .map((group) => [group.teamId as string, group]),
+  );
+  const unassigned = baseGroups.find((group) => group.teamId == null);
+
+  const ordered: ProjectTeamGroup[] = leaderTeamIds.map((teamId) => {
+    const existing = byTeamId.get(teamId);
+    return {
       teamId,
-      teamName: teamId ? teamNameById.get(teamId) ?? 'Unknown team' : 'Unassigned',
-      projects: teamProjects,
-    }))
-    .sort((left, right) => left.teamName.localeCompare(right.teamName));
+      teamName: teamNameById.get(teamId) ?? existing?.teamName ?? 'Unknown team',
+      projects: existing?.projects ?? [],
+    };
+  });
+
+  if (unassigned?.projects.length) {
+    ordered.push(unassigned);
+  }
+
+  if (!includeEmptyLeaderTeams) {
+    return ordered.filter((group) => group.projects.length > 0);
+  }
+
+  return ordered;
 }
 
 export function filterProjectsForAccessibleTeams(

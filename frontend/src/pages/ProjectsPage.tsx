@@ -42,7 +42,7 @@ import {
 import type { ProjectStage } from '../types';
 import { exportToCsv } from '../utils/exportData';
 import { filterProjectsForAccessibleTeams, groupProjectsByTeam } from '../utils/projectTeamGroups';
-import { getLeaderTeamScopeIds, shouldScopeProjectsByLeaderTeams } from '../utils/projectTeamScope';
+import { getLeaderTeamScopeIds, shouldGroupProjectsByTeamForUser, shouldScopeProjectsByLeaderTeams } from '../utils/projectTeamScope';
 import { canArchiveProject, canCreateProject, canDeleteRecords } from '../utils/permissions';
 import {
   applyKpiQuickFilter,
@@ -297,11 +297,24 @@ export function ProjectsPage() {
   );
 
   const liveProjectTeamGroups = useMemo(
-    () => groupProjectsByTeam(teamScopedLiveProjects, teamsQuery.data ?? [], lookupUsers),
-    [teamScopedLiveProjects, teamsQuery.data, lookupUsers],
+    () =>
+      groupProjectsByTeam(teamScopedLiveProjects, teamsQuery.data ?? [], lookupUsers, {
+        leaderTeamIds: scopeByLeaderTeams ? leaderTeamIds : undefined,
+        includeEmptyLeaderTeams: scopeByLeaderTeams,
+      }),
+    [teamScopedLiveProjects, teamsQuery.data, lookupUsers, scopeByLeaderTeams, leaderTeamIds],
   );
 
-  const shouldGroupLiveProjectsByTeam = liveProjectTeamGroups.length > 1;
+  const distinctTeamGroupCount = useMemo(
+    () => liveProjectTeamGroups.filter((group) => group.projects.length > 0).length,
+    [liveProjectTeamGroups],
+  );
+
+  const shouldGroupLiveProjectsByTeam = shouldGroupProjectsByTeamForUser(
+    user?.role_name ?? '',
+    user,
+    distinctTeamGroupCount,
+  );
 
   const teamScopedAllProjects = useMemo(
     () =>

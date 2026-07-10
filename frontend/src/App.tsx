@@ -23,6 +23,7 @@ import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import HelpCenterPage from './pages/HelpCenterPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { AdminRoute } from './routes/AdminRoute';
+import { AdminPortalRoute } from './routes/AdminPortalRoute';
 import { RoleRoute } from './routes/RoleRoute';
 import { ProtectedRoute, PublicRoute, RequirePasswordChangedRoute, ChangePasswordGate } from './routes/ProtectedRoute';
 import {
@@ -105,7 +106,8 @@ function LazyAdmin({ children }: { children: ReactNode }) {
 
 function AdminHistoricalImportRoute() {
   const { user } = useAuth();
-  if (!canImportHistoricalProjects(accessContextFromUser(user))) {
+  const access = accessContextFromUser(user);
+  if (!canImportHistoricalProjects(access)) {
     return <Navigate to="/admin/dashboard" replace />;
   }
   return (
@@ -154,7 +156,11 @@ function AdminDiagnosticsRoute() {
 }
 
 function LazyAdminPage({ children }: { children: ReactNode }) {
-  return <LazyAdmin>{children}</LazyAdmin>;
+  return (
+    <LazyAdmin>
+      <AdminPortalRoute>{children}</AdminPortalRoute>
+    </LazyAdmin>
+  );
 }
 
 export default function App() {

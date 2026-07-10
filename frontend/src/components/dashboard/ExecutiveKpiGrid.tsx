@@ -31,6 +31,7 @@ export interface DashboardKpiItem {
   icon: typeof FolderOpenRoundedIcon;
   accent?: KpiAccent;
   trend?: DashboardKpiTrend;
+  destination?: string;
   onClick?: () => void;
 }
 

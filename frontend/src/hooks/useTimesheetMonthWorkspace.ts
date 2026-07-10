@@ -36,6 +36,7 @@ export function useTimesheetMonthWorkspace(
   user: CurrentUser | null,
   monthValue: string,
   viewAllUsers = false,
+  needsEntryLookups = true,
 ) {
   const queryClient = useQueryClient();
   const bounds = useMemo(() => monthBounds(monthValue), [monthValue]);
@@ -57,18 +58,21 @@ export function useTimesheetMonthWorkspace(
         ? fetchTimesheetProjects({ q: debouncedProjectSearch.trim(), limit: 50 })
         : fetchTimesheetProjects(),
     staleTime: QUERY_STALE_TIMES.projects,
+    enabled: needsEntryLookups,
   });
 
   const npCodesQuery = useQuery({
     queryKey: ['non-productive-codes', 'timesheet'],
     queryFn: fetchNonProductiveCodes,
     staleTime: QUERY_STALE_TIMES.lookups,
+    enabled: needsEntryLookups,
   });
 
   const taskTypesQuery = useQuery({
     queryKey: ['task-types', 'timesheet'],
     queryFn: () => fetchTaskTypes(),
     staleTime: QUERY_STALE_TIMES.lookups,
+    enabled: needsEntryLookups,
   });
 
   const usersQuery = useQuery({
@@ -288,22 +292,22 @@ export function useTimesheetMonthWorkspace(
 
   const isLoading =
     holidaysQuery.isLoading ||
-    projectsQuery.isLoading ||
-    npCodesQuery.isLoading ||
-    taskTypesQuery.isLoading ||
+    (needsEntryLookups &&
+      (projectsQuery.isLoading || npCodesQuery.isLoading || taskTypesQuery.isLoading)) ||
     timesheetsQuery.isLoading ||
     entriesQuery.isLoading;
 
   const error =
     holidaysQuery.error ??
-    projectsQuery.error ??
-    npCodesQuery.error ??
-    taskTypesQuery.error ??
     timesheetsQuery.error ??
-    entriesQuery.error;
+    entriesQuery.error ??
+    (needsEntryLookups
+      ? projectsQuery.error ?? npCodesQuery.error ?? taskTypesQuery.error
+      : null);
 
-  const lookupError =
-    projectsQuery.error ?? npCodesQuery.error ?? taskTypesQuery.error ?? null;
+  const lookupError = needsEntryLookups
+    ? projectsQuery.error ?? npCodesQuery.error ?? taskTypesQuery.error ?? null
+    : null;
 
   const refetchLookups = useCallback(() => {
     void projectsQuery.refetch();

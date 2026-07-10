@@ -4,17 +4,24 @@ import { AdminSearchBar } from '../../components/admin/AdminSearchBar';
 import { AdminSectionCards } from '../../components/admin/AdminSectionCards';
 import { ContentCard } from '../../components/ui/cards';
 import {
-  ADMIN_CREATE_ACTIONS,
   ADMIN_IMPORT_ALL_ITEMS,
-  ADMIN_MANAGE_ITEMS,
-  ADMIN_SETTINGS_ITEMS,
   getAdminAuditItems,
+  getAdminCreateActions,
+  getAdminManageItems,
+  getAdminSettingsItems,
 } from '../../config/adminNavigation';
 import { useAuth } from '../../context/AuthContext';
+import { accessContextFromUser } from '../../utils/permissions';
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
-  const roleName = user?.role_name ?? '';
+  const access = accessContextFromUser(user);
+
+  const createActions = getAdminCreateActions(access);
+  const manageItems = getAdminManageItems(access);
+  const importItems = ADMIN_IMPORT_ALL_ITEMS(access);
+  const settingsItems = getAdminSettingsItems(access);
+  const auditItems = getAdminAuditItems(access);
 
   return (
     <Box>
@@ -29,15 +36,11 @@ export default function AdminDashboardPage() {
         </ContentCard>
       </Box>
 
-      <AdminSectionCards title="Create" items={ADMIN_CREATE_ACTIONS} compact />
-      <AdminSectionCards title="Manage" items={ADMIN_MANAGE_ITEMS} compact />
-      <AdminSectionCards
-        title="Import"
-        items={ADMIN_IMPORT_ALL_ITEMS(roleName)}
-        compact
-      />
-      <AdminSectionCards title="Settings" items={ADMIN_SETTINGS_ITEMS} compact />
-      <AdminSectionCards title="Audit" items={getAdminAuditItems(roleName)} compact />
+      <AdminSectionCards title="Create" items={createActions} compact />
+      <AdminSectionCards title="Manage" items={manageItems} compact />
+      <AdminSectionCards title="Import" items={importItems} compact />
+      <AdminSectionCards title="Settings" items={settingsItems} compact />
+      <AdminSectionCards title="Audit" items={auditItems} compact />
     </Box>
   );
 }

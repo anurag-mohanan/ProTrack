@@ -324,17 +324,17 @@ export function canReturnToDraft(
 
 export function canImportHistoricalProjects(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
-  return userHasModule(ctx, MODULE_SYSTEM_ADMINISTRATION);
+  return isAdminRole(ctx.role_name);
 }
 
 export function canImportHistoricalTimesheets(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
-  return userHasSpecial(ctx, SPECIAL_IMPORT_TIMESHEETS);
+  return isAdminRole(ctx.role_name);
 }
 
 export function canAccessAdministration(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
-  return userHasModule(ctx, MODULE_SYSTEM_ADMINISTRATION);
+  return userHasModule(ctx, MODULE_SYSTEM_ADMINISTRATION) && isAdminRole(ctx.role_name);
 }
 
 export function canManageUsers(roleNameOrContext: string | AccessContext): boolean {
@@ -377,6 +377,7 @@ export function canEditProject(roleNameOrContext: string | AccessContext): boole
 
 export function canViewReports(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
+  if (isReadOnlyRole(ctx.role_name)) return true;
   return userHasModule(ctx, MODULE_REPORTS) || userHasSpecial(ctx, SPECIAL_VIEW_REPORTS);
 }
 
@@ -422,6 +423,11 @@ export function getMainNavItems(roleNameOrContext: string | AccessContext): Main
 
 export function canOverrideBillable(roleName: string): boolean {
   return isOperationalManagerRole(roleName);
+}
+
+export function canViewAiInsights(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return isOperationalManagerRole(ctx.role_name) || isDesignLeaderRole(ctx.role_name);
 }
 
 export { defaultModulesForRole as getDefaultModulesForRole };

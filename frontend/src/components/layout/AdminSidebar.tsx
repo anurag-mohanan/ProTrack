@@ -13,7 +13,9 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
 import { NavLink } from 'react-router-dom';
 import { LogoHomeLink } from '../branding/LogoHomeLink';
-import { ADMIN_WORKSPACE_NAV } from '../../config/adminNavigation';
+import { getAdminWorkspaceNav } from '../../config/adminNavigation';
+import { useAuth } from '../../context/AuthContext';
+import { accessContextFromUser } from '../../utils/permissions';
 
 export const ADMIN_DRAWER_WIDTH = 272;
 
@@ -73,6 +75,9 @@ function NavButton({
 }
 
 export function AdminSidebar() {
+  const { user } = useAuth();
+  const workspaceNav = getAdminWorkspaceNav(accessContextFromUser(user));
+
   return (
     <Drawer
       variant="permanent"
@@ -103,7 +108,7 @@ export function AdminSidebar() {
         </Box>
 
         <List disablePadding>
-          {ADMIN_WORKSPACE_NAV.map((item) => (
+          {workspaceNav.map((item) => (
             <NavButton
               key={item.path}
               path={item.path}

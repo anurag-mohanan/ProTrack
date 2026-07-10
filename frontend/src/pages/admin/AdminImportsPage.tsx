@@ -3,10 +3,11 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { AdminActionCard } from '../../components/admin/AdminActionCard';
 import { ADMIN_IMPORT_ALL_ITEMS } from '../../config/adminNavigation';
 import { useAuth } from '../../context/AuthContext';
+import { accessContextFromUser } from '../../utils/permissions';
 
 export default function AdminImportsPage() {
   const { user } = useAuth();
-  const items = ADMIN_IMPORT_ALL_ITEMS(user?.role_name ?? '');
+  const items = ADMIN_IMPORT_ALL_ITEMS(accessContextFromUser(user));
 
   return (
     <Box>

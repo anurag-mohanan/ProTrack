@@ -12,6 +12,10 @@ interface AdminSectionCardsProps {
 }
 
 export function AdminSectionCards({ title, description, items, compact = false }: AdminSectionCardsProps) {
+  if (!items.length) {
+    return null;
+  }
+
   return (
     <Box sx={{ mb: compact ? 2.5 : 3.5 }}>
       <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>

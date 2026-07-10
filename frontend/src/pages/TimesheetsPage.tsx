@@ -82,11 +82,11 @@ export function TimesheetsPage() {
     !canEnterOwn && canViewAll ? 'all' : 'mine',
   );
   const viewAllUsers = canViewAll && viewMode === 'all';
-
-  const workspace = useTimesheetMonthWorkspace(user, monthValue, viewAllUsers);
-  const monthLabel = formatMonthLabel(monthValue);
-
   const showEntryForm = canEnterOwn && !viewAllUsers;
+  const needsEntryLookups = showEntryForm;
+
+  const workspace = useTimesheetMonthWorkspace(user, monthValue, viewAllUsers, needsEntryLookups);
+  const monthLabel = formatMonthLabel(monthValue);
 
   const calendarLocked = isTimesheetMonthCalendarLocked(monthValue, {
     adminOverride: isAdmin,
@@ -363,11 +363,11 @@ export function TimesheetsPage() {
     return <LoadingState message="Loading timesheet workspace…" />;
   }
 
-  if (workspace.error) {
-    console.error('Timesheet workspace failed to load lookup data:', workspace.error);
+  if (workspace.lookupError) {
+    console.error('Timesheet workspace failed to load lookup data:', workspace.lookupError);
     return (
       <ErrorState
-        error={workspace.error}
+        error={workspace.lookupError}
         title="Unable to load lookup data"
         onRetry={workspace.refetchLookups}
       />

@@ -26,7 +26,18 @@ import { WidgetErrorBoundary } from '../components/dashboard/WidgetErrorBoundary
 import { DashboardPanel } from '../components/ui/design-system/DashboardPanel';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../context/AuthContext';
-import { getDashboardRoleGroup } from '../utils/permissions';
+import { accessContextFromUser, getDashboardRoleGroup } from '../utils/permissions';
+import {
+  canViewDashboardAiPanel,
+  canViewDashboardCollaboration,
+  canViewDashboardCustomerWorkload,
+  canViewDashboardEngineeringCharts,
+  canViewDashboardMissingTimesheets,
+  canViewDashboardMyProjects,
+  canViewDashboardMyTasks,
+  canViewDashboardProjectsAttention,
+  canViewDashboardSystemActivity,
+} from '../utils/portalAccess';
 import { getLeaderTeamScopeIds, shouldScopeProjectsByLeaderTeams } from '../utils/projectTeamScope';
 
 const EMPTY_TASKS = {
@@ -39,6 +50,7 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const access = accessContextFromUser(user);
   const roleName = user?.role_name ?? '';
   const roleGroup = getDashboardRoleGroup(roleName);
   const leaderTeamIds = getLeaderTeamScopeIds(user);
@@ -70,7 +82,7 @@ export function DashboardPage() {
   const aiInsightsQuery = useQuery({
     queryKey: aiQueryKeys.insights(10),
     queryFn: () => fetchAiInsights(10),
-    enabled: roleGroup !== 'staff',
+    enabled: canViewDashboardAiPanel(access),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -110,21 +122,18 @@ export function DashboardPage() {
         roleKpis: roleKpisQuery.data,
         unavailable,
         navigate,
+        access,
       }),
-    [roleGroup, summary, systemHealthQuery.data, roleKpisQuery.data, unavailable, navigate],
+    [roleGroup, summary, systemHealthQuery.data, roleKpisQuery.data, unavailable, navigate, access],
   );
 
   if (dashboardQuery.error) {
     return <ErrorState error={dashboardQuery.error} title="Unable to load dashboard" />;
   }
 
-  const showAiSidebar = roleGroup !== 'staff';
-  const showEngineeringCharts =
-    roleGroup === 'engineering_manager' || roleGroup === 'read_only' || roleGroup === 'design_leader';
-  const showMyProjects =
-    roleGroup === 'staff' ||
-    roleGroup === 'engineering_manager' ||
-    roleGroup === 'design_leader';
+  const showAiSidebar = canViewDashboardAiPanel(access);
+  const showEngineeringCharts = canViewDashboardEngineeringCharts(access);
+  const showMyProjects = canViewDashboardMyProjects(access);
   const myProjectRows =
     summary?.my_project_rows?.length
       ? summary.my_project_rows
@@ -177,15 +186,17 @@ export function DashboardPage() {
           </Box>
         ) : null}
 
-        <Box sx={{ mt: 1.5 }}>
-          <WidgetErrorBoundary title="collaboration activity">
-            {loading ? (
-              <DashboardPanelSkeleton height={180} />
-            ) : (
-              <CollaborationActivityWidget data={summary?.collaboration_activity} />
-            )}
-          </WidgetErrorBoundary>
-        </Box>
+        {canViewDashboardCollaboration(access) ? (
+          <Box sx={{ mt: 1.5 }}>
+            <WidgetErrorBoundary title="collaboration activity">
+              {loading ? (
+                <DashboardPanelSkeleton height={180} />
+              ) : (
+                <CollaborationActivityWidget data={summary?.collaboration_activity} />
+              )}
+            </WidgetErrorBoundary>
+          </Box>
+        ) : null}
 
         {showEngineeringCharts ? (
           <WidgetErrorBoundary title="dashboard charts">
@@ -193,7 +204,7 @@ export function DashboardPage() {
           </WidgetErrorBoundary>
         ) : null}
 
-        {roleGroup === 'design_leader' ? (
+        {roleGroup === 'design_leader' && canViewDashboardProjectsAttention(access) ? (
           <Box sx={{ mt: 1.5 }}>
             <WidgetErrorBoundary title="projects requiring attention">
               <DashboardSection title="Projects Requiring Attention" subtitle="Overdue, due soon, or blocked">
@@ -207,7 +218,7 @@ export function DashboardPage() {
           </Box>
         ) : null}
 
-        {(roleGroup === 'engineering_manager' || roleGroup === 'read_only') &&
+        {canViewDashboardMissingTimesheets(access) &&
         !loading &&
         (summary?.missing_timesheets?.length ?? 0) > 0 ? (
           <Box sx={{ mt: 1.5 }}>
@@ -215,7 +226,7 @@ export function DashboardPage() {
           </Box>
         ) : null}
 
-        {roleGroup === 'staff' ? (
+        {canViewDashboardMyTasks(access) ? (
           <Box sx={{ mt: 1.5 }}>
             <WidgetErrorBoundary title="my tasks">
               <DashboardSection title="My Tasks" subtitle="Milestones, reviews, and timesheets">
@@ -229,7 +240,7 @@ export function DashboardPage() {
           </Box>
         ) : null}
 
-        {roleGroup === 'admin' ? (
+        {canViewDashboardSystemActivity(access) ? (
           <Box sx={{ mt: 1.5 }}>
             <DashboardPanel title="System Activity" subtitle="Recent administration events">
               {loading ? (
@@ -245,7 +256,7 @@ export function DashboardPage() {
           </Box>
         ) : null}
 
-        {roleGroup === 'design_leader' ? (
+        {roleGroup === 'design_leader' && canViewDashboardCustomerWorkload(access) ? (
           <Box sx={{ mt: 1.5 }}>
             <DashboardSection title="Customer Workload" subtitle="Active tools by customer">
               {loading ? (

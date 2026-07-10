@@ -30,10 +30,13 @@ import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import {
+  canAccessAdministration,
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
-  ROLES,
+  isAdminRole,
+  type AccessContext,
 } from '../utils/permissions';
+import { canAccessAdminPortalPath } from '../utils/portalAccess';
 
 export interface AdminNavItem {
   id: string;
@@ -104,12 +107,12 @@ export const ADMIN_MANAGE_ITEMS: AdminHubItem[] = [
   { id: 'np-codes', title: 'NP Codes', description: 'Non-productive timesheet codes.', icon: BlockIcon, path: '/admin/non-productive-codes' },
 ];
 
-function buildImportItems(roleName: string, includeComingSoon: boolean): AdminHubItem[] {
+function buildImportItems(ctx: AccessContext, includeComingSoon: boolean): AdminHubItem[] {
   const items: AdminHubItem[] = [
     { id: 'projects-import', title: 'Projects', description: 'Bulk project import.', icon: FolderSharedIcon, path: '/admin/imports', comingSoon: true },
   ];
 
-  if (canImportHistoricalProjects(roleName)) {
+  if (canImportHistoricalProjects(ctx)) {
     items.push({
       id: 'historical-projects',
       title: 'Historical Projects',
@@ -125,7 +128,7 @@ function buildImportItems(roleName: string, includeComingSoon: boolean): AdminHu
     { id: 'timesheets-import', title: 'Timesheets', description: 'Bulk timesheet import.', icon: ScheduleIcon, path: '/admin/imports', comingSoon: true },
   );
 
-  if (canImportHistoricalTimesheets(roleName)) {
+  if (canImportHistoricalTimesheets(ctx)) {
     items.push({
       id: 'historical-timesheets',
       title: 'Historical Timesheets',
@@ -143,12 +146,61 @@ function buildImportItems(roleName: string, includeComingSoon: boolean): AdminHu
   return includeComingSoon ? items : items.filter((item) => !item.comingSoon);
 }
 
-export const ADMIN_IMPORT_ITEMS = (roleName: string): AdminHubItem[] =>
-  buildImportItems(roleName, false);
+export const ADMIN_IMPORT_ITEMS = (ctx: AccessContext): AdminHubItem[] =>
+  filterAdminHubItems(ctx, buildImportItems(ctx, false));
 
 // Unfinished ("Coming Soon") items are hidden from navigation until implemented.
-export const ADMIN_IMPORT_ALL_ITEMS = (roleName: string): AdminHubItem[] =>
-  buildImportItems(roleName, false);
+export const ADMIN_IMPORT_ALL_ITEMS = (ctx: AccessContext): AdminHubItem[] =>
+  filterAdminHubItems(ctx, buildImportItems(ctx, false));
+
+export function filterAdminHubItems<T extends { path?: string }>(
+  ctx: AccessContext,
+  items: T[],
+): T[] {
+  if (!canAccessAdministration(ctx)) {
+    return [];
+  }
+  return items.filter((item) => !item.path || canAccessAdminPortalPath(ctx, item.path));
+}
+
+export const getAdminCreateActions = (ctx: AccessContext): AdminCreateAction[] =>
+  filterAdminHubItems(ctx, ADMIN_CREATE_ACTIONS);
+
+export const getAdminManageItems = (ctx: AccessContext): AdminHubItem[] =>
+  filterAdminHubItems(ctx, ADMIN_MANAGE_ITEMS);
+
+export const getAdminSettingsItems = (ctx: AccessContext): AdminHubItem[] =>
+  filterAdminHubItems(ctx, ALL_SETTINGS_ITEMS);
+
+export const getAdminAuditItems = (ctx: AccessContext): AdminHubItem[] => {
+  if (!canAccessAdministration(ctx)) {
+    return [];
+  }
+  const items =
+    isAdminRole(ctx.role_name)
+      ? ALL_AUDIT_ITEMS
+      : ALL_AUDIT_ITEMS.filter(
+          (item) => !item.id.startsWith('diagnostics-') && item.id !== 'developer-diagnostics',
+        );
+  return filterAdminHubItems(ctx, items);
+};
+
+export const getAdminWorkspaceNav = (ctx: AccessContext): AdminWorkspaceNavItem[] => {
+  if (!canAccessAdministration(ctx)) {
+    return [];
+  }
+
+  const sectionVisibility: Record<string, boolean> = {
+    Overview: canAccessAdminPortalPath(ctx, '/admin/dashboard'),
+    Create: getAdminCreateActions(ctx).length > 0,
+    Manage: getAdminManageItems(ctx).length > 0,
+    'Import / Export': ADMIN_IMPORT_ALL_ITEMS(ctx).length > 0,
+    'System Settings': getAdminSettingsItems(ctx).length > 0,
+    'Audit & Maintenance': getAdminAuditItems(ctx).length > 0,
+  };
+
+  return ADMIN_WORKSPACE_NAV.filter((item) => sectionVisibility[item.label] ?? true);
+};
 
 const ALL_SETTINGS_ITEMS: AdminHubItem[] = [
   { id: 'system-settings', title: 'System Settings', description: 'Core application configuration.', icon: SettingsIcon, path: '/admin/settings' },
@@ -184,13 +236,6 @@ const ALL_AUDIT_ITEMS: AdminHubItem[] = [
 
 export const ADMIN_AUDIT_ITEMS: AdminHubItem[] = ALL_AUDIT_ITEMS;
 
-export const getAdminAuditItems = (roleName: string): AdminHubItem[] => {
-  if (roleName === ROLES.ADMIN) {
-    return ALL_AUDIT_ITEMS;
-  }
-  return ALL_AUDIT_ITEMS.filter((item) => !item.id.startsWith('diagnostics-') && item.id !== 'developer-diagnostics');
-};
-
 export const ADMIN_REPORT_ITEMS: AdminHubItem[] = [
   { id: 'import-history', title: 'Import History', description: 'Historical import audit.', icon: HistoryIcon, path: '/admin/imports/historical-timesheets#history' },
 ];
@@ -207,8 +252,4 @@ export function getAdminNavSections(_roleName: string): AdminNavItem[] {
     path: item.path,
     icon: item.icon,
   }));
-}
-
-export function isAdminRole(roleName: string): boolean {
-  return roleName === ROLES.ADMIN;
 }

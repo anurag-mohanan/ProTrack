@@ -20,7 +20,8 @@ import type { NavigateFunction } from 'react-router-dom';
 import type { RoleKpiSnapshot } from '../../api/dashboard';
 import type { DashboardSummary } from '../../types';
 import type { SystemHealth } from '../../api/system';
-import type { DashboardRoleGroup } from '../../utils/permissions';
+import type { DashboardRoleGroup, AccessContext } from '../../utils/permissions';
+import { canAccessPortalPath } from '../../utils/portalAccess';
 import { formatNumber } from '../../utils/format';
 import {
   activeCustomerCount,
@@ -40,6 +41,7 @@ interface BuildRoleKpiCardsOptions {
   roleKpis: RoleKpiSnapshot | undefined;
   unavailable: boolean;
   navigate: NavigateFunction;
+  access: AccessContext;
 }
 
 type SummaryCardsOptions = Pick<BuildRoleKpiCardsOptions, 'summary' | 'unavailable' | 'navigate'>;
@@ -52,6 +54,15 @@ function n(value: number, unavailable: boolean, decimals = 0) {
   return dash(formatNumber(value, decimals), unavailable);
 }
 
+function filterAccessibleKpiCards(cards: DashboardKpiItem[], access: AccessContext): DashboardKpiItem[] {
+  return cards.filter((card) => {
+    if (!card.destination) {
+      return true;
+    }
+    return canAccessPortalPath(access, card.destination);
+  });
+}
+
 export function buildRoleKpiCards({
   roleGroup,
   summary,
@@ -59,21 +70,34 @@ export function buildRoleKpiCards({
   roleKpis,
   unavailable,
   navigate,
+  access,
 }: BuildRoleKpiCardsOptions): DashboardKpiItem[] {
   const profile = roleKpis?.dashboard_profile;
   if (roleGroup === 'admin' || profile === 'administration') {
-    return buildAdminKpiCards({ systemHealth, summary, roleKpis, unavailable, navigate });
+    return filterAccessibleKpiCards(
+      buildAdminKpiCards({ systemHealth, summary, roleKpis, unavailable, navigate }),
+      access,
+    );
   }
   if (roleGroup === 'engineering_manager' || profile === 'management') {
-    return buildManagementKpiCards({ summary, roleKpis, unavailable, navigate });
+    return filterAccessibleKpiCards(
+      buildManagementKpiCards({ summary, roleKpis, unavailable, navigate }),
+      access,
+    );
   }
   if (roleGroup === 'staff') {
-    return buildStaffKpiCards({ summary, unavailable, navigate });
+    return filterAccessibleKpiCards(buildStaffKpiCards({ summary, unavailable, navigate }), access);
   }
   if (roleGroup === 'design_leader') {
-    return buildDesignLeaderKpiCards({ summary, roleKpis, unavailable, navigate });
+    return filterAccessibleKpiCards(
+      buildDesignLeaderKpiCards({ summary, roleKpis, unavailable, navigate }),
+      access,
+    );
   }
-  return buildExecutiveKpiCards({ summary, unavailable, navigate });
+  return filterAccessibleKpiCards(
+    buildExecutiveKpiCards({ summary, unavailable, navigate }),
+    access,
+  );
 }
 
 function buildExecutiveKpiCards({
@@ -95,6 +119,7 @@ function buildExecutiveKpiCards({
       icon: FolderOpenRoundedIcon,
       accent: 'primary',
       trend: STABLE_TREND,
+      destination: '/projects?lifecycle=active',
       onClick: () => navigate('/projects?lifecycle=active'),
     },
     {
@@ -103,6 +128,7 @@ function buildExecutiveKpiCards({
       icon: ScheduleRoundedIcon,
       accent: (summary?.projects_due_this_week ?? 0) > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?due=week',
       onClick: () => navigate('/projects?due=week'),
     },
     {
@@ -111,6 +137,7 @@ function buildExecutiveKpiCards({
       icon: WarningAmberRoundedIcon,
       accent: (summary?.overdue_projects ?? 0) > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?due=overdue',
       onClick: () => navigate('/projects?due=overdue'),
     },
     {
@@ -119,6 +146,7 @@ function buildExecutiveKpiCards({
       icon: PauseCircleOutlineRoundedIcon,
       accent: (summary?.on_hold_projects ?? 0) > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?execution_status=on_hold',
       onClick: () => navigate('/projects?execution_status=on_hold'),
     },
     {
@@ -127,6 +155,7 @@ function buildExecutiveKpiCards({
       icon: CheckCircleOutlineRoundedIcon,
       accent: 'success',
       trend: STABLE_TREND,
+      destination: '/projects?completed=month',
       onClick: () => navigate('/projects?completed=month'),
     },
     {
@@ -135,6 +164,7 @@ function buildExecutiveKpiCards({
       icon: TimerRoundedIcon,
       accent: 'info',
       trend: STABLE_TREND,
+      destination: '/reports?tab=project-hours',
       onClick: () => navigate('/reports?tab=project-hours'),
     },
     {
@@ -143,6 +173,7 @@ function buildExecutiveKpiCards({
       icon: TimerRoundedIcon,
       accent: 'primary',
       trend: STABLE_TREND,
+      destination: '/reports?tab=project-hours',
       onClick: () => navigate('/reports?tab=project-hours'),
     },
     {
@@ -151,6 +182,7 @@ function buildExecutiveKpiCards({
       icon: SpeedRoundedIcon,
       accent: quotedVsActual > 100 ? 'error' : quotedVsActual >= 90 ? 'warning' : 'success',
       trend: STABLE_TREND,
+      destination: '/reports?tab=project-hours',
       onClick: () => navigate('/reports?tab=project-hours'),
     },
     {
@@ -159,6 +191,7 @@ function buildExecutiveKpiCards({
       icon: SpeedRoundedIcon,
       accent: hoursUtilizationPercent(summary) > 100 ? 'error' : 'success',
       trend: STABLE_TREND,
+      destination: '/resource-planning',
       onClick: () => navigate('/resource-planning'),
     },
     {
@@ -167,6 +200,7 @@ function buildExecutiveKpiCards({
       icon: GroupsRoundedIcon,
       accent: 'success',
       trend: STABLE_TREND,
+      destination: '/resource-planning',
       onClick: () => navigate('/resource-planning'),
     },
     {
@@ -175,6 +209,7 @@ function buildExecutiveKpiCards({
       icon: GroupsRoundedIcon,
       accent: designerUtilizationPercent(summary) >= 90 ? 'error' : 'success',
       trend: STABLE_TREND,
+      destination: '/workload',
       onClick: () => navigate('/workload'),
     },
     {
@@ -183,6 +218,7 @@ function buildExecutiveKpiCards({
       icon: HandymanRoundedIcon,
       accent: surfacerUtilizationPercent(summary) >= 90 ? 'error' : 'success',
       trend: STABLE_TREND,
+      destination: '/workload',
       onClick: () => navigate('/workload'),
     },
     {
@@ -191,6 +227,7 @@ function buildExecutiveKpiCards({
       icon: SpeedRoundedIcon,
       accent: 'info',
       trend: STABLE_TREND,
+      destination: '/reports',
       onClick: () => navigate('/reports'),
     },
     {
@@ -199,6 +236,7 @@ function buildExecutiveKpiCards({
       icon: ScheduleRoundedIcon,
       accent: missingTs > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/timesheets',
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -207,6 +245,7 @@ function buildExecutiveKpiCards({
       icon: WarningAmberRoundedIcon,
       accent: (summary?.late_milestones ?? 0) > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?due=overdue',
       onClick: () => navigate('/projects?due=overdue'),
     },
     {
@@ -215,6 +254,7 @@ function buildExecutiveKpiCards({
       icon: DomainRoundedIcon,
       accent: 'info',
       trend: STABLE_TREND,
+      destination: '/admin/customers',
       onClick: () => navigate('/admin/customers'),
     },
     {
@@ -223,6 +263,7 @@ function buildExecutiveKpiCards({
       icon: TrendingUpRoundedIcon,
       accent: 'primary',
       trend: STABLE_TREND,
+      destination: '/projects?execution_status=currently_being_worked_on',
       onClick: () => navigate('/projects?execution_status=currently_being_worked_on'),
     },
     {
@@ -231,6 +272,7 @@ function buildExecutiveKpiCards({
       icon: ErrorOutlineRoundedIcon,
       accent: highRisk > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?health=red',
       onClick: () => navigate('/projects?health=red'),
     },
   ];
@@ -258,6 +300,7 @@ function buildManagementKpiCards({
       icon: FolderOpenRoundedIcon,
       accent: 'primary',
       trend: STABLE_TREND,
+      destination: '/projects?lifecycle=active',
       onClick: () => navigate('/projects?lifecycle=active'),
     },
     {
@@ -266,6 +309,7 @@ function buildManagementKpiCards({
       icon: CheckCircleOutlineRoundedIcon,
       accent: 'success',
       trend: STABLE_TREND,
+      destination: '/projects?completed=month',
       onClick: () => navigate('/projects?completed=month'),
     },
     {
@@ -274,6 +318,7 @@ function buildManagementKpiCards({
       icon: WarningAmberRoundedIcon,
       accent: (mgmt?.overdue_projects ?? summary?.overdue_projects ?? 0) > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?due=overdue',
       onClick: () => navigate('/projects?due=overdue'),
     },
     {
@@ -282,6 +327,7 @@ function buildManagementKpiCards({
       icon: CheckCircleOutlineRoundedIcon,
       accent: (mgmt?.pending_reviews ?? 0) > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/timesheets',
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -290,6 +336,7 @@ function buildManagementKpiCards({
       icon: ScheduleRoundedIcon,
       accent: (mgmt?.pending_milestone_approvals ?? 0) > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects',
       onClick: () => navigate('/projects'),
     },
     {
@@ -298,6 +345,7 @@ function buildManagementKpiCards({
       icon: TrendingUpRoundedIcon,
       accent: 'info',
       trend: STABLE_TREND,
+      destination: '/projects?due=week',
       onClick: () => navigate('/projects?due=week'),
     },
     {
@@ -306,6 +354,7 @@ function buildManagementKpiCards({
       icon: ErrorOutlineRoundedIcon,
       accent: highRisk > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?health=red',
       onClick: () => navigate('/projects?health=red'),
     },
     {
@@ -314,6 +363,7 @@ function buildManagementKpiCards({
       icon: ScheduleRoundedIcon,
       accent: missingTs > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/timesheets',
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -327,6 +377,7 @@ function buildManagementKpiCards({
       icon: GroupsRoundedIcon,
       accent: 'info',
       trend: STABLE_TREND,
+      destination: '/resource-planning',
       onClick: () => navigate('/resource-planning'),
     },
     {
@@ -335,6 +386,7 @@ function buildManagementKpiCards({
       icon: PeopleRoundedIcon,
       accent: 'primary',
       trend: STABLE_TREND,
+      destination: '/admin/users',
       onClick: () => navigate('/admin/users'),
     },
   ];
@@ -359,6 +411,7 @@ function buildAdminKpiCards({
       icon: PeopleRoundedIcon,
       accent: 'primary',
       trend: STABLE_TREND,
+      destination: '/admin/users',
       onClick: () => navigate('/admin/users'),
     },
     {
@@ -367,6 +420,7 @@ function buildAdminKpiCards({
       icon: DnsRoundedIcon,
       accent: dbOk ? 'success' : 'error',
       trend: STABLE_TREND,
+      destination: '/admin/system',
       onClick: () => navigate('/admin/system'),
     },
     {
@@ -375,6 +429,7 @@ function buildAdminKpiCards({
       icon: CloudDoneRoundedIcon,
       accent: svcOk ? 'success' : 'warning',
       trend: STABLE_TREND,
+      destination: '/admin/system',
       onClick: () => navigate('/admin/system'),
     },
     {
@@ -383,6 +438,7 @@ function buildAdminKpiCards({
       icon: ScheduleRoundedIcon,
       accent: (systemHealth?.import_queue ?? 0) > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/admin/imports/historical-timesheets',
       onClick: () => navigate('/admin/imports/historical-timesheets'),
     },
     {
@@ -391,6 +447,7 @@ function buildAdminKpiCards({
       icon: EmailRoundedIcon,
       accent: (systemHealth?.failed_emails ?? 0) > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
+      destination: '/admin/settings/email-queue',
       onClick: () => navigate('/admin/settings/email-queue'),
     },
     {
@@ -399,6 +456,7 @@ function buildAdminKpiCards({
       icon: StorageRoundedIcon,
       accent: (admin?.last_backup ?? systemHealth?.last_backup) ? 'success' : 'warning',
       trend: STABLE_TREND,
+      destination: '/admin/settings/backup',
       onClick: () => navigate('/admin/settings/backup'),
     },
     {
@@ -407,6 +465,7 @@ function buildAdminKpiCards({
       icon: EmailRoundedIcon,
       accent: 'info',
       trend: STABLE_TREND,
+      destination: '/admin/settings/email-queue',
       onClick: () => navigate('/admin/settings/email-queue'),
     },
     {
@@ -415,6 +474,7 @@ function buildAdminKpiCards({
       icon: DnsRoundedIcon,
       accent: 'primary',
       trend: STABLE_TREND,
+      destination: '/admin/audit/logs',
       onClick: () => navigate('/admin/audit/logs'),
     },
     {
@@ -423,6 +483,7 @@ function buildAdminKpiCards({
       icon: MemoryRoundedIcon,
       accent: 'info',
       trend: STABLE_TREND,
+      destination: '/admin/system',
       onClick: () => navigate('/admin/system'),
     },
     {
@@ -431,6 +492,7 @@ function buildAdminKpiCards({
       icon: ErrorOutlineRoundedIcon,
       accent: (systemHealth?.recent_errors?.length ?? 0) > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
+      destination: '/admin/audit/logs',
       onClick: () => navigate('/admin/audit/logs'),
     },
   ];
@@ -448,6 +510,7 @@ function buildStaffKpiCards({
       value: n(metrics?.my_projects ?? 0, unavailable),
       icon: FolderOpenRoundedIcon,
       trend: STABLE_TREND,
+      destination: '/projects',
       onClick: () => navigate('/projects'),
     },
     {
@@ -455,6 +518,7 @@ function buildStaffKpiCards({
       value: n(metrics?.upcoming_due_dates ?? 0, unavailable),
       icon: ScheduleRoundedIcon,
       trend: STABLE_TREND,
+      destination: '/projects?due=7days',
       onClick: () => navigate('/projects?due=7days'),
     },
     {
@@ -462,6 +526,7 @@ function buildStaffKpiCards({
       value: unavailable ? '—' : formatNumber(metrics?.hours_logged_this_week ?? 0, 1),
       icon: TimerRoundedIcon,
       trend: STABLE_TREND,
+      destination: '/timesheets',
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -470,6 +535,7 @@ function buildStaffKpiCards({
       icon: ScheduleRoundedIcon,
       accent: (metrics?.pending_timesheet_submissions ?? 0) > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/timesheets',
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -477,6 +543,7 @@ function buildStaffKpiCards({
       value: n(metrics?.assigned_milestones ?? 0, unavailable),
       icon: CheckCircleOutlineRoundedIcon,
       trend: STABLE_TREND,
+      destination: '/projects',
       onClick: () => navigate('/projects'),
     },
     {
@@ -488,6 +555,7 @@ function buildStaffKpiCards({
       ),
       icon: TrendingUpRoundedIcon,
       trend: STABLE_TREND,
+      destination: '/timesheets',
       onClick: () => navigate('/timesheets'),
     },
   ];
@@ -512,6 +580,7 @@ function buildDesignLeaderKpiCards({
       value: n(summary?.active_projects ?? 0, unavailable),
       icon: FolderOpenRoundedIcon,
       trend: STABLE_TREND,
+      destination: '/projects',
       onClick: () => navigate('/projects'),
     },
     {
@@ -520,6 +589,7 @@ function buildDesignLeaderKpiCards({
       icon: ScheduleRoundedIcon,
       accent: (summary?.projects_due_this_week ?? 0) > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?due=week',
       onClick: () => navigate('/projects?due=week'),
     },
     {
@@ -528,6 +598,7 @@ function buildDesignLeaderKpiCards({
       icon: WarningAmberRoundedIcon,
       accent: (summary?.overdue_projects ?? 0) > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?due=overdue',
       onClick: () => navigate('/projects?due=overdue'),
     },
     {
@@ -536,6 +607,7 @@ function buildDesignLeaderKpiCards({
       icon: ScheduleRoundedIcon,
       accent: (summary?.missing_timesheets?.length ?? 0) > 0 ? 'warning' : undefined,
       trend: STABLE_TREND,
+      destination: '/timesheets',
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -544,6 +616,7 @@ function buildDesignLeaderKpiCards({
       icon: WarningAmberRoundedIcon,
       accent: (summary?.late_milestones ?? 0) > 0 ? 'error' : undefined,
       trend: STABLE_TREND,
+      destination: '/projects?due=overdue',
       onClick: () => navigate('/projects?due=overdue'),
     },
     {
@@ -551,6 +624,7 @@ function buildDesignLeaderKpiCards({
       value: n(pendingReviews, unavailable),
       icon: CheckCircleOutlineRoundedIcon,
       trend: STABLE_TREND,
+      destination: '/projects',
       onClick: () => navigate('/projects'),
     },
     {
@@ -558,6 +632,7 @@ function buildDesignLeaderKpiCards({
       value: n(pendingTimesheets, unavailable),
       icon: ScheduleRoundedIcon,
       trend: STABLE_TREND,
+      destination: '/timesheets',
       onClick: () => navigate('/timesheets'),
     },
     {
@@ -565,6 +640,7 @@ function buildDesignLeaderKpiCards({
       value: dash(`${designerUtilizationPercent(summary)}%`, unavailable),
       icon: GroupsRoundedIcon,
       trend: STABLE_TREND,
+      destination: '/workload',
       onClick: () => navigate('/workload'),
     },
   ];

@@ -1,9 +1,13 @@
 import { Box, Grid } from '@mui/material';
 import { PageHeader } from '../../components/common/PageHeader';
 import { AdminActionCard } from '../../components/admin/AdminActionCard';
-import { ADMIN_SETTINGS_ITEMS } from '../../config/adminNavigation';
+import { getAdminSettingsItems } from '../../config/adminNavigation';
+import { useAuth } from '../../context/AuthContext';
+import { accessContextFromUser } from '../../utils/permissions';
 
 export default function AdminSettingsHubPage() {
+  const { user } = useAuth();
+  const items = getAdminSettingsItems(accessContextFromUser(user));
   return (
     <Box>
       <PageHeader
@@ -12,7 +16,7 @@ export default function AdminSettingsHubPage() {
       />
 
       <Grid container spacing={2.5}>
-        {ADMIN_SETTINGS_ITEMS.map((item) => (
+        {items.map((item) => (
           <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={item.id}>
             <AdminActionCard {...item} />
           </Grid>

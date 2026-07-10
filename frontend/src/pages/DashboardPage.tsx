@@ -27,6 +27,7 @@ import { DashboardPanel } from '../components/ui/design-system/DashboardPanel';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardRoleGroup } from '../utils/permissions';
+import { getLeaderTeamScopeIds, shouldScopeProjectsByLeaderTeams } from '../utils/projectTeamScope';
 
 const EMPTY_TASKS = {
   pending_approvals: [],
@@ -40,10 +41,21 @@ export function DashboardPage() {
   const { user } = useAuth();
   const roleName = user?.role_name ?? '';
   const roleGroup = getDashboardRoleGroup(roleName);
+  const leaderTeamIds = getLeaderTeamScopeIds(user);
+  const scopeDashboardByTeams = shouldScopeProjectsByLeaderTeams(roleName, user);
 
   const dashboardQuery = useQuery({
-    queryKey: dashboardQueryKeys.summary(undefined, undefined),
-    queryFn: () => fetchDashboardSummary(undefined, undefined),
+    queryKey: dashboardQueryKeys.summary(
+      undefined,
+      scopeDashboardByTeams && leaderTeamIds.length === 1 ? leaderTeamIds[0] : undefined,
+      scopeDashboardByTeams && leaderTeamIds.length > 1 ? leaderTeamIds : undefined,
+    ),
+    queryFn: () =>
+      fetchDashboardSummary(
+        undefined,
+        scopeDashboardByTeams && leaderTeamIds.length === 1 ? leaderTeamIds[0] : undefined,
+        scopeDashboardByTeams && leaderTeamIds.length > 1 ? leaderTeamIds : undefined,
+      ),
     staleTime: QUERY_STALE_TIMES.dashboard,
     retry: 1,
   });

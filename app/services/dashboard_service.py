@@ -111,7 +111,17 @@ def _stage_clause(project_stage: ProjectStage | None):
 def _team_clause(
     team_id: UUID | None = None,
     team_ids: list[UUID] | None = None,
+    *,
+    db: Session | None = None,
 ):
+    if db is not None:
+        from app.core.team_access import team_project_clause
+
+        if team_ids:
+            return team_project_clause(db, team_ids)
+        if team_id is not None:
+            return team_project_clause(db, [team_id])
+        return ()
     if team_ids:
         return (Project.team_id.in_(team_ids),)
     if team_id is None:
@@ -144,12 +154,13 @@ def live_project_where(
     project_stage: ProjectStage | None = None,
     team_id: UUID | None = None,
     team_ids: list[UUID] | None = None,
+    db: Session | None = None,
 ):
     """Projects shown in the live command-center table (matches frontend isLiveProject)."""
     return (
         *_visible_projects_clause(),
         *_stage_clause(project_stage),
-        *_team_clause(team_id, team_ids),
+        *_team_clause(team_id, team_ids, db=db),
         Project.execution_status.notin_(
             (ExecutionStatus.completed, ExecutionStatus.cancelled)
         ),
@@ -209,11 +220,12 @@ def get_dashboard_kpis(
     week_start, week_end = _current_week_bounds(today)
     visible = _visible_projects_clause()
     stage = _stage_clause(project_stage)
-    team = _team_clause(team_id, team_ids)
+    team = _team_clause(team_id, team_ids, db=db)
     live = live_project_where(
         project_stage=project_stage,
         team_id=team_id,
         team_ids=team_ids,
+        db=db,
     )
     not_completed = Project.execution_status != ExecutionStatus.completed
     being_worked_on = and_(

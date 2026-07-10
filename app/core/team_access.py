@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import ENGINEERING_MANAGER, FULL_ACCESS_ROLES, get_role_name, is_admin
-from app.models.models import User
+from app.models.models import Project, TeamMember, User
 from app.services.user_team_service import get_user_team_ids
 
 
@@ -45,3 +46,42 @@ def resolve_team_scope(
 
     scoped = requested & accessible
     return scoped
+
+
+def team_member_user_ids(db: Session, team_ids: list[UUID]) -> set[UUID]:
+    """User IDs linked to the given teams via team_members or legacy User.team_id."""
+    if not team_ids:
+        return set()
+    member_ids = set(
+        db.scalars(
+            select(TeamMember.user_id).where(TeamMember.team_id.in_(team_ids))
+        ).all()
+    )
+    legacy_ids = set(
+        db.scalars(
+            select(User.id).where(
+                User.team_id.in_(team_ids),
+                User.is_active.is_(True),
+            )
+        ).all()
+    )
+    return member_ids | legacy_ids
+
+
+def team_project_clause(db: Session, team_ids: list[UUID] | None) -> tuple:
+    """Match projects on team_id or assignee membership when team_id is unset."""
+    if not team_ids:
+        return ()
+    direct = Project.team_id.in_(team_ids)
+    assignee_ids = team_member_user_ids(db, team_ids)
+    if not assignee_ids:
+        return (direct,)
+    inherited = and_(
+        Project.team_id.is_(None),
+        or_(
+            Project.designer_id.in_(assignee_ids),
+            Project.design_leader_id.in_(assignee_ids),
+            Project.surfacer_id.in_(assignee_ids),
+        ),
+    )
+    return (or_(direct, inherited),)

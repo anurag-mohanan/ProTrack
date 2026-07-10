@@ -39,11 +39,13 @@ export async function fetchDashboardOverview(): Promise<DashboardOverview> {
 export async function fetchDashboardSummary(
   projectStage?: ProjectStage,
   teamId?: string,
+  teamIds?: string[],
 ): Promise<DashboardSummary> {
   const { data } = await apiClient.get<DashboardSummary>(
     `/dashboard/summary${buildQuery({
       project_stage: projectStage,
       team_id: teamId,
+      team_ids: teamIds,
     })}`,
   );
   return data;
@@ -114,9 +116,9 @@ export async function sendTimesheetReminder(userId: string): Promise<void> {
 
 export const dashboardQueryKeys = {
   all: ['dashboard'] as const,
-  summary: (projectStage?: ProjectStage, teamId?: string) =>
-    projectStage || teamId
-      ? (['dashboard', 'summary', projectStage, teamId] as const)
+  summary: (projectStage?: ProjectStage, teamId?: string, teamIds?: string[]) =>
+    projectStage || teamId || teamIds?.length
+      ? (['dashboard', 'summary', projectStage, teamId, teamIds] as const)
       : (['dashboard', 'summary'] as const),
   kpis: ['dashboard', 'kpis'] as const,
   attentionProjects: ['dashboard', 'attention-projects'] as const,

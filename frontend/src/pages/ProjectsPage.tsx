@@ -42,7 +42,8 @@ import {
 import type { ProjectStage } from '../types';
 import { exportToCsv } from '../utils/exportData';
 import { filterProjectsForAccessibleTeams, groupProjectsByTeam } from '../utils/projectTeamGroups';
-import { canArchiveProject, canCreateProject, canDeleteRecords, canViewAllTimesheets } from '../utils/permissions';
+import { getLeaderTeamScopeIds, shouldScopeProjectsByLeaderTeams } from '../utils/projectTeamScope';
+import { canArchiveProject, canCreateProject, canDeleteRecords } from '../utils/permissions';
 import {
   applyKpiQuickFilter,
   computeProjectPortfolioMetrics,
@@ -280,38 +281,37 @@ export function ProjectsPage() {
       ? archivedProjects
       : liveProjects;
 
-  const leaderTeamIds = user?.team_ids?.length
-    ? user.team_ids
-    : user?.team_id
-      ? [user.team_id]
-      : [];
+  const leaderTeamIds = getLeaderTeamScopeIds(user);
+  const scopeByLeaderTeams = shouldScopeProjectsByLeaderTeams(user?.role_name ?? '', user);
+  const lookupUsers = usersQuery.data ?? [];
 
   const teamScopedLiveProjects = useMemo(
     () =>
       filterProjectsForAccessibleTeams(
         displayLiveProjects,
-        canViewAllTimesheets(user?.role_name ?? '') && !isAdmin ? leaderTeamIds : undefined,
+        scopeByLeaderTeams ? leaderTeamIds : undefined,
         isAdmin,
+        lookupUsers,
       ),
-    [displayLiveProjects, user?.role_name, isAdmin, leaderTeamIds],
+    [displayLiveProjects, scopeByLeaderTeams, isAdmin, leaderTeamIds, lookupUsers],
   );
 
   const liveProjectTeamGroups = useMemo(
-    () => groupProjectsByTeam(teamScopedLiveProjects, teamsQuery.data ?? []),
-    [teamScopedLiveProjects, teamsQuery.data],
+    () => groupProjectsByTeam(teamScopedLiveProjects, teamsQuery.data ?? [], lookupUsers),
+    [teamScopedLiveProjects, teamsQuery.data, lookupUsers],
   );
 
-  const shouldGroupLiveProjectsByTeam =
-    isAdmin || leaderTeamIds.length > 1 || liveProjectTeamGroups.length > 1;
+  const shouldGroupLiveProjectsByTeam = liveProjectTeamGroups.length > 1;
 
   const teamScopedAllProjects = useMemo(
     () =>
       filterProjectsForAccessibleTeams(
         projectsQuery.data ?? [],
-        canViewAllTimesheets(user?.role_name ?? '') && !isAdmin ? leaderTeamIds : undefined,
+        scopeByLeaderTeams ? leaderTeamIds : undefined,
         isAdmin,
+        lookupUsers,
       ),
-    [projectsQuery.data, user?.role_name, isAdmin, leaderTeamIds],
+    [projectsQuery.data, scopeByLeaderTeams, isAdmin, leaderTeamIds, lookupUsers],
   );
 
   const portfolioMetrics = useMemo(() => {

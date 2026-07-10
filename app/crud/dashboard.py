@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import func, or_, select
 
+from app.core.team_access import team_project_clause
 from app.crud.base import Session
 from app.core.non_productive_categories import leave_entry_clause, standard_np_hours_clause
 from app.crud.project_metrics import build_project_read
@@ -164,9 +165,9 @@ def get_dashboard_summary(
         stage = (Project.project_stage == project_stage,)
     team = ()
     if team_ids:
-        team = (Project.team_id.in_(team_ids),)
+        team = team_project_clause(db, list(team_ids))
     elif team_id is not None:
-        team = (Project.team_id == team_id,)
+        team = team_project_clause(db, [team_id])
     total_projects = int(
         db.scalar(
             select(func.count())
@@ -242,7 +243,7 @@ def get_dashboard_summary(
         db.scalar(
             select(func.count())
             .select_from(Project)
-            .where(*live_project_where(project_stage=project_stage, team_id=team_id, team_ids=team_ids))
+            .where(*live_project_where(project_stage=project_stage, team_id=team_id, team_ids=team_ids, db=db))
         )
         or 0
     )

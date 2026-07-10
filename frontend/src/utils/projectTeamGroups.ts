@@ -1,4 +1,4 @@
-import type { Project, Team } from '../types';
+import type { Project, Team, User } from '../types';
 
 export interface ProjectTeamGroup {
   teamId: string | null;
@@ -6,12 +6,46 @@ export interface ProjectTeamGroup {
   projects: Project[];
 }
 
-export function groupProjectsByTeam(projects: Project[], teams: Team[]): ProjectTeamGroup[] {
+function buildUsersById(users: User[]): Map<string, User> {
+  return new Map(users.map((user) => [user.id, user]));
+}
+
+/** Resolve team from project.team_id or assigned designer / leader / surfacer. */
+export function resolveEffectiveProjectTeamId(
+  project: Project,
+  usersById: Map<string, User>,
+): string | null {
+  if (project.team_id) return project.team_id;
+
+  const assigneeIds = [
+    project.design_leader_id,
+    project.designer_id,
+    project.surfacer_id,
+  ];
+  for (const userId of assigneeIds) {
+    if (!userId) continue;
+    const user = usersById.get(userId);
+    if (!user) continue;
+    if (user.team_id) return user.team_id;
+    const primary = user.team_assignments?.find((assignment) => assignment.is_primary);
+    if (primary?.team_id) return primary.team_id;
+    const first = user.team_assignments?.[0];
+    if (first?.team_id) return first.team_id;
+  }
+  return null;
+}
+
+export function groupProjectsByTeam(
+  projects: Project[],
+  teams: Team[],
+  users: User[] = [],
+): ProjectTeamGroup[] {
   const teamNameById = new Map(teams.map((team) => [team.id, team.name]));
+  const usersById = buildUsersById(users);
   const groups = new Map<string | null, Project[]>();
 
   for (const project of projects) {
-    const key = project.team_id ?? null;
+    const key = resolveEffectiveProjectTeamId(project, usersById);
     const list = groups.get(key);
     if (list) list.push(project);
     else groups.set(key, [project]);
@@ -30,8 +64,18 @@ export function filterProjectsForAccessibleTeams(
   projects: Project[],
   accessibleTeamIds: string[] | undefined,
   isAdmin: boolean,
+  users: User[] = [],
 ): Project[] {
   if (isAdmin || !accessibleTeamIds?.length) return projects;
   const allowed = new Set(accessibleTeamIds);
-  return projects.filter((project) => project.team_id != null && allowed.has(project.team_id));
+  const usersById = buildUsersById(users);
+  return projects.filter((project) => {
+    const teamId = resolveEffectiveProjectTeamId(project, usersById);
+    return teamId != null && allowed.has(teamId);
+  });
+}
+
+/** Sum of projects across team sections — must match KPI live count. */
+export function sumProjectTeamGroupCounts(groups: ProjectTeamGroup[]): number {
+  return groups.reduce((total, group) => total + group.projects.length, 0);
 }

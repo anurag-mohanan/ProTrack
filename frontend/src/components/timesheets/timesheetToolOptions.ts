@@ -68,13 +68,20 @@ function statusLabel(status: string): string {
   return EXECUTION_STATUS_LABELS[status as ExecutionStatus] ?? status;
 }
 
+export function formatTimesheetProjectDropdownLabel(
+  toolNumber: string,
+  partDescription: string,
+): string {
+  return `${toolNumber} — ${partDescription}`;
+}
+
 function mapProjectOption(
   project: TimesheetProjectLookup,
   group: TimesheetToolGroup,
 ): TimesheetToolOption {
   return {
     value: `project:${project.id}`,
-    label: `${project.tool_number} — ${project.part_description}`,
+    label: formatTimesheetProjectDropdownLabel(project.tool_number, project.part_description),
     group,
     kind: 'project',
     projectId: project.id,

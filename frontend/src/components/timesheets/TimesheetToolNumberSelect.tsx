@@ -1,4 +1,4 @@
-import { Autocomplete, Box, Chip, TextField, Typography, createFilterOptions } from '@mui/material';
+import { Autocomplete, Box, TextField, Typography, createFilterOptions } from '@mui/material';
 import type { TimesheetToolOption } from './timesheetToolOptions';
 
 interface TimesheetToolNumberSelectProps {
@@ -25,34 +25,10 @@ const GROUP_ORDER: Record<string, number> = {
 };
 
 function ProjectOptionDetail({ option }: { option: TimesheetToolOption }) {
-  if (option.kind !== 'project') {
-    return <Typography variant="body2">{option.label}</Typography>;
-  }
   return (
-    <Box sx={{ py: 0.25, width: '100%' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {option.toolNumber}
-        </Typography>
-        {option.executionStatus ? (
-          <Chip size="small" label={option.executionStatus} variant="outlined" sx={{ height: 20 }} />
-        ) : null}
-      </Box>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-        {option.partDescription}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-        {[
-          option.customerName ? `Customer: ${option.customerName}` : null,
-          option.designerName ? `Designer: ${option.designerName}` : null,
-          option.surfacerName ? `Surfacer: ${option.surfacerName}` : null,
-          option.projectStage ? `Stage: ${option.projectStage}` : null,
-          option.workingModelName ? `Model: ${option.workingModelName}` : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      </Typography>
-    </Box>
+    <Typography variant="body2" sx={{ py: 0.25, width: '100%' }}>
+      {option.label}
+    </Typography>
   );
 }
 
@@ -104,7 +80,7 @@ export function TimesheetToolNumberSelect({
           size="small"
           inputRef={inputRef}
           onKeyDown={onKeyDown}
-          placeholder="Search tool, customer, designer, surfacer…"
+          placeholder="Search tool number or description…"
           sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
         />
       )}

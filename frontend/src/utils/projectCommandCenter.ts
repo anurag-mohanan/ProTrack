@@ -343,6 +343,47 @@ export function countNotStartedProjects(projects: Project[]): number {
   return projects.filter((project) => isNotStarted(project) && isLiveProject(project)).length;
 }
 
+export interface ProjectPortfolioMetrics {
+  liveCount: number;
+  inProgressCount: number;
+  onHoldCount: number;
+  planningCount: number;
+  overdueCount: number;
+  dueThisWeekCount: number;
+  notStartedCount: number;
+  completedThisMonthCount: number;
+  quotedHours: number;
+  actualHours: number;
+}
+
+export function countCompletedThisMonthProjects(projects: Project[]): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return projects.filter((project) => isCompletedThisMonth(project, today)).length;
+}
+
+function sumLiveHours(projects: Project[], field: 'quoted_hours' | 'actual_hours'): number {
+  return projects
+    .filter(isLiveProject)
+    .reduce((total, project) => total + Number(project[field] ?? 0), 0);
+}
+
+/** Single source of truth for Projects command-center KPIs and chips. */
+export function computeProjectPortfolioMetrics(projects: Project[]): ProjectPortfolioMetrics {
+  return {
+    liveCount: countLiveProjects(projects),
+    inProgressCount: countByExecutionStatus(projects, 'currently_being_worked_on'),
+    onHoldCount: countByExecutionStatus(projects, 'on_hold'),
+    planningCount: countByExecutionStatus(projects, 'planning'),
+    overdueCount: countOverdueProjects(projects),
+    dueThisWeekCount: countDueThisWeekProjects(projects),
+    notStartedCount: countNotStartedProjects(projects),
+    completedThisMonthCount: countCompletedThisMonthProjects(projects),
+    quotedHours: sumLiveHours(projects, 'quoted_hours'),
+    actualHours: sumLiveHours(projects, 'actual_hours'),
+  };
+}
+
 export function countActiveSidebarFilters(filters: ProjectCommandCenterFilters): number {
   let count = 0;
   if (filters.customerIds.length > 0) count += 1;

@@ -12,7 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { cloneProject } from '../api/commandCenter';
 import { fetchCustomers, fetchStreams, fetchTeams, fetchUsers } from '../api/lookups';
-import { dashboardQueryKeys, fetchDashboardSummary } from '../api/dashboard';
+import { dashboardQueryKeys } from '../api/dashboard';
 import { fetchProjectTypes } from '../api/projectTemplates';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { EmptyState } from '../components/common/EmptyState';
@@ -45,11 +45,8 @@ import { filterProjectsForAccessibleTeams, groupProjectsByTeam } from '../utils/
 import { canArchiveProject, canCreateProject, canDeleteRecords, canViewAllTimesheets } from '../utils/permissions';
 import {
   applyKpiQuickFilter,
+  computeProjectPortfolioMetrics,
   countActiveSidebarFilters,
-  countByExecutionStatus,
-  countDueThisWeekProjects,
-  countNotStartedProjects,
-  countOverdueProjects,
   defaultProjectCommandCenterFilters,
   filterProjectsForCommandCenter,
   getProjectActiveFilterChips,
@@ -171,12 +168,6 @@ export function ProjectsPage() {
     queryKey: projectQueryKeys.list(listParams),
     queryFn: () => getProjects(listParams),
     staleTime: QUERY_STALE_TIMES.projects,
-  });
-
-  const dashboardQuery = useQuery({
-    queryKey: dashboardQueryKeys.summary(undefined, undefined),
-    queryFn: () => fetchDashboardSummary(),
-    staleTime: QUERY_STALE_TIMES.dashboard,
   });
 
   const customersQuery = useQuery({
@@ -313,16 +304,34 @@ export function ProjectsPage() {
   const shouldGroupLiveProjectsByTeam =
     isAdmin || leaderTeamIds.length > 1 || liveProjectTeamGroups.length > 1;
 
-  const allProjectsForCounts = projectsQuery.data ?? [];
+  const teamScopedAllProjects = useMemo(
+    () =>
+      filterProjectsForAccessibleTeams(
+        projectsQuery.data ?? [],
+        canViewAllTimesheets(user?.role_name ?? '') && !isAdmin ? leaderTeamIds : undefined,
+        isAdmin,
+      ),
+    [projectsQuery.data, user?.role_name, isAdmin, leaderTeamIds],
+  );
+
+  const portfolioMetrics = useMemo(() => {
+    const liveMetrics = computeProjectPortfolioMetrics(teamScopedLiveProjects);
+    return {
+      ...liveMetrics,
+      completedThisMonthCount: computeProjectPortfolioMetrics(teamScopedAllProjects)
+        .completedThisMonthCount,
+    };
+  }, [teamScopedLiveProjects, teamScopedAllProjects]);
+
   const quickCounts = useMemo(
     () => ({
-      inProgress: countByExecutionStatus(allProjectsForCounts, 'currently_being_worked_on'),
-      onHold: countByExecutionStatus(allProjectsForCounts, 'on_hold'),
-      overdue: countOverdueProjects(allProjectsForCounts),
-      dueWeek: countDueThisWeekProjects(allProjectsForCounts),
-      notStarted: countNotStartedProjects(allProjectsForCounts),
+      inProgress: portfolioMetrics.inProgressCount,
+      onHold: portfolioMetrics.onHoldCount,
+      overdue: portfolioMetrics.overdueCount,
+      dueWeek: portfolioMetrics.dueThisWeekCount,
+      notStarted: portfolioMetrics.notStartedCount,
     }),
-    [allProjectsForCounts],
+    [portfolioMetrics],
   );
 
   const applyFilters = useCallback(() => {
@@ -389,10 +398,9 @@ export function ProjectsPage() {
   const showArchiveActions = canArchiveProject(user?.role_name ?? '');
   const showCreateProject = canCreateProject(user?.role_name ?? '');
   const tableLoading = projectsQuery.isPending;
-  const summary = dashboardQuery.data;
 
-  const subtitle = summary
-    ? `${summary.active_projects} active · ${summary.overdue_projects} overdue · ${summary.projects_due_this_week} due this week`
+  const subtitle = portfolioMetrics
+    ? `${portfolioMetrics.liveCount} active · ${portfolioMetrics.overdueCount} overdue · ${portfolioMetrics.dueThisWeekCount} due this week`
     : 'Operational hub for live engineering projects';
 
   const activeFilterCount = useMemo(
@@ -509,8 +517,8 @@ export function ProjectsPage() {
           </FilterToolbar>
 
           <ProjectKpiBar
-            summary={summary}
-            loading={dashboardQuery.isLoading}
+            metrics={portfolioMetrics}
+            loading={tableLoading}
             activeFilter={appliedFilters.quickFilter}
             onFilter={handleQuickFilter}
           />

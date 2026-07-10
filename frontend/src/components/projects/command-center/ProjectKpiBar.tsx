@@ -3,58 +3,57 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import { Box } from '@mui/material';
-import type { DashboardSummary } from '../../../types';
 import { formatNumber } from '../../../utils/format';
-import type { ProjectQuickFilter } from '../../../utils/projectCommandCenter';
+import type { ProjectQuickFilter, ProjectPortfolioMetrics } from '../../../utils/projectCommandCenter';
 import { KpiMetricCard } from '../../ui/design-system/KpiMetricCard';
 import { ProjectHoursPerformanceCard } from './ProjectHoursPerformanceCard';
 
 interface ProjectKpiBarProps {
-  summary: DashboardSummary | undefined;
+  metrics?: ProjectPortfolioMetrics;
   loading?: boolean;
   activeFilter?: ProjectQuickFilter;
   onFilter: (filter: ProjectQuickFilter) => void;
 }
 
 export function ProjectKpiBar({
-  summary,
+  metrics,
   loading,
   activeFilter = 'none',
   onFilter,
 }: ProjectKpiBarProps) {
-  const unavailable = loading || !summary;
+  const unavailable = loading || !metrics;
 
   const countKpis = [
     {
       key: 'active' as const,
       title: 'Active Projects',
-      value: unavailable ? '—' : formatNumber(summary!.active_projects ?? 0, 0),
+      value: unavailable ? '—' : formatNumber(metrics!.liveCount, 0),
       icon: FolderOpenIcon,
-      accent: !unavailable && (summary!.active_projects ?? 0) > 0 ? ('primary' as const) : undefined,
+      accent: !unavailable && metrics!.liveCount > 0 ? ('primary' as const) : undefined,
       onClick: () => onFilter('active'),
     },
     {
       key: 'due_week' as const,
       title: 'Due This Week',
-      value: unavailable ? '—' : formatNumber(summary!.projects_due_this_week ?? 0, 0),
+      value: unavailable ? '—' : formatNumber(metrics!.dueThisWeekCount, 0),
       icon: ScheduleIcon,
-      accent: !unavailable && (summary!.projects_due_this_week ?? 0) > 0 ? ('warning' as const) : undefined,
+      accent: !unavailable && metrics!.dueThisWeekCount > 0 ? ('warning' as const) : undefined,
       onClick: () => onFilter('due_week'),
     },
     {
       key: 'overdue' as const,
       title: 'Overdue',
-      value: unavailable ? '—' : formatNumber(summary!.overdue_projects ?? 0, 0),
+      value: unavailable ? '—' : formatNumber(metrics!.overdueCount, 0),
       icon: WarningAmberIcon,
-      accent: !unavailable && (summary!.overdue_projects ?? 0) > 0 ? ('error' as const) : undefined,
+      accent: !unavailable && metrics!.overdueCount > 0 ? ('error' as const) : undefined,
       onClick: () => onFilter('overdue'),
     },
     {
       key: 'completed_month' as const,
       title: 'Completed',
-      value: unavailable ? '—' : formatNumber(summary!.completed_this_month ?? 0, 0),
+      value: unavailable ? '—' : formatNumber(metrics!.completedThisMonthCount, 0),
       icon: TaskAltIcon,
-      accent: !unavailable && (summary!.completed_this_month ?? 0) > 0 ? ('success' as const) : undefined,
+      accent: !unavailable && metrics!.completedThisMonthCount > 0 ? ('success' as const) : undefined,
       onClick: () => onFilter('completed_month'),
     },
   ];
@@ -83,7 +82,11 @@ export function ProjectKpiBar({
         </Box>
       ))}
       <Box sx={{ flex: '0 0 auto' }}>
-        <ProjectHoursPerformanceCard summary={summary} loading={loading} />
+        <ProjectHoursPerformanceCard
+          quotedHours={metrics?.quotedHours}
+          actualHours={metrics?.actualHours}
+          loading={loading}
+        />
       </Box>
     </Box>
   );

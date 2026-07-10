@@ -1,7 +1,6 @@
 import TimerOutlinedIcon from '@mui/icons-material/TimerOutlined';
 import { Box, Card, CardContent, Typography } from '@mui/material';
 import { alpha, useTheme, type Theme } from '@mui/material/styles';
-import type { DashboardSummary } from '../../../types';
 import { designTokens } from '../../../theme/designTokens';
 import { formatNumber } from '../../../utils/format';
 import {
@@ -12,7 +11,8 @@ import {
 } from '../../../utils/projectHoursMetrics';
 
 interface ProjectHoursPerformanceCardProps {
-  summary: DashboardSummary | undefined;
+  quotedHours?: number;
+  actualHours?: number;
   loading?: boolean;
 }
 
@@ -22,12 +22,16 @@ const toneColor = (tone: HoursPerformanceTone, theme: Theme) => {
   return theme.palette.error.main;
 };
 
-export function ProjectHoursPerformanceCard({ summary, loading }: ProjectHoursPerformanceCardProps) {
+export function ProjectHoursPerformanceCard({
+  quotedHours = 0,
+  actualHours = 0,
+  loading,
+}: ProjectHoursPerformanceCardProps) {
   const theme = useTheme();
-  const unavailable = loading || !summary;
+  const unavailable = loading;
 
-  const quoted = Number(summary?.total_quoted_hours_active ?? 0);
-  const actual = Number(summary?.total_actual_hours_productive ?? 0);
+  const quoted = Number(quotedHours ?? 0);
+  const actual = Number(actualHours ?? 0);
   const burnPct = hoursBurnPercent(actual, quoted);
   const tone = hoursUtilizationTone(actual, quoted);
   const accent = toneColor(tone, theme);

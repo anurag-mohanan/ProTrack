@@ -226,6 +226,22 @@ function buildColumns(
 ): GridColDef<ProjectTableRow>[] {
   const baseColumns: GridColDef<ProjectTableRow>[] = [
     {
+      field: 'serial',
+      headerName: '#',
+      width: 48,
+      minWidth: 44,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      headerAlign: 'center',
+      align: 'center',
+      renderCell: (params) => (
+        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+          {params.api.getRowIndexRelativeToVisibleRows(params.id) + 1}
+        </Typography>
+      ),
+    },
+    {
       field: 'tool_number',
       headerName: 'Tool Number',
       renderHeader: () => (

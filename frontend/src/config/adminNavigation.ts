@@ -21,6 +21,7 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import TypeSpecimenIcon from '@mui/icons-material/TypeSpecimen';
 import ViewTimelineIcon from '@mui/icons-material/ViewTimeline';
+import WorkHistoryOutlinedIcon from '@mui/icons-material/WorkHistoryOutlined';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import EmailIcon from '@mui/icons-material/Email';
 import BackupIcon from '@mui/icons-material/Backup';
@@ -86,6 +87,7 @@ export const ADMIN_CREATE_ACTIONS: AdminCreateAction[] = [
   { id: 'project-template', title: 'Project Template', description: 'Define milestones for a project type.', icon: ViewTimelineIcon, path: '/admin/project-templates/new' },
   { id: 'np-code', title: 'NP Code', description: 'Add a non-productive code for timesheets.', icon: BlockIcon, path: '/admin/non-productive-codes?create=1' },
   { id: 'project-type', title: 'Project Type', description: 'Add a project classification.', icon: TypeSpecimenIcon, path: '/admin/project-types?create=1' },
+  { id: 'working-model', title: 'Working Model', description: 'Add an engagement and billing model.', icon: WorkHistoryOutlinedIcon, path: '/admin/working-models?create=1' },
 ];
 
 export const ADMIN_MANAGE_ITEMS: AdminHubItem[] = [
@@ -98,6 +100,7 @@ export const ADMIN_MANAGE_ITEMS: AdminHubItem[] = [
   { id: 'streams', title: 'Streams', description: 'Design streams and disciplines.', icon: AccountTreeIcon, path: '/admin/streams' },
   { id: 'project-templates', title: 'Project Templates', description: 'Milestone workflows by project type.', icon: ViewTimelineIcon, path: '/admin/project-templates' },
   { id: 'project-types', title: 'Project Types', description: 'Project classifications.', icon: TypeSpecimenIcon, path: '/admin/project-types' },
+  { id: 'working-models', title: 'Working Models', description: 'Engagement models and KPI strategies.', icon: WorkHistoryOutlinedIcon, path: '/admin/working-models' },
   { id: 'np-codes', title: 'NP Codes', description: 'Non-productive timesheet codes.', icon: BlockIcon, path: '/admin/non-productive-codes' },
 ];
 

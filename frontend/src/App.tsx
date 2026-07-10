@@ -77,6 +77,7 @@ const ProjectTemplateEditorPage = lazy(() => import('./pages/admin/ProjectTempla
 const ProjectTypesAdminPage = lazy(() => import('./pages/admin/ProjectTypesPage'));
 const RolesAdminPage = lazy(() => import('./pages/admin/RolesPage'));
 const StreamsAdminPage = lazy(() => import('./pages/admin/StreamsPage'));
+const WorkingModelsAdminPage = lazy(() => import('./pages/admin/WorkingModelsPage'));
 const TeamsAdminPage = lazy(() => import('./pages/admin/TeamsPage'));
 const TaskTypesAdminPage = lazy(() => import('./pages/admin/TaskTypesPage'));
 const NonProductiveCodesAdminPage = lazy(() => import('./pages/admin/NonProductiveCodesPage'));
@@ -428,6 +429,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <NonProductiveCodesAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/working-models"
+                        element={
+                          <LazyAdminPage>
+                            <WorkingModelsAdminPage />
                           </LazyAdminPage>
                         }
                       />

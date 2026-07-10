@@ -25,6 +25,9 @@ export interface Project extends Timestamped {
   team_id: string | null;
   project_type_id?: string | null;
   project_template_id?: string | null;
+  working_model_id?: string | null;
+  working_model_name?: string | null;
+  working_model_code?: string | null;
   code: string | null;
   quoted_hours: number;
   actual_hours: number;
@@ -74,6 +77,7 @@ export interface ProjectCreate {
   team_id?: string | null;
   project_type_id?: string | null;
   project_template_id?: string | null;
+  working_model_id?: string | null;
   code?: string | null;
   quoted_hours?: number | null;
   due_date?: string | null;
@@ -94,6 +98,7 @@ export interface ProjectUpdate {
   stream_id?: string | null;
   team_id?: string | null;
   project_type_id?: string;
+  working_model_id?: string | null;
   code?: string | null;
   quoted_hours?: number | null;
   due_date?: string | null;

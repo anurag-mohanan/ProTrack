@@ -1,4 +1,4 @@
-import type { Contact, Customer, NonProductiveCode, Stream, TaskType, User } from '../types';
+import type { Contact, Customer, NonProductiveCode, Stream, TaskType, User, WorkingModel } from '../types';
 import { ensureArray } from '../types/pagination';
 import { apiClient, buildQuery, type ListParams } from './client';
 
@@ -51,4 +51,9 @@ export async function fetchOperationalRoles() {
 export async function fetchTeams() {
   const { data } = await apiClient.get<unknown>('/lookups/teams');
   return ensureArray<import('../types/Team').Team>(data);
+}
+
+export async function fetchWorkingModels(): Promise<WorkingModel[]> {
+  const { data } = await apiClient.get<unknown>('/lookups/working-models');
+  return ensureArray<WorkingModel>(data);
 }

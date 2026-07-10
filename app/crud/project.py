@@ -178,6 +178,9 @@ def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate
     ):
         data["project_template_id"] = customer.default_project_template_id
 
+    if data.get("working_model_id") is None and customer.default_working_model_id is not None:
+        data["working_model_id"] = customer.default_working_model_id
+
     data["code"] = _normalize_optional_code(data.get("code"))
 
     if data.get("quoted_hours") is None:

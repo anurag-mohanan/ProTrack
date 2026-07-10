@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.crud.base import select
-from app.models.models import Customer, Project, ProjectType, Team, User
+from app.models.models import Customer, Project, ProjectType, Team, User, WorkingModel
 from app.schemas.project import ProjectRead
 from app.services.dashboard_service import _batch_current_milestones
 from app.services.project_calculation_service import (
@@ -28,6 +28,7 @@ def _batch_display_names(
 
     customer_ids = {p.customer_id for p in projects if p.customer_id}
     type_ids = {p.project_type_id for p in projects if p.project_type_id}
+    model_ids = {p.working_model_id for p in projects if p.working_model_id}
     team_ids = {p.team_id for p in projects if p.team_id}
     user_ids = {
         uid
@@ -46,6 +47,14 @@ def _batch_display_names(
         if type_ids
         else {}
     )
+    working_models = (
+        {
+            m.id: m
+            for m in db.scalars(select(WorkingModel).where(WorkingModel.id.in_(model_ids)))
+        }
+        if model_ids
+        else {}
+    )
     teams = (
         {t.id: t for t in db.scalars(select(Team).where(Team.id.in_(team_ids)))}
         if team_ids
@@ -56,16 +65,19 @@ def _batch_display_names(
         if user_ids
         else {}
     )
-    return {"customers": customers, "types": types, "teams": teams, "users": users}
+    return {"customers": customers, "types": types, "working_models": working_models, "teams": teams, "users": users}
 
 
 def _name_updates(project: Project, names: dict[str, dict[UUID, object]]) -> dict:
     customer = names["customers"].get(project.customer_id)
     project_type = names["types"].get(project.project_type_id)
+    working_model = names["working_models"].get(project.working_model_id)
     team = names["teams"].get(project.team_id)
     return {
         "customer_name": getattr(customer, "name", None),
         "project_type_name": getattr(project_type, "name", None),
+        "working_model_name": getattr(working_model, "name", None),
+        "working_model_code": getattr(working_model, "code", None),
         "team_name": getattr(team, "name", None),
         "design_leader_name": _full_name(names["users"].get(project.design_leader_id)),
         "designer_name": _full_name(names["users"].get(project.designer_id)),

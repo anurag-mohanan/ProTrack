@@ -24,6 +24,7 @@ from app.models.models import (
     Team,
     TimesheetEntry,
     User,
+    WorkingModel,
 )
 from app.schemas.delete_check import DeleteCheckResponse
 from app.services.activity_service import log_activity
@@ -37,6 +38,7 @@ DELETE_ENTITY_TYPES: dict[str, EntityType] = {
     "task_type": EntityType.task_type,
     "project_template": EntityType.project_template,
     "project_type": EntityType.project_type,
+    "working_model": EntityType.working_model,
     "np_code": EntityType.np_code,
 }
 
@@ -299,6 +301,43 @@ def check_np_code_delete(db: Session, code_id: UUID) -> DeleteCheckResponse:
     return _CheckResult(code.name, "Non Productive Code", blockers).to_response()
 
 
+def check_working_model_delete(db: Session, model_id: UUID) -> DeleteCheckResponse:
+    model = db.get(WorkingModel, model_id)
+    if model is None:
+        raise ProTrackValidationError("Working model not found")
+    blockers: list[str] = []
+    projects = _count(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(Project.working_model_id == model_id, Project.is_deleted.is_(False))
+        )
+    )
+    if projects:
+        blockers.append(f"{projects} active project{'s' if projects != 1 else ''}")
+    customers = _count(
+        db.scalar(
+            select(func.count())
+            .select_from(Customer)
+            .where(Customer.default_working_model_id == model_id)
+        )
+    )
+    if customers:
+        blockers.append(
+            f"{customers} customer default reference{'s' if customers != 1 else ''}"
+        )
+    users = _count(
+        db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.default_working_model_id == model_id)
+        )
+    )
+    if users:
+        blockers.append(f"{users} user default reference{'s' if users != 1 else ''}")
+    return _CheckResult(model.name, "Working Model", blockers).to_response()
+
+
 DELETE_CHECKERS = {
     "customer": check_customer_delete,
     "contact": check_contact_delete,
@@ -308,6 +347,7 @@ DELETE_CHECKERS = {
     "task_type": check_task_type_delete,
     "project_template": check_project_template_delete,
     "project_type": check_project_type_delete,
+    "working_model": check_working_model_delete,
     "np_code": check_np_code_delete,
 }
 

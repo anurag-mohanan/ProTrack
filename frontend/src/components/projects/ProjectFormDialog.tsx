@@ -10,7 +10,7 @@ import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
 import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchContacts, fetchCustomers, fetchStreams, fetchTeams, fetchUsers } from '../../api/lookups';
+import { fetchContacts, fetchCustomers, fetchStreams, fetchTeams, fetchUsers, fetchWorkingModels } from '../../api/lookups';
 import { fetchMatchingProjectTemplates, fetchProjectTemplate, fetchProjectTypes } from '../../api/projectTemplates';
 import {
   createProject,
@@ -45,6 +45,7 @@ interface ProjectFormValues {
   stream_id: string;
   project_type_id: string;
   project_template_id: string;
+  working_model_id: string;
   team_id: string;
   code: string;
   quoted_hours: number | '';
@@ -69,6 +70,7 @@ const emptyForm: ProjectFormValues = {
   stream_id: '',
   project_type_id: '',
   project_template_id: '',
+  working_model_id: '',
   team_id: '',
   code: '',
   quoted_hours: '',
@@ -92,6 +94,7 @@ function projectToForm(project: Project): ProjectFormValues {
     stream_id: project.stream_id ?? '',
     project_type_id: project.project_type_id ?? '',
     project_template_id: project.project_template_id ?? '',
+    working_model_id: project.working_model_id ?? '',
     team_id: project.team_id ?? '',
     code: project.code ?? '',
     quoted_hours: project.quoted_hours,
@@ -161,6 +164,12 @@ export function ProjectFormDialog({
     queryKey: ['project-types'],
     queryFn: fetchProjectTypes,
     enabled: open && !isEdit,
+  });
+
+  const workingModelsQuery = useQuery({
+    queryKey: ['working-models'],
+    queryFn: fetchWorkingModels,
+    enabled: open,
   });
 
   const matchingTemplatesQuery = useQuery({
@@ -242,6 +251,7 @@ export function ProjectFormDialog({
           execution_status: form.execution_status,
           priority: form.priority,
           health: form.health,
+          working_model_id: optionalUuid(form.working_model_id),
         };
         return updateProject(project.id, updatePayload);
       }
@@ -258,6 +268,7 @@ export function ProjectFormDialog({
         team_id: optionalUuid(form.team_id),
         project_type_id: optionalUuid(form.project_type_id),
         project_template_id: optionalUuid(form.project_template_id),
+        working_model_id: optionalUuid(form.working_model_id),
         code: optionalString(form.code),
         quoted_hours: optionalNumber(form.quoted_hours),
         due_date: optionalString(form.due_date),
@@ -382,6 +393,7 @@ export function ProjectFormDialog({
           ? (project.customer_contact_id ?? '')
           : '',
       project_type_id: customer?.default_project_type_id ?? current.project_type_id,
+      working_model_id: customer?.default_working_model_id ?? current.working_model_id,
       team_id: customer?.default_team_id ?? current.team_id,
       project_template_id: customer?.default_project_template_id ?? '',
     }));
@@ -545,6 +557,23 @@ export function ProjectFormDialog({
                       project_type_id: String(event.target.value),
                       project_template_id: '',
                     })
+                  }
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormSelect
+                  label="Working Model"
+                  value={form.working_model_id}
+                  helper="Inherited from the customer default. Override here if needed."
+                  options={[
+                    { value: '', label: 'Inherit from customer' },
+                    ...(workingModelsQuery.data ?? []).map((model) => ({
+                      value: model.id,
+                      label: model.name,
+                    })),
+                  ]}
+                  onChange={(event) =>
+                    setForm({ ...form, working_model_id: String(event.target.value) })
                   }
                 />
               </Grid>
@@ -809,6 +838,22 @@ export function ProjectFormDialog({
                     ...form,
                     health: event.target.value as ProjectHealth,
                   })
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Working Model"
+                value={form.working_model_id}
+                options={[
+                  { value: '', label: 'None' },
+                  ...(workingModelsQuery.data ?? []).map((model) => ({
+                    value: model.id,
+                    label: model.name,
+                  })),
+                ]}
+                onChange={(event) =>
+                  setForm({ ...form, working_model_id: String(event.target.value) })
                 }
               />
             </Grid>

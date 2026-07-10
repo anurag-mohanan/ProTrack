@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
 from app.crud.base import select
-from app.models.models import Contact, Customer, NonProductiveCode, OperationalRoleType, ProjectType, Role, Stream, TaskType, Team, User
+from app.models.models import Contact, Customer, NonProductiveCode, OperationalRoleType, ProjectType, Role, Stream, TaskType, Team, User, WorkingModel
 from app.schemas.identity import OperationalRoleTypeRead, RoleRead
-from app.schemas.organization import ContactRead, CustomerRead, NonProductiveCodeRead, StreamRead, TaskTypeRead
+from app.schemas.organization import ContactRead, CustomerRead, NonProductiveCodeRead, StreamRead, TaskTypeRead, WorkingModelRead
 from app.schemas.team import TeamRead
 from app.schemas.templates import ProjectTypeRead
 
@@ -131,6 +131,18 @@ def list_lookup_project_types(
         select(ProjectType)
         .where(ProjectType.is_active.is_(True))
         .order_by(ProjectType.name)
+    ).all()
+
+
+@router.get("/working-models", response_model=list[WorkingModelRead])
+def list_lookup_working_models(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    return db.scalars(
+        select(WorkingModel)
+        .where(WorkingModel.is_active.is_(True), WorkingModel.is_archived.is_(False))
+        .order_by(WorkingModel.sort_order, WorkingModel.name)
     ).all()
 
 

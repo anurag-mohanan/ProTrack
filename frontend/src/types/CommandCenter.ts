@@ -44,14 +44,21 @@ export interface TimelineStep {
 
 export interface ProjectKpis {
   completion_percent: number;
-  quoted_hours: number;
+  quoted_hours: number | null;
   actual_hours: number;
-  remaining_hours: number;
-  variance: number;
-  variance_percent: number;
-  budget_consumption_percent: number;
+  remaining_hours: number | null;
+  variance: number | null;
+  variance_percent: number | null;
+  budget_consumption_percent: number | null;
   days_remaining: number;
   current_milestone: string | null;
+  working_model_id?: string | null;
+  working_model_code?: string | null;
+  working_model_name?: string | null;
+  strategy_key?: string | null;
+  show_quoted_variance?: boolean;
+  show_over_budget_indicators?: boolean;
+  model_metrics?: Record<string, number | string | null>;
 }
 
 export interface TeamMemberCapacity {

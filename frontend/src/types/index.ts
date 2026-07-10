@@ -71,6 +71,7 @@ export interface User {
   kpi_utilization?: boolean;
   kpi_workload_planning?: boolean;
   kpi_dashboard_productivity?: boolean;
+  default_working_model_id?: string | null;
   kpi_configuration?: {
     operational_role_type_id?: string | null;
     operational_role_name?: string | null;
@@ -95,6 +96,7 @@ export interface Customer {
   default_project_template_id?: string | null;
   default_team_id?: string | null;
   default_project_type_id?: string | null;
+  default_working_model_id?: string | null;
   default_folder_structure?: string | null;
   due_date_calculation?: 'from_start' | 'from_previous_milestone' | 'business_days';
   project_number_format?: string | null;
@@ -118,6 +120,21 @@ export interface Stream {
   name: string;
   description: string | null;
   is_active: boolean;
+}
+
+export type WorkingModelStrategyKey = 'project_based' | 'time_materials' | 'retainer';
+
+export interface WorkingModel {
+  id: string;
+  code: string;
+  strategy_key: WorkingModelStrategyKey;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  is_active: boolean;
+  is_archived: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Contact {

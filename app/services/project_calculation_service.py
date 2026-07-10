@@ -141,9 +141,17 @@ def calculate_project_health(
     if project.execution_status == ExecutionStatus.completed:
         return ProjectHealth.green
 
-    if db is not None:
-        hours = calculate_hours(db, project)
-        if hours.quoted > 0 and hours.actual > hours.quoted:
+    hours = calculate_hours(db, project) if db is not None else None
+    model_health = None
+    if db is not None and hours is not None:
+        from app.services.working_model.engine import WorkingModelEngine
+
+        model_health = WorkingModelEngine(db).evaluate_health(
+            project, hours=hours, today=today
+        )
+        if model_health == ProjectHealth.red:
+            return ProjectHealth.red
+        if model_health is None and hours.quoted > 0 and hours.actual > hours.quoted:
             return ProjectHealth.red
 
     if project.due_date is not None:
@@ -153,9 +161,10 @@ def calculate_project_health(
         if project.due_date <= today + timedelta(days=5):
             return ProjectHealth.yellow
 
-    if db is not None:
-        hours = calculate_hours(db, project)
-        if hours.quoted > 0 and hours.actual >= hours.quoted * Decimal("0.85"):
+    if db is not None and hours is not None:
+        if model_health == ProjectHealth.yellow:
+            return ProjectHealth.yellow
+        if model_health is None and hours.quoted > 0 and hours.actual >= hours.quoted * Decimal("0.85"):
             return ProjectHealth.yellow
 
         overdue_milestones = int(

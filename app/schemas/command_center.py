@@ -45,14 +45,21 @@ class TimelineStep(BaseModel):
 
 class ProjectKpis(BaseModel):
     completion_percent: Decimal
-    quoted_hours: Decimal
+    quoted_hours: Decimal | None = None
     actual_hours: Decimal
-    remaining_hours: Decimal
-    variance: Decimal
-    variance_percent: Decimal
-    budget_consumption_percent: Decimal
+    remaining_hours: Decimal | None = None
+    variance: Decimal | None = None
+    variance_percent: Decimal | None = None
+    budget_consumption_percent: Decimal | None = None
     days_remaining: int
     current_milestone: str | None = None
+    working_model_id: UUID | None = None
+    working_model_code: str | None = None
+    working_model_name: str | None = None
+    strategy_key: str | None = None
+    show_quoted_variance: bool = True
+    show_over_budget_indicators: bool = True
+    model_metrics: dict[str, Decimal | int | str | None] = Field(default_factory=dict)
 
 
 class TeamMemberCapacity(BaseModel):

@@ -21,10 +21,10 @@ import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { contactsApi, customersApi } from '../../api/resources';
-import { fetchTeams } from '../../api/lookups';
+import { fetchTeams, fetchWorkingModels } from '../../api/lookups';
 import { fetchProjectTemplates, fetchProjectTypes } from '../../api/projectTemplates';
 import { ensureArray } from '../../types/pagination';
-import type { Contact, Customer } from '../../types';
+import type { Contact, Customer, WorkingModel } from '../../types';
 import type { ProjectTemplate, ProjectType } from '../../types/ProjectTemplate';
 import type { Team } from '../../types/Team';
 import { ContentCard } from '../../components/ui/cards';
@@ -56,6 +56,7 @@ interface CustomerFormState {
   default_project_template_id: string;
   default_team_id: string;
   default_project_type_id: string;
+  default_working_model_id: string;
   default_folder_structure: string;
   due_date_calculation: string;
   project_number_format: string;
@@ -70,6 +71,7 @@ const emptyForm: CustomerFormState = {
   default_project_template_id: '',
   default_team_id: '',
   default_project_type_id: '',
+  default_working_model_id: '',
   default_folder_structure: '',
   due_date_calculation: 'from_start',
   project_number_format: '',
@@ -87,6 +89,7 @@ export default function CustomersPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
   const [projectTemplates, setProjectTemplates] = useState<ProjectTemplate[]>([]);
+  const [workingModels, setWorkingModels] = useState<WorkingModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -118,13 +121,14 @@ export default function CustomersPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [customersData, contactsData, teamsData, typesData, templatesData] =
+      const [customersData, contactsData, teamsData, typesData, templatesData, modelsData] =
         await Promise.all([
           customersApi.list({ limit: 500 }),
           contactsApi.list({ limit: 500 }),
           fetchTeams(),
           fetchProjectTypes(),
           fetchProjectTemplates(),
+          fetchWorkingModels(),
         ]);
       const safeCustomers = ensureArray<Customer>(customersData);
       const safeContacts = ensureArray<Contact>(contactsData);
@@ -136,6 +140,7 @@ export default function CustomersPage() {
       setTeams(safeTeams.filter((team) => team.is_active));
       setProjectTypes(safeTypes.filter((type) => type.is_active));
       setProjectTemplates(safeTemplates.filter((template) => template.is_active));
+      setWorkingModels(modelsData.filter((model) => model.is_active && !model.is_archived));
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -175,6 +180,7 @@ export default function CustomersPage() {
       default_project_template_id: customer.default_project_template_id ?? '',
       default_team_id: customer.default_team_id ?? '',
       default_project_type_id: customer.default_project_type_id ?? '',
+      default_working_model_id: customer.default_working_model_id ?? '',
       default_folder_structure: customer.default_folder_structure ?? '',
       due_date_calculation: customer.due_date_calculation ?? 'from_start',
       project_number_format: customer.project_number_format ?? '',
@@ -205,6 +211,7 @@ export default function CustomersPage() {
         default_project_template_id: optionalUuid(form.default_project_template_id),
         default_team_id: optionalUuid(form.default_team_id),
         default_project_type_id: optionalUuid(form.default_project_type_id),
+        default_working_model_id: optionalUuid(form.default_working_model_id),
         default_folder_structure: optionalString(form.default_folder_structure),
         due_date_calculation: form.due_date_calculation as Customer['due_date_calculation'],
         project_number_format: optionalString(form.project_number_format),
@@ -450,6 +457,22 @@ export default function CustomersPage() {
                   setForm((current) => ({
                     ...current,
                     default_team_id: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Default Working Model"
+                value={form.default_working_model_id}
+                options={[
+                  { value: '', label: 'None' },
+                  ...workingModels.map((model) => ({ value: model.id, label: model.name })),
+                ]}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    default_working_model_id: String(event.target.value),
                   }))
                 }
               />

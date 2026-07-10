@@ -101,6 +101,7 @@ class UserBase(BaseModel):
     kpi_utilization: bool = True
     kpi_workload_planning: bool = True
     kpi_dashboard_productivity: bool = True
+    default_working_model_id: UUID | None = None
 
 
 class UserCreate(BlankOptionalFieldsMixin, UserBase):
@@ -136,6 +137,7 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     kpi_utilization: bool | None = None
     kpi_workload_planning: bool | None = None
     kpi_dashboard_productivity: bool | None = None
+    default_working_model_id: UUID | None = None
     reset_kpi_defaults: bool = False
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None

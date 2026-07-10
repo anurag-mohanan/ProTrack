@@ -37,6 +37,7 @@ from app.schemas.command_center import (
 )
 from app.schemas.timesheet import TimesheetEntryRead
 from app.services.project_calculation_service import calculate_hours, get_milestone_summary
+from app.services.working_model.engine import WorkingModelEngine
 
 
 def _round(value: Decimal) -> Decimal:
@@ -286,8 +287,10 @@ def _build_customer_summary(db: Session, customer) -> CustomerProjectSummary:
 
 def _detect_risks(db: Session, project: Project, milestones: list[Milestone], hours, today: date):
     risks: list[ProjectRiskItem] = []
+    engine = WorkingModelEngine(db)
+    allowed_risks = engine.applicable_risk_types(project)
 
-    if project.due_date < today and project.execution_status not in (
+    if ProjectRiskType.overdue in allowed_risks and project.due_date < today and project.execution_status not in (
         ExecutionStatus.completed,
         ExecutionStatus.cancelled,
     ):
@@ -300,7 +303,10 @@ def _detect_risks(db: Session, project: Project, milestones: list[Milestone], ho
             )
         )
 
-    if hours.actual > hours.quoted and hours.quoted > 0:
+    if (
+        ProjectRiskType.hours_over_quote in allowed_risks
+        and engine.should_flag_hours_over_quote(project, hours)
+    ):
         risks.append(
             ProjectRiskItem(
                 risk_type=ProjectRiskType.hours_over_quote,
@@ -310,43 +316,45 @@ def _detect_risks(db: Session, project: Project, milestones: list[Milestone], ho
             )
         )
 
-    for milestone in milestones:
-        if (
-            milestone.due_date is not None
-            and milestone.due_date < today
-            and milestone.status != MilestoneStatus.completed
-        ):
+    if ProjectRiskType.milestone_delay in allowed_risks:
+        for milestone in milestones:
+            if (
+                milestone.due_date is not None
+                and milestone.due_date < today
+                and milestone.status != MilestoneStatus.completed
+            ):
+                risks.append(
+                    ProjectRiskItem(
+                        risk_type=ProjectRiskType.milestone_delay,
+                        severity="high",
+                        title=f"Delayed milestone: {milestone.name}",
+                        detail=f"Due {milestone.due_date.isoformat()}",
+                    )
+                )
+
+    if ProjectRiskType.missing_approvals in allowed_risks:
+        pending_approvals = int(
+            db.scalar(
+                select(func.count(func.distinct(Timesheet.id)))
+                .join(TimesheetEntry, TimesheetEntry.timesheet_id == Timesheet.id)
+                .where(
+                    TimesheetEntry.project_id == project.id,
+                    Timesheet.status == TimesheetStatus.submitted,
+                )
+            )
+            or 0
+        )
+        if pending_approvals > 0:
             risks.append(
                 ProjectRiskItem(
-                    risk_type=ProjectRiskType.milestone_delay,
-                    severity="high",
-                    title=f"Delayed milestone: {milestone.name}",
-                    detail=f"Due {milestone.due_date.isoformat()}",
+                    risk_type=ProjectRiskType.missing_approvals,
+                    severity="medium",
+                    title="Pending timesheet approvals",
+                    detail=f"{pending_approvals} submitted timesheet(s) awaiting approval",
                 )
             )
 
-    pending_approvals = int(
-        db.scalar(
-            select(func.count(func.distinct(Timesheet.id)))
-            .join(TimesheetEntry, TimesheetEntry.timesheet_id == Timesheet.id)
-            .where(
-                TimesheetEntry.project_id == project.id,
-                Timesheet.status == TimesheetStatus.submitted,
-            )
-        )
-        or 0
-    )
-    if pending_approvals > 0:
-        risks.append(
-            ProjectRiskItem(
-                risk_type=ProjectRiskType.missing_approvals,
-                severity="medium",
-                title="Pending timesheet approvals",
-                detail=f"{pending_approvals} submitted timesheet(s) awaiting approval",
-            )
-        )
-
-    if project.designer_id:
+    if ProjectRiskType.designer_overloaded in allowed_risks and project.designer_id:
         active_count = int(
             db.scalar(
                 select(func.count())
@@ -413,16 +421,49 @@ def get_project_command_center(db: Session, project_id: UUID) -> ProjectCommandC
 
     current_milestone = _current_milestone_name(milestones)
     days_remaining = _days_remaining(project.due_date, today)
-    budget_pct = (
-        _round((hours.actual / hours.quoted) * Decimal("100"))
-        if hours.quoted > 0
-        else Decimal("0")
-    )
-    variance_pct = (
-        _round((hours.variance / hours.quoted) * Decimal("100"))
-        if hours.quoted > 0
-        else Decimal("0")
-    )
+    wm_engine = WorkingModelEngine(db)
+    wm_kpis = wm_engine.calculate_kpis(project, hours=hours, today=today)
+    if wm_kpis is None:
+        budget_pct = (
+            _round((hours.actual / hours.quoted) * Decimal("100"))
+            if hours.quoted > 0
+            else Decimal("0")
+        )
+        variance_pct = (
+            _round((hours.variance / hours.quoted) * Decimal("100"))
+            if hours.quoted > 0
+            else Decimal("0")
+        )
+        kpis = ProjectKpis(
+            completion_percent=progress,
+            quoted_hours=hours.quoted,
+            actual_hours=hours.actual,
+            remaining_hours=hours.remaining,
+            variance=hours.variance,
+            variance_percent=variance_pct,
+            budget_consumption_percent=budget_pct,
+            days_remaining=days_remaining,
+            current_milestone=current_milestone,
+        )
+    else:
+        kpis = ProjectKpis(
+            completion_percent=progress,
+            quoted_hours=wm_kpis.quoted_hours,
+            actual_hours=wm_kpis.actual_hours,
+            remaining_hours=wm_kpis.remaining_hours,
+            variance=wm_kpis.variance,
+            variance_percent=wm_kpis.variance_percent,
+            budget_consumption_percent=wm_kpis.budget_consumption_percent,
+            days_remaining=days_remaining,
+            current_milestone=current_milestone,
+            working_model_id=wm_kpis.working_model_id,
+            working_model_code=wm_kpis.working_model_code,
+            working_model_name=wm_kpis.working_model_name,
+            strategy_key=wm_kpis.strategy_key.value,
+            show_quoted_variance=wm_kpis.show_quoted_variance,
+            show_over_budget_indicators=wm_kpis.show_over_budget_indicators,
+            model_metrics=wm_kpis.model_metrics,
+        )
 
     recent_entries = db.scalars(
         select(TimesheetEntry)
@@ -467,17 +508,7 @@ def get_project_command_center(db: Session, project_id: UUID) -> ProjectCommandC
             days_remaining=days_remaining,
         ),
         timeline=_build_timeline(milestones, today),
-        kpis=ProjectKpis(
-            completion_percent=progress,
-            quoted_hours=hours.quoted,
-            actual_hours=hours.actual,
-            remaining_hours=hours.remaining,
-            variance=hours.variance,
-            variance_percent=variance_pct,
-            budget_consumption_percent=budget_pct,
-            days_remaining=days_remaining,
-            current_milestone=current_milestone,
-        ),
+        kpis=kpis,
         team=_build_team_summary(db, project),
         customer_summary=_build_customer_summary(db, customer),
         decisions=[_decision_to_read(db, row) for row in decisions],

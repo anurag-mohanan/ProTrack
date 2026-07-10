@@ -161,6 +161,12 @@ class NotificationType(enum.Enum):
     pending_approval = "pending_approval"
 
 
+class WorkingModelCode(enum.Enum):
+    project_based = "project_based"
+    time_materials = "time_materials"
+    retainer = "retainer"
+
+
 class EntityType(enum.Enum):
     project = "project"
     milestone = "milestone"
@@ -174,6 +180,7 @@ class EntityType(enum.Enum):
     task_type = "task_type"
     project_template = "project_template"
     project_type = "project_type"
+    working_model = "working_model"
     np_code = "np_code"
     settings = "settings"
     import_batch = "import_batch"

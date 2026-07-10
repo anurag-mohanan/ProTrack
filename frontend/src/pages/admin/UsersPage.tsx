@@ -15,6 +15,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import PersonIcon from '@mui/icons-material/Person';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
+import WorkHistoryOutlinedIcon from '@mui/icons-material/WorkHistoryOutlined';
 import ContactMailOutlinedIcon from '@mui/icons-material/ContactMailOutlined';
 import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -26,7 +27,7 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser, setUserTemporaryPassword, setUserMustChangePassword, unlockUser } from '../../api/resources';
 import { fetchDepartments } from '../../api/settings';
-import { fetchOperationalRoles, fetchTeams, fetchUsers } from '../../api/lookups';
+import { fetchOperationalRoles, fetchTeams, fetchUsers, fetchWorkingModels } from '../../api/lookups';
 import { PaginatedDataGrid } from '../../components/common/PaginatedDataGrid';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { usePaginatedQuery } from '../../hooks/usePaginatedQuery';
@@ -36,7 +37,7 @@ import { UserTeamAssignments, type UserTeamAssignmentFormValue } from '../../com
 import { UserAccessControlSection } from '../../components/admin/UserAccessControlSection';
 import type { ModuleKey, SpecialPermissionKey } from '../../config/accessControl';
 import { ROLES, defaultModulesForRole, defaultSpecialPermissionsForRole } from '../../utils/permissions';
-import type { Role, User } from '../../types';
+import type { Role, User, WorkingModel } from '../../types';
 import type { Department } from '../../types/Settings';
 import type { Team } from '../../types/Team';
 import { ContentCard } from '../../components/ui/cards';
@@ -91,6 +92,7 @@ interface UserFormState {
   kpi_workload_planning: boolean;
   kpi_dashboard_productivity: boolean;
   reset_kpi_defaults: boolean;
+  default_working_model_id: string;
 }
 
 const emptyForm: UserFormState = {
@@ -125,6 +127,7 @@ const emptyForm: UserFormState = {
   kpi_workload_planning: true,
   kpi_dashboard_productivity: true,
   reset_kpi_defaults: true,
+  default_working_model_id: '',
 };
 
 export default function UsersPage() {
@@ -137,6 +140,7 @@ export default function UsersPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [operationalRoles, setOperationalRoles] = useState<Array<{ id: string; name: string; code: string; dashboard_profile: string }>>([]);
+  const [workingModels, setWorkingModels] = useState<WorkingModel[]>([]);
   const [metadataLoading, setMetadataLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -234,19 +238,21 @@ export default function UsersPage() {
   const loadMetadata = useCallback(async () => {
     setMetadataLoading(true);
     try {
-      const [rolesData, teamsData, departmentsData, operationalRolesData, lookupUsersData] =
+      const [rolesData, teamsData, departmentsData, operationalRolesData, lookupUsersData, workingModelsData] =
         await Promise.all([
           rolesApi.list(),
           fetchTeams(),
           fetchDepartments(),
           fetchOperationalRoles(),
           fetchUsers(),
+          fetchWorkingModels(),
         ]);
       setRoles(rolesData);
       setTeams(teamsData);
       setDepartments(departmentsData.filter((row) => row.is_active));
       setOperationalRoles(operationalRolesData);
       setLookupUsers(lookupUsersData);
+      setWorkingModels(workingModelsData.filter((model) => model.is_active && !model.is_archived));
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -349,6 +355,7 @@ export default function UsersPage() {
       kpi_workload_planning: user.kpi_configuration?.kpi_workload_planning ?? user.kpi_workload_planning ?? true,
       kpi_dashboard_productivity: user.kpi_configuration?.kpi_dashboard_productivity ?? user.kpi_dashboard_productivity ?? true,
       reset_kpi_defaults: false,
+      default_working_model_id: user.default_working_model_id ?? '',
     });
     setFormOpen(true);
   };
@@ -437,6 +444,7 @@ export default function UsersPage() {
           ...identityPayload,
           ...buildCapacityPayload(),
           ...buildKpiPayload(),
+          default_working_model_id: optionalUuid(form.default_working_model_id),
           module_access: form.module_access,
           special_permissions: form.special_permissions,
         });
@@ -458,6 +466,7 @@ export default function UsersPage() {
           ...identityPayload,
           ...buildCapacityPayload(),
           ...buildKpiPayload(),
+          default_working_model_id: optionalUuid(form.default_working_model_id),
           module_access: form.module_access,
           special_permissions: form.special_permissions,
         } as Partial<User> & { password: string; must_change_password?: boolean });
@@ -1045,6 +1054,24 @@ export default function UsersPage() {
               }))
             }
           />
+
+          <FormSection title="Working Model Default" icon={WorkHistoryOutlinedIcon}>
+            <FormSelect
+              label="Default Working Model"
+              value={form.default_working_model_id}
+              helper="Used when no project-level working model is set. Project working model always takes precedence."
+              options={[
+                { value: '', label: 'None' },
+                ...workingModels.map((model) => ({ value: model.id, label: model.name })),
+              ]}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  default_working_model_id: String(event.target.value),
+                }))
+              }
+            />
+          </FormSection>
 
           <UserAccessControlSection
             roleName={roleMap.get(form.role_id) ?? ROLES.DESIGNER}

@@ -11,6 +11,7 @@ import type {
   Stream,
   TaskType,
   User,
+  WorkingModel,
 } from '../types';
 
 export function createResourceApi<
@@ -52,6 +53,11 @@ export function createResourceApi<
 export const rolesApi = createResourceApi<Role>('roles');
 export const usersApi = createResourceApi<User>('users');
 export const streamsApi = createResourceApi<Stream>('streams');
+export const workingModelsApi = createResourceApi<
+  WorkingModel,
+  Partial<WorkingModel>,
+  Partial<WorkingModel>
+>('working-models');
 export const teamsApi = createResourceApi<
   import('../types/Team').Team,
   import('../types/Team').TeamCreate,
@@ -130,5 +136,22 @@ export async function fetchUserProfileDetail(userId: string): Promise<import('./
   const { data } = await apiClient.get<import('./preferences').UserProfile>(
     `/users/${userId}/profile`,
   );
+  return data;
+}
+
+export async function fetchWorkingModelStrategies(): Promise<WorkingModel['strategy_key'][]> {
+  const { data } = await apiClient.get<WorkingModel['strategy_key'][]>('/working-models/strategies');
+  return data;
+}
+
+export async function reorderWorkingModels(orderedIds: string[]): Promise<WorkingModel[]> {
+  const { data } = await apiClient.post<WorkingModel[]>('/working-models/reorder', {
+    ordered_ids: orderedIds,
+  });
+  return data;
+}
+
+export async function archiveWorkingModel(id: string): Promise<WorkingModel> {
+  const { data } = await apiClient.post<WorkingModel>(`/working-models/${id}/archive`);
   return data;
 }

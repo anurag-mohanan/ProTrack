@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import DueDateCalculationMode, NonProductiveCodeCategory, TaskTypeFunctionCategory
+from app.models.enums import DueDateCalculationMode, NonProductiveCodeCategory, TaskTypeFunctionCategory, WorkingModelCode
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
@@ -26,6 +26,38 @@ class StreamRead(StreamBase, TimestampSchema):
     pass
 
 
+class WorkingModelBase(BaseModel):
+    code: str = Field(min_length=1, max_length=50)
+    strategy_key: WorkingModelCode
+    name: str = Field(max_length=120)
+    description: str | None = None
+    sort_order: int = 0
+    is_active: bool = True
+    is_archived: bool = False
+
+
+class WorkingModelCreate(BlankOptionalFieldsMixin, WorkingModelBase):
+    pass
+
+
+class WorkingModelUpdate(BlankOptionalFieldsMixin, BaseModel):
+    code: str | None = Field(default=None, max_length=50)
+    strategy_key: WorkingModelCode | None = None
+    name: str | None = Field(default=None, max_length=120)
+    description: str | None = None
+    sort_order: int | None = None
+    is_active: bool | None = None
+    is_archived: bool | None = None
+
+
+class WorkingModelRead(WorkingModelBase, TimestampSchema):
+    pass
+
+
+class WorkingModelReorderRequest(BaseModel):
+    ordered_ids: list[UUID] = Field(min_length=1)
+
+
 class CustomerBase(BaseModel):
     name: str = Field(max_length=200)
     code: str | None = Field(default=None, max_length=20)
@@ -35,6 +67,7 @@ class CustomerBase(BaseModel):
     default_project_template_id: UUID | None = None
     default_team_id: UUID | None = None
     default_project_type_id: UUID | None = None
+    default_working_model_id: UUID | None = None
     default_folder_structure: str | None = Field(default=None, max_length=500)
     due_date_calculation: DueDateCalculationMode = DueDateCalculationMode.from_start
     project_number_format: str | None = Field(default=None, max_length=100)
@@ -54,6 +87,7 @@ class CustomerUpdate(BlankOptionalFieldsMixin, BaseModel):
     default_project_template_id: UUID | None = None
     default_team_id: UUID | None = None
     default_project_type_id: UUID | None = None
+    default_working_model_id: UUID | None = None
     default_folder_structure: str | None = Field(default=None, max_length=500)
     due_date_calculation: DueDateCalculationMode | None = None
     project_number_format: str | None = Field(default=None, max_length=100)

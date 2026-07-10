@@ -1,5 +1,16 @@
 import { formatCellValue, formatDisplayValue, isBlankDisplayValue } from './formValues';
 
+export function sanitizeDisplayText(value: unknown): string {
+  if (isBlankDisplayValue(value)) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    const parts = value.trim().split(/\s+/).filter((part) => !isBlankDisplayValue(part));
+    return parts.join(' ');
+  }
+  return String(value).trim();
+}
+
 export function formatNumber(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return '';
@@ -33,7 +44,7 @@ export function userDisplayName(user: {
   first_name: string;
   last_name: string;
 }): string {
-  const name = `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim();
+  const name = `${sanitizeDisplayText(user.first_name)} ${sanitizeDisplayText(user.last_name)}`.trim();
   return name || '';
 }
 

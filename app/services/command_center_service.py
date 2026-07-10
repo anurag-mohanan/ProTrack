@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.crud.foundation import get_or_create_file_path_settings
 from app.crud.project_metrics import build_project_read
+from app.core.field_normalization import normalize_optional_text
 from app.models.enums import (
     EngineeringChangeStatus,
     ExecutionStatus,
@@ -52,7 +53,10 @@ def _decimal(value) -> Decimal:
 def _user_name(user: User | None) -> str | None:
     if user is None:
         return None
-    return f"{user.first_name} {user.last_name}"
+    first = normalize_optional_text(user.first_name) or ""
+    last = normalize_optional_text(user.last_name) or ""
+    name = f"{first} {last}".strip()
+    return name or None
 
 
 def _days_remaining(due_date: date, today: date) -> int:
@@ -225,11 +229,8 @@ def _build_customer_summary(db: Session, customer) -> CustomerProjectSummary:
                 Project.customer_id == customer.id,
                 Project.is_deleted.is_(False),
                 Project.is_archived.is_(False),
-                Project.execution_status.in_(
-                    (
-                        ExecutionStatus.currently_being_worked_on,
-                        ExecutionStatus.on_hold,
-                    )
+                Project.execution_status.notin_(
+                    (ExecutionStatus.completed, ExecutionStatus.cancelled)
                 ),
             )
         )

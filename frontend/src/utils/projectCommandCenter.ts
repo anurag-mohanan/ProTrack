@@ -96,12 +96,12 @@ export function isArchivedProject(project: Project): boolean {
 }
 
 function isOverdue(project: Project, today: Date): boolean {
-  if (!project.due_date || project.execution_status === 'completed') return false;
+  if (!isLiveProject(project) || !project.due_date) return false;
   return new Date(`${project.due_date}T00:00:00`) < today;
 }
 
 function isDueThisWeek(project: Project, today: Date): boolean {
-  if (!project.due_date || project.execution_status === 'completed') return false;
+  if (!isLiveProject(project) || !project.due_date) return false;
   const rangeStart = new Date(today);
   const day = rangeStart.getDay();
   const diff = day === 0 ? -6 : 1 - day;

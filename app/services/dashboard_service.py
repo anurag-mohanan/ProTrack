@@ -139,6 +139,23 @@ def _active_project_clause(project_stage: ProjectStage | None = None):
     )
 
 
+def live_project_where(
+    *,
+    project_stage: ProjectStage | None = None,
+    team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
+):
+    """Projects shown in the live command-center table (matches frontend isLiveProject)."""
+    return (
+        *_visible_projects_clause(),
+        *_stage_clause(project_stage),
+        *_team_clause(team_id, team_ids),
+        Project.execution_status.notin_(
+            (ExecutionStatus.completed, ExecutionStatus.cancelled)
+        ),
+    )
+
+
 def _current_week_bounds(today: date | None = None) -> tuple[date, date]:
     today = today or date.today()
     week_start = today - timedelta(days=today.weekday())
@@ -189,11 +206,15 @@ def get_dashboard_kpis(
     """Reliable engineering KPIs from aggregate SQL — no user-specific estimates."""
     today = date.today()
     month_start = today.replace(day=1)
-    due_cutoff = today + timedelta(days=7)
+    week_start, week_end = _current_week_bounds(today)
     visible = _visible_projects_clause()
     stage = _stage_clause(project_stage)
     team = _team_clause(team_id, team_ids)
-    active = _active_project_clause(project_stage) + team
+    live = live_project_where(
+        project_stage=project_stage,
+        team_id=team_id,
+        team_ids=team_ids,
+    )
     not_completed = Project.execution_status != ExecutionStatus.completed
     being_worked_on = and_(
         Project.execution_status == ExecutionStatus.currently_being_worked_on,
@@ -222,15 +243,17 @@ def get_dashboard_kpis(
         func.date(Project.completed_at) >= month_start,
         func.date(Project.completed_at) <= today,
     )
-    due_next_7_days = and_(
-        *visible,
-        *stage,
-        *team,
-        not_completed,
-        Project.due_date >= today,
-        Project.due_date <= due_cutoff,
+    due_this_week = and_(
+        *live,
+        Project.due_date.is_not(None),
+        Project.due_date >= week_start,
+        Project.due_date <= week_end,
     )
-    overdue = and_(*visible, *stage, *team, not_completed, Project.due_date < today)
+    overdue = and_(
+        *live,
+        Project.due_date.is_not(None),
+        Project.due_date < today,
+    )
     archived = and_(Project.is_deleted.is_(False), Project.is_archived.is_(True))
     if team_id is not None:
         archived = and_(archived, Project.team_id == team_id)
@@ -241,24 +264,15 @@ def get_dashboard_kpis(
             func.count().filter(on_hold),
             func.count().filter(cancelled),
             func.count().filter(completed_month),
-            func.count().filter(due_next_7_days),
+            func.count().filter(due_this_week),
             func.count().filter(overdue),
             func.count().filter(archived),
-            func.coalesce(func.sum(Project.quoted_hours).filter(and_(*active)), 0),
+            func.coalesce(func.sum(Project.quoted_hours).filter(and_(*live)), 0),
+            func.coalesce(func.sum(Project.actual_hours).filter(and_(*live)), 0),
         ).select_from(Project)
     ).one()
 
-    total_actual_hours = _round_hours(
-        _decimal(
-            db.scalar(
-                select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
-                .where(
-                    TimesheetEntry.is_deleted.is_(False),
-                    TimesheetEntry.work_category == WorkCategory.productive,
-                )
-            )
-        )
-    )
+    total_actual_hours = _round_hours(_decimal(project_row[8]))
 
     np_hours_this_month = _round_hours(
         _decimal(

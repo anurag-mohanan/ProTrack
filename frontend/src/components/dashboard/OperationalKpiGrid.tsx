@@ -33,11 +33,11 @@ export function buildOperationalKpis({ summary, unavailable, navigate }: BuildOp
       title: 'Active Projects',
       value: unavailable
         ? '—'
-        : formatNumber(summary!.being_worked_on_projects ?? summary!.in_progress_projects ?? 0, 0),
-      subtitle: 'Currently being worked on',
+        : formatNumber(summary!.active_projects ?? 0, 0),
+      subtitle: 'Live portfolio projects',
       icon: FolderOpenIcon,
-      statusColor: !unavailable && (summary!.being_worked_on_projects ?? 0) > 0 ? ('primary' as const) : undefined,
-      onClick: () => navigate('/projects?execution_status=currently_being_worked_on'),
+      statusColor: !unavailable && (summary!.active_projects ?? 0) > 0 ? ('primary' as const) : undefined,
+      onClick: () => navigate('/projects?quickFilter=active'),
     },
     {
       title: 'Projects On Hold',
@@ -49,7 +49,7 @@ export function buildOperationalKpis({ summary, unavailable, navigate }: BuildOp
     {
       title: 'Due This Week',
       value: unavailable ? '—' : formatNumber(summary!.projects_due_this_week ?? 0, 0),
-      subtitle: 'Due within 7 days',
+      subtitle: 'Due Mon–Sun this week',
       icon: ScheduleIcon,
       statusColor: !unavailable && (summary!.projects_due_this_week ?? 0) > 0 ? ('warning' as const) : undefined,
       onClick: () => navigate('/projects?due=7days'),
@@ -80,7 +80,7 @@ export function buildOperationalKpis({ summary, unavailable, navigate }: BuildOp
     {
       title: 'Actual Hours',
       value: unavailable ? '—' : formatNumber(summary!.total_actual_hours_productive ?? 0, 1),
-      subtitle: 'Approved productive hours',
+      subtitle: 'Live project actual hours',
       icon: TimerIcon,
       onClick: () => navigate('/reports'),
     },

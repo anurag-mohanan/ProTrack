@@ -65,6 +65,7 @@ from app.services.dashboard_service import (
     get_leave_days_this_month,
     get_np_hours_panel,
     get_team_summary,
+    live_project_where,
     safe_dashboard_call,
 )
 from app.services.notification_service import count_unread_notifications
@@ -237,7 +238,14 @@ def get_dashboard_summary(
         )
         or 0
     )
-    active = being_worked_on + on_hold
+    active = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Project)
+            .where(*live_project_where(project_stage=project_stage, team_id=team_id, team_ids=team_ids))
+        )
+        or 0
+    )
 
     portfolio_hours = aggregate_portfolio_hours(db)
 

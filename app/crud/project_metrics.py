@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.field_normalization import normalize_optional_text
 from app.crud.base import select
 from app.models.models import Customer, Project, ProjectType, Team, User, WorkingModel
 from app.schemas.project import ProjectRead
@@ -15,7 +16,10 @@ from app.services.project_calculation_service import (
 def _full_name(user: User | None) -> str | None:
     if user is None:
         return None
-    return f"{user.first_name} {user.last_name}".strip() or None
+    first = normalize_optional_text(user.first_name) or ""
+    last = normalize_optional_text(user.last_name) or ""
+    name = f"{first} {last}".strip()
+    return name or None
 
 
 def _batch_display_names(

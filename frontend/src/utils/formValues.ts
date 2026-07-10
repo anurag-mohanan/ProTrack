@@ -39,7 +39,8 @@ export function formatCellValue(value: unknown): string {
     return '';
   }
   if (typeof value === 'string') {
-    return value.trim();
+    const parts = value.trim().split(/\s+/).filter((part) => !isBlankDisplayValue(part));
+    return parts.join(' ');
   }
   if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);

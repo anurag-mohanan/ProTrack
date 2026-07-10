@@ -2,7 +2,7 @@
 # Verify the running ProTrack API matches the current codebase.
 # Usage: .\scripts\verify_backend.ps1 [port]
 
-param([int]$Port = 8002)
+param([int]$Port = 8000)
 
 $base = "http://127.0.0.1:$Port"
 try {

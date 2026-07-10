@@ -1,11 +1,11 @@
 #!/usr/bin/env pwsh
-# Start ProTrack backend on the configured dev port (default 8002).
+# Start ProTrack backend on the configured dev port (default 8000).
 # Run from the repository root:  .\scripts\start_backend.ps1
 
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
-$port = 8002
+$port = 8000
 if ($env:PROTRACK_API_PORT) {
     $port = [int]$env:PROTRACK_API_PORT
 }

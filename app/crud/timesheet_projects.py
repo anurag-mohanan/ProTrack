@@ -121,9 +121,13 @@ def list_timesheet_projects(
             design_leader_name=_full_name(design_leader_user),
             project_type_name=project_type_name,
             working_model_name=working_model_name,
-            working_model_code=str(working_model_code.value)
-            if working_model_code is not None
-            else None,
+            working_model_code=(
+                working_model_code.value
+                if hasattr(working_model_code, "value")
+                else str(working_model_code)
+                if working_model_code is not None
+                else None
+            ),
             health=project.health,
             quoted_hours=Decimal(str(project.quoted_hours or 0)),
             actual_hours=Decimal(str(project.actual_hours or 0)),

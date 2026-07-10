@@ -10,6 +10,7 @@ import {
   ProjectStageChart,
 } from './DashboardCharts';
 import { DesignerUtilizationList } from './DesignerUtilizationList';
+import { ResourceAvailabilityPanel } from './ResourceAvailabilityPanel';
 
 interface DashboardChartsSectionProps {
   summary: DashboardSummary | undefined;
@@ -37,27 +38,39 @@ export function DashboardChartsSection({
     <Grid container spacing={2} sx={{ mt: 0.5 }}>
       <Grid size={{ xs: 12, md: 6, xl: 4 }}>
         {loading ? (
-          <DashboardPanelSkeleton height={240} />
+          <DashboardPanelSkeleton height={280} />
         ) : (
-          <DashboardPanel title="Customer Workload" subtitle="Top customers by hours">
+          <DashboardPanel
+            title="Customer Workload"
+            subtitle="Top customers by hours logged"
+            height={320}
+          >
             <CustomerWorkloadChart rows={summary?.customer_workload ?? []} height={220} />
           </DashboardPanel>
         )}
       </Grid>
       <Grid size={{ xs: 12, md: 6, xl: 4 }}>
         {loading ? (
-          <DashboardPanelSkeleton height={240} />
+          <DashboardPanelSkeleton height={280} />
         ) : (
-          <DashboardPanel title="Designer Utilization" subtitle="Current designer loading">
+          <DashboardPanel
+            title="Designer Utilization"
+            subtitle="Current loading by assignment status"
+            height={320}
+          >
             <DesignerUtilizationList rows={summary?.designer_availability ?? []} limit={6} />
           </DashboardPanel>
         )}
       </Grid>
       <Grid size={{ xs: 12, md: 6, xl: 4 }}>
         {loading ? (
-          <DashboardPanelSkeleton height={240} />
+          <DashboardPanelSkeleton height={280} />
         ) : (
-          <DashboardPanel title="Hours Burn" subtitle="Billable vs non-productive">
+          <DashboardPanel
+            title="Hours Burn"
+            subtitle="Billable, non-billable, and NP hours"
+            height={320}
+          >
             <HoursSummaryChart
               billableHours={summary?.billable_hours ?? 0}
               nonBillableHours={summary?.non_billable_hours ?? 0}
@@ -69,18 +82,26 @@ export function DashboardChartsSection({
       </Grid>
       <Grid size={{ xs: 12, md: 6, xl: 4 }}>
         {loading ? (
-          <DashboardPanelSkeleton height={240} />
+          <DashboardPanelSkeleton height={280} />
         ) : (
-          <DashboardPanel title="Project Stage Distribution" subtitle="Active projects by phase">
+          <DashboardPanel
+            title="Project Stage Distribution"
+            subtitle="Active projects by phase"
+            height={320}
+          >
             <ProjectStageChart rows={summary?.projects_by_stage ?? []} height={220} />
           </DashboardPanel>
         )}
       </Grid>
       <Grid size={{ xs: 12, md: 6, xl: 4 }}>
         {loading ? (
-          <DashboardPanelSkeleton height={240} />
+          <DashboardPanelSkeleton height={280} />
         ) : (
-          <DashboardPanel title="Project Health" subtitle="Portfolio risk distribution">
+          <DashboardPanel
+            title="Project Health"
+            subtitle="Portfolio risk distribution"
+            height={320}
+          >
             <ProjectHealthChart
               green={summary?.green_projects ?? 0}
               yellow={summary?.yellow_projects ?? 0}
@@ -93,10 +114,18 @@ export function DashboardChartsSection({
       </Grid>
       <Grid size={{ xs: 12, md: 6, xl: 4 }}>
         {loading ? (
-          <DashboardPanelSkeleton height={240} />
+          <DashboardPanelSkeleton height={280} />
         ) : (
-          <DashboardPanel title="Resource Availability" subtitle="Designers with open capacity">
-            <DesignerUtilizationList rows={summary?.designer_availability ?? []} limit={6} />
+          <DashboardPanel
+            title="Resource Availability"
+            subtitle="Designers with open capacity"
+            height={320}
+          >
+            <ResourceAvailabilityPanel
+              summary={summary?.designer_availability_summary}
+              rows={summary?.designer_availability ?? []}
+              limit={5}
+            />
           </DashboardPanel>
         )}
       </Grid>

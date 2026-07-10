@@ -6,6 +6,7 @@ interface UtilizationBarProps {
   value: number;
   showValue?: boolean;
   height?: number;
+  hideLabel?: boolean;
 }
 
 function barColor(value: number): string {
@@ -19,25 +20,29 @@ export function UtilizationBar({
   value,
   showValue = true,
   height = 8,
+  hideLabel = false,
 }: UtilizationBarProps) {
   const clamped = Math.min(100, Math.max(0, value));
   const color = barColor(clamped);
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
-      <Typography
-        variant="body2"
-        sx={{
-          fontWeight: 600,
-          minWidth: 88,
-          maxWidth: 120,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {label}
-      </Typography>
+      {!hideLabel && label ? (
+        <Typography
+          variant="body2"
+          title={label}
+          sx={{
+            fontWeight: 600,
+            minWidth: 96,
+            maxWidth: 140,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {label}
+        </Typography>
+      ) : null}
       <Box
         sx={{
           flex: 1,
@@ -58,7 +63,10 @@ export function UtilizationBar({
         />
       </Box>
       {showValue ? (
-        <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 36, textAlign: 'right' }}>
+        <Typography
+          variant="caption"
+          sx={{ fontWeight: 700, minWidth: 40, textAlign: 'right', color }}
+        >
           {clamped}%
         </Typography>
       ) : null}

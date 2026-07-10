@@ -202,6 +202,31 @@ class MissingTimesheetRow(BaseModel):
     missing_days: int = 0
 
 
+class CollaborationProjectRow(BaseModel):
+    project_id: UUID
+    tool_number: str
+    customer_name: str | None = None
+    contributor_count: int = 0
+    support_hours: Decimal = Decimal("0")
+
+
+class CollaborationDesignerRow(BaseModel):
+    user_id: UUID
+    user_name: str
+    hours_received: Decimal | None = None
+    hours_provided: Decimal | None = None
+    peer_review_hours: Decimal = Decimal("0")
+
+
+class CollaborationActivityDashboard(BaseModel):
+    most_assisted_projects: list[CollaborationProjectRow] = Field(default_factory=list)
+    designers_receiving_support: list[CollaborationDesignerRow] = Field(default_factory=list)
+    designers_providing_support: list[CollaborationDesignerRow] = Field(default_factory=list)
+    cross_team_collaboration_count: int = 0
+    peer_review_hours_this_month: Decimal = Decimal("0")
+    multi_contributor_projects: int = 0
+
+
 class StaffDashboardMetrics(BaseModel):
     my_projects: int = 0
     my_project_rows: list[StaffProjectRow] = Field(default_factory=list)
@@ -278,6 +303,7 @@ class DashboardSummary(BaseModel):
     missing_timesheets: list[MissingTimesheetRow] = Field(default_factory=list)
     late_milestones: int = 0
     my_project_rows: list[StaffProjectRow] = Field(default_factory=list)
+    collaboration_activity: CollaborationActivityDashboard | None = None
     widget_errors: dict[str, str] = Field(default_factory=dict)
 
 

@@ -20,6 +20,11 @@ class ProjectHoursReportRow(BaseModel):
     execution_status: ExecutionStatus
     project_stage: ProjectStage
     contributors: list[ProjectContributorSummary] = []
+    support_hours: Decimal = Decimal("0")
+    peer_review_hours: Decimal = Decimal("0")
+    engineering_change_hours: Decimal = Decimal("0")
+    owner_hours: Decimal = Decimal("0")
+    contributor_hours: Decimal = Decimal("0")
 
 
 class CustomerSummaryReportRow(BaseModel):

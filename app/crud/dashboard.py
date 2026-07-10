@@ -68,6 +68,7 @@ from app.services.dashboard_service import (
     safe_dashboard_call,
 )
 from app.services.notification_service import count_unread_notifications
+from app.services.collaboration_service import get_collaboration_dashboard
 from app.services.engineering_insights_service import generate_engineering_insights
 from app.services.ai.context import build_ai_context, count_overdue_milestones
 from app.services.kpi_participation import kpi_user_ids_subquery, workload_planning_users
@@ -485,6 +486,12 @@ def get_dashboard_summary(
         [],
         errors=widget_errors,
     )
+    collaboration_activity = safe_dashboard_call(
+        "collaboration_activity",
+        lambda: get_collaboration_dashboard(db),
+        None,
+        errors=widget_errors,
+    )
 
     team_scoped = team_id is not None or bool(team_ids)
 
@@ -539,6 +546,7 @@ def get_dashboard_summary(
         missing_timesheets=missing_timesheets,
         late_milestones=late_milestones,
         my_project_rows=my_project_rows,
+        collaboration_activity=collaboration_activity,
         widget_errors=widget_errors,
     )
 

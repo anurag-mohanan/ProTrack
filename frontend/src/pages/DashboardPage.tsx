@@ -10,6 +10,7 @@ import { ErrorState } from '../components/common/ErrorState';
 import { AiOperationsPanel } from '../components/ai/AiOperationsPanel';
 import { ActivityTimeline } from '../components/dashboard/ActivityTimeline';
 import { buildRoleKpiCards } from '../components/dashboard/buildRoleKpiCards';
+import { CollaborationActivityWidget } from '../components/dashboard/CollaborationActivityWidget';
 import { CustomerWorkloadWidget } from '../components/dashboard/CustomerWorkloadWidget';
 import { DashboardChartsSection } from '../components/dashboard/DashboardChartsSection';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
@@ -163,6 +164,16 @@ export function DashboardPage() {
             </WidgetErrorBoundary>
           </Box>
         ) : null}
+
+        <Box sx={{ mt: 1.5 }}>
+          <WidgetErrorBoundary title="collaboration activity">
+            {loading ? (
+              <DashboardPanelSkeleton height={180} />
+            ) : (
+              <CollaborationActivityWidget data={summary?.collaboration_activity} />
+            )}
+          </WidgetErrorBoundary>
+        </Box>
 
         {showEngineeringCharts ? (
           <WidgetErrorBoundary title="dashboard charts">

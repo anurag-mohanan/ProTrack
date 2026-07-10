@@ -9,7 +9,9 @@ from app.models.enums import (
     ContributionReason,
     EntityType,
     ExecutionStatus,
+    MilestoneStatus,
     NotificationType,
+    ProjectHealth,
     ProjectStage,
     TimesheetStatus,
     WorkCategory,
@@ -209,6 +211,8 @@ class TimesheetProjectLookup(BaseModel):
     tool_number: str
     part_description: str
     customer_name: str | None = None
+    designer_id: UUID | None = None
+    surfacer_id: UUID | None = None
     designer_name: str | None = None
     surfacer_name: str | None = None
     project_stage: ProjectStage
@@ -218,6 +222,43 @@ class TimesheetProjectLookup(BaseModel):
     team_name: str | None = None
     design_leader_name: str | None = None
     project_type_name: str | None = None
+    working_model_name: str | None = None
+    working_model_code: str | None = None
+    health: ProjectHealth | None = None
+    quoted_hours: Decimal | None = None
+    actual_hours: Decimal | None = None
+    remaining_hours: Decimal | None = None
+    is_assigned_to_user: bool = False
+
+
+class ContributorReasonHours(BaseModel):
+    reason_key: ContributionReason | None = None
+    reason_label: str
+    hours: Decimal
+
+
+class TimesheetProjectMilestoneDue(BaseModel):
+    id: UUID
+    name: str
+    due_date: date | None = None
+    status: MilestoneStatus
+
+
+class TimesheetProjectContext(BaseModel):
+    project_id: UUID
+    tool_number: str
+    part_description: str
+    customer_name: str | None = None
+    project_stage: ProjectStage
+    execution_status: ExecutionStatus
+    health: ProjectHealth
+    working_model_name: str | None = None
+    quoted_hours: Decimal
+    actual_hours: Decimal
+    remaining_hours: Decimal
+    milestones_due: list[TimesheetProjectMilestoneDue] = Field(default_factory=list)
+    contributor_count: int = 0
+    is_assigned_to_user: bool = False
 
 
 class ProjectContributorSummary(BaseModel):
@@ -226,3 +267,6 @@ class ProjectContributorSummary(BaseModel):
     role_label: str
     is_project_owner: bool = False
     total_hours: Decimal
+    hours_percent: Decimal = Decimal("0")
+    primary_contribution_label: str | None = None
+    contribution_reasons: list[ContributorReasonHours] = Field(default_factory=list)

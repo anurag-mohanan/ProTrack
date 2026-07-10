@@ -50,6 +50,7 @@ class ContributionReason(enum.Enum):
     surfacing_support = "surfacing_support"
     engineering_change = "engineering_change"
     customer_request = "customer_request"
+    training_mentoring = "training_mentoring"
     other = "other"
 
 

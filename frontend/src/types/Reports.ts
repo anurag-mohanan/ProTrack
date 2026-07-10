@@ -12,6 +12,11 @@ export interface ProjectHoursReportRow {
   execution_status: ExecutionStatus;
   project_stage: ProjectStage;
   contributors?: import('./TimesheetEntry').ProjectContributorSummary[];
+  support_hours?: number;
+  peer_review_hours?: number;
+  engineering_change_hours?: number;
+  owner_hours?: number;
+  contributor_hours?: number;
 }
 
 export interface CustomerSummaryReportRow {

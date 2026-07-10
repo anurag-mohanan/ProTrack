@@ -11,7 +11,7 @@ from app.core.non_productive_categories import (
 )
 from app.crud.base import Session
 from app.crud.dashboard import get_designer_workload, _decimal, _round_hours
-from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
+from app.models.enums import ContributionReason, ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
 from app.models.models import Customer, Milestone, NonProductiveCode, Project, TaskType, Team, Timesheet, TimesheetEntry, User
 from app.schemas.reports import (
     BillableUtilizationReportRow,
@@ -35,7 +35,10 @@ from app.schemas.reports import (
 )
 from app.services.kpi_participation import engineering_productivity_users, utilization_users
 from app.services.project_calculation_service import calculate_hours
-from app.services.project_contributor_service import get_project_contributors
+from app.services.project_contributor_service import (
+    aggregate_contribution_hours_by_reason,
+    get_project_contributors,
+)
 
 
 def _apply_report_filters(
@@ -71,6 +74,23 @@ def get_project_hours_report(
     for project, customer_name in rows:
         hours = calculate_hours(db, project)
         contributor_rows = get_project_contributors(db, project.id)
+        reason_totals = aggregate_contribution_hours_by_reason(db, project.id)
+        owner_ids = {uid for uid in (project.designer_id, project.surfacer_id) if uid is not None}
+        owner_hours = sum(
+            (row.total_hours for row in contributor_rows if row.user_id in owner_ids),
+            Decimal("0"),
+        )
+        contributor_hours = sum(
+            (row.total_hours for row in contributor_rows if row.user_id not in owner_ids),
+            Decimal("0"),
+        )
+        support_hours = sum(
+            (
+                reason_totals.get(label, Decimal("0"))
+                for label in ("Assisting Designer", "Design Support", "Surfacing Support")
+            ),
+            Decimal("0"),
+        )
         report.append(
             ProjectHoursReportRow(
                 project_id=project.id,
@@ -83,6 +103,11 @@ def get_project_hours_report(
                 execution_status=project.execution_status,
                 project_stage=project.project_stage,
                 contributors=contributor_rows,
+                support_hours=support_hours,
+                peer_review_hours=reason_totals.get("Peer Review", Decimal("0")),
+                engineering_change_hours=reason_totals.get("Engineering Change", Decimal("0")),
+                owner_hours=owner_hours,
+                contributor_hours=contributor_hours,
             )
         )
     return report

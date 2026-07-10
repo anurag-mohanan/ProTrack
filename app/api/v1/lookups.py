@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
 from app.core.permissions import can_write_timesheet_entry
-from app.crud.timesheet_projects import list_timesheet_projects
+from app.crud.timesheet_projects import get_timesheet_project_context, list_timesheet_projects
 from app.crud.base import select
 from app.models.models import Contact, Customer, NonProductiveCode, OperationalRoleType, ProjectType, Role, Stream, TaskType, Team, User, WorkingModel
 from app.schemas.identity import OperationalRoleTypeRead, RoleRead
 from app.schemas.organization import ContactRead, CustomerRead, NonProductiveCodeRead, StreamRead, TaskTypeRead, WorkingModelRead
 from app.schemas.team import TeamRead
 from app.schemas.templates import ProjectTypeRead
-from app.schemas.timesheet import TimesheetProjectLookup
+from app.schemas.timesheet import TimesheetProjectContext, TimesheetProjectLookup
 
 router = APIRouter(prefix="/lookups", tags=["lookups"])
 
@@ -151,6 +151,8 @@ def list_lookup_working_models(
 
 @router.get("/timesheet-projects", response_model=list[TimesheetProjectLookup])
 def list_lookup_timesheet_projects(
+    q: str | None = Query(None, min_length=1, max_length=100),
+    limit: int | None = Query(None, ge=1, le=500),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -159,7 +161,29 @@ def list_lookup_timesheet_projects(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         )
-    return list_timesheet_projects(db)
+    return list_timesheet_projects(
+        db,
+        user_id=current_user.id,
+        q=q,
+        limit=limit,
+    )
+
+
+@router.get("/timesheet-projects/{project_id}/context", response_model=TimesheetProjectContext)
+def get_lookup_timesheet_project_context(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not can_write_timesheet_entry(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    context = get_timesheet_project_context(db, project_id, user_id=current_user.id)
+    if context is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return context
 
 
 @router.get("/teams", response_model=list[TeamRead])

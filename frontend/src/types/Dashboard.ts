@@ -53,7 +53,33 @@ export interface DashboardSummary {
   missing_timesheets?: MissingTimesheetRow[];
   late_milestones?: number;
   my_project_rows?: StaffProjectRow[];
+  collaboration_activity?: CollaborationActivityDashboard | null;
   widget_errors?: Record<string, string>;
+}
+
+export interface CollaborationProjectRow {
+  project_id: string;
+  tool_number: string;
+  customer_name?: string | null;
+  contributor_count: number;
+  support_hours: number;
+}
+
+export interface CollaborationDesignerRow {
+  user_id: string;
+  user_name: string;
+  hours_received?: number | null;
+  hours_provided?: number | null;
+  peer_review_hours?: number;
+}
+
+export interface CollaborationActivityDashboard {
+  most_assisted_projects: CollaborationProjectRow[];
+  designers_receiving_support: CollaborationDesignerRow[];
+  designers_providing_support: CollaborationDesignerRow[];
+  cross_team_collaboration_count: number;
+  peer_review_hours_this_month: number;
+  multi_contributor_projects: number;
 }
 
 export interface DashboardOperationalMetrics {

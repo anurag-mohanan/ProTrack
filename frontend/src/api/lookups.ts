@@ -58,9 +58,21 @@ export async function fetchWorkingModels(): Promise<WorkingModel[]> {
   return ensureArray<WorkingModel>(data);
 }
 
-export async function fetchTimesheetProjects(): Promise<
-  import('../types/TimesheetEntry').TimesheetProjectLookup[]
-> {
-  const { data } = await apiClient.get<unknown>('/lookups/timesheet-projects');
+export async function fetchTimesheetProjects(params?: {
+  q?: string;
+  limit?: number;
+}): Promise<import('../types/TimesheetEntry').TimesheetProjectLookup[]> {
+  const { data } = await apiClient.get<unknown>(
+    `/lookups/timesheet-projects${buildQuery(params)}`,
+  );
   return ensureArray<import('../types/TimesheetEntry').TimesheetProjectLookup>(data);
+}
+
+export async function fetchTimesheetProjectContext(
+  projectId: string,
+): Promise<import('../types/TimesheetEntry').TimesheetProjectContext> {
+  const { data } = await apiClient.get<import('../types/TimesheetEntry').TimesheetProjectContext>(
+    `/lookups/timesheet-projects/${projectId}/context`,
+  );
+  return data;
 }

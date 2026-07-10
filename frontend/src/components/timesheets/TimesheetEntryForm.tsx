@@ -14,10 +14,13 @@ import type { TaskType, TimesheetEntry } from '../../types';
 import type { ContributionReason, TimesheetProjectLookup } from '../../types/TimesheetEntry';
 import { CONTRIBUTION_REASON_LABELS } from '../../types/TimesheetEntry';
 import { ProsohmButton } from '../ui/ProsohmButton';
+import { TimesheetProjectContextPanel } from './TimesheetProjectContextPanel';
 import { TimesheetSelectionLine } from './TimesheetSelectionLine';
 import { TimesheetToolNumberSelect } from './TimesheetToolNumberSelect';
 import {
   buildToolOptions,
+  isProjectOwner,
+  LAST_BILLABLE_KEY,
   LAST_TASK_KEY,
   LAST_TOOL_KEY,
   isLeaveToolOption,
@@ -49,6 +52,8 @@ interface TimesheetEntryFormProps {
   canOverrideBillable: boolean;
   editingEntry: TimesheetEntry | null;
   saving: boolean;
+  currentUserId?: string;
+  onProjectSearch?: (value: string) => void;
   onSubmit: (values: TimesheetEntryFormValues) => Promise<void>;
   onCancelEdit: () => void;
   onEntryDateChange?: (entryDate: string) => void;
@@ -72,13 +77,14 @@ function writeStored(key: string, value: string) {
 }
 
 function emptyForm(): TimesheetEntryFormValues {
+  const storedBillable = readStored(LAST_BILLABLE_KEY);
   return {
     entryDate: todayIsoDate(),
     toolValue: readStored(LAST_TOOL_KEY),
     taskTypeId: readStored(LAST_TASK_KEY),
     hours: '',
     notes: '',
-    isBillable: true,
+    isBillable: storedBillable ? storedBillable === 'true' : true,
     contributionReason: '',
   };
 }
@@ -102,6 +108,8 @@ export function TimesheetEntryForm({
   dailyTotals,
   dailyLimit,
   saving,
+  currentUserId,
+  onProjectSearch,
   onSubmit,
   onCancelEdit,
   onEntryDateChange,
@@ -212,6 +220,11 @@ export function TimesheetEntryForm({
     isLeaveToolOption(selectedTool) ||
     (!canOverrideBillable && selectedTool?.kind === 'np');
 
+  const showContributionReason =
+    selectedTool?.kind === 'project' &&
+    Boolean(selectedProject) &&
+    !isProjectOwner(selectedProject, currentUserId);
+
   return (
     <Box
       component="form"
@@ -269,6 +282,7 @@ export function TimesheetEntryForm({
             disabled={readOnly || saving}
             inputRef={toolRef}
             onChange={handleToolChange}
+            onInputChange={onProjectSearch}
             onKeyDown={(event: KeyboardEvent) => {
               if (event.key === 'Enter') {
                 event.preventDefault();
@@ -322,7 +336,7 @@ export function TimesheetEntryForm({
           )}
         </TextField>
 
-        {selectedTool?.kind === 'project' ? (
+        {showContributionReason ? (
           <TextField
             select
             size="small"
@@ -352,9 +366,11 @@ export function TimesheetEntryForm({
               size="small"
               checked={form.isBillable}
               disabled={billableDisabled}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, isBillable: event.target.checked }))
-              }
+              onChange={(event) => {
+                const next = event.target.checked;
+                writeStored(LAST_BILLABLE_KEY, String(next));
+                setForm((current) => ({ ...current, isBillable: next }));
+              }}
             />
           }
           label="Billable"
@@ -428,6 +444,10 @@ export function TimesheetEntryForm({
         project={selectedProject}
         isBillable={form.isBillable}
       />
+
+      {selectedTool?.kind === 'project' && selectedProject ? (
+        <TimesheetProjectContextPanel projectId={selectedProject.id} />
+      ) : null}
 
       {dailyWarning ? (
         <Alert severity="warning" sx={{ mt: 1, py: 0 }}>

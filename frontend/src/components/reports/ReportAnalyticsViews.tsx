@@ -120,6 +120,9 @@ export function ProjectHoursReportView({
               <StickyHeaderCell align="right">Variance</StickyHeaderCell>
               <StickyHeaderCell>Stage</StickyHeaderCell>
               <StickyHeaderCell>Status</StickyHeaderCell>
+              <StickyHeaderCell align="right">Support</StickyHeaderCell>
+              <StickyHeaderCell align="right">Peer Review</StickyHeaderCell>
+              <StickyHeaderCell align="right">EC Hours</StickyHeaderCell>
               <StickyHeaderCell>Contributors</StickyHeaderCell>
             </TableRow>
           }
@@ -142,10 +145,20 @@ export function ProjectHoursReportView({
               <StickyTableCell>
                 <ExecutionStatusChip status={row.execution_status} />
               </StickyTableCell>
+              <StickyTableCell align="right">{formatNumber(row.support_hours ?? 0, 1)}</StickyTableCell>
+              <StickyTableCell align="right">{formatNumber(row.peer_review_hours ?? 0, 1)}</StickyTableCell>
+              <StickyTableCell align="right">
+                {formatNumber(row.engineering_change_hours ?? 0, 1)}
+              </StickyTableCell>
               <StickyTableCell>
                 {(row.contributors ?? [])
                   .slice(0, 3)
-                  .map((c) => `${c.user_name} (${formatNumber(c.total_hours, 1)}h)`)
+                  .map(
+                    (c) =>
+                      `${c.user_name} (${formatNumber(c.total_hours, 1)}h${
+                        c.primary_contribution_label ? ` · ${c.primary_contribution_label}` : ''
+                      })`,
+                  )
                   .join(', ') || '—'}
               </StickyTableCell>
             </ClickableTableRow>

@@ -66,7 +66,7 @@ export function TimesheetEntryPage() {
 
   const projectsQuery = useQuery({
     queryKey: ['timesheet-projects'],
-    queryFn: fetchTimesheetProjects,
+    queryFn: () => fetchTimesheetProjects(),
   });
 
   const customersQuery = useQuery({

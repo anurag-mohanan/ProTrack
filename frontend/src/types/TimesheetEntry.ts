@@ -37,6 +37,7 @@ export type ContributionReason =
   | 'surfacing_support'
   | 'engineering_change'
   | 'customer_request'
+  | 'training_mentoring'
   | 'other';
 
 export const CONTRIBUTION_REASON_LABELS: Record<ContributionReason, string> = {
@@ -46,6 +47,7 @@ export const CONTRIBUTION_REASON_LABELS: Record<ContributionReason, string> = {
   surfacing_support: 'Surfacing Support',
   engineering_change: 'Engineering Change',
   customer_request: 'Customer Request',
+  training_mentoring: 'Training / Mentoring',
   other: 'Other',
 };
 
@@ -54,6 +56,8 @@ export interface TimesheetProjectLookup {
   tool_number: string;
   part_description: string;
   customer_name?: string | null;
+  designer_id?: string | null;
+  surfacer_id?: string | null;
   designer_name?: string | null;
   surfacer_name?: string | null;
   project_stage: string;
@@ -63,6 +67,19 @@ export interface TimesheetProjectLookup {
   team_name?: string | null;
   design_leader_name?: string | null;
   project_type_name?: string | null;
+  working_model_name?: string | null;
+  working_model_code?: string | null;
+  health?: string | null;
+  quoted_hours?: number | null;
+  actual_hours?: number | null;
+  remaining_hours?: number | null;
+  is_assigned_to_user?: boolean;
+}
+
+export interface ContributorReasonHours {
+  reason_key?: ContributionReason | null;
+  reason_label: string;
+  hours: number;
 }
 
 export interface ProjectContributorSummary {
@@ -71,6 +88,33 @@ export interface ProjectContributorSummary {
   role_label: string;
   is_project_owner: boolean;
   total_hours: number;
+  hours_percent?: number;
+  primary_contribution_label?: string | null;
+  contribution_reasons?: ContributorReasonHours[];
+}
+
+export interface TimesheetProjectMilestoneDue {
+  id: string;
+  name: string;
+  due_date?: string | null;
+  status: string;
+}
+
+export interface TimesheetProjectContext {
+  project_id: string;
+  tool_number: string;
+  part_description: string;
+  customer_name?: string | null;
+  project_stage: string;
+  execution_status: string;
+  health: string;
+  working_model_name?: string | null;
+  quoted_hours: number;
+  actual_hours: number;
+  remaining_hours: number;
+  milestones_due: TimesheetProjectMilestoneDue[];
+  contributor_count: number;
+  is_assigned_to_user: boolean;
 }
 
 export interface TimesheetEntryCreate {

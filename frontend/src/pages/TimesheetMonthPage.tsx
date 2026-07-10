@@ -102,7 +102,7 @@ export function TimesheetMonthPage() {
 
   const projectsQuery = useQuery({
     queryKey: ['timesheet-projects'],
-    queryFn: fetchTimesheetProjects,
+    queryFn: () => fetchTimesheetProjects(),
   });
 
   const taskTypesQuery = useQuery({

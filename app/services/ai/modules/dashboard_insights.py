@@ -14,6 +14,7 @@ from app.services.ai.context import (
 from app.services.ai.pattern_recognition import pattern_matcher
 from app.services.ai.recommendations import recommender
 from app.services.ai.risk_analysis import risk_analyzer
+from app.services.collaboration_service import build_collaboration_ai_insights
 
 
 class DashboardInsightsModule(AiModule):
@@ -25,6 +26,7 @@ class DashboardInsightsModule(AiModule):
 
         insights.extend(risk_analyzer.build_insights(ctx))
         insights.extend(recommender.resource_insights(ctx))
+        insights.extend(build_collaboration_ai_insights(ctx))
 
         stale = get_stale_milestones(ctx, days=7)
         if stale:
@@ -102,3 +104,4 @@ class DashboardInsightsModule(AiModule):
             unique.append(insight)
 
         return unique[:limit]
+

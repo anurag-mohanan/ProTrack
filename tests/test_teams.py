@@ -219,7 +219,13 @@ def test_lookups_teams_available_to_authenticated_users(client):
         json={"name": "Lookup Team", "colour": "#795548", "is_active": True},
         headers=client.auth_headers,
     )
+    # Admin retains org-wide team lookup.
+    admin_response = client.get("/api/v1/lookups/teams", headers=client.auth_headers)
+    assert admin_response.status_code == 200
+    assert any(item["name"] == "Lookup Team" for item in admin_response.json())
+
+    # Design Leader without membership must not see unrelated teams (client confidentiality).
     headers = login(client, "anurag@prosohm.com")
     response = client.get("/api/v1/lookups/teams", headers=headers)
     assert response.status_code == 200
-    assert any(item["name"] == "Lookup Team" for item in response.json())
+    assert not any(item["name"] == "Lookup Team" for item in response.json())

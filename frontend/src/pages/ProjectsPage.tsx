@@ -292,8 +292,9 @@ export function ProjectsPage() {
         scopeByLeaderTeams ? leaderTeamIds : undefined,
         isAdmin,
         lookupUsers,
+        user?.id,
       ),
-    [displayLiveProjects, scopeByLeaderTeams, isAdmin, leaderTeamIds, lookupUsers],
+    [displayLiveProjects, scopeByLeaderTeams, isAdmin, leaderTeamIds, lookupUsers, user?.id],
   );
 
   const liveProjectTeamGroups = useMemo(
@@ -323,8 +324,9 @@ export function ProjectsPage() {
         scopeByLeaderTeams ? leaderTeamIds : undefined,
         isAdmin,
         lookupUsers,
+        user?.id,
       ),
-    [projectsQuery.data, scopeByLeaderTeams, isAdmin, leaderTeamIds, lookupUsers],
+    [projectsQuery.data, scopeByLeaderTeams, isAdmin, leaderTeamIds, lookupUsers, user?.id],
   );
 
   const portfolioMetrics = useMemo(() => {

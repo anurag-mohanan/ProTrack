@@ -104,11 +104,20 @@ export function filterProjectsForAccessibleTeams(
   accessibleTeamIds: string[] | undefined,
   isAdmin: boolean,
   users: User[] = [],
+  currentUserId?: string | null,
 ): Project[] {
   if (isAdmin || !accessibleTeamIds?.length) return projects;
   const allowed = new Set(accessibleTeamIds);
   const usersById = buildUsersById(users);
   return projects.filter((project) => {
+    if (
+      currentUserId &&
+      (project.design_leader_id === currentUserId ||
+        project.designer_id === currentUserId ||
+        project.surfacer_id === currentUserId)
+    ) {
+      return true;
+    }
     const teamId = resolveEffectiveProjectTeamId(project, usersById);
     return teamId != null && allowed.has(teamId);
   });

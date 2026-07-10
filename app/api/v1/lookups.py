@@ -189,11 +189,16 @@ def get_lookup_timesheet_project_context(
 @router.get("/teams", response_model=list[TeamRead])
 def list_lookup_teams(
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    from app.core.team_access import get_accessible_team_ids
     from app.crud.team import build_team_read
 
-    teams = db.scalars(
-        select(Team).where(Team.is_active.is_(True)).order_by(Team.name)
-    ).all()
+    query = select(Team).where(Team.is_active.is_(True)).order_by(Team.name)
+    accessible = get_accessible_team_ids(db, current_user)
+    if accessible is not None:
+        if not accessible:
+            return []
+        query = query.where(Team.id.in_(accessible))
+    teams = db.scalars(query).all()
     return [build_team_read(db, team) for team in teams]

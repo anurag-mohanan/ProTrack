@@ -23,15 +23,12 @@ from app.core.pagination import PaginatedResponse, pagination_query, PaginationP
 from app.api.v1.router_factory import ProjectFilters
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import (
-    READ_ALL_PROJECT_ROLES,
     can_archive_project,
     can_create_project,
     can_read_project,
     can_soft_delete_project,
     can_update_project,
     can_view_deleted_projects,
-    get_role_name,
-    project_assignment_filter,
 )
 from app.crud.command_center import (
     clone_project,
@@ -139,23 +136,15 @@ def _list_projects(
             )
 
     lifecycle, active_filters = _normalize_project_filters(filters)
-    role_name = get_role_name(db, current_user)
-    assignment_clause = None
-    if role_name not in READ_ALL_PROJECT_ROLES:
-        assignment_clause = project_assignment_filter(current_user, role_name)
-        if assignment_clause is None:
-            return PaginatedResponse.build(
-                items=[],
-                total=0,
-                page=pagination.page,
-                page_size=pagination.page_size,
-            )
+    from app.core.team_access import project_visibility_clause
+
+    visibility_clause = project_visibility_clause(db, current_user)
 
     total = project.count_projects(
         db,
         lifecycle=lifecycle,
         filters=active_filters,
-        assignment_clause=assignment_clause,
+        assignment_clause=visibility_clause,
     )
     rows = project.query_projects(
         db,
@@ -163,10 +152,9 @@ def _list_projects(
         skip=pagination.skip,
         limit=pagination.limit,
         filters=active_filters,
-        assignment_clause=assignment_clause,
+        assignment_clause=visibility_clause,
     )
-    if role_name not in READ_ALL_PROJECT_ROLES:
-        rows = [row for row in rows if can_read_project(db, current_user, row)]
+    rows = [row for row in rows if can_read_project(db, current_user, row)]
     from app.crud.project_metrics import build_project_reads
 
     items = build_project_reads(db, rows)
@@ -221,34 +209,25 @@ def list_archived_projects(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    role_name = get_role_name(db, current_user)
-    assignment_clause = None
-    if role_name not in READ_ALL_PROJECT_ROLES:
-        assignment_clause = project_assignment_filter(current_user, role_name)
-        if assignment_clause is None:
-            return PaginatedResponse.build(
-                items=[],
-                total=0,
-                page=pagination.page,
-                page_size=pagination.page_size,
-            )
+    from app.core.team_access import project_visibility_clause
+
+    visibility_clause = project_visibility_clause(db, current_user)
     total = project.count_projects(
         db,
         lifecycle=ProjectLifecycleFilter.archived,
-        assignment_clause=assignment_clause,
+        assignment_clause=visibility_clause,
     )
     items = project.get_archived_list(
         db,
         skip=pagination.skip,
         limit=pagination.limit,
-        assignment_clause=assignment_clause,
+        assignment_clause=visibility_clause,
     )
-    if role_name not in READ_ALL_PROJECT_ROLES:
-        items = [
-            item
-            for item in items
-            if can_read_project(db, current_user, project.get(db, item.id))
-        ]
+    items = [
+        item
+        for item in items
+        if can_read_project(db, current_user, project.get(db, item.id))
+    ]
     return PaginatedResponse.build(
         items=items,
         total=total,

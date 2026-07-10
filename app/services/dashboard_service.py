@@ -16,10 +16,7 @@ from app.core.non_productive_categories import (
     standard_np_hours_clause,
 )
 from app.core.permissions import (
-    READ_ALL_PROJECT_ROLES,
     can_approve_timesheet,
-    get_role_name,
-    project_assignment_filter,
 )
 from app.models.enums import (
     ActivityAction,
@@ -117,12 +114,16 @@ def _team_clause(
     if db is not None:
         from app.core.team_access import team_project_clause
 
-        if team_ids:
+        if team_ids is not None:
             return team_project_clause(db, team_ids)
         if team_id is not None:
             return team_project_clause(db, [team_id])
         return ()
-    if team_ids:
+    if team_ids is not None:
+        if not team_ids:
+            from sqlalchemy import false
+
+            return (false(),)
         return (Project.team_id.in_(team_ids),)
     if team_id is None:
         return ()
@@ -504,17 +505,15 @@ def get_dashboard_recent_activity(db: Session, *, limit: int = 20) -> list[Activ
 def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
     today = date.today()
     visibility = _visible_projects_clause()
-    role_name = get_role_name(db, user)
+    from app.core.team_access import project_visibility_clause
 
-    assignment_filter = project_assignment_filter(user, role_name)
-    if role_name in READ_ALL_PROJECT_ROLES:
+    scope_clause = project_visibility_clause(db, user)
+    if scope_clause is None:
         user_projects = db.scalars(select(Project).where(*visibility)).all()
-    elif assignment_filter is not None:
-        user_projects = db.scalars(
-            select(Project).where(assignment_filter, *visibility)
-        ).all()
     else:
-        user_projects = []
+        user_projects = db.scalars(
+            select(Project).where(scope_clause, *visibility)
+        ).all()
 
     submitted_timesheets = db.scalars(
         select(Timesheet).where(Timesheet.status == TimesheetStatus.submitted)
@@ -783,9 +782,16 @@ def _designer_user_ids_for_team(
     team_id: UUID | None = None,
     team_ids: list[UUID] | None = None,
 ) -> set[UUID] | None:
-    scoped_ids = team_ids or ([team_id] if team_id is not None else None)
-    if not scoped_ids:
+    if team_ids is not None:
+        scoped_ids = team_ids
+    elif team_id is not None:
+        scoped_ids = [team_id]
+    else:
+        scoped_ids = None
+    if scoped_ids is None:
         return None
+    if not scoped_ids:
+        return set()
     member_ids = set(
         db.scalars(
             select(TeamMember.user_id).where(TeamMember.team_id.in_(scoped_ids))

@@ -172,8 +172,22 @@ def dashboard_overview(
     response_model=list[DesignerWorkload],
     dependencies=[_workload_access],
 )
-def dashboard_workload(db: Session = Depends(get_db)):
-    return get_designer_workload(db)
+def dashboard_workload(
+    team_id: UUID | None = None,
+    team_ids: list[UUID] | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    scoped_team_ids = resolve_team_scope(
+        db,
+        current_user,
+        team_id=team_id,
+        team_ids=team_ids,
+    )
+    return get_designer_workload(
+        db,
+        team_ids=list(scoped_team_ids) if scoped_team_ids is not None else None,
+    )
 
 
 @router.get(
@@ -184,8 +198,18 @@ def dashboard_workload(db: Session = Depends(get_db)):
 def dashboard_resource_planning(
     team_id: UUID | None = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return get_team_resource_planning(db, team_id=team_id)
+    scoped_team_ids = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped_team_ids is None:
+        return get_team_resource_planning(db, team_id=team_id)
+    if team_id is not None and team_id not in scoped_team_ids:
+        return []
+    return get_team_resource_planning(
+        db,
+        team_id=team_id,
+        team_ids=None if team_id is not None else list(scoped_team_ids),
+    )
 
 
 @router.get(
@@ -198,12 +222,24 @@ def dashboard_resource_planning_grid(
     granularity: ResourcePlanningGranularity = ResourcePlanningGranularity.week,
     team_id: UUID | None = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    scoped_team_ids = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped_team_ids is not None and team_id is not None and team_id not in scoped_team_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team is outside your accessible scope",
+        )
     return get_resource_planning_grid(
         db,
         start=start,
         granularity=granularity,
         team_id=team_id,
+        team_ids=(
+            None
+            if scoped_team_ids is None or team_id is not None
+            else list(scoped_team_ids)
+        ),
     )
 
 

@@ -153,12 +153,11 @@ def is_assigned_to_project(project: Project, user_id: UUID) -> bool:
 def can_read_project(db: Session, user: User, project: Project) -> bool:
     if project.is_deleted and not is_admin(db, user):
         return False
-    role_name = get_role_name(db, user)
-    if role_name in READ_ALL_PROJECT_ROLES:
-        return True
-    if role_name in ASSIGNED_PROJECT_ROLES:
-        return is_assigned_to_project(project, user.id)
-    return False
+    # Org-wide only for Admin / unscoped EM. Leaders and staff see team
+    # portfolio plus personally assigned cross-utilization work.
+    from app.core.team_access import user_can_read_scoped_project
+
+    return user_can_read_scoped_project(db, user, project)
 
 
 def can_update_project(db: Session, user: User, project: Project) -> bool:

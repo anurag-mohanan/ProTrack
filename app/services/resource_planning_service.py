@@ -167,14 +167,26 @@ def _build_periods(
     return periods, periods[-1].end_date
 
 
-def _designer_user_ids_for_team(db: Session, team_id: UUID | None) -> set[UUID] | None:
-    if team_id is None:
+def _designer_user_ids_for_team(
+    db: Session,
+    team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
+) -> set[UUID] | None:
+    scoped_ids = [team_id] if team_id is not None else team_ids
+    if scoped_ids is None:
         return None
+    if not scoped_ids:
+        return set()
     member_ids = set(
-        db.scalars(select(TeamMember.user_id).where(TeamMember.team_id == team_id)).all()
+        db.scalars(select(TeamMember.user_id).where(TeamMember.team_id.in_(scoped_ids))).all()
     )
     assigned_ids = set(
-        db.scalars(select(User.id).where(User.team_id == team_id, User.is_deleted.is_(False)).all())
+        db.scalars(
+            select(User.id).where(
+                User.team_id.in_(scoped_ids),
+                User.is_deleted.is_(False),
+            )
+        ).all()
     )
     return member_ids | assigned_ids
 
@@ -206,11 +218,12 @@ def get_resource_planning_grid(
     start: date | None = None,
     granularity: ResourcePlanningGranularity = ResourcePlanningGranularity.week,
     team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
 ) -> ResourcePlanningGrid:
     today = date.today()
     anchor = start or today
     periods, end_date = _build_periods(anchor, granularity)
-    team_user_ids = _designer_user_ids_for_team(db, team_id)
+    team_user_ids = _designer_user_ids_for_team(db, team_id=team_id, team_ids=team_ids)
     holidays = load_holiday_dates(db, anchor, end_date)
 
     designers = capacity_planning_users(db)
@@ -230,9 +243,13 @@ def get_resource_planning_grid(
             ),
         )
     ).all()
-    if team_id is not None:
+    scoped_team_ids = [team_id] if team_id is not None else team_ids
+    if scoped_team_ids is not None:
+        allowed = set(scoped_team_ids)
         active_projects = [
-            project for project in active_projects if project.team_id == team_id
+            project
+            for project in active_projects
+            if project.team_id is not None and project.team_id in allowed
         ]
 
     customer_names = {
@@ -398,5 +415,9 @@ def get_resource_planning_grid(
         periods=periods,
         designers=designer_rows,
         unassigned_projects=unassigned,
-        team_summary=get_team_resource_planning(db, team_id=team_id),
+        team_summary=get_team_resource_planning(
+            db,
+            team_id=team_id,
+            team_ids=team_ids,
+        ),
     )

@@ -327,13 +327,32 @@ def _team_report_options(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, object]:
+    from app.core.team_access import resolve_team_scope
+
     if include_deleted and not can_view_deleted_projects(db, current_user):
         include_deleted = False
-    return {
+    scoped = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped is not None and team_id is not None and team_id not in scoped:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team is outside your accessible scope",
+        )
+    options: dict[str, object] = {
         "team_id": team_id,
         "include_archived": include_archived,
         "include_deleted": include_deleted,
     }
+    if scoped is not None and team_id is None:
+        options["_scope_team_ids"] = scoped
+    return options
+
+
+def _run_team_report(getter, db: Session, options: dict[str, object]):
+    scope = options.pop("_scope_team_ids", None)
+    rows = getter(db, **options)
+    if scope is None:
+        return rows
+    return [row for row in rows if getattr(row, "team_id", None) in scope]
 
 
 @router.get("/projects-by-team", response_model=list[ProjectsByTeamReportRow])
@@ -341,7 +360,7 @@ def projects_by_team_report(
     db: Session = Depends(get_db),
     options: dict[str, object] = Depends(_team_report_options),
 ):
-    return get_projects_by_team_report(db, **options)
+    return _run_team_report(get_projects_by_team_report, db, options)
 
 
 @router.get("/hours-by-team", response_model=list[HoursByTeamReportRow])
@@ -349,7 +368,7 @@ def hours_by_team_report(
     db: Session = Depends(get_db),
     options: dict[str, object] = Depends(_team_report_options),
 ):
-    return get_hours_by_team_report(db, **options)
+    return _run_team_report(get_hours_by_team_report, db, options)
 
 
 @router.get("/quoted-vs-actual-by-team", response_model=list[QuotedVsActualByTeamReportRow])
@@ -357,15 +376,27 @@ def quoted_vs_actual_by_team_report(
     db: Session = Depends(get_db),
     options: dict[str, object] = Depends(_team_report_options),
 ):
-    return get_quoted_vs_actual_by_team_report(db, **options)
+    return _run_team_report(get_quoted_vs_actual_by_team_report, db, options)
 
 
 @router.get("/team-utilization", response_model=list[TeamUtilizationReportRow])
 def team_utilization_report(
     db: Session = Depends(get_db),
     team_id: UUID | None = None,
+    current_user: User = Depends(get_current_user),
 ):
-    return get_team_utilization_report(db, team_id=team_id)
+    from app.core.team_access import resolve_team_scope
+
+    scoped = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped is not None and team_id is not None and team_id not in scoped:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team is outside your accessible scope",
+        )
+    rows = get_team_utilization_report(db, team_id=team_id)
+    if scoped is None:
+        return rows
+    return [row for row in rows if row.team_id in scoped]
 
 
 @router.get("/customer-by-team", response_model=list[CustomerByTeamReportRow])
@@ -373,15 +404,27 @@ def customer_by_team_report(
     db: Session = Depends(get_db),
     options: dict[str, object] = Depends(_team_report_options),
 ):
-    return get_customer_by_team_report(db, **options)
+    return _run_team_report(get_customer_by_team_report, db, options)
 
 
 @router.get("/designer-by-team", response_model=list[DesignerByTeamReportRow])
 def designer_by_team_report(
     db: Session = Depends(get_db),
     team_id: UUID | None = None,
+    current_user: User = Depends(get_current_user),
 ):
-    return get_designer_by_team_report(db, team_id=team_id)
+    from app.core.team_access import resolve_team_scope
+
+    scoped = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped is not None and team_id is not None and team_id not in scoped:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team is outside your accessible scope",
+        )
+    rows = get_designer_by_team_report(db, team_id=team_id)
+    if scoped is None:
+        return rows
+    return [row for row in rows if row.team_id in scoped]
 
 
 @router.get("/team-profitability", response_model=list[TeamProfitabilityReportRow])
@@ -389,12 +432,24 @@ def team_profitability_report(
     db: Session = Depends(get_db),
     options: dict[str, object] = Depends(_team_report_options),
 ):
-    return get_team_profitability_report(db, **options)
+    return _run_team_report(get_team_profitability_report, db, options)
 
 
 @router.get("/monthly-team-summary", response_model=list[MonthlyTeamSummaryRow])
 def monthly_team_summary_report(
     db: Session = Depends(get_db),
     team_id: UUID | None = None,
+    current_user: User = Depends(get_current_user),
 ):
-    return get_monthly_team_summary_report(db, team_id=team_id)
+    from app.core.team_access import resolve_team_scope
+
+    scoped = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped is not None and team_id is not None and team_id not in scoped:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team is outside your accessible scope",
+        )
+    rows = get_monthly_team_summary_report(db, team_id=team_id)
+    if scoped is None:
+        return rows
+    return [row for row in rows if row.team_id in scoped]

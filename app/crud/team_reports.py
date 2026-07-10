@@ -354,6 +354,7 @@ def get_team_resource_planning(
     db: Session,
     *,
     team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
     weekly_capacity_hours: Decimal = Decimal("40"),
 ) -> list[TeamResourcePlanningRow]:
     teams = db.scalars(
@@ -363,6 +364,9 @@ def get_team_resource_planning(
     ).all()
     if team_id is not None:
         teams = [team for team in teams if team.id == team_id]
+    elif team_ids is not None:
+        allowed = set(team_ids)
+        teams = [team for team in teams if team.id in allowed]
 
     rows: list[TeamResourcePlanningRow] = []
     for team in teams:

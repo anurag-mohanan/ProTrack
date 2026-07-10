@@ -9,11 +9,21 @@ export function getLeaderTeamScopeIds(user: CurrentUser | null | undefined): str
   return [];
 }
 
+/** Scope portfolio UI for non-admins who have team memberships (backend remains authoritative). */
 export function shouldScopeProjectsByLeaderTeams(
   roleName: string,
   user: CurrentUser | null | undefined,
 ): boolean {
   if (canDeleteRecords(roleName)) return false;
+  const roleGroup = getDashboardRoleGroup(roleName);
+  if (
+    roleGroup !== 'engineering_manager' &&
+    roleGroup !== 'design_leader' &&
+    roleName !== 'Read Only'
+  ) {
+    // Staff: do not hide cross-util assignments via client-side team filter.
+    return false;
+  }
   return getLeaderTeamScopeIds(user).length > 0;
 }
 

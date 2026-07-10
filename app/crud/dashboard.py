@@ -4,7 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import func, or_, select
 
-from app.core.team_access import team_project_clause
+from app.core.team_access import team_member_user_ids, team_project_clause
 from app.crud.base import Session
 from app.core.non_productive_categories import leave_entry_clause, standard_np_hours_clause
 from app.crud.project_metrics import build_project_read
@@ -12,7 +12,6 @@ from app.core.permissions import (
     ASSIGNED_PROJECT_ROLES,
     DESIGN_LEADER,
     FULL_ACCESS_ROLES,
-    READ_ALL_PROJECT_ROLES,
     SURFACER,
     can_approve_timesheet,
     get_role_name,
@@ -164,7 +163,8 @@ def get_dashboard_summary(
     if project_stage is not None:
         stage = (Project.project_stage == project_stage,)
     team = ()
-    if team_ids:
+    # None = org-wide; [] = deny-all (empty accessible teams); non-empty = filter.
+    if team_ids is not None:
         team = team_project_clause(db, list(team_ids))
     elif team_id is not None:
         team = team_project_clause(db, [team_id])
@@ -502,7 +502,7 @@ def get_dashboard_summary(
         errors=widget_errors,
     )
 
-    team_scoped = team_id is not None or bool(team_ids)
+    team_scoped = team_id is not None or team_ids is not None
 
     return DashboardSummary(
         total_projects=total_projects,
@@ -735,9 +735,16 @@ def _get_staff_metrics(db: Session, user: User) -> StaffDashboardMetrics | None:
     )
 
 
-def get_designer_workload(db: Session) -> list[DesignerWorkload]:
+def get_designer_workload(
+    db: Session,
+    *,
+    team_ids: list[UUID] | None = None,
+) -> list[DesignerWorkload]:
     week_start, week_end = _current_week_bounds()
     users = workload_planning_users(db)
+    if team_ids is not None:
+        allowed_user_ids = team_member_user_ids(db, list(team_ids)) if team_ids else set()
+        users = [user for user in users if user.id in allowed_user_ids]
 
     workload: list[DesignerWorkload] = []
     for user in users:
@@ -872,18 +879,16 @@ def _activity_to_read(db: Session, activity: Activity) -> ActivityRead:
 def get_workflow_dashboard(db: Session, user: User) -> WorkflowDashboard:
     today = date.today()
     week_end = today + timedelta(days=7)
-    role_name = get_role_name(db, user)
+    from app.core.team_access import project_visibility_clause
 
-    assignment_filter = project_assignment_filter(user, role_name)
     visibility = _visible_projects_clause()
-    if role_name in READ_ALL_PROJECT_ROLES:
+    scope_clause = project_visibility_clause(db, user)
+    if scope_clause is None:
         visible_projects = db.scalars(select(Project).where(*visibility)).all()
-    elif assignment_filter is not None:
-        visible_projects = db.scalars(
-            select(Project).where(assignment_filter, *visibility)
-        ).all()
     else:
-        visible_projects = []
+        visible_projects = db.scalars(
+            select(Project).where(scope_clause, *visibility)
+        ).all()
 
     project_ids = {project.id for project in visible_projects}
     projects_due_this_week = sum(

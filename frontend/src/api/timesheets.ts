@@ -4,6 +4,7 @@ import type {
   TimesheetEntry,
   TimesheetEntryCreate,
 } from '../types';
+import type { ContributionReason } from '../types/TimesheetEntry';
 import { apiClient, buildQuery, type ListParams } from './client';
 
 export interface TimesheetEntryBulkUpsert {
@@ -19,6 +20,7 @@ export interface TimesheetEntryBulkUpsert {
   hours: number;
   is_billable?: boolean;
   description?: string | null;
+  contribution_reason?: ContributionReason | null;
 }
 
 export interface TimesheetEntryBulkRequest {

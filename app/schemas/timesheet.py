@@ -4,7 +4,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.enums import ActivityAction, EntityType, NotificationType, TimesheetStatus, WorkCategory
+from app.models.enums import (
+    ActivityAction,
+    ContributionReason,
+    EntityType,
+    ExecutionStatus,
+    NotificationType,
+    ProjectStage,
+    TimesheetStatus,
+    WorkCategory,
+)
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
@@ -63,6 +72,7 @@ class TimesheetEntryBase(BaseModel):
     is_billable: bool = True
     leave_count: int | None = None
     description: str | None = None
+    contribution_reason: ContributionReason | None = None
 
     @field_validator("hours")
     @classmethod
@@ -89,6 +99,7 @@ class TimesheetEntryUpdate(BlankOptionalFieldsMixin, BaseModel):
     is_billable: bool | None = None
     leave_count: int | None = None
     description: str | None = None
+    contribution_reason: ContributionReason | None = None
 
     @field_validator("hours")
     @classmethod
@@ -127,6 +138,7 @@ class TimesheetEntryBulkUpsert(BaseModel):
     is_billable: bool = True
     leave_count: int | None = None
     description: str | None = None
+    contribution_reason: ContributionReason | None = None
 
     @field_validator("hours")
     @classmethod
@@ -190,3 +202,27 @@ class NotificationRead(TimestampSchema):
 
 class NotificationSummary(BaseModel):
     unread_count: int
+
+
+class TimesheetProjectLookup(BaseModel):
+    id: UUID
+    tool_number: str
+    part_description: str
+    customer_name: str | None = None
+    designer_name: str | None = None
+    surfacer_name: str | None = None
+    project_stage: ProjectStage
+    execution_status: ExecutionStatus
+    stream_id: UUID | None = None
+    team_id: UUID | None = None
+    team_name: str | None = None
+    design_leader_name: str | None = None
+    project_type_name: str | None = None
+
+
+class ProjectContributorSummary(BaseModel):
+    user_id: UUID
+    user_name: str
+    role_label: str
+    is_project_owner: bool = False
+    total_hours: Decimal

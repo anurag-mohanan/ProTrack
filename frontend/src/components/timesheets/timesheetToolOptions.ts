@@ -1,4 +1,7 @@
-import type { NonProductiveCode, NonProductiveCodeCategory, Project } from '../../types';
+import type { NonProductiveCode, NonProductiveCodeCategory } from '../../types';
+import type { TimesheetProjectLookup } from '../../types/TimesheetEntry';
+import { PROJECT_STAGE_LABELS, EXECUTION_STATUS_LABELS } from '../../types/common';
+import type { ExecutionStatus, ProjectStage } from '../../types/common';
 
 export type TimesheetToolGroup = 'RECENTLY USED' | 'LIVE PROJECTS' | 'NON PRODUCTIVE';
 
@@ -12,6 +15,13 @@ export interface TimesheetToolOption {
   npCategory?: NonProductiveCodeCategory;
   toolNumber: string;
   searchText: string;
+  partDescription?: string;
+  customerName?: string;
+  designerName?: string;
+  surfacerName?: string;
+  projectStage?: string;
+  executionStatus?: string;
+  streamId?: string | null;
 }
 
 export const RECENT_TOOLS_KEY = 'protrack.timesheet.recentTools';
@@ -39,31 +49,39 @@ export function pushRecentTool(value: string) {
   }
 }
 
-function projectLabel(project: Project): string {
-  const description = project.part_description?.trim();
-  if (description) {
-    return `${project.tool_number} - ${description}`;
-  }
-  return project.tool_number;
+function stageLabel(stage: string): string {
+  return PROJECT_STAGE_LABELS[stage as ProjectStage] ?? stage;
 }
 
-export function buildProjectToolOptions(projects: Project[]): TimesheetToolOption[] {
+function statusLabel(status: string): string {
+  return EXECUTION_STATUS_LABELS[status as ExecutionStatus] ?? status;
+}
+
+export function buildProjectToolOptions(projects: TimesheetProjectLookup[]): TimesheetToolOption[] {
   return [...projects]
     .sort((left, right) => left.tool_number.localeCompare(right.tool_number))
     .map((project) => ({
       value: `project:${project.id}`,
-      label: projectLabel(project),
+      label: `${project.tool_number} — ${project.part_description}`,
       group: 'LIVE PROJECTS' as const,
       kind: 'project' as const,
       projectId: project.id,
       toolNumber: project.tool_number,
+      partDescription: project.part_description,
+      customerName: project.customer_name ?? undefined,
+      designerName: project.designer_name ?? undefined,
+      surfacerName: project.surfacer_name ?? undefined,
+      projectStage: stageLabel(project.project_stage),
+      executionStatus: statusLabel(project.execution_status),
+      streamId: project.stream_id ?? null,
       searchText: [
         project.tool_number,
         project.part_description,
         project.customer_name,
-        project.team_name,
-        project.design_leader_name,
-        project.project_type_name,
+        project.designer_name,
+        project.surfacer_name,
+        project.project_stage,
+        project.execution_status,
       ]
         .filter(Boolean)
         .join(' ')
@@ -91,7 +109,7 @@ export function buildNpToolOptions(codes: NonProductiveCode[]): TimesheetToolOpt
 }
 
 export function buildToolOptions(
-  projects: Project[],
+  projects: TimesheetProjectLookup[],
   npCodes: NonProductiveCode[],
   recentValues: string[] = readRecentTools(),
 ): TimesheetToolOption[] {

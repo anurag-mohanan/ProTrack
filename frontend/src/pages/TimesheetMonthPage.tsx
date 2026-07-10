@@ -12,7 +12,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchHolidays } from '../api/settings';
-import { fetchTaskTypes } from '../api/lookups';
+import { fetchTaskTypes, fetchTimesheetProjects } from '../api/lookups';
 import {
   bulkSaveTimesheetEntries,
   ensureWeekTimesheet,
@@ -35,7 +35,6 @@ import {
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { getProjects } from '../services/projectService';
 import {
   approveTimesheet,
   rejectTimesheet,
@@ -67,7 +66,6 @@ function currentMonthValue(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-const ACTIVE_PROJECT_STATUSES = new Set(['currently_being_worked_on', 'on_hold']);
 
 export function TimesheetMonthPage() {
   const { user } = useAuth();
@@ -103,8 +101,8 @@ export function TimesheetMonthPage() {
   });
 
   const projectsQuery = useQuery({
-    queryKey: ['projects', 'timesheet-month'],
-    queryFn: () => getProjects({ lifecycle: 'active' }),
+    queryKey: ['timesheet-projects'],
+    queryFn: fetchTimesheetProjects,
   });
 
   const taskTypesQuery = useQuery({
@@ -141,13 +139,7 @@ export function TimesheetMonthPage() {
   );
 
   const activeProjects = useMemo(
-    () =>
-      (projectsQuery.data ?? []).filter(
-        (project) =>
-          !project.is_archived &&
-          !project.is_deleted &&
-          ACTIVE_PROJECT_STATUSES.has(project.execution_status),
-      ),
+    () => projectsQuery.data ?? [],
     [projectsQuery.data],
   );
 

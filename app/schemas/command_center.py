@@ -16,7 +16,7 @@ from app.models.enums import (
 )
 from app.schemas.common import TimestampSchema
 from app.schemas.project import ProjectRead
-from app.schemas.timesheet import TimesheetEntryRead
+from app.schemas.timesheet import ProjectContributorSummary, TimesheetEntryRead
 
 
 class ProjectFolderPaths(BaseModel):
@@ -182,3 +182,4 @@ class ProjectCommandCenter(BaseModel):
     folders: ProjectFolderPaths
     hours: dict[str, Decimal] = Field(default_factory=dict)
     milestone_summary: dict[str, int | Decimal] = Field(default_factory=dict)
+    contributors: list[ProjectContributorSummary] = Field(default_factory=list)

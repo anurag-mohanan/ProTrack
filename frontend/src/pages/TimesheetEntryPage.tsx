@@ -12,14 +12,13 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { fetchCustomers, fetchNonProductiveCodes, fetchTaskTypes } from '../api/lookups';
+import { fetchCustomers, fetchNonProductiveCodes, fetchTaskTypes, fetchTimesheetProjects } from '../api/lookups';
 import { fetchMilestones } from '../api/milestones';
 import { createTimesheetEntry } from '../api/timesheets';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
 import { useAuth } from '../context/AuthContext';
-import { getProjects } from '../services/projectService';
 import type { WorkCategory } from '../types';
 import { projectLabel } from '../types/Project';
 import { canOverrideBillable } from '../utils/permissions';
@@ -45,10 +44,6 @@ function pushRecentId(key: string, id: string) {
   localStorage.setItem(key, JSON.stringify(next));
 }
 
-const ACTIVE_PROJECT_STATUSES = new Set([
-  'currently_being_worked_on',
-  'on_hold',
-]);
 
 export function TimesheetEntryPage() {
   const { timesheetId = '' } = useParams();
@@ -70,8 +65,8 @@ export function TimesheetEntryPage() {
   const [description, setDescription] = useState('');
 
   const projectsQuery = useQuery({
-    queryKey: ['projects', 'active-timesheet'],
-    queryFn: () => getProjects({ lifecycle: 'active' }),
+    queryKey: ['timesheet-projects'],
+    queryFn: fetchTimesheetProjects,
   });
 
   const customersQuery = useQuery({
@@ -103,13 +98,7 @@ export function TimesheetEntryPage() {
   });
 
   const activeProjects = useMemo(
-    () =>
-      (projectsQuery.data ?? []).filter(
-        (project) =>
-          !project.is_archived &&
-          !project.is_deleted &&
-          ACTIVE_PROJECT_STATUSES.has(project.execution_status),
-      ),
+    () => projectsQuery.data ?? [],
     [projectsQuery.data],
   );
 
@@ -148,11 +137,8 @@ export function TimesheetEntryPage() {
 
   const resolvedCustomerName = useMemo(() => {
     if (workCategory !== 'productive' || !selectedProject) return '';
-    return (
-      (customersQuery.data ?? []).find((customer) => customer.id === selectedProject.customer_id)
-        ?.name ?? ''
-    );
-  }, [workCategory, selectedProject, customersQuery.data]);
+    return selectedProject.customer_name ?? '';
+  }, [workCategory, selectedProject]);
 
   useEffect(() => {
     setMilestoneId('');

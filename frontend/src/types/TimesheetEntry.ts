@@ -27,6 +27,50 @@ export interface TimesheetEntry extends Timestamped {
   non_productive_category?: NonProductiveCodeCategory | null;
   user_id?: string | null;
   user_name?: string | null;
+  contribution_reason?: ContributionReason | null;
+}
+
+export type ContributionReason =
+  | 'assisting_designer'
+  | 'peer_review'
+  | 'design_support'
+  | 'surfacing_support'
+  | 'engineering_change'
+  | 'customer_request'
+  | 'other';
+
+export const CONTRIBUTION_REASON_LABELS: Record<ContributionReason, string> = {
+  assisting_designer: 'Assisting Designer',
+  peer_review: 'Peer Review',
+  design_support: 'Design Support',
+  surfacing_support: 'Surfacing Support',
+  engineering_change: 'Engineering Change',
+  customer_request: 'Customer Request',
+  other: 'Other',
+};
+
+export interface TimesheetProjectLookup {
+  id: string;
+  tool_number: string;
+  part_description: string;
+  customer_name?: string | null;
+  designer_name?: string | null;
+  surfacer_name?: string | null;
+  project_stage: string;
+  execution_status: string;
+  stream_id?: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
+  design_leader_name?: string | null;
+  project_type_name?: string | null;
+}
+
+export interface ProjectContributorSummary {
+  user_id: string;
+  user_name: string;
+  role_label: string;
+  is_project_owner: boolean;
+  total_hours: number;
 }
 
 export interface TimesheetEntryCreate {
@@ -41,6 +85,7 @@ export interface TimesheetEntryCreate {
   hours: number;
   is_billable?: boolean;
   description?: string | null;
+  contribution_reason?: ContributionReason | null;
 }
 
 export interface NonProductiveCode extends Timestamped {

@@ -110,7 +110,7 @@ export interface ProjectUpdate {
 }
 
 export function projectLabel(
-  project: Pick<Project, 'code' | 'tool_number' | 'part_description'>,
+  project: Pick<Project, 'tool_number' | 'part_description'> & { code?: string | null },
 ) {
   const code = project.code?.trim();
   if (code) {

@@ -120,6 +120,7 @@ export function ProjectHoursReportView({
               <StickyHeaderCell align="right">Variance</StickyHeaderCell>
               <StickyHeaderCell>Stage</StickyHeaderCell>
               <StickyHeaderCell>Status</StickyHeaderCell>
+              <StickyHeaderCell>Contributors</StickyHeaderCell>
             </TableRow>
           }
         >
@@ -140,6 +141,12 @@ export function ProjectHoursReportView({
               <StickyTableCell>{PROJECT_STAGE_LABELS[row.project_stage]}</StickyTableCell>
               <StickyTableCell>
                 <ExecutionStatusChip status={row.execution_status} />
+              </StickyTableCell>
+              <StickyTableCell>
+                {(row.contributors ?? [])
+                  .slice(0, 3)
+                  .map((c) => `${c.user_name} (${formatNumber(c.total_hours, 1)}h)`)
+                  .join(', ') || '—'}
               </StickyTableCell>
             </ClickableTableRow>
           ))}

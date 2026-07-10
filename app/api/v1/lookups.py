@@ -1,16 +1,19 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
+from app.core.permissions import can_write_timesheet_entry
+from app.crud.timesheet_projects import list_timesheet_projects
 from app.crud.base import select
 from app.models.models import Contact, Customer, NonProductiveCode, OperationalRoleType, ProjectType, Role, Stream, TaskType, Team, User, WorkingModel
 from app.schemas.identity import OperationalRoleTypeRead, RoleRead
 from app.schemas.organization import ContactRead, CustomerRead, NonProductiveCodeRead, StreamRead, TaskTypeRead, WorkingModelRead
 from app.schemas.team import TeamRead
 from app.schemas.templates import ProjectTypeRead
+from app.schemas.timesheet import TimesheetProjectLookup
 
 router = APIRouter(prefix="/lookups", tags=["lookups"])
 
@@ -144,6 +147,19 @@ def list_lookup_working_models(
         .where(WorkingModel.is_active.is_(True), WorkingModel.is_archived.is_(False))
         .order_by(WorkingModel.sort_order, WorkingModel.name)
     ).all()
+
+
+@router.get("/timesheet-projects", response_model=list[TimesheetProjectLookup])
+def list_lookup_timesheet_projects(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not can_write_timesheet_entry(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    return list_timesheet_projects(db)
 
 
 @router.get("/teams", response_model=list[TeamRead])

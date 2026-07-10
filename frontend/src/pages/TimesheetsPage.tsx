@@ -152,6 +152,7 @@ export function TimesheetsPage() {
       hours: Number(values.hours),
       notes: values.notes,
       isBillable: values.isBillable,
+      contributionReason: values.contributionReason || null,
     }),
     [],
   );
@@ -223,6 +224,7 @@ export function TimesheetsPage() {
           hours: Number(entry.hours),
           notes: entry.description ?? '',
           isBillable: entry.is_billable,
+          contributionReason: entry.contribution_reason ?? null,
         });
       }
       showSuccess(`Copied ${sources.length} ${sources.length === 1 ? 'entry' : 'entries'}.`);
@@ -252,6 +254,7 @@ export function TimesheetsPage() {
         hours: Number(selectedEntry.hours),
         notes: selectedEntry.description ?? '',
         isBillable: selectedEntry.is_billable,
+        contributionReason: selectedEntry.contribution_reason ?? null,
       });
       showSuccess('Entry duplicated.');
     } catch (error) {
@@ -283,6 +286,7 @@ export function TimesheetsPage() {
         hours: Number(entry.hours),
         notes: entry.description ?? '',
         isBillable: entry.is_billable,
+        contributionReason: entry.contribution_reason ?? null,
       });
       showSuccess('Entry duplicated.');
     } catch (error) {

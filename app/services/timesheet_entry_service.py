@@ -68,6 +68,7 @@ def normalize_entry_payload(
             "entry_date": existing.entry_date if existing else None,
             "hours": existing.hours if existing else None,
             "description": existing.description if existing else None,
+            "contribution_reason": existing.contribution_reason if existing else None,
             "is_billable": existing.is_billable if existing else True,
             "leave_count": existing.leave_count if existing else None,
         }

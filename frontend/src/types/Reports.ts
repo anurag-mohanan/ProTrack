@@ -11,6 +11,7 @@ export interface ProjectHoursReportRow {
   hours_variance: number;
   execution_status: ExecutionStatus;
   project_stage: ProjectStage;
+  contributors?: import('./TimesheetEntry').ProjectContributorSummary[];
 }
 
 export interface CustomerSummaryReportRow {

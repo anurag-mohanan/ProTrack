@@ -1,11 +1,11 @@
 import { Box, Typography } from '@mui/material';
-import type { Project } from '../../types';
+import type { TimesheetProjectLookup } from '../../types/TimesheetEntry';
 import type { TimesheetToolOption } from './timesheetToolOptions';
 import { formatDisplayValue } from '../../utils/format';
 
 interface TimesheetSelectionLineProps {
   selection: TimesheetToolOption | null;
-  project: Project | null;
+  project: TimesheetProjectLookup | null;
   isBillable: boolean;
 }
 

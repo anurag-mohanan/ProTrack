@@ -57,3 +57,10 @@ export async function fetchWorkingModels(): Promise<WorkingModel[]> {
   const { data } = await apiClient.get<unknown>('/lookups/working-models');
   return ensureArray<WorkingModel>(data);
 }
+
+export async function fetchTimesheetProjects(): Promise<
+  import('../types/TimesheetEntry').TimesheetProjectLookup[]
+> {
+  const { data } = await apiClient.get<unknown>('/lookups/timesheet-projects');
+  return ensureArray<import('../types/TimesheetEntry').TimesheetProjectLookup>(data);
+}

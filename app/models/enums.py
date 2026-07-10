@@ -43,6 +43,16 @@ class WorkCategory(enum.Enum):
     non_productive = "non_productive"
 
 
+class ContributionReason(enum.Enum):
+    assisting_designer = "assisting_designer"
+    peer_review = "peer_review"
+    design_support = "design_support"
+    surfacing_support = "surfacing_support"
+    engineering_change = "engineering_change"
+    customer_request = "customer_request"
+    other = "other"
+
+
 class NonProductiveCodeCategory(enum.Enum):
     non_productive = "non_productive"
     leave = "leave"

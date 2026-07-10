@@ -10,7 +10,9 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import type { Project, TaskType, TimesheetEntry } from '../../types';
+import type { TaskType, TimesheetEntry } from '../../types';
+import type { ContributionReason, TimesheetProjectLookup } from '../../types/TimesheetEntry';
+import { CONTRIBUTION_REASON_LABELS } from '../../types/TimesheetEntry';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { TimesheetSelectionLine } from './TimesheetSelectionLine';
 import { TimesheetToolNumberSelect } from './TimesheetToolNumberSelect';
@@ -34,10 +36,11 @@ export interface TimesheetEntryFormValues {
   hours: string;
   notes: string;
   isBillable: boolean;
+  contributionReason: string;
 }
 
 interface TimesheetEntryFormProps {
-  projects: Project[];
+  projects: TimesheetProjectLookup[];
   npCodes: NonProductiveCode[];
   taskTypes: TaskType[];
   dailyTotals: Map<string, number>;
@@ -76,6 +79,7 @@ function emptyForm(): TimesheetEntryFormValues {
     hours: '',
     notes: '',
     isBillable: true,
+    contributionReason: '',
   };
 }
 
@@ -120,6 +124,7 @@ export function TimesheetEntryForm({
         hours: String(editingEntry.hours),
         notes: editingEntry.description ?? '',
         isBillable: editingEntry.is_billable,
+        contributionReason: editingEntry.contribution_reason ?? '',
       });
       return;
     }
@@ -172,6 +177,7 @@ export function TimesheetEntryForm({
       isBillable: defaultBillableForTool(
         toolOptions.find((option) => option.value === saved.toolValue) ?? null,
       ),
+      contributionReason: saved.contributionReason,
     });
     toolRef.current?.focus();
   };
@@ -193,6 +199,7 @@ export function TimesheetEntryForm({
       ...current,
       toolValue: option?.value ?? '',
       taskTypeId: option?.kind === 'project' ? current.taskTypeId : '',
+      contributionReason: option?.kind === 'project' ? current.contributionReason : '',
       isBillable: isLeaveToolOption(option)
         ? false
         : defaultBillableForTool(option),
@@ -314,6 +321,29 @@ export function TimesheetEntryForm({
             ]
           )}
         </TextField>
+
+        {selectedTool?.kind === 'project' ? (
+          <TextField
+            select
+            size="small"
+            label="Contribution reason"
+            disabled={readOnly || saving}
+            value={form.contributionReason}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, contributionReason: event.target.value }))
+            }
+            sx={{ width: 190, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          >
+            <MenuItem value="">None</MenuItem>
+            {(Object.entries(CONTRIBUTION_REASON_LABELS) as [ContributionReason, string][]).map(
+              ([value, label]) => (
+                <MenuItem key={value} value={value}>
+                  {label}
+                </MenuItem>
+              ),
+            )}
+          </TextField>
+        ) : null}
 
         <FormControlLabel
           sx={{ mt: 0.5, mr: 0 }}

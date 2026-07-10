@@ -12,7 +12,8 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import type { Project, TaskType, TimesheetEntry } from '../../types';
+import type { TaskType, TimesheetEntry } from '../../types';
+import type { TimesheetProjectLookup } from '../../types/TimesheetEntry';
 import {
   dayName,
   GRID_COLUMNS,
@@ -43,7 +44,7 @@ export interface TimesheetGridRow {
 
 interface TimesheetMonthGridProps {
   rows: TimesheetGridRow[];
-  projects: Project[];
+  projects: TimesheetProjectLookup[];
   taskTypes: TaskType[];
   holidayDates: Set<string>;
   readOnly: boolean;
@@ -80,7 +81,7 @@ function TimesheetMonthGridComponent({
   const cellRefs = useRef<Map<string, HTMLInputElement | HTMLSelectElement>>(new Map());
 
   const projectByTool = useMemo(() => {
-    const map = new Map<string, Project>();
+    const map = new Map<string, TimesheetProjectLookup>();
     for (const project of projects) {
       map.set(project.tool_number.trim().toLowerCase(), project);
     }

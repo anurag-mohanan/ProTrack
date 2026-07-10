@@ -758,7 +758,16 @@ def get_designer_workload(db: Session) -> list[DesignerWorkload]:
             sum((_decimal(p.quoted_hours) for p in active_assigned), Decimal("0"))
         )
         actual_hours_logged = _round_hours(
-            sum((_decimal(p.actual_hours) for p in active_assigned), Decimal("0"))
+            _decimal(
+                db.scalar(
+                    select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
+                    .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+                    .where(
+                        Timesheet.user_id == user.id,
+                        TimesheetEntry.is_deleted.is_(False),
+                    )
+                )
+            )
         )
 
         hours_this_week = db.scalar(

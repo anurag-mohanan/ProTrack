@@ -84,6 +84,7 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
         is_billable=entry.is_billable,
         leave_count=entry.leave_count,
         description=entry.description,
+        contribution_reason=entry.contribution_reason,
         project_tool_number=project_tool_number,
         project_code=project_code,
         customer_name=customer_name,

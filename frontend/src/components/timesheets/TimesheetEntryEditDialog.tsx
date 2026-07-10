@@ -3,7 +3,8 @@ import {
   DialogContent,
   DialogTitle,
 } from '@mui/material';
-import type { NonProductiveCode, Project, TaskType, TimesheetEntry } from '../../types';
+import type { NonProductiveCode, TaskType, TimesheetEntry } from '../../types';
+import type { TimesheetProjectLookup } from '../../types/TimesheetEntry';
 import {
   TimesheetEntryForm,
   type TimesheetEntryFormValues,
@@ -12,7 +13,7 @@ import {
 interface TimesheetEntryEditDialogProps {
   open: boolean;
   entry: TimesheetEntry | null;
-  projects: Project[];
+  projects: TimesheetProjectLookup[];
   npCodes: NonProductiveCode[];
   taskTypes: TaskType[];
   canOverrideBillable: boolean;

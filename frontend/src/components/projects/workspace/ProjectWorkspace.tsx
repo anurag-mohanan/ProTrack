@@ -25,6 +25,7 @@ import { ROLES } from '../../../utils/permissions';
 import { formatDisplayValue } from '../../../utils/format';
 import { isActiveProjectForHealth } from '../../../utils/projectHealth';
 import { ProjectCommunicationsPanel } from './ProjectCommunicationsPanel';
+import { ProjectContributorsPanel } from './ProjectContributorsPanel';
 import { getProjectActivities } from '../../../services/notificationService';
 import type { Activity } from '../../../types';
 
@@ -148,6 +149,16 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
               Execution timeline
             </Typography>
             <WorkflowTimeline steps={timeline} />
+          </Box>
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+              Contributors
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Hours logged by each engineer. Assigned designer and surfacer remain project owners
+              for planning and milestones.
+            </Typography>
+            <ProjectContributorsPanel contributors={query.data.contributors ?? []} />
           </Box>
           <QuoteAssistantPanel projectId={projectId} />
         </Box>

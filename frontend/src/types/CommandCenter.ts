@@ -1,6 +1,6 @@
 import type { ExecutionStatus, ProjectHealth, ProjectStage } from './common';
 import type { Project } from './Project';
-import type { TimesheetEntry } from './TimesheetEntry';
+import type { TimesheetEntry, ProjectContributorSummary } from './TimesheetEntry';
 
 export type TimelineStepStatus = 'completed' | 'current' | 'upcoming' | 'delayed';
 export type DecisionCategory =
@@ -154,4 +154,5 @@ export interface ProjectCommandCenter {
   folders: ProjectFolderPaths;
   hours: Record<string, number>;
   milestone_summary: Record<string, number>;
+  contributors: ProjectContributorSummary[];
 }

@@ -7,10 +7,9 @@ import {
   fetchTimesheetEntries,
   fetchTimesheets,
 } from '../api/timesheets';
-import { fetchNonProductiveCodes, fetchTaskTypes, fetchUsers } from '../api/lookups';
+import { fetchNonProductiveCodes, fetchTaskTypes, fetchTimesheetProjects, fetchUsers } from '../api/lookups';
 import { fetchHolidays } from '../api/settings';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
-import { getProjects } from '../services/projectService';
 import {
   approveTimesheet,
   rejectTimesheet,
@@ -19,6 +18,7 @@ import {
   timesheetQueryKeys,
 } from '../services/timesheetService';
 import type { CurrentUser, Timesheet, TimesheetEntry } from '../types';
+import type { ContributionReason } from '../types/TimesheetEntry';
 import { isEntryDateCalendarLocked } from '../utils/timesheetLocking';
 import { isAdminRole } from '../utils/permissions';
 import {
@@ -29,8 +29,6 @@ import {
   weekStartMonday,
 } from '../utils/timesheetMonth';
 import { invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
-
-const ACTIVE_PROJECT_STATUSES = new Set(['currently_being_worked_on', 'on_hold']);
 
 export function useTimesheetMonthWorkspace(
   user: CurrentUser | null,
@@ -49,8 +47,8 @@ export function useTimesheetMonthWorkspace(
   });
 
   const projectsQuery = useQuery({
-    queryKey: ['projects', 'timesheet-workspace'],
-    queryFn: () => getProjects({ lifecycle: 'active' }),
+    queryKey: ['timesheet-projects'],
+    queryFn: fetchTimesheetProjects,
     staleTime: QUERY_STALE_TIMES.projects,
   });
 
@@ -111,13 +109,7 @@ export function useTimesheetMonthWorkspace(
   );
 
   const activeProjects = useMemo(
-    () =>
-      (projectsQuery.data ?? []).filter(
-        (project) =>
-          !project.is_archived &&
-          !project.is_deleted &&
-          ACTIVE_PROJECT_STATUSES.has(project.execution_status),
-      ),
+    () => projectsQuery.data ?? [],
     [projectsQuery.data],
   );
 
@@ -169,6 +161,7 @@ export function useTimesheetMonthWorkspace(
       hours: number;
       notes?: string;
       isBillable?: boolean;
+      contributionReason?: string | null;
     }) => {
       if (!userId) throw new Error('Not authenticated');
 
@@ -202,6 +195,7 @@ export function useTimesheetMonthWorkspace(
               hours: payload.hours,
               is_billable: payload.isBillable ?? true,
               description: payload.notes?.trim() || null,
+              contribution_reason: (payload.contributionReason || null) as ContributionReason | null,
             },
           ],
           deletes: [],

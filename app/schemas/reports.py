@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
 from app.schemas.dashboard import DesignerWorkload
+from app.schemas.timesheet import ProjectContributorSummary
 
 
 class ProjectHoursReportRow(BaseModel):
@@ -18,6 +19,7 @@ class ProjectHoursReportRow(BaseModel):
     hours_variance: Decimal
     execution_status: ExecutionStatus
     project_stage: ProjectStage
+    contributors: list[ProjectContributorSummary] = []
 
 
 class CustomerSummaryReportRow(BaseModel):

@@ -37,6 +37,7 @@ from app.schemas.command_center import (
 )
 from app.schemas.timesheet import TimesheetEntryRead
 from app.services.project_calculation_service import calculate_hours, get_milestone_summary
+from app.services.project_contributor_service import get_project_contributors
 from app.services.working_model.engine import WorkingModelEngine
 
 
@@ -538,4 +539,5 @@ def get_project_command_center(db: Session, project_id: UUID) -> ProjectCommandC
             "remaining": remaining,
             "progress_percent": progress,
         },
+        contributors=get_project_contributors(db, project_id),
     )

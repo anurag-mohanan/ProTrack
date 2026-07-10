@@ -35,6 +35,7 @@ from app.schemas.reports import (
 )
 from app.services.kpi_participation import engineering_productivity_users, utilization_users
 from app.services.project_calculation_service import calculate_hours
+from app.services.project_contributor_service import get_project_contributors
 
 
 def _apply_report_filters(
@@ -69,6 +70,7 @@ def get_project_hours_report(
     report: list[ProjectHoursReportRow] = []
     for project, customer_name in rows:
         hours = calculate_hours(db, project)
+        contributor_rows = get_project_contributors(db, project.id)
         report.append(
             ProjectHoursReportRow(
                 project_id=project.id,
@@ -80,6 +82,7 @@ def get_project_hours_report(
                 hours_variance=hours.variance,
                 execution_status=project.execution_status,
                 project_stage=project.project_stage,
+                contributors=contributor_rows,
             )
         )
     return report

@@ -12,6 +12,7 @@ interface TimesheetMonthSummaryBarProps {
   todayExpected?: number;
   weeklyHours?: number;
   weeklyExpected?: number;
+  scopeLabel?: string;
 }
 
 function toPercent(value: number, target: number): number | null {
@@ -129,6 +130,7 @@ export function TimesheetMonthSummaryBar({
   todayExpected,
   weeklyHours = 0,
   weeklyExpected,
+  scopeLabel,
 }: TimesheetMonthSummaryBarProps) {
   const remainingHours = Math.max(0, summary.remainingHours);
   const leaveLabel =
@@ -153,8 +155,13 @@ export function TimesheetMonthSummaryBar({
         boxShadow: designTokens.elevation.card,
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <TimesheetStatusChip status={status} />
+        {scopeLabel ? (
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+            {scopeLabel}
+          </Typography>
+        ) : null}
       </Box>
       <Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', md: 'block' } }} />
 

@@ -25,6 +25,7 @@ export interface OverviewUser {
 
 export interface TimesheetOverviewSection {
   title: string;
+  subtitle?: string;
   emptyText?: string;
   users: OverviewUser[];
 }
@@ -113,9 +114,14 @@ export function TimesheetUsersOverview({
     <Box>
       {sections.map((section) => (
         <Box key={section.title} sx={{ mb: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.25 }}>
             {section.title}
           </Typography>
+          {section.subtitle ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
+              {section.subtitle}
+            </Typography>
+          ) : null}
 
           {section.users.length === 0 ? (
             <EmptyState

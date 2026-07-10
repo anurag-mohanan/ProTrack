@@ -367,11 +367,13 @@ export function ProjectFormDialog({
         tool_number: form.tool_number,
         part_description: form.part_description,
         customer_id: form.customer_id,
+        ...(isEdit ? {} : { team_id: form.team_id }),
       },
       [
         { key: 'tool_number', label: 'Tool number' },
         { key: 'part_description', label: 'Part description' },
         { key: 'customer_id', label: 'Customer' },
+        ...(isEdit ? [] : [{ key: 'team_id', label: 'Team' }]),
       ],
     );
 
@@ -581,9 +583,10 @@ export function ProjectFormDialog({
                 <FormSelect
                   label="Team"
                   searchable
+                  required={!isEdit}
                   value={form.team_id ?? ''}
                   options={[
-                    { value: '', label: 'None' },
+                    ...(isEdit ? [{ value: '', label: 'None' }] : [{ value: '', label: 'Select team' }]),
                     ...(teamsQuery.data ?? []).map((team) => ({
                       value: team.id,
                       label: team.name,
@@ -712,9 +715,10 @@ export function ProjectFormDialog({
             <FormSelect
               label="Team"
               searchable
+              required={!isEdit}
               value={form.team_id ?? ''}
               options={[
-                { value: '', label: 'None' },
+                ...(isEdit ? [{ value: '', label: 'None' }] : [{ value: '', label: 'Select team' }]),
                 ...(teamsQuery.data ?? []).map((team) => ({
                   value: team.id,
                   label: team.name,

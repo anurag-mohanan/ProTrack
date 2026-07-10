@@ -152,7 +152,7 @@ export function MilestoneFormDialog({
       open={open}
       onClose={onClose}
       title={isEdit ? 'Edit Milestone' : 'Add Milestone'}
-      subtitle="Track delivery milestones, due dates, and completion status."
+      subtitle="Milestones inherit the project's team assignment. Set the team on the project first."
       icon={TimelineOutlinedIcon}
       formId="milestone-form"
       width={520}

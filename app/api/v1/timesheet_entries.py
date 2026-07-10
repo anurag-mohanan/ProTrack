@@ -6,6 +6,7 @@ from app.api.deps import APIRouter, Depends, HTTPException, Query, Session, get_
 from app.core.permissions import can_access_administration
 from app.crud.timesheet_entry import timesheet_entry
 from app.models.models import User
+from app.services.timesheet_overview_service import get_timesheet_visible_user_ids
 from app.schemas.timesheet import (
     TimesheetEntryBulkRequest,
     TimesheetEntryBulkResponse,
@@ -35,11 +36,15 @@ def list_timesheet_entries(
     current_user: User = Depends(get_current_user),
 ):
     if entry_date_from is not None or entry_date_to is not None or user_id is not None:
+        visible_user_ids = None
+        if user_id is None:
+            visible_user_ids = get_timesheet_visible_user_ids(db, current_user)
         return timesheet_entry.get_multi_read_for_range(
             db,
             entry_date_from=entry_date_from,
             entry_date_to=entry_date_to,
             user_id=user_id,
+            user_ids=list(visible_user_ids) if visible_user_ids is not None else None,
             skip=skip,
             limit=limit,
         )

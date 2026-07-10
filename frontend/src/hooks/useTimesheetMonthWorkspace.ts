@@ -5,9 +5,10 @@ import {
   deleteTimesheetEntry,
   ensureWeekTimesheet,
   fetchTimesheetEntries,
+  fetchTimesheetOverview,
   fetchTimesheets,
 } from '../api/timesheets';
-import { fetchNonProductiveCodes, fetchTaskTypes, fetchTimesheetProjects, fetchUsers } from '../api/lookups';
+import { fetchNonProductiveCodes, fetchTaskTypes, fetchTimesheetProjects } from '../api/lookups';
 import { fetchHolidays } from '../api/settings';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import {
@@ -71,8 +72,8 @@ export function useTimesheetMonthWorkspace(
   });
 
   const usersQuery = useQuery({
-    queryKey: ['lookups', 'users', 'timesheet-overview'],
-    queryFn: fetchUsers,
+    queryKey: ['timesheets', 'overview'],
+    queryFn: fetchTimesheetOverview,
     enabled: viewAllUsers,
     staleTime: QUERY_STALE_TIMES.lookups,
   });
@@ -317,7 +318,8 @@ export function useTimesheetMonthWorkspace(
     activeProjects,
     npCodes: npCodesQuery.data ?? [],
     taskTypes: taskTypesQuery.data ?? [],
-    allUsers: usersQuery.data ?? [],
+    allUsers: usersQuery.data?.users ?? [],
+    overviewContext: usersQuery.data,
     entries,
     timesheets,
     timesheetById,

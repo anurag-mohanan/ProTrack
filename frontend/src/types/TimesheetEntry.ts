@@ -157,3 +157,26 @@ export interface NonProductiveCodeUpdate {
   is_archived?: boolean;
   sort_order?: number;
 }
+
+export interface TimesheetOverviewTeam {
+  team_id: string | null;
+  team_name: string;
+  user_ids: string[];
+}
+
+export interface TimesheetOverviewUser {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  team_id?: string | null;
+  team_name?: string | null;
+  team_ids: string[];
+  working_hours_per_day: number;
+}
+
+export interface TimesheetOverviewContext {
+  teams: TimesheetOverviewTeam[];
+  users: TimesheetOverviewUser[];
+  scope_all_teams: boolean;
+}

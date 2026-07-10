@@ -15,10 +15,12 @@ from app.schemas.timesheet import (
     TimesheetEntryCreate,
     TimesheetEntryRead,
     TimesheetEntryUpdate,
+    TimesheetOverviewContext,
     TimesheetRead,
     TimesheetRejectRequest,
     TimesheetUpdate,
 )
+from app.services.timesheet_overview_service import build_timesheet_overview
 from app.services.timesheet_workflow_service import (
     approve_timesheet,
     reject_timesheet,
@@ -69,6 +71,14 @@ def list_timesheets(
         for row in rows
         if row.week_start <= month_end and (row.week_start + timedelta(days=6)) >= month_start
     ]
+
+
+@router.get("/overview", response_model=TimesheetOverviewContext)
+def get_timesheet_overview(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return TimesheetOverviewContext(**build_timesheet_overview(db, current_user))
 
 
 @router.post("/ensure-week", response_model=TimesheetRead)

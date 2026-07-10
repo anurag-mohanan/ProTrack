@@ -270,3 +270,26 @@ class ProjectContributorSummary(BaseModel):
     hours_percent: Decimal = Decimal("0")
     primary_contribution_label: str | None = None
     contribution_reasons: list[ContributorReasonHours] = Field(default_factory=list)
+
+
+class TimesheetOverviewTeam(BaseModel):
+    team_id: UUID | None = None
+    team_name: str
+    user_ids: list[UUID] = Field(default_factory=list)
+
+
+class TimesheetOverviewUser(BaseModel):
+    id: UUID
+    first_name: str
+    last_name: str
+    email: str
+    team_id: UUID | None = None
+    team_name: str | None = None
+    team_ids: list[UUID] = Field(default_factory=list)
+    working_hours_per_day: float = 8.0
+
+
+class TimesheetOverviewContext(BaseModel):
+    teams: list[TimesheetOverviewTeam] = Field(default_factory=list)
+    users: list[TimesheetOverviewUser] = Field(default_factory=list)
+    scope_all_teams: bool = False

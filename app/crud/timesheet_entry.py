@@ -152,6 +152,7 @@ class CRUDTimesheetEntry(
         entry_date_from: date | None = None,
         entry_date_to: date | None = None,
         user_id: UUID | None = None,
+        user_ids: list[UUID] | None = None,
         skip: int = 0,
         limit: int = 500,
     ) -> list[TimesheetEntryRead]:
@@ -163,6 +164,10 @@ class CRUDTimesheetEntry(
             query = query.where(TimesheetEntry.entry_date <= entry_date_to)
         if user_id is not None:
             query = query.where(Timesheet.user_id == user_id)
+        elif user_ids is not None:
+            if not user_ids:
+                return []
+            query = query.where(Timesheet.user_id.in_(user_ids))
         query = query.order_by(TimesheetEntry.entry_date, TimesheetEntry.created_at).offset(skip).limit(limit)
         entries = db.scalars(query).all()
         return build_timesheet_entry_reads(db, entries)

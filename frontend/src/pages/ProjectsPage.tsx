@@ -41,7 +41,8 @@ import {
 } from '../services/projectService';
 import type { ProjectStage } from '../types';
 import { exportToCsv } from '../utils/exportData';
-import { canArchiveProject, canCreateProject, canDeleteRecords } from '../utils/permissions';
+import { filterProjectsForAccessibleTeams, groupProjectsByTeam } from '../utils/projectTeamGroups';
+import { canArchiveProject, canCreateProject, canDeleteRecords, canViewAllTimesheets } from '../utils/permissions';
 import {
   applyKpiQuickFilter,
   countActiveSidebarFilters,
@@ -288,6 +289,30 @@ export function ProjectsPage() {
       ? archivedProjects
       : liveProjects;
 
+  const leaderTeamIds = user?.team_ids?.length
+    ? user.team_ids
+    : user?.team_id
+      ? [user.team_id]
+      : [];
+
+  const teamScopedLiveProjects = useMemo(
+    () =>
+      filterProjectsForAccessibleTeams(
+        displayLiveProjects,
+        canViewAllTimesheets(user?.role_name ?? '') && !isAdmin ? leaderTeamIds : undefined,
+        isAdmin,
+      ),
+    [displayLiveProjects, user?.role_name, isAdmin, leaderTeamIds],
+  );
+
+  const liveProjectTeamGroups = useMemo(
+    () => groupProjectsByTeam(teamScopedLiveProjects, teamsQuery.data ?? []),
+    [teamScopedLiveProjects, teamsQuery.data],
+  );
+
+  const shouldGroupLiveProjectsByTeam =
+    isAdmin || leaderTeamIds.length > 1 || liveProjectTeamGroups.length > 1;
+
   const allProjectsForCounts = projectsQuery.data ?? [];
   const quickCounts = useMemo(
     () => ({
@@ -506,29 +531,53 @@ export function ProjectsPage() {
             />
           ) : (
             <>
-              {displayLiveProjects.length ? (
-                <ProjectListSection
-                  title={
-                    appliedFilters.showArchived || appliedFilters.quickFilter === 'archived'
-                      ? 'Archived Projects'
-                      : 'Live Projects'
-                  }
-                  count={displayLiveProjects.length}
-                  projects={displayLiveProjects}
-                  primary
-                  customers={customersQuery.data ?? []}
-                  users={usersQuery.data ?? []}
-                  streams={streamsQuery.data ?? []}
-                  teams={teamsQuery.data ?? []}
-                  gridSessionKey={gridSessionKey}
-                  onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                  onEdit={setEditProject}
-                  onArchive={showArchiveActions ? setArchiveId : undefined}
-                  onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
-                  onExport={handleExport}
-                  onDelete={isAdmin ? setDeleteId : undefined}
-                  canDelete={isAdmin}
-                />
+              {teamScopedLiveProjects.length ? (
+                shouldGroupLiveProjectsByTeam ? (
+                  liveProjectTeamGroups.map((group) => (
+                    <ProjectListSection
+                      key={group.teamId ?? 'unassigned'}
+                      title={group.teamName}
+                      count={group.projects.length}
+                      projects={group.projects}
+                      primary
+                      customers={customersQuery.data ?? []}
+                      users={usersQuery.data ?? []}
+                      streams={streamsQuery.data ?? []}
+                      teams={teamsQuery.data ?? []}
+                      gridSessionKey={gridSessionKey}
+                      onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
+                      onEdit={setEditProject}
+                      onArchive={showArchiveActions ? setArchiveId : undefined}
+                      onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                      onExport={handleExport}
+                      onDelete={isAdmin ? setDeleteId : undefined}
+                      canDelete={isAdmin}
+                    />
+                  ))
+                ) : (
+                  <ProjectListSection
+                    title={
+                      appliedFilters.showArchived || appliedFilters.quickFilter === 'archived'
+                        ? 'Archived Projects'
+                        : 'Live Projects'
+                    }
+                    count={teamScopedLiveProjects.length}
+                    projects={teamScopedLiveProjects}
+                    primary
+                    customers={customersQuery.data ?? []}
+                    users={usersQuery.data ?? []}
+                    streams={streamsQuery.data ?? []}
+                    teams={teamsQuery.data ?? []}
+                    gridSessionKey={gridSessionKey}
+                    onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
+                    onEdit={setEditProject}
+                    onArchive={showArchiveActions ? setArchiveId : undefined}
+                    onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                    onExport={handleExport}
+                    onDelete={isAdmin ? setDeleteId : undefined}
+                    canDelete={isAdmin}
+                  />
+                )
               ) : null}
 
               {completedProjects.length &&

@@ -4,7 +4,7 @@ import type {
   TimesheetEntry,
   TimesheetEntryCreate,
 } from '../types';
-import type { ContributionReason } from '../types/TimesheetEntry';
+import type { ContributionReason, TimesheetOverviewContext } from '../types/TimesheetEntry';
 import { apiClient, buildQuery, type ListParams } from './client';
 
 export interface TimesheetEntryBulkUpsert {
@@ -37,6 +37,11 @@ export async function fetchTimesheets(params?: ListParams & { month?: string }):
   const { data } = await apiClient.get<Timesheet[]>(
     `/timesheets${buildQuery(params)}`,
   );
+  return data;
+}
+
+export async function fetchTimesheetOverview(): Promise<TimesheetOverviewContext> {
+  const { data } = await apiClient.get<TimesheetOverviewContext>('/timesheets/overview');
   return data;
 }
 

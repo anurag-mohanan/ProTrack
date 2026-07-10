@@ -45,6 +45,13 @@ import {
   weekStartMonday,
   weekWorkingDayCount,
 } from '../utils/timesheetMonth';
+import {
+  buildScopedOverviewSummary,
+  buildTeamTimesheetSections,
+  buildTodayScopedSummary,
+  buildWeeklyScopedSummary,
+  teamSectionBreakdownLabel,
+} from '../utils/timesheetOverview';
 import { isTimesheetMonthCalendarLocked } from '../utils/timesheetLocking';
 import { formatDisplayValue, userDisplayName } from '../utils/format';
 import { TimesheetStatusBadge } from '../components/ui/design-system';
@@ -104,44 +111,47 @@ export function TimesheetsPage() {
   }, [workspace.entries]);
 
   const overviewSections = useMemo<TimesheetOverviewSection[]>(() => {
-    if (!viewAllUsers) return [];
-    const fullName = (person: (typeof workspace.allUsers)[number]) =>
-      `${person.first_name} ${person.last_name}`.trim();
-    const activeUsers = workspace.allUsers
-      .filter((person) => person.is_active !== false)
-      .sort((left, right) => fullName(left).localeCompare(fullName(right)));
-    const toOverview = (person: (typeof workspace.allUsers)[number]) => ({
-      id: person.id,
-      name: fullName(person),
-    });
+    if (!viewAllUsers || !workspace.overviewContext) return [];
 
-    if (isAdmin) {
-      return [
-        {
-          title: 'All Users',
-          emptyText: 'No users found',
-          users: activeUsers.map(toOverview),
-        },
-      ];
-    }
-
-    const selfRecord = workspace.allUsers.find((person) => person.id === user?.id);
-    const selfTeamId = selfRecord?.team_id ?? null;
-    const selfUsers = activeUsers.filter((person) => person.id === user?.id);
-    const teamUsers = activeUsers.filter(
-      (person) =>
-        person.id !== user?.id && selfTeamId != null && person.team_id === selfTeamId,
+    const teamSections = buildTeamTimesheetSections(
+      workspace.overviewContext.teams,
+      workspace.overviewContext.users,
+      workspace.entries,
+      workspace.workingDayCount,
     );
 
-    return [
-      { title: 'My Timesheets', users: selfUsers.map(toOverview) },
-      {
-        title: 'Team Timesheets',
-        emptyText: 'No team members assigned to your team',
-        users: teamUsers.map(toOverview),
-      },
-    ];
-  }, [viewAllUsers, workspace.allUsers, isAdmin, user?.id]);
+    return teamSections.map((section) => ({
+      title: section.teamName,
+      subtitle: teamSectionBreakdownLabel(section.summary),
+      emptyText: 'No team members with entries this month',
+      users: section.users.map((person) => ({
+        id: person.id,
+        name: `${person.first_name} ${person.last_name}`.trim(),
+      })),
+    }));
+  }, [
+    viewAllUsers,
+    workspace.overviewContext,
+    workspace.entries,
+    workspace.workingDayCount,
+  ]);
+
+  const scopedOverviewUsers = workspace.overviewContext?.users ?? [];
+
+  const overviewSummary = useMemo(() => {
+    if (!viewAllUsers || !scopedOverviewUsers.length) return workspace.summary;
+    return buildScopedOverviewSummary(
+      scopedOverviewUsers,
+      workspace.entries,
+      workspace.workingDayCount,
+    );
+  }, [
+    viewAllUsers,
+    scopedOverviewUsers,
+    workspace.entries,
+    workspace.workingDayCount,
+    workspace.summary,
+  ]);
 
   const saveEntryPayload = useCallback(
     (values: TimesheetEntryFormValues, entryId?: string | null) => ({
@@ -295,26 +305,59 @@ export function TimesheetsPage() {
   };
 
   const todayIso = todayIsoDate();
-  const todayHours = useMemo(
-    () => sumEntryHours(workspace.entries.filter((e) => e.entry_date === todayIso)),
-    [workspace.entries, todayIso],
-  );
+  const todayScoped = useMemo(() => {
+    if (!viewAllUsers || !scopedOverviewUsers.length) {
+      return {
+        todayHours: sumEntryHours(workspace.entries.filter((e) => e.entry_date === todayIso)),
+        todayExpected:
+          isWeekend(todayIso) || workspace.holidayDates.has(todayIso) ? 0 : workspace.dailyLimit,
+      };
+    }
+    return buildTodayScopedSummary(
+      scopedOverviewUsers,
+      workspace.entries,
+      todayIso,
+      workspace.holidayDates,
+    );
+  }, [
+    viewAllUsers,
+    scopedOverviewUsers,
+    workspace.entries,
+    workspace.holidayDates,
+    workspace.dailyLimit,
+    todayIso,
+  ]);
+  const todayHours = todayScoped.todayHours;
+  const todayExpected = todayScoped.todayExpected;
 
-  const todayExpected = useMemo(
-    () =>
-      isWeekend(todayIso) || workspace.holidayDates.has(todayIso) ? 0 : workspace.dailyLimit,
-    [todayIso, workspace.holidayDates, workspace.dailyLimit],
-  );
-
-  const { weeklyHours, weeklyExpected } = useMemo(() => {
+  const weeklyScoped = useMemo(() => {
     const weekStart = weekStartMonday(toolbarDate);
     const weekEnd = shiftIsoDate(weekStart, 6);
-    const hours = sumEntryHours(
-      workspace.entries.filter((e) => e.entry_date >= weekStart && e.entry_date <= weekEnd),
+    if (!viewAllUsers || !scopedOverviewUsers.length) {
+      const hours = sumEntryHours(
+        workspace.entries.filter((e) => e.entry_date >= weekStart && e.entry_date <= weekEnd),
+      );
+      const workingDays = weekWorkingDayCount(toolbarDate, workspace.holidayDates);
+      return { weeklyHours: hours, weeklyExpected: workingDays * workspace.dailyLimit };
+    }
+    return buildWeeklyScopedSummary(
+      scopedOverviewUsers,
+      workspace.entries,
+      weekStart,
+      weekEnd,
+      workspace.holidayDates,
+      toolbarDate,
     );
-    const workingDays = weekWorkingDayCount(toolbarDate, workspace.holidayDates);
-    return { weeklyHours: hours, weeklyExpected: workingDays * workspace.dailyLimit };
-  }, [workspace.entries, toolbarDate, workspace.holidayDates, workspace.dailyLimit]);
+  }, [
+    viewAllUsers,
+    scopedOverviewUsers,
+    workspace.entries,
+    toolbarDate,
+    workspace.holidayDates,
+    workspace.dailyLimit,
+  ]);
+  const weeklyHours = weeklyScoped.weeklyHours;
+  const weeklyExpected = weeklyScoped.weeklyExpected;
 
   if (workspace.isLoading) {
     return <LoadingState message="Loading timesheet workspace…" />;
@@ -365,7 +408,9 @@ export function TimesheetsPage() {
         primaryLabel={monthLabel}
         secondaryLabel={
           viewAllUsers
-            ? 'All users timesheet overview'
+            ? workspace.overviewContext?.scope_all_teams
+              ? 'All teams — timesheet overview'
+              : 'Your teams — timesheet overview'
             : `${formatDisplayValue(user ? userDisplayName(user) : '')} · ${toolbarDate}`
         }
         stickyTop={APP_TOP_BAR_OFFSET}
@@ -391,12 +436,19 @@ export function TimesheetsPage() {
 
       <TimesheetMonthSummaryBar
         status={workspace.monthStatus}
-        summary={workspace.summary}
+        summary={viewAllUsers ? overviewSummary : workspace.summary}
         todayHours={todayHours}
         todayExpected={todayExpected}
         weeklyHours={weeklyHours}
         weeklyExpected={weeklyExpected}
+        scopeLabel={viewAllUsers ? 'Team rollup' : undefined}
       />
+
+      {viewAllUsers && overviewSummary.remainingHours < 0 ? (
+        <Alert severity="warning" sx={{ mb: 1.5 }}>
+          Team entered hours exceed expected hours for this month.
+        </Alert>
+      ) : null}
 
       {!viewAllUsers && calendarLocked ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
@@ -416,7 +468,7 @@ export function TimesheetsPage() {
         </Alert>
       ) : null}
 
-      {workspace.summary.remainingHours < 0 ? (
+      {!viewAllUsers && workspace.summary.remainingHours < 0 ? (
         <Alert severity="warning" sx={{ mb: 1.5 }}>
           Entered hours exceed expected hours for this month.
         </Alert>

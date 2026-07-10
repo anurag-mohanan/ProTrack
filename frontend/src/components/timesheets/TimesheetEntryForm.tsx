@@ -15,7 +15,6 @@ import type { ContributionReason, TimesheetProjectLookup } from '../../types/Tim
 import { CONTRIBUTION_REASON_LABELS } from '../../types/TimesheetEntry';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { TimesheetProjectContextPanel } from './TimesheetProjectContextPanel';
-import { TimesheetSelectionLine } from './TimesheetSelectionLine';
 import { TimesheetToolNumberSelect } from './TimesheetToolNumberSelect';
 import {
   buildToolOptions,
@@ -438,12 +437,6 @@ export function TimesheetEntryForm({
           </ProsohmButton>
         ) : null}
       </Stack>
-
-      <TimesheetSelectionLine
-        selection={selectedTool}
-        project={selectedProject}
-        isBillable={form.isBillable}
-      />
 
       {selectedTool?.kind === 'project' && selectedProject ? (
         <TimesheetProjectContextPanel projectId={selectedProject.id} />

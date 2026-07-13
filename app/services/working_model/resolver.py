@@ -56,8 +56,11 @@ def resolve_working_model_for_project(
 
 
 def resolve_working_model_for_user(db: Session, user: User) -> WorkingModel | None:
-    if user.default_working_model_id is not None:
-        model = get_working_model_by_id(db, user.default_working_model_id)
-        if model is not None:
-            return model
-    return get_default_working_model(db)
+    """Return the user's explicit default only — never invent a fallback.
+
+    System admins and other non-billable accounts should keep
+    ``default_working_model_id`` unset (None).
+    """
+    if user.default_working_model_id is None:
+        return None
+    return get_working_model_by_id(db, user.default_working_model_id)

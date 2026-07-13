@@ -8,10 +8,11 @@ from sqlalchemy import select
 
 from app.db.phase15_working_model_schema_sync import ensure_phase15_working_model_foundation
 from app.models.enums import WorkingModelCode
-from app.models.models import Customer, Project, WorkingModel
+from app.models.models import Customer, Project, User, WorkingModel
 from app.services.project_calculation_service import calculate_hours
 from app.services.working_model.engine import WorkingModelEngine
 from app.services.working_model.registry import build_default_registry
+from app.services.working_model.resolver import resolve_working_model_for_user
 
 
 @pytest.fixture()
@@ -135,3 +136,22 @@ def test_overheads_strategy_hides_quote_variance(session, working_models):
     assert result.show_over_budget_indicators is False
     assert result.model_metrics.get("resource_class") == "management_overhead"
     assert engine.should_flag_hours_over_quote(project, hours) is False
+
+
+def test_user_with_no_working_model_resolves_to_none(session, working_models):
+    user = session.scalar(select(User).limit(1))
+    assert user is not None
+    user.default_working_model_id = None
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    assert resolve_working_model_for_user(session, user) is None
+
+    user.default_working_model_id = working_models["overheads"].id
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    resolved = resolve_working_model_for_user(session, user)
+    assert resolved is not None
+    assert resolved.code == "overheads"

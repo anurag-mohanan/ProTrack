@@ -89,6 +89,7 @@ export function FormSelect({
         {...props}
         label={label}
         value={value ?? ''}
+        displayEmpty
         onChange={onChange}
         sx={{
           borderRadius: 2.5,
@@ -96,7 +97,7 @@ export function FormSelect({
         }}
       >
         {options.map((option) => (
-          <MenuItem key={option.value} value={option.value}>
+          <MenuItem key={option.value || '__none__'} value={option.value}>
             {option.label}
           </MenuItem>
         ))}

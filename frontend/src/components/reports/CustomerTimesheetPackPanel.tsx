@@ -33,40 +33,11 @@ import type { Customer } from '../../types';
 import type { Team } from '../../types/Team';
 import { formatNumber } from '../../utils/format';
 import { ensureArray } from '../../types/pagination';
-
-function toIsoDate(value: Date): string {
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${value.getFullYear()}-${month}-${day}`;
-}
-
-function mondayOfWeek(value = new Date()): string {
-  const day = value.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(value);
-  monday.setDate(value.getDate() + diff);
-  return toIsoDate(monday);
-}
-
-function firstOfMonth(value = new Date()): string {
-  return toIsoDate(new Date(value.getFullYear(), value.getMonth(), 1));
-}
-
-function weekRangeLabel(anchor: string): string {
-  const start = new Date(`${anchor}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return '';
-  const end = new Date(start);
-  end.setDate(start.getDate() + 4);
-  const fmt = (d: Date) =>
-    d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
-  return `${fmt(start)} – ${fmt(end)} (Mon–Fri)`;
-}
-
-function monthLabel(anchor: string): string {
-  const start = new Date(`${anchor}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return '';
-  return start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-}
+import { defaultAnchorForPeriod } from '../../utils/reportPeriodSelection';
+import {
+  ReportPeriodSelectors,
+  syncAnchorForPeriodChange,
+} from './ReportPeriodSelectors';
 
 interface CustomerTimesheetPackPanelProps {
   canExport: boolean;
@@ -81,7 +52,7 @@ export function CustomerTimesheetPackPanel({
   const [customerId, setCustomerId] = useState('');
   const [teamId, setTeamId] = useState('');
   const [periodType, setPeriodType] = useState<'weekly' | 'monthly'>('weekly');
-  const [anchor, setAnchor] = useState(mondayOfWeek());
+  const [anchor, setAnchor] = useState(defaultAnchorForPeriod('weekly'));
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -119,7 +90,7 @@ export function CustomerTimesheetPackPanel({
 
   const handlePeriodTypeChange = (next: 'weekly' | 'monthly') => {
     setPeriodType(next);
-    setAnchor(next === 'weekly' ? mondayOfWeek() : firstOfMonth());
+    setAnchor((current) => syncAnchorForPeriodChange(next, current));
   };
 
   const handleDownload = async () => {
@@ -136,8 +107,6 @@ export function CustomerTimesheetPackPanel({
   };
 
   const payload = previewQuery.data;
-  const periodHelper =
-    periodType === 'weekly' ? weekRangeLabel(anchor) : monthLabel(anchor);
 
   const controls = (
     <Box
@@ -174,14 +143,10 @@ export function CustomerTimesheetPackPanel({
         <MenuItem value="weekly">Weekly</MenuItem>
         <MenuItem value="monthly">Monthly</MenuItem>
       </TextField>
-      <TextField
-        size="small"
-        type="date"
-        label={periodType === 'weekly' ? 'Week (any day)' : 'Month (any day)'}
-        value={anchor}
-        onChange={(event) => setAnchor(event.target.value)}
-        slotProps={{ inputLabel: { shrink: true } }}
-        helperText={periodHelper || 'Pick a date in the period'}
+      <ReportPeriodSelectors
+        periodType={periodType}
+        anchor={anchor}
+        onAnchorChange={setAnchor}
       />
       <TextField
         select

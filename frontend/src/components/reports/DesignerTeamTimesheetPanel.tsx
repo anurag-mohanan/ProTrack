@@ -34,6 +34,11 @@ import { LoadingState } from '../common/LoadingState';
 import { KpiMetricCard } from '../ui/design-system';
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
 import { formatNumber } from '../../utils/format';
+import { defaultAnchorForPeriod } from '../../utils/reportPeriodSelection';
+import {
+  ReportPeriodSelectors,
+  syncAnchorForPeriodChange,
+} from './ReportPeriodSelectors';
 
 const PERIOD_REPORTS = [
   { id: 'weekly-timesheet', label: 'Weekly', period: 'weekly' },
@@ -41,22 +46,6 @@ const PERIOD_REPORTS = [
   { id: 'quarterly-timesheet', label: 'Quarterly', period: 'quarterly' },
   { id: 'yearly-timesheet', label: 'Yearly', period: 'yearly' },
 ] as const;
-
-function currentMonthAnchor(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-01`;
-}
-
-function mondayOfWeek(value = new Date()): string {
-  const day = value.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(value);
-  monday.setDate(value.getDate() + diff);
-  const month = String(monday.getMonth() + 1).padStart(2, '0');
-  const dayNum = String(monday.getDate()).padStart(2, '0');
-  return `${monday.getFullYear()}-${month}-${dayNum}`;
-}
 
 interface DesignerTeamTimesheetPanelProps {
   canExport: boolean;
@@ -70,7 +59,7 @@ export function DesignerTeamTimesheetPanel({
   includeDeleted = false,
 }: DesignerTeamTimesheetPanelProps) {
   const [reportId, setReportId] = useState<(typeof PERIOD_REPORTS)[number]['id']>('monthly-timesheet');
-  const [anchor, setAnchor] = useState(currentMonthAnchor());
+  const [anchor, setAnchor] = useState(defaultAnchorForPeriod('monthly'));
   const [customerId, setCustomerId] = useState('');
   const [teamId, setTeamId] = useState('');
   const [downloading, setDownloading] = useState(false);
@@ -121,10 +110,8 @@ export function DesignerTeamTimesheetPanel({
   const handlePeriodChange = (nextId: (typeof PERIOD_REPORTS)[number]['id']) => {
     setReportId(nextId);
     const next = PERIOD_REPORTS.find((row) => row.id === nextId);
-    if (next?.period === 'weekly') {
-      setAnchor(mondayOfWeek());
-    } else {
-      setAnchor(currentMonthAnchor());
+    if (next) {
+      setAnchor((current) => syncAnchorForPeriodChange(next.period, current));
     }
   };
 
@@ -190,13 +177,10 @@ export function DesignerTeamTimesheetPanel({
                 </MenuItem>
               ))}
             </TextField>
-            <TextField
-              size="small"
-              type="date"
-              label="Anchor date"
-              value={anchor}
-              onChange={(event) => setAnchor(event.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
+            <ReportPeriodSelectors
+              periodType={selected.period}
+              anchor={anchor}
+              onAnchorChange={setAnchor}
             />
             <TextField
               select

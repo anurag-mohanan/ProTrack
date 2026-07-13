@@ -34,6 +34,10 @@ import { LoadingState } from '../common/LoadingState';
 import { AnalyticsBarChart } from '../analytics/AnalyticsCharts';
 import { KpiMetricCard } from '../ui/design-system';
 import { CustomerTimesheetPackPanel } from './CustomerTimesheetPackPanel';
+import {
+  ReportPeriodSelectors,
+  syncAnchorForPeriodChange,
+} from './ReportPeriodSelectors';
 import { fetchCustomers, fetchTeams } from '../../api/lookups';
 import {
   downloadEngineeringReportExcel,
@@ -59,6 +63,7 @@ import type { Customer } from '../../types';
 import type { Team } from '../../types/Team';
 import { formatNumber } from '../../utils/format';
 import { ensureArray } from '../../types/pagination';
+import { defaultAnchorForPeriod } from '../../utils/reportPeriodSelection';
 
 const CATEGORY_LABELS: Record<string, string> = {
   executive: 'Engineering Overview',
@@ -75,9 +80,7 @@ interface EngineeringReportingSuiteProps {
 }
 
 function currentMonthAnchor(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-01`;
+  return defaultAnchorForPeriod('monthly');
 }
 
 export function EngineeringReportingSuite({
@@ -277,7 +280,11 @@ export function EngineeringReportingSuite({
                   size="small"
                   label="Period"
                   value={periodType}
-                  onChange={(event) => setPeriodType(event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setPeriodType(next);
+                    setAnchor((current) => syncAnchorForPeriodChange(next, current));
+                  }}
                   sx={{ minWidth: 140 }}
                 >
                   {(selectedReport?.supported_periods ?? ['monthly']).map((period) => (
@@ -286,14 +293,10 @@ export function EngineeringReportingSuite({
                     </MenuItem>
                   ))}
                 </TextField>
-                <TextField
-                  size="small"
-                  label="Anchor date"
-                  type="date"
-                  value={anchor}
-                  onChange={(event) => setAnchor(event.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  sx={{ minWidth: 160 }}
+                <ReportPeriodSelectors
+                  periodType={periodType}
+                  anchor={anchor}
+                  onAnchorChange={setAnchor}
                 />
                 {canExport ? (
                   <Button
@@ -343,9 +346,11 @@ export function EngineeringReportingSuite({
                       variant={report.id === selectedReportId ? 'contained' : 'text'}
                       onClick={() => {
                         setSelectedReportId(report.id);
-                        if (!report.supported_periods.includes(periodType)) {
-                          setPeriodType(report.supported_periods[0] ?? 'monthly');
-                        }
+                        const nextPeriod = report.supported_periods.includes(periodType)
+                          ? periodType
+                          : (report.supported_periods[0] ?? 'monthly');
+                        setPeriodType(nextPeriod);
+                        setAnchor((current) => syncAnchorForPeriodChange(nextPeriod, current));
                       }}
                       sx={{ justifyContent: 'flex-start', textAlign: 'left' }}
                     >

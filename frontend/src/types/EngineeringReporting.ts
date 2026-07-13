@@ -80,6 +80,21 @@ export interface CustomerHoursRow {
   avg_hours_per_project: number;
 }
 
+export interface DesignerTeamTimesheetPayload {
+  report_id: string;
+  title: string;
+  company_name: string;
+  period: ReportPeriod;
+  generated_at: string;
+  designers: DesignerProductivityRow[];
+  projects: ToolHoursRow[];
+  total_designer_hours: number;
+  total_project_actual_hours: number;
+  team_count: number;
+  designer_count: number;
+  project_count: number;
+}
+
 export interface EngineeringReportPayload {
   report_id: string;
   period: ReportPeriod;

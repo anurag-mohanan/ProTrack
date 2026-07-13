@@ -1,4 +1,5 @@
 import type {
+  DesignerTeamTimesheetPayload,
   EngineeringReportOptions,
   EngineeringReportPayload,
   ReportCatalog,
@@ -20,6 +21,15 @@ function reportQuery(options?: EngineeringReportOptions): string {
   });
 }
 
+export function isDesignerTeamTimesheetReport(reportId: string): boolean {
+  return (
+    reportId === 'weekly-timesheet' ||
+    reportId === 'monthly-timesheet' ||
+    reportId === 'quarterly-timesheet' ||
+    reportId === 'yearly-timesheet'
+  );
+}
+
 export async function fetchEngineeringReportCatalog(): Promise<ReportCatalog> {
   const { data } = await apiClient.get<ReportCatalog>('/reports/catalog');
   return data;
@@ -28,8 +38,8 @@ export async function fetchEngineeringReportCatalog(): Promise<ReportCatalog> {
 export async function fetchEngineeringReportPreview(
   reportId: string,
   options?: EngineeringReportOptions,
-): Promise<EngineeringReportPayload> {
-  const { data } = await apiClient.get<EngineeringReportPayload>(
+): Promise<EngineeringReportPayload | DesignerTeamTimesheetPayload> {
+  const { data } = await apiClient.get<EngineeringReportPayload | DesignerTeamTimesheetPayload>(
     `/reports/engine/${reportId}/preview${reportQuery(options)}`,
   );
   return data;

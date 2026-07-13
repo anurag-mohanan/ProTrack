@@ -41,9 +41,15 @@ import {
   fetchEngineeringReportCatalog,
   fetchEngineeringReportPreview,
   fetchEngineeringReportSchedules,
+  isDesignerTeamTimesheetReport,
   saveEngineeringReportSchedule,
 } from '../../api/engineeringReporting';
-import type { EngineeringReportOptions, ReportCatalogEntry } from '../../types/EngineeringReporting';
+import type {
+  DesignerTeamTimesheetPayload,
+  EngineeringReportOptions,
+  EngineeringReportPayload,
+  ReportCatalogEntry,
+} from '../../types/EngineeringReporting';
 import { formatNumber } from '../../utils/format';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -58,6 +64,8 @@ interface EngineeringReportingSuiteProps {
   canExport: boolean;
   includeArchived: boolean;
   includeDeleted: boolean;
+  /** Prefer this catalog report when the suite mounts (e.g. Timesheet Reports tab). */
+  initialReportId?: string;
 }
 
 function currentMonthAnchor(): string {
@@ -70,11 +78,16 @@ export function EngineeringReportingSuite({
   canExport,
   includeArchived,
   includeDeleted,
+  initialReportId = 'monthly-engineering',
 }: EngineeringReportingSuiteProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedReportId, setSelectedReportId] = useState('monthly-engineering');
-  const [periodType, setPeriodType] = useState('monthly');
+  const [selectedReportId, setSelectedReportId] = useState(initialReportId);
+  const [periodType, setPeriodType] = useState(
+    isDesignerTeamTimesheetReport(initialReportId)
+      ? initialReportId.replace('-timesheet', '')
+      : 'monthly',
+  );
   const [anchor, setAnchor] = useState(currentMonthAnchor());
   const [customerId, setCustomerId] = useState('');
   const [teamId, setTeamId] = useState('');
@@ -113,6 +126,7 @@ export function EngineeringReportingSuite({
   );
 
   const isCustomerTimesheetPack = selectedReportId === 'customer-timesheet-pack';
+  const isDesignerTeamTimesheet = isDesignerTeamTimesheetReport(selectedReportId);
 
   const reportOptions: EngineeringReportOptions = useMemo(
     () => ({
@@ -182,7 +196,13 @@ export function EngineeringReportingSuite({
   }
 
   const payload = previewQuery.data;
-  const customerChart = payload?.charts.find((chart) => chart.title.toLowerCase().includes('customer'));
+  const engineeringPayload =
+    payload && 'executive' in payload ? (payload as EngineeringReportPayload) : null;
+  const timesheetPayload =
+    payload && 'designers' in payload ? (payload as DesignerTeamTimesheetPayload) : null;
+  const customerChart = engineeringPayload?.charts.find((chart) =>
+    chart.title.toLowerCase().includes('customer'),
+  );
 
   return (
     <Stack spacing={3}>
@@ -343,8 +363,14 @@ export function EngineeringReportingSuite({
                 <Typography variant="body2" color="text.secondary">
                   {selectedReport?.description}
                 </Typography>
-                {!isCustomerTimesheetPack && payload ? (
-                  <Chip size="small" label={payload.period.label} sx={{ mt: 1 }} />
+                {!isCustomerTimesheetPack && (engineeringPayload || timesheetPayload) ? (
+                  <Chip
+                    size="small"
+                    label={
+                      (engineeringPayload ?? timesheetPayload)?.period.label ?? ''
+                    }
+                    sx={{ mt: 1 }}
+                  />
                 ) : null}
               </Box>
               {!isCustomerTimesheetPack ? (
@@ -378,7 +404,136 @@ export function EngineeringReportingSuite({
           {previewQuery.isLoading ? <LoadingState message="Building report preview…" /> : null}
           {previewQuery.error ? <ErrorState error={previewQuery.error} /> : null}
 
-          {payload ? (
+          {isDesignerTeamTimesheet && timesheetPayload ? (
+            <>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    sm: 'repeat(2, 1fr)',
+                    md: 'repeat(4, 1fr)',
+                  },
+                  gap: 2,
+                }}
+              >
+                <KpiMetricCard
+                  title="Period designer hours"
+                  value={formatNumber(timesheetPayload.total_designer_hours)}
+                  icon={AssessmentRoundedIcon}
+                  accent="primary"
+                  compact
+                />
+                <KpiMetricCard
+                  title="Designers"
+                  value={String(timesheetPayload.designer_count)}
+                  icon={AssessmentRoundedIcon}
+                  accent="primary"
+                  compact
+                />
+                <KpiMetricCard
+                  title="Teams"
+                  value={String(timesheetPayload.team_count)}
+                  icon={AssessmentRoundedIcon}
+                  accent="primary"
+                  compact
+                />
+                <KpiMetricCard
+                  title="Project hours to date"
+                  value={formatNumber(timesheetPayload.total_project_actual_hours)}
+                  icon={AssessmentRoundedIcon}
+                  accent="primary"
+                  compact
+                />
+              </Box>
+
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
+                  Individual designer hours by team
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Hours booked in {timesheetPayload.period.label}
+                </Typography>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Team</TableCell>
+                        <TableCell>Designer</TableCell>
+                        <TableCell align="right">Productive</TableCell>
+                        <TableCell align="right">NP</TableCell>
+                        <TableCell align="right">Leave days</TableCell>
+                        <TableCell align="right">Total</TableCell>
+                        <TableCell align="right">Utilization</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {timesheetPayload.designers.map((row) => (
+                        <TableRow
+                          key={row.user_id}
+                          hover
+                          sx={{ cursor: 'pointer' }}
+                          onClick={() => navigate(`/dashboard?user=${row.user_id}`)}
+                        >
+                          <TableCell>{row.team_name ?? '—'}</TableCell>
+                          <TableCell>{row.designer_name}</TableCell>
+                          <TableCell align="right">{formatNumber(row.productive_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.non_productive_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.leave_days)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.utilization_percent)}%</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
+                  Total project hours to date
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Cumulative as of {new Date(timesheetPayload.generated_at).toLocaleString()}
+                </Typography>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Tool</TableCell>
+                        <TableCell>Customer</TableCell>
+                        <TableCell align="right">Quoted</TableCell>
+                        <TableCell align="right">Actual to date</TableCell>
+                        <TableCell align="right">Variance</TableCell>
+                        <TableCell align="right">Completion</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {timesheetPayload.projects.slice(0, 40).map((row) => (
+                        <TableRow
+                          key={`${row.tool_number}-${row.customer_name}`}
+                          hover
+                          sx={{ cursor: row.project_id ? 'pointer' : 'default' }}
+                          onClick={() => {
+                            if (row.project_id) navigate(`/projects/${row.project_id}`);
+                          }}
+                        >
+                          <TableCell>{row.tool_number}</TableCell>
+                          <TableCell>{row.customer_name}</TableCell>
+                          <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.variance_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.completion_percent)}%</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+            </>
+          ) : null}
+
+          {!isDesignerTeamTimesheet && engineeringPayload ? (
             <>
               <Box
                 sx={{
@@ -392,7 +547,7 @@ export function EngineeringReportingSuite({
                   gap: 2,
                 }}
               >
-                {payload.executive.kpis.map((kpi) => (
+                {engineeringPayload.executive.kpis.map((kpi) => (
                   <KpiMetricCard
                     key={kpi.label}
                     title={kpi.label}
@@ -435,7 +590,7 @@ export function EngineeringReportingSuite({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {payload.designer_productivity.slice(0, 12).map((row) => (
+                      {engineeringPayload.designer_productivity.slice(0, 12).map((row) => (
                         <TableRow
                           key={row.user_id}
                           hover
@@ -473,7 +628,7 @@ export function EngineeringReportingSuite({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {payload.tool_hours.slice(0, 12).map((row) => (
+                      {engineeringPayload.tool_hours.slice(0, 12).map((row) => (
                         <TableRow
                           key={`${row.tool_number}-${row.customer_name}`}
                           hover
@@ -512,7 +667,7 @@ export function EngineeringReportingSuite({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {payload.customer_summary.slice(0, 10).map((row) => (
+                      {engineeringPayload.customer_summary.slice(0, 10).map((row) => (
                         <TableRow key={row.customer_name} hover>
                           <TableCell>
                             <RouterLink to="/admin/customers" style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -531,7 +686,7 @@ export function EngineeringReportingSuite({
                 </TableContainer>
               </Paper>
 
-              {payload.ai_insights.length > 0 ? (
+              {engineeringPayload.ai_insights.length > 0 ? (
                 <Card variant="outlined">
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -539,7 +694,7 @@ export function EngineeringReportingSuite({
                       <Typography variant="subtitle1">AI Engineering Insights</Typography>
                     </Box>
                     <List dense>
-                      {payload.ai_insights.map((insight) => (
+                      {engineeringPayload.ai_insights.map((insight) => (
                         <ListItem key={insight} disablePadding>
                           <ListItemText primary={insight} />
                         </ListItem>

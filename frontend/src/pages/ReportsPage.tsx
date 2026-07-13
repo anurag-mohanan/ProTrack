@@ -37,8 +37,6 @@ import {
 import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
 import { EngineeringReportingSuite } from '../components/reports/EngineeringReportingSuite';
 import { CustomerTimesheetPackPanel } from '../components/reports/CustomerTimesheetPackPanel';
-import { fetchCustomers, fetchTeams, fetchUsers, fetchTaskTypes } from '../api/lookups';
-import { fetchProjects } from '../api/projects';
 import { useAuth } from '../context/AuthContext';
 import {
   getBillableUtilizationReport,
@@ -48,13 +46,11 @@ import {
   getMonthlyNpTrendsReport,
   getNonProductiveHoursReport,
   getNpHoursByDesignerReport,
-  getProductiveHoursReport,
   getProjectHoursReport,
   getProjectPortfolioReport,
   getProjectStageSummaryReport,
   getExecutionStatusSummaryReport,
   getTopNpActivitiesReport,
-  getTimesheetExportReport,
   reportQueryKeys,
   type ReportOptions,
 } from '../services/reportService';
@@ -65,7 +61,7 @@ import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 const TAB_CONFIG = [
   { label: 'Engineering Suite', slug: 'engineering-suite', category: 'executive' },
   { label: 'Project Hours', slug: 'project-hours', category: 'projects' },
-  { label: 'Productive Hours', slug: 'productive-hours', category: 'timesheets' },
+  { label: 'Timesheet Reports', slug: 'timesheet-reports', category: 'timesheets' },
   { label: 'NP Hours by Code', slug: 'np-hours', category: 'leave' },
   { label: 'NP Hours by Designer', slug: 'np-by-designer', category: 'leave' },
   { label: 'NP Hours by Month', slug: 'np-by-month', category: 'leave' },
@@ -77,7 +73,6 @@ const TAB_CONFIG = [
   { label: 'By Project Stage', slug: 'by-stage', category: 'projects' },
   { label: 'By Execution Status', slug: 'by-execution-status', category: 'projects' },
   { label: 'Project Portfolio', slug: 'project-portfolio', category: 'projects' },
-  { label: 'Timesheet Export', slug: 'timesheet-export', category: 'timesheets' },
   { label: 'Team Reports', slug: 'team-reports', category: 'planning' },
   { label: 'Customer Timesheet Pack', slug: 'customer-timesheet-pack', category: 'customers' },
 ] as const;
@@ -100,15 +95,6 @@ export function ReportsPage() {
   const [draftIncludeArchived, setDraftIncludeArchived] = useState(true);
   const [appliedIncludeDeleted, setAppliedIncludeDeleted] = useState(false);
   const [draftIncludeDeleted, setDraftIncludeDeleted] = useState(false);
-  const [exportPeriod, setExportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'>('monthly');
-  const [exportFilters, setExportFilters] = useState<{
-    team_id: string;
-    user_id: string;
-    customer_id: string;
-    project_id: string;
-    task_type_id: string;
-    billable: '' | 'billable' | 'non_billable';
-  }>({ team_id: '', user_id: '', customer_id: '', project_id: '', task_type_id: '', billable: '' });
 
   const access = accessContextFromUser(user);
   const canExport = canExportReports(access);
@@ -133,11 +119,6 @@ export function ReportsPage() {
     queryKey: reportQueryKeys.projectHours(reportOptions),
     queryFn: () => getProjectHoursReport(reportOptions),
     enabled: tab === 1,
-  });
-  const productiveQuery = useQuery({
-    queryKey: reportQueryKeys.productiveHours,
-    queryFn: getProductiveHoursReport,
-    enabled: tab === 2,
   });
   const npHoursQuery = useQuery({
     queryKey: reportQueryKeys.nonProductiveHours,
@@ -194,62 +175,19 @@ export function ReportsPage() {
     queryFn: () => getProjectPortfolioReport(reportOptions),
     enabled: tab === 13,
   });
-  const timesheetExportQuery = useQuery({
-    queryKey: ['reports', 'timesheet-export', exportPeriod, exportFilters],
-    queryFn: () =>
-      getTimesheetExportReport({
-        period: exportPeriod,
-        team_id: exportFilters.team_id || undefined,
-        user_id: exportFilters.user_id || undefined,
-        customer_id: exportFilters.customer_id || undefined,
-        project_id: exportFilters.project_id || undefined,
-        task_type_id: exportFilters.task_type_id || undefined,
-        billable: exportFilters.billable || undefined,
-      }),
-    enabled: tab === 14,
-  });
 
-  const exportTeamsQuery = useQuery({
-    queryKey: ['reports', 'export-teams'],
-    queryFn: fetchTeams,
-    enabled: tab === 14,
-    staleTime: 5 * 60 * 1000,
-  });
-  const exportUsersQuery = useQuery({
-    queryKey: ['reports', 'export-users'],
-    queryFn: fetchUsers,
-    enabled: tab === 14,
-    staleTime: 5 * 60 * 1000,
-  });
-  const exportCustomersQuery = useQuery({
-    queryKey: ['reports', 'export-customers'],
-    queryFn: fetchCustomers,
-    enabled: tab === 14,
-    staleTime: 5 * 60 * 1000,
-  });
-  const exportProjectsQuery = useQuery({
-    queryKey: ['reports', 'export-projects'],
-    queryFn: () => fetchProjects({ limit: 500 }),
-    enabled: tab === 14,
-    staleTime: 5 * 60 * 1000,
-  });
-  const exportTaskTypesQuery = useQuery({
-    queryKey: ['reports', 'export-task-types'],
-    queryFn: () => fetchTaskTypes(),
-    enabled: tab === 14,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const teamReportsEnabled = tab === 15;
-  const customerTimesheetPackEnabled = tab === 16;
+  const teamReportsEnabled = tab === 14;
+  const customerTimesheetPackEnabled = tab === 15;
+  const timesheetReportsEnabled = tab === 2;
+  const suiteEnabled = tab === 0 || timesheetReportsEnabled;
 
   const activeQuery = useMemo(() => {
-    if (tab === 0 || teamReportsEnabled || customerTimesheetPackEnabled) {
+    if (suiteEnabled || teamReportsEnabled || customerTimesheetPackEnabled) {
       return { isLoading: false, error: null };
     }
     const queries = [
       projectHoursQuery,
-      productiveQuery,
+      null, // timesheet-reports (suite)
       npHoursQuery,
       npByDesignerQuery,
       npTrendsQuery,
@@ -261,15 +199,14 @@ export function ReportsPage() {
       stageSummaryQuery,
       executionSummaryQuery,
       portfolioQuery,
-      timesheetExportQuery,
     ];
     return queries[tab - 1] ?? projectHoursQuery;
   }, [
     tab,
+    suiteEnabled,
     teamReportsEnabled,
     customerTimesheetPackEnabled,
     projectHoursQuery,
-    productiveQuery,
     npHoursQuery,
     npByDesignerQuery,
     npTrendsQuery,
@@ -395,33 +332,17 @@ export function ReportsPage() {
         {activeQuery.isLoading ? <LoadingState message="Loading reports…" /> : null}
         {activeQuery.error ? <ErrorState error={activeQuery.error} /> : null}
 
-        {tab === 0 ? (
+        {suiteEnabled ? (
           <EngineeringReportingSuite
             canExport={canExport}
             includeArchived={appliedIncludeArchived}
             includeDeleted={appliedIncludeDeleted}
+            initialReportId={timesheetReportsEnabled ? 'monthly-timesheet' : 'monthly-engineering'}
           />
         ) : null}
 
         {tab === 1 && !projectHoursQuery.isLoading && !projectHoursQuery.error ? (
           <ProjectHoursReportView rows={projectHoursQuery.data ?? []} canExport={canExport} />
-        ) : null}
-
-        {tab === 2 && !productiveQuery.isLoading && !productiveQuery.error ? (
-          <SimpleTableReportView
-            title="Productive Hours"
-            filename="productive-hours"
-            canExport={canExport}
-            rows={(productiveQuery.data ?? []) as unknown as Record<string, unknown>[]}
-            columns={[
-              { key: 'tool_number', header: 'Project' },
-              { key: 'customer_name', header: 'Customer' },
-              { key: 'task_type_name', header: 'Task' },
-              { key: 'total_hours', header: 'Total', align: 'right' },
-              { key: 'billable_hours', header: 'Billable', align: 'right' },
-              { key: 'non_billable_hours', header: 'Non-Billable', align: 'right' },
-            ]}
-          />
         ) : null}
 
         {tab === 3 && !npHoursQuery.isLoading && !npHoursQuery.error ? (
@@ -500,127 +421,6 @@ export function ReportsPage() {
 
         {tab === 13 && !portfolioQuery.isLoading && !portfolioQuery.error ? (
           <PortfolioReportView rows={portfolioQuery.data ?? []} canExport={canExport} />
-        ) : null}
-
-        {tab === 14 && !timesheetExportQuery.isLoading && !timesheetExportQuery.error ? (
-          <Stack spacing={2}>
-            <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
-              <FormSelect
-                label="Export period"
-                value={exportPeriod}
-                options={[
-                  { value: 'daily', label: 'Daily' },
-                  { value: 'weekly', label: 'Weekly' },
-                  { value: 'monthly', label: 'Monthly' },
-                  { value: 'quarterly', label: 'Quarterly' },
-                  { value: 'yearly', label: 'Yearly' },
-                ]}
-                onChange={(event) =>
-                  setExportPeriod(event.target.value as typeof exportPeriod)
-                }
-                sx={compactFilterFieldSx}
-              />
-              <FormSelect
-                label="Team"
-                value={exportFilters.team_id}
-                options={[
-                  { value: '', label: 'All teams' },
-                  ...(exportTeamsQuery.data ?? []).map((t) => ({ value: t.id, label: t.name })),
-                ]}
-                onChange={(event) =>
-                  setExportFilters((f) => ({ ...f, team_id: String(event.target.value) }))
-                }
-                sx={compactFilterFieldSx}
-              />
-              <FormSelect
-                label="Designer"
-                value={exportFilters.user_id}
-                options={[
-                  { value: '', label: 'All designers' },
-                  ...(exportUsersQuery.data ?? []).map((u) => ({
-                    value: u.id,
-                    label: `${u.first_name} ${u.last_name}`.trim() || u.email,
-                  })),
-                ]}
-                onChange={(event) =>
-                  setExportFilters((f) => ({ ...f, user_id: String(event.target.value) }))
-                }
-                sx={compactFilterFieldSx}
-              />
-              <FormSelect
-                label="Customer"
-                value={exportFilters.customer_id}
-                options={[
-                  { value: '', label: 'All customers' },
-                  ...(exportCustomersQuery.data ?? []).map((c) => ({ value: c.id, label: c.name })),
-                ]}
-                onChange={(event) =>
-                  setExportFilters((f) => ({ ...f, customer_id: String(event.target.value) }))
-                }
-                sx={compactFilterFieldSx}
-              />
-              <FormSelect
-                label="Project"
-                value={exportFilters.project_id}
-                options={[
-                  { value: '', label: 'All projects' },
-                  ...(exportProjectsQuery.data ?? []).map((p) => ({
-                    value: p.id,
-                    label: p.code ? `${p.code} — ${p.tool_number}` : p.tool_number || p.id,
-                  })),
-                ]}
-                onChange={(event) =>
-                  setExportFilters((f) => ({ ...f, project_id: String(event.target.value) }))
-                }
-                sx={compactFilterFieldSx}
-              />
-              <FormSelect
-                label="Task"
-                value={exportFilters.task_type_id}
-                options={[
-                  { value: '', label: 'All tasks' },
-                  ...(exportTaskTypesQuery.data ?? []).map((t) => ({ value: t.id, label: t.name })),
-                ]}
-                onChange={(event) =>
-                  setExportFilters((f) => ({ ...f, task_type_id: String(event.target.value) }))
-                }
-                sx={compactFilterFieldSx}
-              />
-              <FormSelect
-                label="Billable"
-                value={exportFilters.billable}
-                options={[
-                  { value: '', label: 'All' },
-                  { value: 'billable', label: 'Billable only' },
-                  { value: 'non_billable', label: 'Non-billable only' },
-                ]}
-                onChange={(event) =>
-                  setExportFilters((f) => ({
-                    ...f,
-                    billable: event.target.value as typeof f.billable,
-                  }))
-                }
-                sx={compactFilterFieldSx}
-              />
-            </Stack>
-            <SimpleTableReportView
-              title="Timesheet Export"
-              filename={`timesheet-export-${exportPeriod}`}
-              canExport={canExport}
-              rows={(timesheetExportQuery.data ?? []) as unknown as Record<string, unknown>[]}
-              columns={[
-                { key: 'entry_date', header: 'Date' },
-                { key: 'employee_name', header: 'Employee' },
-                { key: 'team_name', header: 'Team' },
-                { key: 'customer_name', header: 'Customer' },
-                { key: 'tool_number', header: 'Project' },
-                { key: 'task_name', header: 'Task' },
-                { key: 'hours', header: 'Hours', align: 'right' },
-                { key: 'is_billable', header: 'Billable' },
-                { key: 'work_category', header: 'Category' },
-              ]}
-            />
-          </Stack>
         ) : null}
 
         {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}

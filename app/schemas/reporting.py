@@ -1,6 +1,6 @@
 """Schemas for the Engineering Management Reporting Engine."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -214,6 +214,23 @@ class CustomerTimesheetPackPayload(BaseModel):
     total_non_productive_hours: Decimal = Decimal("0")
     total_hours: Decimal = Decimal("0")
     overall_utilization_percent: Decimal = Decimal("0")
+
+
+class DesignerTeamTimesheetPayload(BaseModel):
+    """Simplified timesheet report: period designer hours by team + lifetime project hours."""
+
+    report_id: str
+    title: str
+    company_name: str
+    period: ReportPeriod
+    generated_at: datetime
+    designers: list[DesignerProductivityRow] = Field(default_factory=list)
+    projects: list[ToolHoursRow] = Field(default_factory=list)
+    total_designer_hours: Decimal = Decimal("0")
+    total_project_actual_hours: Decimal = Decimal("0")
+    team_count: int = 0
+    designer_count: int = 0
+    project_count: int = 0
 
 
 class ChartSeries(BaseModel):

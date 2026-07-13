@@ -72,6 +72,7 @@ from app.schemas.reports import (
 )
 from app.schemas.reporting import (
     CustomerTimesheetPackPayload,
+    DesignerTeamTimesheetPayload,
     EngineeringReportPayload,
     ReportCatalog,
     ReportScheduleEntry,
@@ -79,7 +80,12 @@ from app.schemas.reporting import (
 )
 from app.services.reporting import reporting_engine
 from app.services.reporting.customer_timesheet_pack import build_customer_timesheet_pack
+from app.services.reporting.designer_team_timesheet import (
+    build_designer_team_timesheet,
+    is_designer_team_timesheet_report,
+)
 from app.services.reporting.excel.customer_timesheet import generate_customer_timesheet_excel
+from app.services.reporting.excel.designer_team_timesheet import generate_designer_team_timesheet_excel
 from app.services.reporting.schedule_store import list_schedules, upsert_schedule
 
 router = APIRouter(
@@ -215,16 +221,31 @@ def customer_timesheet_pack_export(
     )
 
 
-@router.get("/engine/{report_id}/preview", response_model=EngineeringReportPayload)
+@router.get(
+    "/engine/{report_id}/preview",
+    response_model=EngineeringReportPayload | DesignerTeamTimesheetPayload,
+)
 def engineering_report_preview(
     report_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     options: dict[str, object] = Depends(_engineering_report_options),
 ):
     if report_id == "customer-timesheet-pack":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Use /reports/customer-timesheet-pack/preview with customer_id",
+        )
+    if is_designer_team_timesheet_report(report_id):
+        return build_designer_team_timesheet(
+            db,
+            current_user=current_user,
+            report_id=report_id,
+            period_type=str(options.get("period_type") or "monthly"),
+            anchor=options.get("anchor"),  # type: ignore[arg-type]
+            include_archived=bool(options.get("include_archived", True)),
+            include_deleted=bool(options.get("include_deleted", False)),
+            scope=options.get("scope"),  # type: ignore[arg-type]
         )
     try:
         return reporting_engine.build_report(db, report_id=report_id, **options)
@@ -238,6 +259,7 @@ def engineering_report_preview(
 def engineering_report_export(
     report_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     options: dict[str, object] = Depends(_engineering_report_options),
 ):
     if report_id == "customer-timesheet-pack":
@@ -246,14 +268,28 @@ def engineering_report_export(
             detail="Use /reports/customer-timesheet-pack/export.xlsx with customer_id",
         )
     try:
-        payload = reporting_engine.build_report(db, report_id=report_id, **options)
-        content = reporting_engine.export_excel(payload)
+        if is_designer_team_timesheet_report(report_id):
+            timesheet_payload = build_designer_team_timesheet(
+                db,
+                current_user=current_user,
+                report_id=report_id,
+                period_type=str(options.get("period_type") or "monthly"),
+                anchor=options.get("anchor"),  # type: ignore[arg-type]
+                include_archived=bool(options.get("include_archived", True)),
+                include_deleted=bool(options.get("include_deleted", False)),
+                scope=options.get("scope"),  # type: ignore[arg-type]
+            )
+            content = generate_designer_team_timesheet_excel(timesheet_payload)
+            filename = f"{report_id}-{timesheet_payload.period.start_date.isoformat()}.xlsx"
+        else:
+            payload = reporting_engine.build_report(db, report_id=report_id, **options)
+            content = reporting_engine.export_excel(payload)
+            filename = f"{report_id}-{payload.period.start_date.isoformat()}.xlsx"
     except KeyError as exc:
         if "Unknown report" in str(exc) or "not registered" in str(exc):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         raise
 
-    filename = f"{report_id}-{payload.period.start_date.isoformat()}.xlsx"
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

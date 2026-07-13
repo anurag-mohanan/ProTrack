@@ -22,7 +22,7 @@ export const REPORT_CATEGORIES = [
   {
     id: 'timesheets',
     label: 'Timesheets',
-    slugs: ['productive-hours', 'timesheet-export', 'billable-vs-np', 'billable-utilization'],
+    slugs: ['timesheet-reports'],
   },
   {
     id: 'engineering',

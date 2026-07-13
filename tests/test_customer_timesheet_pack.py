@@ -11,12 +11,12 @@ from app.services.reporting.registry import get_report_definition
 from tests.conftest import IDS, login
 
 
-def _seed_customer_week_entries(session):
+def _seed_customer_week_entries(session, *, status=TimesheetStatus.approved, set_entry_customer=True):
     week_start = date(2026, 6, 8)  # Monday
     timesheet = Timesheet(
         user_id=IDS["user_binil"],
         week_start=week_start,
-        status=TimesheetStatus.approved,
+        status=status,
     )
     session.add(timesheet)
     session.flush()
@@ -28,7 +28,7 @@ def _seed_customer_week_entries(session):
                 hours=Decimal("8"),
                 work_category=WorkCategory.productive,
                 is_billable=True,
-                customer_id=IDS["customer"],
+                customer_id=IDS["customer"] if set_entry_customer else None,
                 project_id=IDS["project"],
                 description="Mold design",
             ),
@@ -38,7 +38,7 @@ def _seed_customer_week_entries(session):
                 hours=Decimal("4"),
                 work_category=WorkCategory.non_productive,
                 is_billable=False,
-                customer_id=IDS["customer"],
+                customer_id=IDS["customer"] if set_entry_customer else None,
                 description="Training",
             ),
         ]
@@ -126,3 +126,33 @@ def test_designer_forbidden_from_customer_timesheet_pack(client, session):
         },
     )
     assert response.status_code == 403
+
+
+def test_customer_timesheet_pack_includes_draft_hours(session):
+    week_start = _seed_customer_week_entries(session, status=TimesheetStatus.draft)
+    admin = session.get(__import__("app.models.models", fromlist=["User"]).User, IDS["user_admin"])
+    pack = build_customer_timesheet_pack(
+        session,
+        customer_id=IDS["customer"],
+        current_user=admin,
+        period_type="weekly",
+        anchor=week_start,
+    )
+    assert pack.total_hours == Decimal("12.00")
+    assert pack.associates[0].utilization_percent > 0
+
+
+def test_customer_timesheet_pack_matches_project_customer_when_entry_customer_null(session):
+    week_start = _seed_customer_week_entries(session, set_entry_customer=False)
+    admin = session.get(__import__("app.models.models", fromlist=["User"]).User, IDS["user_admin"])
+    pack = build_customer_timesheet_pack(
+        session,
+        customer_id=IDS["customer"],
+        current_user=admin,
+        period_type="weekly",
+        anchor=week_start,
+    )
+    # Productive row has project → customer; NP row without project/customer is excluded.
+    assert pack.associates[0].productive_hours == Decimal("8.00")
+    assert pack.total_productive_hours == Decimal("8.00")
+    assert any(row.tool_number for row in pack.tools)

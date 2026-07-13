@@ -235,7 +235,8 @@ export function CustomerTimesheetPackPanel({
           <Stack spacing={1.5}>
             <Typography variant="h6">Customer Timesheet Pack</Typography>
             <Typography variant="body2" color="text.secondary">
-              Prosohm-style weekly or monthly timesheet for subscription / fixed-resource customers.
+              Prosohm-style weekly or monthly timesheet for one customer. Includes draft,
+              submitted, and approved hours — productive vs NP, utilization, and tool rollup.
               Includes associate productive vs NP hours, utilization, and tool rollup for customer AP.
             </Typography>
             {controls}
@@ -319,8 +320,10 @@ export function CustomerTimesheetPackPanel({
                   <TableRow>
                     <TableCell colSpan={8}>
                       <Typography variant="body2" color="text.secondary">
-                        No submitted/approved hours for this customer in the selected period
-                        {teamId ? ' and team' : ''}.
+                        No timesheet hours found for this customer in the selected period
+                        {teamId ? ' and team' : ''}. Check that hours are booked on this customer&apos;s
+                        projects, the period dates are correct, and (if used) the team filter matches
+                        the people or projects that logged the work.
                       </Typography>
                     </TableCell>
                   </TableRow>

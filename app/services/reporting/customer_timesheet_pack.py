@@ -7,7 +7,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.non_productive_categories import is_leave_entry
@@ -31,12 +31,13 @@ from app.schemas.reporting import (
     ReportPeriod,
 )
 from app.services.holiday_service import load_holiday_dates
-from app.services.kpi_participation import engineering_productivity_users
 from app.services.reporting.periods import build_report_period
-from app.services.user_team_service import get_user_team_ids
+from app.services.reporting.report_scope import _users_on_teams
 
-_CUSTOMER_FACING_STATUSES = frozenset(
+# Internal managers need draft hours visible; rejected stays excluded.
+_PACK_STATUSES = frozenset(
     {
+        TimesheetStatus.draft,
         TimesheetStatus.submitted,
         TimesheetStatus.approved,
     }
@@ -51,6 +52,16 @@ def _pct(numerator: Decimal, denominator: Decimal) -> Decimal:
 
 def _iso_week_number(start: date) -> int:
     return int(start.isocalendar()[1])
+
+
+def _customer_match_clause(customer_id: UUID):
+    """Match entry.customer_id or the linked project's customer (historical imports often omit entry.customer_id)."""
+    return or_(
+        TimesheetEntry.customer_id == customer_id,
+        TimesheetEntry.project_id.in_(
+            select(Project.id).where(Project.customer_id == customer_id)
+        ),
+    )
 
 
 def build_customer_timesheet_pack(
@@ -79,12 +90,13 @@ def build_customer_timesheet_pack(
     daily_hours = _decimal(company.default_working_hours_per_day)
     working_hours_target = _round_hours(Decimal(period.working_days) * daily_hours)
 
-    scoped_user_ids = _scoped_engineering_user_ids(db, current_user, team_id=team_id)
+    scoped_user_ids = _scoped_user_ids(db, current_user, team_id=team_id)
     entries = _load_customer_entries(
         db,
         customer_id=customer_id,
         period=period,
         user_ids=scoped_user_ids,
+        team_id=team_id,
     )
 
     associates = _build_associates(db, entries, working_hours_target)
@@ -93,7 +105,8 @@ def build_customer_timesheet_pack(
     total_productive = sum((row.productive_hours for row in associates), Decimal("0"))
     total_np = sum((row.non_productive_hours for row in associates), Decimal("0"))
     total_hours = total_productive + total_np
-    expected_capacity = working_hours_target * Decimal(max(len(associates), 1))
+    # Utilization vs team capacity for people who logged hours on this customer.
+    expected_capacity = working_hours_target * Decimal(len(associates)) if associates else Decimal("0")
     overall_util = _pct(total_hours, expected_capacity)
 
     title = "WEEKLY TIME SHEET" if period_type == "weekly" else "MONTHLY TIME SHEET"
@@ -115,36 +128,29 @@ def build_customer_timesheet_pack(
     )
 
 
-def _scoped_engineering_user_ids(
+def _scoped_user_ids(
     db: Session,
     current_user: User,
     *,
     team_id: UUID | None,
 ) -> set[UUID] | None:
-    """None = org-wide; set = restrict to these user IDs."""
+    """None = org-wide; set = restrict to these user IDs (team membership, not KPI flags)."""
     accessible = get_accessible_team_ids(db, current_user)
     if accessible is not None and team_id is not None and team_id not in accessible:
         return set()
     if accessible is None and team_id is None:
         return None
 
-    team_filter: set[UUID] | None
     if team_id is not None:
-        team_filter = {team_id}
+        team_filter = frozenset({team_id})
     else:
-        team_filter = accessible
+        team_filter = frozenset(accessible or ())
 
-    if team_filter is None:
-        return None
+    if not team_filter:
+        return set()
 
-    user_ids: set[UUID] = set()
-    for uid in engineering_productivity_users(db):
-        user_team_ids = set(get_user_team_ids(db, uid.id))
-        if uid.team_id:
-            user_team_ids.add(uid.team_id)
-        if user_team_ids & team_filter:
-            user_ids.add(uid.id)
-    return user_ids
+    overhead = _overhead_user_ids(db)
+    return _users_on_teams(db, team_filter) - overhead
 
 
 def _load_customer_entries(
@@ -153,6 +159,7 @@ def _load_customer_entries(
     customer_id: UUID,
     period: ReportPeriod,
     user_ids: set[UUID] | None,
+    team_id: UUID | None = None,
 ) -> list[tuple[TimesheetEntry, User, Project | None]]:
     stmt = (
         select(TimesheetEntry, User, Project)
@@ -163,16 +170,26 @@ def _load_customer_entries(
             TimesheetEntry.is_deleted.is_(False),
             TimesheetEntry.entry_date >= period.start_date,
             TimesheetEntry.entry_date <= period.end_date,
-            TimesheetEntry.customer_id == customer_id,
-            Timesheet.status.in_(tuple(_CUSTOMER_FACING_STATUSES)),
+            _customer_match_clause(customer_id),
+            Timesheet.status.in_(tuple(_PACK_STATUSES)),
             User.is_active.is_(True),
+            User.is_deleted.is_(False),
         )
         .order_by(User.first_name, User.last_name, TimesheetEntry.entry_date)
     )
     if user_ids is not None:
         if not user_ids:
             return []
-        stmt = stmt.where(User.id.in_(user_ids))
+        # Include hours from team members OR hours booked on projects owned by the selected team.
+        if team_id is not None:
+            stmt = stmt.where(
+                or_(
+                    User.id.in_(tuple(user_ids)),
+                    Project.team_id == team_id,
+                )
+            )
+        else:
+            stmt = stmt.where(User.id.in_(tuple(user_ids)))
 
     rows = db.execute(stmt).all()
     overhead_user_ids = _overhead_user_ids(db)

@@ -64,7 +64,15 @@ def _unrestricted_scope() -> ReportScope:
 def _entry_scope_clauses(scope: ReportScope):
     clauses = []
     if scope.customer_id is not None:
-        clauses.append(TimesheetEntry.customer_id == scope.customer_id)
+        # Historical imports often set Project.customer_id but leave TimesheetEntry.customer_id null.
+        clauses.append(
+            or_(
+                TimesheetEntry.customer_id == scope.customer_id,
+                TimesheetEntry.project_id.in_(
+                    select(Project.id).where(Project.customer_id == scope.customer_id)
+                ),
+            )
+        )
     if scope.user_ids is not None:
         if not scope.user_ids:
             clauses.append(Timesheet.user_id.in_(()))
@@ -517,6 +525,12 @@ def _tool_hours(
 
 
 def _customer_hours(db: Session, period: ReportPeriod, scope: ReportScope) -> list[CustomerHoursRow]:
+    customer_link = or_(
+        TimesheetEntry.customer_id == Customer.id,
+        TimesheetEntry.project_id.in_(
+            select(Project.id).where(Project.customer_id == Customer.id)
+        ),
+    )
     rows = db.execute(
         select(
             Customer.id,
@@ -551,7 +565,8 @@ def _customer_hours(db: Session, period: ReportPeriod, scope: ReportScope) -> li
             ),
             func.count(func.distinct(Timesheet.user_id)),
         )
-        .join(TimesheetEntry, TimesheetEntry.customer_id == Customer.id)
+        .select_from(Customer)
+        .join(TimesheetEntry, customer_link)
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
             *_entry_base_filters(period.start_date, period.end_date),

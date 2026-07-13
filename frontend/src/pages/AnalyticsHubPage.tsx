@@ -1,14 +1,14 @@
 import { Card, CardContent, Link, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router-dom';
-import { api } from '../api/client';
+import { apiClient } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
 
 export function AnalyticsHubPage() {
   const query = useQuery({
     queryKey: ['analytics-catalog'],
-    queryFn: async () => (await api.get('/analytics/catalog')).data,
+    queryFn: async () => (await apiClient.get('/analytics/catalog')).data,
   });
 
   if (query.isLoading) return <LoadingState message="Loading analytics catalog…" />;

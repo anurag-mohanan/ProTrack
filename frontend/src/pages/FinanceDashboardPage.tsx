@@ -16,7 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { apiClient } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -77,39 +77,39 @@ export function FinanceDashboardPage() {
 
   const dashboardQuery = useQuery({
     queryKey: ['finance-dashboard'],
-    queryFn: async () => (await api.get<FinanceDashboard>('/finance/dashboard')).data,
+    queryFn: async () => (await apiClient.get<FinanceDashboard>('/finance/dashboard')).data,
   });
   const quotesQuery = useQuery({
     queryKey: ['finance-quotes'],
-    queryFn: async () => (await api.get('/finance/quotes')).data,
+    queryFn: async () => (await apiClient.get('/finance/quotes')).data,
   });
   const budgetsQuery = useQuery({
     queryKey: ['finance-budgets'],
-    queryFn: async () => (await api.get('/finance/budgets')).data,
+    queryFn: async () => (await apiClient.get('/finance/budgets')).data,
   });
   const costCentresQuery = useQuery({
     queryKey: ['finance-cost-centres'],
-    queryFn: async () => (await api.get('/finance/cost-centres')).data,
+    queryFn: async () => (await apiClient.get('/finance/cost-centres')).data,
   });
   const expensesQuery = useQuery({
     queryKey: ['finance-expenses'],
-    queryFn: async () => (await api.get('/finance/expenses')).data,
+    queryFn: async () => (await apiClient.get('/finance/expenses')).data,
   });
   const employeeCostsQuery = useQuery({
     queryKey: ['finance-employee-costs'],
-    queryFn: async () => (await api.get('/finance/employee-costs')).data,
+    queryFn: async () => (await apiClient.get('/finance/employee-costs')).data,
   });
   const usersQuery = useQuery({
     queryKey: ['lookup-users'],
-    queryFn: async () => (await api.get('/lookups/users')).data,
+    queryFn: async () => (await apiClient.get('/lookups/users')).data,
   });
   const currenciesQuery = useQuery({
     queryKey: ['finance-currencies'],
-    queryFn: async () => (await api.get('/finance/currencies')).data,
+    queryFn: async () => (await apiClient.get('/finance/currencies')).data,
   });
   const plQuery = useQuery({
     queryKey: ['finance-pl'],
-    queryFn: async () => (await api.get('/finance/reports/profit-loss')).data,
+    queryFn: async () => (await apiClient.get('/finance/reports/profit-loss')).data,
     enabled: tab === 5,
   });
 
@@ -125,7 +125,7 @@ export function FinanceDashboardPage() {
     mutationFn: async (file: File) => {
       const form = new FormData();
       form.append('file', file);
-      return (await api.post('/finance/quotes/import', form)).data;
+      return (await apiClient.post('/finance/quotes/import', form)).data;
     },
     onSuccess: (data) => {
       showSuccess(`Imported ${data.imported_count} quote(s)`);
@@ -139,7 +139,7 @@ export function FinanceDashboardPage() {
   const expenseMutation = useMutation({
     mutationFn: async () =>
       (
-        await api.post('/finance/expenses', {
+        await apiClient.post('/finance/expenses', {
           cost_centre_id: expenseForm.cost_centre_id,
           name: expenseForm.name,
           amount: expenseForm.amount,
@@ -162,7 +162,7 @@ export function FinanceDashboardPage() {
   const budgetMutation = useMutation({
     mutationFn: async () =>
       (
-        await api.post('/finance/budgets', {
+        await apiClient.post('/finance/budgets', {
           name: budgetForm.name,
           scope_type: budgetForm.scope_type,
           allocated: budgetForm.allocated,
@@ -185,7 +185,7 @@ export function FinanceDashboardPage() {
   const salaryMutation = useMutation({
     mutationFn: async () =>
       (
-        await api.post('/finance/employee-costs', {
+        await apiClient.post('/finance/employee-costs', {
           user_id: salaryForm.user_id,
           monthly_salary: salaryForm.monthly_salary,
           hourly_cost: salaryForm.hourly_cost,

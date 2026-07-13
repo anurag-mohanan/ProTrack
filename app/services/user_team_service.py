@@ -23,6 +23,7 @@ class UserTeamAssignmentInput:
     team_id: UUID
     relationship_type: TeamRelationshipType = TeamRelationshipType.member
     is_primary: bool = False
+    include_in_timesheet_reports: bool = True
 
 
 def get_user_team_ids(db: Session, user_id: UUID) -> set[UUID]:
@@ -107,6 +108,7 @@ def sync_user_team_assignments(
                 user_id=user_id,
                 relationship_type=row.relationship_type,
                 is_primary=row.is_primary,
+                include_in_timesheet_reports=row.include_in_timesheet_reports,
                 role_within_team=row.relationship_type.value.replace("_", " ").title(),
                 joined_at=_utcnow(),
             )

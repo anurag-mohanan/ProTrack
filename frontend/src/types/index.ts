@@ -25,6 +25,7 @@ export interface UserTeamAssignment {
   team_name?: string;
   relationship_type: 'member' | 'team_leader' | 'engineering_manager' | 'reviewer';
   is_primary: boolean;
+  include_in_timesheet_reports?: boolean;
   created_at?: string;
 }
 

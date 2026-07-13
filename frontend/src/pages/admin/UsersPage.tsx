@@ -326,6 +326,7 @@ export default function UsersPage() {
           team_name: row.team_name ?? teams.find((team) => team.id === row.team_id)?.name ?? '',
           relationship_type: row.relationship_type,
           is_primary: row.is_primary,
+          include_in_timesheet_reports: row.include_in_timesheet_reports ?? true,
         })) ??
         (user.team_id
           ? [
@@ -334,6 +335,7 @@ export default function UsersPage() {
                 team_name: user.team_name ?? '',
                 relationship_type: 'member' as const,
                 is_primary: true,
+                include_in_timesheet_reports: true,
               },
             ]
           : []),
@@ -426,6 +428,7 @@ export default function UsersPage() {
         team_id: row.team_id,
         relationship_type: row.relationship_type,
         is_primary: row.is_primary,
+        include_in_timesheet_reports: row.include_in_timesheet_reports,
       }));
       const primaryTeamId =
         form.team_assignments.find((row) => row.is_primary)?.team_id ?? optionalUuid(form.team_id);

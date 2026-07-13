@@ -5,13 +5,18 @@ from __future__ import annotations
 from io import BytesIO
 
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
 
 from app.schemas.reporting import DesignerTeamTimesheetPayload
+from app.services.reporting.excel.letterhead import (
+    set_print_layout,
+    style_total_row,
+    write_report_letterhead,
+)
 from app.services.reporting.excel.styles import (
-    BODY_FONT,
-    SUBTITLE_FONT,
-    TITLE_FONT,
+    PRIMARY,
     autofit_columns,
+    freeze_and_filter,
     style_body_rows,
     style_header_row,
 )
@@ -31,15 +36,6 @@ def _write_designers_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPay
     sheet = workbook.active
     sheet.title = "Designer Hours by Team"[:31]
 
-    sheet["A1"] = payload.company_name
-    sheet["A1"].font = TITLE_FONT
-    sheet["A2"] = payload.title
-    sheet["A2"].font = SUBTITLE_FONT
-    sheet["A3"] = f"Period: {payload.period.label}"
-    sheet["A3"].font = BODY_FONT
-    sheet["A4"] = f"Generated (UTC): {payload.generated_at.strftime('%Y-%m-%d %H:%M')}"
-    sheet["A4"].font = BODY_FONT
-
     headers = [
         "Team",
         "Designer",
@@ -51,7 +47,22 @@ def _write_designers_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPay
         "Projects",
         "Customers",
     ]
-    header_row = 6
+    next_row = write_report_letterhead(
+        sheet,
+        company_name=payload.company_name,
+        report_title=payload.title,
+        period_label=f"Period: {payload.period.label}",
+        extra_lines=[
+            f"Generated (UTC): {payload.generated_at.strftime('%Y-%m-%d %H:%M')}",
+            (
+                f"Summary — Designers: {payload.designer_count} · Teams: {payload.team_count} · "
+                f"Period hours: {float(payload.total_designer_hours):.2f}"
+            ),
+        ],
+        col_span=len(headers),
+    )
+
+    header_row = next_row
     for col, header in enumerate(headers, start=1):
         sheet.cell(row=header_row, column=col, value=header)
     style_header_row(sheet, header_row, len(headers))
@@ -70,22 +81,25 @@ def _write_designers_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPay
             row.customer_count,
         ]
         for col, value in enumerate(values, start=1):
-            sheet.cell(row=excel_row, column=col, value=value)
+            cell = sheet.cell(row=excel_row, column=col, value=value)
+            if col >= 3:
+                cell.alignment = Alignment(horizontal="right")
 
+    last_data_row = header_row + len(payload.designers)
     if payload.designers:
-        style_body_rows(sheet, header_row + 1, header_row + len(payload.designers), len(headers))
+        style_body_rows(sheet, header_row + 1, last_data_row, len(headers))
+        total_row = last_data_row + 1
+        sheet.cell(row=total_row, column=1, value="TOTAL")
+        sheet.cell(row=total_row, column=3, value=float(payload.total_designer_hours))
+        style_total_row(sheet, total_row, len(headers), emphasize_cols={1, 3, 6})
+
+    freeze_and_filter(sheet, header_row, len(headers))
     autofit_columns(sheet)
+    set_print_layout(sheet)
 
 
 def _write_projects_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayload) -> None:
     sheet = workbook.create_sheet("Project Hours To Date"[:31])
-
-    sheet["A1"] = payload.company_name
-    sheet["A1"].font = TITLE_FONT
-    sheet["A2"] = "Total project hours up to report generation"
-    sheet["A2"].font = SUBTITLE_FONT
-    sheet["A3"] = f"As of (UTC): {payload.generated_at.strftime('%Y-%m-%d %H:%M')}"
-    sheet["A3"].font = BODY_FONT
 
     headers = [
         "Tool #",
@@ -100,7 +114,19 @@ def _write_projects_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayl
         "Stage",
         "Status",
     ]
-    header_row = 5
+    next_row = write_report_letterhead(
+        sheet,
+        company_name=payload.company_name,
+        report_title="Project Hours To Date",
+        period_label=f"As of (UTC): {payload.generated_at.strftime('%Y-%m-%d %H:%M')}",
+        extra_lines=[
+            f"Projects in scope: {payload.project_count}",
+            f"Total actual hours to date: {float(payload.total_project_actual_hours):.2f}",
+        ],
+        col_span=len(headers),
+    )
+
+    header_row = next_row
     for col, header in enumerate(headers, start=1):
         sheet.cell(row=header_row, column=col, value=header)
     style_header_row(sheet, header_row, len(headers))
@@ -125,8 +151,27 @@ def _write_projects_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayl
             ),
         ]
         for col, value in enumerate(values, start=1):
-            sheet.cell(row=excel_row, column=col, value=value)
+            cell = sheet.cell(row=excel_row, column=col, value=value)
+            if col in {4, 5, 6, 7, 8}:
+                cell.alignment = Alignment(horizontal="right")
+            # Highlight overruns
+            if col == 6 and isinstance(value, (int, float)) and value > 0:
+                cell.font = Font(name="Calibri", size=10, color="B42318", bold=True)
+            if col == 6 and isinstance(value, (int, float)) and value < 0:
+                cell.font = Font(name="Calibri", size=10, color="1B7F4B")
 
     if payload.projects:
-        style_body_rows(sheet, header_row + 1, header_row + len(payload.projects), len(headers))
+        style_body_rows(
+            sheet,
+            header_row + 1,
+            header_row + len(payload.projects),
+            len(headers),
+        )
+        total_row = header_row + len(payload.projects) + 1
+        sheet.cell(row=total_row, column=1, value="TOTAL")
+        sheet.cell(row=total_row, column=5, value=float(payload.total_project_actual_hours))
+        style_total_row(sheet, total_row, len(headers), emphasize_cols={1, 5})
+
+    freeze_and_filter(sheet, header_row, len(headers))
     autofit_columns(sheet)
+    set_print_layout(sheet)

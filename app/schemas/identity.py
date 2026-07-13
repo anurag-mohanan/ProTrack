@@ -39,6 +39,7 @@ class UserTeamAssignmentBase(BaseModel):
     team_id: UUID
     relationship_type: TeamRelationshipType = TeamRelationshipType.member
     is_primary: bool = False
+    include_in_timesheet_reports: bool = True
 
 
 class UserTeamAssignmentWrite(BlankOptionalFieldsMixin, UserTeamAssignmentBase):

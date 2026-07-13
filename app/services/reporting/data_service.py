@@ -47,7 +47,9 @@ from app.services.holiday_service import load_holiday_dates
 from app.services.project_calculation_service import calculate_hours, calculate_progress
 from app.services.reporting.periods import build_report_period
 from app.services.reporting.report_scope import ReportScope, user_matches_scope
-
+from app.services.reporting.timesheet_report_inclusion import (
+    users_excluded_from_timesheet_reports,
+)
 from app.services.kpi_participation import engineering_productivity_users
 
 
@@ -325,8 +327,11 @@ def _designer_productivity(
     daily_hours: Decimal,
     scope: ReportScope,
 ) -> list[DesignerProductivityRow]:
+    excluded = users_excluded_from_timesheet_reports(db, team_ids=scope.team_ids)
     designers = [
-        person for person in _active_designers(db) if user_matches_scope(db, person, scope)
+        person
+        for person in _active_designers(db)
+        if user_matches_scope(db, person, scope) and person.id not in excluded
     ]
     rows: list[DesignerProductivityRow] = []
     expected_per_person = Decimal(period.working_days) * daily_hours

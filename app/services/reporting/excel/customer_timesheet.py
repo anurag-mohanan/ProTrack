@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from io import BytesIO
 
-from decimal import Decimal
-
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Font
 
 from app.schemas.reporting import CustomerTimesheetPackPayload
+from app.services.reporting.excel.letterhead import (
+    set_print_layout,
+    style_total_row,
+    style_utilization_header,
+    write_report_letterhead,
+)
 from app.services.reporting.excel.styles import (
-    BODY_FONT,
-    SUBTITLE_FONT,
-    TITLE_FONT,
     autofit_columns,
+    freeze_and_filter,
     style_body_rows,
     style_header_row,
 )
@@ -32,25 +35,11 @@ def generate_customer_timesheet_excel(payload: CustomerTimesheetPackPayload) -> 
 
 def _write_associate_sheet(workbook: Workbook, payload: CustomerTimesheetPackPayload) -> None:
     sheet = workbook.active
-    sheet.title = "Weekly Timesheet"[:31] if payload.period.period_type == "weekly" else "Monthly Timesheet"
-
-    sheet["A1"] = payload.company_name
-    sheet["A1"].font = TITLE_FONT
-    sheet["A2"] = payload.title
-    sheet["A2"].font = SUBTITLE_FONT
-    sheet["A3"] = f"Customer: {payload.customer_name}"
-    sheet["A3"].font = BODY_FONT
-
-    period_label = (
-        f"{payload.period.start_date.strftime('%d-%m-%y')} to "
-        f"{payload.period.end_date.strftime('%d-%m-%y')}"
+    sheet.title = (
+        "Weekly Timesheet"[:31]
+        if payload.period.period_type == "weekly"
+        else "Monthly Timesheet"
     )
-    sheet["A4"] = f"Period: {period_label}"
-    if payload.week_number is not None:
-        sheet["C4"] = f"WEEK of {payload.week_number}"
-        sheet["C4"].font = Font(bold=True, size=14)
-    sheet["E4"] = f"Working Hrs. {payload.working_hours_target}"
-    sheet["E4"].font = Font(bold=True)
 
     headers = [
         "Sl No.",
@@ -62,16 +51,31 @@ def _write_associate_sheet(workbook: Workbook, payload: CustomerTimesheetPackPay
         "Utilization",
         "Remarks",
     ]
-    header_row = 6
+    period_label = (
+        f"Period: {payload.period.start_date.strftime('%d %b %Y')} to "
+        f"{payload.period.end_date.strftime('%d %b %Y')}"
+    )
+    extras = [
+        f"Customer: {payload.customer_name}",
+        f"Working hours target: {float(payload.working_hours_target):.0f}",
+    ]
+    if payload.week_number is not None:
+        extras.insert(1, f"Week of {payload.week_number}")
+
+    next_row = write_report_letterhead(
+        sheet,
+        company_name=payload.company_name,
+        report_title=payload.title,
+        period_label=period_label,
+        extra_lines=extras,
+        col_span=len(headers),
+    )
+
+    header_row = next_row
     for col, header in enumerate(headers, start=1):
-        cell = sheet.cell(row=header_row, column=col, value=header)
-        if header == "Utilization":
-            cell.fill = PatternFill("solid", fgColor="F4A261")
-            cell.font = Font(bold=True, color="FFFFFF")
-        else:
-            cell.fill = PatternFill("solid", fgColor="AED6F1")
-            cell.font = Font(bold=True)
-        cell.alignment = Alignment(wrap_text=True, horizontal="center")
+        sheet.cell(row=header_row, column=col, value=header)
+    style_header_row(sheet, header_row, len(headers))
+    style_utilization_header(sheet, header_row, 7)
 
     for offset, row in enumerate(payload.associates):
         excel_row = header_row + 1 + offset
@@ -82,53 +86,76 @@ def _write_associate_sheet(workbook: Workbook, payload: CustomerTimesheetPackPay
             float(row.productive_hours),
             float(row.non_productive_hours),
             float(row.total_hours),
-            f"{float(row.utilization_percent):.0f}%",
+            float(row.utilization_percent) / 100.0,
             row.remarks or "",
         ]
         for col, value in enumerate(values, start=1):
-            sheet.cell(row=excel_row, column=col, value=value)
+            cell = sheet.cell(row=excel_row, column=col, value=value)
+            if col == 7:
+                cell.number_format = "0%"
+                cell.alignment = Alignment(horizontal="right")
+            elif col in {4, 5, 6}:
+                cell.alignment = Alignment(horizontal="right")
+                cell.number_format = "0.00"
 
     total_row = header_row + 1 + len(payload.associates)
-    sheet.cell(row=total_row, column=1, value="")
-    sheet.cell(row=total_row, column=2, value="TOTAL").font = Font(bold=True)
-    sheet.cell(row=total_row, column=4, value=float(payload.total_productive_hours)).font = Font(bold=True)
-    sheet.cell(row=total_row, column=5, value=float(payload.total_non_productive_hours)).font = Font(bold=True)
-    sheet.cell(row=total_row, column=6, value=float(payload.total_hours)).font = Font(bold=True)
-    sheet.cell(
+    sheet.cell(row=total_row, column=2, value="TOTAL")
+    sheet.cell(row=total_row, column=4, value=float(payload.total_productive_hours))
+    sheet.cell(row=total_row, column=5, value=float(payload.total_non_productive_hours))
+    sheet.cell(row=total_row, column=6, value=float(payload.total_hours))
+    util_cell = sheet.cell(
         row=total_row,
         column=7,
-        value=f"{float(payload.overall_utilization_percent):.0f}%",
-    ).font = Font(bold=True)
+        value=float(payload.overall_utilization_percent) / 100.0,
+    )
+    util_cell.number_format = "0%"
+    style_total_row(sheet, total_row, len(headers), emphasize_cols={2, 4, 5, 6, 7})
 
     if payload.associates:
-        style_body_rows(sheet, header_row + 1, total_row, len(headers))
-    style_header_row(sheet, header_row, len(headers))
+        style_body_rows(sheet, header_row + 1, total_row - 1, len(headers))
+
+    freeze_and_filter(sheet, header_row, len(headers))
     autofit_columns(sheet, min_width=12)
+    set_print_layout(sheet)
 
 
 def _write_tool_sheet(workbook: Workbook, payload: CustomerTimesheetPackPayload) -> None:
     sheet = workbook.create_sheet("By Tool")
     headers = ["TOOL No.", "Sum of HOURS", "Comments"]
+    next_row = write_report_letterhead(
+        sheet,
+        company_name=payload.company_name,
+        report_title=f"{payload.title} — Tool Rollup",
+        period_label=f"Customer: {payload.customer_name}",
+        extra_lines=[f"Period: {payload.period.label}"],
+        col_span=len(headers),
+    )
+
+    header_row = next_row
     for col, header in enumerate(headers, start=1):
-        cell = sheet.cell(row=1, column=col, value=header)
-        cell.fill = PatternFill("solid", fgColor="1B4F72")
-        cell.font = Font(bold=True, color="FFFFFF")
+        sheet.cell(row=header_row, column=col, value=header)
+    style_header_row(sheet, header_row, len(headers))
 
     for offset, row in enumerate(payload.tools):
-        excel_row = 2 + offset
+        excel_row = header_row + 1 + offset
         sheet.cell(row=excel_row, column=1, value=row.tool_number)
-        sheet.cell(row=excel_row, column=2, value=float(row.hours))
+        hours_cell = sheet.cell(row=excel_row, column=2, value=float(row.hours))
+        hours_cell.number_format = "0.00"
+        hours_cell.alignment = Alignment(horizontal="right")
         sheet.cell(row=excel_row, column=3, value=row.comments or "")
 
-    total_row = 2 + len(payload.tools)
-    sheet.cell(row=total_row, column=1, value="Total").font = Font(bold=True)
+    total_row = header_row + 1 + len(payload.tools)
+    sheet.cell(row=total_row, column=1, value="TOTAL")
     sheet.cell(
         row=total_row,
         column=2,
         value=float(sum((row.hours for row in payload.tools), Decimal("0"))),
-    ).font = Font(bold=True)
+    ).number_format = "0.00"
+    style_total_row(sheet, total_row, len(headers), emphasize_cols={1, 2})
 
     if payload.tools:
-        style_body_rows(sheet, 2, total_row, len(headers))
-    style_header_row(sheet, 1, len(headers))
+        style_body_rows(sheet, header_row + 1, total_row - 1, len(headers))
+
+    freeze_and_filter(sheet, header_row, len(headers))
     autofit_columns(sheet, min_width=14)
+    set_print_layout(sheet)

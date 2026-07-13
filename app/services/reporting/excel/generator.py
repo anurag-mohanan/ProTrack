@@ -11,6 +11,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.workbook.properties import CalcProperties
 
 from app.schemas.reporting import EngineeringReportPayload
+from app.services.reporting.excel.letterhead import write_report_letterhead, set_print_layout
 from app.services.reporting.excel.styles import (
     BODY_FONT,
     DANGER,
@@ -62,14 +63,16 @@ def _fill(hex_color: str) -> PatternFill:
 def _write_executive_sheet(workbook: Workbook, payload: EngineeringReportPayload) -> None:
     sheet = workbook.active
     sheet.title = "Executive Summary"
-    sheet["A1"] = payload.company_name
-    sheet["A1"].font = TITLE_FONT
-    sheet["A2"] = "Engineering Management Report"
-    sheet["A2"].font = SUBTITLE_FONT
-    sheet["A3"] = payload.period.label
-    sheet["A3"].font = BODY_FONT
+    next_row = write_report_letterhead(
+        sheet,
+        company_name=payload.company_name,
+        report_title="Engineering Management Report",
+        period_label=payload.period.label,
+        extra_lines=["Executive KPI overview"],
+        col_span=8,
+    )
 
-    row = 5
+    row = next_row
     col = 1
     for index, kpi in enumerate(payload.executive.kpis):
         if index and index % 3 == 0:
@@ -87,6 +90,7 @@ def _write_executive_sheet(workbook: Workbook, payload: EngineeringReportPayload
         col += 3
 
     autofit_columns(sheet, min_width=14)
+    set_print_layout(sheet)
 
 
 def _write_table_sheet(
@@ -98,9 +102,14 @@ def _write_table_sheet(
     variance_col: int | None = None,
 ) -> None:
     sheet = workbook.create_sheet(title[:31])
-    sheet["A1"] = title
-    sheet["A1"].font = Font(name="Calibri", size=13, bold=True)
-    header_row = 3
+    next_row = write_report_letterhead(
+        sheet,
+        company_name="",
+        report_title=title,
+        period_label=None,
+        col_span=max(len(headers), 4),
+    )
+    header_row = next_row
     for col, header in enumerate(headers, start=1):
         sheet.cell(row=header_row, column=col, value=header)
     style_header_row(sheet, header_row, len(headers))

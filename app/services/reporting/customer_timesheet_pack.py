@@ -33,6 +33,9 @@ from app.schemas.reporting import (
 from app.services.holiday_service import load_holiday_dates
 from app.services.reporting.periods import build_report_period
 from app.services.reporting.report_scope import _users_on_teams
+from app.services.reporting.timesheet_report_inclusion import (
+    users_excluded_from_timesheet_reports,
+)
 
 # Internal managers need draft hours visible; rejected stays excluded.
 _PACK_STATUSES = frozenset(
@@ -150,7 +153,8 @@ def _scoped_user_ids(
         return set()
 
     overhead = _overhead_user_ids(db)
-    return _users_on_teams(db, team_filter) - overhead
+    excluded = users_excluded_from_timesheet_reports(db, team_ids=team_filter)
+    return (_users_on_teams(db, team_filter) - overhead) - excluded
 
 
 def _load_customer_entries(
@@ -193,10 +197,15 @@ def _load_customer_entries(
 
     rows = db.execute(stmt).all()
     overhead_user_ids = _overhead_user_ids(db)
+    excluded = users_excluded_from_timesheet_reports(
+        db,
+        team_ids=frozenset({team_id}) if team_id is not None else None,
+    )
+    skip = overhead_user_ids | excluded
     return [
         (entry, user, project)
         for entry, user, project in rows
-        if user.id not in overhead_user_ids
+        if user.id not in skip
     ]
 
 

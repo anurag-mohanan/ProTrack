@@ -22,6 +22,8 @@ export interface UserTeamAssignmentFormValue {
   team_name: string;
   relationship_type: TeamRelationshipType;
   is_primary: boolean;
+  /** When false, person is omitted from timesheet reports for this team. */
+  include_in_timesheet_reports: boolean;
 }
 
 interface UserTeamAssignmentsProps {
@@ -55,6 +57,7 @@ export function UserTeamAssignments({
           team_name: teamName,
           relationship_type: 'member',
           is_primary: false,
+          include_in_timesheet_reports: true,
         },
       ]);
       return;
@@ -64,7 +67,12 @@ export function UserTeamAssignments({
 
   const updateRow = (
     teamId: string,
-    patch: Partial<Pick<UserTeamAssignmentFormValue, 'relationship_type' | 'is_primary'>>,
+    patch: Partial<
+      Pick<
+        UserTeamAssignmentFormValue,
+        'relationship_type' | 'is_primary' | 'include_in_timesheet_reports'
+      >
+    >,
   ) => {
     onChange(
       value.map((row) => {
@@ -87,7 +95,8 @@ export function UserTeamAssignments({
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
         Select one or more teams. Primary team is optional — useful for Engineering Managers and
-        Design Leaders who oversee multiple teams without a single home team.
+        Design Leaders who oversee multiple teams without a single home team. Uncheck “Include in
+        timesheet reports” to hide a person from that team’s timesheet / engineering exports.
       </Typography>
       <Stack spacing={1}>
         {teams.map((team) => {
@@ -148,6 +157,20 @@ export function UserTeamAssignments({
                       />
                     }
                     label="Primary (optional)"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={assignment.include_in_timesheet_reports}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          updateRow(team.id, {
+                            include_in_timesheet_reports: event.target.checked,
+                          })
+                        }
+                      />
+                    }
+                    label="Include in timesheet reports"
                   />
                 </Stack>
               ) : null}

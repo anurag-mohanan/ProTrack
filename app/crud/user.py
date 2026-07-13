@@ -75,6 +75,9 @@ def build_user_read(db: Session, user: User) -> UserRead:
                 team_name=team.name,
                 relationship_type=membership.relationship_type,
                 is_primary=membership.is_primary,
+                include_in_timesheet_reports=bool(
+                    getattr(membership, "include_in_timesheet_reports", True)
+                ),
                 created_at=membership.created_at,
             )
         )
@@ -143,6 +146,9 @@ def _parse_team_assignments(raw: object) -> list[UserTeamAssignmentInput] | None
                     team_id=row.team_id,
                     relationship_type=relationship,
                     is_primary=bool(getattr(row, "is_primary", False)),
+                    include_in_timesheet_reports=bool(
+                        getattr(row, "include_in_timesheet_reports", True)
+                    ),
                 )
             )
             continue
@@ -155,6 +161,9 @@ def _parse_team_assignments(raw: object) -> list[UserTeamAssignmentInput] | None
                     team_id=row["team_id"],  # type: ignore[arg-type]
                     relationship_type=relationship,  # type: ignore[arg-type]
                     is_primary=bool(row.get("is_primary", False)),
+                    include_in_timesheet_reports=bool(
+                        row.get("include_in_timesheet_reports", True)
+                    ),
                 )
             )
     return parsed

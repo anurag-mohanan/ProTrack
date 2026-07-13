@@ -30,6 +30,9 @@ from app.db.phase17_ebmp_finance_schema_sync import ensure_phase17_ebmp_finance_
 from app.db.phase18_finance_annual_plan_schema_sync import (
     ensure_phase18_finance_annual_plan_foundation,
 )
+from app.db.phase19_timesheet_report_inclusion_schema_sync import (
+    ensure_phase19_timesheet_report_inclusion_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -98,6 +101,7 @@ async def lifespan(app: FastAPI):
     ensure_phase13_multi_team_foundation(engine)
     ensure_phase17_ebmp_finance_foundation(engine)
     ensure_phase18_finance_annual_plan_foundation(engine)
+    ensure_phase19_timesheet_report_inclusion_foundation(engine)
     ensure_performance_indexes(engine)
     if ENABLE_DEMO_SEED:
         ensure_design_team(engine)

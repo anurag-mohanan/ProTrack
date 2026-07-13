@@ -33,6 +33,7 @@ import { ErrorState } from '../common/ErrorState';
 import { LoadingState } from '../common/LoadingState';
 import { AnalyticsBarChart } from '../analytics/AnalyticsCharts';
 import { KpiMetricCard } from '../ui/design-system';
+import { CustomerTimesheetPackPanel } from './CustomerTimesheetPackPanel';
 import {
   downloadEngineeringReportExcel,
   engineeringReportQueryKeys,
@@ -94,6 +95,8 @@ export function EngineeringReportingSuite({
     [catalogQuery.data, selectedReportId],
   );
 
+  const isCustomerTimesheetPack = selectedReportId === 'customer-timesheet-pack';
+
   const reportOptions: EngineeringReportOptions = useMemo(
     () => ({
       period_type: periodType,
@@ -107,7 +110,7 @@ export function EngineeringReportingSuite({
   const previewQuery = useQuery({
     queryKey: engineeringReportQueryKeys.preview(selectedReportId, reportOptions),
     queryFn: () => fetchEngineeringReportPreview(selectedReportId, reportOptions),
-    enabled: Boolean(selectedReportId),
+    enabled: Boolean(selectedReportId) && !isCustomerTimesheetPack,
     staleTime: 2 * 60 * 1000,
   });
 
@@ -121,7 +124,6 @@ export function EngineeringReportingSuite({
   const groupedReports = useMemo(() => {
     const groups = new Map<string, ReportCatalogEntry[]>();
     for (const report of catalogQuery.data?.reports ?? []) {
-      if (report.id === 'customer-timesheet-pack') continue;
       const list = groups.get(report.category) ?? [];
       list.push(report);
       groups.set(report.category, list);
@@ -132,7 +134,7 @@ export function EngineeringReportingSuite({
   const scheduled = schedulesQuery.data?.find((entry) => entry.report_id === selectedReportId);
 
   const handleDownload = async () => {
-    if (!canExport) return;
+    if (!canExport || isCustomerTimesheetPack) return;
     setDownloading(true);
     setDownloadError(null);
     try {
@@ -182,39 +184,49 @@ export function EngineeringReportingSuite({
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            <TextField
-              select
-              size="small"
-              label="Period"
-              value={periodType}
-              onChange={(event) => setPeriodType(event.target.value)}
-              sx={{ minWidth: 140 }}
-            >
-              {(selectedReport?.supported_periods ?? ['monthly']).map((period) => (
-                <MenuItem key={period} value={period}>
-                  {period.charAt(0).toUpperCase() + period.slice(1)}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              size="small"
-              label="Anchor date"
-              type="date"
-              value={anchor}
-              onChange={(event) => setAnchor(event.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-              sx={{ minWidth: 160 }}
-            />
-            {canExport ? (
-              <Button
-                variant="contained"
-                startIcon={<DownloadRoundedIcon />}
-                onClick={handleDownload}
-                disabled={downloading}
-              >
-                {downloading ? 'Generating…' : 'Download Excel'}
-              </Button>
-            ) : null}
+            {!isCustomerTimesheetPack ? (
+              <>
+                <TextField
+                  select
+                  size="small"
+                  label="Period"
+                  value={periodType}
+                  onChange={(event) => setPeriodType(event.target.value)}
+                  sx={{ minWidth: 140 }}
+                >
+                  {(selectedReport?.supported_periods ?? ['monthly']).map((period) => (
+                    <MenuItem key={period} value={period}>
+                      {period.charAt(0).toUpperCase() + period.slice(1)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  size="small"
+                  label="Anchor date"
+                  type="date"
+                  value={anchor}
+                  onChange={(event) => setAnchor(event.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ minWidth: 160 }}
+                />
+                {canExport ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<DownloadRoundedIcon />}
+                    onClick={handleDownload}
+                    disabled={downloading}
+                  >
+                    {downloading ? 'Generating…' : 'Download Excel'}
+                  </Button>
+                ) : null}
+              </>
+            ) : (
+              <Chip
+                size="small"
+                color="primary"
+                label="Use Customer / Team / Week-Month filters below"
+              />
+            )}
           </Box>
         </Box>
         {downloadError ? <Alert severity="error" sx={{ mt: 2 }}>{downloadError}</Alert> : null}
@@ -275,30 +287,38 @@ export function EngineeringReportingSuite({
                 <Typography variant="body2" color="text.secondary">
                   {selectedReport?.description}
                 </Typography>
-                {payload ? <Chip size="small" label={payload.period.label} sx={{ mt: 1 }} /> : null}
+                {!isCustomerTimesheetPack && payload ? (
+                  <Chip size="small" label={payload.period.label} sx={{ mt: 1 }} />
+                ) : null}
               </Box>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={Boolean(scheduled?.enabled)}
-                    onChange={(_, checked) => handleScheduleToggle(checked)}
-                  />
-                }
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <ScheduleRoundedIcon fontSize="small" />
-                    <span>Schedule</span>
-                  </Box>
-                }
-              />
+              {!isCustomerTimesheetPack ? (
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={Boolean(scheduled?.enabled)}
+                      onChange={(_, checked) => handleScheduleToggle(checked)}
+                    />
+                  }
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <ScheduleRoundedIcon fontSize="small" />
+                      <span>Schedule</span>
+                    </Box>
+                  }
+                />
+              ) : null}
             </Box>
-            {scheduled?.enabled ? (
+            {!isCustomerTimesheetPack && scheduled?.enabled ? (
               <Alert severity="info" sx={{ mt: 1.5 }}>
                 {scheduled.note}
               </Alert>
             ) : null}
           </Paper>
 
+          {isCustomerTimesheetPack ? (
+            <CustomerTimesheetPackPanel canExport={canExport} embedded />
+          ) : (
+            <>
           {previewQuery.isLoading ? <LoadingState message="Building report preview…" /> : null}
           {previewQuery.error ? <ErrorState error={previewQuery.error} /> : null}
 
@@ -474,6 +494,8 @@ export function EngineeringReportingSuite({
               ) : null}
             </>
           ) : null}
+            </>
+          )}
         </Stack>
       </Box>
     </Stack>

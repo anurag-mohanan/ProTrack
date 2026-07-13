@@ -41,6 +41,10 @@ def analytics_catalog(
                     {"title": "Resource Reports", "path": "/reports"},
                     {"title": "Timesheet Reports", "path": "/reports"},
                     {"title": "Customer Reports", "path": "/reports"},
+                    {
+                        "title": "Customer Timesheet Pack",
+                        "path": "/reports?tab=customer-timesheet-pack",
+                    },
                 ],
             }
         )

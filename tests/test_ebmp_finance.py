@@ -122,6 +122,21 @@ def test_finance_kpi_strategies_registered():
         assert result["strategy"] == key.value
 
 
+def test_analytics_catalog_admin(client, auth_headers):
+    response = client.get("/api/v1/analytics/catalog", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    categories = {row["category"] for row in response.json().get("categories", [])}
+    assert "Financial Reports" in categories
+    assert "HR Reports" in categories
+
+
+def test_analytics_catalog_designer_empty_or_forbidden(client):
+    headers = _auth(client, "binil@prosohm.com")
+    response = client.get("/api/v1/analytics/catalog", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json().get("categories", []) == []
+
+
 def test_hr_dashboard_requires_module(client):
     headers = _auth(client, "binil@prosohm.com")
     response = client.get("/api/v1/hr/dashboard", headers=headers)

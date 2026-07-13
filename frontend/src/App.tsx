@@ -44,9 +44,21 @@ import {
   MODULE_REPORTS_ANALYTICS,
   MODULE_TIMESHEETS,
 } from './config/accessControl';
-import { FinanceDashboardPage } from './pages/FinanceDashboardPage';
-import { HrDashboardPage } from './pages/HrDashboardPage';
-import { AnalyticsHubPage } from './pages/AnalyticsHubPage';
+const FinanceDashboardPage = lazy(() =>
+  import('./pages/FinanceDashboardPage').then((module) => ({
+    default: module.FinanceDashboardPage,
+  })),
+);
+const HrDashboardPage = lazy(() =>
+  import('./pages/HrDashboardPage').then((module) => ({
+    default: module.HrDashboardPage,
+  })),
+);
+const AnalyticsHubPage = lazy(() =>
+  import('./pages/AnalyticsHubPage').then((module) => ({
+    default: module.AnalyticsHubPage,
+  })),
+);
 
 const AdminCreatePage = lazy(() => import('./pages/admin/AdminCreatePage'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
@@ -218,7 +230,14 @@ export default function App() {
                     <Route path="/help" element={<HelpCenterPage />} />
                     <Route element={<RoleRoute allowed={canViewReports} />}>
                       <Route path="/reports" element={<ReportsPage />} />
-                      <Route path="/calendar" element={<EngineeringCalendarPage />} />
+                      <Route
+                        path="/calendar"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading calendar…" />}>
+                            <EngineeringCalendarPage />
+                          </Suspense>
+                        }
+                      />
                       <Route path="/knowledge" element={<KnowledgeBasePage />} />
                       <Route path="/executive-wall" element={<ExecutiveWallPage />} />
                     </Route>
@@ -226,14 +245,42 @@ export default function App() {
                       <Route path="/workload" element={<WorkloadPage />} />
                     </Route>
                     <Route element={<ModuleRoute module={MODULE_FINANCIAL_PLANNING} />}>
-                      <Route path="/finance" element={<FinanceDashboardPage />} />
-                      <Route path="/finance/*" element={<FinanceDashboardPage />} />
+                      <Route
+                        path="/finance"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading financial planning…" />}>
+                            <FinanceDashboardPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/finance/*"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading financial planning…" />}>
+                            <FinanceDashboardPage />
+                          </Suspense>
+                        }
+                      />
                     </Route>
                     <Route element={<ModuleRoute module={MODULE_HUMAN_RESOURCES} />}>
-                      <Route path="/hr" element={<HrDashboardPage />} />
+                      <Route
+                        path="/hr"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading HR…" />}>
+                            <HrDashboardPage />
+                          </Suspense>
+                        }
+                      />
                     </Route>
                     <Route element={<ModuleRoute module={MODULE_REPORTS_ANALYTICS} />}>
-                      <Route path="/analytics" element={<AnalyticsHubPage />} />
+                      <Route
+                        path="/analytics"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading analytics…" />}>
+                            <AnalyticsHubPage />
+                          </Suspense>
+                        }
+                      />
                     </Route>
                     <Route element={<RoleRoute allowed={canViewResourcePlanning} />}>
                       <Route path="/resource-planning" element={<ResourcePlanningPage />} />

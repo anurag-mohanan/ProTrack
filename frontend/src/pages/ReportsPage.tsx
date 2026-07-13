@@ -37,6 +37,7 @@ import {
 import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
 import { EngineeringReportingSuite } from '../components/reports/EngineeringReportingSuite';
 import { CustomerTimesheetPackPanel } from '../components/reports/CustomerTimesheetPackPanel';
+import { DesignerTeamTimesheetPanel } from '../components/reports/DesignerTeamTimesheetPanel';
 import { useAuth } from '../context/AuthContext';
 import {
   getBillableUtilizationReport,
@@ -56,6 +57,7 @@ import {
 } from '../services/reportService';
 import { accessContextFromUser, canExportReports, canViewDeletedProjects } from '../utils/permissions';
 import { formatNumber } from '../utils/format';
+import { ensureArray } from '../types/pagination';
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 
 const TAB_CONFIG = [
@@ -77,9 +79,25 @@ const TAB_CONFIG = [
   { label: 'Customer Timesheet Pack', slug: 'customer-timesheet-pack', category: 'customers' },
 ] as const;
 
+/** Legacy bookmarks from before Timesheet Reports was simplified. */
+const TAB_SLUG_ALIASES: Record<string, (typeof TAB_CONFIG)[number]['slug']> = {
+  'timesheet-export': 'timesheet-reports',
+  'productive-hours': 'timesheet-reports',
+};
+
+function resolveTabSlug(slug: string | null): (typeof TAB_CONFIG)[number]['slug'] | null {
+  if (!slug) return null;
+  if (slug in TAB_SLUG_ALIASES) {
+    return TAB_SLUG_ALIASES[slug];
+  }
+  const match = TAB_CONFIG.find((tab) => tab.slug === slug);
+  return match?.slug ?? null;
+}
+
 function tabIndexFromSlug(slug: string | null): number {
-  if (!slug) return 0;
-  const index = TAB_CONFIG.findIndex((tab) => tab.slug === slug);
+  const resolved = resolveTabSlug(slug);
+  if (!resolved) return 0;
+  const index = TAB_CONFIG.findIndex((tab) => tab.slug === resolved);
   return index >= 0 ? index : 0;
 }
 
@@ -100,8 +118,14 @@ export function ReportsPage() {
   const canExport = canExportReports(access);
 
   useEffect(() => {
-    setTab(tabIndexFromSlug(searchParams.get('tab')));
-  }, [searchParams]);
+    const raw = searchParams.get('tab');
+    const resolved = resolveTabSlug(raw);
+    if (raw && resolved && raw !== resolved) {
+      setSearchParams({ tab: resolved }, { replace: true });
+      return;
+    }
+    setTab(tabIndexFromSlug(raw));
+  }, [searchParams, setSearchParams]);
 
   const reportOptions: ReportOptions = {
     include_archived: appliedIncludeArchived,
@@ -179,15 +203,15 @@ export function ReportsPage() {
   const teamReportsEnabled = tab === 14;
   const customerTimesheetPackEnabled = tab === 15;
   const timesheetReportsEnabled = tab === 2;
-  const suiteEnabled = tab === 0 || timesheetReportsEnabled;
+  const suiteEnabled = tab === 0;
 
   const activeQuery = useMemo(() => {
-    if (suiteEnabled || teamReportsEnabled || customerTimesheetPackEnabled) {
+    if (suiteEnabled || timesheetReportsEnabled || teamReportsEnabled || customerTimesheetPackEnabled) {
       return { isLoading: false, error: null };
     }
     const queries = [
       projectHoursQuery,
-      null, // timesheet-reports (suite)
+      null, // timesheet-reports
       npHoursQuery,
       npByDesignerQuery,
       npTrendsQuery,
@@ -204,6 +228,7 @@ export function ReportsPage() {
   }, [
     tab,
     suiteEnabled,
+    timesheetReportsEnabled,
     teamReportsEnabled,
     customerTimesheetPackEnabled,
     projectHoursQuery,
@@ -337,12 +362,22 @@ export function ReportsPage() {
             canExport={canExport}
             includeArchived={appliedIncludeArchived}
             includeDeleted={appliedIncludeDeleted}
-            initialReportId={timesheetReportsEnabled ? 'monthly-timesheet' : 'monthly-engineering'}
+          />
+        ) : null}
+
+        {timesheetReportsEnabled ? (
+          <DesignerTeamTimesheetPanel
+            canExport={canExport}
+            includeArchived={appliedIncludeArchived}
+            includeDeleted={appliedIncludeDeleted}
           />
         ) : null}
 
         {tab === 1 && !projectHoursQuery.isLoading && !projectHoursQuery.error ? (
-          <ProjectHoursReportView rows={projectHoursQuery.data ?? []} canExport={canExport} />
+          <ProjectHoursReportView
+            rows={ensureArray(projectHoursQuery.data)}
+            canExport={canExport}
+          />
         ) : null}
 
         {tab === 3 && !npHoursQuery.isLoading && !npHoursQuery.error ? (
@@ -350,7 +385,7 @@ export function ReportsPage() {
             title="NP Hours by Code"
             filename="np-hours-by-code"
             canExport={canExport}
-            rows={(npHoursQuery.data ?? []).map((r) => ({
+            rows={ensureArray(npHoursQuery.data).map((r) => ({
               ...r,
               total_hours: formatNumber(r.total_hours),
             })) as unknown as Record<string, unknown>[]}
@@ -368,7 +403,7 @@ export function ReportsPage() {
             title="NP Hours by Designer"
             filename="np-by-designer"
             canExport={canExport}
-            rows={(npByDesignerQuery.data ?? []) as unknown as Record<string, unknown>[]}
+            rows={ensureArray(npByDesignerQuery.data) as unknown as Record<string, unknown>[]}
             columns={[
               { key: 'designer_name', header: 'Designer' },
               { key: 'total_np_hours', header: 'NP Hours', align: 'right' },
@@ -377,7 +412,7 @@ export function ReportsPage() {
         ) : null}
 
         {tab === 5 && !npTrendsQuery.isLoading && !npTrendsQuery.error ? (
-          <NpTrendReportView rows={npTrendsQuery.data ?? []} canExport={canExport} />
+          <NpTrendReportView rows={ensureArray(npTrendsQuery.data)} canExport={canExport} />
         ) : null}
 
         {tab === 6 && !billableVsNpQuery.isLoading && !billableVsNpQuery.error && billableVsNpQuery.data ? (
@@ -389,7 +424,7 @@ export function ReportsPage() {
             title="Top NP Activities"
             filename="top-np-activities"
             canExport={canExport}
-            rows={(topNpQuery.data ?? []) as unknown as Record<string, unknown>[]}
+            rows={ensureArray(topNpQuery.data) as unknown as Record<string, unknown>[]}
             columns={[
               { key: 'non_productive_code', header: 'Code' },
               { key: 'description', header: 'Description' },
@@ -400,27 +435,30 @@ export function ReportsPage() {
         ) : null}
 
         {tab === 8 && !billableQuery.isLoading && !billableQuery.error ? (
-          <BillableUtilizationReportView rows={billableQuery.data ?? []} canExport={canExport} />
+          <BillableUtilizationReportView rows={ensureArray(billableQuery.data)} canExport={canExport} />
         ) : null}
 
         {tab === 9 && !designerQuery.isLoading && !designerQuery.error ? (
-          <DesignerUtilizationReportView rows={designerQuery.data ?? []} canExport={canExport} />
+          <DesignerUtilizationReportView rows={ensureArray(designerQuery.data)} canExport={canExport} />
         ) : null}
 
         {tab === 10 && !customerQuery.isLoading && !customerQuery.error ? (
-          <CustomerSummaryReportView rows={customerQuery.data ?? []} canExport={canExport} />
+          <CustomerSummaryReportView rows={ensureArray(customerQuery.data)} canExport={canExport} />
         ) : null}
 
         {tab === 11 && !stageSummaryQuery.isLoading && !stageSummaryQuery.error ? (
-          <StageSummaryReportView rows={stageSummaryQuery.data ?? []} canExport={canExport} />
+          <StageSummaryReportView rows={ensureArray(stageSummaryQuery.data)} canExport={canExport} />
         ) : null}
 
         {tab === 12 && !executionSummaryQuery.isLoading && !executionSummaryQuery.error ? (
-          <ExecutionSummaryReportView rows={executionSummaryQuery.data ?? []} canExport={canExport} />
+          <ExecutionSummaryReportView
+            rows={ensureArray(executionSummaryQuery.data)}
+            canExport={canExport}
+          />
         ) : null}
 
         {tab === 13 && !portfolioQuery.isLoading && !portfolioQuery.error ? (
-          <PortfolioReportView rows={portfolioQuery.data ?? []} canExport={canExport} />
+          <PortfolioReportView rows={ensureArray(portfolioQuery.data)} canExport={canExport} />
         ) : null}
 
         {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}

@@ -23,6 +23,7 @@ import type {
   TimesheetExportReportRow,
 } from '../types';
 import { apiClient, buildQuery } from '../api/client';
+import { ensureArray } from '../types/pagination';
 
 export interface ReportOptions {
   include_archived?: boolean;
@@ -42,14 +43,14 @@ export async function getProjectHoursReport(
   const { data } = await apiClient.get<ProjectHoursReportRow[]>(
     `/reports/project-hours${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getDesignerUtilizationReport(): Promise<DesignerWorkload[]> {
   const { data } = await apiClient.get<DesignerWorkload[]>(
     '/reports/designer-utilization',
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getCustomerSummaryReport(
@@ -58,40 +59,40 @@ export async function getCustomerSummaryReport(
   const { data } = await apiClient.get<CustomerSummaryReportRow[]>(
     `/reports/customer-summary${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getProductiveHoursReport(): Promise<ProductiveHoursReportRow[]> {
   const { data } = await apiClient.get<ProductiveHoursReportRow[]>('/reports/productive-hours');
-  return data;
+  return ensureArray(data);
 }
 
 export async function getNonProductiveHoursReport(): Promise<NonProductiveHoursReportRow[]> {
   const { data } = await apiClient.get<NonProductiveHoursReportRow[]>(
     '/reports/non-productive-hours',
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getBillableUtilizationReport(): Promise<BillableUtilizationReportRow[]> {
   const { data } = await apiClient.get<BillableUtilizationReportRow[]>(
     '/reports/billable-utilization',
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getMonthlyNpTrendsReport(): Promise<MonthlyNpTrendReportRow[]> {
   const { data } = await apiClient.get<MonthlyNpTrendReportRow[]>(
     '/reports/monthly-np-trends',
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getNpHoursByDesignerReport(): Promise<NpHoursByDesignerReportRow[]> {
   const { data } = await apiClient.get<NpHoursByDesignerReportRow[]>(
     '/reports/np-hours-by-designer',
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getBillableVsNonBillableReport(): Promise<BillableVsNonBillableReportRow> {
@@ -105,7 +106,7 @@ export async function getTopNpActivitiesReport(): Promise<TopNpActivityReportRow
   const { data } = await apiClient.get<TopNpActivityReportRow[]>(
     '/reports/top-np-activities',
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getProjectPortfolioReport(
@@ -114,7 +115,7 @@ export async function getProjectPortfolioReport(
   const { data } = await apiClient.get<ProjectPortfolioReportRow[]>(
     `/reports/project-portfolio${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getProjectStageSummaryReport(
@@ -123,7 +124,7 @@ export async function getProjectStageSummaryReport(
   const { data } = await apiClient.get<ProjectStageSummaryRow[]>(
     `/reports/project-stage-summary${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getExecutionStatusSummaryReport(
@@ -132,7 +133,7 @@ export async function getExecutionStatusSummaryReport(
   const { data } = await apiClient.get<ExecutionStatusSummaryRow[]>(
     `/reports/execution-status-summary${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getProjectsByTeamReport(
@@ -141,7 +142,7 @@ export async function getProjectsByTeamReport(
   const { data } = await apiClient.get<ProjectsByTeamReportRow[]>(
     `/reports/projects-by-team${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getHoursByTeamReport(
@@ -150,7 +151,7 @@ export async function getHoursByTeamReport(
   const { data } = await apiClient.get<HoursByTeamReportRow[]>(
     `/reports/hours-by-team${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getQuotedVsActualByTeamReport(
@@ -159,14 +160,14 @@ export async function getQuotedVsActualByTeamReport(
   const { data } = await apiClient.get<QuotedVsActualByTeamReportRow[]>(
     `/reports/quoted-vs-actual-by-team${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getTeamUtilizationReport(): Promise<TeamUtilizationReportRow[]> {
   const { data } = await apiClient.get<TeamUtilizationReportRow[]>(
     '/reports/team-utilization',
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getCustomerByTeamReport(
@@ -175,14 +176,14 @@ export async function getCustomerByTeamReport(
   const { data } = await apiClient.get<CustomerByTeamReportRow[]>(
     `/reports/customer-by-team${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getDesignerByTeamReport(): Promise<DesignerByTeamReportRow[]> {
   const { data } = await apiClient.get<DesignerByTeamReportRow[]>(
     '/reports/designer-by-team',
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getTeamProfitabilityReport(
@@ -191,14 +192,14 @@ export async function getTeamProfitabilityReport(
   const { data } = await apiClient.get<TeamProfitabilityReportRow[]>(
     `/reports/team-profitability${reportQuery(options)}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export async function getMonthlyTeamSummaryReport(): Promise<MonthlyTeamSummaryRow[]> {
   const { data } = await apiClient.get<MonthlyTeamSummaryRow[]>(
     '/reports/monthly-team-summary',
   );
-  return data;
+  return ensureArray(data);
 }
 
 export interface TimesheetExportOptions extends ReportOptions {
@@ -217,7 +218,7 @@ export async function getTimesheetExportReport(
   const { data } = await apiClient.get<TimesheetExportReportRow[]>(
     `/reports/timesheet-export${buildQuery({ ...(options ?? {}) })}`,
   );
-  return data;
+  return ensureArray(data);
 }
 
 export const reportQueryKeys = {

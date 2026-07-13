@@ -27,6 +27,7 @@ import {
   type ReportOptions,
 } from '../../services/reportService';
 import { formatDisplayValue, formatNumber } from '../../utils/format';
+import { ensureArray } from '../../types/pagination';
 
 const TEAM_TABS = [
   { label: 'Quoted vs Actual', key: 'quoted-vs-actual' },
@@ -128,7 +129,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(quotedQuery.data ?? []).map((row) => (
+              {ensureArray(quotedQuery.data).map((row) => (
                 <TableRow key={row.team_id} hover>
                   <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
@@ -155,7 +156,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(utilizationQuery.data ?? []).map((row) => (
+              {ensureArray(utilizationQuery.data).map((row) => (
                 <TableRow key={row.team_id ?? row.team_name} hover>
                   <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{row.member_count}</TableCell>
@@ -179,7 +180,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(projectsQuery.data ?? []).map((row) => (
+              {ensureArray(projectsQuery.data).map((row) => (
                 <TableRow key={row.team_id} hover>
                   <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{row.project_count}</TableCell>
@@ -202,7 +203,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(hoursQuery.data ?? []).map((row) => (
+              {ensureArray(hoursQuery.data).map((row) => (
                 <TableRow key={row.team_id} hover>
                   <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
@@ -226,7 +227,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(customersQuery.data ?? []).map((row) => (
+              {ensureArray(customersQuery.data).map((row) => (
                 <TableRow key={`${row.team_id}-${row.customer_id}`} hover>
                   <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell>{formatDisplayValue(row.customer_name)}</TableCell>
@@ -249,7 +250,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(designersQuery.data ?? []).map((row) => (
+              {ensureArray(designersQuery.data).map((row) => (
                 <TableRow key={`${row.team_id}-${row.user_id}`} hover>
                   <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell>{formatDisplayValue(row.user_name)}</TableCell>
@@ -274,7 +275,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(profitabilityQuery.data ?? []).map((row) => (
+              {ensureArray(profitabilityQuery.data).map((row) => (
                 <TableRow key={row.team_id} hover>
                   <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
@@ -299,7 +300,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(monthlyQuery.data ?? []).map((row) => (
+              {ensureArray(monthlyQuery.data).map((row) => (
                 <TableRow key={`${row.team_id}-${row.year}-${row.month}`} hover>
                   <TableCell>{formatDisplayValue(row.team_name)}</TableCell>
                   <TableCell>

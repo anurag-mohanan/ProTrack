@@ -3,9 +3,11 @@ import type {
   EngineeringReportOptions,
   EngineeringReportPayload,
   ReportCatalog,
+  ReportCatalogEntry,
   ReportScheduleEntry,
   ReportScheduleRequest,
 } from '../types/EngineeringReporting';
+import { ensureArray } from '../types/pagination';
 import { apiClient, buildQuery } from './client';
 import { getAccessToken } from '../services/authStorage';
 import { API_BASE_URL } from './client';
@@ -31,8 +33,13 @@ export function isDesignerTeamTimesheetReport(reportId: string): boolean {
 }
 
 export async function fetchEngineeringReportCatalog(): Promise<ReportCatalog> {
-  const { data } = await apiClient.get<ReportCatalog>('/reports/catalog');
-  return data;
+  const { data } = await apiClient.get<ReportCatalog | ReportCatalogEntry[]>('/reports/catalog');
+  if (Array.isArray(data)) {
+    return { reports: data };
+  }
+  return {
+    reports: ensureArray((data as ReportCatalog | undefined)?.reports),
+  };
 }
 
 export async function fetchEngineeringReportPreview(
@@ -74,8 +81,8 @@ export async function downloadEngineeringReportExcel(
 }
 
 export async function fetchEngineeringReportSchedules(): Promise<ReportScheduleEntry[]> {
-  const { data } = await apiClient.get<ReportScheduleEntry[]>('/reports/schedules');
-  return data;
+  const { data } = await apiClient.get<unknown>('/reports/schedules');
+  return ensureArray<ReportScheduleEntry>(data);
 }
 
 export async function saveEngineeringReportSchedule(

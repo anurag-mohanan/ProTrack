@@ -26,6 +26,7 @@ import {
 import { ErrorState } from '../common/ErrorState';
 import { LoadingState } from '../common/LoadingState';
 import { formatNumber } from '../../utils/format';
+import { ensureArray } from '../../types/pagination';
 
 function toIsoDate(value: Date): string {
   const month = String(value.getMonth() + 1).padStart(2, '0');
@@ -89,7 +90,8 @@ export function CustomerTimesheetPackPanel({
     staleTime: 5 * 60 * 1000,
   });
 
-  const teams = teamsQuery.data ?? [];
+  const teams = ensureArray(teamsQuery.data);
+  const customers = ensureArray(customersQuery.data);
   const multiTeam = teams.length > 1;
 
   const options = useMemo(
@@ -150,7 +152,7 @@ export function CustomerTimesheetPackPanel({
         helperText="Required — pack is always for one customer"
       >
         <MenuItem value="">Select customer</MenuItem>
-        {(customersQuery.data ?? []).map((customer) => (
+        {(customers).map((customer) => (
           <MenuItem key={customer.id} value={customer.id}>
             {customer.name}
           </MenuItem>

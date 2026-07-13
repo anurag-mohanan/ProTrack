@@ -138,6 +138,17 @@ REPORT_CATALOG: list[ReportCatalogEntry] = [
         supported_periods=["monthly", "quarterly", "yearly"],
         export_formats=["xlsx", "json"],
     ),
+    ReportCatalogEntry(
+        id="customer-timesheet-pack",
+        title="Customer Timesheet Pack",
+        description=(
+            "Customer-facing weekly/monthly timesheet (Prosohm-style) with associate "
+            "productive/NP hours, utilization, and tool rollup for subscription / fixed resources."
+        ),
+        category="customers",
+        supported_periods=["weekly", "monthly"],
+        export_formats=["xlsx", "json"],
+    ),
 ]
 
 

@@ -165,6 +165,7 @@ DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
             SPECIAL_ARCHIVE_PROJECTS,
             SPECIAL_APPROVE_TIMESHEETS,
             SPECIAL_VIEW_REPORTS,
+            SPECIAL_EXPORT_REPORTS,
         }
     ),
     DESIGNER: frozenset({SPECIAL_EDIT_PROJECTS}),

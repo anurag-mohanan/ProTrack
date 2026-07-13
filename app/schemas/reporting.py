@@ -181,6 +181,41 @@ class DetailedTimesheetRow(BaseModel):
     notes: str | None = None
 
 
+class CustomerTimesheetAssociateRow(BaseModel):
+    serial_no: int
+    user_id: UUID
+    associate_name: str
+    designation: str | None = None
+    productive_hours: Decimal
+    non_productive_hours: Decimal
+    total_hours: Decimal
+    utilization_percent: Decimal
+    remarks: str | None = None
+
+
+class CustomerTimesheetToolRow(BaseModel):
+    tool_number: str
+    hours: Decimal
+    comments: str | None = None
+
+
+class CustomerTimesheetPackPayload(BaseModel):
+    report_id: str = "customer-timesheet-pack"
+    title: str
+    company_name: str
+    customer_id: UUID
+    customer_name: str
+    period: ReportPeriod
+    week_number: int | None = None
+    working_hours_target: Decimal
+    associates: list[CustomerTimesheetAssociateRow] = Field(default_factory=list)
+    tools: list[CustomerTimesheetToolRow] = Field(default_factory=list)
+    total_productive_hours: Decimal = Decimal("0")
+    total_non_productive_hours: Decimal = Decimal("0")
+    total_hours: Decimal = Decimal("0")
+    overall_utilization_percent: Decimal = Decimal("0")
+
+
 class ChartSeries(BaseModel):
     title: str
     labels: list[str]

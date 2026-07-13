@@ -70,12 +70,15 @@ from app.schemas.reports import (
     MonthlyTeamSummaryRow,
 )
 from app.schemas.reporting import (
+    CustomerTimesheetPackPayload,
     EngineeringReportPayload,
     ReportCatalog,
     ReportScheduleEntry,
     ReportScheduleRequest,
 )
 from app.services.reporting import reporting_engine
+from app.services.reporting.customer_timesheet_pack import build_customer_timesheet_pack
+from app.services.reporting.excel.customer_timesheet import generate_customer_timesheet_excel
 from app.services.reporting.schedule_store import list_schedules, upsert_schedule
 
 router = APIRouter(
@@ -133,12 +136,83 @@ def engineering_report_catalog():
     return reporting_engine.catalog()
 
 
+@router.get(
+    "/customer-timesheet-pack/preview",
+    response_model=CustomerTimesheetPackPayload,
+)
+def customer_timesheet_pack_preview(
+    customer_id: UUID = Query(...),
+    period_type: str = Query("weekly"),
+    anchor: date | None = Query(None),
+    team_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return build_customer_timesheet_pack(
+            db,
+            customer_id=customer_id,
+            current_user=current_user,
+            period_type=period_type,
+            anchor=anchor,
+            team_id=team_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/customer-timesheet-pack/export.xlsx")
+def customer_timesheet_pack_export(
+    customer_id: UUID = Query(...),
+    period_type: str = Query("weekly"),
+    anchor: date | None = Query(None),
+    team_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        payload = build_customer_timesheet_pack(
+            db,
+            customer_id=customer_id,
+            current_user=current_user,
+            period_type=period_type,
+            anchor=anchor,
+            team_id=team_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    content = generate_customer_timesheet_excel(payload)
+    week_bit = f"-W{payload.week_number}" if payload.week_number is not None else ""
+    safe_customer = "".join(
+        ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in payload.customer_name
+    )[:40]
+    filename = (
+        f"{safe_customer}_{period_type}_timesheet_"
+        f"{payload.period.start_date.isoformat()}{week_bit}.xlsx"
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/engine/{report_id}/preview", response_model=EngineeringReportPayload)
 def engineering_report_preview(
     report_id: str,
     db: Session = Depends(get_db),
     options: dict[str, object] = Depends(_engineering_report_options),
 ):
+    if report_id == "customer-timesheet-pack":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use /reports/customer-timesheet-pack/preview with customer_id",
+        )
     try:
         return reporting_engine.build_report(db, report_id=report_id, **options)
     except KeyError as exc:
@@ -153,6 +227,11 @@ def engineering_report_export(
     db: Session = Depends(get_db),
     options: dict[str, object] = Depends(_engineering_report_options),
 ):
+    if report_id == "customer-timesheet-pack":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use /reports/customer-timesheet-pack/export.xlsx with customer_id",
+        )
     try:
         payload = reporting_engine.build_report(db, report_id=report_id, **options)
         content = reporting_engine.export_excel(payload)

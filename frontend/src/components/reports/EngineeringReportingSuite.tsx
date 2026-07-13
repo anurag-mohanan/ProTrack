@@ -121,6 +121,7 @@ export function EngineeringReportingSuite({
   const groupedReports = useMemo(() => {
     const groups = new Map<string, ReportCatalogEntry[]>();
     for (const report of catalogQuery.data?.reports ?? []) {
+      if (report.id === 'customer-timesheet-pack') continue;
       const list = groups.get(report.category) ?? [];
       list.push(report);
       groups.set(report.category, list);

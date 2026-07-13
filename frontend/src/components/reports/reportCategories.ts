@@ -12,7 +12,7 @@ export const REPORT_CATEGORIES = [
   {
     id: 'customers',
     label: 'Customers',
-    slugs: ['customer-summary'],
+    slugs: ['customer-summary', 'customer-timesheet-pack'],
   },
   {
     id: 'resources',

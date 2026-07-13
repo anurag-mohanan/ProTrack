@@ -36,6 +36,7 @@ import {
 } from '../components/reports/ReportAnalyticsViews';
 import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
 import { EngineeringReportingSuite } from '../components/reports/EngineeringReportingSuite';
+import { CustomerTimesheetPackPanel } from '../components/reports/CustomerTimesheetPackPanel';
 import { fetchCustomers, fetchTeams, fetchUsers, fetchTaskTypes } from '../api/lookups';
 import { fetchProjects } from '../api/projects';
 import { useAuth } from '../context/AuthContext';
@@ -78,6 +79,7 @@ const TAB_CONFIG = [
   { label: 'Project Portfolio', slug: 'project-portfolio', category: 'projects' },
   { label: 'Timesheet Export', slug: 'timesheet-export', category: 'timesheets' },
   { label: 'Team Reports', slug: 'team-reports', category: 'planning' },
+  { label: 'Customer Timesheet Pack', slug: 'customer-timesheet-pack', category: 'customers' },
 ] as const;
 
 function tabIndexFromSlug(slug: string | null): number {
@@ -239,9 +241,12 @@ export function ReportsPage() {
   });
 
   const teamReportsEnabled = tab === 15;
+  const customerTimesheetPackEnabled = tab === 16;
 
   const activeQuery = useMemo(() => {
-    if (tab === 0 || teamReportsEnabled) return { isLoading: false, error: null };
+    if (tab === 0 || teamReportsEnabled || customerTimesheetPackEnabled) {
+      return { isLoading: false, error: null };
+    }
     const queries = [
       projectHoursQuery,
       productiveQuery,
@@ -262,6 +267,7 @@ export function ReportsPage() {
   }, [
     tab,
     teamReportsEnabled,
+    customerTimesheetPackEnabled,
     projectHoursQuery,
     productiveQuery,
     npHoursQuery,
@@ -618,6 +624,7 @@ export function ReportsPage() {
         ) : null}
 
         {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}
+        {customerTimesheetPackEnabled ? <CustomerTimesheetPackPanel canExport={canExport} /> : null}
 
       <FilterDrawer
         open={filtersOpen}

@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import (
+    FULL_ACCESS_ROLES,
+    TIMESHEET_COMPLIANCE_VIEWER_ROLES,
     can_approve_timesheet,
     can_edit_timesheet,
     can_read_timesheet,
@@ -11,7 +13,7 @@ from app.core.permissions import (
     can_return_timesheet_to_draft,
     can_submit_timesheet,
     get_role_name,
-    FULL_ACCESS_ROLES,
+    normalize_role_name,
 )
 from app.models.enums import ActivityAction, EntityType, NotificationType, TimesheetStatus
 from app.models.models import Project, Role, Timesheet, TimesheetEntry, User
@@ -210,8 +212,8 @@ def filter_visible_timesheets(
     actor: User,
     timesheets: list[Timesheet],
 ) -> list[Timesheet]:
-    role_name = get_role_name(db, actor)
-    if role_name in FULL_ACCESS_ROLES:
+    role_name = normalize_role_name(get_role_name(db, actor))
+    if role_name in FULL_ACCESS_ROLES or role_name in TIMESHEET_COMPLIANCE_VIEWER_ROLES:
         return timesheets
     if role_name == "Design Leader":
         return [ts for ts in timesheets if can_read_timesheet(db, actor, ts)]

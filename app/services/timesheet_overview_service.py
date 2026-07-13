@@ -7,15 +7,27 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.permissions import DESIGN_LEADER, ENGINEERING_MANAGER, get_role_name, is_admin
+from app.core.permissions import (
+    DESIGN_LEADER,
+    ENGINEERING_MANAGER,
+    TIMESHEET_COMPLIANCE_VIEWER_ROLES,
+    get_role_name,
+    is_admin,
+    normalize_role_name,
+)
 from app.models.enums import TeamRelationshipType
 from app.models.models import Project, Team, TeamMember, User
 from app.services.user_team_service import get_user_team_ids
 
 
 def get_timesheet_leader_team_ids(db: Session, user: User) -> set[UUID] | None:
-    """Teams a leader/manager may oversee. None means all teams (admin / unscoped EM)."""
+    """Teams a leader/manager may oversee. None means all teams (admin / compliance / unscoped EM)."""
     if is_admin(db, user):
+        return None
+
+    role_name = normalize_role_name(get_role_name(db, user))
+    if role_name in TIMESHEET_COMPLIANCE_VIEWER_ROLES:
+        # Office Administrator / HR chase completion across every team.
         return None
 
     team_ids: set[UUID] = set(get_user_team_ids(db, user.id))
@@ -43,7 +55,6 @@ def get_timesheet_leader_team_ids(db: Session, user: User) -> set[UUID] | None:
         ).all()
     )
 
-    role_name = get_role_name(db, user)
     if role_name == ENGINEERING_MANAGER and not team_ids:
         return None
 
@@ -91,7 +102,10 @@ def get_timesheet_visible_user_ids(db: Session, actor: User) -> set[UUID] | None
     if is_admin(db, actor):
         return None
 
-    role_name = get_role_name(db, actor)
+    role_name = normalize_role_name(get_role_name(db, actor))
+    if role_name in TIMESHEET_COMPLIANCE_VIEWER_ROLES:
+        return None
+
     team_scope = get_timesheet_leader_team_ids(db, actor)
     if team_scope is None:
         return None
@@ -184,6 +198,7 @@ def build_timesheet_overview(db: Session, actor: User) -> dict:
                 "team_name": primary_team_name,
                 "team_ids": sorted(user_team_ids.get(user.id, set()), key=str),
                 "working_hours_per_day": float(user.working_hours_per_day or 8),
+                "requires_timesheet": bool(getattr(user, "requires_timesheet", False)),
             }
         )
 

@@ -32,8 +32,10 @@ import {
   canReturnToDraft,
   canSubmitTimesheet,
   canViewAllTimesheets,
+  hasRole,
   isAdminRole,
   isReadOnlyRole,
+  ROLES,
 } from '../utils/permissions';
 import {
   currentMonthValue,
@@ -74,9 +76,12 @@ export function TimesheetsPage() {
 
   const roleName = user?.role_name ?? '';
   const isAdmin = isAdminRole(roleName);
+  const isComplianceViewer = user
+    ? hasRole(roleName, ROLES.HR, ROLES.OFFICE_ADMINISTRATOR)
+    : false;
   const canViewAll = user ? canViewAllTimesheets(user) : false;
   const canEnterOwn = user ? canEnterOwnTimesheet(user) : true;
-  // System admins (who cannot enter their own) always land on the all-users
+  // System admins / HR / Office Admin (who cannot enter their own) always land on the all-users
   // overview. Managers who can view all but also log time default to "mine".
   const [viewMode, setViewMode] = useState<'mine' | 'all'>(
     !canEnterOwn && canViewAll ? 'all' : 'mine',
@@ -127,6 +132,7 @@ export function TimesheetsPage() {
       users: section.users.map((person) => ({
         id: person.id,
         name: `${person.first_name} ${person.last_name}`.trim(),
+        requiresTimesheet: Boolean(person.requires_timesheet),
       })),
     }));
   }, [
@@ -409,7 +415,9 @@ export function TimesheetsPage() {
         secondaryLabel={
           viewAllUsers
             ? workspace.overviewContext?.scope_all_teams
-              ? 'All teams — timesheet overview'
+              ? isComplianceViewer
+                ? 'All teams — completion monitoring'
+                : 'All teams — timesheet overview'
               : 'Your teams — timesheet overview'
             : `${formatDisplayValue(user ? userDisplayName(user) : '')} · ${toolbarDate}`
         }
@@ -418,6 +426,14 @@ export function TimesheetsPage() {
       />
 
       <TimesheetMonthNavigation monthValue={monthValue} onMonthChange={setMonthValue} />
+
+      {viewAllUsers && isComplianceViewer ? (
+        <Alert severity="info" sx={{ mb: 1.5 }}>
+          Read-only view of every team. People marked &quot;Requires timesheet&quot; with no hours this
+          month are highlighted so you can follow up on missing submissions. Approvals stay with
+          Design Leaders / Engineering Managers.
+        </Alert>
+      ) : null}
 
       {canViewAll && canEnterOwn ? (
         <ToggleButtonGroup

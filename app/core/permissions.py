@@ -4,11 +4,13 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.access_control import (
+    HR,
     MODULE_REPORTS,
     MODULE_RESOURCE_PLANNING,
     MODULE_SYSTEM_ADMINISTRATION,
     MODULE_TIMESHEETS,
     MODULE_WORKLOAD,
+    OFFICE_ADMINISTRATOR,
     SPECIAL_APPROVE_TIMESHEETS,
     SPECIAL_CREATE_PROJECTS,
     SPECIAL_EDIT_PROJECTS,
@@ -38,6 +40,8 @@ PROJECT_STAFF_ROLES = DESIGNER_ASSIGNMENT_ROLES | {SURFACER}
 ASSIGNED_PROJECT_ROLES = PROJECT_STAFF_ROLES
 
 FULL_ACCESS_ROLES = {ADMIN, ENGINEERING_MANAGER}
+# Office Admin / HR monitor completion across all teams (view only — no approve).
+TIMESHEET_COMPLIANCE_VIEWER_ROLES = frozenset({HR, OFFICE_ADMINISTRATOR})
 READ_ALL_PROJECT_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER, READ_ONLY, PLANNING_BOARD}
 REPORT_VIEWER_ROLES = FULL_ACCESS_ROLES | {DESIGN_LEADER, READ_ONLY, PLANNING_BOARD}
 RESOURCE_PLANNING_ROLES = FULL_ACCESS_ROLES | {PLANNING_BOARD}
@@ -76,6 +80,11 @@ def has_role(db: Session, user: User, *roles: str) -> bool:
     role_name = normalize_role_name(get_role_name(db, user))
     normalized_roles = {normalize_role_name(role) for role in roles}
     return role_name in normalized_roles
+
+
+def is_timesheet_compliance_viewer(db: Session, user: User) -> bool:
+    """HR / Office Administrator — all-teams timesheet visibility for compliance."""
+    return normalize_role_name(get_role_name(db, user)) in TIMESHEET_COMPLIANCE_VIEWER_ROLES
 
 
 def can_view_reports(db: Session, user: User) -> bool:
@@ -258,6 +267,8 @@ def _design_leader_can_approve(db: Session, user: User, timesheet: Timesheet) ->
 def can_read_timesheet(db: Session, user: User, timesheet: Timesheet) -> bool:
     role_name = normalize_role_name(get_role_name(db, user))
     if role_name in FULL_ACCESS_ROLES | {READ_ONLY}:
+        return True
+    if role_name in TIMESHEET_COMPLIANCE_VIEWER_ROLES:
         return True
     if role_name == DESIGN_LEADER and _design_leader_can_approve(db, user, timesheet):
         return True

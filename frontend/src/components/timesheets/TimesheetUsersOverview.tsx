@@ -21,6 +21,7 @@ import { formatCellValue, formatDate, formatNumber } from '../../utils/format';
 export interface OverviewUser {
   id: string;
   name: string;
+  requiresTimesheet?: boolean;
 }
 
 export interface TimesheetOverviewSection {
@@ -132,6 +133,8 @@ export function TimesheetUsersOverview({
             section.users.map((overviewUser) => {
               const entries = entriesByUser.get(overviewUser.id) ?? [];
               const totalHours = entries.reduce((sum, entry) => sum + Number(entry.hours), 0);
+              const missingRequired =
+                Boolean(overviewUser.requiresTimesheet) && totalHours <= 0;
               return (
                 <Accordion
                   key={overviewUser.id}
@@ -139,7 +142,7 @@ export function TimesheetUsersOverview({
                   elevation={0}
                   sx={{
                     border: 1,
-                    borderColor: 'divider',
+                    borderColor: missingRequired ? 'warning.main' : 'divider',
                     borderRadius: '8px !important',
                     mb: 1,
                     '&:before': { display: 'none' },
@@ -169,6 +172,9 @@ export function TimesheetUsersOverview({
                         variant="outlined"
                         label={`${formatNumber(totalHours, 1)} h`}
                       />
+                      {missingRequired ? (
+                        <Chip size="small" color="warning" label="No hours this month" />
+                      ) : null}
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails sx={{ pt: 0 }}>

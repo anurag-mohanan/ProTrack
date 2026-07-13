@@ -287,6 +287,7 @@ class TimesheetOverviewUser(BaseModel):
     team_name: str | None = None
     team_ids: list[UUID] = Field(default_factory=list)
     working_hours_per_day: float = 8.0
+    requires_timesheet: bool = False
 
 
 class TimesheetOverviewContext(BaseModel):

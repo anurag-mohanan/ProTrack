@@ -173,6 +173,7 @@ export interface TimesheetOverviewUser {
   team_name?: string | null;
   team_ids: string[];
   working_hours_per_day: number;
+  requires_timesheet?: boolean;
 }
 
 export interface TimesheetOverviewContext {

@@ -247,7 +247,7 @@ function normalizeRoleName(roleName: string): string {
   return roleName;
 }
 
-function hasRole(roleName: string, ...roles: string[]): boolean {
+export function hasRole(roleName: string, ...roles: string[]): boolean {
   const normalized = normalizeRoleName(roleName);
   return roles.some((role) => normalizeRoleName(role) === normalized);
 }
@@ -383,12 +383,13 @@ export function canRejectTimesheet(status: string, roleNameOrContext: string | A
 
 /**
  * Whether the user can view other people's timesheets (team/all overview).
- * Admins always can; managers/leaders with the "approve timesheets" permission
- * (assignable per-user at creation) can view the timesheets they oversee.
+ * Admins always can; managers/leaders with approve permission can view teams they oversee.
+ * HR / Office Administrator get all-teams read-only overview for completion chasing.
  */
 export function canViewAllTimesheets(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
   if (isAdminRole(ctx.role_name)) return true;
+  if (hasRole(ctx.role_name, ROLES.HR, ROLES.OFFICE_ADMINISTRATOR)) return true;
   if (userHasSpecial(ctx, SPECIAL_APPROVE_TIMESHEETS)) return true;
   return isOperationalManagerRole(ctx.role_name) || isDesignLeaderRole(ctx.role_name);
 }

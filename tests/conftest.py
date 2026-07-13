@@ -201,6 +201,13 @@ def _seed_database(session) -> Milestone:
             ),
         ]
     )
+    session.flush()
+    from app.core.timesheet_eligibility import default_requires_timesheet_for_role
+
+    for seeded_user in session.scalars(select(User)).all():
+        role = session.get(Role, seeded_user.role_id)
+        if role is not None:
+            seeded_user.requires_timesheet = default_requires_timesheet_for_role(role.name)
     session.add(
         Stream(
             id=IDS["stream"],

@@ -41,4 +41,6 @@ export interface CurrentUser {
   team_name?: string | null;
   team_ids?: string[];
   team_names?: string[];
+  requires_timesheet?: boolean;
+  can_enter_own_timesheet?: boolean;
 }

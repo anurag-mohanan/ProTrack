@@ -9,6 +9,7 @@ import {
   IconButton,
   Switch,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -17,6 +18,7 @@ import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import WorkHistoryOutlinedIcon from '@mui/icons-material/WorkHistoryOutlined';
 import ContactMailOutlinedIcon from '@mui/icons-material/ContactMailOutlined';
+import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
@@ -93,6 +95,7 @@ interface UserFormState {
   kpi_dashboard_productivity: boolean;
   reset_kpi_defaults: boolean;
   default_working_model_id: string;
+  requires_timesheet: boolean;
 }
 
 const emptyForm: UserFormState = {
@@ -128,6 +131,7 @@ const emptyForm: UserFormState = {
   kpi_dashboard_productivity: true,
   reset_kpi_defaults: true,
   default_working_model_id: '',
+  requires_timesheet: true,
 };
 
 export default function UsersPage() {
@@ -356,6 +360,7 @@ export default function UsersPage() {
       kpi_dashboard_productivity: user.kpi_configuration?.kpi_dashboard_productivity ?? user.kpi_dashboard_productivity ?? true,
       reset_kpi_defaults: false,
       default_working_model_id: user.default_working_model_id ?? '',
+      requires_timesheet: user.requires_timesheet ?? false,
     });
     setFormOpen(true);
   };
@@ -442,6 +447,7 @@ export default function UsersPage() {
           ...buildCapacityPayload(),
           ...buildKpiPayload(),
           default_working_model_id: optionalUuid(form.default_working_model_id),
+          requires_timesheet: form.requires_timesheet,
           module_access: form.module_access,
           special_permissions: form.special_permissions,
         });
@@ -464,6 +470,7 @@ export default function UsersPage() {
           ...buildCapacityPayload(),
           ...buildKpiPayload(),
           default_working_model_id: optionalUuid(form.default_working_model_id),
+          requires_timesheet: form.requires_timesheet,
           module_access: form.module_access,
           special_permissions: form.special_permissions,
         } as Partial<User> & { password: string; must_change_password?: boolean });
@@ -920,6 +927,12 @@ export default function UsersPage() {
                     role_id: nextRoleId,
                     module_access: defaultModulesForRole(nextRoleName),
                     special_permissions: defaultSpecialPermissionsForRole(nextRoleName),
+                    requires_timesheet:
+                      nextRoleName === ROLES.DESIGN_LEADER ||
+                      nextRoleName === ROLES.SENIOR_DESIGNER ||
+                      nextRoleName === ROLES.DESIGNER ||
+                      nextRoleName === ROLES.JUNIOR_DESIGNER ||
+                      nextRoleName === ROLES.SURFACER,
                   }));
                 }}
               />
@@ -1068,6 +1081,27 @@ export default function UsersPage() {
                 }))
               }
             />
+          </FormSection>
+
+          <FormSection title="Timesheet Requirement" icon={ScheduleRoundedIcon}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.requires_timesheet}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      requires_timesheet: event.target.checked,
+                    }))
+                  }
+                />
+              }
+              label="Requires timesheet"
+            />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              On for Designers and Design Leaders (even on Overheads). Off for Planning Board,
+              Admin, HR, and Engineering Manager (optional logging). Override per user as needed.
+            </Typography>
           </FormSection>
 
           <UserAccessControlSection

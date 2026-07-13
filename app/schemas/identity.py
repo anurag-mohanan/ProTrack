@@ -107,6 +107,7 @@ class UserBase(BaseModel):
 class UserCreate(BlankOptionalFieldsMixin, UserBase):
     password: str = Field(min_length=8, max_length=128)
     must_change_password: bool = True
+    requires_timesheet: bool | None = None
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None
     team_assignments: list[UserTeamAssignmentWrite] | None = None
@@ -138,6 +139,7 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     kpi_workload_planning: bool | None = None
     kpi_dashboard_productivity: bool | None = None
     default_working_model_id: UUID | None = None
+    requires_timesheet: bool | None = None
     reset_kpi_defaults: bool = False
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None
@@ -167,6 +169,7 @@ class MustChangePasswordRequest(BaseModel):
 
 class UserRead(UserBase, TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
+    requires_timesheet: bool = False
     team_name: str | None = None
     team_assignments: list[UserTeamAssignmentRead] = Field(default_factory=list)
     team_names: list[str] = Field(default_factory=list)

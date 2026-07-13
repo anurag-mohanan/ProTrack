@@ -13,12 +13,13 @@ from app.core.access_control import (
     serialize_special_permissions,
 )
 from app.core.permissions import get_role_name, project_assignment_filter
+from app.core.timesheet_eligibility import default_requires_timesheet_for_role
 from app.core.pagination import PaginatedResponse, apply_sort
 from app.core.security import hash_password
 from app.crud.base import CRUDBase
 from app.crud.team import sync_user_team_membership  # noqa: F401 — re-exported
 from app.models.enums import TeamRelationshipType
-from app.models.models import Project, Team, TeamMember, User
+from app.models.models import Project, Role, Team, TeamMember, User
 from app.models.foundation import Department
 from app.schemas.identity import (
     UserCreate,
@@ -301,6 +302,10 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         data = _apply_access_payload(obj_in.model_dump(exclude={"password"}))
         team_assignments = data.pop("team_assignments", None)
         team_id = data.pop("team_id", None)
+        role = db.get(Role, data["role_id"])
+        role_name = role.name if role is not None else ""
+        if data.get("requires_timesheet") is None:
+            data["requires_timesheet"] = default_requires_timesheet_for_role(role_name)
         db_obj = User(
             **data,
             team_id=None,
@@ -355,9 +360,17 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         team_assignments_provided = "team_assignments" in update_data
         team_assignments = update_data.pop("team_assignments", None)
         reset_kpi_defaults = update_data.pop("reset_kpi_defaults", False)
+        role_changed = "role_id" in update_data
+        requires_explicit = "requires_timesheet" in update_data
+        if role_changed and not requires_explicit:
+            new_role = db.get(Role, update_data["role_id"])
+            if new_role is not None:
+                update_data["requires_timesheet"] = default_requires_timesheet_for_role(
+                    new_role.name
+                )
         update_data = _apply_access_payload(update_data)
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
-        if reset_kpi_defaults or "operational_role_type_id" in update_data or "role_id" in update_data:
+        if reset_kpi_defaults or "operational_role_type_id" in update_data or role_changed:
             apply_defaults_for_user(
                 db,
                 updated,

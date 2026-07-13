@@ -504,12 +504,24 @@ def ensure_user_access_schema(engine: Engine) -> None:
         ("special_permissions", "special_permissions TEXT"),
         ("module_actions", "module_actions TEXT"),
     )
+    requires_added = False
 
     if dialect == "sqlite":
         for column_name, ddl in access_columns:
             if not _sqlite_has_column(engine, "users", column_name):
                 with engine.begin() as connection:
                     connection.execute(text(f"ALTER TABLE users ADD COLUMN {ddl}"))
+        if not _sqlite_has_column(engine, "users", "requires_timesheet"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN "
+                        "requires_timesheet BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+            requires_added = True
+        if requires_added:
+            _backfill_requires_timesheet(engine)
         return
 
     if dialect == "postgresql":
@@ -521,6 +533,49 @@ def ensure_user_access_schema(engine: Engine) -> None:
             connection.execute(
                 text("ALTER TABLE users ADD COLUMN IF NOT EXISTS module_actions TEXT")
             )
+            exists = connection.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'users' AND column_name = 'requires_timesheet'
+                    """
+                )
+            ).first()
+            if exists is None:
+                connection.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN requires_timesheet "
+                        "BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+                requires_added = True
+        if requires_added:
+            _backfill_requires_timesheet(engine)
+
+
+def _backfill_requires_timesheet(engine: Engine) -> None:
+    """One-time seed from role defaults when the column is first added."""
+    delivery_roles = (
+        "Design Leader",
+        "Senior Designer",
+        "Designer",
+        "Junior Designer",
+        "Surfacer",
+    )
+    placeholders = ", ".join(f"'{name}'" for name in delivery_roles)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                f"""
+                UPDATE users
+                SET requires_timesheet = 1
+                WHERE role_id IN (
+                    SELECT id FROM roles WHERE name IN ({placeholders})
+                )
+                """
+            )
+        )
 
 
 def ensure_user_lifecycle_schema(engine: Engine) -> None:

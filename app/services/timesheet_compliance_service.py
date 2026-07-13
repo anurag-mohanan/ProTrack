@@ -7,17 +7,9 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.models import Role, Timesheet, TimesheetEntry, User
+from app.models.models import Timesheet, TimesheetEntry, User
 from app.schemas.dashboard import MissingTimesheetRow
 from app.services.holiday_service import load_holiday_dates
-
-TIMESHEET_ENTRY_ROLES = (
-    "Senior Designer",
-    "Designer",
-    "Junior Designer",
-    "Surfacer",
-    "Design Leader",
-)
 
 
 def _is_working_day(day: date, holidays: set[date]) -> bool:
@@ -61,9 +53,8 @@ def get_missing_timesheet_rows(
 
     users = db.scalars(
         select(User)
-        .join(Role, User.role_id == Role.id)
         .where(
-            Role.name.in_(TIMESHEET_ENTRY_ROLES),
+            User.requires_timesheet.is_(True),
             User.is_active.is_(True),
             User.is_archived.is_(False),
             User.is_deleted.is_(False),

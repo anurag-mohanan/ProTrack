@@ -76,6 +76,8 @@ export interface AccessContext {
   role_name: string;
   resolved_modules?: string[];
   resolved_special_permissions?: string[];
+  requires_timesheet?: boolean;
+  can_enter_own_timesheet?: boolean;
 }
 
 const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
@@ -255,6 +257,8 @@ export function accessContextFromUser(user: CurrentUser | null | undefined): Acc
     role_name: user?.role_name ?? '',
     resolved_modules: user?.resolved_modules ?? user?.module_access,
     resolved_special_permissions: user?.resolved_special_permissions ?? user?.special_permissions,
+    requires_timesheet: user?.requires_timesheet,
+    can_enter_own_timesheet: user?.can_enter_own_timesheet,
   };
 }
 
@@ -391,11 +395,34 @@ export function canViewAllTimesheets(roleNameOrContext: string | AccessContext):
 
 /**
  * Whether the user should get the personal timesheet-entry form.
- * System admins only oversee others' entries, so they don't get the form.
+ * Driven by server policy (Admin/HR/Planning Board/Read Only never fill).
+ * EM may optionally log; designers/Design Leaders fill when can_enter_own_timesheet is true.
  */
 export function canEnterOwnTimesheet(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
-  return !isAdminRole(ctx.role_name);
+  if (typeof ctx.can_enter_own_timesheet === 'boolean') {
+    return ctx.can_enter_own_timesheet;
+  }
+  // Fallback before /me is enriched: never Admin / Planning Board / Read Only.
+  if (isAdminRole(ctx.role_name) || isReadOnlyRole(ctx.role_name) || isPlanningBoardRole(ctx.role_name)) {
+    return false;
+  }
+  if (hasRole(ctx.role_name, ROLES.HR, ROLES.OFFICE_ADMINISTRATOR)) {
+    return false;
+  }
+  return true;
+}
+
+export function userRequiresTimesheet(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  if (typeof ctx.requires_timesheet === 'boolean') {
+    return ctx.requires_timesheet;
+  }
+  return (
+    isDesignLeaderRole(ctx.role_name) ||
+    isProjectStaffRole(ctx.role_name) ||
+    isSurfacerRole(ctx.role_name)
+  );
 }
 
 export function canReturnToDraft(

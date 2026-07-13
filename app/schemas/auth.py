@@ -50,6 +50,8 @@ class CurrentUserRead(BaseModel):
     impersonator_name: str | None = None
     module_access: list[str] = Field(default_factory=list)
     special_permissions: list[str] = Field(default_factory=list)
+    requires_timesheet: bool = False
+    can_enter_own_timesheet: bool = False
 
     @property
     def password_changed(self) -> bool:

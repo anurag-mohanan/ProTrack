@@ -18,6 +18,7 @@ import {
   canImportHistoricalTimesheets,
   canManageUsers,
   canViewReports,
+  canEnterOwnTimesheet,
   getDashboardRoleGroup,
   isDesignLeaderRole,
   isReadOnlyRole,
@@ -77,7 +78,7 @@ export function DashboardQuickActions({
   if (group === 'staff') {
     return (
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-        {userHasModule(access, MODULE_TIMESHEETS) ? (
+        {userHasModule(access, MODULE_TIMESHEETS) && canEnterOwnTimesheet(access) ? (
           <>
             <Button variant="contained" size="small" startIcon={<ScheduleIcon />} onClick={onTimesheet} sx={buttonSx}>
               Submit Timesheet

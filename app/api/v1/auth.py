@@ -12,6 +12,10 @@ from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
 from app.core.auth import create_access_token, decode_access_token
 from app.core.permissions import get_role_name, get_user_permission_keys
+from app.core.timesheet_eligibility import (
+    user_can_enter_own_timesheet,
+    user_requires_timesheet,
+)
 from app.core.access_control import (
     resolve_user_modules,
     resolve_user_special_permissions,
@@ -198,6 +202,8 @@ def _build_current_user_read(
         impersonator_name=impersonator_name,
         module_access=resolve_user_modules(user, role_name),
         special_permissions=resolve_user_special_permissions(user, role_name),
+        requires_timesheet=user_requires_timesheet(user),
+        can_enter_own_timesheet=user_can_enter_own_timesheet(db, user),
     )
 
 

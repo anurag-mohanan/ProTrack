@@ -65,59 +65,92 @@ from app.db.session import engine, sessionmaker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import logging
+
+    logger = logging.getLogger("protrack.startup")
     Base.metadata.create_all(bind=engine)
-    ensure_project_actual_hours(engine)
-    ensure_project_health(engine)
-    ensure_timesheet_approval_comments(engine)
-    ensure_design_roles(engine)
-    ensure_production_roles(engine)
-    ensure_admin_schema(engine)
-    ensure_project_template_schema(engine)
-    ensure_project_lifecycle_schema(engine)
-    ensure_project_stage_and_execution_status(engine)
-    ensure_placeholder_project_schema(engine)
-    ensure_project_timestamps(engine)
-    ensure_team_schema(engine)
-    ensure_user_team_schema(engine)
-    ensure_user_lifecycle_schema(engine)
-    ensure_user_auth_schema(engine)
-    ensure_user_access_schema(engine)
-    ensure_phase15_working_model_foundation(engine)
-    ensure_timesheet_entry_work_category(engine)
-    ensure_timesheet_entry_hours_constraint(engine)
-    ensure_timesheet_entry_timestamps(engine)
-    ensure_timesheet_entry_soft_delete(engine)
-    ensure_phase16_timesheet_contribution_foundation(engine)
-    ensure_non_productive_codes(engine)
-    ensure_timesheet_entry_leave_count(engine)
-    ensure_phase14_kpi_foundation(engine)
-    ensure_standard_task_types(engine)
-    ensure_phase7_foundation(engine)
-    ensure_phase8_foundation(engine)
-    ensure_phase9_foundation(engine)
-    ensure_phase10_milestone_foundation(engine)
-    ensure_email_foundation(engine)
-    ensure_email_communication_foundation(engine)
-    ensure_phase13_multi_team_foundation(engine)
-    ensure_phase17_ebmp_finance_foundation(engine)
-    ensure_phase18_finance_annual_plan_foundation(engine)
-    ensure_phase19_timesheet_report_inclusion_foundation(engine)
-    ensure_performance_indexes(engine)
+
+    startup_steps = [
+        ("project_actual_hours", ensure_project_actual_hours),
+        ("project_health", ensure_project_health),
+        ("timesheet_approval_comments", ensure_timesheet_approval_comments),
+        ("design_roles", ensure_design_roles),
+        ("production_roles", ensure_production_roles),
+        ("admin_schema", ensure_admin_schema),
+        ("project_template_schema", ensure_project_template_schema),
+        ("project_lifecycle_schema", ensure_project_lifecycle_schema),
+        ("project_stage_and_execution_status", ensure_project_stage_and_execution_status),
+        ("placeholder_project_schema", ensure_placeholder_project_schema),
+        ("project_timestamps", ensure_project_timestamps),
+        ("team_schema", ensure_team_schema),
+        ("user_team_schema", ensure_user_team_schema),
+        ("user_lifecycle_schema", ensure_user_lifecycle_schema),
+        ("user_auth_schema", ensure_user_auth_schema),
+        ("user_access_schema", ensure_user_access_schema),
+        ("phase15_working_model", ensure_phase15_working_model_foundation),
+        ("timesheet_entry_work_category", ensure_timesheet_entry_work_category),
+        ("timesheet_entry_hours_constraint", ensure_timesheet_entry_hours_constraint),
+        ("timesheet_entry_timestamps", ensure_timesheet_entry_timestamps),
+        ("timesheet_entry_soft_delete", ensure_timesheet_entry_soft_delete),
+        ("phase16_timesheet_contribution", ensure_phase16_timesheet_contribution_foundation),
+        ("non_productive_codes", ensure_non_productive_codes),
+        ("timesheet_entry_leave_count", ensure_timesheet_entry_leave_count),
+        ("phase14_kpi", ensure_phase14_kpi_foundation),
+        ("standard_task_types", ensure_standard_task_types),
+        ("phase7", ensure_phase7_foundation),
+        ("phase8", ensure_phase8_foundation),
+        ("phase9", ensure_phase9_foundation),
+        ("phase10_milestone", ensure_phase10_milestone_foundation),
+        ("email_foundation", ensure_email_foundation),
+        ("email_communication", ensure_email_communication_foundation),
+        ("phase13_multi_team", ensure_phase13_multi_team_foundation),
+        ("phase17_ebmp_finance", ensure_phase17_ebmp_finance_foundation),
+        ("phase18_finance_annual_plan", ensure_phase18_finance_annual_plan_foundation),
+        ("phase19_timesheet_report_inclusion", ensure_phase19_timesheet_report_inclusion_foundation),
+        ("performance_indexes", ensure_performance_indexes),
+    ]
+
+    failures: list[str] = []
+    for name, step in startup_steps:
+        try:
+            step(engine)
+        except Exception:
+            failures.append(name)
+            logger.exception("Startup schema step failed: %s", name)
+
     if ENABLE_DEMO_SEED:
-        ensure_design_team(engine)
+        try:
+            ensure_design_team(engine)
+        except Exception:
+            failures.append("design_team_seed")
+            logger.exception("Demo design team seed failed")
+
     seed_session = sessionmaker(bind=engine)()
     try:
         ensure_project_types_and_templates(seed_session)
         validate_project_template_health(seed_session)
+    except Exception:
+        failures.append("project_template_seed")
+        logger.exception("Project template seed/validation failed")
     finally:
         seed_session.close()
+
+    if failures:
+        logger.error(
+            "ProTrack API started with schema step failures: %s. "
+            "Login/API may still work; fix and restart before release.",
+            ", ".join(failures),
+        )
+    else:
+        logger.info("ProTrack API startup schema sync completed successfully")
+
     yield
 
 
 app = FastAPI(
     title="ProTrack API",
     description="Engineering management platform API for Prosohm Projects Pvt. Ltd.",
-    version=f"{APP_VERSION}-rc4",
+    version=f"{APP_VERSION}-{RELEASE_CANDIDATE.lower()}",
     lifespan=lifespan,
     swagger_ui_parameters={
         "persistAuthorization": True,

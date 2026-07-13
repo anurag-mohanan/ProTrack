@@ -69,6 +69,7 @@ def write_report_letterhead(
             sheet.row_dimensions[2].height = 20
             sheet.row_dimensions[3].height = 18
         except Exception:
+            # Missing Pillow or unsupported image format must not break exports.
             text_col = 1
 
     sheet.merge_cells(

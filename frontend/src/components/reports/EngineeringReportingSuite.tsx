@@ -34,6 +34,7 @@ import { LoadingState } from '../common/LoadingState';
 import { AnalyticsBarChart } from '../analytics/AnalyticsCharts';
 import { KpiMetricCard } from '../ui/design-system';
 import { CustomerTimesheetPackPanel } from './CustomerTimesheetPackPanel';
+import { fetchCustomers, fetchTeams } from '../../api/lookups';
 import {
   downloadEngineeringReportExcel,
   engineeringReportQueryKeys,
@@ -75,6 +76,8 @@ export function EngineeringReportingSuite({
   const [selectedReportId, setSelectedReportId] = useState('monthly-engineering');
   const [periodType, setPeriodType] = useState('monthly');
   const [anchor, setAnchor] = useState(currentMonthAnchor());
+  const [customerId, setCustomerId] = useState('');
+  const [teamId, setTeamId] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -90,6 +93,20 @@ export function EngineeringReportingSuite({
     staleTime: 60 * 1000,
   });
 
+  const customersQuery = useQuery({
+    queryKey: ['lookups', 'customers'],
+    queryFn: fetchCustomers,
+    staleTime: 5 * 60 * 1000,
+  });
+  const teamsQuery = useQuery({
+    queryKey: ['lookups', 'teams'],
+    queryFn: fetchTeams,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const teams = teamsQuery.data ?? [];
+  const multiTeam = teams.length > 1;
+
   const selectedReport = useMemo(
     () => catalogQuery.data?.reports.find((report) => report.id === selectedReportId),
     [catalogQuery.data, selectedReportId],
@@ -101,10 +118,12 @@ export function EngineeringReportingSuite({
     () => ({
       period_type: periodType,
       anchor,
+      customer_id: customerId || undefined,
+      team_id: teamId || undefined,
       include_archived: includeArchived,
       include_deleted: includeDeleted,
     }),
-    [periodType, anchor, includeArchived, includeDeleted],
+    [periodType, anchor, customerId, teamId, includeArchived, includeDeleted],
   );
 
   const previewQuery = useQuery({
@@ -180,12 +199,48 @@ export function EngineeringReportingSuite({
           <Box>
             <Typography variant="h6">Engineering Management Reporting Suite</Typography>
             <Typography variant="body2" color="text.secondary">
-              Executive dashboards, productivity analytics, and management-ready Excel exports.
+              Filter Customer → Team → Week/Month. Team leaders can only download their own teams.
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'flex-start' }}>
             {!isCustomerTimesheetPack ? (
               <>
+                <TextField
+                  select
+                  size="small"
+                  label="Customer"
+                  value={customerId}
+                  onChange={(event) => setCustomerId(event.target.value)}
+                  sx={{ minWidth: 160 }}
+                  helperText="Optional"
+                >
+                  <MenuItem value="">All customers</MenuItem>
+                  {(customersQuery.data ?? []).map((customer) => (
+                    <MenuItem key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  size="small"
+                  label="Team"
+                  value={teamId}
+                  onChange={(event) => setTeamId(event.target.value)}
+                  sx={{ minWidth: 160 }}
+                  helperText={
+                    multiTeam
+                      ? 'Leaders: pick one or all accessible'
+                      : 'Your accessible teams only'
+                  }
+                >
+                  <MenuItem value="">All accessible teams</MenuItem>
+                  {teams.map((team) => (
+                    <MenuItem key={team.id} value={team.id}>
+                      {team.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
                 <TextField
                   select
                   size="small"
@@ -215,6 +270,7 @@ export function EngineeringReportingSuite({
                     startIcon={<DownloadRoundedIcon />}
                     onClick={handleDownload}
                     disabled={downloading}
+                    sx={{ alignSelf: 'center' }}
                   >
                     {downloading ? 'Generating…' : 'Download Excel'}
                   </Button>

@@ -10,6 +10,7 @@ from app.schemas.reporting import EngineeringReportPayload, ReportCatalog
 from app.services.reporting.data_service import build_engineering_report
 from app.services.reporting.excel.generator import generate_engineering_excel
 from app.services.reporting.registry import get_report_catalog, get_report_definition
+from app.services.reporting.report_scope import ReportScope
 
 
 class ReportingEngine:
@@ -26,6 +27,7 @@ class ReportingEngine:
         include_archived: bool = True,
         include_deleted: bool = False,
         ai_insights: list[str] | None = None,
+        scope: ReportScope | None = None,
     ) -> EngineeringReportPayload:
         definition = get_report_definition(report_id)
         if definition is None:
@@ -62,6 +64,7 @@ class ReportingEngine:
             include_deleted=include_deleted,
             report_id=report_id,
             ai_insights=insights,
+            scope=scope,
         )
 
     def export_excel(self, payload: EngineeringReportPayload) -> bytes:

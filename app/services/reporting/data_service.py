@@ -19,7 +19,6 @@ from app.models.models import (
     Milestone,
     NonProductiveCode,
     Project,
-    Role,
     TaskType,
     Team,
     Timesheet,
@@ -47,6 +46,7 @@ from app.schemas.reporting import (
 from app.services.holiday_service import load_holiday_dates
 from app.services.project_calculation_service import calculate_hours, calculate_progress
 from app.services.reporting.periods import build_report_period
+from app.services.reporting.report_scope import ReportScope, user_matches_scope
 
 from app.services.kpi_participation import engineering_productivity_users
 
@@ -55,6 +55,34 @@ def _pct(numerator: Decimal, denominator: Decimal) -> Decimal:
     if denominator <= 0:
         return Decimal("0")
     return (numerator / denominator * Decimal("100")).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+
+
+def _unrestricted_scope() -> ReportScope:
+    return ReportScope()
+
+
+def _entry_scope_clauses(scope: ReportScope):
+    clauses = []
+    if scope.customer_id is not None:
+        clauses.append(TimesheetEntry.customer_id == scope.customer_id)
+    if scope.user_ids is not None:
+        if not scope.user_ids:
+            clauses.append(Timesheet.user_id.in_(()))
+        else:
+            clauses.append(Timesheet.user_id.in_(tuple(scope.user_ids)))
+    return clauses
+
+
+def _project_scope_clauses(scope: ReportScope):
+    clauses = []
+    if scope.customer_id is not None:
+        clauses.append(Project.customer_id == scope.customer_id)
+    if scope.team_ids is not None:
+        if not scope.team_ids:
+            clauses.append(Project.team_id.in_(()))
+        else:
+            clauses.append(Project.team_id.in_(tuple(scope.team_ids)))
+    return clauses
 
 
 def _function_group(task_name: str | None, work_category: WorkCategory | str) -> str:
@@ -120,7 +148,9 @@ def build_engineering_report(
     include_deleted: bool = False,
     report_id: str | None = None,
     ai_insights: list[str] | None = None,
+    scope: ReportScope | None = None,
 ) -> EngineeringReportPayload:
+    report_scope = scope or _unrestricted_scope()
     holidays = load_holiday_dates(
         db,
         (anchor or date.today()).replace(day=1) if period_type == "monthly" else (anchor or date.today()),
@@ -130,17 +160,32 @@ def build_engineering_report(
     company = get_or_create_company_settings(db)
     daily_hours = _decimal(company.default_working_hours_per_day)
 
-    designer_productivity = _designer_productivity(db, period, daily_hours)
-    designer_tool_breakdown = _designer_tool_breakdown(db, period)
-    tool_hours = _tool_hours(db, include_archived=include_archived, include_deleted=include_deleted)
-    customer_summary = _customer_hours(db, period)
-    team_summary = _team_summary(db, period, daily_hours)
-    function_hours = _function_hours(db, period)
-    np_analysis = _np_analysis(db, period)
-    leave_analysis = _leave_analysis(db, period)
-    quoted_vs_actual = _quoted_vs_actual(db, include_archived=include_archived, include_deleted=include_deleted)
-    project_performance = _project_performance(db, include_archived=include_archived, include_deleted=include_deleted)
-    detailed_entries = _detailed_entries(db, period)
+    designer_productivity = _designer_productivity(db, period, daily_hours, report_scope)
+    designer_tool_breakdown = _designer_tool_breakdown(db, period, report_scope)
+    tool_hours = _tool_hours(
+        db,
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        scope=report_scope,
+    )
+    customer_summary = _customer_hours(db, period, report_scope)
+    team_summary = _team_summary(db, period, daily_hours, report_scope)
+    function_hours = _function_hours(db, period, report_scope)
+    np_analysis = _np_analysis(db, period, report_scope)
+    leave_analysis = _leave_analysis(db, period, report_scope)
+    quoted_vs_actual = _quoted_vs_actual(
+        db,
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        scope=report_scope,
+    )
+    project_performance = _project_performance(
+        db,
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        scope=report_scope,
+    )
+    detailed_entries = _detailed_entries(db, period, report_scope)
     executive = _executive_summary(
         db,
         period,
@@ -270,8 +315,11 @@ def _designer_productivity(
     db: Session,
     period: ReportPeriod,
     daily_hours: Decimal,
+    scope: ReportScope,
 ) -> list[DesignerProductivityRow]:
-    designers = _active_designers(db)
+    designers = [
+        person for person in _active_designers(db) if user_matches_scope(db, person, scope)
+    ]
     rows: list[DesignerProductivityRow] = []
     expected_per_person = Decimal(period.working_days) * daily_hours
 
@@ -279,7 +327,11 @@ def _designer_productivity(
         entries = db.scalars(
             select(TimesheetEntry)
             .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
-            .where(Timesheet.user_id == person.id, *_entry_base_filters(period.start_date, period.end_date))
+            .where(
+                Timesheet.user_id == person.id,
+                *_entry_base_filters(period.start_date, period.end_date),
+                *_entry_scope_clauses(scope),
+            )
         ).all()
 
         productive = np_hours = leave_days = billable = Decimal("0")
@@ -326,7 +378,9 @@ def _designer_productivity(
     return sorted(rows, key=lambda row: row.total_hours, reverse=True)
 
 
-def _designer_tool_breakdown(db: Session, period: ReportPeriod) -> list[DesignerToolBreakdownRow]:
+def _designer_tool_breakdown(
+    db: Session, period: ReportPeriod, scope: ReportScope
+) -> list[DesignerToolBreakdownRow]:
     rows = db.execute(
         select(
             User.id,
@@ -344,7 +398,10 @@ def _designer_tool_breakdown(db: Session, period: ReportPeriod) -> list[Designer
         .outerjoin(Project, TimesheetEntry.project_id == Project.id)
         .outerjoin(Customer, Project.customer_id == Customer.id)
         .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
-        .where(*_entry_base_filters(period.start_date, period.end_date))
+        .where(
+            *_entry_base_filters(period.start_date, period.end_date),
+            *_entry_scope_clauses(scope),
+        )
         .group_by(
             User.id,
             User.first_name,
@@ -412,12 +469,15 @@ def _tool_hours(
     *,
     include_archived: bool,
     include_deleted: bool,
+    scope: ReportScope,
 ) -> list[ToolHoursRow]:
     stmt = select(Project, Customer.name).join(Customer, Project.customer_id == Customer.id)
     if not include_deleted:
         stmt = stmt.where(Project.is_deleted.is_(False))
     if not include_archived:
         stmt = stmt.where(Project.is_archived.is_(False))
+    for clause in _project_scope_clauses(scope):
+        stmt = stmt.where(clause)
     rows = db.execute(stmt.order_by(Project.tool_number)).all()
 
     result: list[ToolHoursRow] = []
@@ -456,7 +516,7 @@ def _tool_hours(
     return result
 
 
-def _customer_hours(db: Session, period: ReportPeriod) -> list[CustomerHoursRow]:
+def _customer_hours(db: Session, period: ReportPeriod, scope: ReportScope) -> list[CustomerHoursRow]:
     rows = db.execute(
         select(
             Customer.id,
@@ -493,7 +553,10 @@ def _customer_hours(db: Session, period: ReportPeriod) -> list[CustomerHoursRow]
         )
         .join(TimesheetEntry, TimesheetEntry.customer_id == Customer.id)
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
-        .where(*_entry_base_filters(period.start_date, period.end_date))
+        .where(
+            *_entry_base_filters(period.start_date, period.end_date),
+            *_entry_scope_clauses(scope),
+        )
         .group_by(Customer.id, Customer.name)
     ).all()
 
@@ -522,8 +585,11 @@ def _team_summary(
     db: Session,
     period: ReportPeriod,
     daily_hours: Decimal,
+    scope: ReportScope,
 ) -> list[TeamSummaryRow]:
     teams = list(db.scalars(select(Team).order_by(Team.name)).all())
+    if scope.team_ids is not None:
+        teams = [team for team in teams if team.id in scope.team_ids]
     rows: list[TeamSummaryRow] = []
     for team in teams:
         members = list(
@@ -544,6 +610,7 @@ def _team_summary(
             .where(
                 Timesheet.user_id.in_(member_ids),
                 *_entry_base_filters(period.start_date, period.end_date),
+                *_entry_scope_clauses(scope),
             )
         ).all()
         productive = np_hours = leave_days = Decimal("0")
@@ -577,16 +644,19 @@ def _team_summary(
     return sorted(rows, key=lambda row: row.total_hours, reverse=True)
 
 
-def _function_hours(db: Session, period: ReportPeriod) -> list[FunctionHoursRow]:
-    rows = db.execute(
+def _function_hours(db: Session, period: ReportPeriod, scope: ReportScope) -> list[FunctionHoursRow]:
+    stmt = (
         select(TaskType.name, TimesheetEntry.work_category, func.coalesce(func.sum(TimesheetEntry.hours), 0))
         .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
             *_entry_base_filters(period.start_date, period.end_date),
             or_(TimesheetEntry.leave_count.is_(None), TimesheetEntry.leave_count <= 0),
+            *_entry_scope_clauses(scope),
         )
         .group_by(TaskType.name, TimesheetEntry.work_category)
-    ).all()
+    )
+    rows = db.execute(stmt).all()
 
     grouped: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     for task_name, category, hours in rows:
@@ -616,7 +686,7 @@ def _function_hours(db: Session, period: ReportPeriod) -> list[FunctionHoursRow]
     ]
 
 
-def _np_analysis(db: Session, period: ReportPeriod) -> list[NpAnalysisRow]:
+def _np_analysis(db: Session, period: ReportPeriod, scope: ReportScope) -> list[NpAnalysisRow]:
     rows = db.execute(
         select(
             NonProductiveCode.code,
@@ -624,9 +694,11 @@ def _np_analysis(db: Session, period: ReportPeriod) -> list[NpAnalysisRow]:
             func.coalesce(func.sum(TimesheetEntry.hours), 0),
         )
         .join(TimesheetEntry, TimesheetEntry.non_productive_code_id == NonProductiveCode.id)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
             *_entry_base_filters(period.start_date, period.end_date),
             standard_np_hours_clause(),
+            *_entry_scope_clauses(scope),
         )
         .group_by(NonProductiveCode.code, NonProductiveCode.description)
         .order_by(func.sum(TimesheetEntry.hours).desc())
@@ -643,7 +715,7 @@ def _np_analysis(db: Session, period: ReportPeriod) -> list[NpAnalysisRow]:
     ]
 
 
-def _leave_analysis(db: Session, period: ReportPeriod) -> list[LeaveAnalysisRow]:
+def _leave_analysis(db: Session, period: ReportPeriod, scope: ReportScope) -> list[LeaveAnalysisRow]:
     rows = db.execute(
         select(
             User.id,
@@ -654,7 +726,11 @@ def _leave_analysis(db: Session, period: ReportPeriod) -> list[LeaveAnalysisRow]
         )
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .join(User, Timesheet.user_id == User.id)
-        .where(*_entry_base_filters(period.start_date, period.end_date), leave_entry_clause())
+        .where(
+            *_entry_base_filters(period.start_date, period.end_date),
+            leave_entry_clause(),
+            *_entry_scope_clauses(scope),
+        )
         .group_by(User.id, User.first_name, User.last_name)
     ).all()
     return [
@@ -673,9 +749,15 @@ def _quoted_vs_actual(
     *,
     include_archived: bool,
     include_deleted: bool,
+    scope: ReportScope,
 ) -> list[QuotedVsActualRow]:
     today = date.today()
-    tools = _tool_hours(db, include_archived=include_archived, include_deleted=include_deleted)
+    tools = _tool_hours(
+        db,
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        scope=scope,
+    )
     result: list[QuotedVsActualRow] = []
     for row in tools:
         late = int(
@@ -713,8 +795,14 @@ def _project_performance(
     *,
     include_archived: bool,
     include_deleted: bool,
+    scope: ReportScope,
 ) -> list[ProjectPerformanceRow]:
-    tools = _tool_hours(db, include_archived=include_archived, include_deleted=include_deleted)
+    tools = _tool_hours(
+        db,
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        scope=scope,
+    )
     result: list[ProjectPerformanceRow] = []
     for row in tools:
         project = db.get(Project, row.project_id)
@@ -739,7 +827,9 @@ def _project_performance(
     return result
 
 
-def _detailed_entries(db: Session, period: ReportPeriod) -> list[DetailedTimesheetRow]:
+def _detailed_entries(
+    db: Session, period: ReportPeriod, scope: ReportScope
+) -> list[DetailedTimesheetRow]:
     rows = db.execute(
         select(TimesheetEntry, User, Team.name, Customer.name, Project.tool_number, TaskType.name)
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
@@ -748,7 +838,10 @@ def _detailed_entries(db: Session, period: ReportPeriod) -> list[DetailedTimeshe
         .outerjoin(Customer, TimesheetEntry.customer_id == Customer.id)
         .outerjoin(Project, TimesheetEntry.project_id == Project.id)
         .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
-        .where(*_entry_base_filters(period.start_date, period.end_date))
+        .where(
+            *_entry_base_filters(period.start_date, period.end_date),
+            *_entry_scope_clauses(scope),
+        )
         .order_by(TimesheetEntry.entry_date, User.first_name)
     ).all()
 

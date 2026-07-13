@@ -7,6 +7,7 @@ from fastapi.responses import Response
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
 from app.core.permissions import can_view_deleted_projects
+from app.services.reporting.report_scope import ReportScopeForbidden, resolve_report_scope
 from app.crud.reports import (
     get_billable_utilization_report,
     get_billable_vs_non_billable_report,
@@ -116,6 +117,8 @@ def _report_options(
 def _engineering_report_options(
     period_type: str = Query("monthly"),
     anchor: date | None = Query(None),
+    customer_id: UUID | None = Query(None),
+    team_id: UUID | None = Query(None),
     include_archived: bool = Query(True),
     include_deleted: bool = Query(False),
     db: Session = Depends(get_db),
@@ -123,11 +126,21 @@ def _engineering_report_options(
 ) -> dict[str, object]:
     if include_deleted and not can_view_deleted_projects(db, current_user):
         include_deleted = False
+    try:
+        scope = resolve_report_scope(
+            db,
+            current_user,
+            customer_id=customer_id,
+            team_id=team_id,
+        )
+    except ReportScopeForbidden as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     return {
         "period_type": period_type,
         "anchor": anchor,
         "include_archived": include_archived,
         "include_deleted": include_deleted,
+        "scope": scope,
     }
 
 

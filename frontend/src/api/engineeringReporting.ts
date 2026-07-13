@@ -13,6 +13,8 @@ function reportQuery(options?: EngineeringReportOptions): string {
   return buildQuery({
     period_type: options?.period_type,
     anchor: options?.anchor,
+    customer_id: options?.customer_id,
+    team_id: options?.team_id,
     include_archived: options?.include_archived,
     include_deleted: options?.include_deleted,
   });

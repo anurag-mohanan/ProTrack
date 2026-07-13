@@ -118,6 +118,8 @@ export interface ReportScheduleRequest {
 export interface EngineeringReportOptions {
   period_type?: string;
   anchor?: string;
+  customer_id?: string;
+  team_id?: string;
   include_archived?: boolean;
   include_deleted?: boolean;
 }

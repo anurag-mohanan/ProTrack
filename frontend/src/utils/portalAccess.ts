@@ -13,7 +13,10 @@ import {
 } from './permissions';
 import {
   MODULE_DASHBOARD,
+  MODULE_FINANCIAL_PLANNING,
+  MODULE_HUMAN_RESOURCES,
   MODULE_PROJECTS,
+  MODULE_REPORTS_ANALYTICS,
   MODULE_TIMESHEETS,
 } from '../config/accessControl';
 
@@ -49,6 +52,15 @@ export function canAccessPortalPath(ctx: AccessContext, path: string): boolean {
     normalized.startsWith('/executive-wall')
   ) {
     return canViewReports(ctx);
+  }
+  if (normalized.startsWith('/finance')) {
+    return userHasModule(ctx, MODULE_FINANCIAL_PLANNING);
+  }
+  if (normalized.startsWith('/hr')) {
+    return userHasModule(ctx, MODULE_HUMAN_RESOURCES);
+  }
+  if (normalized.startsWith('/analytics')) {
+    return userHasModule(ctx, MODULE_REPORTS_ANALYTICS);
   }
 
   return true;

@@ -52,8 +52,8 @@ def _validate_assignments(
     if not assignments:
         return []
     primary_count = sum(1 for row in assignments if row.is_primary)
-    if primary_count != 1:
-        raise ProTrackValidationError("Exactly one team must be marked as primary")
+    if primary_count > 1:
+        raise ProTrackValidationError("At most one team may be marked as primary")
     seen: set[UUID] = set()
     normalized: list[UserTeamAssignmentInput] = []
     for row in assignments:

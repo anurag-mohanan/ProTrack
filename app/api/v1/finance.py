@@ -1,0 +1,461 @@
+"""Financial Planning API — independent EBMP module."""
+
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.api.auth_deps import get_current_user
+from app.api.deps import get_db
+from app.core.access_control import MODULE_FINANCIAL_PLANNING
+from app.core.exceptions import ProTrackValidationError
+from app.core.module_actions import (
+    MODULE_ACTION_APPROVE,
+    MODULE_ACTION_CONFIGURE,
+    MODULE_ACTION_CREATE,
+    MODULE_ACTION_EDIT,
+    MODULE_ACTION_EXPORT,
+    MODULE_ACTION_VIEW,
+    user_has_module_action,
+)
+from app.core.permissions import get_role_name
+from app.models.enums import ActivityAction, BudgetApprovalStatus, EntityType
+from app.models.finance import (
+    AiForecastPlaceholder,
+    Budget,
+    CompanyFinanceSettings,
+    CostCentre,
+    Currency,
+    EmployeeCostProfile,
+    Expense,
+    FxRate,
+    Quote,
+)
+from app.models.models import Activity, User
+from app.schemas.finance import (
+    BudgetCreate,
+    BudgetRead,
+    BudgetStatusUpdate,
+    CompanyFinanceSettingsRead,
+    CostCentreRead,
+    CurrencyRead,
+    EmployeeCostProfileCreate,
+    EmployeeCostProfileRead,
+    ExpenseCreate,
+    ExpenseRead,
+    FinanceDashboardRead,
+    FinanceReportRow,
+    FxRateCreate,
+    FxRateRead,
+    QuoteImportResult,
+    QuoteRead,
+)
+from app.services.finance.dashboard_service import get_finance_dashboard
+from app.services.finance.fx_service import to_base_amount
+from app.services.finance.quote_import_service import (
+    import_quotes_from_csv,
+    import_quotes_from_excel,
+)
+
+router = APIRouter(prefix="/finance", tags=["financial-planning"])
+
+
+def _role(db: Session, user: User) -> str:
+    return get_role_name(db, user)
+
+
+def _require_finance_action(db: Session, user: User, action: str) -> None:
+    role_name = _role(db, user)
+    if not user_has_module_action(user, role_name, MODULE_FINANCIAL_PLANNING, action):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Financial Planning access required",
+        )
+
+
+def _audit(
+    db: Session,
+    *,
+    user: User,
+    action: ActivityAction,
+    entity_type: EntityType,
+    entity_id: UUID | None,
+    new_value: str | None = None,
+) -> None:
+    db.add(
+        Activity(
+            user_id=user.id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action=action,
+            new_value=new_value,
+        )
+    )
+
+
+@router.get("/dashboard", response_model=FinanceDashboardRead)
+def finance_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return get_finance_dashboard(db)
+
+
+@router.get("/currencies", response_model=list[CurrencyRead])
+def list_currencies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return db.scalars(select(Currency).where(Currency.is_active.is_(True)).order_by(Currency.code)).all()
+
+
+@router.get("/settings", response_model=CompanyFinanceSettingsRead)
+def finance_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    settings = db.scalar(
+        select(CompanyFinanceSettings).where(CompanyFinanceSettings.is_active.is_(True))
+    )
+    if settings is None:
+        raise HTTPException(status_code=404, detail="Finance settings not configured")
+    return settings
+
+
+@router.get("/fx-rates", response_model=list[FxRateRead])
+def list_fx_rates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return db.scalars(select(FxRate).order_by(FxRate.effective_date.desc()).limit(200)).all()
+
+
+@router.post("/fx-rates", response_model=FxRateRead, status_code=status.HTTP_201_CREATED)
+def create_fx_rate(
+    payload: FxRateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CONFIGURE)
+    row = FxRate(**payload.model_dump())
+    db.add(row)
+    db.flush()
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.fx_rate_updated,
+        entity_type=EntityType.fx_rate,
+        entity_id=row.id,
+        new_value=f"{row.from_currency}->{row.to_currency}={row.rate}",
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get("/cost-centres", response_model=list[CostCentreRead])
+def list_cost_centres(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return db.scalars(
+        select(CostCentre).where(CostCentre.is_active.is_(True)).order_by(CostCentre.sort_order)
+    ).all()
+
+
+@router.get("/expenses", response_model=list[ExpenseRead])
+def list_expenses(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return db.scalars(select(Expense).where(Expense.is_active.is_(True)).order_by(Expense.name)).all()
+
+
+@router.post("/expenses", response_model=ExpenseRead, status_code=status.HTTP_201_CREATED)
+def create_expense(
+    payload: ExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        base_amount, fx_rate, fx_date = to_base_amount(
+            db,
+            amount=payload.amount,
+            currency_code=payload.currency_code,
+            on_date=payload.start_date or date.today(),
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    row = Expense(
+        **payload.model_dump(),
+        base_amount_inr=base_amount,
+        fx_rate=fx_rate,
+        fx_date=fx_date,
+        is_active=True,
+    )
+    db.add(row)
+    db.flush()
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.cost_updated,
+        entity_type=EntityType.expense,
+        entity_id=row.id,
+        new_value=row.name,
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get("/employee-costs", response_model=list[EmployeeCostProfileRead])
+def list_employee_costs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return db.scalars(
+        select(EmployeeCostProfile).where(EmployeeCostProfile.is_active.is_(True))
+    ).all()
+
+
+@router.post(
+    "/employee-costs",
+    response_model=EmployeeCostProfileRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def upsert_employee_cost(
+    payload: EmployeeCostProfileCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        base_salary, fx_rate, _ = to_base_amount(
+            db,
+            amount=payload.monthly_salary,
+            currency_code=payload.currency_code,
+            on_date=payload.effective_from,
+        )
+        base_hourly, _, _ = to_base_amount(
+            db,
+            amount=payload.hourly_cost,
+            currency_code=payload.currency_code,
+            on_date=payload.effective_from,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    row = db.scalar(
+        select(EmployeeCostProfile).where(EmployeeCostProfile.user_id == payload.user_id)
+    )
+    if row is None:
+        row = EmployeeCostProfile(
+            **payload.model_dump(),
+            base_monthly_salary_inr=base_salary,
+            base_hourly_cost_inr=base_hourly,
+            fx_rate=fx_rate,
+            is_active=True,
+        )
+        db.add(row)
+    else:
+        for key, value in payload.model_dump().items():
+            setattr(row, key, value)
+        row.base_monthly_salary_inr = base_salary
+        row.base_hourly_cost_inr = base_hourly
+        row.fx_rate = fx_rate
+    db.flush()
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.cost_updated,
+        entity_type=EntityType.employee_cost,
+        entity_id=row.id,
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get("/budgets", response_model=list[BudgetRead])
+def list_budgets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return db.scalars(select(Budget).where(Budget.is_active.is_(True)).order_by(Budget.name)).all()
+
+
+@router.post("/budgets", response_model=BudgetRead, status_code=status.HTTP_201_CREATED)
+def create_budget(
+    payload: BudgetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        base_allocated, fx_rate, _ = to_base_amount(
+            db, amount=payload.allocated, currency_code=payload.currency_code
+        )
+        base_spent, _, _ = to_base_amount(
+            db, amount=payload.spent, currency_code=payload.currency_code
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    remaining = payload.allocated - payload.spent
+    variance = payload.allocated - payload.forecast
+    row = Budget(
+        **payload.model_dump(),
+        remaining=remaining,
+        variance=variance,
+        base_allocated_inr=base_allocated,
+        base_spent_inr=base_spent,
+        fx_rate=fx_rate,
+        approval_status=BudgetApprovalStatus.draft,
+        is_active=True,
+    )
+    db.add(row)
+    db.flush()
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.budget_created,
+        entity_type=EntityType.budget,
+        entity_id=row.id,
+        new_value=row.name,
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/budgets/{budget_id}/status", response_model=BudgetRead)
+def update_budget_status(
+    budget_id: UUID,
+    payload: BudgetStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_APPROVE)
+    row = db.get(Budget, budget_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Budget not found")
+    row.approval_status = payload.approval_status
+    action = (
+        ActivityAction.budget_approved
+        if payload.approval_status == BudgetApprovalStatus.approved
+        else ActivityAction.budget_rejected
+    )
+    _audit(
+        db,
+        user=current_user,
+        action=action,
+        entity_type=EntityType.budget,
+        entity_id=row.id,
+        new_value=payload.approval_status.value,
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get("/quotes", response_model=list[QuoteRead])
+def list_quotes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    quotes = db.scalars(select(Quote).where(Quote.is_active.is_(True)).order_by(Quote.tool_number)).all()
+    return quotes
+
+
+@router.post("/quotes/import", response_model=QuoteImportResult)
+async def import_quotes(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    content = await file.read()
+    filename = (file.filename or "").lower()
+    try:
+        if filename.endswith(".csv"):
+            quotes = import_quotes_from_csv(db, content=content, actor=current_user)
+        elif filename.endswith(".xlsx") or filename.endswith(".xls"):
+            quotes = import_quotes_from_excel(db, content=content, actor=current_user)
+        else:
+            raise HTTPException(status_code=400, detail="Supported formats: CSV, Excel (.xlsx)")
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    for quote in quotes:
+        _audit(
+            db,
+            user=current_user,
+            action=ActivityAction.quote_imported,
+            entity_type=EntityType.quote,
+            entity_id=quote.id,
+            new_value=quote.tool_number,
+        )
+    db.commit()
+    return QuoteImportResult(
+        imported_count=len(quotes),
+        quote_ids=[quote.id for quote in quotes],
+    )
+
+
+@router.get("/reports/profit-loss", response_model=list[FinanceReportRow])
+def report_profit_loss(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    dash = get_finance_dashboard(db)
+    revenue = Decimal(str(dash["revenue"]["yearly_revenue"]))
+    cost = Decimal(str(dash["cost"]["monthly_operating_cost"]))
+    profit = Decimal(str(dash["profitability"]["gross_profit"]))
+    return [
+        FinanceReportRow(label="Revenue", amount=revenue, amount_inr=revenue),
+        FinanceReportRow(label="Operating Cost", amount=cost, amount_inr=cost),
+        FinanceReportRow(label="Gross Profit", amount=profit, amount_inr=profit),
+    ]
+
+
+@router.get("/reports/project-profitability", response_model=list[FinanceReportRow])
+def report_project_profitability(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EXPORT)
+    dash = get_finance_dashboard(db)
+    return [
+        FinanceReportRow(
+            label=str(row.get("project_id")),
+            amount=Decimal(str(row.get("gross_profit") or 0)),
+            amount_inr=Decimal(str(row.get("base_revenue_inr") or 0)),
+            currency_code=str(row.get("currency_code") or "INR"),
+        )
+        for row in dash["project_snapshots"]
+    ]
+
+
+@router.get("/ai-placeholders")
+def list_ai_placeholders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return db.scalars(
+        select(AiForecastPlaceholder).where(AiForecastPlaceholder.is_active.is_(True))
+    ).all()

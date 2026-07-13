@@ -7,6 +7,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401 — register all models with Base.metadata
+import app.models.finance  # noqa: F401 — register finance models
 from app.api.v1.api import api_router
 from app.core.config import APP_VERSION, CORS_ORIGINS, ENABLE_DEMO_SEED, INTERNAL_RELEASE, RELEASE_CANDIDATE, UPLOAD_DIR
 from app.core.openapi import fix_ref_siblings
@@ -25,6 +26,7 @@ from app.db.phase13_multi_team_schema_sync import ensure_phase13_multi_team_foun
 from app.db.phase14_kpi_schema_sync import ensure_phase14_kpi_foundation
 from app.db.phase15_working_model_schema_sync import ensure_phase15_working_model_foundation
 from app.db.phase16_timesheet_contribution_schema_sync import ensure_phase16_timesheet_contribution_foundation
+from app.db.phase17_ebmp_finance_schema_sync import ensure_phase17_ebmp_finance_foundation
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -91,6 +93,7 @@ async def lifespan(app: FastAPI):
     ensure_email_foundation(engine)
     ensure_email_communication_foundation(engine)
     ensure_phase13_multi_team_foundation(engine)
+    ensure_phase17_ebmp_finance_foundation(engine)
     ensure_performance_indexes(engine)
     if ENABLE_DEMO_SEED:
         ensure_design_team(engine)

@@ -158,6 +158,13 @@ class ActivityAction(enum.Enum):
     import_completed = "import_completed"
     data_exported = "data_exported"
     email_sent = "email_sent"
+    quote_imported = "quote_imported"
+    quote_revised = "quote_revised"
+    budget_created = "budget_created"
+    budget_approved = "budget_approved"
+    budget_rejected = "budget_rejected"
+    fx_rate_updated = "fx_rate_updated"
+    cost_updated = "cost_updated"
 
 
 class NotificationType(enum.Enum):
@@ -195,6 +202,54 @@ class EntityType(enum.Enum):
     np_code = "np_code"
     settings = "settings"
     import_batch = "import_batch"
+    quote = "quote"
+    budget = "budget"
+    cost_centre = "cost_centre"
+    expense = "expense"
+    fx_rate = "fx_rate"
+    employee_cost = "employee_cost"
+
+
+class CostNature(enum.Enum):
+    capex = "capex"
+    opex = "opex"
+
+
+class CostFrequency(enum.Enum):
+    monthly = "monthly"
+    quarterly = "quarterly"
+    yearly = "yearly"
+    one_time = "one_time"
+    recurring = "recurring"
+
+
+class BudgetScopeType(enum.Enum):
+    department = "department"
+    customer = "customer"
+    project = "project"
+    team = "team"
+    business_unit = "business_unit"
+
+
+class BudgetApprovalStatus(enum.Enum):
+    draft = "draft"
+    pending_approval = "pending_approval"
+    approved = "approved"
+    rejected = "rejected"
+    closed = "closed"
+
+
+class AiForecastKind(enum.Enum):
+    revenue_forecast = "revenue_forecast"
+    capacity_forecast = "capacity_forecast"
+    profit_forecast = "profit_forecast"
+    underquoted_projects = "underquoted_projects"
+    overquoted_projects = "overquoted_projects"
+    customer_profitability = "customer_profitability"
+    employee_productivity = "employee_productivity"
+    software_renewal_prediction = "software_renewal_prediction"
+    budget_risk = "budget_risk"
+    cash_flow_trend = "cash_flow_trend"
 
 
 class EmailMessageStatus(enum.Enum):

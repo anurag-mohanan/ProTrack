@@ -19,7 +19,13 @@ import { NavLink } from 'react-router-dom';
 import { LogoHomeLink } from '../branding/LogoHomeLink';
 import type { CurrentUser } from '../../types';
 import { designTokens } from '../../theme/designTokens';
-import { accessContextFromUser, canAccessAdministration, getMainNavItems } from '../../utils/permissions';
+import {
+  FUTURE_MODULE_PLACEHOLDERS,
+  accessContextFromUser,
+  canAccessAdministration,
+  getEbmpSectionNavItems,
+  getMainNavItems,
+} from '../../utils/permissions';
 
 export const DRAWER_WIDTH = 272;
 
@@ -28,25 +34,29 @@ function NavButton({
   label,
   icon: Icon,
   accent = false,
+  disabled = false,
 }: {
   path: string;
   label: string;
-  icon: React.ComponentType<{ fontSize?: 'small' | 'inherit' | 'large' | 'medium' }>;
+  icon?: React.ComponentType<{ fontSize?: 'small' | 'inherit' | 'large' | 'medium' }>;
   accent?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <ListItemButton
-      component={NavLink}
-      to={path}
+      component={disabled ? 'div' : NavLink}
+      to={disabled ? undefined : path}
+      disabled={disabled}
       sx={{
         mx: 1,
         mb: 0.25,
         borderRadius: `${designTokens.radius.md}px`,
         color: accent ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.68)',
         transition: `all ${designTokens.motion.fast}`,
+        opacity: disabled ? 0.45 : 1,
         '&:hover': {
-          bgcolor: designTokens.semantic.sidebarHover,
-          color: '#fff',
+          bgcolor: disabled ? 'transparent' : designTokens.semantic.sidebarHover,
+          color: disabled ? undefined : '#fff',
         },
         '&.active': {
           bgcolor: designTokens.semantic.sidebarActive,
@@ -58,16 +68,31 @@ function NavButton({
         },
       }}
     >
-      <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
-        <Icon fontSize="small" />
-      </ListItemIcon>
+      {Icon ? (
+        <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
+          <Icon fontSize="small" />
+        </ListItemIcon>
+      ) : null}
       <ListItemText
         primary={label}
+        secondary={disabled ? 'Coming soon' : undefined}
         slotProps={{
           primary: { sx: { fontWeight: 600, fontSize: '0.875rem' } },
+          secondary: { sx: { color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem' } },
         }}
       />
     </ListItemButton>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Typography
+      variant="overline"
+      sx={{ px: 2.5, py: 1, display: 'block', color: 'rgba(255,255,255,0.45)', letterSpacing: '0.08em' }}
+    >
+      {children}
+    </Typography>
   );
 }
 
@@ -77,8 +102,10 @@ interface AppSidebarProps {
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const [adminOpen, setAdminOpen] = useState(true);
+  const [futureOpen, setFutureOpen] = useState(false);
   const ctx = accessContextFromUser(user);
   const visibleNavItems = getMainNavItems(ctx);
+  const ebmpItems = getEbmpSectionNavItems(ctx);
   const showAdministratorEntry = canAccessAdministration(ctx);
 
   return (
@@ -102,17 +129,53 @@ export function AppSidebar({ user }: AppSidebarProps) {
       </Toolbar>
 
       <Box sx={{ px: 0.5, pb: 2, overflow: 'auto' }}>
-        <Typography
-          variant="overline"
-          sx={{ px: 2.5, py: 1, display: 'block', color: 'rgba(255,255,255,0.45)', letterSpacing: '0.08em' }}
-        >
-          Engineering Operations
-        </Typography>
+        <SectionLabel>Engineering Operations</SectionLabel>
         <List disablePadding>
           {visibleNavItems.map((item) => (
             <NavButton key={item.path} path={item.path} label={item.label} icon={item.icon} />
           ))}
         </List>
+
+        {ebmpItems.length > 0 ? (
+          <>
+            <Divider sx={{ my: 2, mx: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
+            <SectionLabel>Business Modules</SectionLabel>
+            <List disablePadding>
+              {ebmpItems.map((item) => (
+                <NavButton key={item.path} path={item.path} label={item.label} icon={item.icon} />
+              ))}
+            </List>
+          </>
+        ) : null}
+
+        <Divider sx={{ my: 2, mx: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: 2,
+            py: 0.5,
+          }}
+        >
+          <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.45)' }}>
+            Future Modules
+          </Typography>
+          <IconButton
+            size="small"
+            onClick={() => setFutureOpen((open) => !open)}
+            sx={{ color: 'rgba(255,255,255,0.6)' }}
+          >
+            {futureOpen ? <ExpandLessRoundedIcon fontSize="small" /> : <ExpandMoreRoundedIcon fontSize="small" />}
+          </IconButton>
+        </Box>
+        <Collapse in={futureOpen}>
+          <List disablePadding>
+            {FUTURE_MODULE_PLACEHOLDERS.map((item) => (
+              <NavButton key={item.path} path={item.path} label={item.label} disabled />
+            ))}
+          </List>
+        </Collapse>
 
         {showAdministratorEntry ? (
           <>
@@ -129,7 +192,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <AdminPanelSettingsRoundedIcon sx={{ fontSize: 16, color: '#93c5fd' }} />
                 <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.45)' }}>
-                  Administration
+                  System Administration
                 </Typography>
               </Box>
               <IconButton

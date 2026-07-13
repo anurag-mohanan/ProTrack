@@ -15,6 +15,8 @@ JUNIOR_DESIGNER = "Junior Designer"
 SURFACER = "Surfacer"
 READ_ONLY = "Read Only"
 LEGACY_PROJECT_MANAGER = "Project Manager"
+HR = "HR"
+OFFICE_ADMINISTRATOR = "Office Administrator"
 
 
 def normalize_role_name(role_name: str) -> str:
@@ -29,6 +31,9 @@ MODULE_WORKLOAD = "workload"
 MODULE_RESOURCE_PLANNING = "resource_planning"
 MODULE_REPORTS = "reports"
 MODULE_SYSTEM_ADMINISTRATION = "system_administration"
+MODULE_FINANCIAL_PLANNING = "financial_planning"
+MODULE_HUMAN_RESOURCES = "human_resources"
+MODULE_REPORTS_ANALYTICS = "reports_analytics"
 
 ALL_MODULES: tuple[str, ...] = (
     MODULE_DASHBOARD,
@@ -39,6 +44,16 @@ ALL_MODULES: tuple[str, ...] = (
     MODULE_RESOURCE_PLANNING,
     MODULE_REPORTS,
     MODULE_SYSTEM_ADMINISTRATION,
+    MODULE_FINANCIAL_PLANNING,
+    MODULE_HUMAN_RESOURCES,
+    MODULE_REPORTS_ANALYTICS,
+)
+
+# EBMP top-level nav groups (ops modules remain granular under Engineering Operations).
+EBMP_NAV_MODULES: tuple[str, ...] = (
+    MODULE_FINANCIAL_PLANNING,
+    MODULE_HUMAN_RESOURCES,
+    MODULE_REPORTS_ANALYTICS,
 )
 
 SPECIAL_CREATE_PROJECTS = "create_projects"
@@ -75,6 +90,9 @@ ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_VIEW_RESOURCE_PLANNING,
 )
 
+HR = "HR"
+OFFICE_ADMINISTRATOR = "Office Administrator"
+
 DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {
     ADMIN: frozenset(ALL_MODULES),
     ENGINEERING_MANAGER: frozenset(
@@ -86,6 +104,8 @@ DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {
             MODULE_WORKLOAD,
             MODULE_RESOURCE_PLANNING,
             MODULE_REPORTS,
+            MODULE_FINANCIAL_PLANNING,
+            MODULE_REPORTS_ANALYTICS,
         }
     ),
     DESIGN_LEADER: frozenset(
@@ -95,13 +115,30 @@ DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {
             MODULE_ARCHIVED_PROJECTS,
             MODULE_TIMESHEETS,
             MODULE_WORKLOAD,
+            MODULE_REPORTS_ANALYTICS,
         }
     ),
     DESIGNER: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS}),
     SENIOR_DESIGNER: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS}),
     JUNIOR_DESIGNER: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS}),
     SURFACER: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS}),
-    READ_ONLY: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS}),
+    READ_ONLY: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_REPORTS_ANALYTICS}),
+    HR: frozenset(
+        {
+            MODULE_DASHBOARD,
+            MODULE_HUMAN_RESOURCES,
+            MODULE_TIMESHEETS,
+            MODULE_REPORTS_ANALYTICS,
+        }
+    ),
+    OFFICE_ADMINISTRATOR: frozenset(
+        {
+            MODULE_DASHBOARD,
+            MODULE_HUMAN_RESOURCES,
+            MODULE_TIMESHEETS,
+            MODULE_REPORTS_ANALYTICS,
+        }
+    ),
 }
 
 DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
@@ -132,6 +169,8 @@ DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
     JUNIOR_DESIGNER: frozenset(),
     SURFACER: frozenset(),
     READ_ONLY: frozenset(),
+    HR: frozenset({SPECIAL_VIEW_REPORTS, SPECIAL_EXPORT_REPORTS}),
+    OFFICE_ADMINISTRATOR: frozenset({SPECIAL_VIEW_REPORTS, SPECIAL_EXPORT_REPORTS}),
 }
 
 PATH_MODULE_MAP: dict[str, str] = {
@@ -143,6 +182,9 @@ PATH_MODULE_MAP: dict[str, str] = {
     "/workload": MODULE_WORKLOAD,
     "/resource-planning": MODULE_RESOURCE_PLANNING,
     "/reports": MODULE_REPORTS,
+    "/finance": MODULE_FINANCIAL_PLANNING,
+    "/hr": MODULE_HUMAN_RESOURCES,
+    "/analytics": MODULE_REPORTS_ANALYTICS,
 }
 
 

@@ -5,10 +5,13 @@ from app.api.v1 import (
     activities,
     admin_timesheets,
     ai,
+    analytics,
     auth,
     calendar,
     dashboard,
     emails,
+    finance,
+    hr,
     imports,
     timesheet_imports,
     lookups,
@@ -141,6 +144,9 @@ api_router.include_router(dashboard.router)
 api_router.include_router(calendar.router)
 api_router.include_router(ai.router)
 api_router.include_router(reports.router)
+api_router.include_router(finance.router)
+api_router.include_router(hr.router)
+api_router.include_router(analytics.router)
 api_router.include_router(system.router)
 api_router.include_router(imports.router)
 api_router.include_router(timesheet_imports.router)

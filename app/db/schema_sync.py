@@ -490,6 +490,7 @@ def ensure_user_access_schema(engine: Engine) -> None:
     access_columns = (
         ("module_access", "module_access TEXT"),
         ("special_permissions", "special_permissions TEXT"),
+        ("module_actions", "module_actions TEXT"),
     )
 
     if dialect == "sqlite":
@@ -504,6 +505,9 @@ def ensure_user_access_schema(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS module_access TEXT"))
             connection.execute(
                 text("ALTER TABLE users ADD COLUMN IF NOT EXISTS special_permissions TEXT")
+            )
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN IF NOT EXISTS module_actions TEXT")
             )
 
 

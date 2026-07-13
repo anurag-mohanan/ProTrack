@@ -6,13 +6,19 @@ import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded';
+import AccountBalanceRoundedIcon from '@mui/icons-material/AccountBalanceRounded';
+import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded';
+import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import type { CurrentUser } from '../types';
 import {
   ALL_MODULES,
   MODULE_ARCHIVED_PROJECTS,
   MODULE_DASHBOARD,
+  MODULE_FINANCIAL_PLANNING,
+  MODULE_HUMAN_RESOURCES,
   MODULE_PROJECTS,
   MODULE_REPORTS,
+  MODULE_REPORTS_ANALYTICS,
   MODULE_RESOURCE_PLANNING,
   MODULE_SYSTEM_ADMINISTRATION,
   MODULE_TIMESHEETS,
@@ -45,6 +51,8 @@ export const ROLES = {
   JUNIOR_DESIGNER: 'Junior Designer',
   SURFACER: 'Surfacer',
   READ_ONLY: 'Read Only',
+  HR: 'HR',
+  OFFICE_ADMINISTRATOR: 'Office Administrator',
 } as const;
 
 export type DashboardRoleGroup =
@@ -77,6 +85,8 @@ const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
     MODULE_WORKLOAD,
     MODULE_RESOURCE_PLANNING,
     MODULE_REPORTS,
+    MODULE_FINANCIAL_PLANNING,
+    MODULE_REPORTS_ANALYTICS,
   ],
   [ROLES.DESIGN_LEADER]: [
     MODULE_DASHBOARD,
@@ -84,12 +94,25 @@ const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
     MODULE_ARCHIVED_PROJECTS,
     MODULE_TIMESHEETS,
     MODULE_WORKLOAD,
+    MODULE_REPORTS_ANALYTICS,
   ],
   [ROLES.DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
   [ROLES.SENIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
   [ROLES.JUNIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
   [ROLES.SURFACER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
-  [ROLES.READ_ONLY]: [MODULE_DASHBOARD, MODULE_PROJECTS],
+  [ROLES.READ_ONLY]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_REPORTS_ANALYTICS],
+  [ROLES.HR]: [
+    MODULE_DASHBOARD,
+    MODULE_HUMAN_RESOURCES,
+    MODULE_TIMESHEETS,
+    MODULE_REPORTS_ANALYTICS,
+  ],
+  [ROLES.OFFICE_ADMINISTRATOR]: [
+    MODULE_DASHBOARD,
+    MODULE_HUMAN_RESOURCES,
+    MODULE_TIMESHEETS,
+    MODULE_REPORTS_ANALYTICS,
+  ],
 };
 
 const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
@@ -157,9 +180,49 @@ const NAV_MODULE_CONFIG: Array<{
     path: '/resource-planning',
     icon: CalendarMonthRoundedIcon,
   },
-  { module: MODULE_REPORTS, label: 'Reports', path: '/reports', icon: AssessmentRoundedIcon },
   { module: MODULE_DASHBOARD, label: 'Calendar', path: '/calendar', icon: CalendarMonthRoundedIcon },
 ];
+
+const EBMP_SECTION_NAV: Array<{
+  module: ModuleKey;
+  label: string;
+  path: string;
+  icon: SvgIconComponent;
+}> = [
+  {
+    module: MODULE_FINANCIAL_PLANNING,
+    label: 'Financial Planning',
+    path: '/finance',
+    icon: AccountBalanceRoundedIcon,
+  },
+  {
+    module: MODULE_HUMAN_RESOURCES,
+    label: 'Human Resources',
+    path: '/hr',
+    icon: BadgeRoundedIcon,
+  },
+  {
+    module: MODULE_REPORTS_ANALYTICS,
+    label: 'Reports & Analytics',
+    path: '/analytics',
+    icon: InsightsRoundedIcon,
+  },
+  // Keep legacy engineering reports reachable when only MODULE_REPORTS is granted
+  {
+    module: MODULE_REPORTS,
+    label: 'Engineering Reports',
+    path: '/reports',
+    icon: AssessmentRoundedIcon,
+  },
+];
+
+export const FUTURE_MODULE_PLACEHOLDERS = [
+  { label: 'Customer Portal', path: '/future/customer-portal' },
+  { label: 'Sales', path: '/future/sales' },
+  { label: 'Procurement', path: '/future/procurement' },
+  { label: 'Knowledge Base', path: '/future/knowledge-base' },
+  { label: 'Document Management', path: '/future/document-management' },
+] as const;
 
 function normalizeRoleName(roleName: string): string {
   if (roleName === ROLES.PROJECT_MANAGER) {
@@ -419,6 +482,28 @@ export function getMainNavItems(roleNameOrContext: string | AccessContext): Main
     icon: item.icon,
     label: typeof item.label === 'function' ? item.label(ctx) : item.label,
   }));
+}
+
+export function getEbmpSectionNavItems(roleNameOrContext: string | AccessContext): MainNavItem[] {
+  const ctx = toAccessContext(roleNameOrContext);
+  const modules = new Set(resolveModules(ctx));
+  const items: MainNavItem[] = [];
+  const seenPaths = new Set<string>();
+
+  for (const item of EBMP_SECTION_NAV) {
+    if (!modules.has(item.module)) continue;
+    // Prefer analytics hub over duplicate engineering reports when both exist
+    if (item.path === '/reports' && modules.has(MODULE_REPORTS_ANALYTICS)) continue;
+    if (seenPaths.has(item.path)) continue;
+    seenPaths.add(item.path);
+    items.push({
+      module: item.module,
+      path: item.path,
+      icon: item.icon,
+      label: item.label,
+    });
+  }
+  return items;
 }
 
 export function canOverrideBillable(roleName: string): boolean {

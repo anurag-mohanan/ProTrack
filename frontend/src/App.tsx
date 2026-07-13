@@ -38,9 +38,15 @@ import {
 import { ModuleRoute } from './routes/ModuleRoute';
 import {
   MODULE_ARCHIVED_PROJECTS,
+  MODULE_FINANCIAL_PLANNING,
+  MODULE_HUMAN_RESOURCES,
   MODULE_PROJECTS,
+  MODULE_REPORTS_ANALYTICS,
   MODULE_TIMESHEETS,
 } from './config/accessControl';
+import { FinanceDashboardPage } from './pages/FinanceDashboardPage';
+import { HrDashboardPage } from './pages/HrDashboardPage';
+import { AnalyticsHubPage } from './pages/AnalyticsHubPage';
 
 const AdminCreatePage = lazy(() => import('./pages/admin/AdminCreatePage'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
@@ -218,6 +224,16 @@ export default function App() {
                     </Route>
                     <Route element={<RoleRoute allowed={canViewWorkload} />}>
                       <Route path="/workload" element={<WorkloadPage />} />
+                    </Route>
+                    <Route element={<ModuleRoute module={MODULE_FINANCIAL_PLANNING} />}>
+                      <Route path="/finance" element={<FinanceDashboardPage />} />
+                      <Route path="/finance/*" element={<FinanceDashboardPage />} />
+                    </Route>
+                    <Route element={<ModuleRoute module={MODULE_HUMAN_RESOURCES} />}>
+                      <Route path="/hr" element={<HrDashboardPage />} />
+                    </Route>
+                    <Route element={<ModuleRoute module={MODULE_REPORTS_ANALYTICS} />}>
+                      <Route path="/analytics" element={<AnalyticsHubPage />} />
                     </Route>
                     <Route element={<RoleRoute allowed={canViewResourcePlanning} />}>
                       <Route path="/resource-planning" element={<ResourcePlanningPage />} />

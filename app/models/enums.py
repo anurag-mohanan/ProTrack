@@ -239,6 +239,19 @@ class BudgetApprovalStatus(enum.Enum):
     closed = "closed"
 
 
+class FinancePlanSection(enum.Enum):
+    sales = "sales"
+    expenses = "expenses"
+    resources = "resources"
+    capex = "capex"
+
+
+class FinancePlanStatus(enum.Enum):
+    draft = "draft"
+    active = "active"
+    archived = "archived"
+
+
 class AiForecastKind(enum.Enum):
     revenue_forecast = "revenue_forecast"
     capacity_forecast = "capacity_forecast"

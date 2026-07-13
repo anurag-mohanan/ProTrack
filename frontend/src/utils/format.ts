@@ -21,6 +21,17 @@ export function formatNumber(value: number | null | undefined, digits = 2): stri
   });
 }
 
+/** Indian grouping (lakhs/crores style) for finance plan displays. */
+export function formatIndianNumber(value: number | string | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || value === '') return '';
+  const numeric = Number(String(value).replace(/,/g, ''));
+  if (Number.isNaN(numeric)) return String(value);
+  return numeric.toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (isBlankDisplayValue(value)) return '';
   const [year, month, day] = value!.split('-').map(Number);

@@ -21,6 +21,7 @@ import {
   IMPORT_ACCEPT_WITH_CSV,
   IMPORT_FORMAT_LABEL_WITH_CSV,
 } from '../config/importFormats';
+import { AnnualPlanPanel } from '../components/finance/AnnualPlanPanel';
 import { useToast } from '../context/ToastContext';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -114,7 +115,7 @@ export function FinanceDashboardPage() {
   const plQuery = useQuery({
     queryKey: ['finance-pl'],
     queryFn: async () => (await apiClient.get('/finance/reports/profit-loss')).data,
-    enabled: tab === 5,
+    enabled: tab === 6,
   });
 
   const invalidateFinance = () => {
@@ -231,6 +232,7 @@ export function FinanceDashboardPage() {
 
       <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 2 }} variant="scrollable">
         <Tab label="Dashboard" />
+        <Tab label="Annual Plan" />
         <Tab label="Import Quote" />
         <Tab label="Costs & Salaries" />
         <Tab label="Cost Centres" />
@@ -266,7 +268,9 @@ export function FinanceDashboardPage() {
         </Stack>
       )}
 
-      {tab === 1 && (
+      {tab === 1 && <AnnualPlanPanel />}
+
+      {tab === 2 && (
         <Stack spacing={2}>
           <Typography>
             Import quotes with customer, tool number, quoted hours, estimated cost, quoted revenue,
@@ -316,7 +320,7 @@ export function FinanceDashboardPage() {
         </Stack>
       )}
 
-      {tab === 2 && (
+      {tab === 3 && (
         <Stack spacing={3}>
           <Box>
             <Typography variant="h6" sx={{ mb: 1 }}>
@@ -484,7 +488,7 @@ export function FinanceDashboardPage() {
         </Stack>
       )}
 
-      {tab === 3 && (
+      {tab === 4 && (
         <Grid container spacing={1.5}>
           {(costCentresQuery.data ?? []).map(
             (centre: { id: string; code: string; name: string; nature: string }) => (
@@ -503,7 +507,7 @@ export function FinanceDashboardPage() {
         </Grid>
       )}
 
-      {tab === 4 && (
+      {tab === 5 && (
         <Stack spacing={2}>
           <Typography variant="h6">Create budget allotment</Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
@@ -571,7 +575,7 @@ export function FinanceDashboardPage() {
         </Stack>
       )}
 
-      {tab === 5 && (
+      {tab === 6 && (
         <Stack spacing={2}>
           <Typography>
             Profit &amp; Loss and profitability (base currency). Export requires Financial Planning
@@ -593,7 +597,7 @@ export function FinanceDashboardPage() {
         </Stack>
       )}
 
-      {tab === 6 && (
+      {tab === 7 && (
         <Grid container spacing={1.5}>
           {(dashboardQuery.data?.ai_placeholders ?? []).map((item) => (
             <Grid key={item.id} size={{ xs: 12, sm: 6, md: 4 }}>

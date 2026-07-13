@@ -14,6 +14,8 @@ from app.models.enums import (
     BudgetScopeType,
     CostFrequency,
     CostNature,
+    FinancePlanSection,
+    FinancePlanStatus,
 )
 
 
@@ -207,3 +209,102 @@ class CompanyFinanceSettingsRead(BaseModel):
     base_currency: str
     display_name: str
     is_active: bool
+
+
+class FinancePlanCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    fiscal_year_start_year: int = Field(ge=2000, le=2100)
+    fy_start_month: int = Field(default=4, ge=1, le=12)
+    currency_code: str | None = None
+    tax_percent: Decimal = Decimal("30")
+    provision_percent: Decimal = Decimal("20")
+
+
+class FinancePlanUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    tax_percent: Decimal | None = None
+    provision_percent: Decimal | None = None
+    status: FinancePlanStatus | None = None
+
+
+class FinancePlanLineCreate(BaseModel):
+    section: FinancePlanSection
+    code: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=200)
+
+
+class FinancePlanLineUpdate(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=200)
+    notes: str | None = None
+    month_01: Decimal | None = None
+    month_02: Decimal | None = None
+    month_03: Decimal | None = None
+    month_04: Decimal | None = None
+    month_05: Decimal | None = None
+    month_06: Decimal | None = None
+    month_07: Decimal | None = None
+    month_08: Decimal | None = None
+    month_09: Decimal | None = None
+    month_10: Decimal | None = None
+    month_11: Decimal | None = None
+    month_12: Decimal | None = None
+
+
+class FinancePlanLineRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    plan_id: UUID
+    section: FinancePlanSection
+    code: str
+    label: str
+    sort_order: int
+    is_total_row: bool
+    month_01: Decimal
+    month_02: Decimal
+    month_03: Decimal
+    month_04: Decimal
+    month_05: Decimal
+    month_06: Decimal
+    month_07: Decimal
+    month_08: Decimal
+    month_09: Decimal
+    month_10: Decimal
+    month_11: Decimal
+    month_12: Decimal
+    notes: str | None = None
+
+
+class FinancePlanSummary(BaseModel):
+    month_labels: list[str]
+    sales_by_month: dict[str, str]
+    expenses_by_month: dict[str, str]
+    gain_loss_by_month: dict[str, str]
+    sales_fy: str
+    expenses_fy: str
+    gain_loss: str
+    after_tax: str
+    provision_amount: str
+    gain_loss_after_provision: str
+    tax_percent: str
+    provision_percent: str
+
+
+class FinancePlanListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    fiscal_year_label: str
+    fy_start_date: date
+    fy_end_date: date
+    currency_code: str
+    tax_percent: Decimal
+    provision_percent: Decimal
+    status: FinancePlanStatus
+
+
+class FinancePlanDetail(FinancePlanListItem):
+    lines: list[FinancePlanLineRead]
+    summary: FinancePlanSummary
+    line_totals: dict[str, str] = Field(default_factory=dict)

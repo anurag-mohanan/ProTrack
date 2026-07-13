@@ -49,12 +49,21 @@ from app.schemas.finance import (
     ExpenseCreate,
     ExpenseRead,
     FinanceDashboardRead,
+    FinancePlanCreate,
+    FinancePlanDetail,
+    FinancePlanLineCreate,
+    FinancePlanLineRead,
+    FinancePlanLineUpdate,
+    FinancePlanListItem,
+    FinancePlanSummary,
+    FinancePlanUpdate,
     FinanceReportRow,
     FxRateCreate,
     FxRateRead,
     QuoteImportResult,
     QuoteRead,
 )
+from app.services.finance import annual_plan_service
 from app.services.finance.dashboard_service import get_finance_dashboard
 from app.services.finance.fx_service import to_base_amount
 from app.services.finance.quote_import_service import (
@@ -462,3 +471,165 @@ def list_ai_placeholders(
     return db.scalars(
         select(AiForecastPlaceholder).where(AiForecastPlaceholder.is_active.is_(True))
     ).all()
+
+
+def _plan_detail_response(plan) -> FinancePlanDetail:
+    payload = annual_plan_service.plan_to_detail_dict(plan)
+    return FinancePlanDetail(
+        id=payload["id"],
+        name=payload["name"],
+        fiscal_year_label=payload["fiscal_year_label"],
+        fy_start_date=payload["fy_start_date"],
+        fy_end_date=payload["fy_end_date"],
+        currency_code=payload["currency_code"],
+        tax_percent=payload["tax_percent"],
+        provision_percent=payload["provision_percent"],
+        status=payload["status"],
+        lines=[FinancePlanLineRead.model_validate(row) for row in payload["lines"]],
+        summary=FinancePlanSummary.model_validate(payload["summary"]),
+        line_totals=payload["line_totals"],
+    )
+
+
+@router.get("/plans", response_model=list[FinancePlanListItem])
+def list_finance_plans(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return annual_plan_service.list_plans(db)
+
+
+@router.post("/plans", response_model=FinancePlanDetail, status_code=status.HTTP_201_CREATED)
+def create_finance_plan(
+    payload: FinancePlanCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        plan = annual_plan_service.create_plan(
+            db,
+            name=payload.name,
+            fiscal_year_start_year=payload.fiscal_year_start_year,
+            fy_start_month=payload.fy_start_month,
+            currency_code=payload.currency_code,
+            tax_percent=payload.tax_percent,
+            provision_percent=payload.provision_percent,
+        )
+        db.commit()
+        plan = annual_plan_service.get_plan(db, plan.id)
+        return _plan_detail_response(plan)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/plans/{plan_id}", response_model=FinancePlanDetail)
+def get_finance_plan(
+    plan_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    try:
+        plan = annual_plan_service.get_plan(db, plan_id)
+        return _plan_detail_response(plan)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch("/plans/{plan_id}", response_model=FinancePlanDetail)
+def patch_finance_plan(
+    plan_id: UUID,
+    payload: FinancePlanUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        plan = annual_plan_service.update_plan(
+            db,
+            plan_id,
+            name=payload.name,
+            tax_percent=payload.tax_percent,
+            provision_percent=payload.provision_percent,
+            status=payload.status,
+        )
+        db.commit()
+        plan = annual_plan_service.get_plan(db, plan.id)
+        return _plan_detail_response(plan)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/plans/{plan_id}/lines", response_model=FinancePlanLineRead, status_code=status.HTTP_201_CREATED)
+def create_finance_plan_line(
+    plan_id: UUID,
+    payload: FinancePlanLineCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        line = annual_plan_service.add_line(
+            db,
+            plan_id,
+            section=payload.section,
+            code=payload.code,
+            label=payload.label,
+        )
+        db.commit()
+        db.refresh(line)
+        return line
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/plans/{plan_id}/lines/{line_id}", response_model=FinancePlanLineRead)
+def update_finance_plan_line(
+    plan_id: UUID,
+    line_id: UUID,
+    payload: FinancePlanLineUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    months = {
+        key: value
+        for key, value in payload.model_dump(exclude_unset=True).items()
+        if key.startswith("month_") and value is not None
+    }
+    try:
+        line = annual_plan_service.update_line(
+            db,
+            plan_id,
+            line_id,
+            label=payload.label,
+            notes=payload.notes,
+            months=months or None,
+        )
+        db.commit()
+        db.refresh(line)
+        return line
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/plans/{plan_id}/lines/{line_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_finance_plan_line(
+    plan_id: UUID,
+    line_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        annual_plan_service.delete_line(db, plan_id, line_id)
+        db.commit()
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -29,6 +29,8 @@ from app.models.enums import (
     BudgetScopeType,
     CostFrequency,
     CostNature,
+    FinancePlanSection,
+    FinancePlanStatus,
 )
 from app.models.mixins import TimestampMixin
 
@@ -326,3 +328,72 @@ class AiForecastPlaceholder(Base, TimestampMixin):
     description: Mapped[Optional[str]] = mapped_column(Text)
     payload_json: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class FinancePlan(Base, TimestampMixin):
+    """Annual financial plan (Apr–Mar FY) aligned to the legacy Excel workbook."""
+
+    __tablename__ = "finance_plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    fiscal_year_label: Mapped[str] = mapped_column(String(20), nullable=False)
+    fy_start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    fy_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    currency_code: Mapped[str] = mapped_column(
+        String(3), ForeignKey("currencies.code"), nullable=False, default="INR"
+    )
+    tax_percent: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, default=30)
+    provision_percent: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, default=20)
+    status: Mapped[FinancePlanStatus] = mapped_column(
+        Enum(FinancePlanStatus, name="finance_plan_status", native_enum=False),
+        nullable=False,
+        default=FinancePlanStatus.draft,
+    )
+
+    lines: Mapped[list["FinancePlanLine"]] = relationship(
+        "FinancePlanLine",
+        back_populates="plan",
+        cascade="all, delete-orphan",
+    )
+
+
+class FinancePlanLine(Base, TimestampMixin):
+    """One editable row in an annual plan section (month_01=Apr … month_12=Mar)."""
+
+    __tablename__ = "finance_plan_lines"
+    __table_args__ = (
+        UniqueConstraint("plan_id", "section", "code", name="uq_finance_plan_lines_plan_section_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("finance_plans.id", ondelete="CASCADE"), nullable=False
+    )
+    section: Mapped[FinancePlanSection] = mapped_column(
+        Enum(FinancePlanSection, name="finance_plan_section", native_enum=False),
+        nullable=False,
+    )
+    code: Mapped[str] = mapped_column(String(80), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_total_row: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    month_01: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_02: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_03: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_04: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_05: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_06: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_07: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_08: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_09: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_10: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_11: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    month_12: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    plan: Mapped[FinancePlan] = relationship("FinancePlan", back_populates="lines")

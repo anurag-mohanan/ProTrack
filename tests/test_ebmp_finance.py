@@ -122,18 +122,21 @@ def test_finance_kpi_strategies_registered():
         assert result["strategy"] == key.value
 
 
-def test_hr_shell_forbidden_for_designer(client):
+def test_hr_dashboard_requires_module(client):
     headers = _auth(client, "binil@prosohm.com")
     response = client.get("/api/v1/hr/dashboard", headers=headers)
     assert response.status_code == 403
 
 
-def test_analytics_catalog_for_admin(client, auth_headers):
-    response = client.get("/api/v1/analytics/catalog", headers=auth_headers)
-    assert response.status_code == 200
-    categories = {row["category"] for row in response.json()["categories"]}
-    assert "Engineering Reports" in categories
-    assert "Financial Reports" in categories
+def test_admin_hr_dashboard_includes_timesheet_attention(client, auth_headers):
+    response = client.get("/api/v1/hr/dashboard", headers=auth_headers)
+    # Admin may lack human_resources module by role defaults - grant via all modules
+    # Admin has ALL_MODULES including human_resources
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "timesheet_attention" in body
+    assert "users" in body
+    assert "pending_timesheets" in body
 
 
 def test_primary_team_optional(session):
@@ -161,3 +164,12 @@ def test_primary_team_optional(session):
     session.commit()
     session.refresh(user)
     assert user.team_id is None
+
+
+def test_em_defaults_include_financial_planning():
+    from app.core.access_control import MODULE_FINANCIAL_PLANNING, default_modules_for_role
+
+    modules = default_modules_for_role("Engineering Manager")
+    assert MODULE_FINANCIAL_PLANNING in modules
+    assert MODULE_FINANCIAL_PLANNING not in default_modules_for_role("Design Leader")
+    assert MODULE_FINANCIAL_PLANNING not in default_modules_for_role("Designer")

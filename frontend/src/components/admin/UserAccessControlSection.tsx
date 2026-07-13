@@ -1,4 +1,5 @@
 import {
+  Alert,
   Box,
   Checkbox,
   FormControlLabel,
@@ -11,6 +12,8 @@ import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import {
   ALL_MODULES,
   ALL_SPECIAL_PERMISSIONS,
+  MODULE_FINANCIAL_PLANNING,
+  MODULE_HUMAN_RESOURCES,
   MODULE_LABELS,
   SPECIAL_PERMISSION_LABELS,
   type ModuleKey,
@@ -61,8 +64,14 @@ export function UserAccessControlSection({
       <FormSection title="Module Access" icon={ViewModuleIcon}>
         <Grid size={{ xs: 12 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Only checked modules appear in the sidebar for this user.
+            Only checked modules appear in the sidebar for this user. Grant{' '}
+            <strong>Financial Planning</strong> to any user who should see commercial data
+            (defaults on for Engineering Manager and Admin).
           </Typography>
+          <Alert severity="info" sx={{ mb: 1.5 }}>
+            Financial Planning and Human Resources are independent modules — tick them here when
+            creating or editing users.
+          </Alert>
           <FormGroup sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0.5 }}>
             {ALL_MODULES.map((module) => (
               <FormControlLabel
@@ -74,7 +83,11 @@ export function UserAccessControlSection({
                     onChange={(event) => toggleModule(module, event.target.checked)}
                   />
                 }
-                label={MODULE_LABELS[module]}
+                label={
+                  module === MODULE_FINANCIAL_PLANNING || module === MODULE_HUMAN_RESOURCES
+                    ? `${MODULE_LABELS[module]} ★`
+                    : MODULE_LABELS[module]
+                }
               />
             ))}
           </FormGroup>

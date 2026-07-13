@@ -410,13 +410,10 @@ export default function UsersPage() {
     }
 
     if (!editingUser && form.team_assignments.length === 0) {
-      showError('Select at least one team and mark a primary team.');
+      showError('Select at least one team for the user.');
       return;
     }
-    if (form.team_assignments.length > 0 && !form.team_assignments.some((row) => row.is_primary)) {
-      showError('Mark one team as the primary team.');
-      return;
-    }
+    // Primary team is optional (EM / Design Leaders often oversee multiple teams).
 
     setSaving(true);
     try {

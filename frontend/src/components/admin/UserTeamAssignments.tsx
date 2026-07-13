@@ -1,11 +1,11 @@
 import {
   Box,
+  Button,
   Checkbox,
   FormControl,
   FormControlLabel,
   InputLabel,
   MenuItem,
-  Radio,
   Select,
   Stack,
   Typography,
@@ -48,23 +48,18 @@ export function UserTeamAssignments({
 
   const toggleTeam = (teamId: string, teamName: string, checked: boolean) => {
     if (checked) {
-      const next = [
+      onChange([
         ...value,
         {
           team_id: teamId,
           team_name: teamName,
-          relationship_type: 'member' as TeamRelationshipType,
-          is_primary: value.length === 0,
+          relationship_type: 'member',
+          is_primary: false,
         },
-      ];
-      onChange(next);
+      ]);
       return;
     }
-    const remaining = value.filter((row) => row.team_id !== teamId);
-    if (remaining.length > 0 && !remaining.some((row) => row.is_primary)) {
-      remaining[0] = { ...remaining[0], is_primary: true };
-    }
-    onChange(remaining);
+    onChange(value.filter((row) => row.team_id !== teamId));
   };
 
   const updateRow = (
@@ -74,7 +69,8 @@ export function UserTeamAssignments({
     onChange(
       value.map((row) => {
         if (row.team_id !== teamId) {
-          if (patch.is_primary) {
+          // Only one primary at a time when setting primary true
+          if (patch.is_primary === true) {
             return { ...row, is_primary: false };
           }
           return row;
@@ -86,8 +82,12 @@ export function UserTeamAssignments({
 
   return (
     <Box>
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
         Teams
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+        Select one or more teams. Primary team is optional — useful for Engineering Managers and
+        Design Leaders who oversee multiple teams without a single home team.
       </Typography>
       <Stack spacing={1}>
         {teams.map((team) => {
@@ -139,13 +139,15 @@ export function UserTeamAssignments({
                   </FormControl>
                   <FormControlLabel
                     control={
-                      <Radio
+                      <Checkbox
                         checked={assignment.is_primary}
                         disabled={disabled}
-                        onChange={() => updateRow(team.id, { is_primary: true })}
+                        onChange={(event) =>
+                          updateRow(team.id, { is_primary: event.target.checked })
+                        }
                       />
                     }
-                    label="Primary team"
+                    label="Primary (optional)"
                   />
                 </Stack>
               ) : null}
@@ -153,6 +155,24 @@ export function UserTeamAssignments({
           );
         })}
       </Stack>
+      {value.length > 0 && !value.some((row) => row.is_primary) ? (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          No primary team selected — allowed for multi-team leaders.
+        </Typography>
+      ) : null}
+      {value.some((row) => row.is_primary) ? (
+        <Box sx={{ mt: 1 }}>
+          <Button
+            size="small"
+            disabled={disabled}
+            onClick={() =>
+              onChange(value.map((row) => ({ ...row, is_primary: false })))
+            }
+          >
+            Clear primary team
+          </Button>
+        </Box>
+      ) : null}
     </Box>
   );
 }

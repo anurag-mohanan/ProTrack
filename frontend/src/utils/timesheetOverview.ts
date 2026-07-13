@@ -38,13 +38,16 @@ export function buildTeamTimesheetSections(
   entries: TimesheetEntry[],
   workingDayCount: number,
 ): TimesheetTeamSection[] {
-  const usersById = new Map(users.map((user) => [user.id, user]));
+  // Only people who must fill timesheets belong in team monitoring sections.
+  const trackedUsers = users.filter((user) => user.requires_timesheet !== false);
+  const usersById = new Map(trackedUsers.map((user) => [user.id, user]));
 
   return teams
     .map((team) => {
       const teamUsers = team.user_ids
         .map((userId) => usersById.get(userId))
-        .filter((user): user is TimesheetOverviewUser => user != null);
+        .filter((user): user is TimesheetOverviewUser => user != null)
+        .filter((user) => user.requires_timesheet !== false);
       const userIdSet = new Set(teamUsers.map((user) => user.id));
       const teamEntries = filterEntriesForUsers(entries, userIdSet);
       const expectedHours = expectedHoursForUsers(teamUsers, workingDayCount);

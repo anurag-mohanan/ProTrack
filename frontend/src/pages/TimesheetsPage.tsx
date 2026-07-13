@@ -129,7 +129,7 @@ export function TimesheetsPage() {
     return teamSections.map((section) => ({
       title: section.teamName,
       subtitle: teamSectionBreakdownLabel(section.summary),
-      emptyText: 'No team members with entries this month',
+      emptyText: 'No team members required to fill timesheets',
       users: section.users.map((person) => ({
         id: person.id,
         name: `${person.first_name} ${person.last_name}`.trim(),
@@ -436,9 +436,9 @@ export function TimesheetsPage() {
 
       {viewAllUsers && isComplianceViewer ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
-          Read-only view of every team. People marked &quot;Requires timesheet&quot; with no hours this
-          month are highlighted so you can follow up on missing submissions. Approvals stay with
-          Design Leaders / Engineering Managers.
+          Showing only people with <strong>Requires timesheet</strong> enabled. Managers, Office
+          Admin, Planning Board, and other monitor-only accounts are hidden. Turn the flag off on
+          Users admin for anyone who only manages a team and should not be chased for hours.
         </Alert>
       ) : null}
 

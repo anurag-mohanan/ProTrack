@@ -15,6 +15,7 @@ from app.core.permissions import (
     is_admin,
     normalize_role_name,
 )
+from app.core.timesheet_eligibility import user_requires_timesheet
 from app.models.enums import TeamRelationshipType
 from app.models.models import Project, Team, TeamMember, User
 from app.services.user_team_service import get_user_team_ids
@@ -97,31 +98,57 @@ def _design_leader_project_user_ids(db: Session, user: User) -> set[UUID]:
     return user_ids
 
 
+def _required_timesheet_user_ids(db: Session) -> set[UUID]:
+    """Active users flagged Requires timesheet (completion-chase population)."""
+    return set(
+        db.scalars(
+            select(User.id).where(
+                User.requires_timesheet.is_(True),
+                User.is_active.is_(True),
+                User.is_archived.is_(False),
+                User.is_deleted.is_(False),
+            )
+        ).all()
+    )
+
+
 def get_timesheet_visible_user_ids(db: Session, actor: User) -> set[UUID] | None:
-    """User IDs whose timesheet entries the actor may view in overview mode."""
+    """User IDs whose timesheet entries the actor may view in overview mode.
+
+    All-teams / compliance scopes are limited to users with Requires timesheet
+    so managers and monitor-only accounts are not listed.
+    """
     if is_admin(db, actor):
-        return None
+        return _required_timesheet_user_ids(db)
 
     role_name = normalize_role_name(get_role_name(db, actor))
     if role_name in TIMESHEET_COMPLIANCE_VIEWER_ROLES:
-        return None
+        return _required_timesheet_user_ids(db)
 
     team_scope = get_timesheet_leader_team_ids(db, actor)
     if team_scope is None:
-        return None
+        return _required_timesheet_user_ids(db)
 
-    visible: set[UUID] = {actor.id}
+    required = _required_timesheet_user_ids(db)
+    visible: set[UUID] = set()
     for team_id in team_scope:
-        visible.update(_users_for_team(db, team_id))
+        visible.update(_users_for_team(db, team_id) & required)
 
     if role_name == DESIGN_LEADER:
-        visible.update(_design_leader_project_user_ids(db, actor))
+        visible.update(_design_leader_project_user_ids(db, actor) & required)
+        if actor.id in required:
+            visible.add(actor.id)
 
     return visible
 
 
 def build_timesheet_overview(db: Session, actor: User) -> dict:
-    """Return team groupings and user metadata for the timesheet overview UI."""
+    """Return team groupings and user metadata for the timesheet overview UI.
+
+    Only users with Requires timesheet appear in team sections — managers,
+    Office Admin, Planning Board, System Admin, and other monitor-only accounts
+    are omitted so completion chasing stays focused.
+    """
     team_scope = get_timesheet_leader_team_ids(db, actor)
     visible_user_ids = get_timesheet_visible_user_ids(db, actor)
 
@@ -139,20 +166,30 @@ def build_timesheet_overview(db: Session, actor: User) -> dict:
         User.is_active.is_(True),
         User.is_archived.is_(False),
         User.is_deleted.is_(False),
+        User.requires_timesheet.is_(True),
     )
     if visible_user_ids is not None:
-        user_query = user_query.where(User.id.in_(visible_user_ids))
-    users = list(db.scalars(user_query.order_by(User.last_name, User.first_name)).all())
+        if not visible_user_ids:
+            users = []
+        else:
+            user_query = user_query.where(User.id.in_(visible_user_ids))
+            users = list(db.scalars(user_query.order_by(User.last_name, User.first_name)).all())
+    else:
+        users = list(db.scalars(user_query.order_by(User.last_name, User.first_name)).all())
+
+    users = [user for user in users if user_requires_timesheet(user)]
+    required_ids = {user.id for user in users}
 
     team_name_by_id = {team.id: team.name for team in teams}
     user_team_ids: dict[UUID, set[UUID]] = {user.id: set() for user in users}
     for user in users:
         if user.team_id is not None:
             user_team_ids[user.id].add(user.team_id)
-    for row in db.scalars(
-        select(TeamMember).where(TeamMember.user_id.in_([user.id for user in users]))
-    ).all():
-        user_team_ids[row.user_id].add(row.team_id)
+    if users:
+        for row in db.scalars(
+            select(TeamMember).where(TeamMember.user_id.in_([user.id for user in users]))
+        ).all():
+            user_team_ids[row.user_id].add(row.team_id)
 
     overview_teams = []
     assigned_user_ids: set[UUID] = set()
@@ -160,8 +197,11 @@ def build_timesheet_overview(db: Session, actor: User) -> dict:
         member_ids = sorted(
             user_id
             for user_id in _users_for_team(db, team.id)
-            if visible_user_ids is None or user_id in visible_user_ids
+            if user_id in required_ids
+            and (visible_user_ids is None or user_id in visible_user_ids)
         )
+        if not member_ids:
+            continue
         assigned_user_ids.update(member_ids)
         overview_teams.append(
             {
@@ -171,11 +211,7 @@ def build_timesheet_overview(db: Session, actor: User) -> dict:
             }
         )
 
-    unassigned_users = [
-        user.id
-        for user in users
-        if user.id not in assigned_user_ids
-    ]
+    unassigned_users = [user.id for user in users if user.id not in assigned_user_ids]
     if unassigned_users:
         overview_teams.append(
             {
@@ -198,7 +234,7 @@ def build_timesheet_overview(db: Session, actor: User) -> dict:
                 "team_name": primary_team_name,
                 "team_ids": sorted(user_team_ids.get(user.id, set()), key=str),
                 "working_hours_per_day": float(user.working_hours_per_day or 8),
-                "requires_timesheet": bool(getattr(user, "requires_timesheet", False)),
+                "requires_timesheet": True,
             }
         )
 

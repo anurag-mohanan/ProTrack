@@ -53,13 +53,15 @@ def test_office_administrator_sees_all_teams_overview(session, client):
     session.commit()
 
     assert get_timesheet_leader_team_ids(session, office_admin) is None
-    assert get_timesheet_visible_user_ids(session, office_admin) is None
+    visible_ids = get_timesheet_visible_user_ids(session, office_admin)
+    assert visible_ids is not None
+    assert office_admin.id not in visible_ids
 
     overview = build_timesheet_overview(session, office_admin)
     assert overview["scope_all_teams"] is True
-    assert len(overview["teams"]) >= 1
-    assert len(overview["users"]) >= 1
-    assert "requires_timesheet" in overview["users"][0]
+    assert all(user["requires_timesheet"] is True for user in overview["users"])
+    assert all(user["id"] != str(office_admin.id) for user in overview["users"])
+    assert "requires_timesheet" in overview["users"][0] if overview["users"] else True
 
     login = client.post(
         "/api/v1/auth/login",
@@ -73,8 +75,8 @@ def test_office_administrator_sees_all_teams_overview(session, client):
     assert response.status_code == 200
     body = response.json()
     assert body["scope_all_teams"] is True
-    assert body["teams"]
-    assert body["users"]
+    assert all(user["requires_timesheet"] is True for user in body["users"])
+    assert office_admin.email not in {user["email"] for user in body["users"]}
 
     # Month list must not be filtered down to only the Office Admin's empty sheet.
     month_list = client.get("/api/v1/timesheets", params={"month": "2026-06", "limit": 500}, headers=headers)

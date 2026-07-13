@@ -401,14 +401,15 @@ export function canViewAllTimesheets(roleNameOrContext: string | AccessContext):
  */
 export function canEnterOwnTimesheet(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
+  // Role exemption wins over a stale /me flag (HR / Office Admin never fill).
+  if (hasRole(ctx.role_name, ROLES.HR, ROLES.OFFICE_ADMINISTRATOR)) {
+    return false;
+  }
   if (typeof ctx.can_enter_own_timesheet === 'boolean') {
     return ctx.can_enter_own_timesheet;
   }
   // Fallback before /me is enriched: never Admin / Planning Board / Read Only.
   if (isAdminRole(ctx.role_name) || isReadOnlyRole(ctx.role_name) || isPlanningBoardRole(ctx.role_name)) {
-    return false;
-  }
-  if (hasRole(ctx.role_name, ROLES.HR, ROLES.OFFICE_ADMINISTRATOR)) {
     return false;
   }
   return true;

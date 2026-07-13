@@ -79,14 +79,15 @@ export function TimesheetsPage() {
   const isComplianceViewer = user
     ? hasRole(roleName, ROLES.HR, ROLES.OFFICE_ADMINISTRATOR)
     : false;
-  const canViewAll = user ? canViewAllTimesheets(user) : false;
-  const canEnterOwn = user ? canEnterOwnTimesheet(user) : true;
-  // System admins / HR / Office Admin (who cannot enter their own) always land on the all-users
-  // overview. Managers who can view all but also log time default to "mine".
+  // Compliance roles always get all-teams monitoring (ignore stale can_enter_own flags).
+  const canViewAll = isComplianceViewer || (user ? canViewAllTimesheets(user) : false);
+  const canEnterOwn = isComplianceViewer ? false : user ? canEnterOwnTimesheet(user) : true;
+  // System admins / HR / Office Admin always land on the all-users overview.
+  // Managers who can view all but also log time default to "mine".
   const [viewMode, setViewMode] = useState<'mine' | 'all'>(
-    !canEnterOwn && canViewAll ? 'all' : 'mine',
+    isComplianceViewer || (!canEnterOwn && canViewAll) ? 'all' : 'mine',
   );
-  const viewAllUsers = canViewAll && viewMode === 'all';
+  const viewAllUsers = Boolean(canViewAll && (isComplianceViewer || viewMode === 'all'));
   const showEntryForm = canEnterOwn && !viewAllUsers;
   const needsEntryLookups = showEntryForm;
 
@@ -395,7 +396,13 @@ export function TimesheetsPage() {
   return (
     <PageContainer>
       <PageHeader
-        subtitle={`${formatDisplayValue(user ? userDisplayName(user) : '')} · Monthly timesheet workspace`}
+        subtitle={
+          viewAllUsers
+            ? isComplianceViewer
+              ? `${formatDisplayValue(user ? userDisplayName(user) : '')} · All-teams timesheet monitoring`
+              : `${formatDisplayValue(user ? userDisplayName(user) : '')} · Team timesheet overview`
+            : `${formatDisplayValue(user ? userDisplayName(user) : '')} · Monthly timesheet workspace`
+        }
         action={
           showSubmit ? (
             <ProsohmButton

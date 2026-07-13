@@ -65,12 +65,14 @@ export function UserAccessControlSection({
         <Grid size={{ xs: 12 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Only checked modules appear in the sidebar for this user. Grant{' '}
-            <strong>Financial Planning</strong> to any user who should see commercial data
-            (defaults on for Engineering Manager and Admin).
+            <strong>Financial Planning</strong>, <strong>Human Resources</strong>, and{' '}
+            <strong>Reports &amp; Analytics</strong> here — they are listed below the classic
+            modules (look for ★).
           </Typography>
           <Alert severity="info" sx={{ mb: 1.5 }}>
-            Financial Planning and Human Resources are independent modules — tick them here when
-            creating or editing users.
+            Scroll this list: you should see Financial Planning ★, Human Resources ★, and Reports
+            &amp; Analytics after System Administration. If you only see eight modules, hard-refresh
+            the browser (Ctrl+Shift+R) — you are on a cached page.
           </Alert>
           <FormGroup sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0.5 }}>
             {ALL_MODULES.map((module) => (

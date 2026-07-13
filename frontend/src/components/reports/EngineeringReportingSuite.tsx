@@ -45,18 +45,23 @@ import {
   saveEngineeringReportSchedule,
 } from '../../api/engineeringReporting';
 import type {
+  CustomerHoursRow,
+  DesignerProductivityRow,
   DesignerTeamTimesheetPayload,
   EngineeringReportOptions,
   EngineeringReportPayload,
+  ExecutiveKpiCard,
   ReportCatalogEntry,
+  ReportScheduleEntry,
+  ToolHoursRow,
 } from '../../types/EngineeringReporting';
+import type { Customer } from '../../types';
+import type { Team } from '../../types/Team';
 import { formatNumber } from '../../utils/format';
 import { ensureArray } from '../../types/pagination';
 
 const CATEGORY_LABELS: Record<string, string> = {
-  executive: 'Executive Reports',
-  productivity: 'Productivity Reports',
-  projects: 'Project Reports',
+  executive: 'Engineering Overview',
   timesheets: 'Timesheet Reports',
   customers: 'Customer Reports',
 };
@@ -118,11 +123,11 @@ export function EngineeringReportingSuite({
     staleTime: 5 * 60 * 1000,
   });
 
-  const teams = ensureArray(teamsQuery.data);
-  const customers = ensureArray(customersQuery.data);
+  const teams = ensureArray<Team>(teamsQuery.data);
+  const customers = ensureArray<Customer>(customersQuery.data);
   const multiTeam = teams.length > 1;
 
-  const catalogReports = ensureArray(catalogQuery.data?.reports);
+  const catalogReports = ensureArray<ReportCatalogEntry>(catalogQuery.data?.reports);
 
   const selectedReport = useMemo(
     () => catalogReports.find((report) => report.id === selectedReportId),
@@ -168,7 +173,7 @@ export function EngineeringReportingSuite({
     return groups;
   }, [catalogReports]);
 
-  const scheduled = ensureArray(schedulesQuery.data).find(
+  const scheduled = ensureArray<ReportScheduleEntry>(schedulesQuery.data).find(
     (entry) => entry.report_id === selectedReportId,
   );
 
@@ -206,9 +211,9 @@ export function EngineeringReportingSuite({
     payload && 'executive' in payload ? (payload as EngineeringReportPayload) : null;
   const timesheetPayload =
     payload && 'designers' in payload ? (payload as DesignerTeamTimesheetPayload) : null;
-  const customerChart = ensureArray(engineeringPayload?.charts).find((chart) =>
-    chart.title.toLowerCase().includes('customer'),
-  );
+  const customerChart = ensureArray<{ title: string; labels: string[]; values: number[] }>(
+    engineeringPayload?.charts,
+  ).find((chart) => chart.title.toLowerCase().includes('customer'));
 
   return (
     <Stack spacing={3}>
@@ -474,7 +479,7 @@ export function EngineeringReportingSuite({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {ensureArray(timesheetPayload.designers).map((row) => (
+                      {ensureArray<DesignerProductivityRow>(timesheetPayload.designers).map((row) => (
                         <TableRow
                           key={row.user_id}
                           hover
@@ -515,7 +520,7 @@ export function EngineeringReportingSuite({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {ensureArray(timesheetPayload.projects).slice(0, 40).map((row) => (
+                      {ensureArray<ToolHoursRow>(timesheetPayload.projects).slice(0, 40).map((row) => (
                         <TableRow
                           key={`${row.tool_number}-${row.customer_name}`}
                           hover
@@ -553,7 +558,7 @@ export function EngineeringReportingSuite({
                   gap: 2,
                 }}
               >
-                {ensureArray(engineeringPayload.executive?.kpis).map((kpi) => (
+                {ensureArray<ExecutiveKpiCard>(engineeringPayload.executive?.kpis).map((kpi) => (
                   <KpiMetricCard
                     key={kpi.label}
                     title={kpi.label}
@@ -596,7 +601,7 @@ export function EngineeringReportingSuite({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {ensureArray(engineeringPayload.designer_productivity).slice(0, 12).map((row) => (
+                      {ensureArray<DesignerProductivityRow>(engineeringPayload.designer_productivity).slice(0, 12).map((row) => (
                         <TableRow
                           key={row.user_id}
                           hover
@@ -634,7 +639,7 @@ export function EngineeringReportingSuite({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {ensureArray(engineeringPayload.tool_hours).slice(0, 12).map((row) => (
+                      {ensureArray<ToolHoursRow>(engineeringPayload.tool_hours).slice(0, 12).map((row) => (
                         <TableRow
                           key={`${row.tool_number}-${row.customer_name}`}
                           hover
@@ -673,7 +678,7 @@ export function EngineeringReportingSuite({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {ensureArray(engineeringPayload.customer_summary).slice(0, 10).map((row) => (
+                      {ensureArray<CustomerHoursRow>(engineeringPayload.customer_summary).slice(0, 10).map((row) => (
                         <TableRow key={row.customer_name} hover>
                           <TableCell>
                             <RouterLink to="/admin/customers" style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -700,7 +705,7 @@ export function EngineeringReportingSuite({
                       <Typography variant="subtitle1">AI Engineering Insights</Typography>
                     </Box>
                     <List dense>
-                      {ensureArray(engineeringPayload.ai_insights).map((insight) => (
+                      {ensureArray<string>(engineeringPayload.ai_insights).map((insight) => (
                         <ListItem key={insight} disablePadding>
                           <ListItemText primary={insight} />
                         </ListItem>

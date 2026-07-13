@@ -25,6 +25,12 @@ import {
 } from '../../api/customerTimesheetPack';
 import { ErrorState } from '../common/ErrorState';
 import { LoadingState } from '../common/LoadingState';
+import type {
+  CustomerTimesheetAssociateRow,
+  CustomerTimesheetToolRow,
+} from '../../types/CustomerTimesheetPack';
+import type { Customer } from '../../types';
+import type { Team } from '../../types/Team';
 import { formatNumber } from '../../utils/format';
 import { ensureArray } from '../../types/pagination';
 
@@ -90,8 +96,8 @@ export function CustomerTimesheetPackPanel({
     staleTime: 5 * 60 * 1000,
   });
 
-  const teams = ensureArray(teamsQuery.data);
-  const customers = ensureArray(customersQuery.data);
+  const teams = ensureArray<Team>(teamsQuery.data);
+  const customers = ensureArray<Customer>(customersQuery.data);
   const multiTeam = teams.length > 1;
 
   const options = useMemo(
@@ -279,7 +285,7 @@ export function CustomerTimesheetPackPanel({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {payload.associates.map((row) => (
+                {ensureArray<CustomerTimesheetAssociateRow>(payload.associates).map((row) => (
                   <TableRow key={row.user_id} hover>
                     <TableCell>{row.serial_no}</TableCell>
                     <TableCell>{row.associate_name}</TableCell>
@@ -309,7 +315,7 @@ export function CustomerTimesheetPackPanel({
                   </TableCell>
                   <TableCell />
                 </TableRow>
-                {!payload.associates.length ? (
+                {!ensureArray<CustomerTimesheetAssociateRow>(payload.associates).length ? (
                   <TableRow>
                     <TableCell colSpan={8}>
                       <Typography variant="body2" color="text.secondary">
@@ -333,7 +339,7 @@ export function CustomerTimesheetPackPanel({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {payload.tools.map((row) => (
+                {ensureArray<CustomerTimesheetToolRow>(payload.tools).map((row) => (
                   <TableRow key={row.tool_number} hover>
                     <TableCell>{row.tool_number}</TableCell>
                     <TableCell align="right">{formatNumber(row.hours)}</TableCell>
@@ -344,7 +350,10 @@ export function CustomerTimesheetPackPanel({
                   <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>
                     {formatNumber(
-                      payload.tools.reduce((sum, row) => sum + Number(row.hours || 0), 0),
+                      ensureArray<CustomerTimesheetToolRow>(payload.tools).reduce(
+                        (sum, row) => sum + Number(row.hours || 0),
+                        0,
+                      ),
                     )}
                   </TableCell>
                   <TableCell />

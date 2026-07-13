@@ -158,7 +158,7 @@ def test_leader_default_scope_excludes_other_team_without_filter(client, session
     # Put a second designer on no team / other team hours would not appear via user_ids
     headers = login(client, "anurag@prosohm.com")
     response = client.get(
-        "/api/v1/reports/engine/designer-productivity/preview",
+        "/api/v1/reports/engine/weekly-engineering/preview",
         headers=headers,
         params={
             "period_type": "weekly",

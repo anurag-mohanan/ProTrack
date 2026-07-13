@@ -258,7 +258,7 @@ export function ExecutiveDashboardView({
               <Button
                 size="small"
                 sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}
-                onClick={() => navigate('/reports?tab=np-by-month')}
+                onClick={() => navigate('/reports?tab=timesheet-reports')}
               >
                 View leave & NP reports
               </Button>

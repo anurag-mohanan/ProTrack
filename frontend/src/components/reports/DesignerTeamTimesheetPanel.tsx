@@ -25,7 +25,9 @@ import {
   fetchEngineeringReportPreview,
   isDesignerTeamTimesheetReport,
 } from '../../api/engineeringReporting';
-import type { DesignerTeamTimesheetPayload } from '../../types/EngineeringReporting';
+import type { DesignerTeamTimesheetPayload, DesignerProductivityRow, ToolHoursRow } from '../../types/EngineeringReporting';
+import type { Customer } from '../../types';
+import type { Team } from '../../types/Team';
 import { ensureArray } from '../../types/pagination';
 import { ErrorState } from '../common/ErrorState';
 import { LoadingState } from '../common/LoadingState';
@@ -87,8 +89,8 @@ export function DesignerTeamTimesheetPanel({
     staleTime: 5 * 60 * 1000,
   });
 
-  const customers = ensureArray(customersQuery.data);
-  const teams = ensureArray(teamsQuery.data);
+  const customers = ensureArray<Customer>(customersQuery.data);
+  const teams = ensureArray<Team>(teamsQuery.data);
 
   const options = useMemo(
     () => ({
@@ -113,8 +115,8 @@ export function DesignerTeamTimesheetPanel({
     previewQuery.data && 'designers' in previewQuery.data
       ? (previewQuery.data as DesignerTeamTimesheetPayload)
       : null;
-  const designers = ensureArray(payload?.designers);
-  const projects = ensureArray(payload?.projects);
+  const designers = ensureArray<DesignerProductivityRow>(payload?.designers);
+  const projects = ensureArray<ToolHoursRow>(payload?.projects);
 
   const handlePeriodChange = (nextId: (typeof PERIOD_REPORTS)[number]['id']) => {
     setReportId(nextId);

@@ -100,7 +100,7 @@ export function NpHoursPanel({ panel }: NpHoursPanelProps) {
         <Button
           variant="outlined"
           size="small"
-          onClick={() => navigate('/reports?tab=np-hours')}
+          onClick={() => navigate('/reports?tab=engineering-suite')}
           sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
         >
           View NP Report

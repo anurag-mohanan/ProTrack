@@ -1,5 +1,10 @@
 export const REPORT_CATEGORIES = [
   {
+    id: 'timesheets',
+    label: 'Timesheets',
+    slugs: ['timesheet-reports'],
+  },
+  {
     id: 'executive',
     label: 'Executive',
     slugs: ['engineering-suite'],
@@ -7,37 +12,17 @@ export const REPORT_CATEGORIES = [
   {
     id: 'projects',
     label: 'Projects',
-    slugs: ['project-hours', 'by-stage', 'by-execution-status', 'project-portfolio'],
+    slugs: ['project-hours'],
+  },
+  {
+    id: 'resources',
+    label: 'Teams',
+    slugs: ['team-reports'],
   },
   {
     id: 'customers',
     label: 'Customers',
-    slugs: ['customer-summary', 'customer-timesheet-pack'],
-  },
-  {
-    id: 'resources',
-    label: 'Resources',
-    slugs: ['designer-utilization', 'billable-utilization', 'team-reports'],
-  },
-  {
-    id: 'timesheets',
-    label: 'Timesheets',
-    slugs: ['timesheet-reports'],
-  },
-  {
-    id: 'engineering',
-    label: 'Engineering KPIs',
-    slugs: ['project-hours', 'project-portfolio'],
-  },
-  {
-    id: 'leave',
-    label: 'Leave & NP',
-    slugs: ['np-hours', 'np-by-designer', 'np-by-month', 'top-np', 'billable-vs-np'],
-  },
-  {
-    id: 'planning',
-    label: 'Planning',
-    slugs: ['team-reports', 'designer-utilization'],
+    slugs: ['customer-timesheet-pack'],
   },
 ] as const;
 

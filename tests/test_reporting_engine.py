@@ -11,9 +11,11 @@ def test_report_catalog_lists_engineering_reports():
     catalog = reporting_engine.catalog()
     ids = {entry.id for entry in catalog.reports}
     assert "monthly-engineering" in ids
-    assert "designer-productivity" in ids
-    assert "tool-hours" in ids
-    assert len(catalog.reports) >= 10
+    assert "weekly-timesheet" in ids
+    assert "customer-timesheet-pack" in ids
+    assert "designer-productivity" not in ids
+    assert "tool-hours" not in ids
+    assert len(catalog.reports) == 9
 
 
 def test_build_monthly_engineering_report(session):

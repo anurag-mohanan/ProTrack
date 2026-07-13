@@ -25,9 +25,11 @@ def working_models(session, test_engine):
 
 
 def test_seed_working_models(working_models):
-    assert set(working_models) == {"project_based", "time_materials", "retainer"}
+    assert set(working_models) == {"project_based", "time_materials", "retainer", "overheads"}
     assert working_models["project_based"].name == "Project Based (Fixed Fee)"
     assert working_models["project_based"].strategy_key == WorkingModelCode.project_based
+    assert working_models["overheads"].name == "Overheads"
+    assert working_models["overheads"].strategy_key == WorkingModelCode.overheads
 
 
 def test_existing_projects_backfilled_to_project_based(session, test_engine, working_models):
@@ -113,3 +115,23 @@ def test_registry_lists_all_strategies():
     assert WorkingModelCode.project_based in keys
     assert WorkingModelCode.time_materials in keys
     assert WorkingModelCode.retainer in keys
+    assert WorkingModelCode.overheads in keys
+
+
+def test_overheads_strategy_hides_quote_variance(session, working_models):
+    project = session.scalar(select(Project).limit(1))
+    assert project is not None
+    project.working_model_id = working_models["overheads"].id
+    session.add(project)
+    session.commit()
+    session.refresh(project)
+
+    engine = WorkingModelEngine(session)
+    hours = calculate_hours(session, project)
+    result = engine.calculate_kpis(project, hours=hours)
+    assert result is not None
+    assert result.strategy_key == WorkingModelCode.overheads
+    assert result.show_quoted_variance is False
+    assert result.show_over_budget_indicators is False
+    assert result.model_metrics.get("resource_class") == "management_overhead"
+    assert engine.should_flag_hours_over_quote(project, hours) is False

@@ -42,6 +42,7 @@ const STRATEGY_LABELS: Record<WorkingModelStrategyKey, string> = {
   project_based: 'Project Based (Fixed Fee)',
   time_materials: 'Time & Materials (Hourly)',
   retainer: 'Retainer / Subscription',
+  overheads: 'Overheads (Management / Non-designer)',
 };
 
 interface WorkingModelFormState {

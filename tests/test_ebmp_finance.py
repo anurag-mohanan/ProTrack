@@ -105,6 +105,7 @@ def test_finance_kpi_strategies_registered():
         WorkingModelCode.project_based,
         WorkingModelCode.time_materials,
         WorkingModelCode.retainer,
+        WorkingModelCode.overheads,
     ):
         strategy = finance_kpi_registry.get(key)
         result = strategy.calculate(

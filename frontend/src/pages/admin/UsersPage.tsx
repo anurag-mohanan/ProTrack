@@ -1056,7 +1056,7 @@ export default function UsersPage() {
             <FormSelect
               label="Default Working Model"
               value={form.default_working_model_id}
-              helper="Used when no project-level working model is set. Project working model always takes precedence."
+              helper="Used when no project-level working model is set. Choose Overheads for Engineering Managers, HR, Office Admin, and other non-designer resources. Project working model always takes precedence."
               options={[
                 { value: '', label: 'None' },
                 ...workingModels.map((model) => ({ value: model.id, label: model.name })),

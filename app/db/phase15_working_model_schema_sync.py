@@ -67,6 +67,17 @@ SEED_WORKING_MODELS: list[dict] = [
         "description": "Monthly capacity retainer with consumption and remaining hours.",
         "sort_order": 2,
     },
+    {
+        "code": "overheads",
+        "strategy_key": WorkingModelCode.overheads,
+        "name": "Overheads",
+        "description": (
+            "Management and non-designer resources (Engineering Manager, HR, "
+            "Office Administrator, and similar) tracked as overhead cost — not "
+            "project fixed-fee or T&M delivery billing."
+        ),
+        "sort_order": 3,
+    },
 ]
 
 

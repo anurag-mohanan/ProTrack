@@ -183,6 +183,7 @@ class WorkingModelCode(enum.Enum):
     project_based = "project_based"
     time_materials = "time_materials"
     retainer = "retainer"
+    overheads = "overheads"
 
 
 class EntityType(enum.Enum):

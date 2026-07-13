@@ -2,6 +2,7 @@
 
 from app.models.enums import WorkingModelCode
 from app.services.working_model.base import WorkingModelStrategy
+from app.services.working_model.strategies.overheads import OverheadsStrategy
 from app.services.working_model.strategies.project_based import ProjectBasedStrategy
 from app.services.working_model.strategies.retainer import RetainerStrategy
 from app.services.working_model.strategies.time_materials import TimeMaterialsStrategy
@@ -29,4 +30,5 @@ def build_default_registry() -> WorkingModelStrategyRegistry:
     registry.register(ProjectBasedStrategy())
     registry.register(TimeMaterialsStrategy())
     registry.register(RetainerStrategy())
+    registry.register(OverheadsStrategy())
     return registry

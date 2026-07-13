@@ -122,7 +122,11 @@ export interface Stream {
   is_active: boolean;
 }
 
-export type WorkingModelStrategyKey = 'project_based' | 'time_materials' | 'retainer';
+export type WorkingModelStrategyKey =
+  | 'project_based'
+  | 'time_materials'
+  | 'retainer'
+  | 'overheads';
 
 export interface WorkingModel {
   id: string;

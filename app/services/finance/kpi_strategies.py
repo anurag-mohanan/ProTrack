@@ -73,6 +73,20 @@ class RetainerFinanceStrategy(FinanceKpiStrategy):
         }
 
 
+class OverheadsFinanceStrategy(FinanceKpiStrategy):
+    strategy_key = WorkingModelCode.overheads
+
+    def calculate(self, context: dict[str, Any]) -> dict[str, Decimal | str]:
+        overhead_hours = Decimal(str(context.get("actual_hours") or context.get("overhead_hours") or 0))
+        cost = Decimal(str(context.get("actual_cost") or context.get("overhead_cost") or 0))
+        return {
+            "strategy": self.strategy_key.value,
+            "overhead_hours": overhead_hours,
+            "overhead_cost": cost,
+            "resource_class": "management_overhead",
+        }
+
+
 class FinanceKpiStrategyRegistry:
     def __init__(self) -> None:
         self._strategies: dict[WorkingModelCode, FinanceKpiStrategy] = {}
@@ -92,6 +106,7 @@ def build_finance_kpi_registry() -> FinanceKpiStrategyRegistry:
     registry.register(ProjectBasedFinanceStrategy())
     registry.register(TimeMaterialsFinanceStrategy())
     registry.register(RetainerFinanceStrategy())
+    registry.register(OverheadsFinanceStrategy())
     return registry
 
 

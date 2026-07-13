@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.permissions import (
     ENGINEERING_MANAGER,
+    PLANNING_BOARD,
     get_role_name,
     is_admin,
     is_assigned_to_project,
@@ -51,6 +52,8 @@ def get_accessible_team_ids(db: Session, user: User) -> set[UUID] | None:
         ).all()
     )
     if is_admin(db, user):
+        return None
+    if role_name == PLANNING_BOARD:
         return None
     if role_name == ENGINEERING_MANAGER and not assigned:
         return None

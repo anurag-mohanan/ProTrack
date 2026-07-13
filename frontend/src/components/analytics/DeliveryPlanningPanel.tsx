@@ -9,9 +9,15 @@ interface DeliveryPlanningPanelProps {
   upcoming: ProjectAttentionRow[];
   delayed: ProjectAttentionRow[];
   loading?: boolean;
+  hideResourcePlanningLink?: boolean;
 }
 
-export function DeliveryPlanningPanel({ upcoming, delayed, loading }: DeliveryPlanningPanelProps) {
+export function DeliveryPlanningPanel({
+  upcoming,
+  delayed,
+  loading,
+  hideResourcePlanningLink = false,
+}: DeliveryPlanningPanelProps) {
   const navigate = useNavigate();
 
   const thisWeek = upcoming.length;
@@ -41,7 +47,7 @@ export function DeliveryPlanningPanel({ upcoming, delayed, loading }: DeliveryPl
               <ProjectsAttentionTable
                 rows={upcoming.slice(0, 5)}
                 filterLabel="upcoming"
-                viewAllHref="/projects?due=7days"
+                viewAllHref={hideResourcePlanningLink ? '' : '/projects?due=7days'}
               />
             )}
           </DashboardPanel>
@@ -54,19 +60,21 @@ export function DeliveryPlanningPanel({ upcoming, delayed, loading }: DeliveryPl
               <ProjectsAttentionTable
                 rows={delayed.slice(0, 5)}
                 filterLabel="delayed"
-                viewAllHref="/projects?due=overdue"
+                viewAllHref={hideResourcePlanningLink ? '' : '/projects?due=overdue'}
               />
             )}
           </DashboardPanel>
         </Stack>
-        <Typography
-          variant="caption"
-          color="primary"
-          sx={{ cursor: 'pointer', fontWeight: 700 }}
-          onClick={() => navigate('/resource-planning')}
-        >
-          Open resource planning →
-        </Typography>
+        {hideResourcePlanningLink ? null : (
+          <Typography
+            variant="caption"
+            color="primary"
+            sx={{ cursor: 'pointer', fontWeight: 700 }}
+            onClick={() => navigate('/resource-planning')}
+          >
+            Open resource planning →
+          </Typography>
+        )}
       </Stack>
     </DashboardPanel>
   );

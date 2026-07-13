@@ -61,6 +61,7 @@ _workload_access = Depends(
         "Engineering Manager",
         "Design Leader",
         "Project Manager",
+        "Planning Board",
     )
 )
 
@@ -69,6 +70,7 @@ _planning_access = Depends(
         "Admin",
         "Engineering Manager",
         "Project Manager",
+        "Planning Board",
     )
 )
 

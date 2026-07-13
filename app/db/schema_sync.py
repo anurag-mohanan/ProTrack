@@ -194,6 +194,18 @@ def ensure_production_roles(engine: Engine) -> None:
                 )
             )
 
+        planning_board = session.scalar(select(Role).where(Role.name == "Planning Board"))
+        if planning_board is None:
+            session.add(
+                Role(
+                    name="Planning Board",
+                    description=(
+                        "Wall / TV monitor account — live projects and deliveries only; "
+                        "no write access"
+                    ),
+                )
+            )
+
         engineering_manager = session.scalar(
             select(Role).where(Role.name == "Engineering Manager")
         )

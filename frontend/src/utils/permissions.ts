@@ -23,6 +23,7 @@ import {
   MODULE_SYSTEM_ADMINISTRATION,
   MODULE_TIMESHEETS,
   MODULE_WORKLOAD,
+  MODULE_PLANNING_BOARD,
   SPECIAL_APPROVE_TIMESHEETS,
   SPECIAL_ARCHIVE_PROJECTS,
   SPECIAL_CREATE_PROJECTS,
@@ -51,6 +52,7 @@ export const ROLES = {
   JUNIOR_DESIGNER: 'Junior Designer',
   SURFACER: 'Surfacer',
   READ_ONLY: 'Read Only',
+  PLANNING_BOARD: 'Planning Board',
   HR: 'HR',
   OFFICE_ADMINISTRATOR: 'Office Administrator',
 } as const;
@@ -60,7 +62,8 @@ export type DashboardRoleGroup =
   | 'engineering_manager'
   | 'design_leader'
   | 'staff'
-  | 'read_only';
+  | 'read_only'
+  | 'planning_board';
 
 export interface MainNavItem {
   label: string;
@@ -101,6 +104,7 @@ const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
   [ROLES.JUNIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
   [ROLES.SURFACER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
   [ROLES.READ_ONLY]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_REPORTS_ANALYTICS],
+  [ROLES.PLANNING_BOARD]: [MODULE_PLANNING_BOARD],
   [ROLES.HR]: [
     MODULE_DASHBOARD,
     MODULE_HUMAN_RESOURCES,
@@ -151,6 +155,7 @@ const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
   [ROLES.SENIOR_DESIGNER]: [SPECIAL_CREATE_PROJECTS, SPECIAL_EDIT_PROJECTS],
   [ROLES.DESIGNER]: [SPECIAL_EDIT_PROJECTS],
   [ROLES.READ_ONLY]: [],
+  [ROLES.PLANNING_BOARD]: [],
   [ROLES.HR]: [SPECIAL_VIEW_REPORTS, SPECIAL_EXPORT_REPORTS],
   [ROLES.OFFICE_ADMINISTRATOR]: [SPECIAL_VIEW_REPORTS, SPECIAL_EXPORT_REPORTS],
 };
@@ -161,6 +166,12 @@ const NAV_MODULE_CONFIG: Array<{
   path: string;
   icon: SvgIconComponent;
 }> = [
+  {
+    module: MODULE_PLANNING_BOARD,
+    label: 'Planning Board',
+    path: '/planning-board',
+    icon: CalendarMonthRoundedIcon,
+  },
   { module: MODULE_DASHBOARD, label: 'Dashboard', path: '/dashboard', icon: DashboardRoundedIcon },
   {
     module: MODULE_PROJECTS,
@@ -293,6 +304,7 @@ export function getDashboardRoleGroup(roleName: string): DashboardRoleGroup {
   if (normalized === ROLES.ENGINEERING_MANAGER) return 'engineering_manager';
   if (normalized === ROLES.DESIGN_LEADER) return 'design_leader';
   if (normalized === ROLES.READ_ONLY) return 'read_only';
+  if (normalized === ROLES.PLANNING_BOARD) return 'planning_board';
   return 'staff';
 }
 
@@ -318,6 +330,17 @@ export function isSurfacerRole(roleName: string): boolean {
 
 export function isReadOnlyRole(roleName: string): boolean {
   return hasRole(roleName, ROLES.READ_ONLY);
+}
+
+export function isPlanningBoardRole(roleName: string): boolean {
+  return hasRole(roleName, ROLES.PLANNING_BOARD);
+}
+
+export function getDefaultLandingPath(roleName: string | null | undefined): string {
+  if (roleName && isPlanningBoardRole(roleName)) {
+    return '/planning-board';
+  }
+  return '/dashboard';
 }
 
 export function isOperationalManagerRole(roleName: string): boolean {
@@ -442,7 +465,7 @@ export function canEditProject(roleNameOrContext: string | AccessContext): boole
 
 export function canViewReports(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
-  if (isReadOnlyRole(ctx.role_name)) return true;
+  if (isReadOnlyRole(ctx.role_name) || isPlanningBoardRole(ctx.role_name)) return true;
   return userHasModule(ctx, MODULE_REPORTS) || userHasSpecial(ctx, SPECIAL_VIEW_REPORTS);
 }
 
@@ -453,11 +476,13 @@ export function canExportReports(roleNameOrContext: string | AccessContext): boo
 
 export function canViewWorkload(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
+  if (isPlanningBoardRole(ctx.role_name)) return true;
   return userHasModule(ctx, MODULE_WORKLOAD);
 }
 
 export function canViewResourcePlanning(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
+  if (isPlanningBoardRole(ctx.role_name)) return true;
   return (
     userHasModule(ctx, MODULE_RESOURCE_PLANNING) ||
     userHasSpecial(ctx, SPECIAL_VIEW_RESOURCE_PLANNING)
@@ -476,6 +501,16 @@ export function canManageCompanySettings(roleNameOrContext: string | AccessConte
 
 export function getMainNavItems(roleNameOrContext: string | AccessContext): MainNavItem[] {
   const ctx = toAccessContext(roleNameOrContext);
+  if (isPlanningBoardRole(ctx.role_name)) {
+    return [
+      {
+        module: MODULE_PLANNING_BOARD,
+        path: '/planning-board',
+        icon: CalendarMonthRoundedIcon,
+        label: 'Planning Board',
+      },
+    ];
+  }
   const modules = new Set(resolveModules(ctx));
 
   return NAV_MODULE_CONFIG.filter((item) => modules.has(item.module)).map((item) => ({
@@ -488,6 +523,9 @@ export function getMainNavItems(roleNameOrContext: string | AccessContext): Main
 
 export function getEbmpSectionNavItems(roleNameOrContext: string | AccessContext): MainNavItem[] {
   const ctx = toAccessContext(roleNameOrContext);
+  if (isPlanningBoardRole(ctx.role_name)) {
+    return [];
+  }
   const modules = new Set(resolveModules(ctx));
   const items: MainNavItem[] = [];
   const seenPaths = new Set<string>();

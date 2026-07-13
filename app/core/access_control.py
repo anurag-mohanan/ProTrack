@@ -14,6 +14,7 @@ DESIGNER = "Designer"
 JUNIOR_DESIGNER = "Junior Designer"
 SURFACER = "Surfacer"
 READ_ONLY = "Read Only"
+PLANNING_BOARD = "Planning Board"
 LEGACY_PROJECT_MANAGER = "Project Manager"
 HR = "HR"
 OFFICE_ADMINISTRATOR = "Office Administrator"
@@ -23,6 +24,8 @@ def normalize_role_name(role_name: str) -> str:
     if role_name == LEGACY_PROJECT_MANAGER:
         return ENGINEERING_MANAGER
     return role_name
+
+
 MODULE_DASHBOARD = "dashboard"
 MODULE_PROJECTS = "projects"
 MODULE_ARCHIVED_PROJECTS = "archived_projects"
@@ -34,6 +37,7 @@ MODULE_SYSTEM_ADMINISTRATION = "system_administration"
 MODULE_FINANCIAL_PLANNING = "financial_planning"
 MODULE_HUMAN_RESOURCES = "human_resources"
 MODULE_REPORTS_ANALYTICS = "reports_analytics"
+MODULE_PLANNING_BOARD = "planning_board"
 
 ALL_MODULES: tuple[str, ...] = (
     MODULE_DASHBOARD,
@@ -47,6 +51,7 @@ ALL_MODULES: tuple[str, ...] = (
     MODULE_FINANCIAL_PLANNING,
     MODULE_HUMAN_RESOURCES,
     MODULE_REPORTS_ANALYTICS,
+    MODULE_PLANNING_BOARD,
 )
 
 # EBMP top-level nav groups (ops modules remain granular under Engineering Operations).
@@ -90,9 +95,6 @@ ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_VIEW_RESOURCE_PLANNING,
 )
 
-HR = "HR"
-OFFICE_ADMINISTRATOR = "Office Administrator"
-
 DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {
     ADMIN: frozenset(ALL_MODULES),
     ENGINEERING_MANAGER: frozenset(
@@ -123,6 +125,7 @@ DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {
     JUNIOR_DESIGNER: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS}),
     SURFACER: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS}),
     READ_ONLY: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_REPORTS_ANALYTICS}),
+    PLANNING_BOARD: frozenset({MODULE_PLANNING_BOARD}),
     HR: frozenset(
         {
             MODULE_DASHBOARD,
@@ -169,6 +172,7 @@ DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
     JUNIOR_DESIGNER: frozenset(),
     SURFACER: frozenset(),
     READ_ONLY: frozenset(),
+    PLANNING_BOARD: frozenset(),
     HR: frozenset({SPECIAL_VIEW_REPORTS, SPECIAL_EXPORT_REPORTS}),
     OFFICE_ADMINISTRATOR: frozenset({SPECIAL_VIEW_REPORTS, SPECIAL_EXPORT_REPORTS}),
 }
@@ -185,6 +189,7 @@ PATH_MODULE_MAP: dict[str, str] = {
     "/finance": MODULE_FINANCIAL_PLANNING,
     "/hr": MODULE_HUMAN_RESOURCES,
     "/analytics": MODULE_REPORTS_ANALYTICS,
+    "/planning-board": MODULE_PLANNING_BOARD,
 }
 
 

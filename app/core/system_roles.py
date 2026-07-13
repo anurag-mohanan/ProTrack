@@ -10,6 +10,7 @@ SYSTEM_ROLE_NAMES = frozenset(
         "Junior Designer",
         "Surfacer",
         "Read Only",
+        "Planning Board",
         # Legacy name kept for existing databases; normalized to Engineering Manager.
         "Project Manager",
     }

@@ -26,6 +26,7 @@ import { AdminRoute } from './routes/AdminRoute';
 import { AdminPortalRoute } from './routes/AdminPortalRoute';
 import { RoleRoute } from './routes/RoleRoute';
 import { ProtectedRoute, PublicRoute, RequirePasswordChangedRoute, ChangePasswordGate } from './routes/ProtectedRoute';
+import { DefaultHomeRedirect, PlanningBoardGate } from './routes/PlanningBoardGate';
 import {
   accessContextFromUser,
   canImportHistoricalProjects,
@@ -40,10 +41,13 @@ import {
   MODULE_ARCHIVED_PROJECTS,
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
+  MODULE_PLANNING_BOARD,
   MODULE_PROJECTS,
   MODULE_REPORTS_ANALYTICS,
   MODULE_TIMESHEETS,
 } from './config/accessControl';
+import { PlanningBoardLayout } from './layouts/PlanningBoardLayout';
+import PlanningBoardPage from './pages/PlanningBoardPage';
 const FinanceDashboardPage = lazy(() =>
   import('./pages/FinanceDashboardPage').then((module) => ({
     default: module.FinanceDashboardPage,
@@ -198,6 +202,12 @@ export default function App() {
                     <Route path="/change-password" element={<ChangePasswordPage />} />
                   </Route>
                   <Route element={<RequirePasswordChangedRoute />}>
+                    <Route element={<PlanningBoardGate />}>
+                    <Route element={<ModuleRoute module={MODULE_PLANNING_BOARD} />}>
+                      <Route element={<PlanningBoardLayout />}>
+                        <Route path="/planning-board" element={<PlanningBoardPage />} />
+                      </Route>
+                    </Route>
                     <Route element={<MainLayout />}>
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route element={<ModuleRoute module={MODULE_ARCHIVED_PROJECTS} redirectTo="/projects" />}>
@@ -592,10 +602,11 @@ export default function App() {
                       />
                       </Route>
                     </Route>
+                    </Route>
                   </Route>
                 </Route>
 
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/" element={<DefaultHomeRedirect />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </BrowserRouter>

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, get_db
-from app.core.permissions import FULL_ACCESS_ROLES, get_role_name
+from app.core.permissions import FULL_ACCESS_ROLES, PLANNING_BOARD, get_role_name, normalize_role_name
 from app.models.intelligence import LessonLearned
 from app.models.models import User
 from app.schemas.ai import (
@@ -35,10 +35,18 @@ from app.services.ai.engine import ai_engine
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
+_WALL_VIEWER_ROLES = FULL_ACCESS_ROLES | {"Design Leader", "Project Manager", PLANNING_BOARD}
+
 
 def _require_manager_access(db: Session, user: User) -> None:
-    role = get_role_name(db, user)
-    if role not in FULL_ACCESS_ROLES and role not in ("Design Leader", "Project Manager"):
+    role = normalize_role_name(get_role_name(db, user))
+    if role not in FULL_ACCESS_ROLES and role not in ("Design Leader",):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
+def _require_wall_access(db: Session, user: User) -> None:
+    role = normalize_role_name(get_role_name(db, user))
+    if role not in _WALL_VIEWER_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
 
@@ -222,5 +230,5 @@ def get_executive_wall(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_manager_access(db, current_user)
+    _require_wall_access(db, current_user)
     return ai_engine.run("executive_wall", db, cache_ttl=60)

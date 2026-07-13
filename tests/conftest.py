@@ -50,6 +50,7 @@ IDS = {
     "role_junior_designer": uuid.UUID("f6f6f6f6-f6f6-4f6f-8f6f-f6f6f6f6f6f1"),
     "role_surfacer": uuid.UUID("04582a31-25bf-4709-ac44-e6e05aae8406"),
     "role_read_only": uuid.UUID("88888888-8888-8888-8888-888888888888"),
+    "role_planning_board": uuid.UUID("88888888-8888-8888-8888-888888888889"),
     "user_admin": uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
     "user_pm": uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
     "user_anurag": uuid.UUID("7cf429ba-ca31-4752-9a03-afa3ba4700a3"),
@@ -58,6 +59,7 @@ IDS = {
     "user_junior_designer": uuid.UUID("10000003-0003-4003-8003-000000000003"),
     "user_ranjith": uuid.UUID("731ddf9e-d2d9-450b-a675-cb2ca8a021e3"),
     "user_readonly": uuid.UUID("99999999-9999-9999-9999-999999999999"),
+    "user_planning_board": uuid.UUID("99999999-9999-9999-9999-999999999998"),
     "stream": uuid.UUID("a4b9ba7c-4ff4-4a2c-8dc7-823a7cfacb55"),
     "customer": uuid.UUID("3946c135-d515-4bbd-affb-00b5c1893832"),
     "contact": uuid.UUID("b5301223-164f-4035-8017-252ff0452fa6"),
@@ -111,6 +113,11 @@ def _seed_database(session) -> Milestone:
                 name="Read Only",
                 description="View-only access",
             ),
+            Role(
+                id=IDS["role_planning_board"],
+                name="Planning Board",
+                description="Wall monitor — read-only planning board",
+            ),
         ]
     )
     password_hash = hash_password(DEFAULT_PASSWORD)
@@ -123,6 +130,7 @@ def _seed_database(session) -> Milestone:
         "Junior Designer": IDS["role_junior_designer"],
         "Surfacer": IDS["role_surfacer"],
         "Read Only": IDS["role_read_only"],
+        "Planning Board": IDS["role_planning_board"],
     }
     session.add_all(
         [
@@ -180,6 +188,16 @@ def _seed_database(session) -> Milestone:
                 first_name="Read",
                 last_name="Only",
                 is_active=True,
+            ),
+            User(
+                id=IDS["user_planning_board"],
+                role_id=IDS["role_planning_board"],
+                email="planning-board@prosohm.com",
+                password_hash=password_hash,
+                first_name="Planning",
+                last_name="Board",
+                is_active=True,
+                must_change_password=False,
             ),
         ]
     )

@@ -33,6 +33,7 @@ export function ProjectsAttentionTable({
 }: ProjectsAttentionTableProps) {
   const navigate = useNavigate();
   const visibleRows = rows.slice(0, MAX_ROWS);
+  const showViewAll = Boolean(viewAllHref);
 
   if (!rows.length) {
     const emptyTitle = filterLabel
@@ -113,14 +114,16 @@ export function ProjectsAttentionTable({
         </Table>
       </TableContainer>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          size="small"
-          endIcon={<ArrowForwardIcon />}
-          onClick={() => navigate(viewAllHref)}
-          sx={{ textTransform: 'none', fontWeight: 600 }}
-        >
-          View All Projects
-        </Button>
+        {showViewAll ? (
+          <Button
+            size="small"
+            endIcon={<ArrowForwardIcon />}
+            onClick={() => navigate(viewAllHref)}
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            View All Projects
+          </Button>
+        ) : null}
       </Box>
     </Stack>
   );

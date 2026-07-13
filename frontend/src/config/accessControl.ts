@@ -11,6 +11,7 @@ export const MODULE_SYSTEM_ADMINISTRATION = 'system_administration';
 export const MODULE_FINANCIAL_PLANNING = 'financial_planning';
 export const MODULE_HUMAN_RESOURCES = 'human_resources';
 export const MODULE_REPORTS_ANALYTICS = 'reports_analytics';
+export const MODULE_PLANNING_BOARD = 'planning_board';
 
 export type ModuleKey =
   | typeof MODULE_DASHBOARD
@@ -23,7 +24,8 @@ export type ModuleKey =
   | typeof MODULE_SYSTEM_ADMINISTRATION
   | typeof MODULE_FINANCIAL_PLANNING
   | typeof MODULE_HUMAN_RESOURCES
-  | typeof MODULE_REPORTS_ANALYTICS;
+  | typeof MODULE_REPORTS_ANALYTICS
+  | typeof MODULE_PLANNING_BOARD;
 
 export const ALL_MODULES: ModuleKey[] = [
   MODULE_DASHBOARD,
@@ -37,6 +39,7 @@ export const ALL_MODULES: ModuleKey[] = [
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
   MODULE_REPORTS_ANALYTICS,
+  MODULE_PLANNING_BOARD,
 ];
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
@@ -51,6 +54,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   [MODULE_FINANCIAL_PLANNING]: 'Financial Planning',
   [MODULE_HUMAN_RESOURCES]: 'Human Resources',
   [MODULE_REPORTS_ANALYTICS]: 'Reports & Analytics',
+  [MODULE_PLANNING_BOARD]: 'Planning Board Monitor',
 };
 
 export const SPECIAL_CREATE_PROJECTS = 'create_projects';
@@ -135,6 +139,7 @@ export const PATH_MODULE_MAP: Record<string, ModuleKey> = {
   '/finance': MODULE_FINANCIAL_PLANNING,
   '/hr': MODULE_HUMAN_RESOURCES,
   '/analytics': MODULE_REPORTS_ANALYTICS,
+  '/planning-board': MODULE_PLANNING_BOARD,
 };
 
 export function moduleForPath(pathname: string): ModuleKey | null {

@@ -34,7 +34,13 @@ router = APIRouter(
 write_access = Depends(require_roles("Admin"))
 admin_access = Depends(require_roles("Admin"))
 read_access = Depends(
-    require_roles("Admin", "Engineering Manager", "Design Leader", "Read Only")
+    require_roles(
+        "Admin",
+        "Engineering Manager",
+        "Design Leader",
+        "Read Only",
+        "Planning Board",
+    )
 )
 
 

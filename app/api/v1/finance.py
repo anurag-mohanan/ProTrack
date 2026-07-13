@@ -58,8 +58,7 @@ from app.schemas.finance import (
 from app.services.finance.dashboard_service import get_finance_dashboard
 from app.services.finance.fx_service import to_base_amount
 from app.services.finance.quote_import_service import (
-    import_quotes_from_csv,
-    import_quotes_from_excel,
+    import_quotes_from_upload,
 )
 
 router = APIRouter(prefix="/finance", tags=["financial-planning"])
@@ -389,15 +388,19 @@ async def import_quotes(
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
     content = await file.read()
-    filename = (file.filename or "").lower()
+    filename = file.filename or "upload"
     try:
-        if filename.endswith(".csv"):
-            quotes = import_quotes_from_csv(db, content=content, actor=current_user)
-        elif filename.endswith(".xlsx") or filename.endswith(".xls"):
-            quotes = import_quotes_from_excel(db, content=content, actor=current_user)
-        else:
-            raise HTTPException(status_code=400, detail="Supported formats: CSV, Excel (.xlsx)")
+        if filename.lower().endswith(".xls") and not filename.lower().endswith(".xlsx"):
+            raise HTTPException(
+                status_code=400,
+                detail="Legacy .xls is not supported. Save as .xlsx or upload PDF/CSV.",
+            )
+        quotes = import_quotes_from_upload(
+            db, filename=filename, content=content, actor=current_user
+        )
     except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     for quote in quotes:
         _audit(

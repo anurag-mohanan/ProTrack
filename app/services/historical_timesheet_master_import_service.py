@@ -86,9 +86,17 @@ def _upload_dir(upload_id: str) -> Path:
 
 
 def save_master_upload(upload_id: str, filename: str, content: bytes) -> Path:
+    from app.services.import_file_formats import (
+        DEFAULT_IMPORT_EXTENSIONS,
+        assert_supported_suffix,
+        normalize_import_bytes,
+    )
+
+    assert_supported_suffix(filename, allowed=DEFAULT_IMPORT_EXTENSIONS)
+    _stored_name, stored_content = normalize_import_bytes(filename, content)
     dest = _upload_dir(upload_id)
     dest.mkdir(parents=True, exist_ok=True)
-    (dest / "workbook.xlsx").write_bytes(content)
+    (dest / "workbook.xlsx").write_bytes(stored_content)
     (dest / "meta.json").write_text(
         json.dumps({"filename": filename}),
         encoding="utf-8",

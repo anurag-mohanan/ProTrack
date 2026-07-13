@@ -82,7 +82,7 @@ from app.services.task_type_matching_service import (
 )
 
 UPLOAD_DIR = Path(gettempdir()) / "protrack_timesheet_imports"
-SUPPORTED_SUFFIXES = {".xlsx", ".xlsm", ".csv"}
+SUPPORTED_SUFFIXES = {".xlsx", ".xlsm", ".csv", ".pdf"}
 
 TIMESHEET_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "designer": ("designer", "employee", "staff name", "resource"),
@@ -478,16 +478,33 @@ def parse_upload_file(file_path: Path) -> list[ParsedTimesheetRow]:
     suffix = file_path.suffix.lower()
     if suffix == ".csv":
         return parse_csv(file_path)
+    if suffix == ".pdf":
+        from app.services.import_file_formats import normalize_import_bytes
+
+        _name, xlsx_bytes = normalize_import_bytes(file_path.name, file_path.read_bytes())
+        temp = file_path.with_suffix(".xlsx")
+        temp.write_bytes(xlsx_bytes)
+        try:
+            return parse_workbook(temp)
+        finally:
+            if temp.exists() and temp != file_path:
+                temp.unlink(missing_ok=True)
     return parse_workbook(file_path)
 
 
 def save_upload(upload_id: str, file_name: str, content: bytes) -> Path:
+    from app.services.import_file_formats import (
+        assert_supported_suffix,
+        normalize_import_bytes,
+        with_csv,
+    )
+
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    suffix = Path(file_name).suffix.lower()
-    if suffix not in SUPPORTED_SUFFIXES:
-        raise ValueError("Only .xlsx, .xlsm, and .csv files are supported.")
+    assert_supported_suffix(file_name, allowed=with_csv())
+    stored_name, stored_content = normalize_import_bytes(file_name, content)
+    suffix = Path(stored_name).suffix.lower()
     path = UPLOAD_DIR / f"{upload_id}{suffix}"
-    path.write_bytes(content)
+    path.write_bytes(stored_content)
     meta_path = UPLOAD_DIR / f"{upload_id}.meta"
     meta_path.write_text(file_name, encoding="utf-8")
     return path

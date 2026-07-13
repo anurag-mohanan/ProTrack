@@ -42,6 +42,10 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { getErrorMessage } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
+import {
+  IMPORT_ACCEPT_DEFAULT,
+  IMPORT_FORMAT_LABEL_DEFAULT,
+} from '../config/importFormats';
 import { formatNumber } from '../utils/format';
 import { invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
 
@@ -208,7 +212,7 @@ export function HistoricalTimesheetImportPage() {
     <Box>
       <PageHeader
         title="Master Historical Timesheet Import"
-        subtitle="One-time migration utility for importing a consolidated historical workbook."
+        subtitle={`One-time migration utility (${IMPORT_FORMAT_LABEL_DEFAULT}).`}
       />
 
       {error ? (
@@ -247,7 +251,10 @@ export function HistoricalTimesheetImportPage() {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
-            Select Excel File
+            Select Excel or PDF File
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Default formats: {IMPORT_FORMAT_LABEL_DEFAULT}.
           </Typography>
           <Button
             variant="outlined"
@@ -266,7 +273,7 @@ export function HistoricalTimesheetImportPage() {
             ref={fileInputRef}
             type="file"
             hidden
-            accept=".xlsx,.xlsm"
+            accept={IMPORT_ACCEPT_DEFAULT}
             onChange={handleFileSelect}
           />
           {uploading ? <LinearProgress sx={{ mt: 2 }} /> : null}

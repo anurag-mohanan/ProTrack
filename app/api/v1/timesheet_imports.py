@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
+from app.core.exceptions import ProTrackValidationError
 from app.models.models import TimesheetImportHistory, User
 from app.schemas.historical_timesheet_import import (
     TimesheetImportHistoryDetail,
@@ -90,10 +91,10 @@ async def upload_historical_timesheets(
         )
 
     suffix = file.filename.lower().split(".")[-1]
-    if suffix not in {"xlsx", "xlsm", "csv"}:
+    if suffix not in {"xlsx", "xlsm", "csv", "pdf"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only .xlsx, .xlsm, and .csv files are supported.",
+            detail="Only .xlsx, .xlsm, .csv, and .pdf files are supported.",
         )
 
     content = await file.read()
@@ -107,7 +108,7 @@ async def upload_historical_timesheets(
     try:
         save_upload(upload_id, file.filename, content)
         return analyze_upload(db, upload_id)
-    except ValueError as exc:
+    except (ValueError, ProTrackValidationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
@@ -405,7 +406,10 @@ async def upload_historical_timesheet_folder(
         if not upload.filename:
             continue
         name = upload.filename
-        if name.startswith("~$") or not name.lower().endswith(".xlsx"):
+        lower = name.lower()
+        if name.startswith("~$") or not (
+            lower.endswith(".xlsx") or lower.endswith(".xlsm") or lower.endswith(".pdf")
+        ):
             continue
         content = await upload.read()
         if not content:
@@ -415,11 +419,17 @@ async def upload_historical_timesheet_folder(
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No valid .xlsx files were provided.",
+            detail="No valid .xlsx, .xlsm, or .pdf files were provided.",
         )
 
     batch_id = str(uuid4())
-    save_folder_batch(batch_id, payload)
+    try:
+        save_folder_batch(batch_id, payload)
+    except (ValueError, ProTrackValidationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     root_name = paths[0].split("/")[0].split("\\")[0] if paths else "Uploaded folder"
     return FolderBatchUploadResponse(
         batch_id=batch_id,
@@ -657,10 +667,10 @@ async def upload_master_timesheet_workbook(
             detail="A file name is required.",
         )
     suffix = file.filename.lower().split(".")[-1]
-    if suffix not in {"xlsx", "xlsm"}:
+    if suffix not in {"xlsx", "xlsm", "pdf"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only .xlsx and .xlsm files are supported.",
+            detail="Only .xlsx, .xlsm, and .pdf files are supported.",
         )
     content = await file.read()
     if not content:
@@ -672,7 +682,7 @@ async def upload_master_timesheet_workbook(
     try:
         save_master_upload(upload_id, file.filename, content)
         scan = scan_master_workbook(db, upload_id)
-    except (FileNotFoundError, ValueError) as exc:
+    except (FileNotFoundError, ValueError, ProTrackValidationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),

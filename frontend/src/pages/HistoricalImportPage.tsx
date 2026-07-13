@@ -38,6 +38,10 @@ import {
   uploadImportFile,
 } from '../services/importService';
 import { getErrorMessage } from '../api/client';
+import {
+  IMPORT_ACCEPT_DEFAULT,
+  IMPORT_FORMAT_LABEL_DEFAULT,
+} from '../config/importFormats';
 import { PageHeader } from '../components/common/PageHeader';
 import { formatCellValue } from '../utils/format';
 
@@ -138,7 +142,7 @@ export function HistoricalImportPage() {
     <Stack spacing={3}>
       <PageHeader
         title="Import Historical Projects"
-        subtitle="Upload a Prosohm Tool Tracking workbook to import historical project data"
+        subtitle={`Upload a Prosohm Tool Tracking workbook (${IMPORT_FORMAT_LABEL_DEFAULT})`}
       />
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -147,12 +151,16 @@ export function HistoricalImportPage() {
         <CardContent>
           <Stack spacing={2}>
             <Typography variant="h6">1. Upload workbook</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Default formats: {IMPORT_FORMAT_LABEL_DEFAULT}. PDF must include a table with the same
+              header columns as the Excel workbook.
+            </Typography>
             <Button variant="outlined" component="label" startIcon={<CloudUploadIcon />}>
               Choose file
               <input
                 hidden
                 type="file"
-                accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12"
+                accept={IMPORT_ACCEPT_DEFAULT}
                 onChange={handleFileChange}
               />
             </Button>

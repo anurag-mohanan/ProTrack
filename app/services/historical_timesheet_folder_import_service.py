@@ -257,23 +257,53 @@ def collect_xlsx_files(root: Path) -> list[Path]:
     if not root.is_dir():
         raise ValueError(f"Source folder does not exist: {root}")
     files: list[Path] = []
-    for path in sorted(root.rglob("*.xlsx")):
+    for pattern in ("*.xlsx", "*.xlsm"):
+        for path in sorted(root.rglob(pattern)):
+            if _is_temp_excel(path.name):
+                continue
+            files.append(path)
+    # PDF on disk: convert beside source so existing workbook parsers can open them.
+    for path in sorted(root.rglob("*.pdf")):
         if _is_temp_excel(path.name):
             continue
-        files.append(path)
-    return files
+        try:
+            from app.services.pdf_table_import import pdf_content_to_xlsx_bytes
+
+            dest = path.with_suffix(".xlsx")
+            dest.write_bytes(pdf_content_to_xlsx_bytes(path.read_bytes()))
+            files.append(dest)
+        except Exception:
+            # Skip unreadable PDFs; scan continues for other files.
+            continue
+    # De-dupe while preserving order
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in files:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return unique
 
 
 def save_folder_batch(batch_id: str, files: list[tuple[str, bytes]]) -> Path:
+    from app.services.import_file_formats import (
+        DEFAULT_IMPORT_EXTENSIONS,
+        assert_supported_suffix,
+        normalize_import_bytes,
+    )
+
     batch_dir = FOLDER_BATCH_DIR / batch_id
     batch_dir.mkdir(parents=True, exist_ok=True)
     manifest: list[str] = []
     for rel_path, content in files:
         safe_rel = rel_path.replace("\\", "/").lstrip("/")
-        dest = batch_dir / safe_rel
+        assert_supported_suffix(safe_rel, allowed=DEFAULT_IMPORT_EXTENSIONS)
+        stored_rel, stored_content = normalize_import_bytes(safe_rel, content)
+        dest = batch_dir / stored_rel
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(content)
-        manifest.append(safe_rel)
+        dest.write_bytes(stored_content)
+        manifest.append(stored_rel.replace("\\", "/"))
     (batch_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return batch_dir
 

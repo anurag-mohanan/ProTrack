@@ -17,6 +17,10 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
+import {
+  IMPORT_ACCEPT_WITH_CSV,
+  IMPORT_FORMAT_LABEL_WITH_CSV,
+} from '../config/importFormats';
 import { useToast } from '../context/ToastContext';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -265,12 +269,16 @@ export function FinanceDashboardPage() {
       {tab === 1 && (
         <Stack spacing={2}>
           <Typography>
-            Import quotes (Excel/CSV) with customer, tool number, quoted hours, estimated cost, quoted
-            revenue, margin, business model, dates, version and revision. Used for productivity and
-            profitability. PDF import is planned later.
+            Import quotes with customer, tool number, quoted hours, estimated cost, quoted revenue,
+            margin, business model, dates, version and revision. Used for productivity and
+            profitability.
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            CSV headers example: Customer, Tool Number, Quoted Hours, Estimated Cost, Quoted Revenue,
+            Default formats: {IMPORT_FORMAT_LABEL_WITH_CSV}. PDF must be a text table with a header
+            row (same columns as Excel/CSV). Legacy .xls is not supported — save as .xlsx.
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Header example: Customer, Tool Number, Quoted Hours, Estimated Cost, Quoted Revenue,
             Currency, Version, Revision
           </Typography>
           <Button variant="contained" component="label" disabled={importMutation.isPending}>
@@ -278,7 +286,7 @@ export function FinanceDashboardPage() {
             <input
               hidden
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept={IMPORT_ACCEPT_WITH_CSV}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) importMutation.mutate(file);
@@ -296,7 +304,7 @@ export function FinanceDashboardPage() {
               }) => (
                 <Card key={quote.id} variant="outlined">
                   <CardContent>
-                    <Typography fontWeight={600}>{quote.tool_number}</Typography>
+                    <Typography sx={{ fontWeight: 600 }}>{quote.tool_number}</Typography>
                     <Typography variant="body2" color="text.secondary">
                       {quote.currency_code} · rev {quote.current_revision}
                     </Typography>
@@ -389,7 +397,7 @@ export function FinanceDashboardPage() {
             <Typography variant="h6" sx={{ mb: 1 }}>
               CAPEX / OPEX / software / overhead expenses
             </Typography>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2 }} flexWrap="wrap">
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap' }}>
               <FormControl size="small" sx={{ minWidth: 200 }}>
                 <InputLabel>Cost centre</InputLabel>
                 <Select
@@ -463,7 +471,7 @@ export function FinanceDashboardPage() {
                 }) => (
                   <Card key={row.id} variant="outlined">
                     <CardContent>
-                      <Typography fontWeight={600}>{row.name}</Typography>
+                      <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
                       <Typography variant="body2" color="text.secondary">
                         {row.amount} {row.currency_code} · {row.nature} · {row.frequency}
                       </Typography>
@@ -483,7 +491,7 @@ export function FinanceDashboardPage() {
               <Grid key={centre.id} size={{ xs: 12, sm: 6, md: 4 }}>
                 <Card variant="outlined">
                   <CardContent>
-                    <Typography fontWeight={600}>{centre.name}</Typography>
+                    <Typography sx={{ fontWeight: 600 }}>{centre.name}</Typography>
                     <Typography variant="body2" color="text.secondary">
                       {centre.code} · {centre.nature}
                     </Typography>
@@ -550,7 +558,7 @@ export function FinanceDashboardPage() {
               }) => (
                 <Card key={budget.id} variant="outlined">
                   <CardContent>
-                    <Typography fontWeight={600}>{budget.name}</Typography>
+                    <Typography sx={{ fontWeight: 600 }}>{budget.name}</Typography>
                     <Typography variant="body2">
                       Allocated {budget.allocated} · Remaining {budget.remaining} ·{' '}
                       {budget.approval_status}
@@ -573,7 +581,7 @@ export function FinanceDashboardPage() {
             {(plQuery.data ?? []).map((row: { label: string; amount_inr: number }) => (
               <Card key={row.label} variant="outlined">
                 <CardContent>
-                  <Typography fontWeight={600}>{row.label}</Typography>
+                  <Typography sx={{ fontWeight: 600 }}>{row.label}</Typography>
                   <Typography>
                     {Number(row.amount_inr).toLocaleString()}{' '}
                     {dashboardQuery.data?.base_currency ?? 'INR'}
@@ -591,7 +599,7 @@ export function FinanceDashboardPage() {
             <Grid key={item.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <Card variant="outlined">
                 <CardContent>
-                  <Typography fontWeight={600}>{item.title}</Typography>
+                  <Typography sx={{ fontWeight: 600 }}>{item.title}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     {item.description}
                   </Typography>

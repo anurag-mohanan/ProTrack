@@ -206,7 +206,7 @@ def import_quotes_from_excel(
         from openpyxl import load_workbook
     except ImportError as exc:
         raise ProTrackValidationError(
-            "Excel import requires openpyxl. Upload CSV instead."
+            "Excel import requires openpyxl. Upload CSV or PDF instead."
         ) from exc
 
     workbook = load_workbook(filename=io.BytesIO(content), read_only=True, data_only=True)
@@ -225,3 +225,48 @@ def import_quotes_from_excel(
         except ProTrackValidationError as exc:
             raise ProTrackValidationError(f"Row {index}: {exc}") from exc
     return quotes
+
+
+def import_quotes_from_pdf(
+    db: Session,
+    *,
+    content: bytes,
+    actor: User,
+) -> list[Quote]:
+    from app.services.pdf_table_import import extract_tables_as_dicts
+
+    rows = extract_tables_as_dicts(content)
+    quotes: list[Quote] = []
+    for index, row in enumerate(rows, start=2):
+        try:
+            quotes.append(import_quote_row(db, row=row, actor=actor, source="pdf"))
+        except ProTrackValidationError as exc:
+            raise ProTrackValidationError(f"Row {index}: {exc}") from exc
+    return quotes
+
+
+def import_quotes_from_upload(
+    db: Session,
+    *,
+    filename: str,
+    content: bytes,
+    actor: User,
+) -> list[Quote]:
+    from app.services.import_file_formats import (
+        assert_supported_suffix,
+        is_csv,
+        is_excel,
+        is_pdf,
+        with_csv,
+    )
+
+    suffix = assert_supported_suffix(filename, allowed=with_csv())
+    if is_csv(suffix):
+        return import_quotes_from_csv(db, content=content, actor=actor)
+    if is_excel(suffix):
+        return import_quotes_from_excel(db, content=content, actor=actor)
+    if is_pdf(suffix):
+        return import_quotes_from_pdf(db, content=content, actor=actor)
+    raise ProTrackValidationError(
+        "Supported formats: Excel (.xlsx/.xlsm), PDF (table layout), CSV."
+    )

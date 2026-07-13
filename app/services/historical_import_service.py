@@ -459,21 +459,37 @@ def parse_workbook(file_path: Path) -> list[ParsedImportRow]:
 
 
 def save_upload(upload_id: str, file_name: str, content: bytes) -> Path:
+    from app.services.import_file_formats import (
+        DEFAULT_IMPORT_EXTENSIONS,
+        assert_supported_suffix,
+        normalize_import_bytes,
+    )
+
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    suffix = Path(file_name).suffix.lower()
-    if suffix not in {".xlsx", ".xlsm"}:
-        raise ValueError("Only .xlsx and .xlsm files are supported.")
+    assert_supported_suffix(file_name, allowed=DEFAULT_IMPORT_EXTENSIONS)
+    stored_name, stored_content = normalize_import_bytes(file_name, content)
+    suffix = Path(stored_name).suffix.lower()
     path = UPLOAD_DIR / f"{upload_id}{suffix}"
-    path.write_bytes(content)
+    path.write_bytes(stored_content)
     meta_path = UPLOAD_DIR / f"{upload_id}.meta"
     meta_path.write_text(file_name, encoding="utf-8")
     return path
 
 
 def get_upload_path(upload_id: str) -> Path:
-    for suffix in (".xlsx", ".xlsm"):
+    for suffix in (".xlsx", ".xlsm", ".pdf"):
         path = UPLOAD_DIR / f"{upload_id}{suffix}"
         if path.exists():
+            # PDF should have been converted at save time; keep lookup for safety.
+            if suffix == ".pdf":
+                from app.services.import_file_formats import normalize_import_bytes
+
+                converted_name, converted = normalize_import_bytes(
+                    f"{upload_id}.pdf", path.read_bytes()
+                )
+                out = UPLOAD_DIR / f"{upload_id}{Path(converted_name).suffix.lower()}"
+                out.write_bytes(converted)
+                return out
             return path
     raise FileNotFoundError("Upload not found or expired.")
 

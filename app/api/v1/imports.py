@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_deps import require_roles
 from app.api.deps import get_db
+from app.core.exceptions import ProTrackValidationError
 from app.schemas.historical_import import (
     ImportJobProgress,
     ImportRunRequest,
@@ -39,10 +40,10 @@ async def upload_historical_projects(
         )
 
     suffix = file.filename.lower().split(".")[-1]
-    if suffix not in {"xlsx", "xlsm"}:
+    if suffix not in {"xlsx", "xlsm", "pdf"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only .xlsx and .xlsm files are supported.",
+            detail="Only .xlsx, .xlsm, and .pdf files are supported.",
         )
 
     content = await file.read()
@@ -56,7 +57,7 @@ async def upload_historical_projects(
     try:
         save_upload(upload_id, file.filename, content)
         return analyze_upload(db, upload_id)
-    except ValueError as exc:
+    except (ValueError, ProTrackValidationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),

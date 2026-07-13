@@ -95,22 +95,104 @@ export interface DesignerTeamTimesheetPayload {
   project_count: number;
 }
 
+export interface DesignerToolBreakdownRow {
+  designer_name: string;
+  tool_number: string;
+  customer_name: string;
+  design_hours: number;
+  surfacing_hours: number;
+  review_hours: number;
+  bom_hours: number;
+  meeting_hours: number;
+  np_hours: number;
+  other_hours: number;
+  total_hours: number;
+}
+
+export interface TeamSummaryRow {
+  team_name: string;
+  designer_count: number;
+  project_count: number;
+  productive_hours: number;
+  np_hours: number;
+  leave_days: number;
+  total_hours: number;
+  utilization_percent: number;
+}
+
+export interface FunctionHoursRow {
+  function_group: string;
+  hours: number;
+  percent: number;
+}
+
+export interface NpAnalysisRow {
+  code: string;
+  description: string;
+  hours: number;
+  percent: number;
+}
+
+export interface LeaveAnalysisRow {
+  designer_name: string;
+  leave_days: number;
+  leave_hours: number;
+}
+
+export interface QuotedVsActualRow {
+  tool_number: string;
+  customer_name: string;
+  quoted_hours: number;
+  actual_hours: number;
+  variance_hours: number;
+  variance_percent: number;
+  completion_percent: number;
+  health?: string | null;
+  late_milestones: number;
+}
+
+export interface ProjectPerformanceRow {
+  tool_number: string;
+  customer_name: string;
+  designer_name?: string | null;
+  surfacer_name?: string | null;
+  project_stage?: string | null;
+  quoted_hours: number;
+  actual_hours: number;
+  milestone_completion_percent: number;
+  health?: string | null;
+  predicted_finish?: string | null;
+}
+
+export interface DetailedTimesheetRow {
+  entry_date: string;
+  designer_name: string;
+  team_name?: string | null;
+  customer_name?: string | null;
+  tool_number?: string | null;
+  task_name?: string | null;
+  hours: number;
+  is_billable: boolean;
+  category: string;
+  notes?: string | null;
+}
+
 export interface EngineeringReportPayload {
   report_id: string;
   period: ReportPeriod;
   company_name: string;
   executive: ExecutiveSummary;
   designer_productivity: DesignerProductivityRow[];
-  designer_tool_breakdown: unknown[];
+  designer_tool_breakdown: DesignerToolBreakdownRow[];
   tool_hours: ToolHoursRow[];
   customer_summary: CustomerHoursRow[];
-  team_summary: unknown[];
-  function_hours: unknown[];
-  np_analysis: unknown[];
-  leave_analysis: unknown[];
-  quoted_vs_actual: unknown[];
-  project_performance: unknown[];
-  detailed_entries: unknown[];
+  team_summary: TeamSummaryRow[];
+  function_hours: FunctionHoursRow[];
+  np_analysis: NpAnalysisRow[];
+  leave_analysis: LeaveAnalysisRow[];
+  quoted_vs_actual: QuotedVsActualRow[];
+  project_performance: ProjectPerformanceRow[];
+  detailed_entries: DetailedTimesheetRow[];
   charts: { title: string; labels: string[]; values: number[] }[];
   ai_insights: string[];
 }

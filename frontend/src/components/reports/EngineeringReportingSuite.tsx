@@ -52,11 +52,19 @@ import type {
   CustomerHoursRow,
   DesignerProductivityRow,
   DesignerTeamTimesheetPayload,
+  DesignerToolBreakdownRow,
+  DetailedTimesheetRow,
   EngineeringReportOptions,
   EngineeringReportPayload,
   ExecutiveKpiCard,
+  FunctionHoursRow,
+  LeaveAnalysisRow,
+  NpAnalysisRow,
+  ProjectPerformanceRow,
+  QuotedVsActualRow,
   ReportCatalogEntry,
   ReportScheduleEntry,
+  TeamSummaryRow,
   ToolHoursRow,
 } from '../../types/EngineeringReporting';
 import type { Customer } from '../../types';
@@ -70,6 +78,23 @@ const CATEGORY_LABELS: Record<string, string> = {
   timesheets: 'Timesheet Reports',
   customers: 'Customer Reports',
 };
+
+const EXCEL_SHEETS = [
+  'Executive Summary',
+  'Designer Productivity',
+  'Designer Tool Breakdown',
+  'Tool Hours',
+  'Customer Summary',
+  'Team Summary',
+  'Function Hours',
+  'Non-Productive Analysis',
+  'Leave Analysis',
+  'Quoted vs Actual',
+  'Project Performance',
+  'Detailed Entries',
+  'Charts',
+  'AI Insights',
+] as const;
 
 interface EngineeringReportingSuiteProps {
   canExport: boolean;
@@ -551,6 +576,12 @@ export function EngineeringReportingSuite({
 
           {!isDesignerTeamTimesheet && engineeringPayload ? (
             <>
+              <Alert severity="info" variant="outlined">
+                Excel download includes all {EXCEL_SHEETS.length} workbook sheets used in prior production
+                reports ({EXCEL_SHEETS.join(' · ')}). Preview below shows key sections; open the Excel file for
+                full row-level detail.
+              </Alert>
+
               <Box
                 sx={{
                   display: 'grid',
@@ -629,6 +660,42 @@ export function EngineeringReportingSuite({
 
               <Paper sx={{ p: 2 }}>
                 <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                  Designer Tool Breakdown (preview)
+                </Typography>
+                <TableContainer sx={{ maxHeight: 320 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Designer</TableCell>
+                        <TableCell>Tool</TableCell>
+                        <TableCell>Customer</TableCell>
+                        <TableCell align="right">Design</TableCell>
+                        <TableCell align="right">Surfacing</TableCell>
+                        <TableCell align="right">NP</TableCell>
+                        <TableCell align="right">Total</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {ensureArray<DesignerToolBreakdownRow>(engineeringPayload.designer_tool_breakdown)
+                        .slice(0, 25)
+                        .map((row) => (
+                          <TableRow key={`${row.designer_name}-${row.tool_number}-${row.customer_name}`} hover>
+                            <TableCell>{row.designer_name}</TableCell>
+                            <TableCell>{row.tool_number}</TableCell>
+                            <TableCell>{row.customer_name}</TableCell>
+                            <TableCell align="right">{formatNumber(row.design_hours)}</TableCell>
+                            <TableCell align="right">{formatNumber(row.surfacing_hours)}</TableCell>
+                            <TableCell align="right">{formatNumber(row.np_hours)}</TableCell>
+                            <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>
                   Tool Hours
                 </Typography>
                 <TableContainer>
@@ -695,6 +762,222 @@ export function EngineeringReportingSuite({
                           <TableCell align="right">{formatNumber(row.np_hours)}</TableCell>
                           <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
                           <TableCell align="right">{formatNumber(row.avg_hours_per_project)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+                  gap: 2,
+                }}
+              >
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                    Team Summary
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Team</TableCell>
+                          <TableCell align="right">Designers</TableCell>
+                          <TableCell align="right">Total</TableCell>
+                          <TableCell align="right">Util %</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {ensureArray<TeamSummaryRow>(engineeringPayload.team_summary).map((row) => (
+                          <TableRow key={row.team_name} hover>
+                            <TableCell>{row.team_name}</TableCell>
+                            <TableCell align="right">{row.designer_count}</TableCell>
+                            <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
+                            <TableCell align="right">{formatNumber(row.utilization_percent)}%</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                    Function Hours
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Function</TableCell>
+                          <TableCell align="right">Hours</TableCell>
+                          <TableCell align="right">%</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {ensureArray<FunctionHoursRow>(engineeringPayload.function_hours).map((row) => (
+                          <TableRow key={row.function_group} hover>
+                            <TableCell>{row.function_group}</TableCell>
+                            <TableCell align="right">{formatNumber(row.hours)}</TableCell>
+                            <TableCell align="right">{formatNumber(row.percent)}%</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                    Non-Productive Analysis
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Code</TableCell>
+                          <TableCell>Description</TableCell>
+                          <TableCell align="right">Hours</TableCell>
+                          <TableCell align="right">%</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {ensureArray<NpAnalysisRow>(engineeringPayload.np_analysis).map((row) => (
+                          <TableRow key={row.code} hover>
+                            <TableCell>{row.code}</TableCell>
+                            <TableCell>{row.description}</TableCell>
+                            <TableCell align="right">{formatNumber(row.hours)}</TableCell>
+                            <TableCell align="right">{formatNumber(row.percent)}%</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                    Leave Analysis
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Designer</TableCell>
+                          <TableCell align="right">Leave Days</TableCell>
+                          <TableCell align="right">Leave Hours</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {ensureArray<LeaveAnalysisRow>(engineeringPayload.leave_analysis).map((row) => (
+                          <TableRow key={row.designer_name} hover>
+                            <TableCell>{row.designer_name}</TableCell>
+                            <TableCell align="right">{formatNumber(row.leave_days)}</TableCell>
+                            <TableCell align="right">{formatNumber(row.leave_hours)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Box>
+
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                  Quoted vs Actual
+                </Typography>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Tool</TableCell>
+                        <TableCell>Customer</TableCell>
+                        <TableCell align="right">Quoted</TableCell>
+                        <TableCell align="right">Actual</TableCell>
+                        <TableCell align="right">Variance %</TableCell>
+                        <TableCell>Health</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {ensureArray<QuotedVsActualRow>(engineeringPayload.quoted_vs_actual).slice(0, 15).map((row) => (
+                        <TableRow key={`${row.tool_number}-${row.customer_name}`} hover>
+                          <TableCell>{row.tool_number}</TableCell>
+                          <TableCell>{row.customer_name}</TableCell>
+                          <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.variance_percent)}%</TableCell>
+                          <TableCell>{row.health ?? '—'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                  Project Performance
+                </Typography>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Tool</TableCell>
+                        <TableCell>Customer</TableCell>
+                        <TableCell>Designer</TableCell>
+                        <TableCell>Stage</TableCell>
+                        <TableCell align="right">Milestone %</TableCell>
+                        <TableCell>Health</TableCell>
+                        <TableCell>Predicted Finish</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {ensureArray<ProjectPerformanceRow>(engineeringPayload.project_performance).slice(0, 15).map((row) => (
+                        <TableRow key={`${row.tool_number}-${row.customer_name}`} hover>
+                          <TableCell>{row.tool_number}</TableCell>
+                          <TableCell>{row.customer_name}</TableCell>
+                          <TableCell>{row.designer_name ?? '—'}</TableCell>
+                          <TableCell>{row.project_stage ?? '—'}</TableCell>
+                          <TableCell align="right">{formatNumber(row.milestone_completion_percent)}%</TableCell>
+                          <TableCell>{row.health ?? '—'}</TableCell>
+                          <TableCell>{row.predicted_finish ?? '—'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                  Detailed Entries (preview of first 40 — full list in Excel)
+                </Typography>
+                <TableContainer sx={{ maxHeight: 360 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Date</TableCell>
+                        <TableCell>Designer</TableCell>
+                        <TableCell>Customer</TableCell>
+                        <TableCell>Tool</TableCell>
+                        <TableCell>Task</TableCell>
+                        <TableCell align="right">Hours</TableCell>
+                        <TableCell>Category</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {ensureArray<DetailedTimesheetRow>(engineeringPayload.detailed_entries).slice(0, 40).map((row, idx) => (
+                        <TableRow key={`${row.entry_date}-${row.designer_name}-${idx}`} hover>
+                          <TableCell>{row.entry_date}</TableCell>
+                          <TableCell>{row.designer_name}</TableCell>
+                          <TableCell>{row.customer_name ?? '—'}</TableCell>
+                          <TableCell>{row.tool_number ?? '—'}</TableCell>
+                          <TableCell>{row.task_name ?? '—'}</TableCell>
+                          <TableCell align="right">{formatNumber(row.hours)}</TableCell>
+                          <TableCell>{row.category}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

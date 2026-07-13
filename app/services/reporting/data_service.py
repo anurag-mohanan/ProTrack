@@ -8,7 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
 from sqlalchemy import and_, case, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.non_productive_categories import is_leave_entry, leave_entry_clause, standard_np_hours_clause
 from app.crud.dashboard import _decimal, _round_hours
@@ -850,13 +850,25 @@ def _project_performance(
 def _detailed_entries(
     db: Session, period: ReportPeriod, scope: ReportScope
 ) -> list[DetailedTimesheetRow]:
+    # Historical imports often leave TimesheetEntry.customer_id null while Project.customer_id is set.
+    entry_customer = aliased(Customer, name="entry_customer")
+    project_customer = aliased(Customer, name="project_customer")
     rows = db.execute(
-        select(TimesheetEntry, User, Team.name, Customer.name, Project.tool_number, TaskType.name)
+        select(
+            TimesheetEntry,
+            User,
+            Team.name,
+            entry_customer.name,
+            project_customer.name,
+            Project.tool_number,
+            TaskType.name,
+        )
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .join(User, Timesheet.user_id == User.id)
         .outerjoin(Team, User.team_id == Team.id)
-        .outerjoin(Customer, TimesheetEntry.customer_id == Customer.id)
         .outerjoin(Project, TimesheetEntry.project_id == Project.id)
+        .outerjoin(entry_customer, TimesheetEntry.customer_id == entry_customer.id)
+        .outerjoin(project_customer, Project.customer_id == project_customer.id)
         .outerjoin(TaskType, TimesheetEntry.task_type_id == TaskType.id)
         .where(
             *_entry_base_filters(period.start_date, period.end_date),
@@ -866,7 +878,7 @@ def _detailed_entries(
     ).all()
 
     result: list[DetailedTimesheetRow] = []
-    for entry, user, team_name, customer_name, tool_number, task_name in rows:
+    for entry, user, team_name, entry_customer_name, project_customer_name, tool_number, task_name in rows:
         category = "Leave" if is_leave_entry(entry) else (
             "Non-Productive" if entry.work_category == WorkCategory.non_productive else "Productive"
         )
@@ -875,7 +887,7 @@ def _detailed_entries(
                 entry_date=entry.entry_date,
                 designer_name=f"{user.first_name} {user.last_name}".strip(),
                 team_name=team_name,
-                customer_name=customer_name,
+                customer_name=entry_customer_name or project_customer_name,
                 tool_number=tool_number,
                 task_name=task_name,
                 hours=_round_hours(_decimal(entry.hours)),

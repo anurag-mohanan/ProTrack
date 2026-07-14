@@ -36,6 +36,21 @@ def test_planning_board_team_cards_include_progress_and_contributors(client):
     assert isinstance(card["progress_percent"], (int, float))
     assert "contributor_names" in card
     assert isinstance(card["contributor_names"], list)
+    assert "surfacer_name" in card
+    assert "designer_name" in card
+
+
+def test_planning_board_team_blocks_include_leadership(client):
+    headers = login(client, "planning-board@prosohm.com")
+    body = client.get("/api/v1/ai/executive-wall", headers=headers).json()
+    teams = body.get("teams_live", [])
+    if not teams:
+        return
+    team = teams[0]
+    assert "engineering_manager_name" in team
+    assert "design_leader_name" in team
+    # All live tools for a team should be returned (no hard [:12] truncation).
+    assert len(team.get("projects", [])) == team.get("active_count", 0)
 
 
 def test_planning_board_can_view_resource_planning_grid(client):

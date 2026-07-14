@@ -122,6 +122,7 @@ export interface WallProjectCard {
   tool_number: string;
   customer_name?: string | null;
   designer_name?: string | null;
+  surfacer_name?: string | null;
   contributor_names?: string[];
   team_name?: string | null;
   due_date?: string | null;
@@ -136,6 +137,8 @@ export interface WallProjectCard {
 export interface WallTeamLiveBlock {
   team_id?: string | null;
   team_name: string;
+  engineering_manager_name?: string | null;
+  design_leader_name?: string | null;
   active_count: number;
   red_count: number;
   yellow_count: number;

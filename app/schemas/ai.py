@@ -223,6 +223,7 @@ class WallProjectCard(BaseModel):
     tool_number: str
     customer_name: str | None = None
     designer_name: str | None = None
+    surfacer_name: str | None = None
     contributor_names: list[str] = Field(default_factory=list)
     team_name: str | None = None
     due_date: date | None = None
@@ -239,6 +240,8 @@ class WallTeamLiveBlock(BaseModel):
 
     team_id: UUID | None = None
     team_name: str
+    engineering_manager_name: str | None = None
+    design_leader_name: str | None = None
     active_count: int = 0
     red_count: int = 0
     yellow_count: int = 0

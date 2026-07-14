@@ -26,7 +26,9 @@ UI: `frontend/src/pages/PlanningBoardPage.tsx`, `frontend/src/types/Ai.ts`
 | # | Check | Pass |
 |---|--------|------|
 | 1 | Team-wise section dominates the board | |
-| 2 | Each live card shows stage + designers + progress % bar | |
+| 2 | Each live card shows stage + **designer/surfacer only** + progress % bar | |
+| 2b | Team header shows **EM** + **Design Leader** | |
+| 2c | All live tools for a team are listed (no false +N when space remains) | |
 | 3 | Late / Coming up appear as compact lists on the right (stack under hero on narrow) | |
 | 4 | Capacity / releases / customer load **not** shown | |
 | 5 | KPI strip is lean (no hours / team capacity) | |

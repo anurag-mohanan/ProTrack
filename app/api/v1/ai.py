@@ -227,8 +227,19 @@ def ai_chat(
 
 @router.get("/executive-wall", response_model=ExecutiveWallData)
 def get_executive_wall(
+    team_ids: list[UUID] | None = Query(
+        default=None,
+        description="Optional room filter — only include these teams (empty placeholders allowed).",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_wall_access(db, current_user)
-    return ai_engine.run("executive_wall", db, cache_ttl=60)
+    # Stable cache key for multi-value query params.
+    team_ids_key = ",".join(sorted(str(tid) for tid in team_ids)) if team_ids else None
+    return ai_engine.run(
+        "executive_wall",
+        db,
+        cache_ttl=60,
+        team_ids=team_ids_key,
+    )

@@ -1,12 +1,23 @@
-import { Box, Chip, LinearProgress, Stack, Typography } from '@mui/material';
+import { Box, Button, Chip, LinearProgress, Stack, Typography } from '@mui/material';
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { aiQueryKeys, fetchExecutiveWall } from '../api/ai';
+import { fetchTeams } from '../api/lookups';
+import { RoomTeamsDialog } from '../components/planningBoard/RoomTeamsDialog';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { designTokens } from '../theme/designTokens';
 import type { WallProjectCard, WallTeamLiveBlock } from '../types/Ai';
 import { formatDate, formatDisplayValue } from '../utils/format';
+import {
+  buildTeamsSearchParam,
+  loadRoomName,
+  resolveRoomTeamIdsFromSearch,
+  saveRoomName,
+  saveRoomTeamIds,
+} from '../utils/planningBoardRoom';
 
 const WALL = {
   panel: 'rgba(30, 41, 59, 0.94)',
@@ -374,7 +385,25 @@ function TeamColumn({ team }: { team: WallTeamLiveBlock }) {
             <ProjectRow key={project.project_id ?? project.tool_number} project={project} />
           ))
         ) : (
-          <Typography sx={{ color: WALL.muted, fontSize: '0.8rem' }}>No live tools</Typography>
+          <Box
+            sx={{
+              flex: 1,
+              display: 'grid',
+              placeItems: 'center',
+              borderRadius: 1.25,
+              border: `1px dashed ${WALL.panelBorder}`,
+              bgcolor: 'rgba(15, 23, 42, 0.35)',
+              px: 1.5,
+              py: 2,
+            }}
+          >
+            <Typography sx={{ color: WALL.muted, fontSize: '0.85rem', fontWeight: 700, textAlign: 'center' }}>
+              No live tools
+            </Typography>
+            <Typography sx={{ color: WALL.muted, fontSize: '0.72rem', textAlign: 'center', mt: 0.35 }}>
+              Team placeholder — waiting for assigned work
+            </Typography>
+          </Box>
         )}
       </Stack>
     </Box>
@@ -382,20 +411,38 @@ function TeamColumn({ team }: { team: WallTeamLiveBlock }) {
 }
 
 export default function PlanningBoardPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const lateRef = useRef<HTMLDivElement | null>(null);
   const upcomingRef = useRef<HTMLDivElement | null>(null);
+  const [roomDialogOpen, setRoomDialogOpen] = useState(false);
+  const [roomName, setRoomName] = useState(() => loadRoomName());
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[] | null>(() =>
+    resolveRoomTeamIdsFromSearch(window.location.search),
+  );
+
+  useEffect(() => {
+    setSelectedTeamIds(resolveRoomTeamIdsFromSearch(searchParams.toString()));
+  }, [searchParams]);
 
   const maxLate = useFitCount(lateRef, RAIL_ROW_PX, RAIL_SECTION_HEADER_PX, 6);
   const maxUpcoming = useFitCount(upcomingRef, RAIL_ROW_PX, RAIL_SECTION_HEADER_PX, 6);
 
+  const teamsQuery = useQuery({
+    queryKey: ['lookups', 'teams', 'planning-board-room'],
+    queryFn: fetchTeams,
+    staleTime: 60_000,
+  });
+
   const wallQuery = useQuery({
-    queryKey: aiQueryKeys.executiveWall,
-    queryFn: fetchExecutiveWall,
+    queryKey: aiQueryKeys.executiveWall(selectedTeamIds),
+    queryFn: () => fetchExecutiveWall(selectedTeamIds),
     refetchInterval: 60_000,
   });
 
   const teamsLive = useMemo(() => {
     const teams = wallQuery.data?.teams_live ?? [];
+    // Keep API order (name) but surface risk within columns; room filter already applied server-side.
     return [...teams].sort((a, b) => {
       const score = (t: WallTeamLiveBlock) => t.red_count * 10 + t.yellow_count;
       return score(b) - score(a) || a.team_name.localeCompare(b.team_name);
@@ -420,10 +467,9 @@ export default function PlanningBoardPage() {
     ? new Date(data.refreshed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '—';
 
-  const teamCols = Math.min(Math.max(teamsLive.length, 1), 4);
-  const visibleTeams = teamsLive.slice(0, teamCols);
-  const hiddenTeams = Math.max(0, teamsLive.length - visibleTeams.length);
+  const visibleTeams = teamsLive;
   const totalVisibleProjects = visibleTeams.reduce((sum, team) => sum + team.projects.length, 0);
+  const roomLabel = roomName || (selectedTeamIds ? 'Custom room filter' : 'All company teams');
 
   return (
     <Box
@@ -438,15 +484,36 @@ export default function PlanningBoardPage() {
     >
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0 }}>
         <Typography sx={{ color: WALL.muted, fontWeight: 600, fontSize: '0.78rem', flex: 1 }} noWrap>
-          Single-screen wall · all live tools · synced {refreshed}
+          {roomLabel} · {visibleTeams.length} team columns · synced {refreshed}
         </Typography>
-        {hiddenTeams > 0 ? (
+        {selectedTeamIds ? (
           <Chip
             size="small"
-            label={`+${hiddenTeams} teams (risk sorted)`}
+            label={`${selectedTeamIds.length} teams selected`}
             sx={{ bgcolor: WALL.soft, color: WALL.muted, fontWeight: 700, height: 24 }}
           />
-        ) : null}
+        ) : (
+          <Chip
+            size="small"
+            label="Showing all teams"
+            sx={{ bgcolor: WALL.soft, color: WALL.muted, fontWeight: 700, height: 24 }}
+          />
+        )}
+        <Button
+          size="small"
+          startIcon={<SettingsOutlinedIcon />}
+          onClick={() => setRoomDialogOpen(true)}
+          sx={{
+            color: WALL.text,
+            border: `1px solid ${WALL.panelBorder}`,
+            fontWeight: 700,
+            textTransform: 'none',
+            px: 1.25,
+            '&:hover': { bgcolor: WALL.soft },
+          }}
+        >
+          Room teams
+        </Button>
       </Stack>
 
       <KpiStrip
@@ -477,7 +544,7 @@ export default function PlanningBoardPage() {
           accent={designTokens.semantic.success}
           rightSlot={
             <Typography sx={{ color: WALL.muted, fontSize: '0.7rem', fontWeight: 700 }}>
-              {totalVisibleProjects} tools · designer + surfacer per row
+              {totalVisibleProjects} tools · empty teams stay visible
             </Typography>
           }
         >
@@ -487,9 +554,15 @@ export default function PlanningBoardPage() {
                 height: '100%',
                 minHeight: 0,
                 display: 'grid',
-                gridTemplateColumns: `repeat(${visibleTeams.length}, minmax(0, 1fr))`,
+                gridAutoFlow: 'column',
+                gridAutoColumns: visibleTeams.length <= 4 ? `minmax(0, 1fr)` : 'minmax(280px, 1fr)',
+                gridTemplateColumns:
+                  visibleTeams.length <= 4
+                    ? `repeat(${visibleTeams.length}, minmax(0, 1fr))`
+                    : undefined,
                 gap: 1,
-                overflow: 'hidden',
+                overflowX: visibleTeams.length > 4 ? 'auto' : 'hidden',
+                overflowY: 'hidden',
               }}
             >
               {visibleTeams.map((team) => (
@@ -497,7 +570,9 @@ export default function PlanningBoardPage() {
               ))}
             </Box>
           ) : (
-            <Typography sx={{ color: WALL.muted }}>No live projects on the board right now.</Typography>
+            <Typography sx={{ color: WALL.muted }}>
+              No teams selected for this room. Use <strong>Room teams</strong> to choose displays.
+            </Typography>
           )}
         </PanelShell>
 
@@ -527,6 +602,31 @@ export default function PlanningBoardPage() {
           </PanelShell>
         </Box>
       </Box>
+
+      <RoomTeamsDialog
+        open={roomDialogOpen}
+        teams={teamsQuery.data ?? []}
+        selectedIds={selectedTeamIds}
+        roomName={roomName}
+        onClose={() => setRoomDialogOpen(false)}
+        onSave={({ teamIds, roomName: nextName }) => {
+          saveRoomTeamIds(teamIds);
+          saveRoomName(nextName);
+          setSelectedTeamIds(teamIds);
+          setRoomName(nextName);
+          setRoomDialogOpen(false);
+          const params = new URLSearchParams();
+          const teamsParam = buildTeamsSearchParam(teamIds);
+          if (teamsParam) params.set('teams', teamsParam);
+          navigate(
+            {
+              pathname: '/planning-board',
+              search: params.toString() ? `?${params.toString()}` : '',
+            },
+            { replace: true },
+          );
+        }}
+      />
     </Box>
   );
 }

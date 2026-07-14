@@ -22,7 +22,8 @@ Read-only; 60s refresh; no assignment edits from monitor account.
 
 **Giant-screen visual:** `docs/RC5_PLANNING_BOARD_WALL_VISUAL.md`  
 **Team-hero redesign:** `docs/RC5_PLANNING_BOARD_TEAM_HERO.md`  
-**No-scroll single screen:** `docs/RC5_PLANNING_BOARD_NO_SCROLL.md` — locked `100dvh`, auto-fit rows, `+N more`
+**No-scroll single screen:** `docs/RC5_PLANNING_BOARD_NO_SCROLL.md` — locked `100dvh`, auto-fit rows, `+N more`  
+**Room team filter:** `docs/RC5_PLANNING_BOARD_ROOM_TEAMS.md` — per-display team selection + empty placeholders
 
 ### Code touched
 - `app/schemas/ai.py` — `progress_percent`, `contributor_names` on `WallProjectCard`

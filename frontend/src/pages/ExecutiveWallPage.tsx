@@ -9,8 +9,8 @@ import { formatNumber } from '../utils/format';
 
 export function ExecutiveWallPage() {
   const query = useQuery({
-    queryKey: aiQueryKeys.executiveWall,
-    queryFn: fetchExecutiveWall,
+    queryKey: aiQueryKeys.executiveWall(),
+    queryFn: () => fetchExecutiveWall(),
     refetchInterval: 60_000,
   });
 

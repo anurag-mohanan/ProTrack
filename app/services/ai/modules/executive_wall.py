@@ -155,16 +155,25 @@ def _card_from_project(
     )
 
 
-def _build_teams_live(ctx: AiContext, active: list[Project]) -> list[WallTeamLiveBlock]:
-    if not active:
-        return []
+def _build_teams_live(
+    ctx: AiContext,
+    active: list[Project],
+    *,
+    team_ids: list[UUID] | None = None,
+) -> list[WallTeamLiveBlock]:
+    """Build team columns for the wall.
 
-    team_ids = {project.team_id for project in active if project.team_id}
-    teams: list[Team] = []
-    team_by_id: dict[UUID, Team] = {}
+    Always includes selected (or all active) company teams — even when a team has
+    zero live projects — so room displays can show placeholders.
+    """
+    team_query = select(Team).where(Team.is_active.is_(True))
     if team_ids:
-        teams = list(ctx.db.scalars(select(Team).where(Team.id.in_(team_ids))).all())
-        team_by_id = {team.id: team for team in teams}
+        team_query = team_query.where(Team.id.in_(team_ids))
+    teams = list(ctx.db.scalars(team_query.order_by(Team.name)).all())
+    team_by_id = {team.id: team for team in teams}
+
+    # When a room filter is set, do not invent an "Unassigned" column.
+    include_unassigned = not team_ids
 
     customer_ids = {project.customer_id for project in active if project.customer_id}
     customer_names: dict[UUID, str] = {}
@@ -176,61 +185,90 @@ def _build_teams_live(ctx: AiContext, active: list[Project]) -> list[WallTeamLiv
 
     projects_by_team: dict[UUID | None, list[Project]] = defaultdict(list)
     for project in active:
+        if team_ids and (project.team_id is None or project.team_id not in team_by_id):
+            continue
         projects_by_team[project.team_id].append(project)
 
     leadership = _team_leadership(ctx.db, teams, projects_by_team)
-    workers = _batch_worker_names(ctx.db, active)
+    workers = _batch_worker_names(ctx.db, active) if active else {}
     project_ids = [project.id for project in active]
-    milestone_names = _batch_current_milestones(ctx.db, project_ids)
-    progress_by_project = batch_calculate_progress(ctx.db, project_ids)
+    milestone_names = _batch_current_milestones(ctx.db, project_ids) if project_ids else {}
+    progress_by_project = batch_calculate_progress(ctx.db, project_ids) if project_ids else {}
 
-    grouped: dict[tuple[str, UUID | None], list[WallProjectCard]] = defaultdict(list)
-    for project in active:
-        team_id = project.team_id
-        team_name = team_by_id[team_id].name if team_id and team_id in team_by_id else "Unassigned"
-        progress = progress_by_project.get(project.id)
-        percent = float(progress.progress_percent) if progress else 0.0
-        designer_name, surfacer_name = workers.get(project.id, (None, None))
-        grouped[(team_name, team_id)].append(
-            _card_from_project(
-                project,
-                customer_name=customer_names.get(project.customer_id),
-                designer_name=designer_name,
-                surfacer_name=surfacer_name,
-                team_name=team_name,
-                milestone=milestone_names.get(project.id),
-                progress_percent=percent,
+    def _cards_for(project_list: list[Project], team_name: str) -> list[WallProjectCard]:
+        cards: list[WallProjectCard] = []
+        for project in project_list:
+            progress = progress_by_project.get(project.id)
+            percent = float(progress.progress_percent) if progress else 0.0
+            designer_name, surfacer_name = workers.get(project.id, (None, None))
+            cards.append(
+                _card_from_project(
+                    project,
+                    customer_name=customer_names.get(project.customer_id),
+                    designer_name=designer_name,
+                    surfacer_name=surfacer_name,
+                    team_name=team_name,
+                    milestone=milestone_names.get(project.id),
+                    progress_percent=percent,
+                )
             )
-        )
-
-    blocks: list[WallTeamLiveBlock] = []
-    for (team_name, team_id), projects in sorted(
-        grouped.items(),
-        key=lambda item: (item[0][0] == "Unassigned", item[0][0].lower()),
-    ):
-        projects_sorted = sorted(
-            projects,
+        return sorted(
+            cards,
             key=lambda card: (
                 0 if card.health == "red" else 1 if card.health == "yellow" else 2,
                 card.due_date or ctx.today,
                 card.tool_number,
             ),
         )
-        em_name, dl_name = leadership.get(team_id, (None, None)) if team_id else (None, None)
+
+    blocks: list[WallTeamLiveBlock] = []
+    for team in teams:
+        projects_sorted = _cards_for(projects_by_team.get(team.id, []), team.name)
+        em_name, dl_name = leadership.get(team.id, (None, None))
         blocks.append(
             WallTeamLiveBlock(
-                team_id=team_id,
-                team_name=team_name,
+                team_id=team.id,
+                team_name=team.name,
                 engineering_manager_name=em_name,
                 design_leader_name=dl_name,
                 active_count=len(projects_sorted),
                 red_count=sum(1 for card in projects_sorted if card.health == "red"),
                 yellow_count=sum(1 for card in projects_sorted if card.health == "yellow"),
-                # Return all live tools — UI fits / scrolls inside the team column only.
                 projects=projects_sorted,
             )
         )
+
+    if include_unassigned and projects_by_team.get(None):
+        projects_sorted = _cards_for(projects_by_team[None], "Unassigned")
+        blocks.append(
+            WallTeamLiveBlock(
+                team_id=None,
+                team_name="Unassigned",
+                active_count=len(projects_sorted),
+                red_count=sum(1 for card in projects_sorted if card.health == "red"),
+                yellow_count=sum(1 for card in projects_sorted if card.health == "yellow"),
+                projects=projects_sorted,
+            )
+        )
+
     return blocks
+
+
+def _parse_team_ids(raw: Any) -> list[UUID] | None:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        parts = [part.strip() for part in raw.split(",") if part.strip()]
+        raw = parts
+    if not isinstance(raw, (list, tuple, set)):
+        return None
+    parsed: list[UUID] = []
+    for item in raw:
+        try:
+            parsed.append(item if isinstance(item, UUID) else UUID(str(item)))
+        except (TypeError, ValueError):
+            continue
+    return parsed or None
 
 
 def _attention_cards(ctx: AiContext, *, reason: str, limit: int = 12) -> list[WallProjectCard]:
@@ -293,6 +331,7 @@ class ExecutiveWallModule(AiModule):
 
     def run(self, ctx: AiContext, **kwargs: Any) -> ExecutiveWallData:
         active = get_active_projects(ctx)
+        team_ids = _parse_team_ids(kwargs.get("team_ids"))
         util = get_designer_utilization(ctx)
         avg_util = sum(r["utilization"] for r in util) / len(util) if util else 0
         health_counts = count_projects_by_health(ctx.db)
@@ -311,6 +350,11 @@ class ExecutiveWallModule(AiModule):
 
         upcoming = _attention_cards(ctx, reason="due_soon", limit=12)
         late = _attention_cards(ctx, reason="overdue", limit=12)
+        if team_ids:
+            team_id_set = set(team_ids)
+            upcoming = _filter_cards_by_team_ids(ctx, upcoming, team_id_set)
+            late = _filter_cards_by_team_ids(ctx, late, team_id_set)
+
         # Keep legacy current_deliveries for ExecutiveWallPage compatibility.
         deliveries = [
             {
@@ -343,9 +387,12 @@ class ExecutiveWallModule(AiModule):
 
         customer_dist = get_customer_workload_share(ctx)
         capacity = len(util) * 40 * 4  # rough monthly team capacity
+        scoped_active = (
+            [p for p in active if p.team_id in set(team_ids)] if team_ids else active
+        )
 
         return ExecutiveWallData(
-            active_projects=len(active),
+            active_projects=len(scoped_active),
             utilization_percent=round(avg_util, 1),
             late_milestones=count_overdue_milestones(ctx),
             current_deliveries=deliveries,
@@ -354,7 +401,29 @@ class ExecutiveWallModule(AiModule):
             hours_logged_month=round_hours(hours_month),
             customer_distribution=customer_dist[:6],
             health_summary=health,
-            teams_live=_build_teams_live(ctx, active),
+            teams_live=_build_teams_live(ctx, active, team_ids=team_ids),
             upcoming_deliveries=upcoming,
             late_deliveries=late,
         )
+
+
+def _filter_cards_by_team_ids(
+    ctx: AiContext,
+    cards: list[WallProjectCard],
+    team_ids: set[UUID],
+) -> list[WallProjectCard]:
+    if not cards:
+        return cards
+    project_ids = [card.project_id for card in cards if card.project_id]
+    if not project_ids:
+        return []
+    projects = {
+        project.id: project
+        for project in ctx.db.scalars(select(Project).where(Project.id.in_(project_ids))).all()
+    }
+    filtered: list[WallProjectCard] = []
+    for card in cards:
+        project = projects.get(card.project_id) if card.project_id else None
+        if project is not None and project.team_id in team_ids:
+            filtered.append(card)
+    return filtered

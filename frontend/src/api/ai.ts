@@ -70,8 +70,20 @@ export async function sendAiChat(question: string): Promise<ChatResponse> {
   return data;
 }
 
-export async function fetchExecutiveWall(): Promise<ExecutiveWallData> {
-  const { data } = await apiClient.get<ExecutiveWallData>('/ai/executive-wall');
+export async function fetchExecutiveWall(teamIds?: string[] | null): Promise<ExecutiveWallData> {
+  const { data } = await apiClient.get<ExecutiveWallData>('/ai/executive-wall', {
+    params: teamIds?.length ? { team_ids: teamIds } : undefined,
+    paramsSerializer: {
+      serialize: (params) => {
+        const search = new URLSearchParams();
+        const ids = params.team_ids;
+        if (Array.isArray(ids)) {
+          for (const id of ids) search.append('team_ids', String(id));
+        }
+        return search.toString();
+      },
+    },
+  });
   return data;
 }
 
@@ -84,5 +96,6 @@ export const aiQueryKeys = {
   schedule: (projectId?: string) => ['ai', 'schedule', projectId ?? 'all'] as const,
   knowledge: (query: string) => ['ai', 'knowledge', query] as const,
   timesheetSuggestions: ['ai', 'timesheet-suggestions'] as const,
-  executiveWall: ['ai', 'executive-wall'] as const,
+  executiveWall: (teamIds?: string[] | null) =>
+    ['ai', 'executive-wall', ...(teamIds?.length ? [...teamIds].sort() : ['all'])] as const,
 };

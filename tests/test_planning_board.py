@@ -53,6 +53,33 @@ def test_planning_board_team_blocks_include_leadership(client):
     assert len(team.get("projects", [])) == team.get("active_count", 0)
 
 
+def test_planning_board_includes_empty_team_placeholders(client):
+    """Wall returns company active teams even when some have zero live projects."""
+    headers = login(client, "planning-board@prosohm.com")
+    teams = client.get("/api/v1/lookups/teams", headers=headers).json()
+    wall = client.get("/api/v1/ai/executive-wall", headers=headers).json()
+    active_team_names = {row["name"] for row in teams if row.get("is_active", True)}
+    wall_names = {row["team_name"] for row in wall.get("teams_live", []) if row.get("team_id")}
+    # Every active company team should have a column (placeholder allowed).
+    assert active_team_names.issubset(wall_names)
+
+
+def test_planning_board_room_team_filter(client):
+    headers = login(client, "planning-board@prosohm.com")
+    teams = client.get("/api/v1/lookups/teams", headers=headers).json()
+    if not teams:
+        return
+    team_id = teams[0]["id"]
+    wall = client.get(
+        f"/api/v1/ai/executive-wall?team_ids={team_id}",
+        headers=headers,
+    ).json()
+    live = wall.get("teams_live", [])
+    assert len(live) == 1
+    assert live[0]["team_id"] == team_id
+    assert "projects" in live[0]
+
+
 def test_planning_board_can_view_resource_planning_grid(client):
     headers = login(client, "planning-board@prosohm.com")
     response = client.get("/api/v1/dashboard/resource-planning/grid", headers=headers)

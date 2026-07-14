@@ -57,7 +57,7 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
             "progress_percent": db_obj.progress_percent,
         }
         previous_status = db_obj.status
-        update_data = apply_progress_rules(update_data)
+        update_data = apply_progress_rules(update_data, previous_status=previous_status)
         if "assigned_user_id" in update_data:
             update_data["assignment_manual"] = True
 

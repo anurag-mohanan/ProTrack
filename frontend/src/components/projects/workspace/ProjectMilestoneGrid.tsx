@@ -149,7 +149,7 @@ export function ProjectMilestoneGrid({
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
         <Typography variant="body2" color="text.secondary">
-          Click cells to edit assignments, hours, dates, and progress inline.
+          Set a Target date per milestone. Completion date is recorded when status becomes Completed.
         </Typography>
         {canEdit ? (
           <ProsohmButton
@@ -176,7 +176,7 @@ export function ProjectMilestoneGrid({
               <StickyHeaderCell pinned>Milestone</StickyHeaderCell>
               <StickyHeaderCell>Assigned To</StickyHeaderCell>
               <StickyHeaderCell align="right">Hours</StickyHeaderCell>
-              <StickyHeaderCell>Target</StickyHeaderCell>
+              <StickyHeaderCell>Target date</StickyHeaderCell>
               <StickyHeaderCell>Status / Progress</StickyHeaderCell>
               {canEdit ? <StickyHeaderCell align="center">Actions</StickyHeaderCell> : null}
             </TableRow>

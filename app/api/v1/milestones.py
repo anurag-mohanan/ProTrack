@@ -39,7 +39,7 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
-_PROGRESS_ONLY_FIELDS = frozenset({"progress_percent", "status"})
+_PROGRESS_ONLY_FIELDS = frozenset({"progress_percent", "status", "due_date"})
 
 
 def _milestone_to_read(db: Session, row: Milestone) -> MilestoneRead:

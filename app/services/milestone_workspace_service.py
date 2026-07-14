@@ -170,7 +170,7 @@ def recalculate_project_planned_hours(db: Session, project_id: UUID) -> Decimal:
     return total
 
 
-def apply_progress_rules(update_data: dict) -> dict:
+def apply_progress_rules(update_data: dict, *, previous_status: MilestoneStatus | None = None) -> dict:
     progress = update_data.get("progress_percent")
     if progress is not None:
         progress = max(0, min(100, int(progress)))
@@ -182,12 +182,26 @@ def apply_progress_rules(update_data: dict) -> dict:
             MilestoneStatus.not_started,
         ):
             update_data.setdefault("status", MilestoneStatus.in_progress)
-    if update_data.get("status") == MilestoneStatus.completed:
+
+    new_status = update_data.get("status")
+    becoming_completed = (
+        new_status == MilestoneStatus.completed
+        and previous_status != MilestoneStatus.completed
+    )
+    if becoming_completed or (
+        new_status == MilestoneStatus.completed and previous_status is None
+    ):
         update_data["progress_percent"] = 100
-        if update_data.get("completed_at") is None:
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Ops rule: completion date is the day status first becomes Completed.
+        if becoming_completed or update_data.get("completed_at") is None:
             update_data["completed_at"] = now
             update_data["completed_date"] = now.date()
+        elif update_data.get("completed_date") is None:
+            completed_at = update_data.get("completed_at") or now
+            update_data["completed_date"] = (
+                completed_at.date() if hasattr(completed_at, "date") else now.date()
+            )
     elif "status" in update_data and update_data["status"] != MilestoneStatus.completed:
         update_data["completed_at"] = None
         update_data["completed_date"] = None

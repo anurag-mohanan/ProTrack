@@ -17,6 +17,7 @@ def test_patch_status_only_leaves_other_fields_unchanged(client, auth_headers):
     assert before["due_date"] == "2026-06-01"
     assert before["status"] == "not_started"
     assert before["completed_at"] is None
+    assert before["completed_date"] is None
 
     response = client.patch(
         f"/api/v1/milestones/{milestone_id}",
@@ -33,6 +34,7 @@ def test_patch_status_only_leaves_other_fields_unchanged(client, auth_headers):
     assert after["project_id"] == project_id
     assert after["due_date"] == "2026-06-01"
     assert after["completed_at"] is not None
+    assert after["completed_date"] is not None
 
 
 def test_patch_status_completed_sets_completed_at(client, auth_headers):
@@ -45,10 +47,13 @@ def test_patch_status_completed_sets_completed_at(client, auth_headers):
     )
 
     assert response.status_code == 200
-    completed_at = response.json()["completed_at"]
+    body = response.json()
+    completed_at = body["completed_at"]
     assert completed_at is not None
     parsed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
     assert parsed.year >= 2026
+    assert body["completed_date"] is not None
+    assert body["completed_date"] == parsed.date().isoformat()
 
 
 def test_patch_status_away_from_completed_clears_completed_at(client, auth_headers):
@@ -61,6 +66,7 @@ def test_patch_status_away_from_completed_clears_completed_at(client, auth_heade
     )
     assert completed.status_code == 200
     assert completed.json()["completed_at"] is not None
+    assert completed.json()["completed_date"] is not None
 
     reopened = client.patch(
         f"/api/v1/milestones/{milestone_id}",
@@ -72,6 +78,23 @@ def test_patch_status_away_from_completed_clears_completed_at(client, auth_heade
     body = reopened.json()
     assert body["status"] == "in_progress"
     assert body["completed_at"] is None
+    assert body["completed_date"] is None
+
+
+def test_patch_due_date_updates_target_without_touching_completion(client, auth_headers):
+    milestone_id = client.milestone_id
+
+    response = client.patch(
+        f"/api/v1/milestones/{milestone_id}",
+        json={"due_date": "2026-07-20"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["due_date"] == "2026-07-20"
+    assert body["status"] == "not_started"
+    assert body["completed_at"] is None
+    assert body["completed_date"] is None
 
 
 def test_milestone_update_schema_excludes_unset_fields():

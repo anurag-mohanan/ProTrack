@@ -13,7 +13,7 @@ Wall monitors need a **single glance** surface focused on live team work:
 |------|---------|
 | Chrome | Company **logo**, **Home**, LIVE, clock, Sign out |
 | Lean KPI strip | Active · Late milestones · Late deliveries · Due in 7 days · Health G/Y/R |
-| **Hero** | **Team-wise live** — Active tools first, then **On hold** subcategory; stage, designers, progress |
+| **Hero** | **Team-wise live** — Active then **On hold**; stage, designer/surfacer, **Q/A/variance %**, progress |
 | **Right rail** | Compact Late deliveries · Coming up (≤7 days) |
 
 **Removed:** capacity snapshot, recent releases, customer load.

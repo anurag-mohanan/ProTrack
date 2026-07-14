@@ -256,6 +256,34 @@ function CompactDeliveryList({
   );
 }
 
+function formatHours(value: number | null | undefined) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return '0';
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function HoursVarianceLine({ project }: { project: WallProjectCard }) {
+  const quoted = Number(project.quoted_hours ?? 0);
+  const actual = Number(project.actual_hours ?? 0);
+  const variancePct = project.variance_percent;
+  const over = typeof variancePct === 'number' && variancePct > 0;
+  const under = typeof variancePct === 'number' && variancePct < 0;
+  const varianceColor = over ? '#fca5a5' : under ? '#86efac' : WALL.muted;
+  const varianceLabel =
+    typeof variancePct === 'number'
+      ? `${variancePct > 0 ? '+' : ''}${Math.round(variancePct)}%`
+      : 'n/a';
+
+  return (
+    <Typography sx={{ color: WALL.muted, fontSize: '0.68rem', fontWeight: 700 }} noWrap>
+      Q {formatHours(quoted)}h · A {formatHours(actual)}h ·{' '}
+      <Box component="span" sx={{ color: varianceColor, fontWeight: 800 }}>
+        {varianceLabel}
+      </Box>
+    </Typography>
+  );
+}
+
 function ProjectRow({ project }: { project: WallProjectCard }) {
   const health = healthTone(project.health);
   const stage = project.current_milestone || humanizeStage(project.project_stage);
@@ -265,13 +293,13 @@ function ProjectRow({ project }: { project: WallProjectCard }) {
     <Box
       sx={{
         px: 1,
-        py: 0.4,
+        py: 0.45,
         borderRadius: 1.25,
         bgcolor: WALL.soft,
         borderLeft: `4px solid ${health.main}`,
-        minHeight: 46,
+        minHeight: 52,
         display: 'grid',
-        gridTemplateColumns: '72px minmax(0, 1.15fr) minmax(0, 1fr) 84px',
+        gridTemplateColumns: '72px minmax(0, 1.2fr) minmax(0, 0.95fr) 84px',
         gap: 0.75,
         alignItems: 'center',
       }}
@@ -286,6 +314,7 @@ function ProjectRow({ project }: { project: WallProjectCard }) {
         <Typography sx={{ color: WALL.muted, fontSize: '0.7rem', fontWeight: 600 }} noWrap>
           {workersLabel(project)}
         </Typography>
+        <HoursVarianceLine project={project} />
       </Box>
       <Box sx={{ minWidth: 0 }}>
         <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.2 }}>

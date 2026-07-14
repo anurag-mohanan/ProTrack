@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import timedelta
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -125,6 +126,20 @@ def _team_leadership(
     return result
 
 
+def _hours_metrics(project: Project) -> tuple[float, float, float, float | None]:
+    """Quoted vs actual hours and variance % for wall decision support."""
+    quoted = round_hours(getattr(project, "quoted_hours", 0) or 0)
+    actual = round_hours(getattr(project, "actual_hours", 0) or 0)
+    variance_hours = round_hours(Decimal(str(actual)) - Decimal(str(quoted)))
+    if quoted > 0:
+        variance_percent = round_hours(
+            (Decimal(str(variance_hours)) / Decimal(str(quoted))) * Decimal("100")
+        )
+    else:
+        variance_percent = None
+    return quoted, actual, variance_hours, variance_percent
+
+
 def _card_from_project(
     project: Project,
     *,
@@ -137,6 +152,7 @@ def _card_from_project(
     progress_percent: float = 0,
 ) -> WallProjectCard:
     contributors = [name for name in (designer_name, surfacer_name) if name]
+    quoted, actual, variance_hours, variance_percent = _hours_metrics(project)
     return WallProjectCard(
         project_id=project.id,
         tool_number=project.tool_number or "—",
@@ -151,6 +167,10 @@ def _card_from_project(
         project_stage=_stage_value(project),
         current_milestone=milestone,
         progress_percent=progress_percent,
+        quoted_hours=quoted,
+        actual_hours=actual,
+        variance_hours=variance_hours,
+        variance_percent=variance_percent,
         attention_reason=attention_reason,
     )
 
@@ -318,6 +338,10 @@ def _attention_cards(ctx: AiContext, *, reason: str, limit: int = 12) -> list[Wa
         designer_name, surfacer_name = (None, None)
         if project is not None:
             designer_name, surfacer_name = workers.get(project.id, (None, None))
+        quoted = actual = variance_hours = 0.0
+        variance_percent = None
+        if project is not None:
+            quoted, actual, variance_hours, variance_percent = _hours_metrics(project)
         cards.append(
             WallProjectCard(
                 project_id=row.project_id,
@@ -338,6 +362,10 @@ def _attention_cards(ctx: AiContext, *, reason: str, limit: int = 12) -> list[Wa
                 ),
                 project_stage=_stage_value(project) if project else None,
                 current_milestone=row.current_milestone,
+                quoted_hours=quoted,
+                actual_hours=actual,
+                variance_hours=variance_hours,
+                variance_percent=variance_percent,
                 attention_reason=row.attention_reason,
             )
         )

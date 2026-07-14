@@ -131,6 +131,10 @@ export interface WallProjectCard {
   project_stage?: string | null;
   current_milestone?: string | null;
   progress_percent?: number;
+  quoted_hours?: number;
+  actual_hours?: number;
+  variance_hours?: number;
+  variance_percent?: number | null;
   attention_reason?: string | null;
 }
 

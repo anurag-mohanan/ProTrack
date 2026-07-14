@@ -38,6 +38,20 @@ def test_planning_board_team_cards_include_progress_and_contributors(client):
     assert isinstance(card["contributor_names"], list)
     assert "surfacer_name" in card
     assert "designer_name" in card
+    assert "quoted_hours" in card
+    assert "actual_hours" in card
+    assert "variance_hours" in card
+    assert "variance_percent" in card
+    quoted = float(card["quoted_hours"] or 0)
+    actual = float(card["actual_hours"] or 0)
+    variance_hours = float(card["variance_hours"] or 0)
+    assert abs(variance_hours - (actual - quoted)) < 0.05
+    if quoted > 0:
+        assert card["variance_percent"] is not None
+        expected_pct = ((actual - quoted) / quoted) * 100
+        assert abs(float(card["variance_percent"]) - expected_pct) < 0.6
+    else:
+        assert card["variance_percent"] is None
 
 
 def test_planning_board_team_blocks_include_leadership(client):

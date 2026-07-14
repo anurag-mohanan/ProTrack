@@ -232,6 +232,10 @@ class WallProjectCard(BaseModel):
     project_stage: str | None = None
     current_milestone: str | None = None
     progress_percent: float = 0
+    quoted_hours: float = 0
+    actual_hours: float = 0
+    variance_hours: float = 0
+    variance_percent: float | None = None
     attention_reason: str | None = None
 
 

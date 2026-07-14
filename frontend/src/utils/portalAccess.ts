@@ -12,6 +12,7 @@ import {
   userHasModule,
 } from './permissions';
 import {
+  MODULE_CALENDAR,
   MODULE_DASHBOARD,
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
@@ -28,8 +29,11 @@ export function canAccessPortalPath(ctx: AccessContext, path: string): boolean {
     return canAccessAdminPortalPath(ctx, normalized);
   }
 
-  if (normalized === '/dashboard' || normalized === '/calendar') {
+  if (normalized === '/dashboard') {
     return userHasModule(ctx, MODULE_DASHBOARD);
+  }
+  if (normalized === '/calendar') {
+    return userHasModule(ctx, MODULE_CALENDAR);
   }
   if (normalized.startsWith('/projects/archived')) {
     return canViewArchivedProjects(ctx);

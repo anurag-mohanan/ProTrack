@@ -8,8 +8,8 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { Customer, Project, Stream, Team, User } from '../../../types';
-import { ContentCard } from '../../ui/cards';
-import { ProjectTable, type ProjectTableRow } from '../ProjectTable';
+import type { ProjectTableRow } from '../ProjectTable';
+import { ProjectBoardList } from './ProjectBoardList';
 
 interface ProjectListSectionProps {
   title: string;
@@ -23,6 +23,7 @@ interface ProjectListSectionProps {
   collapsible?: boolean;
   primary?: boolean;
   gridSessionKey?: number;
+  splitActiveHold?: boolean;
   onRowOpen?: (row: ProjectTableRow) => void;
   onEdit?: (row: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
@@ -42,8 +43,7 @@ export function ProjectListSection({
   teams,
   defaultExpanded = true,
   collapsible = false,
-  primary = false,
-  gridSessionKey = 0,
+  splitActiveHold = true,
   onRowOpen,
   onEdit,
   onArchive,
@@ -55,27 +55,22 @@ export function ProjectListSection({
   const [expanded, setExpanded] = useState(defaultExpanded);
   const sectionTitle = `${title} (${count})`;
 
-  const table = (
-    <Box sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
-      <ContentCard noPadding>
-        <ProjectTable
-          projects={projects}
-          customers={customers}
-          users={users}
-          streams={streams}
-          teams={teams}
-          primary={primary}
-          gridSessionKey={gridSessionKey}
-          onRowOpen={onRowOpen}
-          onEdit={onEdit}
-          onArchive={onArchive}
-          onDuplicate={onDuplicate}
-          onExport={onExport}
-          onDelete={onDelete}
-          canDelete={canDelete}
-        />
-      </ContentCard>
-    </Box>
+  const board = (
+    <ProjectBoardList
+      projects={projects}
+      customers={customers}
+      users={users}
+      streams={streams}
+      teams={teams}
+      splitActiveHold={splitActiveHold}
+      onRowOpen={onRowOpen}
+      onEdit={onEdit}
+      onArchive={onArchive}
+      onDuplicate={onDuplicate}
+      onExport={onExport}
+      onDelete={onDelete}
+      canDelete={canDelete}
+    />
   );
 
   if (!collapsible) {
@@ -85,7 +80,7 @@ export function ProjectListSection({
           {sectionTitle}
         </Typography>
         {projects.length ? (
-          table
+          board
         ) : (
           <Typography variant="body2" color="text.secondary" sx={{ px: 0.5, py: 1 }}>
             No projects in this section.
@@ -115,7 +110,7 @@ export function ProjectListSection({
           {sectionTitle}
         </Typography>
       </AccordionSummary>
-      <AccordionDetails sx={{ p: 0 }}>{table}</AccordionDetails>
+      <AccordionDetails sx={{ p: 1.5 }}>{board}</AccordionDetails>
     </Accordion>
   );
 }

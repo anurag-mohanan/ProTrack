@@ -145,6 +145,27 @@ def test_project_list_hides_other_team_work(client, test_session_factory):
     assert forbidden.status_code in {403, 404}
 
 
+def test_project_timeline_respects_team_confidentiality(client, test_session_factory):
+    with test_session_factory() as session:
+        _seed_two_team_portfolio(session)
+
+    designer_headers = _auth(client, "binil@prosohm.com")
+    response = client.get("/api/v1/calendar/project-timeline", headers=designer_headers)
+    assert response.status_code == 200
+    tools = {item["tool_number"] for item in response.json()}
+    assert "SCOPE-A" in tools
+    assert "SCOPE-X" in tools
+    assert "SCOPE-B" not in tools
+
+    dl_headers = _auth(client, "anurag@prosohm.com")
+    dl_response = client.get("/api/v1/calendar/project-timeline", headers=dl_headers)
+    assert dl_response.status_code == 200
+    dl_tools = {item["tool_number"] for item in dl_response.json()}
+    assert "SCOPE-A" in dl_tools
+    assert "SCOPE-B" not in dl_tools
+    assert "SCOPE-X" not in dl_tools
+
+
 def test_workload_scoped_to_accessible_teams(client, test_session_factory):
     with test_session_factory() as session:
         data = _seed_two_team_portfolio(session)

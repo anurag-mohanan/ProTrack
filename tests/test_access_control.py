@@ -3,11 +3,14 @@
 import json
 
 from app.core.access_control import (
+    MODULE_CALENDAR,
     MODULE_DASHBOARD,
+    MODULE_PLANNING_BOARD,
     MODULE_PROJECTS,
     MODULE_REPORTS,
     MODULE_TIMESHEETS,
     SPECIAL_CREATE_PROJECTS,
+    default_modules_for_role,
     resolve_user_modules,
     resolve_user_special_permissions,
     serialize_module_access,
@@ -23,6 +26,26 @@ def test_default_modules_for_designer(session):
     assert MODULE_PROJECTS in modules
     assert MODULE_TIMESHEETS in modules
     assert MODULE_REPORTS not in modules
+    assert MODULE_CALENDAR not in modules
+    assert MODULE_PLANNING_BOARD not in modules
+
+
+def test_default_modules_calendar_for_leaders_only():
+    designer = default_modules_for_role("Designer")
+    junior = default_modules_for_role("Junior Designer")
+    senior = default_modules_for_role("Senior Designer")
+    surfacer = default_modules_for_role("Surfacer")
+    em = default_modules_for_role("Engineering Manager")
+    dl = default_modules_for_role("Design Leader")
+
+    for staff in (designer, junior, senior, surfacer):
+        assert MODULE_CALENDAR not in staff
+        assert MODULE_PLANNING_BOARD not in staff
+
+    assert MODULE_CALENDAR in em
+    assert MODULE_CALENDAR in dl
+    assert MODULE_PLANNING_BOARD not in em
+    assert MODULE_PLANNING_BOARD not in dl
 
 
 def test_custom_module_access_overrides_defaults(session):

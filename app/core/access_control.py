@@ -38,6 +38,7 @@ MODULE_FINANCIAL_PLANNING = "financial_planning"
 MODULE_HUMAN_RESOURCES = "human_resources"
 MODULE_REPORTS_ANALYTICS = "reports_analytics"
 MODULE_PLANNING_BOARD = "planning_board"
+MODULE_CALENDAR = "calendar"
 
 ALL_MODULES: tuple[str, ...] = (
     MODULE_DASHBOARD,
@@ -52,6 +53,7 @@ ALL_MODULES: tuple[str, ...] = (
     MODULE_HUMAN_RESOURCES,
     MODULE_REPORTS_ANALYTICS,
     MODULE_PLANNING_BOARD,
+    MODULE_CALENDAR,
 )
 
 # EBMP top-level nav groups (ops modules remain granular under Engineering Operations).
@@ -108,6 +110,7 @@ DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {
             MODULE_REPORTS,
             MODULE_FINANCIAL_PLANNING,
             MODULE_REPORTS_ANALYTICS,
+            MODULE_CALENDAR,
         }
     ),
     DESIGN_LEADER: frozenset(
@@ -118,6 +121,7 @@ DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {
             MODULE_TIMESHEETS,
             MODULE_WORKLOAD,
             MODULE_REPORTS_ANALYTICS,
+            MODULE_CALENDAR,
         }
     ),
     DESIGNER: frozenset({MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS}),
@@ -191,6 +195,7 @@ PATH_MODULE_MAP: dict[str, str] = {
     "/hr": MODULE_HUMAN_RESOURCES,
     "/analytics": MODULE_REPORTS_ANALYTICS,
     "/planning-board": MODULE_PLANNING_BOARD,
+    "/calendar": MODULE_CALENDAR,
 }
 
 

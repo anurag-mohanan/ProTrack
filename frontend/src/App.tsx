@@ -42,6 +42,7 @@ import {
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
   MODULE_PLANNING_BOARD,
+  MODULE_CALENDAR,
   MODULE_PROJECTS,
   MODULE_REPORTS_ANALYTICS,
   MODULE_TIMESHEETS,
@@ -240,6 +241,10 @@ export default function App() {
                     <Route path="/help" element={<HelpCenterPage />} />
                     <Route element={<RoleRoute allowed={canViewReports} />}>
                       <Route path="/reports" element={<ReportsPage />} />
+                      <Route path="/knowledge" element={<KnowledgeBasePage />} />
+                      <Route path="/executive-wall" element={<ExecutiveWallPage />} />
+                    </Route>
+                    <Route element={<ModuleRoute module={MODULE_CALENDAR} />}>
                       <Route
                         path="/calendar"
                         element={
@@ -248,8 +253,6 @@ export default function App() {
                           </Suspense>
                         }
                       />
-                      <Route path="/knowledge" element={<KnowledgeBasePage />} />
-                      <Route path="/executive-wall" element={<ExecutiveWallPage />} />
                     </Route>
                     <Route element={<RoleRoute allowed={canViewWorkload} />}>
                       <Route path="/workload" element={<WorkloadPage />} />

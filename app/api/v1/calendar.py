@@ -1,11 +1,13 @@
 from datetime import date, timedelta
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import Session, get_db
-from app.schemas.calendar import CalendarEvent
-from app.services.calendar_service import get_engineering_calendar
+from app.models.models import User
+from app.schemas.calendar import CalendarEvent, ProjectTimelineBar
+from app.services.calendar_service import get_engineering_calendar, get_project_timeline
 
 router = APIRouter(
     prefix="/calendar",
@@ -31,3 +33,25 @@ def engineering_calendar(
     if end < start:
         end = start
     return get_engineering_calendar(db, start_date=start, end_date=end)
+
+
+@router.get("/project-timeline", response_model=list[ProjectTimelineBar])
+def project_timeline(
+    start_date: date | None = Query(None, alias="from"),
+    end_date: date | None = Query(None, alias="to"),
+    team_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    today = date.today()
+    start = start_date or (today - timedelta(days=90))
+    end = end_date or (today + timedelta(days=180))
+    if end < start:
+        end = start
+    return get_project_timeline(
+        db,
+        current_user,
+        start_date=start,
+        end_date=end,
+        team_id=team_id,
+    )

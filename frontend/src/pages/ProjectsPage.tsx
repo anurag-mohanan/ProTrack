@@ -484,7 +484,7 @@ export function ProjectsPage() {
         >
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
-              Project Command Center
+              {shouldGroupLiveProjectsByTeam ? 'Projects' : 'My Projects'}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               {subtitle}
@@ -582,7 +582,9 @@ export function ProjectsPage() {
                     title={
                       appliedFilters.showArchived || appliedFilters.quickFilter === 'archived'
                         ? 'Archived Projects'
-                        : 'Live Projects'
+                        : shouldGroupLiveProjectsByTeam
+                          ? 'Live Projects'
+                          : 'My work'
                     }
                     count={teamScopedLiveProjects.length}
                     projects={teamScopedLiveProjects}
@@ -616,6 +618,7 @@ export function ProjectsPage() {
                   teams={teamsQuery.data ?? []}
                   defaultExpanded={false}
                   collapsible
+                  splitActiveHold={false}
                   onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
                   onEdit={setEditProject}
                   onDuplicate={(projectId) => cloneMutation.mutate(projectId)}

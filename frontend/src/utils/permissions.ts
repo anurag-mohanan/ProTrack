@@ -24,6 +24,7 @@ import {
   MODULE_TIMESHEETS,
   MODULE_WORKLOAD,
   MODULE_PLANNING_BOARD,
+  MODULE_CALENDAR,
   SPECIAL_APPROVE_TIMESHEETS,
   SPECIAL_ARCHIVE_PROJECTS,
   SPECIAL_CREATE_PROJECTS,
@@ -92,6 +93,7 @@ const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
     MODULE_REPORTS,
     MODULE_FINANCIAL_PLANNING,
     MODULE_REPORTS_ANALYTICS,
+    MODULE_CALENDAR,
   ],
   [ROLES.DESIGN_LEADER]: [
     MODULE_DASHBOARD,
@@ -100,6 +102,7 @@ const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
     MODULE_TIMESHEETS,
     MODULE_WORKLOAD,
     MODULE_REPORTS_ANALYTICS,
+    MODULE_CALENDAR,
   ],
   [ROLES.DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
   [ROLES.SENIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
@@ -169,12 +172,6 @@ const NAV_MODULE_CONFIG: Array<{
   path: string;
   icon: SvgIconComponent;
 }> = [
-  {
-    module: MODULE_PLANNING_BOARD,
-    label: 'Planning Board',
-    path: '/planning-board',
-    icon: CalendarMonthRoundedIcon,
-  },
   { module: MODULE_DASHBOARD, label: 'Dashboard', path: '/dashboard', icon: DashboardRoundedIcon },
   {
     module: MODULE_PROJECTS,
@@ -196,7 +193,13 @@ const NAV_MODULE_CONFIG: Array<{
     path: '/resource-planning',
     icon: CalendarMonthRoundedIcon,
   },
-  { module: MODULE_DASHBOARD, label: 'Calendar', path: '/calendar', icon: CalendarMonthRoundedIcon },
+  { module: MODULE_CALENDAR, label: 'Calendar', path: '/calendar', icon: CalendarMonthRoundedIcon },
+  {
+    module: MODULE_PLANNING_BOARD,
+    label: 'Planning Board',
+    path: '/planning-board',
+    icon: CalendarMonthRoundedIcon,
+  },
 ];
 
 const EBMP_SECTION_NAV: Array<{

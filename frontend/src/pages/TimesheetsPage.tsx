@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { PageContainer } from '../components/common/PageContainer';
-import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
 import { TimesheetEntryForm, type TimesheetEntryFormValues } from '../components/timesheets/TimesheetEntryForm';
@@ -391,28 +390,36 @@ export function TimesheetsPage() {
 
   return (
     <PageContainer>
-      <PageHeader
-        subtitle={
-          viewAllUsers
-            ? isComplianceViewer
-              ? 'All-teams timesheet monitoring'
-              : 'Team hours for the selected month'
-            : 'Enter and review your monthly hours'
-        }
-        action={
-          showSubmit ? (
-            <ProsohmButton
-              buttonVariant="primary"
-              loading={workspace.submitMonthMutation.isPending}
-              onClick={() => void handleSubmitMonth()}
-            >
-              Submit Timesheet
-            </ProsohmButton>
-          ) : undefined
+      <TimesheetMonthNavigation
+        monthValue={monthValue}
+        onMonthChange={setMonthValue}
+        endAdornment={
+          <>
+            {canViewAll && canEnterOwn ? (
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={viewMode}
+                onChange={(_, next) => {
+                  if (next) setViewMode(next);
+                }}
+              >
+                <ToggleButton value="mine">My Entries</ToggleButton>
+                <ToggleButton value="all">All Users</ToggleButton>
+              </ToggleButtonGroup>
+            ) : null}
+            {showSubmit ? (
+              <ProsohmButton
+                buttonVariant="primary"
+                loading={workspace.submitMonthMutation.isPending}
+                onClick={() => void handleSubmitMonth()}
+              >
+                Submit Timesheet
+              </ProsohmButton>
+            ) : null}
+          </>
         }
       />
-
-      <TimesheetMonthNavigation monthValue={monthValue} onMonthChange={setMonthValue} />
 
       {viewAllUsers && isComplianceViewer ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
@@ -420,21 +427,6 @@ export function TimesheetsPage() {
           Admin, Planning Board, and other monitor-only accounts are hidden. Turn the flag off on
           Users admin for anyone who only manages a team and should not be chased for hours.
         </Alert>
-      ) : null}
-
-      {canViewAll && canEnterOwn ? (
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={viewMode}
-          onChange={(_, next) => {
-            if (next) setViewMode(next);
-          }}
-          sx={{ mb: 1.5 }}
-        >
-          <ToggleButton value="mine">My Entries</ToggleButton>
-          <ToggleButton value="all">All Users</ToggleButton>
-        </ToggleButtonGroup>
       ) : null}
 
       {/* All Users: keep rollup near the top for monitoring. My Entries: place under entry actions. */}

@@ -1,87 +1,92 @@
 import { IconButton, Stack, TextField, Typography } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import type { ReactNode } from 'react';
 import { formatMonthLabel, shiftMonth } from '../../utils/timesheetMonth';
 
 interface TimesheetMonthNavigationProps {
   monthValue: string;
   onMonthChange: (monthValue: string) => void;
+  /** Optional trailing controls (mode tabs, Submit) — keeps one compact toolbar. */
+  endAdornment?: ReactNode;
 }
 
+/**
+ * Compact month toolbar: prev/next + label + single jump picker.
+ * Month/Year/Jump triplicate controls were removed — same job three times.
+ */
 export function TimesheetMonthNavigation({
   monthValue,
   onMonthChange,
+  endAdornment,
 }: TimesheetMonthNavigationProps) {
-  const [year, month] = monthValue.split('-').map(Number);
-
   return (
-    <Stack spacing={1.5} sx={{ mb: 2 }}>
-      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', justifyContent: 'center' }}>
+    <Stack
+      direction={{ xs: 'column', sm: 'row' }}
+      spacing={1.25}
+      sx={{
+        mb: 1.5,
+        alignItems: { xs: 'stretch', sm: 'center' },
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 1,
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={0.5}
+        sx={{ alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}
+      >
         <IconButton
+          size="small"
           aria-label="Previous month"
           onClick={() => onMonthChange(shiftMonth(monthValue, -1))}
         >
           <ChevronLeftIcon />
         </IconButton>
-        <Typography variant="h5" sx={{ minWidth: 160, textAlign: 'center', fontWeight: 700 }}>
+        <Typography
+          sx={{
+            minWidth: 132,
+            textAlign: 'center',
+            fontWeight: 800,
+            fontSize: '1.05rem',
+            letterSpacing: '-0.01em',
+          }}
+        >
           {formatMonthLabel(monthValue)}
         </Typography>
         <IconButton
+          size="small"
           aria-label="Next month"
           onClick={() => onMonthChange(shiftMonth(monthValue, 1))}
         >
           <ChevronRightIcon />
         </IconButton>
-      </Stack>
-
-      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', justifyContent: { xs: 'center', sm: 'flex-start' } }}>
-        <TextField
-          select
-          size="small"
-          label="Month"
-          value={month}
-          onChange={(event) =>
-            onMonthChange(`${year}-${String(Number(event.target.value)).padStart(2, '0')}`)
-          }
-          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-          sx={{ minWidth: 130 }}
-        >
-          {Array.from({ length: 12 }, (_, index) => (
-            <option key={index + 1} value={index + 1}>
-              {new Date(2000, index, 1).toLocaleDateString(undefined, { month: 'long' })}
-            </option>
-          ))}
-        </TextField>
-        <TextField
-          select
-          size="small"
-          label="Year"
-          value={year}
-          onChange={(event) =>
-            onMonthChange(`${Number(event.target.value)}-${String(month).padStart(2, '0')}`)
-          }
-          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-          sx={{ minWidth: 100 }}
-        >
-          {Array.from({ length: 7 }, (_, index) => {
-            const optionYear = new Date().getFullYear() - 3 + index;
-            return (
-              <option key={optionYear} value={optionYear}>
-                {optionYear}
-              </option>
-            );
-          })}
-        </TextField>
         <TextField
           type="month"
           size="small"
-          label="Jump to"
+          label="Jump"
           value={monthValue}
           onChange={(event) => onMonthChange(event.target.value)}
           slotProps={{ inputLabel: { shrink: true } }}
-          sx={{ minWidth: 150 }}
+          sx={{
+            ml: { xs: 0, sm: 1 },
+            minWidth: 148,
+            maxWidth: 168,
+            '& .MuiOutlinedInput-root': { borderRadius: 2 },
+          }}
         />
       </Stack>
+
+      {endAdornment ? (
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}
+        >
+          {endAdornment}
+        </Stack>
+      ) : null}
     </Stack>
   );
 }

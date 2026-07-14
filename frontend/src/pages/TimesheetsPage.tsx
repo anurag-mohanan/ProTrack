@@ -2,8 +2,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
-import { StickyRecordHeader } from '../components/ui/design-system';
-import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
 import { LoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
 import { TimesheetEntryForm, type TimesheetEntryFormValues } from '../components/timesheets/TimesheetEntryForm';
@@ -55,8 +53,6 @@ import {
   teamSectionBreakdownLabel,
 } from '../utils/timesheetOverview';
 import { isTimesheetMonthCalendarLocked } from '../utils/timesheetLocking';
-import { formatDisplayValue, userDisplayName } from '../utils/format';
-import { TimesheetStatusBadge } from '../components/ui/design-system';
 
 function shiftIsoDate(isoDate: string, days: number): string {
   const date = new Date(`${isoDate}T12:00:00`);
@@ -399,9 +395,9 @@ export function TimesheetsPage() {
         subtitle={
           viewAllUsers
             ? isComplianceViewer
-              ? `${formatDisplayValue(user ? userDisplayName(user) : '')} · All-teams timesheet monitoring`
-              : `${formatDisplayValue(user ? userDisplayName(user) : '')} · Team timesheet overview`
-            : `${formatDisplayValue(user ? userDisplayName(user) : '')} · Monthly timesheet workspace`
+              ? 'All-teams timesheet monitoring'
+              : 'Team hours for the selected month'
+            : 'Enter and review your monthly hours'
         }
         action={
           showSubmit ? (
@@ -414,22 +410,6 @@ export function TimesheetsPage() {
             </ProsohmButton>
           ) : undefined
         }
-      />
-
-      <StickyRecordHeader
-        compact
-        primaryLabel={monthLabel}
-        secondaryLabel={
-          viewAllUsers
-            ? workspace.overviewContext?.scope_all_teams
-              ? isComplianceViewer
-                ? 'All teams — completion monitoring'
-                : 'All teams — timesheet overview'
-              : 'Your teams — timesheet overview'
-            : `${formatDisplayValue(user ? userDisplayName(user) : '')} · ${toolbarDate}`
-        }
-        stickyTop={APP_TOP_BAR_OFFSET}
-        meta={<TimesheetStatusBadge status={workspace.monthStatus} />}
       />
 
       <TimesheetMonthNavigation monthValue={monthValue} onMonthChange={setMonthValue} />

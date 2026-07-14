@@ -43,7 +43,7 @@ export function TimesheetMonthNavigation({
           onChange={(event) =>
             onMonthChange(`${year}-${String(Number(event.target.value)).padStart(2, '0')}`)
           }
-          slotProps={{ select: { native: true } }}
+          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
           sx={{ minWidth: 130 }}
         >
           {Array.from({ length: 12 }, (_, index) => (
@@ -60,7 +60,7 @@ export function TimesheetMonthNavigation({
           onChange={(event) =>
             onMonthChange(`${Number(event.target.value)}-${String(month).padStart(2, '0')}`)
           }
-          slotProps={{ select: { native: true } }}
+          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
           sx={{ minWidth: 100 }}
         >
           {Array.from({ length: 7 }, (_, index) => {

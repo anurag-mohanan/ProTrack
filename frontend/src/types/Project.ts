@@ -40,6 +40,12 @@ export interface Project extends Timestamped {
   project_stage: ProjectStage;
   execution_status: ExecutionStatus;
   notes: string | null;
+  work_order_number?: string | null;
+  press_tonnage?: string | null;
+  plastic_material?: string | null;
+  cavity_count?: number | null;
+  tool_type?: string | null;
+  customer_specs?: string | null;
   completed_at?: string | null;
   is_archived?: boolean;
   archived_at?: string | null;
@@ -89,6 +95,12 @@ export interface ProjectCreate {
   project_stage?: ProjectStage;
   execution_status?: ExecutionStatus;
   notes?: string | null;
+  work_order_number?: string | null;
+  press_tonnage?: string | null;
+  plastic_material?: string | null;
+  cavity_count?: number | null;
+  tool_type?: string | null;
+  customer_specs?: string | null;
 }
 
 export interface ProjectUpdate {
@@ -112,6 +124,12 @@ export interface ProjectUpdate {
   execution_status?: ExecutionStatus;
   health?: ProjectHealth;
   notes?: string | null;
+  work_order_number?: string | null;
+  press_tonnage?: string | null;
+  plastic_material?: string | null;
+  cavity_count?: number | null;
+  tool_type?: string | null;
+  customer_specs?: string | null;
 }
 
 export function projectLabel(

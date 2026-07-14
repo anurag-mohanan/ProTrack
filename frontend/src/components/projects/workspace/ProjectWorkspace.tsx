@@ -26,6 +26,7 @@ import { formatDisplayValue } from '../../../utils/format';
 import { isActiveProjectForHealth } from '../../../utils/projectHealth';
 import { ProjectCommunicationsPanel } from './ProjectCommunicationsPanel';
 import { ProjectContributorsPanel } from './ProjectContributorsPanel';
+import { ProjectWorkorderDetailsPanel } from './ProjectWorkorderDetailsPanel';
 import { ProjectTimesheetsPanel } from './ProjectTimesheetsPanel';
 import { getProjectActivities } from '../../../services/notificationService';
 import type { Activity } from '../../../types';
@@ -145,6 +146,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
 
       {tab === 'overview' ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <ProjectWorkorderDetailsPanel project={project} canEdit={canEditMilestones} />
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
               Execution timeline
@@ -221,9 +223,17 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
       {tab === 'communications' ? <ProjectCommunicationsPanel projectId={projectId} /> : null}
 
       {tab === 'files' ? (
-        <Typography variant="body2" color="text.secondary">
-          Engineering documents are stored in the project folder structure configured under System Settings → File Paths.
-        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxWidth: 720 }}>
+          <Typography variant="body2" color="text.secondary">
+            Engineering documents stay in the project folder structure configured under System
+            Settings → File Paths. Capture workorder attributes on Overview so they remain searchable
+            after the tool is completed.
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Per-customer PDF workorder extraction (different layouts per customer) is planned next —
+            attributes will auto-fill from the customer PDF once templates are configured.
+          </Typography>
+        </Box>
       ) : null}
     </PageContainer>
   );

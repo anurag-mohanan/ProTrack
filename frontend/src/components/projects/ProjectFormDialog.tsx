@@ -7,6 +7,7 @@ import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
+import PrecisionManufacturingOutlinedIcon from '@mui/icons-material/PrecisionManufacturingOutlined';
 import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,6 +54,12 @@ interface ProjectFormValues {
   quoted_hours: number | '';
   due_date: string;
   notes: string;
+  work_order_number: string;
+  press_tonnage: string;
+  plastic_material: string;
+  cavity_count: string;
+  tool_type: string;
+  customer_specs: string;
   priority: ProjectCreate['priority'];
   complexity: NonNullable<ProjectCreate['complexity']>;
   project_stage: ProjectStage;
@@ -79,6 +86,12 @@ const emptyForm: ProjectFormValues = {
   quoted_hours: '',
   due_date: '',
   notes: '',
+  work_order_number: '',
+  press_tonnage: '',
+  plastic_material: '',
+  cavity_count: '',
+  tool_type: '',
+  customer_specs: '',
   priority: 'medium',
   complexity: 'medium',
   project_stage: 'preliminary',
@@ -104,6 +117,15 @@ function projectToForm(project: Project): ProjectFormValues {
     quoted_hours: project.quoted_hours,
     due_date: project.due_date ?? '',
     notes: project.notes ?? '',
+    work_order_number: project.work_order_number ?? '',
+    press_tonnage: project.press_tonnage ?? '',
+    plastic_material: project.plastic_material ?? '',
+    cavity_count:
+      project.cavity_count === null || project.cavity_count === undefined
+        ? ''
+        : String(project.cavity_count),
+    tool_type: project.tool_type ?? '',
+    customer_specs: project.customer_specs ?? '',
     priority: project.priority ?? 'medium',
     complexity: project.complexity ?? 'medium',
     project_stage: project.project_stage,
@@ -257,6 +279,12 @@ export function ProjectFormDialog({
           quoted_hours: form.quoted_hours === '' ? null : Number(form.quoted_hours),
           due_date: optionalString(form.due_date),
           notes: optionalString(form.notes),
+          work_order_number: optionalString(form.work_order_number),
+          press_tonnage: optionalString(form.press_tonnage),
+          plastic_material: optionalString(form.plastic_material),
+          cavity_count: optionalNumber(form.cavity_count),
+          tool_type: optionalString(form.tool_type),
+          customer_specs: optionalString(form.customer_specs),
           project_stage: form.project_stage,
           execution_status: form.execution_status,
           priority: form.priority,
@@ -286,6 +314,12 @@ export function ProjectFormDialog({
         priority: form.priority,
         complexity: form.complexity,
         notes: optionalString(form.notes),
+        work_order_number: optionalString(form.work_order_number),
+        press_tonnage: optionalString(form.press_tonnage),
+        plastic_material: optionalString(form.plastic_material),
+        cavity_count: optionalNumber(form.cavity_count),
+        tool_type: optionalString(form.tool_type),
+        customer_specs: optionalString(form.customer_specs),
       };
       return createProject(createPayload);
     },
@@ -992,6 +1026,65 @@ export function ProjectFormDialog({
             </Grid>
           </CollapsibleFormSection>
         ) : null}
+
+        <CollapsibleFormSection
+          sectionId="workorder"
+          storageKey={PROJECT_SECTION_STORAGE_KEY}
+          title="Workorder / tooling"
+          subtitle="Searchable attributes from customer workorders"
+          icon={PrecisionManufacturingOutlinedIcon}
+        >
+          <Grid size={{ xs: 12, md: 6 }}>
+            <FormField
+              label="Work order number"
+              value={form.work_order_number ?? ''}
+              onChange={(event) => setForm({ ...form, work_order_number: event.target.value })}
+              maxLength={100}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <FormField
+              label="Press tonnage"
+              value={form.press_tonnage ?? ''}
+              onChange={(event) => setForm({ ...form, press_tonnage: event.target.value })}
+              maxLength={50}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <FormField
+              label="Plastic material"
+              value={form.plastic_material ?? ''}
+              onChange={(event) => setForm({ ...form, plastic_material: event.target.value })}
+              maxLength={150}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 3 }}>
+            <FormField
+              label="Cavity count"
+              type="number"
+              value={form.cavity_count ?? ''}
+              onChange={(event) => setForm({ ...form, cavity_count: event.target.value })}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 3 }}>
+            <FormField
+              label="Tool type"
+              value={form.tool_type ?? ''}
+              onChange={(event) => setForm({ ...form, tool_type: event.target.value })}
+              maxLength={100}
+            />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <FormField
+              label="Customer specs / other details"
+              multiline
+              rows={3}
+              maxLength={4000}
+              value={form.customer_specs ?? ''}
+              onChange={(event) => setForm({ ...form, customer_specs: event.target.value })}
+            />
+          </Grid>
+        </CollapsibleFormSection>
 
         <CollapsibleFormSection
           sectionId="notes"

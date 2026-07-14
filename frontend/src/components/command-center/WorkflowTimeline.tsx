@@ -1,6 +1,7 @@
 import { Box, Chip, Typography, useTheme } from '@mui/material';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import type { TimelineStep } from '../../types/CommandCenter';
+import { formatDate } from '../../utils/format';
 
 const STATUS_LABELS: Record<TimelineStep['status'], string> = {
   completed: 'Completed',
@@ -56,7 +57,7 @@ export function WorkflowTimeline({ steps }: { steps: TimelineStep[] }) {
               <Typography sx={{ fontWeight: 600 }}>{step.name}</Typography>
               {step.due_date ? (
                 <Typography variant="caption" color="text.secondary">
-                  Due {step.due_date}
+                  Due {formatDate(step.due_date) || step.due_date}
                 </Typography>
               ) : null}
             </Box>

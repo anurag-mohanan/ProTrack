@@ -30,7 +30,7 @@ import { KpiStrip } from '../components/analytics/KpiStrip';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useToast } from '../context/ToastContext';
 import type { ResourcePlanningGranularity } from '../types/ResourcePlanning';
-import { formatNumber } from '../utils/format';
+import { formatNumber, toFiniteNumber } from '../utils/format';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
@@ -155,53 +155,56 @@ export function ResourcePlanningPage() {
       }
     : data;
 
-  const totalCapacity = data.designers.reduce((sum, d) => sum + d.capacity_hours, 0);
-  const totalAllocated = data.designers.reduce((sum, d) => sum + d.allocated_hours, 0);
+  const totalCapacity = data.designers.reduce((sum, d) => sum + toFiniteNumber(d.capacity_hours), 0);
+  const totalAllocated = data.designers.reduce((sum, d) => sum + toFiniteNumber(d.allocated_hours), 0);
   const avgUtil =
     totalCapacity > 0 ? Math.round((totalAllocated / totalCapacity) * 100) : 0;
-  const overloaded = data.designers.filter(
-    (d) => d.capacity_hours > 0 && d.allocated_hours / d.capacity_hours >= 0.9,
-  ).length;
+  const overloaded = data.designers.filter((d) => {
+    const capacity = toFiniteNumber(d.capacity_hours);
+    const allocated = toFiniteNumber(d.allocated_hours);
+    return capacity > 0 && allocated / capacity >= 0.9;
+  }).length;
 
   return (
     <PageContainer>
       <ModernPageHeader
         title="Resource Planning"
         subtitle="Engineering planning dashboard — capacity, assignments, and customer allocation"
-        summary={
-          <KpiStrip columns={{ xs: 12, sm: 6, md: 3 }}>
-            <KpiMetricCard
-              compact
-              title="Designers"
-              value={String(data.designers.length)}
-              icon={GroupsRoundedIcon}
-              accent="primary"
-            />
-            <KpiMetricCard
-              compact
-              title="Avg Utilization"
-              value={`${avgUtil}%`}
-              icon={TrendingUpRoundedIcon}
-              accent={avgUtil >= 90 ? 'error' : avgUtil >= 75 ? 'warning' : 'success'}
-            />
-            <KpiMetricCard
-              compact
-              title="Allocated Hours"
-              value={formatNumber(totalAllocated)}
-              subtitle={`of ${formatNumber(totalCapacity)}h capacity`}
-              icon={ScheduleRoundedIcon}
-              accent="info"
-            />
-            <KpiMetricCard
-              compact
-              title="Near / Over Capacity"
-              value={String(overloaded)}
-              icon={WarningAmberRoundedIcon}
-              accent="warning"
-            />
-          </KpiStrip>
-        }
       />
+
+      <Box sx={{ mb: 2.5 }}>
+        <KpiStrip columns={4}>
+          <KpiMetricCard
+            compact
+            title="Designers"
+            value={String(data.designers.length)}
+            icon={GroupsRoundedIcon}
+            accent="primary"
+          />
+          <KpiMetricCard
+            compact
+            title="Avg Utilization"
+            value={`${avgUtil}%`}
+            icon={TrendingUpRoundedIcon}
+            accent={avgUtil >= 90 ? 'error' : avgUtil >= 75 ? 'warning' : 'success'}
+          />
+          <KpiMetricCard
+            compact
+            title="Allocated Hours"
+            value={formatNumber(totalAllocated, 0) || '0'}
+            subtitle={`of ${formatNumber(totalCapacity, 0) || '0'}h capacity`}
+            icon={ScheduleRoundedIcon}
+            accent="info"
+          />
+          <KpiMetricCard
+            compact
+            title="Near / Over Capacity"
+            value={String(overloaded)}
+            icon={WarningAmberRoundedIcon}
+            accent="warning"
+          />
+        </KpiStrip>
+      </Box>
 
       <FilterToolbar
         sticky

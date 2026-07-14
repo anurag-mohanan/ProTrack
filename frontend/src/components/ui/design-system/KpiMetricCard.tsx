@@ -24,6 +24,11 @@ interface KpiMetricCardProps {
 
 const accentKeys: KpiAccent[] = ['primary', 'warning', 'error', 'success', 'info'];
 
+function displayValue(value: string): string {
+  const trimmed = value?.trim?.() ?? '';
+  return trimmed.length ? trimmed : '0';
+}
+
 export function KpiMetricCard({
   title,
   value,
@@ -43,6 +48,7 @@ export function KpiMetricCard({
     ? alpha(theme.palette[paletteKey].main, 0.1)
     : designTokens.semantic.neutralSoft;
   const iconForeground = accent ? theme.palette[paletteKey].main : theme.palette.text.secondary;
+  const shown = displayValue(value);
 
   const TrendIcon =
     trend?.direction === 'up'
@@ -58,6 +64,7 @@ export function KpiMetricCard({
         elevation={0}
         sx={{
           position: 'relative',
+          width: '100%',
           minHeight: 56,
           height: '100%',
           cursor: onClick ? 'pointer' : 'default',
@@ -144,10 +151,13 @@ export function KpiMetricCard({
               letterSpacing: '-0.03em',
               mt: 0.25,
               color: selected ? 'primary.dark' : 'text.primary',
+              fontVariantNumeric: 'tabular-nums',
               transition: `color ${designTokens.motion.fast}`,
             }}
+            noWrap
+            title={shown}
           >
-            {value}
+            {shown}
           </Typography>
         </CardContent>
       </Card>
@@ -159,7 +169,9 @@ export function KpiMetricCard({
       onClick={onClick}
       elevation={0}
       sx={{
-        minHeight: compact ? 108 : 124,
+        width: '100%',
+        minHeight: compact ? 96 : 112,
+        height: '100%',
         cursor: onClick ? 'pointer' : 'default',
         borderRadius: `${designTokens.radius.lg}px`,
         boxShadow: selected ? designTokens.elevation.cardHover : designTokens.elevation.card,
@@ -167,20 +179,30 @@ export function KpiMetricCard({
         borderColor: selected ? 'primary.main' : 'divider',
         bgcolor: selected ? alpha(theme.palette.primary.main, 0.04) : designTokens.semantic.card,
         transition: `box-shadow ${designTokens.motion.normal}, transform ${designTokens.motion.normal}, border-color ${designTokens.motion.fast}`,
+        overflow: 'hidden',
         '&:hover': onClick
           ? {
-              transform: 'translateY(-3px)',
+              transform: 'translateY(-2px)',
               boxShadow: designTokens.elevation.cardHover,
             }
           : undefined,
       }}
     >
-      <CardContent sx={{ p: '20px !important', height: '100%' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+      <CardContent
+        sx={{
+          p: compact ? '14px 16px !important' : '16px 18px !important',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0,
+          '&:last-child': { pb: compact ? '14px !important' : '16px !important' },
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.5 }}>
           <Box
             sx={{
-              width: 44,
-              height: 44,
+              width: compact ? 36 : 40,
+              height: compact ? 36 : 40,
               borderRadius: `${designTokens.radius.md}px`,
               display: 'grid',
               placeItems: 'center',
@@ -189,7 +211,7 @@ export function KpiMetricCard({
               flexShrink: 0,
             }}
           >
-            <Icon sx={{ fontSize: 22 }} />
+            <Icon sx={{ fontSize: compact ? 18 : 20 }} />
           </Box>
           {trend ? (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
@@ -202,28 +224,48 @@ export function KpiMetricCard({
         </Box>
         <Typography
           sx={{
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: 600,
             color: 'text.secondary',
-            mt: 1.5,
+            mt: 1.25,
             letterSpacing: '0.01em',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
+          title={title}
         >
           {title}
         </Typography>
         <Typography
           sx={{
-            fontSize: compact ? 30 : 34,
+            fontSize: compact ? 24 : 28,
             fontWeight: 800,
-            lineHeight: 1.05,
+            lineHeight: 1.15,
             letterSpacing: '-0.03em',
-            my: 0.5,
+            mt: 0.35,
+            fontVariantNumeric: 'tabular-nums',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
+          title={shown}
         >
-          {value}
+          {shown}
         </Typography>
         {subtitle ? (
-          <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.3 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              lineHeight: 1.3,
+              mt: 0.25,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={subtitle}
+          >
             {subtitle}
           </Typography>
         ) : null}

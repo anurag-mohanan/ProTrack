@@ -11,11 +11,22 @@ export function sanitizeDisplayText(value: unknown): string {
   return String(value).trim();
 }
 
-export function formatNumber(value: number | null | undefined, digits = 2): string {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+/** Coerce API Decimal/string/number payloads to a finite number (else 0). */
+export function toFiniteNumber(value: unknown): number {
+  if (value === null || value === undefined || value === '') return 0;
+  const n = typeof value === 'number' ? value : Number(String(value).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function formatNumber(value: number | string | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || value === '') {
     return '';
   }
-  return Number(value).toLocaleString(undefined, {
+  const n = typeof value === 'number' ? value : Number(String(value).replace(/,/g, ''));
+  if (!Number.isFinite(n)) {
+    return '';
+  }
+  return n.toLocaleString(undefined, {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
   });

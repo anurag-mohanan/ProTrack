@@ -55,6 +55,7 @@ export function DashboardKpiCard({
       elevation={0}
       sx={{
         minHeight: 92,
+        width: '100%',
         height: '100%',
         cursor: onClick ? 'pointer' : 'default',
         borderRadius: `${designTokens.radius.md}px`,

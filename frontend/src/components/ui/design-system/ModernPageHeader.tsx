@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Box, Breadcrumbs, Link, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
-import { designTokens } from '../../../theme/designTokens';
 
 export interface BreadcrumbItem {
   label: string;
@@ -73,18 +72,7 @@ export function ModernPageHeader({
         ) : null}
       </Box>
       {summary ? (
-        <Box
-          sx={{
-            mt: 2,
-            p: 2,
-            borderRadius: `${designTokens.radius.md}px`,
-            bgcolor: designTokens.semantic.primarySoft,
-            border: '1px solid',
-            borderColor: 'divider',
-          }}
-        >
-          {summary}
-        </Box>
+        <Box sx={{ mt: 2, width: '100%' }}>{summary}</Box>
       ) : null}
     </Box>
   );

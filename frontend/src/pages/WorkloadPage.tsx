@@ -32,7 +32,7 @@ import {
   compactFilterFieldSx,
 } from '../components/ui/design-system';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
-import { formatDisplayValue, formatNumber } from '../utils/format';
+import { formatDisplayValue, formatNumber, toFiniteNumber } from '../utils/format';
 
 export function WorkloadPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -120,25 +120,18 @@ export function WorkloadPage() {
 
   const summary = useMemo(() => {
     const rows = filteredWorkload;
-    const quoted = rows.reduce((s, r) => s + r.quoted_hours_assigned, 0);
-    const actual = rows.reduce((s, r) => s + r.actual_hours_logged, 0);
-    const weekHours = rows.reduce((s, r) => s + r.hours_this_week, 0);
-    const totalHours =
-      (summaryQuery.data?.billable_hours ?? 0) +
-      (summaryQuery.data?.non_billable_hours ?? 0) +
-      (summaryQuery.data?.np_hours ?? 0);
+    const quoted = rows.reduce((s, r) => s + toFiniteNumber(r.quoted_hours_assigned), 0);
+    const actual = rows.reduce((s, r) => s + toFiniteNumber(r.actual_hours_logged), 0);
+    const weekHours = rows.reduce((s, r) => s + toFiniteNumber(r.hours_this_week), 0);
+    const billable = toFiniteNumber(summaryQuery.data?.billable_hours);
+    const nonBillable = toFiniteNumber(summaryQuery.data?.non_billable_hours);
+    const np = toFiniteNumber(summaryQuery.data?.np_hours);
+    const totalHours = billable + nonBillable + np;
     const billablePct =
       totalHours > 0
-        ? Math.round(((summaryQuery.data?.billable_hours ?? 0) / totalHours) * 100)
-        : summaryQuery.data?.productive_percent ?? 0;
-    const npPct =
-      summaryQuery.data && summaryQuery.data.billable_hours + summaryQuery.data.np_hours > 0
-        ? Math.round(
-            (summaryQuery.data.np_hours /
-              (summaryQuery.data.billable_hours + summaryQuery.data.non_billable_hours + summaryQuery.data.np_hours)) *
-              100,
-          )
-        : 0;
+        ? Math.round((billable / totalHours) * 100)
+        : Math.round(toFiniteNumber(summaryQuery.data?.productive_percent));
+    const npPct = totalHours > 0 ? Math.round((np / totalHours) * 100) : 0;
     return { quoted, actual, weekHours, billablePct, npPct, count: rows.length };
   }, [filteredWorkload, summaryQuery.data]);
 
@@ -172,39 +165,40 @@ export function WorkloadPage() {
       <ModernPageHeader
         title="Workload Dashboard"
         subtitle="Designer heatmap, utilization summary, and team capacity forecasts"
-        summary={
-          <KpiStrip columns={{ xs: 12, sm: 6, md: 3 }}>
-            <KpiMetricCard
-              compact
-              title="Designers"
-              value={String(summary.count)}
-              icon={GroupsRoundedIcon}
-              accent="primary"
-            />
-            <KpiMetricCard
-              compact
-              title="Hours This Week"
-              value={formatNumber(summary.weekHours)}
-              icon={AccessTimeRoundedIcon}
-              accent="info"
-            />
-            <KpiMetricCard
-              compact
-              title="Billable %"
-              value={`${formatNumber(summary.billablePct)}%`}
-              icon={PaidRoundedIcon}
-              accent="success"
-            />
-            <KpiMetricCard
-              compact
-              title="NP Share"
-              value={`${summary.npPct}%`}
-              icon={TrendingUpRoundedIcon}
-              accent="warning"
-            />
-          </KpiStrip>
-        }
       />
+
+      <Box sx={{ mb: 2.5 }}>
+        <KpiStrip columns={4}>
+          <KpiMetricCard
+            compact
+            title="Designers"
+            value={String(summary.count)}
+            icon={GroupsRoundedIcon}
+            accent="primary"
+          />
+          <KpiMetricCard
+            compact
+            title="Hours This Week"
+            value={formatNumber(summary.weekHours, 1) || '0'}
+            icon={AccessTimeRoundedIcon}
+            accent="info"
+          />
+          <KpiMetricCard
+            compact
+            title="Billable %"
+            value={`${formatNumber(summary.billablePct, 0) || '0'}%`}
+            icon={PaidRoundedIcon}
+            accent="success"
+          />
+          <KpiMetricCard
+            compact
+            title="NP Share"
+            value={`${formatNumber(summary.npPct, 0) || '0'}%`}
+            icon={TrendingUpRoundedIcon}
+            accent="warning"
+          />
+        </KpiStrip>
+      </Box>
 
       <FilterToolbar
         sticky

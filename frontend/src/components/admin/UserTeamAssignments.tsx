@@ -127,10 +127,13 @@ export function UserTeamAssignments({
               {checked && assignment ? (
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1, pl: 4 }}>
                   <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel id={`relationship-${team.id}`}>Relationship</InputLabel>
+                    <InputLabel id={`relationship-${team.id}`} shrink>
+                      Relationship
+                    </InputLabel>
                     <Select
                       labelId={`relationship-${team.id}`}
                       label="Relationship"
+                      notched
                       value={assignment.relationship_type}
                       disabled={disabled}
                       onChange={(event) =>

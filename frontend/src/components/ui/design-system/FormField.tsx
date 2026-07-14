@@ -30,16 +30,8 @@ export function FormField({
 }: FormFieldProps) {
   const stringValue = typeof value === 'string' ? value : '';
   const showCounter = maxLength !== undefined;
-
-  const decoratedLabel =
-    typeof props.label === 'string' && tooltip ? (
-      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-        {props.label}
-        <HelpTooltip title={tooltip} />
-      </Box>
-    ) : (
-      props.label
-    );
+  const hasValue =
+    value !== '' && value !== null && value !== undefined && !(Array.isArray(value) && value.length === 0);
 
   const ValidationIcon =
     validationState === 'success'
@@ -49,10 +41,15 @@ export function FormField({
         : null;
 
   return (
-    <>
+    <Box>
+      {tooltip ? (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: -0.5, mr: 0.25, position: 'relative', zIndex: 1 }}>
+          <HelpTooltip title={tooltip} />
+        </Box>
+      ) : null}
       <TextField
         {...props}
-        label={decoratedLabel}
+        label={props.label}
         value={value}
         error={error}
         variant="outlined"
@@ -62,6 +59,10 @@ export function FormField({
           htmlInput: {
             maxLength,
             ...props.slotProps?.htmlInput,
+          },
+          inputLabel: {
+            shrink: hasValue || props.focused || undefined,
+            ...props.slotProps?.inputLabel,
           },
         }}
         sx={{
@@ -99,6 +100,6 @@ export function FormField({
           ) : null}
         </FormHelperText>
       )}
-    </>
+    </Box>
   );
 }

@@ -348,6 +348,40 @@ function buildComponents(mode: ProsohmColorMode): ThemeOptions['components'] {
         root: {
           fontWeight: 500,
         },
+        outlined: {
+          // Keep clear of the input text while floating; stops label/value collision
+          // when Select/Autocomplete values are long.
+          '&.MuiInputLabel-shrink': {
+            backgroundColor: colors.neutral.surface,
+            paddingInline: 4,
+            marginLeft: -2,
+          },
+        },
+      },
+    },
+    MuiSelect: {
+      defaultProps: {
+        // Ensures empty Select fields still reserve notch space when a label is used.
+      },
+      styleOverrides: {
+        select: {
+          // Prevent selected MenuItem text from painting under a stuck label.
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        },
+      },
+    },
+    MuiFormControl: {
+      styleOverrides: {
+        root: {
+          // Outlined labels need vertical room so they can float above the value.
+          '& .MuiInputLabel-outlined:not(.MuiInputLabel-shrink)': {
+            maxWidth: 'calc(100% - 36px)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          },
+        },
       },
     },
     MuiDialog: {

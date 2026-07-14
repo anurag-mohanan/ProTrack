@@ -1,3 +1,4 @@
+import { useId, useState } from 'react';
 import {
   Autocomplete,
   FormControl,
@@ -16,7 +17,7 @@ export interface SelectOption {
   label: string;
 }
 
-interface FormSelectProps extends Omit<SelectProps, 'variant'> {
+interface FormSelectProps extends Omit<SelectProps, 'variant' | 'label'> {
   label: string;
   options: SelectOption[];
   searchable?: boolean;
@@ -25,6 +26,11 @@ interface FormSelectProps extends Omit<SelectProps, 'variant'> {
   tooltip?: string;
 }
 
+/**
+ * Shared select for create/edit forms.
+ * Keep the floating label as a plain string (tooltip sits outside) so the outline
+ * notch width matches and selected values never collide with the label.
+ */
 export function FormSelect({
   label,
   options,
@@ -38,19 +44,23 @@ export function FormSelect({
   tooltip,
   ...props
 }: FormSelectProps) {
-  const labelWithTooltip = tooltip ? (
-    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-      {label}
+  const labelId = useId();
+  const [open, setOpen] = useState(false);
+  const hasValue = value !== '' && value !== null && value !== undefined;
+  // Notch whenever open, valued, or showing a placeholder — stops label/value stack.
+  const shrink = open || hasValue || Boolean(placeholder);
+
+  const helpAffordance = tooltip ? (
+    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: -0.5, mr: 0.25, position: 'relative', zIndex: 1 }}>
       <HelpTooltip title={tooltip} />
     </Box>
-  ) : (
-    label
-  );
+  ) : null;
 
   if (searchable) {
     const selected = options.find((option) => option.value === value) ?? null;
     return (
       <Box>
+        {helpAffordance}
         <Autocomplete
           options={options}
           value={selected}
@@ -66,9 +76,14 @@ export function FormSelect({
           renderInput={(params) => (
             <TextField
               {...params}
-              label={labelWithTooltip}
+              label={label}
               required={required}
               placeholder={placeholder}
+              slotProps={{
+                inputLabel: {
+                  shrink: Boolean(selected) || Boolean(placeholder) || undefined,
+                },
+              }}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2.5,
@@ -83,26 +98,47 @@ export function FormSelect({
   }
 
   return (
-    <FormControl fullWidth required={required} disabled={disabled}>
-      <InputLabel>{labelWithTooltip}</InputLabel>
-      <Select
-        {...props}
-        label={label}
-        value={value ?? ''}
-        displayEmpty
-        onChange={onChange}
-        sx={{
-          borderRadius: 2.5,
-          ...props.sx,
-        }}
-      >
-        {options.map((option) => (
-          <MenuItem key={option.value || '__none__'} value={option.value}>
-            {option.label}
-          </MenuItem>
-        ))}
-      </Select>
-      {helper ? <FormHelperText>{helper}</FormHelperText> : null}
-    </FormControl>
+    <Box>
+      {helpAffordance}
+      <FormControl fullWidth required={required} disabled={disabled}>
+        <InputLabel id={labelId} shrink={shrink}>
+          {label}
+        </InputLabel>
+        <Select
+          {...props}
+          labelId={labelId}
+          label={label}
+          notched={shrink}
+          value={value ?? ''}
+          displayEmpty={Boolean(placeholder)}
+          open={open}
+          onOpen={(event) => {
+            setOpen(true);
+            props.onOpen?.(event);
+          }}
+          onClose={(event) => {
+            setOpen(false);
+            props.onClose?.(event);
+          }}
+          onChange={onChange}
+          sx={{
+            borderRadius: 2.5,
+            ...props.sx,
+          }}
+        >
+          {placeholder ? (
+            <MenuItem value="">
+              <em>{placeholder}</em>
+            </MenuItem>
+          ) : null}
+          {options.map((option) => (
+            <MenuItem key={option.value || '__none__'} value={option.value}>
+              {option.label}
+            </MenuItem>
+          ))}
+        </Select>
+        {helper ? <FormHelperText>{helper}</FormHelperText> : null}
+      </FormControl>
+    </Box>
   );
 }

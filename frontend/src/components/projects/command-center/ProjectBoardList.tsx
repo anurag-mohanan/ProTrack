@@ -1,4 +1,13 @@
-import { Box, Chip, IconButton, LinearProgress, Menu, MenuItem, Stack, Typography } from '@mui/material';
+import {
+  Box,
+  Chip,
+  IconButton,
+  LinearProgress,
+  Menu,
+  MenuItem,
+  Stack,
+  Typography,
+} from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useMemo, useState, type MouseEvent } from 'react';
 import type { Customer, Project, Stream, Team, User } from '../../../types';
@@ -21,29 +30,64 @@ function isOnHold(project: ProjectTableRow) {
   return project.execution_status === 'on_hold';
 }
 
-function workersLabel(row: ProjectTableRow) {
-  return [row.designerName, row.surfacerName].filter(Boolean).join(' · ') || '—';
+function cleanName(value?: string | null) {
+  const trimmed = (value ?? '').trim();
+  return trimmed && trimmed !== '—' ? trimmed : '';
 }
 
-function HoursLine({ row }: { row: ProjectTableRow }) {
+function HoursMetrics({ row }: { row: ProjectTableRow }) {
   const quoted = Number(row.quoted_hours ?? 0);
   const actual = Number(row.actual_hours ?? 0);
   const variancePct = quoted > 0 ? ((actual - quoted) / quoted) * 100 : null;
   const over = typeof variancePct === 'number' && variancePct > 0;
   const under = typeof variancePct === 'number' && variancePct < 0;
-  const color = over ? designTokens.semantic.danger : under ? designTokens.semantic.success : 'text.secondary';
-  const label =
+  const varianceColor = over
+    ? designTokens.semantic.danger
+    : under
+      ? designTokens.semantic.success
+      : 'text.secondary';
+  const varianceLabel =
     typeof variancePct === 'number'
       ? `${variancePct > 0 ? '+' : ''}${Math.round(variancePct)}%`
       : 'n/a';
 
   return (
-    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }} noWrap>
-      Q {formatNumber(quoted, 0)}h · A {formatNumber(actual, 0)}h ·{' '}
-      <Box component="span" sx={{ color, fontWeight: 800 }}>
-        {label}
-      </Box>
-    </Typography>
+    <Stack
+      direction="row"
+      spacing={0.75}
+      useFlexGap
+      sx={{ flexWrap: 'wrap', alignItems: 'center', mt: 0.35 }}
+    >
+      <Typography
+        component="span"
+        variant="caption"
+        color="text.secondary"
+        sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}
+      >
+        Q {formatNumber(quoted, 0)}h
+      </Typography>
+      <Typography component="span" variant="caption" color="text.disabled" sx={{ lineHeight: 1.35 }}>
+        ·
+      </Typography>
+      <Typography
+        component="span"
+        variant="caption"
+        color="text.secondary"
+        sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}
+      >
+        A {formatNumber(actual, 0)}h
+      </Typography>
+      <Typography component="span" variant="caption" color="text.disabled" sx={{ lineHeight: 1.35 }}>
+        ·
+      </Typography>
+      <Typography
+        component="span"
+        variant="caption"
+        sx={{ color: varianceColor, fontWeight: 800, fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}
+      >
+        {varianceLabel}
+      </Typography>
+    </Stack>
   );
 }
 
@@ -90,6 +134,9 @@ function ProjectBoardRow({
   const stage = row.current_milestone || humanizeStage(row.project_stage);
   const percent = Math.max(0, Math.min(100, Number(row.progress_percent ?? 0)));
   const muted = isOnHold(row);
+  const designer = cleanName(row.designerName);
+  const surfacer = cleanName(row.surfacerName);
+  const people = [designer, surfacer].filter(Boolean);
 
   const openMenu = (event: MouseEvent<HTMLElement>) => {
     event.stopPropagation();
@@ -101,26 +148,31 @@ function ProjectBoardRow({
       onClick={() => onRowOpen?.(row)}
       sx={{
         px: 1.25,
-        py: 0.85,
+        py: 1,
         borderRadius: 2,
         bgcolor: 'background.paper',
         border: '1px solid',
         borderColor: 'divider',
         borderLeft: `4px solid ${health.main}`,
         display: 'grid',
-        gridTemplateColumns: { xs: '64px minmax(0, 1fr) auto', md: '72px minmax(0, 1.3fr) minmax(120px, 0.9fr) 88px auto' },
-        gap: 1,
-        alignItems: 'center',
+        gridTemplateColumns: {
+          xs: '72px minmax(0, 1fr) auto',
+          md: '80px minmax(0, 1.4fr) minmax(140px, 0.85fr) 96px auto',
+        },
+        columnGap: 1.5,
+        rowGap: 0.5,
+        alignItems: 'start',
         cursor: onRowOpen ? 'pointer' : 'default',
         opacity: muted ? 0.82 : 1,
         '&:hover': { bgcolor: 'action.hover' },
       }}
     >
-      <Typography sx={{ fontWeight: 800, fontSize: '0.95rem' }} noWrap>
+      <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', pt: 0.15 }} noWrap>
         {row.tool_number}
       </Typography>
-      <Box sx={{ minWidth: 0 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: '0.84rem' }} noWrap>
+
+      <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.35 }}>
+        <Typography sx={{ fontWeight: 700, fontSize: '0.84rem', lineHeight: 1.35 }} noWrap>
           {formatDisplayValue(stage)}
           {row.customerName ? (
             <Box component="span" sx={{ color: 'text.secondary', fontWeight: 600 }}>
@@ -129,17 +181,26 @@ function ProjectBoardRow({
             </Box>
           ) : null}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }} noWrap>
-          {workersLabel(row)}
+
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontWeight: 600, lineHeight: 1.4, display: 'block' }}
+          noWrap
+          title={people.join(' · ') || undefined}
+        >
+          {people.length ? people.join(' · ') : 'Unassigned'}
         </Typography>
-        <HoursLine row={row} />
+
+        <HoursMetrics row={row} />
       </Box>
-      <Box sx={{ display: { xs: 'none', md: 'block' }, minWidth: 0 }}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.25 }}>
+
+      <Box sx={{ display: { xs: 'none', md: 'block' }, minWidth: 0, pt: 0.35 }}>
+        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.35 }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-            DONE
+            Progress
           </Typography>
-          <Typography variant="caption" sx={{ fontWeight: 800 }}>
+          <Typography variant="caption" sx={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
             {Math.round(percent)}%
           </Typography>
         </Stack>
@@ -154,17 +215,26 @@ function ProjectBoardRow({
           }}
         />
       </Box>
+
       <Typography
         variant="caption"
         color="text.secondary"
-        sx={{ display: { xs: 'none', md: 'block' }, fontWeight: 700, textAlign: 'right' }}
+        sx={{
+          display: { xs: 'none', md: 'block' },
+          fontWeight: 700,
+          textAlign: 'right',
+          pt: 0.35,
+          fontVariantNumeric: 'tabular-nums',
+        }}
         noWrap
       >
         {row.due_date ? formatDate(row.due_date) : '—'}
       </Typography>
-      <IconButton size="small" aria-label="Project actions" onClick={openMenu}>
+
+      <IconButton size="small" aria-label="Project actions" onClick={openMenu} sx={{ mt: -0.25 }}>
         <MoreVertIcon fontSize="small" />
       </IconButton>
+
       <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
         {onRowOpen ? (
           <MenuItem

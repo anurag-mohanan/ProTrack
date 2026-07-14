@@ -1,6 +1,5 @@
 import type { SvgIconComponent } from '@mui/icons-material';
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
-import ArchiveRoundedIcon from '@mui/icons-material/ArchiveRounded';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
@@ -179,12 +178,8 @@ const NAV_MODULE_CONFIG: Array<{
     path: '/projects',
     icon: FolderRoundedIcon,
   },
-  {
-    module: MODULE_ARCHIVED_PROJECTS,
-    label: 'Archived Projects',
-    path: '/projects/archived',
-    icon: ArchiveRoundedIcon,
-  },
+  // Archived projects intentionally omitted from Engineering Operations primary nav
+  // (Ops/EM: not a day-to-day strip item). Reach via Projects filters or Admin → Archived Records.
   { module: MODULE_TIMESHEETS, label: 'Timesheets', path: '/timesheets', icon: ScheduleRoundedIcon },
   { module: MODULE_WORKLOAD, label: 'Workload', path: '/workload', icon: GroupsRoundedIcon },
   {

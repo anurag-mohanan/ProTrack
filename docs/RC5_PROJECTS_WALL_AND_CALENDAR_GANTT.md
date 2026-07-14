@@ -2,11 +2,12 @@
 
 ## Ops / Engineering Manager → Senior decisions
 
-1. **Engineering ops nav:** Dashboard → Projects → Archived → Timesheets → Workload → Resource Planning → Calendar. Planning Board stays gated (PB role / explicit module grant), not in the shared ops strip for designers.
-2. **Projects UI:** Planning Board–like compact rows (health edge, stage, designer/surfacer, Q/A/variance, progress, due). Visibility unchanged: `project_visibility_clause` (team + personally assigned).
-3. **Calendar module:** Leaders (Engineering Manager, Design Leader, Admin) get `calendar` by default. Designer / Junior / Senior / Surfacer do **not**.
-4. **Calendar = project Gantt:** Bars from `created_at` → `due_date` (or `completed_at`). Missing due shows TBD. Same visibility clause as projects.
-5. **No Zoho quoting module** in this release.
+1. **Engineering ops nav:** Dashboard → Projects → Timesheets → Workload → Resource Planning → Calendar. Planning Board stays gated (PB role / explicit module grant), not in the shared ops strip for designers.
+2. **Archived Projects:** Not in Engineering Operations primary nav (infrequent). Open via Projects → **Archived** button, Projects filters, or Admin → Archived Records.
+3. **Projects UI:** Planning Board–like compact rows (health edge, stage, designer/surfacer, Q/A/variance, progress, due). Visibility unchanged: `project_visibility_clause` (team + personally assigned).
+4. **Calendar module:** Leaders (Engineering Manager, Design Leader, Admin) get `calendar` by default. Designer / Junior / Senior / Surfacer do **not**.
+5. **Calendar = project Gantt:** Bars from `created_at` → `due_date` (or `completed_at`). Missing due shows TBD. Same visibility clause as projects.
+6. **No Zoho quoting module** in this release.
 
 ## Code touchpoints
 
@@ -21,8 +22,8 @@
 
 | # | Check | Pass |
 |---|--------|------|
-| 1 | Nav order: Dashboard → Projects → Archived → Timesheets → Workload → Resource Planning → Calendar | |
-| 2 | Designer nav has no Calendar, no Planning Board | |
+| 1 | Nav order: Dashboard → Projects → Timesheets → Workload → Resource Planning → Calendar | |
+| 2 | Designer nav has no Calendar, no Planning Board, no Archived Projects | |
 | 3 | EM / Design Leader nav includes Calendar | |
 | 4 | Projects page shows compact wall rows (Active then On hold) | |
 | 5 | Designer My Projects shows team + cross-util only | |

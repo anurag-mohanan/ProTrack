@@ -43,7 +43,7 @@ import type { ProjectStage } from '../types';
 import { exportToCsv } from '../utils/exportData';
 import { filterProjectsForAccessibleTeams, groupProjectsByTeam } from '../utils/projectTeamGroups';
 import { getLeaderTeamScopeIds, shouldGroupProjectsByTeamForUser, shouldScopeProjectsByLeaderTeams } from '../utils/projectTeamScope';
-import { canArchiveProject, canCreateProject, canDeleteRecords } from '../utils/permissions';
+import { canArchiveProject, canCreateProject, canDeleteRecords, canViewArchivedProjects } from '../utils/permissions';
 import {
   applyKpiQuickFilter,
   computeProjectPortfolioMetrics,
@@ -412,6 +412,7 @@ export function ProjectsPage() {
 
   const showArchiveActions = canArchiveProject(user?.role_name ?? '');
   const showCreateProject = canCreateProject(user?.role_name ?? '');
+  const showArchivedLink = user ? canViewArchivedProjects(user) : false;
   const tableLoading = projectsQuery.isPending;
 
   const subtitle = portfolioMetrics
@@ -490,16 +491,26 @@ export function ProjectsPage() {
               {subtitle}
             </Typography>
           </Box>
-          {showCreateProject ? (
-            <ProsohmButton
-              buttonVariant="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateOpen(true)}
-              sx={{ flexShrink: 0 }}
-            >
-              Create Project
-            </ProsohmButton>
-          ) : null}
+          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {showArchivedLink ? (
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => navigateWithBack(navigate, '/projects/archived')}
+              >
+                Archived
+              </ProsohmButton>
+            ) : null}
+            {showCreateProject ? (
+              <ProsohmButton
+                buttonVariant="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setCreateOpen(true)}
+              >
+                Create Project
+              </ProsohmButton>
+            ) : null}
+          </Box>
         </Box>
 
         <Box

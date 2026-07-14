@@ -30,6 +30,25 @@ def test_extract_workorder_loose_patterns():
     assert result.cavity_count == 1
 
 
+def test_extract_press_tonnage_from_general_notes_line():
+    """Real customer WOs put tonnage in notes, e.g. '2200T Press 308'."""
+    text = """
+    General Notes (Intermediate)
+    2200T Press 308
+    Locating Ring 5.990 "
+    76V X 62H X 34.75 SH
+    Change direct press bolts to Slots . press bolts are 1.25 " and use 1.5" slots
+    """
+    result = extract_workorder_fields_from_text(text)
+    assert result.press_tonnage == "2200T"
+
+
+def test_extract_press_tonnage_variants():
+    assert extract_workorder_fields_from_text("Press 1800T required").press_tonnage == "1800T"
+    assert extract_workorder_fields_from_text("Press Tonnage: 650 T").press_tonnage == "650T"
+    assert extract_workorder_fields_from_text("650 T Press for tool").press_tonnage == "650T"
+
+
 def test_stdlib_pdf_scrape_reads_literals():
     from app.services.workorder_pdf_extract import _extract_text_stdlib, extract_workorder_fields_from_pdf
 

@@ -85,7 +85,7 @@ def _parse_cavity(value: str) -> int | None:
 
 def _parse_tonnage(value: str) -> str | None:
     match = re.search(
-        r"(\d{2,4}(?:[.,]\d+)?)\s*(t|ton|tons|tonne|tonnes)?\b",
+        r"(\d{2,5}(?:[.,]\d+)?)\s*(t|ton|tons|tonne|tonnes)?\b",
         value,
         re.IGNORECASE,
     )
@@ -93,10 +93,42 @@ def _parse_tonnage(value: str) -> str | None:
         cleaned = _clean(value)
         return cleaned[:50] if cleaned else None
     amount = match.group(1).replace(",", "")
-    unit = (match.group(2) or "T").upper()
-    if unit.startswith("T"):
-        unit = "T"
-    return f"{amount}{unit}"
+    # Press sizes are whole tons (e.g. 650, 2200) — drop stray decimals from OCR.
+    if "." in amount:
+        amount = amount.split(".", 1)[0]
+    if not amount.isdigit():
+        return None
+    tons = int(amount)
+    # Guard against tool-size noise (e.g. 1.25" bolt text partials misread as tonnage).
+    if tons < 50 or tons > 10000:
+        return None
+    return f"{tons}T"
+
+
+def _find_press_tonnage(text: str) -> str | None:
+    """
+    Customer notes often write freeform lines like ``2200T Press 308`` rather than
+    ``Press Tonnage: 2200T``. Prefer press-context matches, then labelled tonnage.
+    """
+    patterns = (
+        # "2200T Press 308" / "2200 T Press"
+        r"\b(\d{3,5})\s*[Tt]\s+[Pp]ress\b",
+        # "Press 2200T" / "Press: 2200 T" / "Press tonnage 2200T"
+        r"\b[Pp]ress(?:\s*tonnage)?\s*[:#\-]?\s*(\d{3,5})\s*[Tt]\b",
+        # "Tonnage: 2200T" / "Press Tonnage - 2200 ton"
+        r"(?:press\s*)?tonnage\s*[:\-#]?\s*(\d{2,5}(?:[.,]\d+)?)\s*[Tt](?:on(?:ne)?s?)?\b",
+        # Same line contains both press + NNNNT
+        r"(?im)^(?=.*\bpress\b).{0,80}?\b(\d{3,5})\s*[Tt]\b",
+        r"(?im)^.{0,80}?\b(\d{3,5})\s*[Tt]\b(?=.*\bpress\b).{0,40}$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+        if not match:
+            continue
+        parsed = _parse_tonnage(match.group(1) + "T")
+        if parsed:
+            return parsed
+    return None
 
 
 def _apply_field(result: WorkorderExtract, bucket: str, raw: str) -> None:
@@ -141,13 +173,9 @@ def _scan_loose_patterns(text: str, result: WorkorderExtract) -> None:
             _apply_field(result, "work_order_number", match.group(1))
 
     if not result.press_tonnage:
-        match = re.search(
-            r"(?:press\s*)?tonnage\s*[:\-#]?\s*(\d{2,4}(?:[.,]\d+)?\s*t(?:on(?:ne)?s?)?)",
-            text,
-            re.IGNORECASE,
-        ) or re.search(r"\b(\d{2,4})\s*t(?:on(?:ne)?s?)?\b", text, re.IGNORECASE)
-        if match:
-            _apply_field(result, "press_tonnage", match.group(1))
+        found = _find_press_tonnage(text)
+        if found:
+            result.press_tonnage = found
 
     if not result.plastic_material:
         match = re.search(
@@ -237,8 +265,10 @@ def _extract_text_stdlib(content: bytes) -> str:
                 "tool type",
                 "part description",
                 "plastic",
+                "general notes",
+                "press",
             )
-        ):
+        ) or re.search(r"\b\d{3,5}\s*t\b", cleaned, re.IGNORECASE):
             parts.append(cleaned)
 
     # Deduplicate while preserving order

@@ -14,7 +14,7 @@ const livePulse = keyframes`
   100% { opacity: 1; transform: scale(1); }
 `;
 
-/** Wall / TV chrome — high contrast, brand navy, distance-readable. */
+/** Fixed office TV chrome — locked viewport, no page scroll. */
 export function PlanningBoardLayout() {
   const { displayName, logout, user } = useAuth();
   const navigate = useNavigate();
@@ -35,7 +35,9 @@ export function PlanningBoardLayout() {
   return (
     <Box
       sx={{
-        minHeight: '100vh',
+        height: '100dvh',
+        maxHeight: '100dvh',
+        overflow: 'hidden',
         bgcolor: designTokens.semantic.sidebar,
         color: '#f8fafc',
         display: 'flex',
@@ -43,45 +45,57 @@ export function PlanningBoardLayout() {
       }}
     >
       <AppBar
-        position="sticky"
+        position="static"
         elevation={0}
         sx={{
-          bgcolor: 'rgba(15, 23, 42, 0.96)',
+          flexShrink: 0,
+          bgcolor: 'rgba(15, 23, 42, 0.98)',
           borderBottom: '1px solid rgba(148, 163, 184, 0.22)',
-          backdropFilter: 'blur(10px)',
         }}
       >
         <Toolbar
           sx={{
-            gap: 2,
-            minHeight: { xs: 72, md: 88 },
-            px: { xs: 2, md: 3 },
-            py: 1,
+            gap: 1.5,
+            minHeight: { xs: 52, md: 56 },
+            height: { xs: 52, md: 56 },
+            px: { xs: 1.5, md: 2 },
           }}
         >
           <Box
             sx={{
               bgcolor: '#fff',
-              borderRadius: 2,
-              px: 1.25,
-              py: 0.75,
+              borderRadius: 1.5,
+              px: 1,
+              py: 0.4,
               display: 'inline-flex',
               alignItems: 'center',
             }}
           >
-            <LogoHomeLink to={homePath} size="md" />
+            <LogoHomeLink to={homePath} size="sm" />
           </Box>
 
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            <StackTitle />
-          </Box>
+          <Typography
+            sx={{
+              flexGrow: 1,
+              minWidth: 0,
+              fontWeight: 800,
+              fontSize: { xs: '1.05rem', md: '1.25rem' },
+              letterSpacing: '-0.02em',
+              color: '#f8fafc',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            Planning Board — Live
+          </Typography>
 
           <Chip
             icon={
               <Box
                 sx={{
-                  width: 8,
-                  height: 8,
+                  width: 7,
+                  height: 7,
                   borderRadius: '50%',
                   bgcolor: designTokens.semantic.success,
                   animation: `${livePulse} 1.6s ease-in-out infinite`,
@@ -90,10 +104,11 @@ export function PlanningBoardLayout() {
               />
             }
             label="LIVE"
+            size="small"
             sx={{
-              height: 36,
+              height: 28,
               fontWeight: 800,
-              fontSize: '0.85rem',
+              fontSize: '0.75rem',
               letterSpacing: 1,
               bgcolor: 'rgba(22, 163, 74, 0.18)',
               color: '#86efac',
@@ -108,7 +123,7 @@ export function PlanningBoardLayout() {
               display: { xs: 'none', lg: 'block' },
               color: 'rgba(226, 232, 240, 0.8)',
               fontWeight: 600,
-              fontSize: '1rem',
+              fontSize: '0.9rem',
               whiteSpace: 'nowrap',
             }}
           >
@@ -117,6 +132,7 @@ export function PlanningBoardLayout() {
 
           <Button
             variant="outlined"
+            size="small"
             startIcon={<HomeRoundedIcon />}
             onClick={() => navigate(homePath)}
             sx={{
@@ -124,7 +140,7 @@ export function PlanningBoardLayout() {
               color: '#e2e8f0',
               borderColor: 'rgba(148, 163, 184, 0.45)',
               fontWeight: 700,
-              px: 2,
+              py: 0.25,
               '&:hover': {
                 borderColor: '#93c5fd',
                 bgcolor: 'rgba(37, 99, 235, 0.15)',
@@ -133,69 +149,45 @@ export function PlanningBoardLayout() {
           >
             Home
           </Button>
-          <Button
-            aria-label="Go to home"
-            onClick={() => navigate(homePath)}
-            sx={{
-              display: { xs: 'inline-flex', sm: 'none' },
-              minWidth: 44,
-              color: '#e2e8f0',
-              border: '1px solid rgba(148, 163, 184, 0.45)',
-            }}
-          >
-            <HomeRoundedIcon />
-          </Button>
 
           <Typography
             sx={{
               display: { xs: 'none', md: 'block' },
               color: 'rgba(226, 232, 240, 0.75)',
               fontWeight: 600,
+              fontSize: '0.85rem',
+              maxWidth: 140,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
             {displayName}
           </Typography>
           <Button
+            size="small"
             onClick={() => void handleLogout()}
-            sx={{ color: 'rgba(226, 232, 240, 0.9)', fontWeight: 600 }}
+            sx={{ color: 'rgba(226, 232, 240, 0.9)', fontWeight: 600, minWidth: 0 }}
           >
             Sign out
           </Button>
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ flexGrow: 1, p: { xs: 2, md: 2.5, xl: 3 } }}>
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden',
+          p: { xs: 1, md: 1.25 },
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         <PageErrorBoundary title="Planning board could not be loaded.">
           <Outlet />
         </PageErrorBoundary>
       </Box>
-    </Box>
-  );
-}
-
-function StackTitle() {
-  return (
-    <Box>
-      <Typography
-        sx={{
-          fontWeight: 800,
-          fontSize: { xs: '1.35rem', md: '1.75rem' },
-          lineHeight: 1.15,
-          letterSpacing: '-0.02em',
-          color: '#f8fafc',
-        }}
-      >
-        Planning Board — Live
-      </Typography>
-      <Typography
-        sx={{
-          color: 'rgba(148, 163, 184, 0.95)',
-          fontWeight: 600,
-          fontSize: { xs: '0.8rem', md: '0.95rem' },
-        }}
-      >
-        Program · Operations · Engineering · wall monitor
-      </Typography>
     </Box>
   );
 }

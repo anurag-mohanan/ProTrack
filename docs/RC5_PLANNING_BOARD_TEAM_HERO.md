@@ -39,4 +39,5 @@ UI: `frontend/src/pages/PlanningBoardPage.tsx`, `frontend/src/types/Ai.ts`
 - [ ] Deploy API + `frontend/dist`  
 - [ ] Sign-off → user testing  
 
-Companion visual QA: `docs/RC5_PLANNING_BOARD_WALL_VISUAL.md`
+Companion visual QA: `docs/RC5_PLANNING_BOARD_WALL_VISUAL.md`  
+No-scroll wall QA: `docs/RC5_PLANNING_BOARD_NO_SCROLL.md`

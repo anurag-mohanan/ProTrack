@@ -1,4 +1,4 @@
-import { Box } from '@mui/material';
+import { Box, Stack } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -134,6 +134,8 @@ export function DashboardPage() {
   const showAiSidebar = canViewDashboardAiPanel(access);
   const showEngineeringCharts = canViewDashboardEngineeringCharts(access);
   const showMyProjects = canViewDashboardMyProjects(access);
+  const showCollaboration = canViewDashboardCollaboration(access);
+  const showRightRail = showAiSidebar || showMyProjects || showCollaboration;
   const myProjectRows =
     summary?.my_project_rows?.length
       ? summary.my_project_rows
@@ -152,51 +154,47 @@ export function DashboardPage() {
     onOpenCurrentProject: () => navigate('/projects'),
   };
 
+  const rightRail = showRightRail ? (
+    <Stack spacing={1.5}>
+      {showMyProjects ? (
+        <WidgetErrorBoundary title="my projects">
+          {loading ? (
+            <DashboardPanelSkeleton height={140} />
+          ) : (
+            <MyProjectsWidget rows={myProjectRows} navigate={navigate} compact />
+          )}
+        </WidgetErrorBoundary>
+      ) : null}
+      {showCollaboration ? (
+        <WidgetErrorBoundary title="collaboration activity">
+          {loading ? (
+            <DashboardPanelSkeleton height={140} />
+          ) : (
+            <CollaborationActivityWidget data={summary?.collaboration_activity} compact />
+          )}
+        </WidgetErrorBoundary>
+      ) : null}
+      {showAiSidebar ? (
+        <AiOperationsPanel
+          insights={aiInsights}
+          navigate={navigate}
+          loading={aiInsightsQuery.isLoading}
+          onRefresh={() => {
+            void queryClient.invalidateQueries({ queryKey: aiQueryKeys.insights(10) });
+          }}
+        />
+      ) : null}
+    </Stack>
+  ) : undefined;
+
   return (
     <PageContainer>
       <DashboardHeader summary={summary} {...headerProps} />
 
-      <DashboardLayout
-        sidebar={
-          showAiSidebar ? (
-            <AiOperationsPanel
-              insights={aiInsights}
-              navigate={navigate}
-              loading={aiInsightsQuery.isLoading}
-              onRefresh={() => {
-                void queryClient.invalidateQueries({ queryKey: aiQueryKeys.insights(10) });
-              }}
-            />
-          ) : undefined
-        }
-      >
+      <DashboardLayout sidebar={rightRail}>
         <WidgetErrorBoundary title="KPI cards">
           {loading ? <DashboardKpiSkeleton rows={3} /> : <ExecutiveKpiGrid cards={kpiCards} />}
         </WidgetErrorBoundary>
-
-        {showMyProjects ? (
-          <Box sx={{ mt: 1.5 }}>
-            <WidgetErrorBoundary title="my projects">
-              {loading ? (
-                <DashboardPanelSkeleton height={200} />
-              ) : (
-                <MyProjectsWidget rows={myProjectRows} navigate={navigate} />
-              )}
-            </WidgetErrorBoundary>
-          </Box>
-        ) : null}
-
-        {canViewDashboardCollaboration(access) ? (
-          <Box sx={{ mt: 1.5 }}>
-            <WidgetErrorBoundary title="collaboration activity">
-              {loading ? (
-                <DashboardPanelSkeleton height={180} />
-              ) : (
-                <CollaborationActivityWidget data={summary?.collaboration_activity} />
-              )}
-            </WidgetErrorBoundary>
-          </Box>
-        ) : null}
 
         {showEngineeringCharts ? (
           <WidgetErrorBoundary title="dashboard charts">

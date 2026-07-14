@@ -5,6 +5,8 @@ import { formatNumber } from '../../utils/format';
 
 interface CollaborationActivityWidgetProps {
   data: CollaborationActivityDashboard | null | undefined;
+  /** Denser layout for the dashboard right rail. */
+  compact?: boolean;
 }
 
 function MetricLine({ label, value }: { label: string; value: string }) {
@@ -15,7 +17,10 @@ function MetricLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function CollaborationActivityWidget({ data }: CollaborationActivityWidgetProps) {
+export function CollaborationActivityWidget({
+  data,
+  compact = false,
+}: CollaborationActivityWidgetProps) {
   if (!data) {
     return (
       <DashboardPanel title="Collaboration Activity" subtitle="Cross-project support and peer review">
@@ -45,9 +50,13 @@ export function CollaborationActivityWidget({ data }: CollaborationActivityWidge
   return (
     <DashboardPanel
       title="Collaboration Activity"
-      subtitle="Support, peer review, and multi-contributor projects"
+      subtitle={
+        compact
+          ? 'Support & peer review'
+          : 'Support, peer review, and multi-contributor projects'
+      }
     >
-      <Stack spacing={1.5}>
+      <Stack spacing={compact ? 1 : 1.5}>
         <MetricLine
           label="Multi-contributor projects"
           value={String(data.multi_contributor_projects)}
@@ -61,7 +70,7 @@ export function CollaborationActivityWidget({ data }: CollaborationActivityWidge
           value={String(data.cross_team_collaboration_count)}
         />
 
-        {data.most_assisted_projects.length ? (
+        {!compact && data.most_assisted_projects.length ? (
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
               Most assisted projects
@@ -76,7 +85,7 @@ export function CollaborationActivityWidget({ data }: CollaborationActivityWidge
           </Box>
         ) : null}
 
-        {data.designers_receiving_support.length ? (
+        {!compact && data.designers_receiving_support.length ? (
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
               Designers receiving support
@@ -89,7 +98,7 @@ export function CollaborationActivityWidget({ data }: CollaborationActivityWidge
           </Box>
         ) : null}
 
-        {data.designers_providing_support.length ? (
+        {!compact && data.designers_providing_support.length ? (
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
               Designers providing support

@@ -41,8 +41,11 @@
 | 6 | Scanned/image-only PDF shows clear error (no text) | |
 | 7 | Non-editors do not see Import / Edit | |
 
-## Testing lead → QC
+## Staging note (`192.168.20.254`)
 
-- [ ] Smoke top-bar title on project 2649  
-- [ ] Smoke PDF import with one real/sample customer WO PDF  
-- [ ] Sign-off → user testing  
+The toast appears when the **API host Python** lacks PDF packages (local conda may have them while IIS/service Python does not).
+
+1. Deploy latest backend code (includes stdlib fallback so many text PDFs work even without packages).
+2. On the API host, from the deploy folder: `.\scripts\install_pdf_deps.ps1`
+3. Restart API / app pool
+4. Retry Import workorder PDF

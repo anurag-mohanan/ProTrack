@@ -191,6 +191,68 @@ def _scan_table_cells(content: bytes, result: WorkorderExtract) -> None:
         result.warnings.append("Could not read some PDF tables; used page text only.")
 
 
+def _unescape_pdf_literal(raw: bytes) -> str:
+    text = raw.decode("latin-1", errors="ignore")
+    text = text.replace(r"\n", "\n").replace(r"\r", "\r").replace(r"\t", "\t")
+    text = text.replace(r"\(", "(").replace(r"\)", ")").replace(r"\\", "\\")
+    return text
+
+
+def _extract_text_stdlib(content: bytes) -> str:
+    """
+    Best-effort text scrape with no third-party PDF libs.
+    Works for many simple text workorders; not a substitute for pdfplumber on complex PDFs.
+    """
+    parts: list[str] = []
+    for match in re.finditer(rb"\(((?:\\.|[^\\()\r\n])*)\)", content):
+        value = _unescape_pdf_literal(match.group(1)).strip()
+        if len(value) >= 2 and any(ch.isalnum() for ch in value):
+            parts.append(value)
+
+    # TJ arrays: [(Hello) 10 (World)] style
+    for match in re.finditer(rb"\[(.*?)\]\s*TJ", content, flags=re.IGNORECASE | re.DOTALL):
+        chunk_parts: list[str] = []
+        for inner in re.finditer(rb"\(((?:\\.|[^\\()])*)\)", match.group(1)):
+            value = _unescape_pdf_literal(inner.group(1)).strip()
+            if value:
+                chunk_parts.append(value)
+        if chunk_parts:
+            parts.append("".join(chunk_parts))
+
+    # Readable ASCII lines embedded in the file (helps some exporters)
+    latin = content.decode("latin-1", errors="ignore")
+    for line in latin.splitlines():
+        cleaned = "".join(ch if 32 <= ord(ch) < 127 else " " for ch in line)
+        cleaned = " ".join(cleaned.split())
+        if len(cleaned) < 8:
+            continue
+        lower = cleaned.lower()
+        if any(
+            token in lower
+            for token in (
+                "work order",
+                "tonnage",
+                "material",
+                "cavity",
+                "tool type",
+                "part description",
+                "plastic",
+            )
+        ):
+            parts.append(cleaned)
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for part in parts:
+        key = part.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(part)
+    return "\n".join(ordered).strip()
+
+
 def _extract_text_pdfplumber(content: bytes) -> str:
     import pdfplumber
 
@@ -220,7 +282,7 @@ def _extract_text_pypdf(content: bytes) -> str:
 
 
 def extract_pdf_text(content: bytes) -> str:
-    """Extract page text; prefer pdfplumber, fall back to pypdf."""
+    """Extract page text; prefer pdfplumber, then pypdf, then stdlib scrape."""
     errors: list[str] = []
 
     try:
@@ -247,22 +309,28 @@ def extract_pdf_text(content: bytes) -> str:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"pypdf failed: {exc}")
 
-    if any("not installed" in item for item in errors) and all(
-        "not installed" in item or "found no text" in item for item in errors
-    ):
-        raise ProTrackValidationError(
-            "PDF import requires pdfplumber (or pypdf). "
-            "On the API host run: pip install -r requirements.txt  then restart the API. "
-            "Or enter workorder details manually."
-        )
+    try:
+        combined = _extract_text_stdlib(content)
+        if combined:
+            return combined
+        errors.append("stdlib scrape found no text")
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"stdlib scrape failed: {exc}")
 
     if any("found no text" in item for item in errors):
         raise ProTrackValidationError(
             "No extractable text found. Use a text-based PDF (not a scanned image) or enter details manually."
+            + (
+                " Tip: on the API host run `pip install -r requirements.txt` then restart for better PDF support."
+                if any("not installed" in item for item in errors)
+                else ""
+            )
         )
 
     raise ProTrackValidationError(
-        f"Could not read workorder PDF ({'; '.join(errors)}). Enter details manually."
+        f"Could not read workorder PDF ({'; '.join(errors)}). "
+        "On the API host run: pip install -r requirements.txt  then restart the API, "
+        "or enter details manually."
     )
 
 
@@ -295,5 +363,13 @@ def extract_workorder_fields_from_pdf(content: bytes) -> WorkorderExtract:
 
     text = extract_pdf_text(content)
     result = extract_workorder_fields_from_text(text)
+    # Note stdlib fallback quality for UI/ops.
+    try:
+        import pdfplumber  # noqa: F401
+    except ImportError:
+        result.warnings.append(
+            "pdfplumber is not installed on the API host; used built-in PDF text scrape. "
+            "Install requirements for better accuracy: pip install -r requirements.txt"
+        )
     _scan_table_cells(content, result)
     return result

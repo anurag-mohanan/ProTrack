@@ -155,7 +155,7 @@ export function DashboardPage() {
   };
 
   const rightRail = showRightRail ? (
-    <Stack spacing={1.5}>
+    <Stack spacing={1.5} sx={{ pb: 0.5 }}>
       {showMyProjects ? (
         <WidgetErrorBoundary title="my projects">
           {loading ? (

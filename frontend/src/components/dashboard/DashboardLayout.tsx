@@ -27,6 +27,10 @@ export function DashboardLayout({ children, sidebar }: DashboardLayoutProps) {
             alignSelf: 'flex-start',
             maxHeight: { lg: 'calc(100vh - 88px)' },
             overflowY: { lg: 'auto' },
+            pb: { lg: 2 },
+            pr: { lg: 0.5 },
+            // Keep last rail card fully visible when scrolling.
+            scrollbarGutter: 'stable',
           }}
         >
           {sidebar}

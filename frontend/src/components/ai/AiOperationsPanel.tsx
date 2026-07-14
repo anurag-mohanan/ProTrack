@@ -53,11 +53,11 @@ export function AiOperationsPanel({
         borderRadius: `${designTokens.radius.lg}px`,
         bgcolor: designTokens.semantic.card,
         boxShadow: designTokens.elevation.card,
-        p: 1.5,
+        p: 2,
         height: '100%',
       }}
     >
-      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
           <AutoAwesomeRoundedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
           <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
@@ -69,14 +69,15 @@ export function AiOperationsPanel({
         </IconButton>
       </Stack>
 
-      <Stack spacing={1}>
+      <Stack spacing={1.25}>
         {visible.length ? (
           visible.map((insight) => (
             <Box
               key={insight.id}
               onClick={() => insight.href && navigate(insight.href)}
               sx={{
-                p: 1,
+                px: 1.5,
+                py: 1.25,
                 borderRadius: 1.5,
                 border: '1px solid',
                 borderColor: 'divider',
@@ -85,16 +86,20 @@ export function AiOperationsPanel({
                 '&:hover': insight.href ? { bgcolor: 'action.hover' } : undefined,
               }}
             >
-              <Stack direction="row" spacing={0.75} sx={{ alignItems: 'flex-start' }}>
-                <Typography sx={{ fontSize: 14, lineHeight: 1.2 }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+                <Typography sx={{ fontSize: 14, lineHeight: 1.2, flexShrink: 0, mt: 0.15 }}>
                   {severityIcon[insight.severity] ?? '🔵'}
                 </Typography>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+                <Box sx={{ flex: 1, minWidth: 0, pr: 0.5 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
                     {insight.title}
                   </Typography>
                   {insight.detail ? (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mt: 0.35, lineHeight: 1.4, wordBreak: 'break-word' }}
+                    >
                       {insight.detail}
                     </Typography>
                   ) : null}
@@ -102,6 +107,7 @@ export function AiOperationsPanel({
                 <IconButton
                   size="small"
                   aria-label="Dismiss insight"
+                  sx={{ flexShrink: 0, mt: -0.25, mr: -0.5 }}
                   onClick={(event) => {
                     event.stopPropagation();
                     setDismissed((current) => new Set(current).add(insight.id));

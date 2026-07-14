@@ -87,7 +87,18 @@ export function DashboardPanel({
           {action}
         </Box>
       ) : null}
-      <Box sx={{ p: noPadding ? 0 : minimal ? 2.25 : 2.5, pt: minimal && title ? 1 : undefined, flex: 1, minHeight: 0 }}>
+      <Box
+        sx={{
+          p: noPadding ? 0 : minimal ? 2.25 : 2.5,
+          pt: minimal && title ? 1 : undefined,
+          pb: noPadding ? 0 : minimal ? 2.25 : 2.5,
+          flex: 1,
+          minHeight: 0,
+          // Fixed-height panels must scroll inside the body — never clip mid-row.
+          overflowY: height != null ? 'auto' : 'visible',
+          overflowX: 'hidden',
+        }}
+      >
         {children}
       </Box>
     </Paper>

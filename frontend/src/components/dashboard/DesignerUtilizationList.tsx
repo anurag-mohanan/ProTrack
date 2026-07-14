@@ -45,7 +45,7 @@ export function DesignerUtilizationList({ rows, limit = 5 }: DesignerUtilization
     .slice(0, limit);
 
   return (
-    <Stack spacing={2} sx={{ py: 0.25 }}>
+    <Stack spacing={1.75} sx={{ height: '100%', minHeight: 0, py: 0.25, overflowY: 'auto' }}>
       {ranked.map(({ row, value }) => {
         const color = barColor(value);
         return (

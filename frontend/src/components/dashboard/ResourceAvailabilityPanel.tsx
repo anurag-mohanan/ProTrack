@@ -33,8 +33,8 @@ export function ResourceAvailabilityPanel({
   ];
 
   return (
-    <Stack spacing={2.25} sx={{ height: '100%', py: 0.25 }}>
-      <Box>
+    <Stack spacing={1.75} sx={{ height: '100%', minHeight: 0, py: 0.25 }}>
+      <Box sx={{ flexShrink: 0 }}>
         <Box
           sx={{
             display: 'flex',
@@ -114,7 +114,7 @@ export function ResourceAvailabilityPanel({
           </Typography>
         </Box>
       ) : (
-        <Stack spacing={1}>
+        <Stack spacing={0.75} sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           <Typography
             sx={{
               fontSize: '0.65rem',
@@ -122,6 +122,7 @@ export function ResourceAvailabilityPanel({
               letterSpacing: '0.06em',
               textTransform: 'uppercase',
               color: chartTheme.ink.tertiary,
+              flexShrink: 0,
             }}
           >
             Ready now
@@ -133,7 +134,8 @@ export function ResourceAvailabilityPanel({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1.25,
-                py: 0.75,
+                py: 0.5,
+                flexShrink: 0,
               }}
             >
               <Box

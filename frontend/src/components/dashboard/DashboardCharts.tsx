@@ -318,10 +318,21 @@ export function CustomerWorkloadChart({
 }
 
 interface HoursSummaryChartProps {
-  billableHours: number;
-  nonBillableHours: number;
-  npHours: number;
+  billableHours: number | string;
+  nonBillableHours: number | string;
+  npHours: number | string;
   height?: number;
+}
+
+function toHours(value: number | string | null | undefined): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function hoursPct(value: number, total: number): number {
+  if (total <= 0) return 0;
+  const pct = Math.round((value / total) * 100);
+  return Number.isFinite(pct) ? pct : 0;
 }
 
 export function HoursSummaryChart({
@@ -332,19 +343,19 @@ export function HoursSummaryChart({
   const data = [
     {
       label: 'Billable',
-      value: billableHours,
+      value: toHours(billableHours),
       color: chartTheme.hours.billable,
       soft: chartTheme.hours.billableSoft,
     },
     {
       label: 'Non-billable',
-      value: nonBillableHours,
+      value: toHours(nonBillableHours),
       color: chartTheme.hours.nonBillable,
       soft: chartTheme.hours.nonBillableSoft,
     },
     {
       label: 'NP',
-      value: npHours,
+      value: toHours(npHours),
       color: chartTheme.hours.np,
       soft: chartTheme.hours.npSoft,
     },
@@ -378,18 +389,20 @@ export function HoursSummaryChart({
           }}
         >
           {data.map((item) => {
-            const pct = (item.value / total) * 100;
-            if (pct <= 0) return null;
+            const pct = hoursPct(item.value, total);
+            if (pct <= 0 && item.value <= 0) return null;
+            const barPct = total > 0 ? (item.value / total) * 100 : 0;
+            if (barPct <= 0) return null;
             return (
               <Tooltip
                 key={item.label}
-                title={`${item.label}: ${formatNumber(item.value, 1)}h (${Math.round(pct)}%)`}
+                title={`${item.label}: ${formatNumber(item.value, 1)}h (${pct}%)`}
               >
                 <Box
                   sx={{
-                    width: `${pct}%`,
+                    width: `${barPct}%`,
                     bgcolor: item.color,
-                    minWidth: pct > 0 ? 4 : 0,
+                    minWidth: barPct > 0 ? 4 : 0,
                     transition: 'width 0.35s ease',
                   }}
                 />
@@ -401,7 +414,7 @@ export function HoursSummaryChart({
 
       <Stack spacing={1.25}>
         {data.map((item) => {
-          const pct = Math.round((item.value / total) * 100);
+          const pct = hoursPct(item.value, total);
           return (
             <Box
               key={item.label}

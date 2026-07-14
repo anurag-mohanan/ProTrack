@@ -149,7 +149,7 @@ export function ProjectMilestoneGrid({
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
         <Typography variant="body2" color="text.secondary">
-          Set a Target date per milestone. Completion date is recorded when status becomes Completed.
+          Target and completion dates use DD-MM-YYYY. On time = completed on or before the Target date.
         </Typography>
         {canEdit ? (
           <ProsohmButton
@@ -175,9 +175,9 @@ export function ProjectMilestoneGrid({
             <TableRow>
               <StickyHeaderCell pinned>Milestone</StickyHeaderCell>
               <StickyHeaderCell>Assigned To</StickyHeaderCell>
-              <StickyHeaderCell align="right">Hours</StickyHeaderCell>
               <StickyHeaderCell>Target date</StickyHeaderCell>
               <StickyHeaderCell>Status / Progress</StickyHeaderCell>
+              <StickyHeaderCell>Completed in time</StickyHeaderCell>
               {canEdit ? <StickyHeaderCell align="center">Actions</StickyHeaderCell> : null}
             </TableRow>
           }

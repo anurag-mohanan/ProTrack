@@ -24,7 +24,7 @@ import { EntityAvatar, StickyTableCell } from '../../ui/design-system';
 import type { Milestone, MilestoneStatus } from '../../../types';
 import { MILESTONE_STATUS_LABELS } from '../../../types/common';
 import { designTokens } from '../../../theme/designTokens';
-import { formatDate, formatNumber, toFiniteNumber } from '../../../utils/format';
+import { formatDate, isCompletedOnTime } from '../../../utils/format';
 import type { updateMilestone } from '../../../services/milestoneService';
 import {
   PROGRESS_STEPS,
@@ -59,14 +59,6 @@ function stopRowClick(event: MouseEvent) {
   event.stopPropagation();
 }
 
-function hoursColor(actual: number, planned: number): string {
-  if (planned <= 0) return designTokens.semantic.neutral;
-  const pct = (actual / planned) * 100;
-  if (pct > 100) return designTokens.semantic.danger;
-  if (pct >= 90) return designTokens.semantic.warning;
-  return designTokens.semantic.success;
-}
-
 export function ProjectMilestoneGridRow({
   row,
   isFirst,
@@ -82,13 +74,12 @@ export function ProjectMilestoneGridRow({
 }: ProjectMilestoneGridRowProps) {
   const [nameAnchor, setNameAnchor] = useState<HTMLElement | null>(null);
   const [assigneeAnchor, setAssigneeAnchor] = useState<HTMLElement | null>(null);
-  const [hoursAnchor, setHoursAnchor] = useState<HTMLElement | null>(null);
+  const [targetAnchor, setTargetAnchor] = useState<HTMLElement | null>(null);
   const [statusAnchor, setStatusAnchor] = useState<HTMLElement | null>(null);
   const [progressAnchor, setProgressAnchor] = useState<HTMLElement | null>(null);
   const [actionsAnchor, setActionsAnchor] = useState<HTMLElement | null>(null);
 
   const [nameDraft, setNameDraft] = useState(row.name);
-  const [plannedDraft, setPlannedDraft] = useState(String(row.planned_hours));
   const [dueDateDraft, setDueDateDraft] = useState(row.due_date ?? '');
   const [progressDraft, setProgressDraft] = useState(row.progress_percent);
 
@@ -96,10 +87,12 @@ export function ProjectMilestoneGridRow({
   const canEditDates = canEdit || canEditProgress;
   const isCompleted = row.status === 'completed';
   const assigneeLabel = row.assigned_user_name ?? 'Unassigned';
-  const plannedHours = toFiniteNumber(row.planned_hours);
-  const actualHours = toFiniteNumber(row.actual_hours);
-  const hoursPct =
-    plannedHours > 0 ? Math.round((actualHours / plannedHours) * 100) : null;
+  const onTime = isCompletedOnTime({
+    status: row.status,
+    dueDate: row.due_date,
+    completedDate: row.completed_date,
+    completedAt: row.completed_at,
+  });
 
   useEffect(() => {
     setDueDateDraft(row.due_date ?? '');
@@ -112,14 +105,8 @@ export function ProjectMilestoneGridRow({
     await onSave({ name: trimmed });
   };
 
-  const commitPlannedHours = async () => {
-    setHoursAnchor(null);
-    const next = Number(plannedDraft);
-    if (Number.isNaN(next) || next === row.planned_hours) return;
-    await onSave({ planned_hours: next });
-  };
-
   const commitDueDate = async () => {
+    setTargetAnchor(null);
     const next = dueDateDraft || null;
     if (next === (row.due_date ?? null)) return;
     await onSave({ due_date: next });
@@ -201,19 +188,10 @@ export function ProjectMilestoneGridRow({
             alignItems: 'center',
             gap: 0.75,
             cursor: canEdit ? 'pointer' : 'default',
-            maxWidth: 180,
           }}
         >
-          <EntityAvatar label={assigneeLabel} size={24} />
-          <Typography
-            variant="body2"
-            sx={{
-              fontWeight: 600,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
+          <EntityAvatar label={assigneeLabel} size={28} />
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
             {assigneeLabel}
           </Typography>
         </Box>
@@ -238,80 +216,50 @@ export function ProjectMilestoneGridRow({
         </Menu>
       </StickyTableCell>
 
-      <StickyTableCell align="right" sx={ROW_CELL_SX}>
+      <StickyTableCell sx={{ ...ROW_CELL_SX, minWidth: 120 }}>
         <Typography
           component="span"
           onClick={(event) => {
-            if (!canEdit) return;
-            setPlannedDraft(String(row.planned_hours));
-            setHoursAnchor(event.currentTarget);
+            if (!canEditDates) return;
+            setDueDateDraft(row.due_date ?? '');
+            setTargetAnchor(event.currentTarget);
           }}
           sx={{
-            fontWeight: 700,
-            cursor: canEdit ? 'pointer' : 'default',
-            color: hoursColor(actualHours, plannedHours),
-            whiteSpace: 'nowrap',
+            fontWeight: 600,
+            cursor: canEditDates ? 'pointer' : 'default',
+            color: row.due_date ? 'text.primary' : 'text.secondary',
+            '&:hover': canEditDates ? { color: 'primary.main' } : undefined,
           }}
         >
-          {formatNumber(actualHours, 0) || '0'}/{formatNumber(plannedHours, 0) || '0'} hrs
-          {hoursPct != null && Number.isFinite(hoursPct) ? ` (${hoursPct}%)` : ''}
+          {row.due_date ? formatDate(row.due_date) : '—'}
         </Typography>
         <Popover
-          open={Boolean(hoursAnchor)}
-          anchorEl={hoursAnchor}
-          onClose={() => void commitPlannedHours()}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          open={Boolean(targetAnchor)}
+          anchorEl={targetAnchor}
+          onClose={() => void commitDueDate()}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
         >
-          <Box sx={{ p: 1.5, width: 180 }}>
+          <Box sx={{ p: 1.5 }}>
             <TextField
               size="small"
-              fullWidth
-              type="number"
-              label="Planned hours"
-              value={plannedDraft}
-              onChange={(event) => setPlannedDraft(event.target.value)}
-              slotProps={{ htmlInput: { min: 0, step: 0.5 } }}
+              type="date"
+              label="Target date"
+              value={dueDateDraft}
+              onChange={(event) => setDueDateDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') void commitPlannedHours();
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void commitDueDate();
+                }
+              }}
+              slotProps={{
+                inputLabel: { shrink: true },
+                htmlInput: { 'aria-label': `Target date for ${row.name}` },
               }}
             />
           </Box>
         </Popover>
-      </StickyTableCell>
-
-      <StickyTableCell sx={{ ...ROW_CELL_SX, minWidth: 140 }}>
-        {canEditDates ? (
-          <TextField
-            size="small"
-            type="date"
-            fullWidth
-            label="Target"
-            value={dueDateDraft}
-            onChange={(event) => setDueDateDraft(event.target.value)}
-            onBlur={() => void commitDueDate()}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                void commitDueDate();
-              }
-            }}
-            slotProps={{
-              inputLabel: { shrink: true },
-              htmlInput: { 'aria-label': `Target date for ${row.name}` },
-            }}
-            sx={{
-              '& .MuiInputBase-input': { py: 0.75, fontSize: '0.8125rem', fontWeight: 600 },
-            }}
-          />
-        ) : (
-          <Typography
-            variant="body2"
-            sx={{ fontWeight: 600, color: row.due_date ? 'text.primary' : 'text.secondary' }}
-          >
-            {row.due_date ? formatDate(row.due_date) : '—'}
-          </Typography>
-        )}
       </StickyTableCell>
 
       <StickyTableCell sx={ROW_CELL_SX}>
@@ -433,6 +381,22 @@ export function ProjectMilestoneGridRow({
             />
           </Box>
         </Popover>
+      </StickyTableCell>
+
+      <StickyTableCell sx={ROW_CELL_SX}>
+        {onTime === true ? (
+          <Typography variant="body2" sx={{ fontWeight: 700, color: designTokens.semantic.success }}>
+            On time
+          </Typography>
+        ) : onTime === false ? (
+          <Typography variant="body2" sx={{ fontWeight: 700, color: designTokens.semantic.danger }}>
+            Late
+          </Typography>
+        ) : (
+          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+            —
+          </Typography>
+        )}
       </StickyTableCell>
 
       {canEdit ? (

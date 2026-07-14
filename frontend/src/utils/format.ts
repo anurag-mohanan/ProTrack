@@ -43,18 +43,47 @@ export function formatIndianNumber(value: number | string | null | undefined, di
   });
 }
 
+/** Canonical calendar-date display across ProTrack: DD-MM-YYYY. */
 export function formatDate(value: string | null | undefined): string {
   if (isBlankDisplayValue(value)) return '';
-  const [year, month, day] = value!.split('-').map(Number);
-  if (!year || !month || !day) return '';
-  return new Date(year, month - 1, day).toLocaleDateString();
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return '';
+  const [, year, month, day] = match;
+  return `${day}-${month}-${year}`;
 }
 
+/** Canonical datetime display: DD-MM-YYYY HH:mm (local). */
 export function formatDateTime(value: string | null | undefined): string {
   if (isBlankDisplayValue(value)) return '';
   const parsed = new Date(value!);
   if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toLocaleString();
+  const date = formatDate(
+    `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`,
+  );
+  const time = `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
+  return date ? `${date} ${time}` : '';
+}
+
+/**
+ * On-time when completion calendar day is on or before the target due date.
+ * Returns null when not evaluable (not completed, or missing dates).
+ */
+export function isCompletedOnTime(args: {
+  status: string;
+  dueDate?: string | null;
+  completedDate?: string | null;
+  completedAt?: string | null;
+}): boolean | null {
+  if (args.status !== 'completed') return null;
+  const dueMatch = args.dueDate ? String(args.dueDate).match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+  const completedRaw = args.completedDate ?? args.completedAt ?? null;
+  const completedMatch = completedRaw
+    ? String(completedRaw).match(/^(\d{4})-(\d{2})-(\d{2})/)
+    : null;
+  if (!dueMatch || !completedMatch) return null;
+  const dueKey = `${dueMatch[1]}${dueMatch[2]}${dueMatch[3]}`;
+  const completedKey = `${completedMatch[1]}${completedMatch[2]}${completedMatch[3]}`;
+  return completedKey <= dueKey;
 }
 
 export function formatStatus(value: string): string {

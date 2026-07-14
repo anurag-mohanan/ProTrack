@@ -216,6 +216,33 @@ class ChatResponse(BaseModel):
     data: dict = Field(default_factory=dict)
 
 
+class WallProjectCard(BaseModel):
+    """Compact project card for planning-board / executive wall displays."""
+
+    project_id: UUID | None = None
+    tool_number: str
+    customer_name: str | None = None
+    designer_name: str | None = None
+    team_name: str | None = None
+    due_date: date | None = None
+    health: str | None = None
+    execution_status: str | None = None
+    project_stage: str | None = None
+    current_milestone: str | None = None
+    attention_reason: str | None = None
+
+
+class WallTeamLiveBlock(BaseModel):
+    """Live projects rolled up by delivery team for Program Manager monitoring."""
+
+    team_id: UUID | None = None
+    team_name: str
+    active_count: int = 0
+    red_count: int = 0
+    yellow_count: int = 0
+    projects: list[WallProjectCard] = Field(default_factory=list)
+
+
 class ExecutiveWallData(BaseModel):
     active_projects: int = 0
     utilization_percent: float = 0
@@ -226,6 +253,9 @@ class ExecutiveWallData(BaseModel):
     hours_logged_month: float = 0
     customer_distribution: list[dict] = Field(default_factory=list)
     health_summary: dict = Field(default_factory=dict)
+    teams_live: list[WallTeamLiveBlock] = Field(default_factory=list)
+    upcoming_deliveries: list[WallProjectCard] = Field(default_factory=list)
+    late_deliveries: list[WallProjectCard] = Field(default_factory=list)
     refreshed_at: datetime = Field(default_factory=datetime.utcnow)
 
 

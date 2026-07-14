@@ -8,6 +8,19 @@ def test_planning_board_can_view_executive_wall(client):
     assert client.get("/api/v1/ai/executive-wall", headers=headers).status_code == 200
 
 
+def test_planning_board_wall_includes_team_live_and_deliveries(client):
+    headers = login(client, "planning-board@prosohm.com")
+    response = client.get("/api/v1/ai/executive-wall", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert "teams_live" in body
+    assert "upcoming_deliveries" in body
+    assert "late_deliveries" in body
+    assert isinstance(body["teams_live"], list)
+    assert isinstance(body["upcoming_deliveries"], list)
+    assert isinstance(body["late_deliveries"], list)
+
+
 def test_planning_board_can_view_resource_planning_grid(client):
     headers = login(client, "planning-board@prosohm.com")
     response = client.get("/api/v1/dashboard/resource-planning/grid", headers=headers)

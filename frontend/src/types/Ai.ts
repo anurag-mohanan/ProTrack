@@ -117,6 +117,29 @@ export interface ChatResponse {
   data: Record<string, unknown>;
 }
 
+export interface WallProjectCard {
+  project_id?: string | null;
+  tool_number: string;
+  customer_name?: string | null;
+  designer_name?: string | null;
+  team_name?: string | null;
+  due_date?: string | null;
+  health?: string | null;
+  execution_status?: string | null;
+  project_stage?: string | null;
+  current_milestone?: string | null;
+  attention_reason?: string | null;
+}
+
+export interface WallTeamLiveBlock {
+  team_id?: string | null;
+  team_name: string;
+  active_count: number;
+  red_count: number;
+  yellow_count: number;
+  projects: WallProjectCard[];
+}
+
 export interface ExecutiveWallData {
   active_projects: number;
   utilization_percent: number;
@@ -127,6 +150,9 @@ export interface ExecutiveWallData {
   hours_logged_month: number;
   customer_distribution: Record<string, unknown>[];
   health_summary: Record<string, unknown>;
+  teams_live?: WallTeamLiveBlock[];
+  upcoming_deliveries?: WallProjectCard[];
+  late_deliveries?: WallProjectCard[];
   refreshed_at: string;
 }
 

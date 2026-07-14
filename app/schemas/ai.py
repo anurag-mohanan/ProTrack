@@ -236,6 +236,7 @@ class WallProjectCard(BaseModel):
     actual_hours: float = 0
     variance_hours: float = 0
     variance_percent: float | None = None
+    complexity: str | None = None
     attention_reason: str | None = None
 
 

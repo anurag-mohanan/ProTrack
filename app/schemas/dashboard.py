@@ -141,6 +141,7 @@ class DashboardDesignerAvailabilityRow(BaseModel):
     current_customer_name: str | None = None
     current_stage: ProjectStage | None = None
     current_milestone: str | None = None
+    skill_level: str | None = None
 
 
 class DashboardTeamSummaryRow(BaseModel):

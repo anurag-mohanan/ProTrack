@@ -54,6 +54,7 @@ interface ProjectFormValues {
   due_date: string;
   notes: string;
   priority: ProjectCreate['priority'];
+  complexity: NonNullable<ProjectCreate['complexity']>;
   project_stage: ProjectStage;
   execution_status: ExecutionStatus;
   health: ProjectHealth;
@@ -79,6 +80,7 @@ const emptyForm: ProjectFormValues = {
   due_date: '',
   notes: '',
   priority: 'medium',
+  complexity: 'medium',
   project_stage: 'preliminary',
   execution_status: 'planning',
   health: 'green',
@@ -103,6 +105,7 @@ function projectToForm(project: Project): ProjectFormValues {
     due_date: project.due_date ?? '',
     notes: project.notes ?? '',
     priority: project.priority ?? 'medium',
+    complexity: project.complexity ?? 'medium',
     project_stage: project.project_stage,
     execution_status: project.execution_status,
     health: project.health,
@@ -257,6 +260,7 @@ export function ProjectFormDialog({
           project_stage: form.project_stage,
           execution_status: form.execution_status,
           priority: form.priority,
+          complexity: form.complexity,
           health: form.health,
           working_model_id: optionalUuid(form.working_model_id),
         };
@@ -280,6 +284,7 @@ export function ProjectFormDialog({
         quoted_hours: optionalNumber(form.quoted_hours),
         due_date: optionalString(form.due_date),
         priority: form.priority,
+        complexity: form.complexity,
         notes: optionalString(form.notes),
       };
       return createProject(createPayload);
@@ -893,12 +898,31 @@ export function ProjectFormDialog({
                 }
               />
             </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Complexity"
+                required
+                value={form.complexity ?? 'medium'}
+                options={[
+                  { value: 'low', label: 'Low' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'high', label: 'High' },
+                  { value: 'expert', label: 'Expert' },
+                ]}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    complexity: event.target.value as ProjectFormValues['complexity'],
+                  })
+                }
+              />
+            </Grid>
           </CollapsibleFormSection>
         ) : (
           <CollapsibleFormSection
             sectionId="priority"
             storageKey={PROJECT_SECTION_STORAGE_KEY}
-            title="Priority"
+            title="Priority & complexity"
             icon={FlagOutlinedIcon}
           >
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -915,6 +939,24 @@ export function ProjectFormDialog({
                   setForm({
                     ...form,
                     priority: event.target.value as ProjectFormValues['priority'],
+                  })
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Complexity"
+                value={form.complexity ?? 'medium'}
+                options={[
+                  { value: 'low', label: 'Low' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'high', label: 'High' },
+                  { value: 'expert', label: 'Expert' },
+                ]}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    complexity: event.target.value as ProjectFormValues['complexity'],
                   })
                 }
               />

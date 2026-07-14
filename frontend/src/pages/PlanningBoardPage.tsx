@@ -310,6 +310,9 @@ function ProjectRow({ project }: { project: WallProjectCard }) {
       <Box sx={{ minWidth: 0 }}>
         <Typography sx={{ fontWeight: 700, color: WALL.text, fontSize: '0.78rem' }} noWrap>
           {formatDisplayValue(stage)}
+          {project.complexity
+            ? ` · ${String(project.complexity).replace(/^./, (c) => c.toUpperCase())}`
+            : ''}
         </Typography>
         <Typography sx={{ color: WALL.muted, fontSize: '0.7rem', fontWeight: 600 }} noWrap>
           {workersLabel(project)}

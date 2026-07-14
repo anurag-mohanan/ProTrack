@@ -214,6 +214,7 @@ export interface DashboardDesignerAvailabilityRow {
   current_customer_name?: string | null;
   current_stage?: import('./common').ProjectStage | null;
   current_milestone?: string | null;
+  skill_level?: string | null;
 }
 
 export interface DashboardTeamSummaryRow {

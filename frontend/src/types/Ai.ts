@@ -135,6 +135,7 @@ export interface WallProjectCard {
   actual_hours?: number;
   variance_hours?: number;
   variance_percent?: number | null;
+  complexity?: string | null;
   attention_reason?: string | null;
 }
 

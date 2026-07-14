@@ -75,6 +75,15 @@ class ProjectPriority(enum.Enum):
     low = "low"
 
 
+class ProjectComplexity(enum.Enum):
+    """Ops scale for matching tools to designer skillset."""
+
+    low = "low"
+    medium = "medium"
+    high = "high"
+    expert = "expert"
+
+
 class EmploymentType(enum.Enum):
     full_time = "full_time"
     part_time = "part_time"

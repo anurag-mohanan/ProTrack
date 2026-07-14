@@ -14,7 +14,7 @@ import type { TeamResourcePlanningRow } from '../../types/Team';
 import type { Department } from '../../types/Settings';
 import { EntityAvatar, UtilizationBar } from '../ui/design-system';
 import { designTokens } from '../../theme/designTokens';
-import { formatNumber } from '../../utils/format';
+import { formatNumber, toFiniteNumber } from '../../utils/format';
 
 type LeftPanelTab = 'designers' | 'teams' | 'departments';
 
@@ -31,8 +31,15 @@ interface ResourcePlanningLeftPanelProps {
 }
 
 function designerUtilization(designer: ResourcePlanningDesignerRow): number {
-  if (designer.capacity_hours <= 0) return 0;
-  return Math.round((designer.allocated_hours / designer.capacity_hours) * 100);
+  const capacity = toFiniteNumber(designer.capacity_hours);
+  const allocated = toFiniteNumber(designer.allocated_hours);
+  if (capacity <= 0) return allocated > 0 ? 999 : 0;
+  return Math.round((allocated / capacity) * 100);
+}
+
+function skillLabel(skill: string | null | undefined): string | null {
+  if (!skill) return null;
+  return skill.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function ResourcePlanningLeftPanel({
@@ -82,7 +89,9 @@ export function ResourcePlanningLeftPanel({
           <List dense disablePadding>
             {sortedDesigners.map((designer) => {
               const util = designerUtilization(designer);
-              const isLeave = designer.availability_status.toLowerCase().includes('leave');
+              const status = designer.availability_status.toLowerCase();
+              const isLeave = status.includes('leave');
+              const skill = skillLabel(designer.skill_level);
               return (
                 <ListItemButton
                   key={designer.user_id}
@@ -99,7 +108,11 @@ export function ResourcePlanningLeftPanel({
                       <EntityAvatar label={designer.designer_name} size={28} />
                       <ListItemText
                         primary={designer.designer_name}
-                        secondary={designer.team_name ?? 'Unassigned'}
+                        secondary={
+                          [designer.team_name ?? 'Unassigned', skill ? `Skill: ${skill}` : null]
+                            .filter(Boolean)
+                            .join(' · ')
+                        }
                         slotProps={{
                           primary: { sx: { fontWeight: 700, fontSize: '0.8125rem' } },
                           secondary: { sx: { fontSize: '0.7rem' } },
@@ -107,11 +120,18 @@ export function ResourcePlanningLeftPanel({
                       />
                       {isLeave ? (
                         <Chip label="Leave" size="small" sx={{ height: 20, bgcolor: designTokens.semantic.neutralSoft }} />
-                      ) : null}
+                      ) : status.includes('overload') ? (
+                        <Chip label="Overloaded" size="small" color="error" sx={{ height: 20 }} />
+                      ) : status.includes('allocat') ? (
+                        <Chip label="Assigned" size="small" color="primary" variant="outlined" sx={{ height: 20 }} />
+                      ) : (
+                        <Chip label="Open" size="small" color="success" variant="outlined" sx={{ height: 20 }} />
+                      )}
                     </Box>
-                    <UtilizationBar label="" value={util} showValue />
+                    <UtilizationBar label="" value={Math.min(util, 200)} showValue />
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                       {formatNumber(designer.allocated_hours)}h / {formatNumber(designer.capacity_hours)}h
+                      {util > 100 ? ` · ${util}%` : ''}
                     </Typography>
                   </Box>
                 </ListItemButton>

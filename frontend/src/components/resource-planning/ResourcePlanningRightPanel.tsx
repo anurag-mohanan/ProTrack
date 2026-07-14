@@ -9,7 +9,7 @@ import type {
 import { DashboardPanel } from '../ui/design-system/DashboardPanel';
 import { HealthIndicator, ProgressRing, UtilizationBar } from '../ui/design-system';
 import { designTokens } from '../../theme/designTokens';
-import { formatCellValue, formatNumber } from '../../utils/format';
+import { formatCellValue, formatNumber, toFiniteNumber } from '../../utils/format';
 
 interface CustomerAllocation {
   customer_name: string;
@@ -28,6 +28,7 @@ interface ResourcePlanningRightPanelProps {
 
 function collectCustomerAllocations(grid: ResourcePlanningGrid): CustomerAllocation[] {
   const map = new Map<string, CustomerAllocation>();
+  const seenTools = new Map<string, Set<string>>();
 
   const addBlock = (block: ResourceAllocationBlock, designerName?: string) => {
     const key = block.customer_name;
@@ -38,8 +39,13 @@ function collectCustomerAllocations(grid: ResourcePlanningGrid): CustomerAllocat
       total_hours: 0,
       utilization: 0,
     };
-    existing.active_tools += 1;
-    existing.total_hours += block.hours;
+    const tools = seenTools.get(key) ?? new Set<string>();
+    if (!tools.has(block.project_id)) {
+      tools.add(block.project_id);
+      existing.active_tools += 1;
+      seenTools.set(key, tools);
+    }
+    existing.total_hours += toFiniteNumber(block.hours);
     if (designerName) existing.assigned_designers.add(designerName);
     map.set(key, existing);
   };
@@ -59,15 +65,18 @@ function collectCustomerAllocations(grid: ResourcePlanningGrid): CustomerAllocat
       utilization: 0,
     };
     existing.active_tools += 1;
-    existing.total_hours += project.remaining_hours;
+    existing.total_hours += toFiniteNumber(project.remaining_hours);
     map.set(key, existing);
   });
 
-  const maxHours = Math.max(...[...map.values()].map((c) => c.total_hours), 1);
-  return [...map.values()]
+  const values = [...map.values()];
+  const maxHours = Math.max(...values.map((c) => c.total_hours), 1);
+  return values
     .map((c) => ({
       ...c,
-      utilization: Math.round((c.total_hours / maxHours) * 100),
+      utilization: Number.isFinite(c.total_hours / maxHours)
+        ? Math.round((c.total_hours / maxHours) * 100)
+        : 0,
       assigned_designers: c.assigned_designers,
     }))
     .sort((a, b) => b.total_hours - a.total_hours);

@@ -25,6 +25,7 @@ class ResourceAllocationBlock(BaseModel):
     milestone_name: str | None = None
     hours: Decimal
     status_color: str
+    complexity: str | None = None
 
 
 class ResourcePlanningPeriod(BaseModel):
@@ -48,6 +49,7 @@ class ResourcePlanningDesignerRow(BaseModel):
     designer_name: str
     team_name: str | None = None
     availability_status: str
+    skill_level: str | None = None
     capacity_hours: Decimal
     allocated_hours: Decimal
     remaining_hours: Decimal
@@ -60,8 +62,9 @@ class UnassignedProjectBlock(BaseModel):
     customer_name: str
     quoted_hours: Decimal
     remaining_hours: Decimal
-    due_date: date
+    due_date: date | None = None
     milestone_name: str | None = None
+    complexity: str | None = None
 
 
 class ResourcePlanningGrid(BaseModel):

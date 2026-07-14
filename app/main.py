@@ -33,6 +33,7 @@ from app.db.phase18_finance_annual_plan_schema_sync import (
 from app.db.phase19_timesheet_report_inclusion_schema_sync import (
     ensure_phase19_timesheet_report_inclusion_foundation,
 )
+from app.db.phase20_project_complexity_schema_sync import ensure_project_complexity
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -107,6 +108,7 @@ async def lifespan(app: FastAPI):
         ("phase17_ebmp_finance", ensure_phase17_ebmp_finance_foundation),
         ("phase18_finance_annual_plan", ensure_phase18_finance_annual_plan_foundation),
         ("phase19_timesheet_report_inclusion", ensure_phase19_timesheet_report_inclusion_foundation),
+        ("project_complexity", ensure_project_complexity),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

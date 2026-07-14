@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.crud.team_reports import get_team_resource_planning
 from app.models.enums import ExecutionStatus, MilestoneStatus, UserAvailabilityStatus
-from app.models.models import Customer, Milestone, Project, Role, Team, TeamMember, User
+from app.models.models import Customer, Project, Team, TeamMember, User
 from app.schemas.resource_planning import (
     ResourceAllocationBlock,
     ResourcePlanningCell,
@@ -96,9 +96,14 @@ def _cell_color(allocated: Decimal, capacity: Decimal) -> str:
 def _block_color(project: Project, today: date) -> str:
     if project.execution_status == ExecutionStatus.on_hold:
         return "grey"
-    if project.due_date < today and project.execution_status not in (
-        ExecutionStatus.completed,
-        ExecutionStatus.cancelled,
+    if (
+        project.due_date is not None
+        and project.due_date < today
+        and project.execution_status
+        not in (
+            ExecutionStatus.completed,
+            ExecutionStatus.cancelled,
+        )
     ):
         return "red"
     if project.execution_status == ExecutionStatus.currently_being_worked_on:
@@ -199,17 +204,64 @@ def _hours_for_project_on_day(
     remaining_hours: Decimal,
     business_days: int,
     holidays: set[date],
+    spread_end: date,
 ) -> Decimal:
     if project.execution_status in (
         ExecutionStatus.completed,
         ExecutionStatus.cancelled,
     ):
         return Decimal("0")
-    if day > project.due_date or day < today:
+    if day < today or day > spread_end:
         return Decimal("0")
     if day.weekday() >= 5 or is_holiday_cached(holidays, day):
         return Decimal("0")
+    if business_days <= 0:
+        return Decimal("0")
     return _round(remaining_hours / Decimal(business_days))
+
+
+def _assignment_share(user_id: UUID, project: Project) -> Decimal:
+    """Fraction of remaining delivery hours attributed to this person.
+
+    Ops/EM rule: primary designer owns remaining work. Design leaders who are
+    not the designer get a light oversight share (not a full second copy).
+    Surfacers get a craft share when also assigned.
+    """
+    is_designer = project.designer_id == user_id
+    is_dl = project.design_leader_id == user_id
+    is_surfacer = project.surfacer_id == user_id
+
+    if is_designer and is_dl:
+        return Decimal("1")
+    if is_designer:
+        return Decimal("1")
+    if is_surfacer and not is_designer:
+        return Decimal("0.40") if project.designer_id else Decimal("1")
+    if is_dl and not is_designer:
+        return Decimal("0.15")
+    return Decimal("0")
+
+
+def _derive_load_status(
+    user: User,
+    *,
+    total_allocated: Decimal,
+    total_capacity: Decimal,
+    has_live_assignment: bool,
+) -> str:
+    if user.availability_status in (
+        UserAvailabilityStatus.on_leave,
+        UserAvailabilityStatus.unavailable,
+    ):
+        return "on_leave"
+    if total_capacity <= 0:
+        return "unavailable"
+    util = total_allocated / total_capacity
+    if has_live_assignment or util >= Decimal("0.01"):
+        if util >= Decimal("1"):
+            return "overloaded"
+        return "allocated"
+    return "available"
 
 
 def get_resource_planning_grid(
@@ -230,17 +282,17 @@ def get_resource_planning_grid(
     if team_user_ids is not None:
         designers = [designer for designer in designers if designer.id in team_user_ids]
 
+    live_statuses = (
+        ExecutionStatus.planning,
+        ExecutionStatus.currently_being_worked_on,
+        ExecutionStatus.on_hold,
+    )
     active_projects = db.scalars(
         select(Project)
         .where(
             Project.is_deleted.is_(False),
             Project.is_archived.is_(False),
-            Project.execution_status.in_(
-                (
-                    ExecutionStatus.currently_being_worked_on,
-                    ExecutionStatus.on_hold,
-                )
-            ),
+            Project.execution_status.in_(live_statuses),
         )
     ).all()
     scoped_team_ids = [team_id] if team_id is not None else team_ids
@@ -252,14 +304,11 @@ def get_resource_planning_grid(
             if project.team_id is not None and project.team_id in allowed
         ]
 
+    customer_ids = {project.customer_id for project in active_projects}
     customer_names = {
         row.id: row.name
-        for row in db.scalars(
-            select(Customer).where(
-                Customer.id.in_({project.customer_id for project in active_projects})
-            )
-        ).all()
-    }
+        for row in db.scalars(select(Customer).where(Customer.id.in_(customer_ids))).all()
+    } if customer_ids else {}
     milestone_names = _batch_current_milestones(
         db, [project.id for project in active_projects]
     )
@@ -270,7 +319,8 @@ def get_resource_planning_grid(
     }
 
     project_hours = batch_calculate_hours(db, active_projects)
-    project_daily_rates: dict[UUID, tuple[Decimal, int]] = {}
+    # remaining_hours, business_days, spread_end
+    project_daily_rates: dict[UUID, tuple[Decimal, int, date]] = {}
     for project in active_projects:
         hours = project_hours.get(project.id)
         if hours is None:
@@ -280,9 +330,14 @@ def get_resource_planning_grid(
             remaining = max(planned_total - hours.actual, Decimal("0"))
         else:
             remaining = max(hours.remaining, Decimal("0"))
-        spread_end = max(project.due_date, today)
+        # Overdue or undated tools still show remaining pressure over a runway.
+        if project.due_date and project.due_date >= today:
+            spread_end = project.due_date
+        else:
+            spread_end = today + timedelta(days=14)
+        spread_end = max(spread_end, today)
         business_days = _remaining_business_days(today, spread_end, holidays)
-        project_daily_rates[project.id] = (remaining, business_days)
+        project_daily_rates[project.id] = (remaining, business_days, spread_end)
 
     designer_rows: list[ResourcePlanningDesignerRow] = []
     for designer in designers:
@@ -291,6 +346,7 @@ def get_resource_planning_grid(
             for project in active_projects
             if project.designer_id == designer.id
             or project.design_leader_id == designer.id
+            or project.surfacer_id == designer.id
         ]
         cells: list[ResourcePlanningCell] = []
         total_capacity = Decimal("0")
@@ -310,18 +366,27 @@ def get_resource_planning_grid(
                     rate = project_daily_rates.get(project.id)
                     if rate is None:
                         continue
-                    remaining_hours, business_days = rate
+                    remaining_hours, business_days, spread_end = rate
+                    share = _assignment_share(designer.id, project)
+                    if share <= 0:
+                        continue
                     day_hours = _hours_for_project_on_day(
                         project,
                         day,
                         today,
-                        remaining_hours=remaining_hours,
+                        remaining_hours=remaining_hours * share,
                         business_days=business_days,
                         holidays=holidays,
+                        spread_end=spread_end,
                     )
                     if day_hours <= 0:
                         continue
                     period_allocated += day_hours
+                    complexity = (
+                        project.complexity.value
+                        if getattr(project, "complexity", None)
+                        else None
+                    )
                     existing = next(
                         (block for block in blocks if block.project_id == project.id),
                         None,
@@ -335,6 +400,7 @@ def get_resource_planning_grid(
                                 milestone_name=block.milestone_name,
                                 hours=_round(block.hours + day_hours),
                                 status_color=block.status_color,
+                                complexity=block.complexity,
                             )
                             if block.project_id == project.id
                             else block
@@ -351,6 +417,7 @@ def get_resource_planning_grid(
                                 milestone_name=milestone_names.get(project.id),
                                 hours=day_hours,
                                 status_color=_block_color(project, today),
+                                complexity=complexity,
                             )
                         )
                 day += timedelta(days=1)
@@ -372,15 +439,20 @@ def get_resource_planning_grid(
                 )
             )
 
+        has_live = bool(assigned_projects)
         designer_rows.append(
             ResourcePlanningDesignerRow(
                 user_id=designer.id,
                 designer_name=f"{designer.first_name} {designer.last_name}",
                 team_name=team_names.get(designer.team_id) if designer.team_id else None,
-                availability_status=(
-                    designer.availability_status.value
-                    if designer.availability_status
-                    else "available"
+                availability_status=_derive_load_status(
+                    designer,
+                    total_allocated=total_allocated,
+                    total_capacity=total_capacity,
+                    has_live_assignment=has_live,
+                ),
+                skill_level=(
+                    designer.skill_level.value if designer.skill_level else None
                 ),
                 capacity_hours=_round(total_capacity),
                 allocated_hours=_round(total_allocated),
@@ -396,17 +468,28 @@ def get_resource_planning_grid(
         hours = project_hours.get(project.id)
         if hours is None:
             continue
+        planned_total = _decimal(project.current_planned_hours)
+        remaining = (
+            max(planned_total - hours.actual, Decimal("0"))
+            if planned_total > 0
+            else max(hours.remaining, Decimal("0"))
+        )
         unassigned.append(
             UnassignedProjectBlock(
                 project_id=project.id,
                 tool_number=project.tool_number,
                 customer_name=customer_names.get(project.customer_id, "—"),
-                quoted_hours=hours.quoted,
-                remaining_hours=hours.remaining,
+                quoted_hours=_round(_decimal(project.quoted_hours)),
+                remaining_hours=_round(remaining),
                 due_date=project.due_date,
                 milestone_name=milestone_names.get(project.id),
+                complexity=(
+                    project.complexity.value if getattr(project, "complexity", None) else None
+                ),
             )
         )
+
+    team_summary = get_team_resource_planning(db, team_id=team_id)
 
     return ResourcePlanningGrid(
         granularity=granularity,
@@ -415,9 +498,5 @@ def get_resource_planning_grid(
         periods=periods,
         designers=designer_rows,
         unassigned_projects=unassigned,
-        team_summary=get_team_resource_planning(
-            db,
-            team_id=team_id,
-            team_ids=team_ids,
-        ),
+        team_summary=team_summary,
     )

@@ -183,6 +183,18 @@ export function ResourceAvailabilityPanel({
               >
                 Open
               </Typography>
+              {row.skill_level ? (
+                <Typography
+                  sx={{
+                    fontSize: '0.65rem',
+                    fontWeight: 600,
+                    color: chartTheme.ink.tertiary,
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {row.skill_level}
+                </Typography>
+              ) : null}
             </Box>
           ))}
         </Stack>

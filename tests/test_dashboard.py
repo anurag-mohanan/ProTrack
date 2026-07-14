@@ -20,6 +20,15 @@ def test_dashboard_summary(client, auth_headers):
     assert len(body["attention_projects"]) <= 25
 
 
+def test_assigned_designers_not_marked_available(client, auth_headers):
+    """Live tool assignees (designer/DL/surfacer) must not appear as Open."""
+    summary = client.get("/api/v1/dashboard/summary", headers=auth_headers).json()
+    rows = summary.get("designer_availability") or []
+    for row in rows:
+        if row.get("current_tool_number"):
+            assert row.get("status") != "available", row
+
+
 def test_dashboard_workload(client, auth_headers):
     response = client.get("/api/v1/dashboard/workload", headers=auth_headers)
     assert response.status_code == 200

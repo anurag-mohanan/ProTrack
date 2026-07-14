@@ -840,19 +840,21 @@ def get_designer_availability(
         ).all()
     )
 
+    # Live assignment statuses — planning counts as assigned (not Open).
+    live_statuses = (
+        ExecutionStatus.planning,
+        ExecutionStatus.currently_being_worked_on,
+        ExecutionStatus.on_hold,
+    )
     active_projects = db.scalars(
         select(Project).where(
             Project.is_deleted.is_(False),
             Project.is_archived.is_(False),
-            Project.execution_status.in_(
-                (
-                    ExecutionStatus.currently_being_worked_on,
-                    ExecutionStatus.on_hold,
-                )
-            ),
+            Project.execution_status.in_(live_statuses),
             or_(
                 Project.designer_id.in_(designer_ids),
                 Project.design_leader_id.in_(designer_ids),
+                Project.surfacer_id.in_(designer_ids),
             ),
             *_team_clause(team_id),
         )
@@ -860,7 +862,7 @@ def get_designer_availability(
 
     projects_by_designer: dict[UUID, list[Project]] = {designer_id: [] for designer_id in designer_ids}
     for project in active_projects:
-        for designer_id in (project.designer_id, project.design_leader_id):
+        for designer_id in (project.designer_id, project.design_leader_id, project.surfacer_id):
             if designer_id in projects_by_designer:
                 projects_by_designer[designer_id].append(project)
 
@@ -879,6 +881,8 @@ def get_designer_availability(
 
     for designer in designers:
         assigned = projects_by_designer.get(designer.id, [])
+        # Deduplicate if user appears on multiple roles of the same project
+        assigned = list({project.id: project for project in assigned}.values())
         current_tool_number = None
         current_customer_name = None
         current_stage = None
@@ -897,14 +901,19 @@ def get_designer_availability(
             working = [
                 project
                 for project in assigned
-                if project.execution_status == ExecutionStatus.currently_being_worked_on
+                if project.execution_status
+                in (
+                    ExecutionStatus.currently_being_worked_on,
+                    ExecutionStatus.planning,
+                )
             ]
             on_hold_projects = [
                 project
                 for project in assigned
                 if project.execution_status == ExecutionStatus.on_hold
             ]
-            if working:
+            # Anyone with live tools (incl. planning) or explicit allocated flag is NOT Open.
+            if working or designer.availability_status == UserAvailabilityStatus.allocated:
                 status = DesignerAvailabilityStatus.working
                 allocated += 1
             elif on_hold_projects:
@@ -921,7 +930,9 @@ def get_designer_availability(
                         0
                         if project.execution_status
                         == ExecutionStatus.currently_being_worked_on
-                        else 1,
+                        else 1
+                        if project.execution_status == ExecutionStatus.planning
+                        else 2,
                         project.due_date or today,
                     ),
                 )[0]
@@ -930,6 +941,7 @@ def get_designer_availability(
                 current_stage = primary.project_stage
                 current_milestone = milestone_names.get(primary.id)
 
+        skill = designer.skill_level.value if getattr(designer, "skill_level", None) else None
         rows.append(
             DashboardDesignerAvailabilityRow(
                 user_id=designer.id,
@@ -939,6 +951,7 @@ def get_designer_availability(
                 current_customer_name=current_customer_name,
                 current_stage=current_stage,
                 current_milestone=current_milestone,
+                skill_level=skill,
             )
         )
 

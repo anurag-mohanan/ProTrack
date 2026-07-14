@@ -171,6 +171,9 @@ def _card_from_project(
         actual_hours=actual,
         variance_hours=variance_hours,
         variance_percent=variance_percent,
+        complexity=(
+            project.complexity.value if getattr(project, "complexity", None) else None
+        ),
         attention_reason=attention_reason,
     )
 
@@ -366,6 +369,11 @@ def _attention_cards(ctx: AiContext, *, reason: str, limit: int = 12) -> list[Wa
                 actual_hours=actual,
                 variance_hours=variance_hours,
                 variance_percent=variance_percent,
+                complexity=(
+                    project.complexity.value
+                    if project is not None and getattr(project, "complexity", None)
+                    else None
+                ),
                 attention_reason=row.attention_reason,
             )
         )

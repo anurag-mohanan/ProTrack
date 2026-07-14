@@ -11,6 +11,7 @@ export interface ResourceAllocationBlock {
   milestone_name: string | null;
   hours: number;
   status_color: ResourceStatusColor;
+  complexity?: string | null;
 }
 
 export interface ResourcePlanningPeriod {
@@ -34,6 +35,7 @@ export interface ResourcePlanningDesignerRow {
   designer_name: string;
   team_name: string | null;
   availability_status: string;
+  skill_level?: string | null;
   capacity_hours: number;
   allocated_hours: number;
   remaining_hours: number;
@@ -46,8 +48,9 @@ export interface UnassignedProjectBlock {
   customer_name: string;
   quoted_hours: number;
   remaining_hours: number;
-  due_date: string;
+  due_date: string | null;
   milestone_name: string | null;
+  complexity?: string | null;
 }
 
 export interface ResourcePlanningGrid {

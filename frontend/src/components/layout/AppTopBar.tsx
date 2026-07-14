@@ -63,7 +63,12 @@ export function AppTopBar({ displayName, roleName, onLogout }: AppTopBarProps) {
               fontSize: { xs: '1rem', md: '1.05rem' },
               lineHeight: 1.2,
               letterSpacing: '-0.02em',
+              maxWidth: { xs: 180, sm: 280, md: 420 },
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
+            title={pageTitle}
           >
             {pageTitle}
           </Typography>

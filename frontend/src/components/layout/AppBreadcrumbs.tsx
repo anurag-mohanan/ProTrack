@@ -1,6 +1,8 @@
 import { Breadcrumbs, Link, Typography } from '@mui/material';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
+import { commandCenterQueryKeys, fetchProjectCommandCenter } from '../../api/commandCenter';
 
 interface BreadcrumbItem {
   label: string;
@@ -47,7 +49,22 @@ const ROUTE_LABELS: Record<string, string> = {
   '/admin/imports/historical-timesheets': 'Historical Timesheets',
 };
 
-function resolveBreadcrumbs(pathname: string): BreadcrumbItem[] {
+function projectIdFromPath(pathname: string): string | null {
+  if (!pathname.startsWith('/projects/') || pathname === '/projects/archived') {
+    return null;
+  }
+  const segment = pathname.split('/')[2] ?? '';
+  return segment || null;
+}
+
+function formatProjectTitle(toolNumber?: string | null, partDescription?: string | null): string {
+  const tool = toolNumber?.trim() ?? '';
+  const part = partDescription?.trim() ?? '';
+  if (tool && part) return `${tool} · ${part}`;
+  return tool || part || 'Project';
+}
+
+function resolveBreadcrumbs(pathname: string, projectLabel?: string | null): BreadcrumbItem[] {
   if (ROUTE_LABELS[pathname]) {
     if (pathname.startsWith('/admin/')) {
       return [
@@ -59,10 +76,9 @@ function resolveBreadcrumbs(pathname: string): BreadcrumbItem[] {
   }
 
   if (pathname.startsWith('/projects/') && pathname !== '/projects/archived') {
-    const projectId = pathname.split('/')[2] ?? '';
     return [
       { label: 'Projects', to: '/projects' },
-      { label: projectId ? `Project ${projectId.slice(0, 8)}…` : 'Project Detail' },
+      { label: projectLabel?.trim() || 'Project' },
     ];
   }
 
@@ -96,15 +112,30 @@ function resolveBreadcrumbs(pathname: string): BreadcrumbItem[] {
   return [{ label: 'Dashboard', to: '/dashboard' }];
 }
 
+function useProjectBreadcrumbLabel(projectId: string | null): string | null {
+  const query = useQuery({
+    queryKey: commandCenterQueryKeys.detail(projectId ?? ''),
+    queryFn: () => fetchProjectCommandCenter(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: 60_000,
+  });
+  if (!query.data?.project) return null;
+  return formatProjectTitle(query.data.project.tool_number, query.data.project.part_description);
+}
+
 export function useBreadcrumbTitle(): string {
   const { pathname } = useLocation();
-  const items = resolveBreadcrumbs(pathname);
+  const projectId = projectIdFromPath(pathname);
+  const projectLabel = useProjectBreadcrumbLabel(projectId);
+  const items = resolveBreadcrumbs(pathname, projectLabel);
   return items[items.length - 1]?.label ?? 'ProTrack';
 }
 
 export function AppBreadcrumbs() {
   const { pathname } = useLocation();
-  const items = resolveBreadcrumbs(pathname);
+  const projectId = projectIdFromPath(pathname);
+  const projectLabel = useProjectBreadcrumbLabel(projectId);
+  const items = resolveBreadcrumbs(pathname, projectLabel);
 
   return (
     <Breadcrumbs

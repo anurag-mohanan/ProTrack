@@ -230,8 +230,9 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
             after the tool is completed.
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Per-customer PDF workorder extraction (different layouts per customer) is planned next —
-            attributes will auto-fill from the customer PDF once templates are configured.
+            Use Overview → Import workorder PDF to autofill tonnage, material, and related fields from a
+            text-based customer PDF (review before Save). Per-customer template fine-tuning remains a later
+            enhancement for difficult layouts.
           </Typography>
         </Box>
       ) : null}

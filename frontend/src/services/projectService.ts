@@ -100,6 +100,32 @@ export async function updateProject(
   return data;
 }
 
+export interface WorkorderPdfExtractResult {
+  part_description?: string | null;
+  work_order_number?: string | null;
+  press_tonnage?: string | null;
+  plastic_material?: string | null;
+  cavity_count?: number | null;
+  tool_type?: string | null;
+  customer_specs?: string | null;
+  warnings?: string[];
+  source_chars?: number;
+}
+
+export async function extractWorkorderPdf(
+  projectId: string,
+  file: File,
+): Promise<WorkorderPdfExtractResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await apiClient.post<WorkorderPdfExtractResult>(
+    `/projects/${projectId}/workorder-pdf/extract`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return data;
+}
+
 export async function archiveProject(projectId: string): Promise<Project> {
   const { data } = await apiClient.post<Project>(`/projects/${projectId}/archive`);
   return data;

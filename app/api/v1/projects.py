@@ -1,5 +1,6 @@
 import json
 import logging
+from fastapi import File, UploadFile
 from pydantic import BaseModel
 from uuid import UUID
 
@@ -58,11 +59,13 @@ from app.schemas.project import (
     ProjectDeleteCheck,
     ProjectRead,
     ProjectUpdate,
+    WorkorderPdfExtractResult,
 )
 from app.schemas.communication import EmailMessageRead
 from app.services.email.engine import list_email_messages
 from app.services.command_center_service import get_project_command_center
 from app.services.activity_service import log_activity
+from app.services.workorder_pdf_extract import extract_workorder_fields_from_pdf
 from app.services.project_lifecycle_service import (
     archive_project,
     get_project_delete_dependencies,
@@ -565,6 +568,52 @@ def update_project(
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
     return project.get_read(db, record_id)
+
+
+@router.post(
+    "/{record_id}/workorder-pdf/extract",
+    response_model=WorkorderPdfExtractResult,
+)
+async def extract_workorder_pdf(
+    record_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Parse a customer workorder PDF into suggested Overview fields (does not save)."""
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A file name is required.",
+        )
+    suffix = file.filename.lower().rsplit(".", 1)[-1]
+    if suffix != "pdf":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF workorder files are supported.",
+        )
+    content = await file.read()
+    try:
+        extracted = extract_workorder_fields_from_pdf(content)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return WorkorderPdfExtractResult(
+        part_description=extracted.part_description,
+        work_order_number=extracted.work_order_number,
+        press_tonnage=extracted.press_tonnage,
+        plastic_material=extracted.plastic_material,
+        cavity_count=extracted.cavity_count,
+        tool_type=extracted.tool_type,
+        customer_specs=extracted.customer_specs,
+        warnings=extracted.warnings,
+        source_chars=extracted.source_chars,
+    )
 
 
 @router.post("/{record_id}/apply-template", response_model=ProjectRead)

@@ -24,7 +24,7 @@ export function TimesheetQuickActions({
   if (readOnly) return null;
 
   return (
-    <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
       <ProsohmButton
         buttonVariant="outlined"
         size="small"

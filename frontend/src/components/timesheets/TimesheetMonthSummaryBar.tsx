@@ -1,4 +1,5 @@
 import { Box, Divider, LinearProgress, Tooltip, Typography } from '@mui/material';
+import type { SxProps, Theme } from '@mui/material/styles';
 import type { TimesheetStatus } from '../../types/common';
 import { TimesheetStatusChip } from '../common/StatusChip';
 import type { TimesheetMonthSummary } from '../../utils/timesheetMonth';
@@ -13,6 +14,7 @@ interface TimesheetMonthSummaryBarProps {
   weeklyHours?: number;
   weeklyExpected?: number;
   scopeLabel?: string;
+  sx?: SxProps<Theme>;
 }
 
 function toPercent(value: number, target: number): number | null {
@@ -131,6 +133,7 @@ export function TimesheetMonthSummaryBar({
   weeklyHours = 0,
   weeklyExpected,
   scopeLabel,
+  sx,
 }: TimesheetMonthSummaryBarProps) {
   const remainingHours = Math.max(0, summary.remainingHours);
   const leaveLabel =
@@ -153,6 +156,7 @@ export function TimesheetMonthSummaryBar({
         borderColor: 'divider',
         bgcolor: designTokens.semantic.card,
         boxShadow: designTokens.elevation.card,
+        ...sx,
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

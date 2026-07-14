@@ -437,15 +437,18 @@ export function TimesheetsPage() {
         </ToggleButtonGroup>
       ) : null}
 
-      <TimesheetMonthSummaryBar
-        status={workspace.monthStatus}
-        summary={viewAllUsers ? overviewSummary : workspace.summary}
-        todayHours={todayHours}
-        todayExpected={todayExpected}
-        weeklyHours={weeklyHours}
-        weeklyExpected={weeklyExpected}
-        scopeLabel={viewAllUsers ? 'Team rollup' : undefined}
-      />
+      {/* All Users: keep rollup near the top for monitoring. My Entries: place under entry actions. */}
+      {viewAllUsers ? (
+        <TimesheetMonthSummaryBar
+          status={workspace.monthStatus}
+          summary={overviewSummary}
+          todayHours={todayHours}
+          todayExpected={todayExpected}
+          weeklyHours={weeklyHours}
+          weeklyExpected={weeklyExpected}
+          scopeLabel="Team rollup"
+        />
+      ) : null}
 
       {viewAllUsers && overviewSummary.remainingHours < 0 ? (
         <Alert severity="warning" sx={{ mb: 1.5 }}>
@@ -484,10 +487,10 @@ export function TimesheetsPage() {
             gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 240px' },
             gap: { xs: 1.5, md: 2 },
             alignItems: 'start',
-            mb: 1.5,
+            mb: 2,
           }}
         >
-          <Box sx={{ minWidth: 0 }}>
+          <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             <TimesheetEntryForm
               projects={workspace.activeProjects}
               npCodes={workspace.npCodes}
@@ -511,6 +514,15 @@ export function TimesheetsPage() {
               onCopyYesterday={handleCopyYesterday}
               onCopyPreviousWeek={handleCopyPreviousWeek}
               onDuplicateSelected={() => void handleDuplicateSelected()}
+            />
+            <TimesheetMonthSummaryBar
+              status={workspace.monthStatus}
+              summary={workspace.summary}
+              todayHours={todayHours}
+              todayExpected={todayExpected}
+              weeklyHours={weeklyHours}
+              weeklyExpected={weeklyExpected}
+              sx={{ mb: 0 }}
             />
           </Box>
           <Box sx={{ justifySelf: { xs: 'stretch', md: 'end' }, width: '100%' }}>

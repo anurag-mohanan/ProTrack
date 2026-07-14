@@ -477,36 +477,46 @@ export function TimesheetsPage() {
         </Alert>
       ) : null}
 
-      {showEntryForm ? <TimesheetNpReferencePanel codes={workspace.npCodes} /> : null}
-
       {showEntryForm ? (
-        <TimesheetEntryForm
-          projects={workspace.activeProjects}
-          npCodes={workspace.npCodes}
-          taskTypes={workspace.taskTypes}
-          readOnly={readOnly}
-          canOverrideBillable={canOverrideBillable(roleName)}
-          editingEntry={null}
-          dailyTotals={workspace.dailyTotals}
-          dailyLimit={workspace.dailyLimit}
-          saving={workspace.saveEntryMutation.isPending}
-          currentUserId={user?.id}
-          onProjectSearch={workspace.setProjectSearch}
-          onSubmit={(values) => handleSaveEntry(values)}
-          onCancelEdit={() => undefined}
-          onEntryDateChange={setToolbarDate}
-        />
-      ) : null}
-
-      {showEntryForm ? (
-        <TimesheetQuickActions
-          readOnly={readOnly}
-          loading={quickActionLoading}
-          hasSelectedEntry={Boolean(selectedEntry && workspace.isEntryEditable(selectedEntry))}
-          onCopyYesterday={handleCopyYesterday}
-          onCopyPreviousWeek={handleCopyPreviousWeek}
-          onDuplicateSelected={() => void handleDuplicateSelected()}
-        />
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 240px' },
+            gap: { xs: 1.5, md: 2 },
+            alignItems: 'start',
+            mb: 1.5,
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
+            <TimesheetEntryForm
+              projects={workspace.activeProjects}
+              npCodes={workspace.npCodes}
+              taskTypes={workspace.taskTypes}
+              readOnly={readOnly}
+              canOverrideBillable={canOverrideBillable(roleName)}
+              editingEntry={null}
+              dailyTotals={workspace.dailyTotals}
+              dailyLimit={workspace.dailyLimit}
+              saving={workspace.saveEntryMutation.isPending}
+              currentUserId={user?.id}
+              onProjectSearch={workspace.setProjectSearch}
+              onSubmit={(values) => handleSaveEntry(values)}
+              onCancelEdit={() => undefined}
+              onEntryDateChange={setToolbarDate}
+            />
+            <TimesheetQuickActions
+              readOnly={readOnly}
+              loading={quickActionLoading}
+              hasSelectedEntry={Boolean(selectedEntry && workspace.isEntryEditable(selectedEntry))}
+              onCopyYesterday={handleCopyYesterday}
+              onCopyPreviousWeek={handleCopyPreviousWeek}
+              onDuplicateSelected={() => void handleDuplicateSelected()}
+            />
+          </Box>
+          <Box sx={{ justifySelf: { xs: 'stretch', md: 'end' }, width: '100%' }}>
+            <TimesheetNpReferencePanel codes={workspace.npCodes} />
+          </Box>
+        </Box>
       ) : null}
 
       {viewAllUsers ? (

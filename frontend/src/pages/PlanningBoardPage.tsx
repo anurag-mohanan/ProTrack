@@ -310,7 +310,57 @@ function ProjectRow({ project }: { project: WallProjectCard }) {
   );
 }
 
+function isOnHold(project: WallProjectCard) {
+  return (project.execution_status ?? '').toLowerCase() === 'on_hold';
+}
+
+function SubcategoryLabel({ label, count }: { label: string; count: number }) {
+  return (
+    <Stack
+      direction="row"
+      spacing={0.75}
+      sx={{
+        alignItems: 'center',
+        pt: 0.35,
+        pb: 0.15,
+        position: 'sticky',
+        top: 0,
+        zIndex: 1,
+        bgcolor: 'rgba(15, 23, 42, 0.92)',
+      }}
+    >
+      <Typography
+        sx={{
+          color: WALL.muted,
+          fontSize: '0.68rem',
+          fontWeight: 800,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </Typography>
+      <Chip
+        size="small"
+        label={count}
+        sx={{
+          height: 18,
+          fontSize: '0.65rem',
+          fontWeight: 800,
+          bgcolor: WALL.soft,
+          color: WALL.muted,
+        }}
+      />
+    </Stack>
+  );
+}
+
 function TeamColumn({ team }: { team: WallTeamLiveBlock }) {
+  const working = team.projects.filter((project) => !isOnHold(project));
+  const onHold = team.projects.filter((project) => isOnHold(project));
+  const workingCount = team.active_count ?? working.length;
+  const holdCount = team.on_hold_count ?? onHold.length;
+
   return (
     <Box
       sx={{
@@ -333,9 +383,21 @@ function TeamColumn({ team }: { team: WallTeamLiveBlock }) {
           </Typography>
           <Chip
             size="small"
-            label={`${team.active_count}`}
+            label={`${workingCount} active`}
             sx={{ height: 22, fontWeight: 800, bgcolor: 'rgba(37, 99, 235, 0.22)', color: '#93c5fd' }}
           />
+          {holdCount > 0 ? (
+            <Chip
+              size="small"
+              label={`${holdCount} hold`}
+              sx={{
+                height: 22,
+                fontWeight: 800,
+                bgcolor: 'rgba(148, 163, 184, 0.22)',
+                color: '#cbd5e1',
+              }}
+            />
+          ) : null}
           {team.red_count > 0 ? (
             <Chip
               size="small"
@@ -368,7 +430,6 @@ function TeamColumn({ team }: { team: WallTeamLiveBlock }) {
         sx={{
           flex: 1,
           minHeight: 0,
-          // Keep page locked; only the team list may soft-scroll if tools exceed the wall.
           overflowY: 'auto',
           overflowX: 'hidden',
           pr: 0.25,
@@ -380,10 +441,30 @@ function TeamColumn({ team }: { team: WallTeamLiveBlock }) {
           },
         }}
       >
-        {team.projects.length ? (
-          team.projects.map((project) => (
-            <ProjectRow key={project.project_id ?? project.tool_number} project={project} />
-          ))
+        {working.length || onHold.length ? (
+          <>
+            {working.length ? (
+              <>
+                <SubcategoryLabel label="Active" count={working.length} />
+                {working.map((project) => (
+                  <ProjectRow key={project.project_id ?? project.tool_number} project={project} />
+                ))}
+              </>
+            ) : null}
+            {onHold.length ? (
+              <>
+                <SubcategoryLabel label="On hold" count={onHold.length} />
+                {onHold.map((project) => (
+                  <Box
+                    key={project.project_id ?? `hold-${project.tool_number}`}
+                    sx={{ opacity: 0.88 }}
+                  >
+                    <ProjectRow project={project} />
+                  </Box>
+                ))}
+              </>
+            ) : null}
+          </>
         ) : (
           <Box
             sx={{

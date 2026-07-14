@@ -243,6 +243,7 @@ class WallTeamLiveBlock(BaseModel):
     engineering_manager_name: str | None = None
     design_leader_name: str | None = None
     active_count: int = 0
+    on_hold_count: int = 0
     red_count: int = 0
     yellow_count: int = 0
     projects: list[WallProjectCard] = Field(default_factory=list)

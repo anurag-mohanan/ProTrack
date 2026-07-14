@@ -49,8 +49,16 @@ def test_planning_board_team_blocks_include_leadership(client):
     team = teams[0]
     assert "engineering_manager_name" in team
     assert "design_leader_name" in team
-    # All live tools for a team should be returned (no hard [:12] truncation).
-    assert len(team.get("projects", [])) == team.get("active_count", 0)
+    assert "on_hold_count" in team
+    # Live tools = active (working/planning) + on hold.
+    assert len(team.get("projects", [])) == int(team.get("active_count", 0)) + int(
+        team.get("on_hold_count", 0)
+    )
+    # Active tools appear before on-hold tools in the list.
+    statuses = [p.get("execution_status") for p in team.get("projects", [])]
+    if "on_hold" in statuses and any(s != "on_hold" for s in statuses):
+        first_hold = statuses.index("on_hold")
+        assert all(s == "on_hold" for s in statuses[first_hold:])
 
 
 def test_planning_board_includes_empty_team_placeholders(client):

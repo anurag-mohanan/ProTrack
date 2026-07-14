@@ -140,6 +140,7 @@ export interface WallTeamLiveBlock {
   engineering_manager_name?: string | null;
   design_leader_name?: string | null;
   active_count: number;
+  on_hold_count?: number;
   red_count: number;
   yellow_count: number;
   projects: WallProjectCard[];

@@ -215,10 +215,34 @@ def _build_teams_live(
         return sorted(
             cards,
             key=lambda card: (
+                # Active / planning first; on-hold as a following subcategory.
+                1 if card.execution_status == ExecutionStatus.on_hold.value else 0,
                 0 if card.health == "red" else 1 if card.health == "yellow" else 2,
                 card.due_date or ctx.today,
                 card.tool_number,
             ),
+        )
+
+    def _block_for(
+        *,
+        team_id: UUID | None,
+        team_name: str,
+        projects_sorted: list[WallProjectCard],
+        em_name: str | None = None,
+        dl_name: str | None = None,
+    ) -> WallTeamLiveBlock:
+        on_hold = [card for card in projects_sorted if card.execution_status == ExecutionStatus.on_hold.value]
+        working = [card for card in projects_sorted if card.execution_status != ExecutionStatus.on_hold.value]
+        return WallTeamLiveBlock(
+            team_id=team_id,
+            team_name=team_name,
+            engineering_manager_name=em_name,
+            design_leader_name=dl_name,
+            active_count=len(working),
+            on_hold_count=len(on_hold),
+            red_count=sum(1 for card in projects_sorted if card.health == "red"),
+            yellow_count=sum(1 for card in projects_sorted if card.health == "yellow"),
+            projects=[*working, *on_hold],
         )
 
     blocks: list[WallTeamLiveBlock] = []
@@ -226,28 +250,22 @@ def _build_teams_live(
         projects_sorted = _cards_for(projects_by_team.get(team.id, []), team.name)
         em_name, dl_name = leadership.get(team.id, (None, None))
         blocks.append(
-            WallTeamLiveBlock(
+            _block_for(
                 team_id=team.id,
                 team_name=team.name,
-                engineering_manager_name=em_name,
-                design_leader_name=dl_name,
-                active_count=len(projects_sorted),
-                red_count=sum(1 for card in projects_sorted if card.health == "red"),
-                yellow_count=sum(1 for card in projects_sorted if card.health == "yellow"),
-                projects=projects_sorted,
+                projects_sorted=projects_sorted,
+                em_name=em_name,
+                dl_name=dl_name,
             )
         )
 
     if include_unassigned and projects_by_team.get(None):
         projects_sorted = _cards_for(projects_by_team[None], "Unassigned")
         blocks.append(
-            WallTeamLiveBlock(
+            _block_for(
                 team_id=None,
                 team_name="Unassigned",
-                active_count=len(projects_sorted),
-                red_count=sum(1 for card in projects_sorted if card.health == "red"),
-                yellow_count=sum(1 for card in projects_sorted if card.health == "yellow"),
-                projects=projects_sorted,
+                projects_sorted=projects_sorted,
             )
         )
 

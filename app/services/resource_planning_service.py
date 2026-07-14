@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.crud.team_reports import get_team_resource_planning
 from app.models.enums import ExecutionStatus, MilestoneStatus, UserAvailabilityStatus
-from app.models.models import Customer, Project, Team, TeamMember, User
+from app.models.models import Customer, Milestone, Project, Team, TeamMember, User
 from app.schemas.resource_planning import (
     ResourceAllocationBlock,
     ResourcePlanningCell,
@@ -34,6 +34,75 @@ def _round(value: Decimal) -> Decimal:
 
 def _decimal(value) -> Decimal:
     return Decimal(str(value or 0))
+
+
+# Floor load when a live tool has incomplete milestones but no planned hours set.
+_OPEN_MILESTONE_FLOOR_HOURS = Decimal("16")
+# Carry one week of work when project is still CBW/planning with no open MS hours.
+_ACTIVE_TOOL_CARRY_HOURS = Decimal("40")
+
+
+def _batch_open_milestone_load(
+    db: Session,
+    project_ids: list[UUID],
+) -> dict[UUID, tuple[Decimal, int, int]]:
+    """project_id → (open planned hours, open milestone count, total milestone count)."""
+    if not project_ids:
+        return {}
+    milestones = db.scalars(
+        select(Milestone).where(Milestone.project_id.in_(project_ids))
+    ).all()
+    result: dict[UUID, tuple[Decimal, int, int]] = {
+        project_id: (Decimal("0"), 0, 0) for project_id in project_ids
+    }
+    for milestone in milestones:
+        planned, open_count, total = result[milestone.project_id]
+        total += 1
+        if milestone.status != MilestoneStatus.completed:
+            open_count += 1
+            planned += _decimal(milestone.planned_hours)
+        result[milestone.project_id] = (planned, open_count, total)
+    return result
+
+
+def _active_planning_remaining(
+    project: Project,
+    *,
+    actual_hours: Decimal,
+    open_planned: Decimal,
+    open_count: int,
+    milestone_total: int,
+) -> Decimal:
+    """Remaining hours to schedule for a live tool (Ops/EM rule).
+
+    Never drop to zero solely because actual already exceeds quoted/planned —
+    designers on active tools still consume capacity until the tool is closed.
+    """
+    planned_total = _decimal(project.current_planned_hours)
+    quoted = _decimal(project.quoted_hours)
+    budget = planned_total if planned_total > 0 else quoted
+
+    if open_planned > 0:
+        return _round(open_planned)
+
+    if budget > 0:
+        leftover = max(budget - actual_hours, Decimal("0"))
+        if leftover > 0:
+            return _round(leftover)
+
+    # Over-burn or missing milestone plans — still schedule open scope.
+    if open_count > 0:
+        if quoted > 0 and milestone_total > 0:
+            return _round((quoted / Decimal(milestone_total)) * Decimal(open_count))
+        return _round(Decimal(open_count) * _OPEN_MILESTONE_FLOOR_HOURS)
+
+    if project.execution_status in (
+        ExecutionStatus.currently_being_worked_on,
+        ExecutionStatus.planning,
+    ):
+        return _ACTIVE_TOOL_CARRY_HOURS
+
+    return Decimal("0")
 
 
 WEEKDAY_CODES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -319,17 +388,23 @@ def get_resource_planning_grid(
     }
 
     project_hours = batch_calculate_hours(db, active_projects)
+    open_load = _batch_open_milestone_load(db, [project.id for project in active_projects])
     # remaining_hours, business_days, spread_end
     project_daily_rates: dict[UUID, tuple[Decimal, int, date]] = {}
     for project in active_projects:
         hours = project_hours.get(project.id)
         if hours is None:
             continue
-        planned_total = _decimal(project.current_planned_hours)
-        if planned_total > 0:
-            remaining = max(planned_total - hours.actual, Decimal("0"))
-        else:
-            remaining = max(hours.remaining, Decimal("0"))
+        open_planned, open_count, milestone_total = open_load.get(
+            project.id, (Decimal("0"), 0, 0)
+        )
+        remaining = _active_planning_remaining(
+            project,
+            actual_hours=hours.actual,
+            open_planned=open_planned,
+            open_count=open_count,
+            milestone_total=milestone_total,
+        )
         # Overdue or undated tools still show remaining pressure over a runway.
         if project.due_date and project.due_date >= today:
             spread_end = project.due_date
@@ -468,11 +543,15 @@ def get_resource_planning_grid(
         hours = project_hours.get(project.id)
         if hours is None:
             continue
-        planned_total = _decimal(project.current_planned_hours)
-        remaining = (
-            max(planned_total - hours.actual, Decimal("0"))
-            if planned_total > 0
-            else max(hours.remaining, Decimal("0"))
+        open_planned, open_count, milestone_total = open_load.get(
+            project.id, (Decimal("0"), 0, 0)
+        )
+        remaining = _active_planning_remaining(
+            project,
+            actual_hours=hours.actual,
+            open_planned=open_planned,
+            open_count=open_count,
+            milestone_total=milestone_total,
         )
         unassigned.append(
             UnassignedProjectBlock(

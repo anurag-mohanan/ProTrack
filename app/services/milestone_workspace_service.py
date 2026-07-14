@@ -102,13 +102,42 @@ def get_project_milestone_summary(db: Session, project_id: UUID) -> ProjectMiles
     not_started_count = sum(
         1 for row in milestones if row.status == MilestoneStatus.not_started
     )
+
+    def _milestone_progress(row: Milestone) -> int:
+        if row.status == MilestoneStatus.completed:
+            return 100
+        if row.status == MilestoneStatus.in_progress:
+            return max(int(row.progress_percent or 0), 1)
+        return max(0, min(100, int(row.progress_percent or 0)))
+
     overall_progress_percent = (
-        int(sum(int(row.progress_percent or 0) for row in milestones) / len(milestones))
+        int(sum(_milestone_progress(row) for row in milestones) / len(milestones))
         if milestones
         else 0
     )
     quoted = _decimal(project.quoted_hours)
     current_planned = _decimal(project.current_planned_hours or total_planned)
+
+    open_planned = sum(
+        (
+            _decimal(row.planned_hours)
+            for row in milestones
+            if row.status != MilestoneStatus.completed
+        ),
+        Decimal("0"),
+    )
+    open_count = in_progress_count + not_started_count
+    if open_planned > 0:
+        remaining_hours = open_planned
+    elif total_planned > 0:
+        remaining_hours = max(total_planned - total_actual, Decimal("0"))
+    elif quoted > 0 and milestones:
+        # No milestone plans — treat incomplete milestones as remaining share of quote.
+        remaining_hours = (
+            (quoted / Decimal(len(milestones))) * Decimal(open_count) if open_count else Decimal("0")
+        )
+    else:
+        remaining_hours = Decimal("0")
 
     return ProjectMilestoneSummary(
         total_planned_hours=total_planned,
@@ -118,7 +147,7 @@ def get_project_milestone_summary(db: Session, project_id: UUID) -> ProjectMiles
         in_progress_count=in_progress_count,
         not_started_count=not_started_count,
         overall_progress_percent=overall_progress_percent,
-        remaining_hours=max(total_planned - total_actual, Decimal("0")),
+        remaining_hours=remaining_hours,
         quoted_hours=quoted,
         current_planned_hours=current_planned,
         planned_variance_hours=current_planned - quoted,

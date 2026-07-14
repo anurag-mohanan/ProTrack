@@ -5,7 +5,7 @@ import type {
   ResourceStatusColor,
 } from '../../types/ResourcePlanning';
 import { designTokens } from '../../theme/designTokens';
-import { formatNumber } from '../../utils/format';
+import { formatNumber, toFiniteNumber } from '../../utils/format';
 
 const COLOR_MAP: Record<ResourceStatusColor, string> = {
   green: designTokens.utilization.low,
@@ -164,10 +164,11 @@ export function ResourcePlanningTimeline({
             {grid.periods.map((period) => {
               const cell = cellMap.get(designer.user_id)?.get(period.key);
               if (!cell) return <Box key={period.key} />;
+              const capacity = toFiniteNumber(cell.capacity_hours);
+              const allocated = toFiniteNumber(cell.allocated_hours);
+              const remaining = toFiniteNumber(cell.remaining_hours);
               const util =
-                cell.capacity_hours > 0
-                  ? Math.round((cell.allocated_hours / cell.capacity_hours) * 100)
-                  : 0;
+                capacity > 0 ? Math.round((allocated / capacity) * 100) : allocated > 0 ? 100 : 0;
               return (
                 <Box
                   key={period.key}
@@ -188,7 +189,7 @@ export function ResourcePlanningTimeline({
                   }}
                 >
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                    {util}% · {formatNumber(cell.remaining_hours)}h free
+                    {util}% · {formatNumber(remaining, 1) || '0'}h free
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                     {cell.blocks.map((block) => (

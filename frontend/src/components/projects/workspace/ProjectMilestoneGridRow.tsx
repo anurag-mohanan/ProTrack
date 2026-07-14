@@ -24,7 +24,7 @@ import { EntityAvatar, StickyTableCell } from '../../ui/design-system';
 import type { Milestone, MilestoneStatus } from '../../../types';
 import { MILESTONE_STATUS_LABELS } from '../../../types/common';
 import { designTokens } from '../../../theme/designTokens';
-import { formatDate, formatNumber } from '../../../utils/format';
+import { formatDate, formatNumber, toFiniteNumber } from '../../../utils/format';
 import type { updateMilestone } from '../../../services/milestoneService';
 import {
   PROGRESS_STEPS,
@@ -60,7 +60,7 @@ function stopRowClick(event: MouseEvent) {
 }
 
 function hoursColor(actual: number, planned: number): string {
-  if (!planned) return designTokens.semantic.neutral;
+  if (planned <= 0) return designTokens.semantic.neutral;
   const pct = (actual / planned) * 100;
   if (pct > 100) return designTokens.semantic.danger;
   if (pct >= 90) return designTokens.semantic.warning;
@@ -96,9 +96,10 @@ export function ProjectMilestoneGridRow({
   const canEditStatus = canEdit || canEditProgress;
   const isCompleted = row.status === 'completed';
   const assigneeLabel = row.assigned_user_name ?? 'Unassigned';
-  const hoursPct = row.planned_hours
-    ? Math.round((row.actual_hours / row.planned_hours) * 100)
-    : 0;
+  const plannedHours = toFiniteNumber(row.planned_hours);
+  const actualHours = toFiniteNumber(row.actual_hours);
+  const hoursPct =
+    plannedHours > 0 ? Math.round((actualHours / plannedHours) * 100) : null;
 
   const commitName = async () => {
     const trimmed = nameDraft.trim();
@@ -245,12 +246,12 @@ export function ProjectMilestoneGridRow({
           sx={{
             fontWeight: 700,
             cursor: canEdit ? 'pointer' : 'default',
-            color: hoursColor(row.actual_hours, row.planned_hours),
+            color: hoursColor(actualHours, plannedHours),
             whiteSpace: 'nowrap',
           }}
         >
-          {formatNumber(row.actual_hours, 0)}/{formatNumber(row.planned_hours, 0)} hrs
-          {row.planned_hours ? ` (${hoursPct}%)` : ''}
+          {formatNumber(actualHours, 0) || '0'}/{formatNumber(plannedHours, 0) || '0'} hrs
+          {hoursPct != null && Number.isFinite(hoursPct) ? ` (${hoursPct}%)` : ''}
         </Typography>
         <Popover
           open={Boolean(hoursAnchor)}

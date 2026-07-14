@@ -191,34 +191,79 @@ def _scan_table_cells(content: bytes, result: WorkorderExtract) -> None:
         result.warnings.append("Could not read some PDF tables; used page text only.")
 
 
-def extract_pdf_text(content: bytes) -> str:
-    try:
-        import pdfplumber
-    except ImportError as exc:
-        raise ProTrackValidationError(
-            "PDF import requires pdfplumber. Install dependencies or enter details manually."
-        ) from exc
+def _extract_text_pdfplumber(content: bytes) -> str:
+    import pdfplumber
 
     chunks: list[str] = []
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        if not pdf.pages:
+            raise ProTrackValidationError("PDF has no pages.")
+        for page in pdf.pages[:12]:
+            text = page.extract_text() or ""
+            if text.strip():
+                chunks.append(text)
+    return "\n".join(chunks).strip()
+
+
+def _extract_text_pypdf(content: bytes) -> str:
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(content))
+    if not reader.pages:
+        raise ProTrackValidationError("PDF has no pages.")
+    chunks: list[str] = []
+    for page in reader.pages[:12]:
+        text = page.extract_text() or ""
+        if text.strip():
+            chunks.append(text)
+    return "\n".join(chunks).strip()
+
+
+def extract_pdf_text(content: bytes) -> str:
+    """Extract page text; prefer pdfplumber, fall back to pypdf."""
+    errors: list[str] = []
+
     try:
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            if not pdf.pages:
-                raise ProTrackValidationError("PDF has no pages.")
-            for page in pdf.pages[:12]:
-                text = page.extract_text() or ""
-                if text.strip():
-                    chunks.append(text)
+        combined = _extract_text_pdfplumber(content)
+        if combined:
+            return combined
+        errors.append("pdfplumber found no text")
+    except ImportError:
+        errors.append("pdfplumber not installed")
     except ProTrackValidationError:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise ProTrackValidationError(f"Could not read workorder PDF: {exc}") from exc
+        errors.append(f"pdfplumber failed: {exc}")
 
-    combined = "\n".join(chunks).strip()
-    if not combined:
+    try:
+        combined = _extract_text_pypdf(content)
+        if combined:
+            return combined
+        errors.append("pypdf found no text")
+    except ImportError:
+        errors.append("pypdf not installed")
+    except ProTrackValidationError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"pypdf failed: {exc}")
+
+    if any("not installed" in item for item in errors) and all(
+        "not installed" in item or "found no text" in item for item in errors
+    ):
+        raise ProTrackValidationError(
+            "PDF import requires pdfplumber (or pypdf). "
+            "On the API host run: pip install -r requirements.txt  then restart the API. "
+            "Or enter workorder details manually."
+        )
+
+    if any("found no text" in item for item in errors):
         raise ProTrackValidationError(
             "No extractable text found. Use a text-based PDF (not a scanned image) or enter details manually."
         )
-    return combined
+
+    raise ProTrackValidationError(
+        f"Could not read workorder PDF ({'; '.join(errors)}). Enter details manually."
+    )
 
 
 def extract_workorder_fields_from_text(text: str) -> WorkorderExtract:

@@ -36,6 +36,7 @@
 | 2 | Open project workspace: top bar shows `2649 · Frt Door…` (not UUID) | |
 | 3 | Role chip under title still shows (e.g. Engineering Manager) | |
 | 4 | Overview → **Import workorder PDF** on a text PDF with WO / tonnage / material labels | |
+| 4a | If toast says pdfplumber missing: on **API host** `pip install -r requirements.txt` then restart API | |
 | 5 | Fields autofill into edit form; Save persists | |
 | 6 | Scanned/image-only PDF shows clear error (no text) | |
 | 7 | Non-editors do not see Import / Edit | |

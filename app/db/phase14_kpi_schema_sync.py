@@ -32,6 +32,9 @@ ADMINISTRATION_ROLE_NAMES = frozenset(
         "HR",
         "Finance",
         "IT",
+        "Office Administrator",
+        "Read Only",
+        "Planning Board",
     }
 )
 
@@ -166,7 +169,16 @@ def _infer_operational_code(role_name: str) -> str:
         return "management"
     if role_name in ADMINISTRATION_ROLE_NAMES:
         return "administration"
-    return "engineering"
+    # Unknown roles: do not default into billable engineering capacity pools.
+    return "administration"
+
+
+def _clear_virtual_monitor_kpi_flags(user: User) -> None:
+    user.kpi_engineering_productivity = False
+    user.kpi_capacity_planning = False
+    user.kpi_utilization = False
+    user.kpi_workload_planning = False
+    user.kpi_dashboard_productivity = False
 
 
 def _backfill_users(session: Session, role_types: dict[str, uuid.UUID]) -> None:
@@ -191,6 +203,13 @@ def _backfill_users(session: Session, role_types: dict[str, uuid.UUID]) -> None:
             user.kpi_utilization = True
             user.kpi_workload_planning = True
             user.kpi_dashboard_productivity = True
+        # Planning Board / Read Only / Office Admin / Admin / HR / IT must never
+        # appear as open capacity on dashboards or planning grids.
+        if role_name in ADMINISTRATION_ROLE_NAMES:
+            _clear_virtual_monitor_kpi_flags(user)
+            admin_op = role_types.get("administration")
+            if admin_op is not None:
+                user.operational_role_type_id = admin_op
 
 
 def apply_operational_role_defaults(user: User, operational_role: OperationalRoleType) -> None:

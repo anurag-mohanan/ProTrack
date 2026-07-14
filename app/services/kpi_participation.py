@@ -5,6 +5,10 @@ from __future__ import annotations
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
+from app.core.timesheet_eligibility import (
+    NON_CAPACITY_RESOURCE_ROLES,
+    role_is_non_capacity_resource,
+)
 from app.db.phase14_kpi_schema_sync import (
     ADMINISTRATION_ROLE_NAMES,
     ENGINEERING_ROLE_NAMES,
@@ -31,6 +35,14 @@ def _active_user_clause():
     )
 
 
+def _clear_capacity_kpi_flags(user: User) -> None:
+    user.kpi_engineering_productivity = False
+    user.kpi_capacity_planning = False
+    user.kpi_utilization = False
+    user.kpi_workload_planning = False
+    user.kpi_dashboard_productivity = False
+
+
 def users_for_kpi_flag(db: Session, flag: str) -> list[User]:
     column = KPI_FLAG_COLUMNS.get(flag)
     if column is None:
@@ -38,7 +50,12 @@ def users_for_kpi_flag(db: Session, flag: str) -> list[User]:
     return list(
         db.scalars(
             select(User)
-            .where(column.is_(True), *_active_user_clause())
+            .join(Role, User.role_id == Role.id)
+            .where(
+                column.is_(True),
+                *_active_user_clause(),
+                Role.name.notin_(tuple(NON_CAPACITY_RESOURCE_ROLES)),
+            )
             .order_by(User.last_name, User.first_name)
         ).all()
     )
@@ -68,7 +85,12 @@ def kpi_user_ids_subquery(flag: str) -> Select:
     column = KPI_FLAG_COLUMNS[flag]
     return (
         select(User.id)
-        .where(column.is_(True), *_active_user_clause())
+        .join(Role, User.role_id == Role.id)
+        .where(
+            column.is_(True),
+            *_active_user_clause(),
+            Role.name.notin_(tuple(NON_CAPACITY_RESOURCE_ROLES)),
+        )
     )
 
 
@@ -103,6 +125,19 @@ def apply_defaults_for_user(
     if role_name is None and user.role_id:
         role = db.get(Role, user.role_id)
         role_name = role.name if role else None
+
+    # Wall / virtual monitors are never capacity resources — clear all KPI participation.
+    if role_is_non_capacity_resource(role_name):
+        op_type = resolve_operational_role_type(
+            db,
+            operational_role_type_id=operational_role_type_id or user.operational_role_type_id,
+            system_role_name=role_name,
+        )
+        if op_type is not None:
+            user.operational_role_type_id = op_type.id
+        _clear_capacity_kpi_flags(user)
+        return
+
     op_type = resolve_operational_role_type(
         db,
         operational_role_type_id=operational_role_type_id or user.operational_role_type_id,
@@ -151,6 +186,7 @@ __all__ = [
     "ENGINEERING_ROLE_NAMES",
     "MANAGEMENT_ROLE_NAMES",
     "ADMINISTRATION_ROLE_NAMES",
+    "NON_CAPACITY_RESOURCE_ROLES",
     "apply_defaults_for_user",
     "capacity_planning_users",
     "dashboard_productivity_users",
@@ -160,6 +196,7 @@ __all__ = [
     "is_engineering_kpi_user",
     "is_management_user",
     "kpi_user_ids_subquery",
+    "role_is_non_capacity_resource",
     "utilization_users",
     "users_for_kpi_flag",
     "workload_planning_users",

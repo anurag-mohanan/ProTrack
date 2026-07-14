@@ -43,9 +43,19 @@ OWN_TIMESHEET_EXEMPT_ROLES = frozenset(
     }
 )
 
+# Never counted as designers / capacity / utilization resources (virtual & monitor accounts).
+NON_CAPACITY_RESOURCE_ROLES = OWN_TIMESHEET_EXEMPT_ROLES
+
 
 def default_requires_timesheet_for_role(role_name: str) -> bool:
     return normalize_role_name(role_name) in REQUIRES_TIMESHEET_ROLE_DEFAULTS
+
+
+def role_is_non_capacity_resource(role_name: str | None) -> bool:
+    """True for wall monitors and other virtual accounts (e.g. Planning Board)."""
+    if not role_name:
+        return False
+    return normalize_role_name(role_name) in NON_CAPACITY_RESOURCE_ROLES
 
 
 def user_requires_timesheet(user: User) -> bool:

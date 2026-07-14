@@ -152,3 +152,43 @@ def test_planning_board_defaults_have_no_write_specials():
 
     assert default_modules_for_role(PLANNING_BOARD) == ["planning_board"]
     assert default_special_permissions_for_role(PLANNING_BOARD) == []
+
+
+def test_planning_board_excluded_from_dashboard_resources(client, auth_headers):
+    """Virtual Planning Board user must never appear as capacity / utilization."""
+    summary = client.get("/api/v1/dashboard/summary", headers=auth_headers).json()
+    availability = summary.get("designer_availability") or []
+    names = [row.get("designer_name", "") for row in availability]
+    assert not any("Planning Board" in name for name in names)
+
+    workload = client.get("/api/v1/dashboard/workload", headers=auth_headers).json()
+    for row in workload:
+        assert "Planning Board" not in (row.get("designer_name") or "")
+
+    grid = client.get(
+        "/api/v1/dashboard/resource-planning/grid",
+        headers=auth_headers,
+        params={"granularity": "week"},
+    )
+    assert grid.status_code == 200
+    designers = grid.json().get("designers") or []
+    assert not any("Planning Board" in (row.get("designer_name") or "") for row in designers)
+
+
+def test_planning_board_not_in_utilization_users(test_session_factory, seeded_db):
+    from app.services.kpi_participation import (
+        capacity_planning_users,
+        utilization_users,
+        workload_planning_users,
+    )
+
+    with test_session_factory() as session:
+        for pool in (
+            utilization_users(session),
+            capacity_planning_users(session),
+            workload_planning_users(session),
+        ):
+            assert all((u.role.name if u.role else "") != "Planning Board" for u in pool)
+            assert all(
+                f"{u.first_name} {u.last_name}".strip() != "Planning Board" for u in pool
+            )

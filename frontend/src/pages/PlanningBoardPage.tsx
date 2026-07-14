@@ -1,14 +1,13 @@
-import { Box, Chip, Grid, Stack, Typography } from '@mui/material';
+import { Box, Chip, Grid, LinearProgress, Stack, Typography } from '@mui/material';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@mui/system';
 import { aiQueryKeys, fetchExecutiveWall } from '../api/ai';
-import { fetchResourcePlanningGrid, resourcePlanningQueryKeys } from '../api/resourcePlanning';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { designTokens } from '../theme/designTokens';
 import type { WallProjectCard, WallTeamLiveBlock } from '../types/Ai';
-import { formatDate, formatDisplayValue, formatNumber } from '../utils/format';
+import { formatDate, formatDisplayValue } from '../utils/format';
 
 const fadeUp = keyframes`
   from { opacity: 0; transform: translateY(8px); }
@@ -29,24 +28,39 @@ function healthTone(health?: string | null) {
   return designTokens.health.green;
 }
 
+function humanizeStage(value?: string | null) {
+  if (!value) return '—';
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function contributorLabel(project: WallProjectCard) {
+  const names = (project.contributor_names ?? []).filter(Boolean);
+  if (names.length) return names.join(' · ');
+  return formatDisplayValue(project.designer_name);
+}
+
 function WallPanel({
   title,
   subtitle,
   accent,
   children,
   delayMs = 0,
+  dense,
 }: {
   title: string;
   subtitle?: string;
   accent?: string;
   children: ReactNode;
   delayMs?: number;
+  dense?: boolean;
 }) {
   return (
     <Box
       sx={{
         height: '100%',
-        p: { xs: 2, md: 2.5 },
+        p: dense ? { xs: 1.5, md: 1.75 } : { xs: 2, md: 2.5 },
         borderRadius: 3,
         bgcolor: WALL.panel,
         border: `1px solid ${WALL.panelBorder}`,
@@ -59,7 +73,7 @@ function WallPanel({
       <Typography
         sx={{
           fontWeight: 800,
-          fontSize: { xs: '1.15rem', md: '1.35rem' },
+          fontSize: dense ? { xs: '0.95rem', md: '1.05rem' } : { xs: '1.2rem', md: '1.45rem' },
           color: WALL.text,
           letterSpacing: '-0.02em',
         }}
@@ -67,11 +81,19 @@ function WallPanel({
         {title}
       </Typography>
       {subtitle ? (
-        <Typography sx={{ color: WALL.muted, mb: 1.75, mt: 0.35, fontSize: '0.95rem', fontWeight: 500 }}>
+        <Typography
+          sx={{
+            color: WALL.muted,
+            mb: dense ? 1.25 : 1.75,
+            mt: 0.35,
+            fontSize: dense ? '0.8rem' : '0.95rem',
+            fontWeight: 500,
+          }}
+        >
           {subtitle}
         </Typography>
       ) : (
-        <Box sx={{ mb: 1.5 }} />
+        <Box sx={{ mb: dense ? 1 : 1.5 }} />
       )}
       {children}
     </Box>
@@ -92,12 +114,12 @@ function KpiTile({
   return (
     <Box
       sx={{
-        p: { xs: 2, md: 2.25 },
+        p: { xs: 1.75, md: 2 },
         borderRadius: 3,
         bgcolor: WALL.panel,
         border: `1px solid ${WALL.panelBorder}`,
         borderLeft: `5px solid ${warn ? designTokens.semantic.warning : designTokens.semantic.primary}`,
-        minHeight: { xs: 110, md: 132 },
+        minHeight: { xs: 96, md: 112 },
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
@@ -108,7 +130,7 @@ function KpiTile({
       <Typography
         sx={{
           fontWeight: 800,
-          fontSize: { xs: '2rem', md: '2.6rem', xl: '3rem' },
+          fontSize: { xs: '1.75rem', md: '2.25rem', xl: '2.6rem' },
           lineHeight: 1,
           color: warn ? '#fbbf24' : WALL.text,
           letterSpacing: '-0.03em',
@@ -118,10 +140,10 @@ function KpiTile({
       </Typography>
       <Typography
         sx={{
-          mt: 1,
+          mt: 0.85,
           color: WALL.muted,
           fontWeight: 700,
-          fontSize: { xs: '0.8rem', md: '0.95rem' },
+          fontSize: { xs: '0.75rem', md: '0.85rem' },
           textTransform: 'uppercase',
           letterSpacing: '0.06em',
         }}
@@ -132,7 +154,7 @@ function KpiTile({
   );
 }
 
-function DeliveryRows({
+function CompactDeliveryList({
   rows,
   emptyLabel,
   tone,
@@ -143,90 +165,90 @@ function DeliveryRows({
 }) {
   if (!rows.length) {
     return (
-      <Box
-        sx={{
-          py: 4,
-          px: 2,
-          borderRadius: 2,
-          bgcolor: WALL.soft,
-          textAlign: 'center',
-        }}
-      >
-        <Typography sx={{ color: WALL.muted, fontSize: '1.05rem', fontWeight: 600 }}>{emptyLabel}</Typography>
-      </Box>
+      <Typography sx={{ color: WALL.muted, fontSize: '0.85rem', fontWeight: 600, py: 1 }}>
+        {emptyLabel}
+      </Typography>
     );
   }
 
   return (
-    <Stack spacing={1.25}>
+    <Stack spacing={0.85}>
       {rows.slice(0, 8).map((row) => {
         const health = healthTone(row.health);
         return (
           <Box
             key={`${row.tool_number}-${row.due_date ?? ''}-${row.project_id ?? ''}`}
             sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '88px 1fr',
-                md: '110px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) 100px 88px',
-              },
-              gap: { xs: 1, md: 1.5 },
-              alignItems: 'center',
-              px: 1.75,
-              py: 1.5,
-              borderRadius: 2,
+              px: 1.15,
+              py: 0.9,
+              borderRadius: 1.5,
               bgcolor: tone === 'danger' ? 'rgba(220, 38, 38, 0.12)' : 'rgba(37, 99, 235, 0.10)',
               border: `1px solid ${
                 tone === 'danger' ? 'rgba(248, 113, 113, 0.28)' : 'rgba(96, 165, 250, 0.28)'
               }`,
+              borderLeft: `3px solid ${tone === 'danger' ? designTokens.semantic.danger : designTokens.semantic.primary}`,
             }}
           >
-            <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: WALL.text }}>
-              {row.tool_number}
-            </Typography>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography sx={{ fontWeight: 700, color: WALL.text, fontSize: '1.05rem' }} noWrap>
-                {formatDisplayValue(row.customer_name)}
+            <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: WALL.text }}>
+                {row.tool_number}
               </Typography>
-              <Typography sx={{ color: WALL.muted, fontSize: '0.9rem' }} noWrap>
-                {formatDisplayValue(row.team_name)} · {formatDisplayValue(row.designer_name)}
+              <Typography sx={{ fontWeight: 700, fontSize: '0.8rem', color: WALL.muted, whiteSpace: 'nowrap' }}>
+                {row.due_date ? formatDate(row.due_date) : '—'}
               </Typography>
-            </Box>
-            <Typography
-              sx={{
-                display: { xs: 'none', md: 'block' },
-                color: WALL.muted,
-                fontWeight: 600,
-                fontSize: '1rem',
-              }}
-              noWrap
-            >
-              {formatDisplayValue(row.current_milestone || row.project_stage)}
+            </Stack>
+            <Typography sx={{ color: WALL.muted, fontSize: '0.78rem', fontWeight: 600 }} noWrap>
+              {formatDisplayValue(row.customer_name)}
             </Typography>
-            <Typography
-              sx={{
-                display: { xs: 'none', md: 'block' },
-                color: WALL.text,
-                fontWeight: 700,
-                fontSize: '1.05rem',
-              }}
-            >
-              {row.due_date ? formatDate(row.due_date) : '—'}
-            </Typography>
-            <Chip
-              label={(row.health ?? 'green').toUpperCase()}
-              sx={{
-                justifySelf: { xs: 'start', md: 'end' },
-                fontWeight: 800,
-                bgcolor: health.soft,
-                color: health.main,
-                height: 32,
-                fontSize: '0.8rem',
-              }}
-            />
+            <Stack direction="row" spacing={0.75} sx={{ mt: 0.4, alignItems: 'center' }}>
+              <Typography sx={{ color: WALL.text, fontSize: '0.75rem', fontWeight: 600 }} noWrap>
+                {formatDisplayValue(row.designer_name)}
+              </Typography>
+              <Chip
+                size="small"
+                label={(row.health ?? 'green').toUpperCase()}
+                sx={{
+                  height: 20,
+                  fontSize: '0.65rem',
+                  fontWeight: 800,
+                  bgcolor: health.soft,
+                  color: health.main,
+                }}
+              />
+            </Stack>
           </Box>
         );
       })}
+    </Stack>
+  );
+}
+
+function ProgressBar({ percent, health }: { percent: number; health?: string | null }) {
+  const tone = healthTone(health);
+  const value = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0));
+  return (
+    <Stack spacing={0.45} sx={{ minWidth: 0 }}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Typography sx={{ color: WALL.muted, fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em' }}>
+          COMPLETION
+        </Typography>
+        <Typography sx={{ color: WALL.text, fontWeight: 800, fontSize: '0.95rem' }}>
+          {Math.round(value)}%
+        </Typography>
+      </Stack>
+      <LinearProgress
+        variant="determinate"
+        value={value}
+        sx={{
+          height: 10,
+          borderRadius: 999,
+          bgcolor: 'rgba(15, 23, 42, 0.55)',
+          '& .MuiLinearProgress-bar': {
+            borderRadius: 999,
+            bgcolor: tone.main,
+          },
+        }}
+      />
     </Stack>
   );
 }
@@ -251,7 +273,7 @@ function TeamLiveWall({ teams }: { teams: WallTeamLiveBlock[] }) {
               bgcolor: 'rgba(15, 23, 42, 0.55)',
               border: `1px solid ${WALL.panelBorder}`,
               animation: `${fadeUp} 0.45s ease both`,
-              animationDelay: `${120 + index * 40}ms`,
+              animationDelay: `${80 + index * 40}ms`,
             }}
           >
             <Stack
@@ -260,7 +282,7 @@ function TeamLiveWall({ teams }: { teams: WallTeamLiveBlock[] }) {
               useFlexGap
               sx={{ mb: 1.5, alignItems: 'center', flexWrap: 'wrap' }}
             >
-              <Typography sx={{ fontWeight: 800, fontSize: '1.25rem', color: WALL.text, mr: 0.5 }}>
+              <Typography sx={{ fontWeight: 800, fontSize: { xs: '1.2rem', md: '1.35rem' }, color: WALL.text, mr: 0.5 }}>
                 {team.team_name}
               </Typography>
               <Chip
@@ -289,59 +311,62 @@ function TeamLiveWall({ teams }: { teams: WallTeamLiveBlock[] }) {
               ) : null}
             </Stack>
 
-            <Stack spacing={1}>
-              {team.projects.slice(0, 8).map((project) => {
+            <Stack spacing={1.25}>
+              {team.projects.slice(0, 10).map((project) => {
                 const health = healthTone(project.health);
+                const stage = project.current_milestone || humanizeStage(project.project_stage);
                 return (
                   <Box
                     key={project.project_id ?? project.tool_number}
                     sx={{
-                      display: 'grid',
-                      gridTemplateColumns: {
-                        xs: '76px 1fr auto',
-                        md: '96px minmax(0, 1.3fr) minmax(0, 1fr) 96px 78px',
-                      },
-                      gap: 1.25,
-                      alignItems: 'center',
-                      px: 1.5,
-                      py: 1.15,
+                      px: 1.75,
+                      py: 1.35,
                       borderRadius: 2,
                       bgcolor: WALL.soft,
-                      borderLeft: `4px solid ${health.main}`,
+                      borderLeft: `5px solid ${health.main}`,
                     }}
                   >
-                    <Typography sx={{ fontWeight: 800, color: WALL.text, fontSize: '1.1rem' }}>
-                      {project.tool_number}
-                    </Typography>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 700, color: WALL.text }} noWrap>
-                        {formatDisplayValue(project.customer_name)}
-                      </Typography>
-                      <Typography sx={{ color: WALL.muted, fontSize: '0.88rem' }} noWrap>
-                        {formatDisplayValue(project.designer_name)}
-                      </Typography>
-                    </Box>
-                    <Typography
-                      sx={{ display: { xs: 'none', md: 'block' }, color: WALL.muted, fontWeight: 600 }}
-                      noWrap
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1}
+                      sx={{ justifyContent: 'space-between', alignItems: { sm: 'flex-start' }, mb: 0.85 }}
                     >
-                      {formatDisplayValue(project.current_milestone || project.project_stage)}
-                    </Typography>
-                    <Typography
-                      sx={{
-                        display: { xs: 'none', md: 'block' },
-                        color: WALL.text,
-                        fontWeight: 700,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {project.due_date ? formatDate(project.due_date) : '—'}
-                    </Typography>
-                    <Chip
-                      size="small"
-                      label={(project.health ?? 'green').toUpperCase()}
-                      sx={{ fontWeight: 800, bgcolor: health.soft, color: health.main }}
-                    />
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', flexWrap: 'wrap' }} useFlexGap>
+                          <Typography sx={{ fontWeight: 800, color: WALL.text, fontSize: { xs: '1.15rem', md: '1.3rem' } }}>
+                            {project.tool_number}
+                          </Typography>
+                          <Typography sx={{ fontWeight: 700, color: WALL.muted, fontSize: '0.95rem' }} noWrap>
+                            {formatDisplayValue(project.customer_name)}
+                          </Typography>
+                        </Stack>
+                        <Typography
+                          sx={{
+                            mt: 0.55,
+                            color: WALL.text,
+                            fontWeight: 700,
+                            fontSize: { xs: '0.95rem', md: '1.05rem' },
+                          }}
+                          noWrap
+                        >
+                          Stage: {formatDisplayValue(stage)}
+                        </Typography>
+                        <Typography sx={{ mt: 0.35, color: WALL.muted, fontSize: '0.9rem', fontWeight: 600 }} noWrap>
+                          Designers: {contributorLabel(project)}
+                        </Typography>
+                      </Box>
+                      <Stack spacing={0.5} sx={{ alignItems: { xs: 'flex-start', sm: 'flex-end' }, flexShrink: 0 }}>
+                        <Chip
+                          size="small"
+                          label={(project.health ?? 'green').toUpperCase()}
+                          sx={{ fontWeight: 800, bgcolor: health.soft, color: health.main }}
+                        />
+                        <Typography sx={{ color: WALL.muted, fontWeight: 700, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                          Due {project.due_date ? formatDate(project.due_date) : '—'}
+                        </Typography>
+                      </Stack>
+                    </Stack>
+                    <ProgressBar percent={Number(project.progress_percent ?? 0)} health={project.health} />
                   </Box>
                 );
               })}
@@ -360,12 +385,6 @@ export default function PlanningBoardPage() {
     refetchInterval: 60_000,
   });
 
-  const gridQuery = useQuery({
-    queryKey: resourcePlanningQueryKeys.grid({ granularity: 'week' }),
-    queryFn: () => fetchResourcePlanningGrid({ granularity: 'week' }),
-    refetchInterval: 60_000,
-  });
-
   if (wallQuery.isLoading) {
     return (
       <Box sx={{ color: WALL.text }}>
@@ -381,16 +400,12 @@ export default function PlanningBoardPage() {
   const teamsLive = data.teams_live ?? [];
   const upcoming = data.upcoming_deliveries ?? [];
   const late = data.late_deliveries ?? [];
-  const designers = gridQuery.data?.designers ?? [];
-  const overloaded = designers.filter(
-    (row) => Number(row.capacity_hours || 0) > 0 && Number(row.allocated_hours || 0) >= Number(row.capacity_hours),
-  ).length;
   const refreshed = data.refreshed_at
     ? new Date(data.refreshed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '—';
 
   return (
-    <Stack spacing={{ xs: 2, md: 2.75 }}>
+    <Stack spacing={{ xs: 2, md: 2.5 }}>
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         spacing={1}
@@ -398,10 +413,10 @@ export default function PlanningBoardPage() {
       >
         <Box>
           <Typography sx={{ color: WALL.text, fontWeight: 800, fontSize: { xs: '1.1rem', md: '1.25rem' } }}>
-            Engineering floor — operations pulse
+            Team floor — live tools, stage & designers
           </Typography>
           <Typography sx={{ color: WALL.muted, fontWeight: 500 }}>
-            Auto-refresh every 60s · read-only wall display · no edit controls
+            Auto-refresh every 60s · read-only wall display · deliveries on the right rail
           </Typography>
         </Box>
         <Chip
@@ -419,156 +434,61 @@ export default function PlanningBoardPage() {
       <Grid container spacing={2}>
         {[
           { label: 'Active Projects', value: data.active_projects },
-          { label: 'Utilization', value: `${data.utilization_percent}%` },
           { label: 'Late Milestones', value: data.late_milestones, warn: data.late_milestones > 0 },
-          { label: 'Hours This Month', value: formatNumber(data.hours_logged_month, 0) },
-          { label: 'Team Capacity', value: formatNumber(data.capacity_hours, 0) },
+          { label: 'Late Deliveries', value: late.length, warn: late.length > 0 },
+          { label: 'Due in 7 Days', value: upcoming.length },
           {
             label: 'Health G / Y / R',
             value: `${data.health_summary.green ?? 0} / ${data.health_summary.yellow ?? 0} / ${data.health_summary.red ?? 0}`,
           },
         ].map((stat, index) => (
-          <Grid key={stat.label} size={{ xs: 6, md: 4, lg: 2 }}>
+          <Grid key={stat.label} size={{ xs: 6, sm: 4, md: 2.4 }}>
             <KpiTile label={stat.label} value={stat.value} warn={stat.warn} delayMs={index * 40} />
           </Grid>
         ))}
       </Grid>
 
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, lg: 6 }}>
+      <Grid container spacing={2} sx={{ alignItems: 'stretch' }}>
+        <Grid size={{ xs: 12, lg: 9 }}>
           <WallPanel
-            title="Deliveries coming up"
-            subtitle="Due within 7 days — chase owners while there is runway"
-            accent={designTokens.semantic.primary}
+            title="Team-wise live projects"
+            subtitle="Hero view — stage, designers on the tool, and milestone completion"
+            accent={designTokens.semantic.success}
             delayMs={80}
           >
-            <DeliveryRows
-              rows={upcoming}
-              emptyLabel="No upcoming deliveries in the next 7 days."
-              tone="ok"
-            />
+            <TeamLiveWall teams={teamsLive} />
           </WallPanel>
         </Grid>
-        <Grid size={{ xs: 12, lg: 6 }}>
-          <WallPanel
-            title="Late deliveries"
-            subtitle="Past due — priority follow-up for Program / Engineering managers"
-            accent={designTokens.semantic.danger}
-            delayMs={120}
-          >
-            <DeliveryRows
-              rows={late}
-              emptyLabel="No late deliveries. Keep watching due dates as work progresses."
-              tone="danger"
-            />
-          </WallPanel>
-        </Grid>
-      </Grid>
 
-      <WallPanel
-        title="Team-wise live projects"
-        subtitle="Active & on-hold tools by delivery team — red and yellow edged first"
-        accent={designTokens.semantic.success}
-        delayMs={160}
-      >
-        <TeamLiveWall teams={teamsLive} />
-      </WallPanel>
-
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <WallPanel title="Capacity snapshot" subtitle="This week" delayMs={200}>
-            {gridQuery.isLoading ? (
-              <Typography sx={{ color: WALL.muted }}>Loading capacity…</Typography>
-            ) : gridQuery.error ? (
-              <Typography sx={{ color: WALL.muted }}>Capacity grid unavailable</Typography>
-            ) : (
-              <Stack spacing={1.25}>
-                <Typography sx={{ color: WALL.text, fontSize: '1.35rem', fontWeight: 800 }}>
-                  {designers.length}{' '}
-                  <Box component="span" sx={{ color: WALL.muted, fontSize: '1rem', fontWeight: 600 }}>
-                    designers on board
-                  </Box>
-                </Typography>
-                <Typography
-                  sx={{
-                    fontSize: '1.25rem',
-                    fontWeight: 800,
-                    color: overloaded > 0 ? '#fbbf24' : WALL.text,
-                  }}
-                >
-                  {overloaded}{' '}
-                  <Box component="span" sx={{ color: WALL.muted, fontSize: '1rem', fontWeight: 600 }}>
-                    at or over capacity
-                  </Box>
-                </Typography>
-                <Typography sx={{ color: WALL.muted, fontSize: '0.9rem' }}>
-                  Assignments cannot be changed from this monitor account.
-                </Typography>
-              </Stack>
-            )}
-          </WallPanel>
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <WallPanel title="Recent releases" subtitle="Last 30 days" delayMs={240}>
-            <Stack spacing={1}>
-              {(data.recent_releases ?? []).length ? (
-                data.recent_releases.map((row, index) => (
-                  <Box
-                    key={index}
-                    sx={{
-                      px: 1.5,
-                      py: 1.1,
-                      borderRadius: 2,
-                      bgcolor: WALL.soft,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: 1,
-                    }}
-                  >
-                    <Typography sx={{ fontWeight: 800, color: WALL.text, fontSize: '1.05rem' }}>
-                      {String(row.tool_number ?? '—')}
-                    </Typography>
-                    <Typography sx={{ color: WALL.muted, fontWeight: 600 }}>
-                      {row.completed_at ? String(row.completed_at) : ''}
-                    </Typography>
-                  </Box>
-                ))
-              ) : (
-                <Typography sx={{ color: WALL.muted }}>No releases in the last 30 days</Typography>
-              )}
-            </Stack>
-          </WallPanel>
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <WallPanel title="Customer load" subtitle="Share of active engineering work" delayMs={280}>
-            <Stack spacing={1}>
-              {(data.customer_distribution ?? []).length ? (
-                data.customer_distribution.map((row, index) => (
-                  <Box
-                    key={index}
-                    sx={{
-                      px: 1.5,
-                      py: 1.1,
-                      borderRadius: 2,
-                      bgcolor: WALL.soft,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: 1,
-                    }}
-                  >
-                    <Typography sx={{ fontWeight: 700, color: WALL.text }} noWrap>
-                      {String(row.customer_name ?? row.name ?? 'Customer')}
-                    </Typography>
-                    <Typography sx={{ fontWeight: 800, color: '#93c5fd' }}>
-                      {String(row.percent ?? row.share ?? row.hours ?? '—')}
-                    </Typography>
-                  </Box>
-                ))
-              ) : (
-                <Typography sx={{ color: WALL.muted }}>No customer distribution available</Typography>
-              )}
-            </Stack>
-          </WallPanel>
+        <Grid size={{ xs: 12, lg: 3 }}>
+          <Stack spacing={2} sx={{ height: '100%' }}>
+            <WallPanel
+              title="Late deliveries"
+              subtitle="Past due — chase first"
+              accent={designTokens.semantic.danger}
+              delayMs={120}
+              dense
+            >
+              <CompactDeliveryList
+                rows={late}
+                emptyLabel="No late deliveries."
+                tone="danger"
+              />
+            </WallPanel>
+            <WallPanel
+              title="Coming up"
+              subtitle="Due within 7 days"
+              accent={designTokens.semantic.primary}
+              delayMs={160}
+              dense
+            >
+              <CompactDeliveryList
+                rows={upcoming}
+                emptyLabel="Nothing due in the next 7 days."
+                tone="ok"
+              />
+            </WallPanel>
+          </Stack>
         </Grid>
       </Grid>
     </Stack>

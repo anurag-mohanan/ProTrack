@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 
 from app.models.enums import ExecutionStatus, ProjectHealth
-from app.models.models import Customer, Project, Team, TimesheetEntry
+from app.models.models import Customer, Project, Team, TimesheetEntry, User
 from app.schemas.ai import ExecutiveWallData, WallProjectCard, WallTeamLiveBlock
 from app.services.ai.base import AiContext, AiModule, round_hours
 from app.services.ai.context import (
@@ -24,7 +24,10 @@ from app.services.dashboard_service import (
     _batch_designer_names,
     get_attention_projects,
 )
-from app.services.project_calculation_service import count_projects_by_health
+from app.services.project_calculation_service import (
+    batch_calculate_progress,
+    count_projects_by_health,
+)
 
 
 def _health_value(project: Project) -> str:
@@ -44,6 +47,29 @@ def _stage_value(project: Project) -> str | None:
     return stage.value if hasattr(stage, "value") else str(stage)
 
 
+def _batch_contributor_names(db, projects: list[Project]) -> dict[UUID, list[str]]:
+    """Designer, design leader, and surfacer names for wall cards (deduped, ordered)."""
+    user_ids: set[UUID] = set()
+    for project in projects:
+        for uid in (project.designer_id, project.design_leader_id, project.surfacer_id):
+            if uid is not None:
+                user_ids.add(uid)
+    if not user_ids:
+        return {}
+    users = db.scalars(select(User).where(User.id.in_(user_ids))).all()
+    user_map = {user.id: f"{user.first_name} {user.last_name}" for user in users}
+    result: dict[UUID, list[str]] = {}
+    for project in projects:
+        names: list[str] = []
+        for uid in (project.designer_id, project.design_leader_id, project.surfacer_id):
+            name = user_map.get(uid) if uid else None
+            if name and name not in names:
+                names.append(name)
+        if names:
+            result[project.id] = names
+    return result
+
+
 def _card_from_project(
     project: Project,
     *,
@@ -52,18 +78,23 @@ def _card_from_project(
     team_name: str | None,
     milestone: str | None = None,
     attention_reason: str | None = None,
+    progress_percent: float = 0,
+    contributor_names: list[str] | None = None,
 ) -> WallProjectCard:
+    contributors = contributor_names or ([designer_name] if designer_name else [])
     return WallProjectCard(
         project_id=project.id,
         tool_number=project.tool_number or "—",
         customer_name=customer_name,
-        designer_name=designer_name,
+        designer_name=designer_name or (contributors[0] if contributors else None),
+        contributor_names=contributors,
         team_name=team_name,
         due_date=project.due_date,
         health=_health_value(project),
         execution_status=_status_value(project),
         project_stage=_stage_value(project),
         current_milestone=milestone,
+        progress_percent=progress_percent,
         attention_reason=attention_reason,
     )
 
@@ -89,12 +120,17 @@ def _build_teams_live(ctx: AiContext, active: list[Project]) -> list[WallTeamLiv
         }
 
     designer_names = _batch_designer_names(ctx.db, active)
-    milestone_names = _batch_current_milestones(ctx.db, [project.id for project in active])
+    contributor_names = _batch_contributor_names(ctx.db, active)
+    project_ids = [project.id for project in active]
+    milestone_names = _batch_current_milestones(ctx.db, project_ids)
+    progress_by_project = batch_calculate_progress(ctx.db, project_ids)
 
     grouped: dict[tuple[str, UUID | None], list[WallProjectCard]] = defaultdict(list)
     for project in active:
         team_id = project.team_id
         team_name = team_names.get(team_id, "Unassigned") if team_id else "Unassigned"
+        progress = progress_by_project.get(project.id)
+        percent = float(progress.progress_percent) if progress else 0.0
         grouped[(team_name, team_id)].append(
             _card_from_project(
                 project,
@@ -102,6 +138,8 @@ def _build_teams_live(ctx: AiContext, active: list[Project]) -> list[WallTeamLiv
                 designer_name=designer_names.get(project.id),
                 team_name=team_name,
                 milestone=milestone_names.get(project.id),
+                progress_percent=percent,
+                contributor_names=contributor_names.get(project.id),
             )
         )
 

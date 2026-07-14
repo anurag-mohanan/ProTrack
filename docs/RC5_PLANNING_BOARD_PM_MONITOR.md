@@ -2,52 +2,48 @@
 
 ## Ops / Engineering Manager brainstorm → Senior developer decision
 
-Wall monitors (Planning Board role) and Program Managers need a **single glance** surface that answers:
+Wall monitors need a **single glance** surface focused on live team work:
 
-1. Are we on track this week? (KPIs)
-2. What is due / late? (Deliveries coming up + Late)
-3. What is live **by team**? (Team-wise live projects)
-4. Where is capacity / who is overloaded?
-5. What just released / who owns customer load?
+1. Are we on track? (lean KPIs)
+2. What is live **by team**, at what **stage**, with which **designers**, and what **% complete**?
+3. What is late / due soon? (compact right rail)
 
-### Approved layout (top → bottom)
+### Approved layout (top → bottom / main + rail)
 | Zone | Content |
 |------|---------|
-| Chrome | Company **logo**, **Home** button, title, signed-in user, Sign out |
-| KPI strip | Active projects, utilization, late milestones, hours, capacity, health G/Y/R |
-| Deliveries | Two equal panels: coming up (≤7 days) \| late (past due) with tool / customer / team / designer / due / health |
-| Team live | Always-visible team boards (no accordion) with live + on-hold tools (red/yellow first) |
-| Footer row | Capacity snapshot \| Recent releases (30d) \| Customer load |
+| Chrome | Company **logo**, **Home**, LIVE, clock, Sign out |
+| Lean KPI strip | Active · Late milestones · Late deliveries · Due in 7 days · Health G/Y/R |
+| **Hero** | **Team-wise live** — tool, customer, stage, designers, progress bar |
+| **Right rail** | Compact Late deliveries · Coming up (≤7 days) |
+
+**Removed:** capacity snapshot, recent releases, customer load.
 
 Read-only; 60s refresh; no assignment edits from monitor account.
 
-**Giant-screen visual system:** navy wall chrome, oversized KPIs, color-coded delivery panels, LIVE pulse — see `docs/RC5_PLANNING_BOARD_WALL_VISUAL.md`.
+**Giant-screen visual:** `docs/RC5_PLANNING_BOARD_WALL_VISUAL.md`  
+**Team-hero redesign:** `docs/RC5_PLANNING_BOARD_TEAM_HERO.md`
 
 ### Code touched
-- `app/schemas/ai.py` — `WallProjectCard`, `WallTeamLiveBlock`, wall fields
-- `app/services/ai/modules/executive_wall.py` — builds `teams_live`, `upcoming_deliveries`, `late_deliveries`
-- `frontend/src/layouts/PlanningBoardLayout.tsx` — wall chrome (logo plate, LIVE, Home)
-- `frontend/src/pages/PlanningBoardPage.tsx` — distance-readable PM sections
+- `app/schemas/ai.py` — `progress_percent`, `contributor_names` on `WallProjectCard`
+- `app/services/ai/modules/executive_wall.py` — progress + contributors in teams_live
+- `frontend/src/layouts/PlanningBoardLayout.tsx` — wall chrome
+- `frontend/src/pages/PlanningBoardPage.tsx` — team hero + delivery rail
 - `frontend/src/types/Ai.ts` — wall types
 
 ## Testing team
 
 | # | Check | Pass |
 |---|--------|------|
-| 1 | Login as Planning Board | Logo visible on white plate in header |
-| 2 | Home button | Returns to role home (`/planning-board` for PB; dashboard for other roles) |
-| 3 | KPI strip | Six metrics populate; readable from ~4m |
-| 4 | Deliveries coming up | Large rows for due-soon tools (or empty message) |
-| 5 | Late deliveries | Past-due tools listed; visually distinct (red) panel |
-| 6 | Team-wise live | Team boards always open; tools show designer/due/health |
-| 7 | Capacity / releases / customers | Footer panels load |
-| 8 | Auto refresh | Data refreshes ~60s without edit controls |
-| 9 | Write blocked | Assign / admin users still 403 |
+| 1 | Login as Planning Board | Logo visible on white plate |
+| 2 | Home button | Returns to role home |
+| 3 | KPI strip | Lean five metrics populate |
+| 4 | Team-wise hero | Stage + designers + progress bar on cards |
+| 5 | Right rail | Late + Coming up compact lists |
+| 6 | Removed panels | Capacity / releases / customer load absent |
+| 7 | Read-only | Assign / write endpoints still 403 |
 
 ## QC before UAT
-
-- [ ] Logo + Home present  
-- [ ] Team sections and delivery panels match live data  
-- [ ] No edit controls on monitor  
-- [ ] Deploy API + `frontend/dist`  
+- [ ] Testing matrix PASS on office TV  
+- [ ] Progress & stage readable from ~4m  
+- [ ] Deploy API + frontend dist  
 - [ ] Sign-off → user testing  

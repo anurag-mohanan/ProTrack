@@ -21,6 +21,23 @@ def test_planning_board_wall_includes_team_live_and_deliveries(client):
     assert isinstance(body["late_deliveries"], list)
 
 
+def test_planning_board_team_cards_include_progress_and_contributors(client):
+    headers = login(client, "planning-board@prosohm.com")
+    body = client.get("/api/v1/ai/executive-wall", headers=headers).json()
+    projects = [
+        project
+        for team in body.get("teams_live", [])
+        for project in team.get("projects", [])
+    ]
+    if not projects:
+        return
+    card = projects[0]
+    assert "progress_percent" in card
+    assert isinstance(card["progress_percent"], (int, float))
+    assert "contributor_names" in card
+    assert isinstance(card["contributor_names"], list)
+
+
 def test_planning_board_can_view_resource_planning_grid(client):
     headers = login(client, "planning-board@prosohm.com")
     response = client.get("/api/v1/dashboard/resource-planning/grid", headers=headers)

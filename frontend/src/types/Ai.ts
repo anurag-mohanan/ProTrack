@@ -122,12 +122,14 @@ export interface WallProjectCard {
   tool_number: string;
   customer_name?: string | null;
   designer_name?: string | null;
+  contributor_names?: string[];
   team_name?: string | null;
   due_date?: string | null;
   health?: string | null;
   execution_status?: string | null;
   project_stage?: string | null;
   current_milestone?: string | null;
+  progress_percent?: number;
   attention_reason?: string | null;
 }
 

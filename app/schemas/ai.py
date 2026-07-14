@@ -223,12 +223,14 @@ class WallProjectCard(BaseModel):
     tool_number: str
     customer_name: str | None = None
     designer_name: str | None = None
+    contributor_names: list[str] = Field(default_factory=list)
     team_name: str | None = None
     due_date: date | None = None
     health: str | None = None
     execution_status: str | None = None
     project_stage: str | None = None
     current_milestone: str | None = None
+    progress_percent: float = 0
     attention_reason: str | None = None
 
 

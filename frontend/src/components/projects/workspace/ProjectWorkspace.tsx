@@ -26,6 +26,7 @@ import { formatDisplayValue } from '../../../utils/format';
 import { isActiveProjectForHealth } from '../../../utils/projectHealth';
 import { ProjectCommunicationsPanel } from './ProjectCommunicationsPanel';
 import { ProjectContributorsPanel } from './ProjectContributorsPanel';
+import { ProjectTimesheetsPanel } from './ProjectTimesheetsPanel';
 import { getProjectActivities } from '../../../services/notificationService';
 import type { Activity } from '../../../types';
 
@@ -182,10 +183,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
       ) : null}
 
       {tab === 'timesheets' ? (
-        <Typography variant="body2" color="text.secondary">
-          Timesheet entries for this project are available from the Timesheets module. Milestone-level
-          hours roll up automatically from logged time.
-        </Typography>
+        <ProjectTimesheetsPanel projectId={projectId} quotedHours={project.quoted_hours} />
       ) : null}
 
       {tab === 'activity' ? (

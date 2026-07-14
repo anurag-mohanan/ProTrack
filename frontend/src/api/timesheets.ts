@@ -57,6 +57,8 @@ export async function createTimesheet(payload: TimesheetCreate): Promise<Timeshe
 
 export async function fetchTimesheetEntries(
   params?: ListParams & {
+    project_id?: string;
+    timesheet_id?: string;
     entry_date_from?: string;
     entry_date_to?: string;
     user_id?: string;

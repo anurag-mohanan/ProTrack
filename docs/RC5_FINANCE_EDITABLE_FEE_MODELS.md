@@ -33,7 +33,7 @@ Aligned with [RC5_FINANCE_COMMERCIAL_UX_EXPENSE_CRUD.md](./RC5_FINANCE_COMMERCIA
 | Rule | Lock |
 |------|------|
 | Field label | **Rate per resource / month** (stores in `customer_fee_amount`) |
-| Resource count | Active team members with **`requires_salary=true`** (People costs headcount). Display count beside rate. |
+| Resource count | Active team members with **`requires_salary=true`** **and** **`is_billable_headcount=true`** ([RC5_FINANCE_MANAGEMENT_OVERHEAD.md](./RC5_FINANCE_MANAGEMENT_OVERHEAD.md)). Display count beside rate. |
 | Overview fee signal | `monthly_fee = rate × resource_count` (then normalize if period ≠ monthly using existing period rules) |
 | Period | Default **Monthly**; Quarterly/Annual = rate still “per resource per month” expressed as monthly signal via existing `_normalize_monthly_fee` after multiplying by count |
 | Override | Optional integer **`resource_count_override`** on terms (nullable). If set, use override instead of roster count. |

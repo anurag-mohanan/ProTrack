@@ -50,3 +50,4 @@
 - Editable lists + retainer/project fee rules: [RC5_FINANCE_EDITABLE_FEE_MODELS.md](./RC5_FINANCE_EDITABLE_FEE_MODELS.md)
 - Customer currency + immutable FX + editable finance: [RC5_FINANCE_CUSTOMER_CURRENCY_FX.md](./RC5_FINANCE_CUSTOMER_CURRENCY_FX.md)
 - Awarded quote import (team + PDF/Excel): [RC5_FINANCE_AWARDED_QUOTE_IMPORT.md](./RC5_FINANCE_AWARDED_QUOTE_IMPORT.md)
+- Management / overhead vs billable headcount: [RC5_FINANCE_MANAGEMENT_OVERHEAD.md](./RC5_FINANCE_MANAGEMENT_OVERHEAD.md)

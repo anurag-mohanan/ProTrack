@@ -44,6 +44,20 @@ def test_admin_finance_dashboard(client, auth_headers):
     assert "revenue" in body
     assert "ai_placeholders" in body
     assert len(body["ai_placeholders"]) >= 1
+    assert "overhead" in body
+    overhead = body["overhead"]
+    assert "overhead_pool_monthly_inr" in overhead
+    assert "overhead_cost_per_resource_inr" in overhead
+    assert "billable_resource_count" in overhead
+    assert int(overhead["billable_resource_count"]) >= 0
+
+
+def test_profit_loss_includes_overhead_cpr(client, auth_headers):
+    response = client.get("/api/v1/finance/reports/profit-loss", headers=auth_headers)
+    assert response.status_code == 200
+    labels = {row["label"] for row in response.json()}
+    assert "Overhead pool (Corporate monthly)" in labels
+    assert "Overhead cost per billable resource (monthly)" in labels
 
 
 def test_cost_centres_seeded(client, auth_headers):

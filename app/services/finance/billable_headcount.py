@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.salary_eligibility import user_requires_salary
-from app.models.models import TeamMember, User
+from app.models.models import Team, TeamMember, User
 
 
 def _billable_user_ids(db: Session, team_id: UUID) -> set[UUID]:
@@ -48,6 +48,31 @@ def billable_salary_headcount(db: Session, team_id: UUID) -> int:
     Legacy ``User.team_id`` without a membership row counts as billable (compat).
     """
     return len(billable_salary_users(db, team_id))
+
+
+def company_delivery_billable_salary_users(db: Session) -> list[User]:
+    """Unique billable × salary-required users across delivery teams (excludes Corporate).
+
+    Used as the overhead cost-per-resource denominator (FTE absorption).
+    """
+    from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
+
+    seen: set[UUID] = set()
+    users: list[User] = []
+    teams = db.scalars(select(Team).where(Team.is_active.is_(True))).all()
+    for team in teams:
+        if is_corporate_team(team):
+            continue
+        for user in billable_salary_users(db, team.id):
+            if user.id in seen:
+                continue
+            seen.add(user.id)
+            users.append(user)
+    return users
+
+
+def company_delivery_billable_salary_headcount(db: Session) -> int:
+    return len(company_delivery_billable_salary_users(db))
 
 
 def billable_salary_counts_by_skill(db: Session, team_id: UUID) -> dict[str, int]:

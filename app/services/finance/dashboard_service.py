@@ -20,6 +20,10 @@ from app.models.finance import (
     TeamCommercialTerms,
 )
 from app.models.models import Project, Team, TeamMember, User
+from app.services.finance.billable_headcount import (
+    billable_salary_headcount,
+    company_delivery_billable_salary_headcount,
+)
 from app.services.finance.fx_service import get_base_currency
 from app.services.finance.renewal_notifier import list_upcoming_renewals
 
@@ -241,6 +245,49 @@ def _team_rollups(db: Session, team: Team, *, today: date, quote_revenue_share: 
     }
 
 
+def _overhead_metrics(
+    db: Session, *, fy_start: date, team_id: UUID | None = None
+) -> dict:
+    """Corporate overhead pool ÷ delivery billable FTE (analytical CPR)."""
+    from app.db.phase23_finance_team_scope_schema_sync import (
+        ensure_corporate_shared_services_team,
+    )
+    from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
+
+    corporate = ensure_corporate_shared_services_team(db)
+    corp_salary = _salary_for_users(db, _user_ids_for_team(db, corporate.id))
+    corp_opex = _expense_sum(
+        db,
+        team_id=corporate.id,
+        paid_by=ExpensePaidBy.prosohm,
+        nature=CostNature.opex,
+        fy_start=fy_start,
+    )
+    pool = (corp_salary + corp_opex).quantize(Decimal("0.01"))
+    n = company_delivery_billable_salary_headcount(db)
+    cpr = (pool / Decimal(n)).quantize(Decimal("0.01")) if n else Decimal("0.00")
+
+    team_n = 0
+    allocated = Decimal("0.00")
+    if team_id is not None:
+        team = db.get(Team, team_id)
+        if team is not None and not is_corporate_team(team):
+            team_n = billable_salary_headcount(db, team_id)
+            allocated = (cpr * Decimal(team_n)).quantize(Decimal("0.01"))
+
+    return {
+        "corporate_team_id": str(corporate.id),
+        "corporate_team_name": corporate.name,
+        "overhead_salary_inr": corp_salary,
+        "overhead_opex_inr": corp_opex,
+        "overhead_pool_monthly_inr": pool,
+        "billable_resource_count": n,
+        "overhead_cost_per_resource_inr": cpr,
+        "team_billable_resource_count": team_n,
+        "allocated_overhead_for_filter_inr": allocated,
+    }
+
+
 def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     from app.services.finance.annual_plan_service import current_fy_label, current_fy_start
 
@@ -359,12 +406,15 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         selected = db.get(Team, team_id)
         selected_team_name = selected.name if selected else None
 
+    overhead = _overhead_metrics(db, fy_start=fy_start, team_id=team_id)
+
     return {
         "base_currency": base,
         "selected_team_id": str(team_id) if team_id else None,
         "selected_team_name": selected_team_name,
         "planning_fy_start": fy_start.isoformat(),
         "planning_fy_label": fy_label,
+        "overhead": overhead,
         "revenue": {
             "monthly_revenue": display_revenue,
             "quarterly_revenue": quarterly_revenue,
@@ -394,6 +444,9 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
             "pass_through_opex": pass_through_opex,
             "known_renewals_fy_inr": renewals_fy,
             "known_renewals_by_quarter": {k: str(v) for k, v in renewals_q.items()},
+            "overhead_pool_monthly_inr": overhead["overhead_pool_monthly_inr"],
+            "overhead_cost_per_resource_inr": overhead["overhead_cost_per_resource_inr"],
+            "billable_resource_count": overhead["billable_resource_count"],
         },
         "profitability": {
             "gross_profit": gross_profit,

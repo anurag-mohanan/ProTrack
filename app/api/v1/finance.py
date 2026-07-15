@@ -1136,10 +1136,23 @@ def report_profit_loss(
     revenue = Decimal(str(dash["revenue"]["yearly_revenue"]))
     cost = Decimal(str(dash["cost"]["monthly_operating_cost"]))
     profit = Decimal(str(dash["profitability"]["gross_profit"]))
+    overhead = dash.get("overhead") or {}
+    pool = Decimal(str(overhead.get("overhead_pool_monthly_inr") or 0))
+    cpr = Decimal(str(overhead.get("overhead_cost_per_resource_inr") or 0))
     return [
-        FinanceReportRow(label="Revenue", amount=revenue, amount_inr=revenue),
-        FinanceReportRow(label="Operating Cost", amount=cost, amount_inr=cost),
-        FinanceReportRow(label="Gross Profit", amount=profit, amount_inr=profit),
+        FinanceReportRow(label="Revenue (yearly signal)", amount=revenue, amount_inr=revenue),
+        FinanceReportRow(label="Gross Profit (monthly signal)", amount=profit, amount_inr=profit),
+        FinanceReportRow(label="Operating Cost (monthly)", amount=cost, amount_inr=cost),
+        FinanceReportRow(
+            label="Overhead pool (Corporate monthly)",
+            amount=pool,
+            amount_inr=pool,
+        ),
+        FinanceReportRow(
+            label="Overhead cost per billable resource (monthly)",
+            amount=cpr,
+            amount_inr=cpr,
+        ),
     ]
 
 

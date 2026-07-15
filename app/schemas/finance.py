@@ -430,6 +430,7 @@ class FinanceDashboardRead(BaseModel):
     planning_fy_start: date | None = None
     planning_fy_label: str | None = None
     by_team: list[TeamFinanceBreakdown] = Field(default_factory=list)
+    overhead: dict = Field(default_factory=dict)
 
 
 class AiForecastPlaceholderRead(BaseModel):

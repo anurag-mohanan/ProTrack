@@ -34,6 +34,13 @@ type FinanceDashboard = {
     pass_through_opex_inr: number;
     team_commercial_fee_monthly_inr: number;
   }>;
+  overhead?: {
+    overhead_pool_monthly_inr?: number | string;
+    overhead_cost_per_resource_inr?: number | string;
+    billable_resource_count?: number;
+    allocated_overhead_for_filter_inr?: number | string;
+    team_billable_resource_count?: number;
+  };
 };
 
 function MetricCard({ title, value, suffix }: { title: string; value: string | number; suffix?: string }) {
@@ -153,6 +160,25 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
             <MetricCard
               title="Known renewals (FY)"
               value={fmt(data.cost.known_renewals_fy_inr ?? 0)}
+              suffix={currency}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <MetricCard
+              title="Overhead pool / mo"
+              value={fmt(
+                data.overhead?.overhead_pool_monthly_inr ?? data.cost.overhead_pool_monthly_inr,
+              )}
+              suffix={currency}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <MetricCard
+              title="Overhead / billable resource"
+              value={fmt(
+                data.overhead?.overhead_cost_per_resource_inr ??
+                  data.cost.overhead_cost_per_resource_inr,
+              )}
               suffix={currency}
             />
           </Grid>

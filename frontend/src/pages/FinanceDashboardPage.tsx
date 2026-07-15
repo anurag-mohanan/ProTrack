@@ -20,6 +20,7 @@ import { apiClient } from '../api/client';
 import { AnnualPlanPanel } from '../components/finance/AnnualPlanPanel';
 import { FinanceExpensesPanel } from '../components/finance/FinanceExpensesPanel';
 import { FinanceFxRatesPanel } from '../components/finance/FinanceFxRatesPanel';
+import { FinanceOverheadsPanel } from '../components/finance/FinanceOverheadsPanel';
 import { FinanceOverviewPanel } from '../components/finance/FinanceOverviewPanel';
 import { FinancePeopleCostsPanel } from '../components/finance/FinancePeopleCostsPanel';
 import { FinanceQuotesPanel } from '../components/finance/FinanceQuotesPanel';
@@ -66,17 +67,17 @@ export function FinanceDashboardPage() {
     queryKey: ['finance-budgets', teamId || 'all'],
     queryFn: async () =>
       (await apiClient.get(`/finance/budgets${teamQueryParam(teamId)}`)).data,
-    enabled: tab === 6,
+    enabled: tab === 7,
   });
   const costCentresQuery = useQuery({
     queryKey: ['finance-cost-centres'],
     queryFn: async () => (await apiClient.get('/finance/cost-centres')).data,
-    enabled: tab === 6,
+    enabled: tab === 7,
   });
   const plQuery = useQuery({
     queryKey: ['finance-pl'],
     queryFn: async () => (await apiClient.get('/finance/reports/profit-loss')).data,
-    enabled: tab === 6,
+    enabled: tab === 7,
   });
 
   const budgetMutation = useMutation({
@@ -152,6 +153,7 @@ export function FinanceDashboardPage() {
         <Tab label="Overview" />
         <Tab label="People costs" />
         <Tab label="Expenses & subscriptions" />
+        <Tab label="Overheads" />
         <Tab label="Team commercial" />
         <Tab label="Annual Plan" />
         <Tab label="Revenue / quotes" />
@@ -161,11 +163,12 @@ export function FinanceDashboardPage() {
       {tab === 0 && <FinanceOverviewPanel teamId={teamId} />}
       {tab === 1 && <FinancePeopleCostsPanel teamId={teamId} />}
       {tab === 2 && <FinanceExpensesPanel teamId={teamId} />}
-      {tab === 3 && <FinanceTeamCommercialPanel teamId={teamId} />}
-      {tab === 4 && <AnnualPlanPanel />}
-      {tab === 5 && <FinanceQuotesPanel teamId={teamId} />}
+      {tab === 3 && <FinanceOverheadsPanel teamId={teamId} />}
+      {tab === 4 && <FinanceTeamCommercialPanel teamId={teamId} />}
+      {tab === 5 && <AnnualPlanPanel />}
+      {tab === 6 && <FinanceQuotesPanel teamId={teamId} />}
 
-      {tab === 6 && (
+      {tab === 7 && (
         <Stack spacing={3}>
           <FinanceFxRatesPanel />
 

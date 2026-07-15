@@ -359,6 +359,8 @@ class QuoteRead(BaseModel):
     team_name: str | None = None
     customer_name: str | None = None
     project_linked: bool = False
+    quoted_hours: Decimal | None = None
+    quoted_revenue: Decimal | None = None
     revisions: list[QuoteRevisionRead] = Field(default_factory=list)
 
 
@@ -395,6 +397,19 @@ class QuoteManualCreate(BaseModel):
     currency_code: str | None = None
     quoted_hours: Decimal = Field(default=Decimal("0"), ge=0)
     create_project: bool = True
+
+
+class QuoteUpdate(BaseModel):
+    """In-place edit of awarded quote header + current revision amounts."""
+
+    team_id: UUID | None = None
+    customer_id: UUID | None = None
+    tool_number: str | None = Field(default=None, min_length=1)
+    quoted_revenue: Decimal | None = Field(default=None, ge=0)
+    external_quote_number: str | None = None
+    currency_code: str | None = None
+    quoted_hours: Decimal | None = Field(default=None, ge=0)
+    create_project: bool = False
 
 
 class FinanceDashboardRead(BaseModel):

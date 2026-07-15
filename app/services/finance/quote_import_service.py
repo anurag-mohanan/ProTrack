@@ -226,6 +226,123 @@ def import_manual_quote(
     )
 
 
+def _current_revision(db: Session, quote: Quote) -> QuoteRevision | None:
+    return db.scalar(
+        select(QuoteRevision).where(
+            QuoteRevision.quote_id == quote.id,
+            QuoteRevision.version == quote.current_version,
+            QuoteRevision.revision == quote.current_revision,
+        )
+    )
+
+
+def update_quote(
+    db: Session,
+    *,
+    quote: Quote,
+    actor: User,
+    team_id: UUID | None = None,
+    customer_id: UUID | None = None,
+    tool_number: str | None = None,
+    quoted_revenue: Decimal | None = None,
+    external_quote_number: str | None = None,
+    currency_code: str | None = None,
+    quoted_hours: Decimal | None = None,
+    create_project: bool = False,
+) -> QuoteImportOutcome:
+    """In-place edit of quote header + current revision (expenses-style)."""
+    if customer_id is not None:
+        customer = db.get(Customer, customer_id)
+        if customer is None or not customer.is_active:
+            raise ProTrackValidationError("Customer not found or inactive.")
+        quote.customer_id = customer_id
+
+    if team_id is not None:
+        quote.team_id = team_id
+
+    if tool_number is not None:
+        tool = tool_number.strip()
+        if not tool:
+            raise ProTrackValidationError("Project # (tool number) is required.")
+        quote.tool_number = tool
+
+    if external_quote_number is not None:
+        quote.external_quote_number = external_quote_number.strip() or None
+
+    if currency_code is not None:
+        currency = currency_code.strip().upper()
+        if currency:
+            quote.currency_code = currency
+
+    customer = db.get(Customer, quote.customer_id)
+    if customer is None:
+        raise ProTrackValidationError("Customer not found or inactive.")
+
+    revision = _current_revision(db, quote)
+    if revision is None:
+        raise ProTrackValidationError("Quote has no current revision to update.")
+
+    if quoted_hours is not None:
+        revision.quoted_hours = quoted_hours
+    if quoted_revenue is not None:
+        revision.quoted_revenue = quoted_revenue
+
+    revision.margin = revision.quoted_revenue - revision.estimated_cost
+    revision.margin_percent = (
+        (revision.margin / revision.quoted_revenue * 100).quantize(Decimal("0.01"))
+        if revision.quoted_revenue
+        else Decimal("0")
+    )
+
+    fx_date = revision.start_date or revision.fx_date or date.today()
+    base_cost, fx_rate, fx_date = to_base_amount(
+        db,
+        amount=revision.estimated_cost,
+        currency_code=quote.currency_code,
+        on_date=fx_date,
+    )
+    base_revenue, _, _ = to_base_amount(
+        db,
+        amount=revision.quoted_revenue,
+        currency_code=quote.currency_code,
+        on_date=fx_date,
+    )
+    revision.base_estimated_cost_inr = base_cost
+    revision.base_quoted_revenue_inr = base_revenue
+    revision.fx_rate = fx_rate
+    revision.fx_date = fx_date
+
+    project, project_created = ensure_project_for_quote_import(
+        db,
+        tool_number=quote.tool_number,
+        customer_id=quote.customer_id,
+        team_id=quote.team_id,
+        quoted_hours=revision.quoted_hours,
+        name_hint=f"{quote.tool_number} — {customer.name}",
+        create_if_missing=create_project,
+    )
+    if project is not None:
+        quote.project_id = project.id
+    elif tool_number is not None:
+        # Tool changed and no match / create — clear stale link.
+        quote.project_id = None
+
+    db.flush()
+    _ = actor  # reserved for future audit identity on revision
+    return QuoteImportOutcome(
+        quote=quote,
+        project_created=project_created,
+        warnings=[],
+        quoted_hours=revision.quoted_hours,
+        quoted_revenue=revision.quoted_revenue,
+    )
+
+
+def soft_delete_quote(db: Session, *, quote: Quote) -> None:
+    quote.is_active = False
+    db.flush()
+
+
 def import_quote_row(
     db: Session,
     *,

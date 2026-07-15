@@ -47,3 +47,55 @@ def test_manual_quote_create_types_fields(client, auth_headers, session):
     )
     assert match is not None
     assert match["external_quote_number"] == "QT-2026-27-005"
+
+
+def test_quote_edit_and_soft_delete(client, auth_headers, session):
+    team = ensure_corporate_shared_services_team(session)
+    customer = session.scalar(
+        select(Customer).where(Customer.name == "Prosohm Test Customer")
+    )
+    assert customer is not None
+    session.commit()
+
+    created = client.post(
+        "/api/v1/finance/quotes/manual",
+        headers=auth_headers,
+        json={
+            "team_id": str(team.id),
+            "customer_id": str(customer.id),
+            "tool_number": "EDIT-DEL-1",
+            "quoted_revenue": "1000.00",
+            "external_quote_number": "QT-EDIT-1",
+            "currency_code": "USD",
+            "create_project": True,
+        },
+    )
+    assert created.status_code == 200, created.text
+    quote_id = created.json()["items"][0]["quote_id"]
+
+    updated = client.patch(
+        f"/api/v1/finance/quotes/{quote_id}",
+        headers=auth_headers,
+        json={
+            "external_quote_number": "QT-EDIT-2",
+            "quoted_revenue": "1500.00",
+            "tool_number": "EDIT-DEL-1",
+            "customer_id": str(customer.id),
+            "team_id": str(team.id),
+            "currency_code": "USD",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["external_quote_number"] == "QT-EDIT-2"
+    assert Decimal(str(updated.json()["quoted_revenue"])) == Decimal("1500.00")
+
+    deleted = client.delete(
+        f"/api/v1/finance/quotes/{quote_id}", headers=auth_headers
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    listed = client.get(
+        f"/api/v1/finance/quotes?team_id={team.id}", headers=auth_headers
+    )
+    assert listed.status_code == 200
+    assert all(q["id"] != quote_id for q in listed.json())

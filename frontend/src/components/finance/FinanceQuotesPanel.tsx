@@ -21,12 +21,14 @@ import {
   IMPORT_ACCEPT_WITH_CSV,
   IMPORT_FORMAT_LABEL_WITH_CSV,
 } from '../../config/importFormats';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { teamQueryParam } from './FinanceTeamFilter';
 
 type QuoteRow = {
   id: string;
+  customer_id: string;
   tool_number: string;
   external_quote_number?: string | null;
   currency_code: string;
@@ -35,6 +37,8 @@ type QuoteRow = {
   team_name?: string | null;
   customer_name?: string | null;
   project_linked?: boolean;
+  quoted_hours?: number | string | null;
+  quoted_revenue?: number | string | null;
 };
 
 type QuoteImportItem = {
@@ -78,11 +82,13 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const [importTeamId, setImportTeamId] = useState(teamId);
   const [createProject, setCreateProject] = useState(true);
   const [manual, setManual] = useState<ManualQuoteForm>(emptyManual);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<QuoteRow | null>(null);
   const [lastImport, setLastImport] = useState<QuoteImportItem[]>([]);
 
   useEffect(() => {
-    if (teamId) setImportTeamId(teamId);
-  }, [teamId]);
+    if (teamId && !editingId) setImportTeamId(teamId);
+  }, [teamId, editingId]);
 
   const teamsQuery = useQuery({
     queryKey: ['lookup-teams'],
@@ -98,6 +104,12 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     queryFn: async () => (await apiClient.get<QuoteRow[]>(`/finance/quotes${listQ}`)).data,
   });
 
+  const invalidateFinance = () => {
+    void queryClient.invalidateQueries({ queryKey: ['finance-quotes'] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+    void queryClient.invalidateQueries({ queryKey: ['projects'] });
+  };
+
   const applyImportResult = (data: QuoteImportResult, successLabel: string) => {
     setLastImport(data.items ?? []);
     const created = (data.items ?? []).filter((item) => item.project_created).length;
@@ -107,41 +119,74 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
         (created ? ` · ${created} project(s) created` : '') +
         (linked && !created ? ` · ${linked} linked` : ''),
     );
-    void queryClient.invalidateQueries({ queryKey: ['finance-quotes'] });
-    void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
-    void queryClient.invalidateQueries({ queryKey: ['projects'] });
+    invalidateFinance();
   };
 
-  const manualMutation = useMutation({
+  const buildPayload = () => {
+    if (!importTeamId) throw new Error('Select a team.');
+    if (!manual.customerId) throw new Error('Select a customer.');
+    const projectNumber = manual.projectNumber.trim();
+    if (!projectNumber) throw new Error('Project # is required.');
+    const costRaw = manual.cost.trim().replace(/,/g, '');
+    if (!costRaw) throw new Error('Cost (quoted amount) is required.');
+    const cost = Number(costRaw);
+    if (!Number.isFinite(cost) || cost < 0) {
+      throw new Error('Cost must be a valid number.');
+    }
+    const currency =
+      manual.currencyCode.trim().toUpperCase() ||
+      customersQuery.data?.find((c) => c.id === manual.customerId)?.default_currency_code ||
+      undefined;
+    return {
+      team_id: importTeamId,
+      customer_id: manual.customerId,
+      tool_number: projectNumber,
+      quoted_revenue: cost,
+      external_quote_number: manual.quoteNumber.trim() || null,
+      currency_code: currency || null,
+      create_project: createProject,
+    };
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setManual(emptyManual);
+    if (teamId) setImportTeamId(teamId);
+  };
+
+  const startEdit = (quote: QuoteRow) => {
+    setEditingId(quote.id);
+    setImportTeamId(quote.team_id || teamId || '');
+    setManual({
+      customerId: quote.customer_id,
+      quoteNumber: quote.external_quote_number ?? '',
+      projectNumber: quote.tool_number ?? '',
+      cost:
+        quote.quoted_revenue === null || quote.quoted_revenue === undefined
+          ? ''
+          : String(quote.quoted_revenue),
+      currencyCode: (quote.currency_code || '').toUpperCase(),
+    });
+  };
+
+  const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!importTeamId) throw new Error('Select a team.');
-      if (!manual.customerId) throw new Error('Select a customer.');
-      const projectNumber = manual.projectNumber.trim();
-      if (!projectNumber) throw new Error('Project # is required.');
-      const costRaw = manual.cost.trim().replace(/,/g, '');
-      if (!costRaw) throw new Error('Cost (quoted amount) is required.');
-      const cost = Number(costRaw);
-      if (!Number.isFinite(cost) || cost < 0) {
-        throw new Error('Cost must be a valid number.');
+      const payload = buildPayload();
+      if (editingId) {
+        return (await apiClient.patch<QuoteRow>(`/finance/quotes/${editingId}`, payload)).data;
       }
-      const currency =
-        manual.currencyCode.trim().toUpperCase() ||
-        customersQuery.data?.find((c) => c.id === manual.customerId)?.default_currency_code ||
-        undefined;
       return (
-        await apiClient.post<QuoteImportResult>('/finance/quotes/manual', {
-          team_id: importTeamId,
-          customer_id: manual.customerId,
-          tool_number: projectNumber,
-          quoted_revenue: cost,
-          external_quote_number: manual.quoteNumber.trim() || null,
-          currency_code: currency || null,
-          create_project: createProject,
-        })
+        await apiClient.post<QuoteImportResult>('/finance/quotes/manual', payload)
       ).data;
     },
     onSuccess: (data) => {
-      applyImportResult(data, 'Saved awarded quote');
+      if (editingId) {
+        showSuccess('Quote updated');
+        cancelEdit();
+        invalidateFinance();
+        return;
+      }
+      applyImportResult(data as QuoteImportResult, 'Saved awarded quote');
       setManual((prev) => ({
         ...emptyManual,
         customerId: prev.customerId,
@@ -149,7 +194,24 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       }));
     },
     onError: (error: unknown) => {
-      showError(apiErrorMessage(error, 'Could not save quote'));
+      showError(apiErrorMessage(error, editingId ? 'Could not update quote' : 'Could not save quote'));
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/finance/quotes/${id}`);
+    },
+    onSuccess: () => {
+      showSuccess('Quote deleted');
+      setDeleteTarget(null);
+      if (editingId && deleteTarget?.id === editingId) {
+        cancelEdit();
+      }
+      invalidateFinance();
+    },
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not delete quote'));
     },
   });
 
@@ -182,8 +244,8 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     Boolean(manual.customerId) &&
     Boolean(manual.projectNumber.trim()) &&
     Boolean(manual.cost.trim()) &&
-    !manualMutation.isPending;
-  const canUpload = Boolean(importTeamId) && !importMutation.isPending;
+    !saveMutation.isPending;
+  const canUpload = Boolean(importTeamId) && !importMutation.isPending && !editingId;
 
   return (
     <Stack spacing={2}>
@@ -192,9 +254,18 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           Awarded project quotes
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          <strong>This phase:</strong> type <strong>Quote #</strong>, <strong>Project #</strong>{' '}
-          (Customer Project #), and <strong>Cost</strong> (quoted amount). Select Customer + Team.
-          Smart PDF recognition is deferred — use manual entry for UAT.
+          {editingId ? (
+            <>
+              <strong>Edit quote</strong> — update Quote #, Project #, Cost, Customer, and Team,
+              then Save changes.
+            </>
+          ) : (
+            <>
+              <strong>This phase:</strong> type <strong>Quote #</strong>, <strong>Project #</strong>{' '}
+              (Customer Project #), and <strong>Cost</strong> (quoted amount). Select Customer +
+              Team. Use Edit / Delete on listed quotes (same as Expenses).
+            </>
+          )}
         </Typography>
 
         <Stack spacing={1.5} sx={{ mb: 2, maxWidth: 720 }}>
@@ -298,10 +369,19 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             <Button
               variant="contained"
               disabled={!canSaveManual}
-              onClick={() => manualMutation.mutate()}
+              onClick={() => saveMutation.mutate()}
             >
-              {manualMutation.isPending ? 'Saving…' : 'Save quote'}
+              {saveMutation.isPending
+                ? 'Saving…'
+                : editingId
+                  ? 'Save changes'
+                  : 'Save quote'}
             </Button>
+            {editingId ? (
+              <Button variant="outlined" onClick={cancelEdit}>
+                Cancel
+              </Button>
+            ) : null}
           </Stack>
           {!importTeamId ? (
             <Typography variant="caption" color="warning.main">
@@ -310,29 +390,33 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           ) : null}
         </Stack>
 
-        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-          Optional file upload
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          Batch Excel/PDF/CSV still available ({IMPORT_FORMAT_LABEL_WITH_CSV}). Prefer manual entry
-          above when smart parse fails.
-        </Typography>
-        <Button variant="outlined" component="label" disabled={!canUpload}>
-          Upload Quote File
-          <input
-            hidden
-            type="file"
-            accept={IMPORT_ACCEPT_WITH_CSV}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) importMutation.mutate(file);
-              event.target.value = '';
-            }}
-          />
-        </Button>
+        {!editingId ? (
+          <>
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+              Optional file upload
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Batch Excel/PDF/CSV still available ({IMPORT_FORMAT_LABEL_WITH_CSV}). Prefer manual
+              entry above when smart parse fails.
+            </Typography>
+            <Button variant="outlined" component="label" disabled={!canUpload}>
+              Upload Quote File
+              <input
+                hidden
+                type="file"
+                accept={IMPORT_ACCEPT_WITH_CSV}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) importMutation.mutate(file);
+                  event.target.value = '';
+                }}
+              />
+            </Button>
+          </>
+        ) : null}
       </Box>
 
-      {lastImport.length > 0 ? (
+      {lastImport.length > 0 && !editingId ? (
         <Box>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>
             Last save / import
@@ -377,21 +461,58 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       <Stack spacing={1}>
         {(quotesQuery.data ?? []).map((quote) => (
           <Card key={quote.id} variant="outlined">
-            <CardContent>
-              <Typography sx={{ fontWeight: 600 }}>
-                {quote.external_quote_number
-                  ? `${quote.external_quote_number} · ${quote.tool_number}`
-                  : quote.tool_number}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {quote.customer_name ?? 'Customer'} · {quote.team_name ?? 'No team'} ·{' '}
-                {quote.currency_code} · rev {quote.current_revision}
-                {quote.project_linked ? ' · Linked project' : ' · Unlinked'}
-              </Typography>
+            <CardContent
+              sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}
+            >
+              <Box>
+                <Typography sx={{ fontWeight: 600 }}>
+                  {quote.external_quote_number
+                    ? `${quote.external_quote_number} · ${quote.tool_number}`
+                    : quote.tool_number}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {quote.customer_name ?? 'Customer'} · {quote.team_name ?? 'No team'} ·{' '}
+                  {quote.currency_code}
+                  {quote.quoted_revenue != null ? ` ${quote.quoted_revenue}` : ''} · rev{' '}
+                  {quote.current_revision}
+                  {quote.project_linked ? ' · Linked project' : ' · Unlinked'}
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <Button size="small" variant="contained" onClick={() => startEdit(quote)}>
+                  Edit
+                </Button>
+                <Button
+                  size="small"
+                  color="error"
+                  variant="outlined"
+                  onClick={() => setDeleteTarget(quote)}
+                >
+                  Delete
+                </Button>
+              </Stack>
             </CardContent>
           </Card>
         ))}
       </Stack>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete quote?"
+        message="This removes the quote from Financial Planning lists and Overview team revenue (soft-delete)."
+        recordName={
+          deleteTarget
+            ? `${deleteTarget.external_quote_number ? `${deleteTarget.external_quote_number} · ` : ''}${deleteTarget.tool_number} · ${deleteTarget.customer_name ?? 'Customer'} · ${deleteTarget.currency_code}${deleteTarget.quoted_revenue != null ? ` ${deleteTarget.quoted_revenue}` : ''}`
+            : undefined
+        }
+        confirmLabel="Delete"
+        danger
+        loading={deleteMutation.isPending}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+        }}
+      />
     </Stack>
   );
 }

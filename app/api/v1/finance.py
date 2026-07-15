@@ -69,6 +69,7 @@ from app.schemas.finance import (
     QuoteImportResult,
     QuoteManualCreate,
     QuoteRead,
+    QuoteUpdate,
     RenewalNotifyResult,
     TeamCommercialFeeBandInput,
     TeamCommercialFeeBandRead,
@@ -913,6 +914,72 @@ def list_quotes(
     return [_quote_read(db, row) for row in db.scalars(stmt).all()]
 
 
+@router.patch("/quotes/{quote_id}", response_model=QuoteRead)
+def update_quote_endpoint(
+    quote_id: UUID,
+    payload: QuoteUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.quote_import_service import update_quote
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    if payload.team_id is not None and db.get(Team, payload.team_id) is None:
+        raise HTTPException(status_code=400, detail="Team is required and must exist.")
+    data = payload.model_dump(exclude_unset=True)
+    create_project = bool(data.pop("create_project", False))
+    try:
+        update_quote(
+            db,
+            quote=row,
+            actor=current_user,
+            create_project=create_project,
+            **data,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.quote_revised,
+        entity_type=EntityType.quote,
+        entity_id=row.id,
+        new_value=row.external_quote_number or row.tool_number,
+    )
+    db.commit()
+    db.refresh(row)
+    return _quote_read(db, row)
+
+
+@router.delete("/quotes/{quote_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_quote_endpoint(
+    quote_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.quote_import_service import soft_delete_quote
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    soft_delete_quote(db, quote=row)
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.quote_revised,
+        entity_type=EntityType.quote,
+        entity_id=row.id,
+        new_value=f"quote_deleted:{row.external_quote_number or row.tool_number}",
+    )
+    db.commit()
+
+
 def _quote_import_items(
     db: Session,
     *,
@@ -1041,14 +1108,19 @@ async def import_quotes(
 
 
 def _quote_read(db: Session, row: Quote) -> QuoteRead:
+    from app.services.finance.quote_import_service import _current_revision
+
     customer = db.get(Customer, row.customer_id)
     team = db.get(Team, row.team_id) if row.team_id else None
+    revision = _current_revision(db, row)
     data = QuoteRead.model_validate(row)
     return data.model_copy(
         update={
             "team_name": team.name if team else None,
             "customer_name": customer.name if customer else None,
             "project_linked": row.project_id is not None,
+            "quoted_hours": revision.quoted_hours if revision else None,
+            "quoted_revenue": revision.quoted_revenue if revision else None,
             "revisions": [],
         }
     )

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
@@ -35,6 +35,7 @@ from app.models.finance import (
     Expense,
     FxRate,
     Quote,
+    TeamCommercialFeeBand,
     TeamCommercialTerms,
 )
 from app.models.models import Activity, Customer, Team, TeamMember, User, WorkingModel
@@ -68,6 +69,8 @@ from app.schemas.finance import (
     QuoteImportResult,
     QuoteRead,
     RenewalNotifyResult,
+    TeamCommercialFeeBandInput,
+    TeamCommercialFeeBandRead,
     TeamCommercialTermsCreate,
     TeamCommercialTermsRead,
     TeamCommercialTermsUpdate,
@@ -487,18 +490,76 @@ def _salary_required_headcount(db: Session, team_id: UUID) -> int:
     return billable_salary_headcount(db, team_id)
 
 
+def _replace_fee_bands(
+    db: Session,
+    row: TeamCommercialTerms,
+    bands: list[TeamCommercialFeeBandInput] | None,
+    *,
+    currency_code: str,
+    on_date: date,
+) -> None:
+    if bands is None:
+        return
+    for existing in list(row.fee_bands or []):
+        db.delete(existing)
+    db.flush()
+    for band in bands:
+        skill = (band.skill_level or "").strip().lower()
+        amount = band.fee_amount or Decimal("0")
+        currency = band.currency_code or currency_code
+        base_fee, fx_rate, _ = to_base_amount(
+            db, amount=amount, currency_code=currency, on_date=on_date
+        )
+        db.add(
+            TeamCommercialFeeBand(
+                terms_id=row.id,
+                skill_level=skill,
+                fee_amount=amount,
+                currency_code=currency,
+                base_fee_inr=base_fee,
+                fx_rate=fx_rate,
+                notes=band.notes,
+            )
+        )
+    db.flush()
+
+
 def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommercialTermsRead:
     from app.services.finance.dashboard_service import _normalize_monthly_fee
-    from decimal import Decimal
+    from app.services.finance.billable_headcount import billable_salary_counts_by_skill
 
     team = db.get(Team, row.team_id)
     model = db.get(WorkingModel, row.working_model_id)
     strategy = model.strategy_key.value if model is not None else None
     resource_count = _salary_required_headcount(db, row.team_id)
-    monthly_signal = None
+    counts = billable_salary_counts_by_skill(db, row.team_id)
+    fee_band_reads: list[TeamCommercialFeeBandRead] = []
+    for band in sorted(row.fee_bands or [], key=lambda b: b.skill_level or ""):
+        skill = band.skill_level or ""
+        fee_band_reads.append(
+            TeamCommercialFeeBandRead(
+                id=band.id,
+                terms_id=band.terms_id,
+                skill_level=skill or None,
+                fee_amount=band.fee_amount,
+                currency_code=band.currency_code,
+                base_fee_inr=band.base_fee_inr,
+                fx_rate=band.fx_rate,
+                notes=band.notes,
+                billable_count=counts.get(skill, 0),
+            )
+        )
     if strategy == WorkingModelCode.retainer.value:
-        rate = Decimal(str(row.base_fee_inr or 0))
-        monthly_signal = _normalize_monthly_fee(rate * Decimal(resource_count), row.billing_period)
+        bands = list(row.fee_bands or [])
+        if bands:
+            band_map = {(b.skill_level or ""): Decimal(str(b.base_fee_inr or 0)) for b in bands}
+            default_rate = band_map.get("") or Decimal(str(row.base_fee_inr or 0))
+            period_amount = Decimal("0.00")
+            for skill, count in counts.items():
+                period_amount += band_map.get(skill, default_rate) * Decimal(count)
+        else:
+            period_amount = Decimal(str(row.base_fee_inr or 0)) * Decimal(resource_count or 0)
+        monthly_signal = _normalize_monthly_fee(period_amount, row.billing_period)
     elif uses_flat_customer_fee(strategy):
         monthly_signal = _normalize_monthly_fee(Decimal(str(row.base_fee_inr or 0)), row.billing_period)
     else:
@@ -524,6 +585,7 @@ def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommerci
         working_model_strategy=strategy,
         resource_count=resource_count,
         monthly_fee_signal_inr=monthly_signal,
+        fee_bands=fee_band_reads,
     )
 
 
@@ -537,6 +599,7 @@ def list_team_commercial(
     stmt = (
         select(TeamCommercialTerms)
         .where(TeamCommercialTerms.is_active.is_(True))
+        .options(selectinload(TeamCommercialTerms.fee_bands))
         .order_by(TeamCommercialTerms.effective_from.desc())
     )
     if team_id is not None:
@@ -561,7 +624,7 @@ def create_team_commercial(
     model = db.get(WorkingModel, payload.working_model_id)
     if model is None:
         raise HTTPException(status_code=400, detail="Working model not found")
-    data = payload.model_dump()
+    data = payload.model_dump(exclude={"fee_bands"})
     strategy = model.strategy_key
     data["billing_mode"] = data.get("billing_mode") or billing_mode_for_strategy(strategy)
     if not uses_flat_customer_fee(strategy):
@@ -594,6 +657,17 @@ def create_team_commercial(
     )
     db.add(row)
     db.flush()
+    try:
+        _replace_fee_bands(
+            db,
+            row,
+            payload.fee_bands,
+            currency_code=row.currency_code,
+            on_date=row.effective_from,
+        )
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     _audit(
         db,
         user=current_user,
@@ -619,6 +693,7 @@ def update_team_commercial(
     if row is None or not row.is_active:
         raise HTTPException(status_code=404, detail="Team commercial terms not found")
     data = payload.model_dump(exclude_unset=True)
+    fee_bands = data.pop("fee_bands", None)
     for key, value in data.items():
         setattr(row, key, value)
     model = db.get(WorkingModel, row.working_model_id)
@@ -636,10 +711,17 @@ def update_team_commercial(
         base_fee, fx_rate, _ = to_base_amount(
             db, amount=amount, currency_code=currency, on_date=on_date
         )
+        row.base_fee_inr = base_fee
+        row.fx_rate = fx_rate
+        _replace_fee_bands(
+            db,
+            row,
+            fee_bands,
+            currency_code=currency,
+            on_date=on_date,
+        )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    row.base_fee_inr = base_fee
-    row.fx_rate = fx_rate
     db.flush()
     _audit(
         db,
@@ -688,19 +770,61 @@ def create_budget(
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    from app.services.finance.renewal_budget_service import (
+        apply_renewals_to_budget_forecast_quarters,
+        even_split_four,
+        renewals_by_quarter_inr,
+    )
+
+    data = payload.model_dump()
+    allocated = Decimal(str(data.get("allocated") or 0))
+    quarter_alloc = {
+        "q1": Decimal(str(data.get("q1_allocated") or 0)),
+        "q2": Decimal(str(data.get("q2_allocated") or 0)),
+        "q3": Decimal(str(data.get("q3_allocated") or 0)),
+        "q4": Decimal(str(data.get("q4_allocated") or 0)),
+    }
+    if sum(quarter_alloc.values()) == 0 and allocated:
+        quarter_alloc = even_split_four(allocated)
+        data.update({f"{k}_allocated": v for k, v in quarter_alloc.items()})
+        data["allocated"] = allocated
+    else:
+        data["allocated"] = sum(quarter_alloc.values()) or allocated
+
+    fy_year = data.get("fiscal_year")
+    fy_start = (
+        date(int(fy_year), 4, 1)
+        if fy_year
+        else current_fy_start()
+    )
+    team_scope = data.get("scope_id") if data.get("scope_type") == BudgetScopeType.team else None
+    renewals = renewals_by_quarter_inr(db, fy_start=fy_start, team_id=team_scope)
+    forecast_q = {
+        "q1": Decimal(str(data.get("q1_forecast") or 0)),
+        "q2": Decimal(str(data.get("q2_forecast") or 0)),
+        "q3": Decimal(str(data.get("q3_forecast") or 0)),
+        "q4": Decimal(str(data.get("q4_forecast") or 0)),
+    }
+    if sum(forecast_q.values()) == 0:
+        forecast_q = apply_renewals_to_budget_forecast_quarters(
+            q_allocated=quarter_alloc, renewals=renewals
+        )
+    data.update({f"{k}_forecast": v for k, v in forecast_q.items()})
+    data["forecast"] = sum(forecast_q.values())
+
     try:
         base_allocated, fx_rate, _ = to_base_amount(
-            db, amount=payload.allocated, currency_code=payload.currency_code
+            db, amount=data["allocated"], currency_code=data["currency_code"]
         )
         base_spent, _, _ = to_base_amount(
-            db, amount=payload.spent, currency_code=payload.currency_code
+            db, amount=data["spent"], currency_code=data["currency_code"]
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    remaining = payload.allocated - payload.spent
-    variance = payload.allocated - payload.forecast
+    remaining = data["allocated"] - data["spent"]
+    variance = data["allocated"] - data["forecast"]
     row = Budget(
-        **payload.model_dump(),
+        **data,
         remaining=remaining,
         variance=variance,
         base_allocated_inr=base_allocated,
@@ -722,6 +846,27 @@ def create_budget(
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.post("/plans/{plan_id}/sync-renewals", response_model=FinancePlanDetail)
+def sync_plan_renewals(
+    plan_id: UUID,
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Seed/refresh Annual Plan expense lines from known software renewals in the FY."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    from app.services.finance.renewal_budget_service import sync_renewals_into_plan
+
+    try:
+        plan = sync_renewals_into_plan(db, plan_id, team_id=team_id)
+        db.commit()
+        plan = annual_plan_service.get_plan(db, plan.id)
+        return _plan_detail_response(plan)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.patch("/budgets/{budget_id}/status", response_model=BudgetRead)
@@ -1012,7 +1157,7 @@ def create_finance_plan_line(
         )
         db.commit()
         db.refresh(line)
-        return line
+        return FinancePlanLineRead.model_validate(annual_plan_service.line_to_read_dict(line))
     except ProTrackValidationError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1027,10 +1172,16 @@ def update_finance_plan_line(
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    dumped = payload.model_dump(exclude_unset=True)
     months = {
         key: value
-        for key, value in payload.model_dump(exclude_unset=True).items()
+        for key, value in dumped.items()
         if key.startswith("month_") and value is not None
+    }
+    quarters = {
+        key: value
+        for key, value in dumped.items()
+        if key in {"q1", "q2", "q3", "q4"} and value is not None
     }
     try:
         line = annual_plan_service.update_line(
@@ -1040,10 +1191,11 @@ def update_finance_plan_line(
             label=payload.label,
             notes=payload.notes,
             months=months or None,
+            quarters=quarters or None,
         )
         db.commit()
         db.refresh(line)
-        return line
+        return FinancePlanLineRead.model_validate(annual_plan_service.line_to_read_dict(line))
     except ProTrackValidationError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -28,14 +28,12 @@ type RosterItem = {
   requires_salary: boolean;
   has_profile: boolean;
   monthly_salary: number | null;
-  hourly_cost: number | null;
   currency_code: string | null;
   effective_from: string | null;
 };
 
 type Draft = {
   monthly_salary: string;
-  hourly_cost: string;
   currency_code: string;
   effective_from: string;
 };
@@ -67,7 +65,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
         await apiClient.post('/finance/employee-costs', {
           user_id: payload.userId,
           monthly_salary: payload.draft.monthly_salary || '0',
-          hourly_cost: payload.draft.hourly_cost || '0',
+          hourly_cost: '0',
           currency_code: payload.draft.currency_code || 'INR',
           effective_from: payload.draft.effective_from,
         })
@@ -93,7 +91,6 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
     if (drafts[row.user_id]) return drafts[row.user_id];
     return {
       monthly_salary: row.monthly_salary != null ? String(row.monthly_salary) : '',
-      hourly_cost: row.hourly_cost != null ? String(row.hourly_cost) : '',
       currency_code: row.currency_code ?? 'INR',
       effective_from: row.effective_from ?? new Date().toISOString().slice(0, 10),
     };
@@ -132,7 +129,6 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
             <TableCell>Employee</TableCell>
             <TableCell>Team(s)</TableCell>
             <TableCell>Monthly salary</TableCell>
-            <TableCell>Hourly cost</TableCell>
             <TableCell>Currency</TableCell>
             <TableCell>Effective</TableCell>
             <TableCell align="right">Action</TableCell>
@@ -166,15 +162,6 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
                     onChange={(e) => setDraftField(row.user_id, 'monthly_salary', e.target.value, row)}
                     disabled={exempt}
                     sx={{ width: 110 }}
-                  />
-                </TableCell>
-                <TableCell>
-                  <TextField
-                    size="small"
-                    value={draft.hourly_cost}
-                    onChange={(e) => setDraftField(row.user_id, 'hourly_cost', e.target.value, row)}
-                    disabled={exempt}
-                    sx={{ width: 100 }}
                   />
                 </TableCell>
                 <TableCell>

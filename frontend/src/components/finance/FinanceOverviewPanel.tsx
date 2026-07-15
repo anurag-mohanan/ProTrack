@@ -130,13 +130,31 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <MetricCard title="Planning revenue" value={fmt(data.revenue.monthly_revenue)} suffix={currency} />
+            <MetricCard
+              title="Planning revenue / quarter"
+              value={fmt(data.revenue.quarterly_revenue ?? data.revenue.monthly_revenue)}
+              suffix={currency}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <MetricCard title="Gross profit" value={fmt(data.profitability.gross_profit)} suffix={currency} />
+            <MetricCard
+              title="Operating cost / quarter"
+              value={fmt(data.cost.quarterly_operating_cost ?? data.cost.monthly_operating_cost)}
+              suffix={currency}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <MetricCard title="Gross profit (monthly signal)" value={fmt(data.profitability.gross_profit)} suffix={currency} />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <MetricCard title="Net margin" value={fmt(data.profitability.net_margin)} suffix="%" />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <MetricCard
+              title="Known renewals (FY)"
+              value={fmt(data.cost.known_renewals_fy_inr ?? 0)}
+              suffix={currency}
+            />
           </Grid>
         </Grid>
       </Box>

@@ -106,17 +106,74 @@ def _to_decimal(raw: str | None) -> Decimal:
         raise ProTrackValidationError(f"Invalid number in quote PDF: {raw}") from exc
 
 
-def _extract_prepared_for(text: str) -> str | None:
-    match = re.search(
-        r"Prepared\s+For\s*\n(.+?)(?:\nKind\s+Attention|\n#\s*Item)",
-        text,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if not match:
+def _looks_like_address_line(line: str) -> bool:
+    lower = line.lower()
+    if re.search(r"\d{3,}", line) and any(
+        token in lower for token in ("street", "st ", "road", "rd ", "ave", "suite", "floor", "india", "canada", "usa")
+    ):
+        return True
+    if re.match(r"^\d+[\w\s,.\-/#]*$", line) and len(line) < 80:
+        return True
+    if re.search(r"\b[A-Z]\d[A-Z]\s?\d[A-Z]\d\b", line):  # Canadian postal
+        return True
+    return False
+
+
+def _clean_customer_candidate(line: str) -> str | None:
+    cleaned = re.sub(r"\s+", " ", line).strip(" :\t-")
+    if not cleaned or len(cleaned) < 2:
         return None
-    block = match.group(1).strip()
-    first = next((line.strip() for line in block.splitlines() if line.strip()), None)
-    return first
+    if _looks_like_address_line(cleaned):
+        return None
+    if re.match(r"^(kind\s+attention|#\s*item|quote\s*#)", cleaned, re.IGNORECASE):
+        return None
+    return cleaned
+
+
+def _extract_prepared_for(text: str) -> str | None:
+    """Extract customer from Prepared For block across common QT PDF layouts."""
+    patterns = [
+        # Classic multiline until Kind Attention / # Item
+        r"Prepared\s+For\s*[:：]?\s*\n(.+?)(?:\n\s*Kind\s+Attention|\n\s*#\s*Item|\n\s*Quote\s*#)",
+        # Same-line colon form
+        r"Prepared\s+For\s*[:：]\s*([^\n]+)",
+        # Label then next non-empty line without requiring Kind Attention
+        r"Prepared\s+For\s*[:：]?\s*\n([^\n]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+        if not match:
+            continue
+        block = match.group(1).strip()
+        for raw in block.splitlines():
+            candidate = _clean_customer_candidate(raw)
+            if candidate:
+                return candidate
+    return None
+
+
+def recover_customer_from_candidates(
+    text: str,
+    candidates: list[tuple[str, str]],
+) -> str | None:
+    """Pick longest active customer name/code appearing in QT text near Prepared For."""
+    if not text or not candidates:
+        return None
+    prepared_idx = text.lower().find("prepared")
+    window = text if prepared_idx < 0 else text[max(0, prepared_idx - 40) : prepared_idx + 600]
+    haystacks = (window, text)
+    best: tuple[int, str] | None = None
+    for name, code in candidates:
+        for label in (name, code):
+            label = (label or "").strip()
+            if len(label) < 3:
+                continue
+            for hay in haystacks:
+                if label.lower() in hay.lower():
+                    score = len(label) + (50 if hay is window else 0)
+                    if best is None or score > best[0]:
+                        best = (score, name)
+    return best[1] if best else None
 
 
 def _detect_currency(text: str, amount_has_dollar: bool) -> str:
@@ -157,6 +214,7 @@ def parse_prosohm_quote_text(
     text: str,
     *,
     filename: str | None = None,
+    customer_candidates: list[tuple[str, str]] | None = None,
 ) -> ProsohmQuoteExtract:
     if not text or not text.strip():
         raise ProTrackValidationError("Prosohm QT PDF has no extractable text.")
@@ -189,6 +247,10 @@ def parse_prosohm_quote_text(
         sales_person = re.split(r"\s{2,}|Customer\s+Project", sales_person)[0].strip()
 
     prepared_for = _extract_prepared_for(text)
+    if not prepared_for and customer_candidates:
+        prepared_for = recover_customer_from_candidates(text, customer_candidates)
+        if prepared_for:
+            warnings.append("Prepared For recovered via customer AI match against directory")
     if not prepared_for:
         raise ProTrackValidationError(
             "Could not find Prepared For customer on Prosohm QT PDF."

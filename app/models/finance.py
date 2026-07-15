@@ -226,6 +226,40 @@ class TeamCommercialTerms(Base, TimestampMixin):
     customer_pays_hardware: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    fee_bands: Mapped[list["TeamCommercialFeeBand"]] = relationship(
+        "TeamCommercialFeeBand",
+        back_populates="terms",
+        cascade="all, delete-orphan",
+    )
+
+
+class TeamCommercialFeeBand(Base, TimestampMixin):
+    """Per-skill customer fee for fixed-cost / retainer headcount on a terms row."""
+
+    __tablename__ = "team_commercial_fee_bands"
+    __table_args__ = (
+        UniqueConstraint("terms_id", "skill_level", name="uq_team_commercial_fee_band_skill"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    terms_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("team_commercial_terms.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    skill_level: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    fee_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    currency_code: Mapped[str] = mapped_column(
+        String(3), ForeignKey("currencies.code"), nullable=False, default="INR"
+    )
+    base_fee_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    fx_rate: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False, default=1)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    terms: Mapped["TeamCommercialTerms"] = relationship(
+        "TeamCommercialTerms", back_populates="fee_bands"
+    )
+
 
 class Quote(Base, TimestampMixin):
     __tablename__ = "quotes"
@@ -325,6 +359,14 @@ class Budget(Base, TimestampMixin):
     base_allocated_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     base_spent_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     fx_rate: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False, default=1)
+    q1_allocated: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    q2_allocated: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    q3_allocated: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    q4_allocated: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    q1_forecast: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    q2_forecast: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    q3_forecast: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    q4_forecast: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     fiscal_year: Mapped[Optional[int]] = mapped_column(Integer)
     approval_status: Mapped[BudgetApprovalStatus] = mapped_column(
         Enum(BudgetApprovalStatus, name="budget_approval_status", native_enum=False),

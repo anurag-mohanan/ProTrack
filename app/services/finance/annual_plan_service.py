@@ -1,9 +1,9 @@
-"""Annual finance plan service — Apr–Mar grids + P&L summary."""
+"""Annual finance plan service — Apr–Mar FY with quarterly edit surface + P&L summary."""
 
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
 from sqlalchemy import select
@@ -16,6 +16,14 @@ from app.services.finance.fx_service import get_base_currency
 
 MONTH_FIELDS = tuple(f"month_{i:02d}" for i in range(1, 13))
 MONTH_LABELS = ("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar")
+QUARTER_FIELDS = ("q1", "q2", "q3", "q4")
+QUARTER_LABELS = ("Q1 Apr–Jun", "Q2 Jul–Sep", "Q3 Oct–Dec", "Q4 Jan–Mar")
+QUARTER_MONTHS: dict[str, tuple[str, str, str]] = {
+    "q1": ("month_01", "month_02", "month_03"),
+    "q2": ("month_04", "month_05", "month_06"),
+    "q3": ("month_07", "month_08", "month_09"),
+    "q4": ("month_10", "month_11", "month_12"),
+}
 
 SEED_SALES = [
     ("abc_mold", "ABC-mold", 10),
@@ -72,6 +80,29 @@ def _line_month_total(line: FinancePlanLine) -> Decimal:
     return sum((getattr(line, field) or Decimal("0")) for field in MONTH_FIELDS)
 
 
+def _quantize_money(value: Decimal) -> Decimal:
+    return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def line_quarter_totals(line: FinancePlanLine) -> dict[str, Decimal]:
+    out: dict[str, Decimal] = {}
+    for q, months in QUARTER_MONTHS.items():
+        out[q] = sum((getattr(line, field) or Decimal("0")) for field in months)
+    return out
+
+
+def apply_quarter_amount(line: FinancePlanLine, quarter: str, total: Decimal) -> None:
+    """Write a quarter total by even split across the three FY month cells."""
+    if quarter not in QUARTER_MONTHS:
+        raise ProTrackValidationError(f"Invalid quarter field: {quarter}")
+    total = _quantize_money(total)
+    months = QUARTER_MONTHS[quarter]
+    third = _quantize_money(total / Decimal("3"))
+    setattr(line, months[0], third)
+    setattr(line, months[1], third)
+    setattr(line, months[2], _quantize_money(total - third - third))
+
+
 def _sum_section_months(lines: list[FinancePlanLine], section: FinancePlanSection) -> dict[str, Decimal]:
     totals = _zero_months()
     for line in lines:
@@ -82,6 +113,13 @@ def _sum_section_months(lines: list[FinancePlanLine], section: FinancePlanSectio
     return totals
 
 
+def _quarters_from_months(month_totals: dict[str, Decimal]) -> dict[str, Decimal]:
+    out: dict[str, Decimal] = {}
+    for q, months in QUARTER_MONTHS.items():
+        out[q] = sum(month_totals[m] for m in months)
+    return out
+
+
 def compute_plan_summary(plan: FinancePlan) -> dict:
     lines = list(plan.lines or [])
     sales = _sum_section_months(lines, FinancePlanSection.sales)
@@ -89,6 +127,9 @@ def compute_plan_summary(plan: FinancePlan) -> dict:
     gain_loss_months = {
         field: sales[field] - expenses[field] for field in MONTH_FIELDS
     }
+    sales_q = _quarters_from_months(sales)
+    expenses_q = _quarters_from_months(expenses)
+    gain_loss_q = {q: sales_q[q] - expenses_q[q] for q in QUARTER_FIELDS}
     sales_fy = sum(sales.values())
     expenses_fy = sum(expenses.values())
     gain_loss_fy = sales_fy - expenses_fy
@@ -101,9 +142,13 @@ def compute_plan_summary(plan: FinancePlan) -> dict:
     after_provision = (after_tax - provision_amount).quantize(Decimal("0.01"))
     return {
         "month_labels": list(MONTH_LABELS),
+        "quarter_labels": list(QUARTER_LABELS),
         "sales_by_month": {k: str(v) for k, v in sales.items()},
         "expenses_by_month": {k: str(v) for k, v in expenses.items()},
         "gain_loss_by_month": {k: str(v) for k, v in gain_loss_months.items()},
+        "sales_by_quarter": {k: str(v) for k, v in sales_q.items()},
+        "expenses_by_quarter": {k: str(v) for k, v in expenses_q.items()},
+        "gain_loss_by_quarter": {k: str(v) for k, v in gain_loss_q.items()},
         "sales_fy": str(sales_fy),
         "expenses_fy": str(expenses_fy),
         "gain_loss": str(gain_loss_fy),
@@ -113,6 +158,23 @@ def compute_plan_summary(plan: FinancePlan) -> dict:
         "tax_percent": str(tax),
         "provision_percent": str(provision),
     }
+
+
+def line_to_read_dict(line: FinancePlanLine) -> dict:
+    quarters = line_quarter_totals(line)
+    payload = {
+        "id": line.id,
+        "plan_id": line.plan_id,
+        "section": line.section,
+        "code": line.code,
+        "label": line.label,
+        "sort_order": line.sort_order,
+        "is_total_row": line.is_total_row,
+        "notes": line.notes,
+        **{field: getattr(line, field) or Decimal("0") for field in MONTH_FIELDS},
+        **quarters,
+    }
+    return payload
 
 
 def _seed_lines(plan: FinancePlan) -> None:
@@ -256,6 +318,7 @@ def update_line(
     label: str | None = None,
     notes: str | None = None,
     months: dict[str, Decimal] | None = None,
+    quarters: dict[str, Decimal] | None = None,
 ) -> FinancePlanLine:
     plan = get_plan(db, plan_id)
     line = next((row for row in plan.lines if row.id == line_id), None)
@@ -267,6 +330,9 @@ def update_line(
         line.label = label.strip() or line.label
     if notes is not None:
         line.notes = notes
+    if quarters:
+        for field, value in quarters.items():
+            apply_quarter_amount(line, field, Decimal(str(value)))
     if months:
         for field, value in months.items():
             if field not in MONTH_FIELDS:
@@ -299,7 +365,7 @@ def plan_to_detail_dict(plan: FinancePlan) -> dict:
         "tax_percent": plan.tax_percent,
         "provision_percent": plan.provision_percent,
         "status": plan.status,
-        "lines": lines,
+        "lines": [line_to_read_dict(line) for line in lines],
         "summary": compute_plan_summary(plan),
         "line_totals": {
             str(line.id): str(_line_month_total(line)) for line in lines if not line.is_total_row

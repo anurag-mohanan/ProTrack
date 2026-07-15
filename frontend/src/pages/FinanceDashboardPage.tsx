@@ -49,8 +49,12 @@ export function FinanceDashboardPage() {
     name: '',
     scope_type: 'team',
     allocated: '',
+    q1_allocated: '',
+    q2_allocated: '',
+    q3_allocated: '',
+    q4_allocated: '',
     currency_code: 'INR',
-    fiscal_year: String(new Date().getFullYear()),
+    fiscal_year: String(new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1),
   });
 
   const dashboardQuery = useQuery({
@@ -82,16 +86,28 @@ export function FinanceDashboardPage() {
           name: budgetForm.name,
           scope_type: budgetForm.scope_type,
           scope_id: budgetForm.scope_type === 'team' && teamId ? teamId : null,
-          allocated: budgetForm.allocated,
+          allocated: budgetForm.allocated || '0',
+          q1_allocated: budgetForm.q1_allocated || '0',
+          q2_allocated: budgetForm.q2_allocated || '0',
+          q3_allocated: budgetForm.q3_allocated || '0',
+          q4_allocated: budgetForm.q4_allocated || '0',
           currency_code: budgetForm.currency_code,
           fiscal_year: Number(budgetForm.fiscal_year) || null,
           spent: '0',
-          forecast: budgetForm.allocated,
+          forecast: '0',
         })
       ).data,
     onSuccess: () => {
-      showSuccess('Budget created');
-      setBudgetForm((prev) => ({ ...prev, name: '', allocated: '' }));
+      showSuccess('Budget created (forecast includes known renewals)');
+      setBudgetForm((prev) => ({
+        ...prev,
+        name: '',
+        allocated: '',
+        q1_allocated: '',
+        q2_allocated: '',
+        q3_allocated: '',
+        q4_allocated: '',
+      }));
       void queryClient.invalidateQueries({ queryKey: ['finance-budgets'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
@@ -157,7 +173,11 @@ export function FinanceDashboardPage() {
             <Typography variant="h6" sx={{ mb: 1 }}>
               Budgets
             </Typography>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Enter FY total or Q1–Q4 amounts (Apr–Mar). Forecast auto-adds known software renewals in each
+              quarter.
+            </Typography>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap' }}>
               <TextField
                 size="small"
                 label="Budget name"
@@ -180,19 +200,36 @@ export function FinanceDashboardPage() {
               </FormControl>
               <TextField
                 size="small"
-                label="Allocated"
+                label="FY allocated (optional)"
                 value={budgetForm.allocated}
                 onChange={(e) => setBudgetForm((p) => ({ ...p, allocated: e.target.value }))}
+                helperText="Even-split if quarters blank"
               />
+              {(['q1', 'q2', 'q3', 'q4'] as const).map((q, idx) => (
+                <TextField
+                  key={q}
+                  size="small"
+                  label={`${q.toUpperCase()} ${['Apr–Jun', 'Jul–Sep', 'Oct–Dec', 'Jan–Mar'][idx]}`}
+                  value={budgetForm[`${q}_allocated` as keyof typeof budgetForm]}
+                  onChange={(e) =>
+                    setBudgetForm((p) => ({ ...p, [`${q}_allocated`]: e.target.value }))
+                  }
+                  sx={{ width: 120 }}
+                />
+              ))}
               <TextField
                 size="small"
-                label="Fiscal year"
+                label="FY start year"
                 value={budgetForm.fiscal_year}
                 onChange={(e) => setBudgetForm((p) => ({ ...p, fiscal_year: e.target.value }))}
               />
               <Button
                 variant="contained"
-                disabled={!budgetForm.name || !budgetForm.allocated || budgetMutation.isPending}
+                disabled={
+                  !budgetForm.name ||
+                  (!(budgetForm.allocated || budgetForm.q1_allocated || budgetForm.q2_allocated || budgetForm.q3_allocated || budgetForm.q4_allocated)) ||
+                  budgetMutation.isPending
+                }
                 onClick={() => budgetMutation.mutate()}
               >
                 Create
@@ -205,7 +242,16 @@ export function FinanceDashboardPage() {
                   name: string;
                   allocated: number;
                   remaining: number;
+                  forecast?: number;
                   approval_status: string;
+                  q1_allocated?: number;
+                  q2_allocated?: number;
+                  q3_allocated?: number;
+                  q4_allocated?: number;
+                  q1_forecast?: number;
+                  q2_forecast?: number;
+                  q3_forecast?: number;
+                  q4_forecast?: number;
                 }) => (
                   <Card key={budget.id} variant="outlined">
                     <CardContent
@@ -214,8 +260,14 @@ export function FinanceDashboardPage() {
                       <Box>
                         <Typography sx={{ fontWeight: 600 }}>{budget.name}</Typography>
                         <Typography variant="body2">
-                          Allocated {budget.allocated} · Remaining {budget.remaining} ·{' '}
-                          {budget.approval_status}
+                          Allocated {budget.allocated} · Forecast {budget.forecast ?? '—'} · Remaining{' '}
+                          {budget.remaining} · {budget.approval_status}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Q1–Q4 alloc {budget.q1_allocated ?? 0}/{budget.q2_allocated ?? 0}/
+                          {budget.q3_allocated ?? 0}/{budget.q4_allocated ?? 0} · forecast{' '}
+                          {budget.q1_forecast ?? 0}/{budget.q2_forecast ?? 0}/{budget.q3_forecast ?? 0}/
+                          {budget.q4_forecast ?? 0}
                         </Typography>
                       </Box>
                       {budget.approval_status !== 'approved' ? (

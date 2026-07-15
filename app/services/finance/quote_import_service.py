@@ -432,7 +432,17 @@ def import_quotes_from_pdf(
             raise ProTrackValidationError(
                 "Prosohm QT PDF has no extractable text. Use a text-based PDF."
             )
-        extract = parse_prosohm_quote_text(text, filename=filename)
+        from app.models.models import Customer
+
+        customers = db.scalars(
+            select(Customer).where(Customer.is_active.is_(True))
+        ).all()
+        candidates = [(c.name or "", c.code or "") for c in customers]
+        extract = parse_prosohm_quote_text(
+            text,
+            filename=filename,
+            customer_candidates=candidates,
+        )
         return [
             import_quote_row(
                 db,

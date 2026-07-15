@@ -176,6 +176,10 @@ def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Deci
     from app.models.enums import WorkingModelCode
     from app.models.models import WorkingModel
     from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
+    from app.services.finance.billable_headcount import (
+        billable_salary_counts_by_skill,
+        billable_salary_headcount,
+    )
 
     stmt = select(TeamCommercialTerms).where(TeamCommercialTerms.is_active.is_(True))
     if team_id is not None:
@@ -190,15 +194,27 @@ def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Deci
         strategy = model.strategy_key if model is not None else None
         if not uses_flat_customer_fee(strategy):
             continue
-        rate = _d(term.base_fee_inr)
-        if strategy == WorkingModelCode.retainer or (
+        is_retainer = strategy == WorkingModelCode.retainer or (
             hasattr(strategy, "value") and strategy.value == WorkingModelCode.retainer.value
-        ):
-            from app.services.finance.billable_headcount import billable_salary_headcount
-
+        )
+        bands = list(getattr(term, "fee_bands", None) or [])
+        if is_retainer and bands:
+            counts = billable_salary_counts_by_skill(db, term.team_id)
+            band_map = {
+                (band.skill_level or ""): _d(band.base_fee_inr)
+                for band in bands
+            }
+            default_rate = band_map.get("") or _d(term.base_fee_inr)
+            period_amount = Decimal("0.00")
+            for skill, count in counts.items():
+                rate = band_map.get(skill, default_rate)
+                period_amount += rate * Decimal(count)
+        elif is_retainer:
             count = billable_salary_headcount(db, term.team_id)
-            rate = rate * Decimal(count)
-        total += _normalize_monthly_fee(rate, term.billing_period)
+            period_amount = _d(term.base_fee_inr) * Decimal(count)
+        else:
+            period_amount = _d(term.base_fee_inr)
+        total += _normalize_monthly_fee(period_amount, term.billing_period)
     return total
 
 
@@ -250,6 +266,11 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     planning_revenue = revenue + team_fee_monthly
     operating_cost = prosohm_opex + salary_cost
     display_revenue = revenue + team_fee_monthly
+    quarterly_revenue = (display_revenue * Decimal("3")).quantize(Decimal("0.01"))
+    yearly_revenue = (display_revenue * Decimal("12")).quantize(Decimal("0.01"))
+    quarterly_operating = (operating_cost * Decimal("3")).quantize(Decimal("0.01"))
+    yearly_operating = (operating_cost * Decimal("12")).quantize(Decimal("0.01"))
+    quarterly_salary = (salary_cost * Decimal("3")).quantize(Decimal("0.01"))
     gross_profit = display_revenue - estimated_cost
     gross_margin = (
         (gross_profit / display_revenue * 100) if display_revenue else Decimal("0.00")
@@ -257,6 +278,11 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     net_profit = display_revenue - estimated_cost - operating_cost
     net_base = display_revenue
     net_margin = (net_profit / net_base * 100) if net_base else Decimal("0.00")
+
+    from app.services.finance.renewal_budget_service import renewals_by_quarter_inr
+
+    renewals_q = renewals_by_quarter_inr(db, fy_start=fy_start, team_id=team_id)
+    renewals_fy = sum(renewals_q.values(), Decimal("0.00"))
 
     budget_stmt = select(func.coalesce(func.sum(Budget.base_allocated_inr), 0)).where(Budget.is_active.is_(True))
     spent_stmt = select(func.coalesce(func.sum(Budget.base_spent_inr), 0)).where(Budget.is_active.is_(True))
@@ -341,16 +367,20 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         "planning_fy_label": fy_label,
         "revenue": {
             "monthly_revenue": display_revenue,
-            "quarterly_revenue": display_revenue,
-            "yearly_revenue": display_revenue,
-            "revenue_forecast": display_revenue,
+            "quarterly_revenue": quarterly_revenue,
+            "yearly_revenue": yearly_revenue,
+            "revenue_forecast": quarterly_revenue,
             "customer_revenue": revenue,
             "business_model_revenue": team_fee_monthly,
             "quote_revenue": revenue,
             "team_commercial_fee_monthly": team_fee_monthly,
+            "team_commercial_fee_quarterly": (team_fee_monthly * Decimal("3")).quantize(
+                Decimal("0.01")
+            ),
         },
         "cost": {
             "salary_cost": salary_cost,
+            "salary_cost_quarterly": quarterly_salary,
             "software_cost": Decimal("0.00"),
             "infrastructure_cost": Decimal("0.00"),
             "travel": Decimal("0.00"),
@@ -358,9 +388,12 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
             "capex": capex,
             "recurring_costs": prosohm_opex,
             "monthly_operating_cost": operating_cost,
-            "annual_operating_cost": operating_cost * Decimal("12"),
+            "quarterly_operating_cost": quarterly_operating,
+            "annual_operating_cost": yearly_operating,
             "prosohm_opex": prosohm_opex,
             "pass_through_opex": pass_through_opex,
+            "known_renewals_fy_inr": renewals_fy,
+            "known_renewals_by_quarter": {k: str(v) for k, v in renewals_q.items()},
         },
         "profitability": {
             "gross_profit": gross_profit,

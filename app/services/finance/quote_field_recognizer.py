@@ -167,3 +167,13 @@ def enrich_import_row(row: dict[str, object], *, filename: str | None = None) ->
         if existing is None or str(existing).strip() == "":
             enriched[key] = value
     return enriched
+
+
+def recover_customer_name_from_qt_text(
+    text: str,
+    customer_names_and_codes: list[tuple[str, str]],
+) -> str | None:
+    """AI/heuristic recovery when Prepared For regex fails — wraps PDF parser helper."""
+    from app.services.finance.prosohm_quote_pdf_parser import recover_customer_from_candidates
+
+    return recover_customer_from_candidates(text, customer_names_and_codes)

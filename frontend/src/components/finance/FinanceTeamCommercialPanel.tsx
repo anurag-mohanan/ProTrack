@@ -46,6 +46,11 @@ type TeamCommercial = {
   customer_pays_hardware?: boolean;
   resource_count?: number | null;
   monthly_fee_signal_inr?: number | null;
+  fee_bands?: Array<{
+    skill_level?: string | null;
+    fee_amount: number;
+    billable_count?: number;
+  }>;
 };
 
 function isRetainer(strategy?: string | null) {
@@ -71,6 +76,12 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
     notes: '',
     customer_pays_software: false,
     customer_pays_hardware: false,
+    fee_bands: [
+      { skill_level: '', fee_amount: '' },
+      { skill_level: 'intermediate', fee_amount: '' },
+      { skill_level: 'advanced', fee_amount: '' },
+      { skill_level: 'expert', fee_amount: '' },
+    ] as Array<{ skill_level: string; fee_amount: string }>,
   });
 
   useEffect(() => {
@@ -117,6 +128,15 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
         notes: form.notes || null,
         customer_pays_software: form.customer_pays_software,
         customer_pays_hardware: form.customer_pays_hardware,
+        fee_bands: needsFee
+          ? form.fee_bands
+              .filter((band) => band.fee_amount.trim() !== '')
+              .map((band) => ({
+                skill_level: band.skill_level || null,
+                fee_amount: band.fee_amount || '0',
+                currency_code: form.currency_code,
+              }))
+          : [],
       };
       if (editingId) {
         return (await apiClient.put(`/finance/team-commercial/${editingId}`, body)).data;
@@ -157,6 +177,18 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
 
   const startEdit = (row: TeamCommercial) => {
     setEditingId(row.id);
+    const bands =
+      row.fee_bands && row.fee_bands.length > 0
+        ? row.fee_bands.map((band) => ({
+            skill_level: band.skill_level || '',
+            fee_amount: String(band.fee_amount ?? ''),
+          }))
+        : [
+            { skill_level: '', fee_amount: String(row.customer_fee_amount ?? '') },
+            { skill_level: 'intermediate', fee_amount: '' },
+            { skill_level: 'advanced', fee_amount: '' },
+            { skill_level: 'expert', fee_amount: '' },
+          ];
     setForm({
       team_id: row.team_id,
       working_model_id: row.working_model_id,
@@ -167,6 +199,7 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
       notes: row.notes || '',
       customer_pays_software: Boolean(row.customer_pays_software),
       customer_pays_hardware: Boolean(row.customer_pays_hardware),
+      fee_bands: bands,
     });
   };
 
@@ -183,8 +216,9 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
           {editingId ? 'Edit team commercial terms' : 'Team cost / commercial model'}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Working model drives commercial rules. Retainer uses rate per resource / month × salary-required
-          headcount. Project-based / T&amp;M planning revenue comes from quotes — no team flat fee.
+          Working model drives commercial rules. Retainer uses skill-based rates × billable
+          headcount (default rate applies when skill is blank). Project-based / T&amp;M planning
+          revenue comes from quotes — no team flat fee.
         </Typography>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -229,10 +263,10 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
           {needsFee ? (
             <TextField
               size="small"
-              label="Rate per resource / month"
+              label="Default rate / resource / month"
               value={form.customer_fee_amount}
               onChange={(e) => setForm((p) => ({ ...p, customer_fee_amount: e.target.value }))}
-              helperText="Overview fee = rate × billable salary-required headcount (excludes management overhead)"
+              helperText="Fallback when skill band missing; leave blank bands unused"
             />
           ) : (
             <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center', maxWidth: 280 }}>
@@ -314,6 +348,49 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
             </Button>
           ) : null}
         </Stack>
+        {needsFee ? (
+          <Stack spacing={1} sx={{ mt: 1.5 }}>
+            <Typography variant="subtitle2">Skill fee bands</Typography>
+            {form.fee_bands.map((band, index) => (
+              <Stack key={`${band.skill_level}-${index}`} direction="row" spacing={1} useFlexGap>
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Skill</InputLabel>
+                  <Select
+                    label="Skill"
+                    value={band.skill_level}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setForm((prev) => {
+                        const next = [...prev.fee_bands];
+                        next[index] = { ...next[index], skill_level: value };
+                        return { ...prev, fee_bands: next };
+                      });
+                    }}
+                  >
+                    <MenuItem value="">Default (no skill)</MenuItem>
+                    <MenuItem value="beginner">Beginner</MenuItem>
+                    <MenuItem value="intermediate">Intermediate</MenuItem>
+                    <MenuItem value="advanced">Advanced</MenuItem>
+                    <MenuItem value="expert">Expert</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  size="small"
+                  label="Fee / resource"
+                  value={band.fee_amount}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setForm((prev) => {
+                      const next = [...prev.fee_bands];
+                      next[index] = { ...next[index], fee_amount: value };
+                      return { ...prev, fee_bands: next };
+                    });
+                  }}
+                />
+              </Stack>
+            ))}
+          </Stack>
+        ) : null}
       </Box>
 
       <Stack spacing={1}>
@@ -328,7 +405,11 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {isRetainer(row.working_model_strategy)
-                    ? `Rate ${row.customer_fee_amount} ${row.currency_code}/resource/mo × ${row.resource_count ?? 0} billable ≈ ${row.monthly_fee_signal_inr ?? 0} INR/mo`
+                    ? `Fee signal ≈ ${row.monthly_fee_signal_inr ?? 0} INR/mo · ${row.resource_count ?? 0} billable · ${
+                        (row.fee_bands?.length ?? 0) > 0
+                          ? `${row.fee_bands!.length} skill bands`
+                          : `flat ${row.customer_fee_amount} ${row.currency_code}`
+                      }`
                     : `No team flat fee (quotes drive revenue) · ${row.billing_period}`}
                   {` · from ${row.effective_from}`}
                   {row.customer_pays_software ? ' · customer SW' : ''}

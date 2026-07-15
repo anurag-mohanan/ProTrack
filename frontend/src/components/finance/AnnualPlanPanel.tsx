@@ -28,22 +28,8 @@ import { useToast } from '../../context/ToastContext';
 import { formatIndianNumber } from '../../utils/format';
 import { LoadingState } from '../common/LoadingState';
 
-const MONTH_KEYS = [
-  'month_01',
-  'month_02',
-  'month_03',
-  'month_04',
-  'month_05',
-  'month_06',
-  'month_07',
-  'month_08',
-  'month_09',
-  'month_10',
-  'month_11',
-  'month_12',
-] as const;
-
-const MONTH_LABELS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
+const QUARTER_KEYS = ['q1', 'q2', 'q3', 'q4'] as const;
+const QUARTER_LABELS = ['Q1 Apr–Jun', 'Q2 Jul–Sep', 'Q3 Oct–Dec', 'Q4 Jan–Mar'];
 
 /** Indian FY starts in April — return the calendar year of the current FY's April. */
 export function currentFyStartYear(now = new Date()): number {
@@ -71,18 +57,22 @@ type PlanLine = {
   section: 'sales' | 'expenses' | 'resources' | 'capex';
   code: string;
   label: string;
-  month_01: number;
-  month_02: number;
-  month_03: number;
-  month_04: number;
-  month_05: number;
-  month_06: number;
-  month_07: number;
-  month_08: number;
-  month_09: number;
-  month_10: number;
-  month_11: number;
-  month_12: number;
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+  month_01?: number;
+  month_02?: number;
+  month_03?: number;
+  month_04?: number;
+  month_05?: number;
+  month_06?: number;
+  month_07?: number;
+  month_08?: number;
+  month_09?: number;
+  month_10?: number;
+  month_11?: number;
+  month_12?: number;
 };
 
 type PlanDetail = PlanListItem & {
@@ -96,12 +86,14 @@ type PlanDetail = PlanListItem & {
     gain_loss_after_provision: string;
     tax_percent: string;
     provision_percent: string;
+    sales_by_quarter?: Record<string, string>;
+    expenses_by_quarter?: Record<string, string>;
   };
   line_totals: Record<string, string>;
 };
 
 function lineTotal(line: PlanLine): number {
-  return MONTH_KEYS.reduce((sum, key) => sum + Number(line[key] || 0), 0);
+  return QUARTER_KEYS.reduce((sum, key) => sum + Number(line[key] || 0), 0);
 }
 
 function PlanSectionGrid({
@@ -111,7 +103,7 @@ function PlanSectionGrid({
 }: {
   title: string;
   lines: PlanLine[];
-  onCellBlur: (lineId: string, field: (typeof MONTH_KEYS)[number], value: string) => void;
+  onCellBlur: (lineId: string, field: (typeof QUARTER_KEYS)[number], value: string) => void;
 }) {
   return (
     <Card variant="outlined">
@@ -124,8 +116,8 @@ function PlanSectionGrid({
             <TableHead>
               <TableRow>
                 <TableCell sx={{ minWidth: 140 }}>Line</TableCell>
-                {MONTH_LABELS.map((label) => (
-                  <TableCell key={label} align="right" sx={{ minWidth: 88 }}>
+                {QUARTER_LABELS.map((label) => (
+                  <TableCell key={label} align="right" sx={{ minWidth: 120 }}>
                     {label}
                   </TableCell>
                 ))}
@@ -138,11 +130,12 @@ function PlanSectionGrid({
               {lines.map((line) => (
                 <TableRow key={line.id}>
                   <TableCell>{line.label}</TableCell>
-                  {MONTH_KEYS.map((key) => (
+                  {QUARTER_KEYS.map((key) => (
                     <TableCell key={key} align="right" sx={{ p: 0.5 }}>
                       <TextField
                         size="small"
                         defaultValue={Number(line[key] || 0)}
+                        key={`${line.id}-${key}-${Number(line[key] || 0)}`}
                         slotProps={{
                           htmlInput: { style: { textAlign: 'right' } },
                         }}
@@ -234,7 +227,7 @@ export function AnnualPlanPanel() {
   const cellMutation = useMutation({
     mutationFn: async (payload: {
       lineId: string;
-      field: (typeof MONTH_KEYS)[number];
+      field: (typeof QUARTER_KEYS)[number];
       value: number;
     }) =>
       apiClient.put(`/finance/plans/${activePlanId}/lines/${payload.lineId}`, {
@@ -243,6 +236,18 @@ export function AnnualPlanPanel() {
     onSuccess: () => invalidate(),
     onError: (error: { response?: { data?: { detail?: string } } }) => {
       showError(error.response?.data?.detail ?? 'Could not update cell');
+    },
+  });
+
+  const syncRenewalsMutation = useMutation({
+    mutationFn: async () =>
+      (await apiClient.post(`/finance/plans/${activePlanId}/sync-renewals`)).data,
+    onSuccess: () => {
+      showSuccess('Renewals synced into expense quarters');
+      invalidate();
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) => {
+      showError(error.response?.data?.detail ?? 'Could not sync renewals');
     },
   });
 
@@ -260,8 +265,9 @@ export function AnnualPlanPanel() {
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Enter Sales and Expenses manually for the Apr–Mar fiscal year. There is no file import on
-        this tab — type monthly amounts into the grids (defaults to the FY that started this April).
+        Enter Sales and Expenses by fiscal quarter (Apr–Mar FY). Quarter totals are stored as an even
+        split across the three months underneath for compatibility. Known software renewals can be
+        synced into expense lines from Budgets.
       </Typography>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
@@ -301,13 +307,22 @@ export function AnnualPlanPanel() {
         >
           Create Plan
         </Button>
+        {activePlanId ? (
+          <Button
+            variant="outlined"
+            disabled={syncRenewalsMutation.isPending}
+            onClick={() => syncRenewalsMutation.mutate()}
+          >
+            Sync software renewals
+          </Button>
+        ) : null}
       </Stack>
 
       {!activePlanId ? (
         <Typography color="text.secondary">
           No plan yet for this year. Click <strong>Create Plan</strong> for FY{' '}
           {fyLabelFromStartYear(currentFyStartYear())} (April {currentFyStartYear()} – March{' '}
-          {currentFyStartYear() + 1}), then type monthly Sales and Expenses by hand.
+          {currentFyStartYear() + 1}), then type quarterly Sales and Expenses.
         </Typography>
       ) : detailQuery.isLoading ? (
         <LoadingState message="Loading plan…" />
@@ -422,7 +437,7 @@ export function AnnualPlanPanel() {
                 setNewYear(year);
                 setNewName(`FY ${fyLabelFromStartYear(year)}`);
               }}
-              helperText={`Creates FY ${fyLabelFromStartYear(newYear)} — months Apr ${newYear} through Mar ${newYear + 1}. Enter figures manually after create.`}
+              helperText={`Creates FY ${fyLabelFromStartYear(newYear)} — quarters Apr–Jun through Jan–Mar.`}
               fullWidth
             />
             <TextField

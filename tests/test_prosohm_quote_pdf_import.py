@@ -35,8 +35,57 @@ United States Dollar Six Thousand One Hundred Sixty
 """
 
 
-def test_looks_like_prosohm_qt_from_filename():
-    assert looks_like_prosohm_qt_pdf(filename="QT-2026-27-001-SY#17974.pdf", text="")
+def test_prepared_for_same_line_colon():
+    text = """
+Quote# : QT-2026-27-009
+Customer Project # : 18888
+Prepared For: Acme Tooling Inc
+Kind Attention: Jane Doe
+1 Full Tool Design 10.00 28.00 280.00
+Total $280.00
+United States Dollar
+"""
+    extract = parse_prosohm_quote_text(text, filename="QT-2026-27-009.pdf")
+    assert extract.prepared_for == "Acme Tooling Inc"
+
+
+def test_prepared_for_customer_directory_recovery():
+    from app.services.finance.prosohm_quote_pdf_parser import recover_customer_from_candidates
+
+    text = """
+Quote# QT-2026-27-010 Customer Project # 19999
+Prepared For
+465, Jutras Dr. S.
+Kind Attention: Jane
+Acme Soft Match Customer Ltd appears in footer
+1 Full Tool Design 5.00 10.00 50.00
+Total $50.00
+United States Dollar
+"""
+    assert recover_customer_from_candidates(
+        text,
+        [("Acme Soft Match Customer Ltd", "ACME"), ("Other Co", "OTH")],
+    ) == "Acme Soft Match Customer Ltd"
+    extract = parse_prosohm_quote_text(
+        text,
+        filename="QT-2026-27-010.pdf",
+        customer_candidates=[("Acme Soft Match Customer Ltd", "ACME")],
+    )
+    assert extract.prepared_for == "Acme Soft Match Customer Ltd"
+
+
+def test_apply_quarter_even_split():
+    from decimal import Decimal
+    from types import SimpleNamespace
+    from app.services.finance.annual_plan_service import apply_quarter_amount, line_quarter_totals
+
+    line = SimpleNamespace(
+        **{f"month_{i:02d}": Decimal("0") for i in range(1, 13)}
+    )
+    apply_quarter_amount(line, "q1", Decimal("100"))
+    q = line_quarter_totals(line)
+    assert q["q1"] == Decimal("100.00")
+    assert line.month_01 + line.month_02 + line.month_03 == Decimal("100.00")
 
 
 def test_looks_like_prosohm_qt_from_text():
@@ -128,8 +177,8 @@ def test_quote_import_prosohm_qt_creates_and_links_project(
     assert project.notes == "created_from_quote_import"
 
     # Second import with revision B should link the same project (no duplicate).
-    def _parse_rev_b(text: str, *, filename: str | None = None):
-        extract = parse_prosohm_quote_text(text, filename=filename)
+    def _parse_rev_b(text: str, *, filename: str | None = None, **kwargs):
+        extract = parse_prosohm_quote_text(text, filename=filename, **kwargs)
         base_row = extract.to_import_row()
         base_row["revision"] = "B"
 

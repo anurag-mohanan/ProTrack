@@ -174,6 +174,27 @@ class EmployeeCostRosterItem(BaseModel):
     notes: str | None = None
 
 
+class TeamCommercialFeeBandInput(BaseModel):
+    skill_level: str | None = None
+    fee_amount: Decimal = Decimal("0")
+    currency_code: str | None = None
+    notes: str | None = None
+
+
+class TeamCommercialFeeBandRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    terms_id: UUID
+    skill_level: str | None = None
+    fee_amount: Decimal
+    currency_code: str
+    base_fee_inr: Decimal
+    fx_rate: Decimal
+    notes: str | None = None
+    billable_count: int = 0
+
+
 class TeamCommercialTermsCreate(BaseModel):
     team_id: UUID
     working_model_id: UUID
@@ -186,6 +207,7 @@ class TeamCommercialTermsCreate(BaseModel):
     notes: str | None = None
     customer_pays_software: bool = False
     customer_pays_hardware: bool = False
+    fee_bands: list[TeamCommercialFeeBandInput] = Field(default_factory=list)
 
 
 class TeamCommercialTermsUpdate(BaseModel):
@@ -200,6 +222,7 @@ class TeamCommercialTermsUpdate(BaseModel):
     is_active: bool | None = None
     customer_pays_software: bool | None = None
     customer_pays_hardware: bool | None = None
+    fee_bands: list[TeamCommercialFeeBandInput] | None = None
 
 
 class TeamCommercialTermsRead(BaseModel):
@@ -225,6 +248,7 @@ class TeamCommercialTermsRead(BaseModel):
     working_model_strategy: str | None = None
     resource_count: int | None = None
     monthly_fee_signal_inr: Decimal | None = None
+    fee_bands: list[TeamCommercialFeeBandRead] = Field(default_factory=list)
 
 
 class TeamFinanceBreakdown(BaseModel):
@@ -267,6 +291,14 @@ class BudgetCreate(BaseModel):
     approved_amount: Decimal = Decimal("0")
     spent: Decimal = Decimal("0")
     forecast: Decimal = Decimal("0")
+    q1_allocated: Decimal = Decimal("0")
+    q2_allocated: Decimal = Decimal("0")
+    q3_allocated: Decimal = Decimal("0")
+    q4_allocated: Decimal = Decimal("0")
+    q1_forecast: Decimal = Decimal("0")
+    q2_forecast: Decimal = Decimal("0")
+    q3_forecast: Decimal = Decimal("0")
+    q4_forecast: Decimal = Decimal("0")
     fiscal_year: int | None = None
     notes: str | None = None
 
@@ -433,6 +465,10 @@ class FinancePlanLineUpdate(BaseModel):
     month_10: Decimal | None = None
     month_11: Decimal | None = None
     month_12: Decimal | None = None
+    q1: Decimal | None = None
+    q2: Decimal | None = None
+    q3: Decimal | None = None
+    q4: Decimal | None = None
 
 
 class FinancePlanLineRead(BaseModel):
@@ -457,14 +493,22 @@ class FinancePlanLineRead(BaseModel):
     month_10: Decimal
     month_11: Decimal
     month_12: Decimal
+    q1: Decimal = Decimal("0")
+    q2: Decimal = Decimal("0")
+    q3: Decimal = Decimal("0")
+    q4: Decimal = Decimal("0")
     notes: str | None = None
 
 
 class FinancePlanSummary(BaseModel):
     month_labels: list[str]
+    quarter_labels: list[str] = Field(default_factory=list)
     sales_by_month: dict[str, str]
     expenses_by_month: dict[str, str]
     gain_loss_by_month: dict[str, str]
+    sales_by_quarter: dict[str, str] = Field(default_factory=dict)
+    expenses_by_quarter: dict[str, str] = Field(default_factory=dict)
+    gain_loss_by_quarter: dict[str, str] = Field(default_factory=dict)
     sales_fy: str
     expenses_fy: str
     gain_loss: str

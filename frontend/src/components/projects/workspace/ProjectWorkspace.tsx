@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Box, Tab, Tabs, Typography } from '@mui/material';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
 import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
@@ -9,6 +9,7 @@ import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import EmailRoundedIcon from '@mui/icons-material/EmailRounded';
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import { PageContainer } from '../../common/PageContainer';
 import { LoadingState } from '../../common/LoadingState';
 import { ErrorState } from '../../common/ErrorState';
@@ -21,13 +22,15 @@ import { ProjectMilestoneGrid } from './ProjectMilestoneGrid';
 import { ProjectWorkspaceCompactHeader } from './ProjectWorkspaceCompactHeader';
 import { WorkflowTimeline } from '../../command-center/WorkflowTimeline';
 import { useAuth } from '../../../context/AuthContext';
-import { ROLES } from '../../../utils/permissions';
+import { canEditProject, ROLES } from '../../../utils/permissions';
 import { formatDisplayValue } from '../../../utils/format';
 import { isActiveProjectForHealth } from '../../../utils/projectHealth';
 import { ProjectCommunicationsPanel } from './ProjectCommunicationsPanel';
 import { ProjectContributorsPanel } from './ProjectContributorsPanel';
 import { ProjectWorkorderDetailsPanel } from './ProjectWorkorderDetailsPanel';
 import { ProjectTimesheetsPanel } from './ProjectTimesheetsPanel';
+import { ProjectFormDialog } from '../ProjectFormDialog';
+import { ProsohmButton } from '../../ui/ProsohmButton';
 import { getProjectActivities } from '../../../services/notificationService';
 import type { Activity } from '../../../types';
 
@@ -58,6 +61,8 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = tabFromParam(searchParams.get('tab'));
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [editOpen, setEditOpen] = useState(false);
 
   const query = useQuery({
     queryKey: commandCenterQueryKeys.detail(projectId),
@@ -71,6 +76,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
   });
 
   const roleName = user?.role_name ?? '';
+  const showEditProject = canEditProject(user ?? roleName);
   const canEditMilestones = (
     [
       ROLES.ADMIN,
@@ -129,7 +135,28 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
         />
       )}
 
-      <BackButton fallbackPath="/projects" label="Back to projects" />
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          flexWrap: 'wrap',
+          mb: 0.5,
+        }}
+      >
+        <BackButton fallbackPath="/projects" label="Back to projects" />
+        {showEditProject ? (
+          <ProsohmButton
+            buttonVariant="outlined"
+            size="small"
+            startIcon={<EditOutlinedIcon />}
+            onClick={() => setEditOpen(true)}
+          >
+            Edit Project
+          </ProsohmButton>
+        ) : null}
+      </Box>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 1.5 }}>
         <Tabs
@@ -236,6 +263,20 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
           </Typography>
         </Box>
       ) : null}
+
+      <ProjectFormDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        project={project}
+        onUpdated={() => {
+          setEditOpen(false);
+          void queryClient.invalidateQueries({
+            queryKey: commandCenterQueryKeys.detail(projectId),
+          });
+          void queryClient.invalidateQueries({ queryKey: ['projects'] });
+          void query.refetch();
+        }}
+      />
     </PageContainer>
   );
 }

@@ -243,6 +243,7 @@ class Quote(Base, TimestampMixin):
         Uuid(as_uuid=True), ForeignKey("projects.id"), nullable=True
     )
     tool_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    external_quote_number: Mapped[Optional[str]] = mapped_column(String(100))
     business_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("working_models.id"), nullable=True
     )

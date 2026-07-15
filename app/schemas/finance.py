@@ -317,6 +317,7 @@ class QuoteRead(BaseModel):
     team_id: UUID | None = None
     project_id: UUID | None = None
     tool_number: str
+    external_quote_number: str | None = None
     business_model_id: UUID | None = None
     estimator_id: UUID | None = None
     currency_code: str
@@ -329,9 +330,24 @@ class QuoteRead(BaseModel):
     revisions: list[QuoteRevisionRead] = Field(default_factory=list)
 
 
+class QuoteImportItemResult(BaseModel):
+    quote_id: UUID
+    tool_number: str
+    external_quote_number: str | None = None
+    customer_name: str | None = None
+    team_name: str | None = None
+    quoted_hours: Decimal | None = None
+    quoted_revenue: Decimal | None = None
+    currency_code: str | None = None
+    project_linked: bool = False
+    project_created: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
 class QuoteImportResult(BaseModel):
     imported_count: int
     quote_ids: list[UUID]
+    items: list[QuoteImportItemResult] = Field(default_factory=list)
 
 
 class FinanceDashboardRead(BaseModel):

@@ -64,6 +64,7 @@ from app.schemas.finance import (
     FxRateCreate,
     FxRateRead,
     PaidByDefaultRead,
+    QuoteImportItemResult,
     QuoteImportResult,
     QuoteRead,
     RenewalNotifyResult,
@@ -770,6 +771,7 @@ def list_quotes(
 async def import_quotes(
     file: UploadFile = File(...),
     team_id: UUID = Form(...),
+    create_project: bool = Form(True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -784,30 +786,60 @@ async def import_quotes(
                 status_code=400,
                 detail="Legacy .xls is not supported. Save as .xlsx or upload PDF/CSV.",
             )
-        quotes = import_quotes_from_upload(
+        outcomes = import_quotes_from_upload(
             db,
             filename=filename,
             content=content,
             actor=current_user,
             team_id=team_id,
+            create_project=create_project,
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    for quote in quotes:
+    items: list[QuoteImportItemResult] = []
+    for outcome in outcomes:
+        quote = outcome.quote
+        if outcome.project_created and quote.project_id is not None:
+            _audit(
+                db,
+                user=current_user,
+                action=ActivityAction.project_created,
+                entity_type=EntityType.project,
+                entity_id=quote.project_id,
+                new_value=f"created_from_quote_import:{quote.tool_number}",
+            )
         _audit(
             db,
             user=current_user,
             action=ActivityAction.quote_imported,
             entity_type=EntityType.quote,
             entity_id=quote.id,
-            new_value=quote.tool_number,
+            new_value=quote.external_quote_number or quote.tool_number,
+        )
+        customer = db.get(Customer, quote.customer_id)
+        team = db.get(Team, quote.team_id) if quote.team_id else None
+        items.append(
+            QuoteImportItemResult(
+                quote_id=quote.id,
+                tool_number=quote.tool_number,
+                external_quote_number=quote.external_quote_number,
+                customer_name=customer.name if customer else None,
+                team_name=team.name if team else None,
+                quoted_hours=outcome.quoted_hours,
+                quoted_revenue=outcome.quoted_revenue,
+                currency_code=quote.currency_code,
+                project_linked=quote.project_id is not None,
+                project_created=outcome.project_created,
+                warnings=outcome.warnings,
+            )
         )
     db.commit()
     return QuoteImportResult(
-        imported_count=len(quotes),
-        quote_ids=[quote.id for quote in quotes],
+        imported_count=len(outcomes),
+        quote_ids=[item.quote.id for item in outcomes],
+        items=items,
     )
 
 

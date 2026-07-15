@@ -4,17 +4,27 @@ from __future__ import annotations
 
 import csv
 import io
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ProTrackValidationError
 from app.models.finance import Quote, QuoteRevision
 from app.models.models import Customer, Project, User, WorkingModel
 from app.services.finance.fx_service import to_base_amount
+
+
+@dataclass
+class QuoteImportOutcome:
+    quote: Quote
+    project_created: bool = False
+    warnings: list[str] = field(default_factory=list)
+    quoted_hours: Decimal | None = None
+    quoted_revenue: Decimal | None = None
 
 
 def _parse_decimal(value: object, field: str) -> Decimal:
@@ -28,7 +38,8 @@ def _parse_date(value: object | None) -> date | None:
     if value is None or str(value).strip() == "":
         return None
     text = str(value).strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+    # DD/MM/YYYY first (Prosohm Indian commercial docs), then ISO / US.
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y"):
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:
@@ -36,7 +47,24 @@ def _parse_date(value: object | None) -> date | None:
     raise ProTrackValidationError(f"Invalid date: {value}")
 
 
-def _find_customer(db: Session, name_or_code: str) -> Customer:
+def _customer_name_variants(name: str) -> list[str]:
+    key = name.strip()
+    variants = [key]
+    if "-" in key:
+        variants.append(key.rsplit("-", 1)[0].strip())
+    if " - " in key:
+        variants.append(key.split(" - ", 1)[0].strip())
+    # de-dupe preserving order
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in variants:
+        if item and item.lower() not in seen:
+            seen.add(item.lower())
+            ordered.append(item)
+    return ordered
+
+
+def _find_customer(db: Session, name_or_code: str, *, soft_match: bool = False) -> Customer:
     key = name_or_code.strip()
     customer = db.scalar(
         select(Customer).where(
@@ -44,9 +72,38 @@ def _find_customer(db: Session, name_or_code: str) -> Customer:
             Customer.is_active.is_(True),
         )
     )
-    if customer is None:
-        raise ProTrackValidationError(f"Customer not found: {key}")
-    return customer
+    if customer is not None:
+        return customer
+
+    if soft_match:
+        for variant in _customer_name_variants(key):
+            customer = db.scalar(
+                select(Customer).where(
+                    (Customer.name == variant) | (Customer.code == variant),
+                    Customer.is_active.is_(True),
+                )
+            )
+            if customer is not None:
+                return customer
+            customer = db.scalar(
+                select(Customer).where(
+                    Customer.is_active.is_(True),
+                    func.lower(Customer.name).contains(variant.lower()),
+                )
+            )
+            if customer is not None:
+                return customer
+            # Customer name contained in Prepared For
+            customers = db.scalars(
+                select(Customer).where(Customer.is_active.is_(True))
+            ).all()
+            for candidate in customers:
+                if candidate.name and candidate.name.lower() in variant.lower():
+                    return candidate
+                if candidate.code and candidate.code.lower() in variant.lower():
+                    return candidate
+
+    raise ProTrackValidationError(f"Customer not found: {key}")
 
 
 def _find_working_model(db: Session, name_or_code: str | None) -> WorkingModel | None:
@@ -62,6 +119,47 @@ def _find_working_model(db: Session, name_or_code: str | None) -> WorkingModel |
     return model
 
 
+def ensure_project_for_quote_import(
+    db: Session,
+    *,
+    tool_number: str,
+    customer_id: UUID,
+    team_id: UUID | None,
+    quoted_hours: Decimal,
+    name_hint: str | None,
+    create_if_missing: bool,
+) -> tuple[Project | None, bool]:
+    """Match project by tool_number; optionally create a minimal project."""
+    project = db.scalar(
+        select(Project).where(
+            func.lower(Project.tool_number) == tool_number.strip().lower(),
+            Project.is_deleted.is_(False),
+        )
+    )
+    if project is not None:
+        if (project.quoted_hours is None or project.quoted_hours == 0) and quoted_hours:
+            project.quoted_hours = quoted_hours
+        return project, False
+
+    if not create_if_missing:
+        return None, False
+
+    description = (name_hint or f"{tool_number} — Quote import").strip()
+    if len(description) > 255:
+        description = description[:255]
+    project = Project(
+        tool_number=tool_number.strip(),
+        part_description=description,
+        customer_id=customer_id,
+        team_id=team_id,
+        quoted_hours=quoted_hours,
+        notes="created_from_quote_import",
+    )
+    db.add(project)
+    db.flush()
+    return project, True
+
+
 def import_quote_row(
     db: Session,
     *,
@@ -69,13 +167,15 @@ def import_quote_row(
     actor: User,
     source: str = "csv",
     team_id: UUID | None = None,
-) -> Quote:
+    create_project: bool = True,
+) -> QuoteImportOutcome:
     customer_key = str(row.get("customer") or row.get("Customer") or "").strip()
     tool_number = str(row.get("tool_number") or row.get("Tool Number") or "").strip()
     if not customer_key or not tool_number:
         raise ProTrackValidationError("Customer and Tool Number are required")
 
-    customer = _find_customer(db, customer_key)
+    soft_match = bool(row.get("_soft_customer_match"))
+    customer = _find_customer(db, customer_key, soft_match=soft_match)
     currency_raw = str(row.get("currency") or row.get("Currency") or "").strip().upper()
     currency = currency_raw or (customer.default_currency_code or "INR").strip().upper()
     quoted_hours = _parse_decimal(row.get("quoted_hours") or row.get("Quoted Hours") or 0, "quoted_hours")
@@ -108,12 +208,44 @@ def import_quote_row(
     working_model = _find_working_model(
         db, str(row.get("business_model") or row.get("Business Model") or "") or None
     )
-    project = db.scalar(
-        select(Project).where(
-            Project.tool_number == tool_number,
-            Project.is_deleted.is_(False),
-        )
+
+    name_hint = str(
+        row.get("line_description")
+        or row.get("part_description")
+        or f"{tool_number} — {customer.name}"
+    ).strip()
+    project, project_created = ensure_project_for_quote_import(
+        db,
+        tool_number=tool_number,
+        customer_id=customer.id,
+        team_id=team_id,
+        quoted_hours=quoted_hours,
+        name_hint=name_hint,
+        create_if_missing=create_project,
     )
+
+    external_quote_number = str(
+        row.get("external_quote_number") or row.get("Quote#") or ""
+    ).strip() or None
+    notes_value = row.get("notes") or row.get("Notes")
+    notes_text = str(notes_value).strip() if notes_value not in (None, "") else None
+
+    warnings: list[str] = []
+    raw_warnings = row.get("_warnings")
+    if isinstance(raw_warnings, list):
+        warnings.extend(str(item) for item in raw_warnings)
+
+    rate_raw = row.get("_rate")
+    if rate_raw not in (None, ""):
+        try:
+            rate = Decimal(str(rate_raw))
+            expected = (quoted_hours * rate).quantize(Decimal("0.01"))
+            if abs(expected - quoted_revenue) > Decimal("0.05"):
+                warnings.append(
+                    f"Hours × rate ({expected}) does not match revenue ({quoted_revenue})"
+                )
+        except (InvalidOperation, TypeError):
+            pass
 
     quote = db.scalar(
         select(Quote).where(
@@ -128,6 +260,7 @@ def import_quote_row(
             team_id=team_id,
             project_id=project.id if project is not None else None,
             tool_number=tool_number,
+            external_quote_number=external_quote_number,
             business_model_id=working_model.id if working_model else None,
             estimator_id=actor.id,
             currency_code=currency,
@@ -157,6 +290,8 @@ def import_quote_row(
             quote.business_model_id = working_model.id
         if project is not None:
             quote.project_id = project.id
+        if external_quote_number:
+            quote.external_quote_number = external_quote_number
 
     revision_row = QuoteRevision(
         quote_id=quote.id,
@@ -173,13 +308,20 @@ def import_quote_row(
         fx_date=fx_date,
         start_date=start_date,
         end_date=end_date,
+        notes=notes_text,
         imported_from=source,
         imported_at=datetime.now(timezone.utc).replace(tzinfo=None),
         imported_by_id=actor.id,
     )
     db.add(revision_row)
     db.flush()
-    return quote
+    return QuoteImportOutcome(
+        quote=quote,
+        project_created=project_created,
+        warnings=warnings,
+        quoted_hours=quoted_hours,
+        quoted_revenue=quoted_revenue,
+    )
 
 
 def import_quotes_from_csv(
@@ -188,20 +330,28 @@ def import_quotes_from_csv(
     content: bytes,
     actor: User,
     team_id: UUID | None = None,
-) -> list[Quote]:
+    create_project: bool = True,
+) -> list[QuoteImportOutcome]:
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     if reader.fieldnames is None:
         raise ProTrackValidationError("CSV has no header row")
-    quotes: list[Quote] = []
+    outcomes: list[QuoteImportOutcome] = []
     for index, row in enumerate(reader, start=2):
         try:
-            quotes.append(
-                import_quote_row(db, row=row, actor=actor, source="csv", team_id=team_id)
+            outcomes.append(
+                import_quote_row(
+                    db,
+                    row=row,
+                    actor=actor,
+                    source="csv",
+                    team_id=team_id,
+                    create_project=create_project,
+                )
             )
         except ProTrackValidationError as exc:
             raise ProTrackValidationError(f"Row {index}: {exc}") from exc
-    return quotes
+    return outcomes
 
 
 def import_quotes_from_excel(
@@ -210,7 +360,8 @@ def import_quotes_from_excel(
     content: bytes,
     actor: User,
     team_id: UUID | None = None,
-) -> list[Quote]:
+    create_project: bool = True,
+) -> list[QuoteImportOutcome]:
     try:
         from openpyxl import load_workbook
     except ImportError as exc:
@@ -224,18 +375,25 @@ def import_quotes_from_excel(
     if not rows:
         raise ProTrackValidationError("Excel sheet is empty")
     headers = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
-    quotes: list[Quote] = []
+    outcomes: list[QuoteImportOutcome] = []
     for index, values in enumerate(rows[1:], start=2):
         if values is None or all(v is None or str(v).strip() == "" for v in values):
             continue
         row = {headers[i]: values[i] for i in range(min(len(headers), len(values)))}
         try:
-            quotes.append(
-                import_quote_row(db, row=row, actor=actor, source="excel", team_id=team_id)
+            outcomes.append(
+                import_quote_row(
+                    db,
+                    row=row,
+                    actor=actor,
+                    source="excel",
+                    team_id=team_id,
+                    create_project=create_project,
+                )
             )
         except ProTrackValidationError as exc:
             raise ProTrackValidationError(f"Row {index}: {exc}") from exc
-    return quotes
+    return outcomes
 
 
 def import_quotes_from_pdf(
@@ -244,19 +402,58 @@ def import_quotes_from_pdf(
     content: bytes,
     actor: User,
     team_id: UUID | None = None,
-) -> list[Quote]:
+    create_project: bool = True,
+    filename: str | None = None,
+) -> list[QuoteImportOutcome]:
+    from app.services.finance.prosohm_quote_pdf_parser import (
+        extract_prosohm_quote_text,
+        looks_like_prosohm_qt_pdf,
+        parse_prosohm_quote_text,
+    )
     from app.services.pdf_table_import import extract_tables_as_dicts
 
+    # Prefer Prosohm QT layout when filename or text markers match.
+    try:
+        text = extract_prosohm_quote_text(content)
+    except ProTrackValidationError:
+        text = ""
+
+    if looks_like_prosohm_qt_pdf(filename=filename, text=text) or (
+        filename and "QT-" in filename.upper()
+    ):
+        if not text.strip():
+            raise ProTrackValidationError(
+                "Prosohm QT PDF has no extractable text. Use a text-based PDF."
+            )
+        extract = parse_prosohm_quote_text(text, filename=filename)
+        return [
+            import_quote_row(
+                db,
+                row=extract.to_import_row(),
+                actor=actor,
+                source="pdf_qt",
+                team_id=team_id,
+                create_project=create_project,
+            )
+        ]
+
     rows = extract_tables_as_dicts(content)
-    quotes: list[Quote] = []
+    outcomes: list[QuoteImportOutcome] = []
     for index, row in enumerate(rows, start=2):
         try:
-            quotes.append(
-                import_quote_row(db, row=row, actor=actor, source="pdf", team_id=team_id)
+            outcomes.append(
+                import_quote_row(
+                    db,
+                    row=row,
+                    actor=actor,
+                    source="pdf",
+                    team_id=team_id,
+                    create_project=create_project,
+                )
             )
         except ProTrackValidationError as exc:
             raise ProTrackValidationError(f"Row {index}: {exc}") from exc
-    return quotes
+    return outcomes
 
 
 def import_quotes_from_upload(
@@ -266,7 +463,8 @@ def import_quotes_from_upload(
     content: bytes,
     actor: User,
     team_id: UUID | None = None,
-) -> list[Quote]:
+    create_project: bool = True,
+) -> list[QuoteImportOutcome]:
     from app.services.import_file_formats import (
         assert_supported_suffix,
         is_csv,
@@ -277,11 +475,30 @@ def import_quotes_from_upload(
 
     suffix = assert_supported_suffix(filename, allowed=with_csv())
     if is_csv(suffix):
-        return import_quotes_from_csv(db, content=content, actor=actor, team_id=team_id)
+        return import_quotes_from_csv(
+            db,
+            content=content,
+            actor=actor,
+            team_id=team_id,
+            create_project=create_project,
+        )
     if is_excel(suffix):
-        return import_quotes_from_excel(db, content=content, actor=actor, team_id=team_id)
+        return import_quotes_from_excel(
+            db,
+            content=content,
+            actor=actor,
+            team_id=team_id,
+            create_project=create_project,
+        )
     if is_pdf(suffix):
-        return import_quotes_from_pdf(db, content=content, actor=actor, team_id=team_id)
+        return import_quotes_from_pdf(
+            db,
+            content=content,
+            actor=actor,
+            team_id=team_id,
+            create_project=create_project,
+            filename=filename,
+        )
     raise ProTrackValidationError(
-        "Supported formats: Excel (.xlsx/.xlsm), PDF (table layout), CSV."
+        "Supported formats: Excel (.xlsx/.xlsm), Prosohm QT PDF, flat PDF table, CSV."
     )

@@ -163,7 +163,7 @@ export function FinanceTeamCommercialPanel() {
             label="Effective from"
             value={form.effective_from}
             onChange={(e) => setForm((p) => ({ ...p, effective_from: e.target.value }))}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           <Button
             variant="contained"

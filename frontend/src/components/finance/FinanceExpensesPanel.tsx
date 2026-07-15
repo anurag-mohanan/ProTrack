@@ -177,7 +177,7 @@ export function FinanceExpensesPanel() {
             label="Next renewal"
             value={form.next_renewal_date}
             onChange={(e) => setForm((p) => ({ ...p, next_renewal_date: e.target.value }))}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           <TextField
             size="small"

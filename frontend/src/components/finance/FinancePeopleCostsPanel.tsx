@@ -158,7 +158,7 @@ export function FinancePeopleCostsPanel() {
                     type="date"
                     value={draft.effective_from}
                     onChange={(e) => setDraftField(row.user_id, 'effective_from', e.target.value, row)}
-                    InputLabelProps={{ shrink: true }}
+                    slotProps={{ inputLabel: { shrink: true } }}
                     sx={{ width: 150 }}
                   />
                 </TableCell>

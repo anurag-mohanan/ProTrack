@@ -65,7 +65,7 @@ from app.schemas.communication import EmailMessageRead
 from app.services.email.engine import list_email_messages
 from app.services.command_center_service import get_project_command_center
 from app.services.activity_service import log_activity
-from app.services.workorder_pdf_extract import extract_workorder_fields_from_pdf
+from app.services.workorder_pdf_extract import extract_workorder_fields_from_file
 from app.services.project_lifecycle_service import (
     archive_project,
     get_project_delete_dependencies,
@@ -580,7 +580,10 @@ async def extract_workorder_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Parse a customer workorder PDF into suggested Overview fields (does not save)."""
+    """Parse a customer workorder PDF or Excel into suggested Overview fields (does not save).
+
+    Work order number is optional. Part description is the priority field.
+    """
     db_project = get_object_or_404(project, db, record_id)
     if not can_update_project(db, current_user, db_project):
         raise HTTPException(
@@ -593,14 +596,14 @@ async def extract_workorder_pdf(
             detail="A file name is required.",
         )
     suffix = file.filename.lower().rsplit(".", 1)[-1]
-    if suffix != "pdf":
+    if suffix not in {"pdf", "xlsx", "xlsm"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF workorder files are supported.",
+            detail="Only PDF and Excel (.xlsx/.xlsm) workorder files are supported.",
         )
     content = await file.read()
     try:
-        extracted = extract_workorder_fields_from_pdf(content)
+        extracted = extract_workorder_fields_from_file(content, filename=file.filename)
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
     return WorkorderPdfExtractResult(

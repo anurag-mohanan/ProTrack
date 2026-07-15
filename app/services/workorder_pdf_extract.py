@@ -1,7 +1,7 @@
-"""Heuristic workorder PDF text extraction for Overview autofill (RC5).
+"""Heuristic customer workorder extraction (PDF + Excel) for Overview autofill.
 
-Customer layouts differ; this returns suggested fields for human review — it does not
-persist. Per-customer templates / OCR can replace heuristics later.
+Layouts differ by customer (CMT PDF, ABC Shop Order PDF, B&B Kick-Off xlsx).
+Returns suggestions for human review — does not persist. Work order number is optional.
 """
 
 from __future__ import annotations
@@ -9,13 +9,15 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from app.core.exceptions import ProTrackValidationError
 
-_MAX_PDF_BYTES = 12 * 1024 * 1024
+_MAX_FILE_BYTES = 12 * 1024 * 1024
 
+# Colon/pipe only — hyphens appear inside tool/part numbers (e.g. CMT-2649).
 _LABEL_VALUE = re.compile(
-    r"(?P<label>[A-Za-z][A-Za-z0-9 /#\.\-]{1,40}?)\s*[:\-–]\s*(?P<value>[^\n\r]{1,120})",
+    r"(?m)^\s*(?P<label>[A-Za-z#][A-Za-z0-9 /#\.'%]{0,48}?)\s*[:|]\s*(?P<value>[^\n\r]{1,200})",
     re.IGNORECASE,
 )
 
@@ -36,7 +38,7 @@ class WorkorderExtract:
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
-    cleaned = " ".join(str(value).replace("\u00a0", " ").split()).strip(" -:;")
+    cleaned = " ".join(str(value).replace("\u00a0", " ").split()).strip(" -:;|")
     return cleaned or None
 
 
@@ -46,41 +48,169 @@ def _norm_label(label: str) -> str:
 
 def _match_label_bucket(label: str) -> str | None:
     n = _norm_label(label)
-    if any(token in n for token in ("work order", "workorder", " wo ", "wo no", "wo number", "order no", "order number", "customer order")):
-        return "work_order_number"
-    if n in {"wo", "w o"} or n.startswith("wo "):
-        return "work_order_number"
-    if any(token in n for token in ("tonnage", "press ton", "clamp", "press size", "machine ton")):
-        return "press_tonnage"
-    if any(token in n for token in ("plastic", "material", "resin", "polymer", "grade")):
-        return "plastic_material"
-    if any(token in n for token in ("cavity", "cavities", "no of cav", "number of cavity")):
-        return "cavity_count"
-    if any(token in n for token in ("tool type", "mould type", "mold type", "tooling type", "type of tool")):
-        return "tool_type"
+    if not n:
+        return None
+
+    # Part description / name (priority field)
+    if n in {"part description", "part name", "part desc"} or n.startswith("part name"):
+        return "part_description"
+    if n in {"description", "product name", "component"}:
+        return "part_description"
+
+    # Press / tonnage
     if any(
         token in n
         for token in (
-            "part description",
-            "part name",
-            "component",
-            "description",
-            "product name",
-            "part no description",
+            "press tonnage",
+            "press tonnage primary",
+            "primary press",
+            "tonnage",
+            "press size",
+            "clamp",
+            "machine ton",
         )
     ):
-        return "part_description"
-    if any(token in n for token in ("specification", "specs", "requirement", "special note", "remarks")):
+        return "press_tonnage"
+    if n in {"press"} or n.endswith(" press"):
+        return "press_tonnage"
+
+    # Material / resin
+    if any(
+        token in n
+        for token in (
+            "plastic type",
+            "plastic type main",
+            "plastic material",
+            "material",
+            "mat l",
+            "resin",
+            "polymer",
+            "family grade",
+            "grade colour",
+            "grade color",
+        )
+    ):
+        return "plastic_material"
+    if "mat" in n and ("family" in n or "grade" in n or "colour" in n or "color" in n):
+        return "plastic_material"
+
+    # Cavity (exclude steel/finish/temp lines that merely mention cavity)
+    if _is_cavity_field_label(n):
+        return "cavity_count"
+
+    # Tool type
+    if any(token in n for token in ("tool type", "mould type", "mold type", "tooling type", "type of tool")):
+        return "tool_type"
+
+    # Optional work-order / job refs (not required)
+    if any(
+        token in n
+        for token in (
+            "work order",
+            "workorder",
+            "shop order",
+            "s o",
+            "job number",
+            "b b job number",
+            "order no",
+            "order number",
+            "customer order",
+        )
+    ) or n in {"wo", "w o", "so"}:
+        return "work_order_number"
+
+    # Specs bucket for extra tooling facts
+    if any(
+        token in n
+        for token in (
+            "customer tool",
+            "tool number",
+            "tool #",
+            "plant tool",
+            "shrink",
+            "program",
+            "gate style",
+            "manifold",
+            "notes",
+            "specification",
+            "specs",
+            "requirement",
+            "remarks",
+            "general notes",
+        )
+    ):
         return "customer_specs"
     return None
 
 
+def _is_cavity_field_label(n: str) -> bool:
+    """True only for labels that *mean* cavity count (not STEEL, CAVITY / FINISH, CAVITY)."""
+    if any(
+        token in n
+        for token in (
+            "steel",
+            "finish",
+            "temp",
+            "radius",
+            "running",
+            "soft",
+            "optic",
+            "cut",
+            "type",
+            "core soft",
+            "cavity steel",
+            "cavity soft",
+        )
+    ):
+        return False
+    if n in {"cav", "cavity", "cavities", "cavitation", "no of cav", "no of cavity", "no of cavities"}:
+        return True
+    if any(
+        token in n
+        for token in (
+            "cavitation",
+            "cavity count",
+            "number of cavity",
+            "number of cavities",
+            "no of cavities",
+            "no of cavity",
+        )
+    ):
+        return True
+    if n.endswith(" cavity") or n.startswith("cavity ") or " cavities" in n:
+        return True
+    return False
+
+
 def _parse_cavity(value: str) -> int | None:
-    match = re.search(r"(\d{1,3})", value)
+    cleaned = _clean(value)
+    if not cleaned:
+        return None
+    lower = cleaned.lower()
+    word_map = {
+        "one": 1,
+        "single": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "eight": 8,
+    }
+    if lower in word_map:
+        return word_map[lower]
+
+    # "1+1" / "2+2 Cavity"
+    plus_parts = re.findall(r"\d+", cleaned)
+    if "+" in cleaned and len(plus_parts) >= 2:
+        total = sum(int(part) for part in plus_parts)
+        return total if 1 <= total <= 128 else None
+
+    match = re.search(r"(\d{1,3})", cleaned)
     if not match:
         return None
     count = int(match.group(1))
-    return count if 0 <= count <= 128 else None
+    return count if 1 <= count <= 128 else None
 
 
 def _parse_tonnage(value: str) -> str | None:
@@ -90,34 +220,52 @@ def _parse_tonnage(value: str) -> str | None:
         re.IGNORECASE,
     )
     if not match:
-        cleaned = _clean(value)
-        return cleaned[:50] if cleaned else None
+        return None
     amount = match.group(1).replace(",", "")
-    # Press sizes are whole tons (e.g. 650, 2200) — drop stray decimals from OCR.
     if "." in amount:
         amount = amount.split(".", 1)[0]
     if not amount.isdigit():
         return None
     tons = int(amount)
-    # Guard against tool-size noise (e.g. 1.25" bolt text partials misread as tonnage).
     if tons < 50 or tons > 10000:
         return None
     return f"{tons}T"
 
 
+def _normalize_part_description(raw: str) -> tuple[str | None, int | None]:
+    """Strip cavity prefixes like ``1+1 Cavity`` from CMT part description lines."""
+    text = _clean(raw)
+    if not text:
+        return None, None
+    cavity = None
+    match = re.match(
+        r"^((?:\d+\s*\+\s*)*\d+)\s+cavity\s+(.+)$",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        cavity = _parse_cavity(match.group(1))
+        text = match.group(2).strip()
+    return text[:255] or None, cavity
+
+
+def _clean_material(raw: str) -> str | None:
+    value = _clean(raw)
+    if not value:
+        return None
+    # ABC: "1:R RESIN - S375AHW-600R BLACK" / "R RESIN - ..."
+    value = re.sub(r"^\d+[a-z]?\)\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^[A-Z]\s*:", "", value).strip()
+    value = re.sub(r"^(?:material\s+is\s+)", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^(?:r\s+)?resin\s*-\s*", "", value, flags=re.IGNORECASE)
+    return value[:150] or None
+
+
 def _find_press_tonnage(text: str) -> str | None:
-    """
-    Customer notes often write freeform lines like ``2200T Press 308`` rather than
-    ``Press Tonnage: 2200T``. Prefer press-context matches, then labelled tonnage.
-    """
     patterns = (
-        # "2200T Press 308" / "2200 T Press"
         r"\b(\d{3,5})\s*[Tt]\s+[Pp]ress\b",
-        # "Press 2200T" / "Press: 2200 T" / "Press tonnage 2200T"
-        r"\b[Pp]ress(?:\s*tonnage)?\s*[:#\-]?\s*(\d{3,5})\s*[Tt]\b",
-        # "Tonnage: 2200T" / "Press Tonnage - 2200 ton"
-        r"(?:press\s*)?tonnage\s*[:\-#]?\s*(\d{2,5}(?:[.,]\d+)?)\s*[Tt](?:on(?:ne)?s?)?\b",
-        # Same line contains both press + NNNNT
+        r"\b[Pp]ress(?:\s*tonnage)?(?:\s*primary)?\s*[:#\-]?\s*(\d{3,5})\s*[Tt]\b",
+        r"(?:press\s*)?tonnage(?:\s*primary)?\s*[:\-#]?\s*(\d{2,5}(?:[.,]\d+)?)\s*[Tt](?:on(?:ne)?s?)?\b",
         r"(?im)^(?=.*\bpress\b).{0,80}?\b(\d{3,5})\s*[Tt]\b",
         r"(?im)^.{0,80}?\b(\d{3,5})\s*[Tt]\b(?=.*\bpress\b).{0,40}$",
     )
@@ -132,22 +280,56 @@ def _find_press_tonnage(text: str) -> str | None:
 
 
 def _apply_field(result: WorkorderExtract, bucket: str, raw: str) -> None:
-    value = _clean(raw)
-    if not value:
+    if bucket == "work_order_number":
+        value = _clean(raw)
+        if value and not result.work_order_number:
+            result.work_order_number = value[:100]
         return
-    if bucket == "work_order_number" and not result.work_order_number:
-        result.work_order_number = value[:100]
-    elif bucket == "press_tonnage" and not result.press_tonnage:
-        result.press_tonnage = (_parse_tonnage(value) or value)[:50]
-    elif bucket == "plastic_material" and not result.plastic_material:
-        result.plastic_material = value[:150]
-    elif bucket == "cavity_count" and result.cavity_count is None:
-        result.cavity_count = _parse_cavity(value)
-    elif bucket == "tool_type" and not result.tool_type:
-        result.tool_type = value[:100]
-    elif bucket == "part_description" and not result.part_description:
-        result.part_description = value[:255]
-    elif bucket == "customer_specs":
+
+    if bucket == "press_tonnage":
+        if result.press_tonnage:
+            return
+        parsed = _parse_tonnage(raw) or _find_press_tonnage(raw)
+        if parsed:
+            result.press_tonnage = parsed
+        return
+
+    if bucket == "plastic_material":
+        if result.plastic_material:
+            return
+        material = _clean_material(raw)
+        if material:
+            result.plastic_material = material
+        return
+
+    if bucket == "cavity_count":
+        if result.cavity_count is not None:
+            return
+        cavity = _parse_cavity(raw)
+        if cavity is not None:
+            result.cavity_count = cavity
+        return
+
+    if bucket == "tool_type":
+        value = _clean(raw)
+        if value and not result.tool_type:
+            result.tool_type = value[:100]
+        return
+
+    if bucket == "part_description":
+        if result.part_description:
+            return
+        part, cavity = _normalize_part_description(raw)
+        if part:
+            result.part_description = part
+        if cavity is not None and result.cavity_count is None:
+            result.cavity_count = cavity
+        return
+
+    if bucket == "customer_specs":
+        value = _clean(raw)
+        if not value:
+            return
         if result.customer_specs:
             if value not in result.customer_specs:
                 result.customer_specs = f"{result.customer_specs}\n{value}"[:4000]
@@ -162,16 +344,48 @@ def _scan_label_value_pairs(text: str, result: WorkorderExtract) -> None:
             _apply_field(result, bucket, match.group("value"))
 
 
-def _scan_loose_patterns(text: str, result: WorkorderExtract) -> None:
-    if not result.work_order_number:
-        match = re.search(
-            r"(?:work\s*order|w\.?\s*o\.?|wo)\s*(?:no|number|#)?\s*[:\-#]?\s*([A-Za-z0-9][\w\-/.]{1,40})",
-            text,
-            re.IGNORECASE,
-        )
+def _scan_customer_line_patterns(text: str, result: WorkorderExtract) -> None:
+    """Formats that omit a colon between label and value (common on CMT / ABC PDFs)."""
+    patterns: list[tuple[str, str]] = [
+        # CMT Intermediate Approval (labels often lack a colon)
+        (r"(?im)^\s*Part Description\s+(.+)$", "part_description"),
+        (r"(?im)^\s*Tool Number\s+(.+)$", "customer_specs"),
+        (r"(?im)^\s*Job Number\s+(\S+)$", "work_order_number"),
+        # ABC Shop Order
+        (r"(?im)^\s*PART NAME\s*:?\s*(.+)$", "part_description"),
+        (r"(?im)^\s*#\s*Cav\.?\s*:?\s*(\d+)\b", "cavity_count"),
+        (r"(?im)^\s*S\.?O\.?\s*#\s*:?\s*(\S+)$", "work_order_number"),
+        (
+            r"(?im)^\s*\d+[a-z]?\)\s*MAT'?L.*?COLOUR\s*\d*\s*:?\s*(.+)$",
+            "plastic_material",
+        ),
+        (r"(?im)^\s*\d+[a-z]?\)\s*.*?RESIN\s*-\s*(.+)$", "plastic_material"),
+        (r"(?im)^\s*\d+\)\s*PRIMARY PRESSES?.*?NUMBERS?\s*:?\s*(.+)$", "customer_specs"),
+        # Generic
+        (r"(?im)^\s*Part Name\s+(.+)$", "part_description"),
+        (r"(?im)^\s*Tool Type\s+(.+)$", "tool_type"),
+        (r"(?im)^\s*Press Tonnage(?:\s+Primary)?\s+(.+)$", "press_tonnage"),
+        (r"(?im)^\s*Cavitation\s+(.+)$", "cavity_count"),
+        (r"(?im)^\s*Plastic Type(?:\s*\(Main\))?\s+(.+)$", "plastic_material"),
+        (r"(?im)^\s*Customer Tool Number\s+(.+)$", "customer_specs"),
+    ]
+    for pattern, bucket in patterns:
+        if bucket == "part_description" and result.part_description:
+            continue
+        if bucket == "press_tonnage" and result.press_tonnage:
+            continue
+        if bucket == "plastic_material" and result.plastic_material:
+            continue
+        if bucket == "cavity_count" and result.cavity_count is not None:
+            continue
+        if bucket == "tool_type" and result.tool_type:
+            continue
+        match = re.search(pattern, text)
         if match:
-            _apply_field(result, "work_order_number", match.group(1))
+            _apply_field(result, bucket, match.group(1))
 
+
+def _scan_loose_patterns(text: str, result: WorkorderExtract) -> None:
     if not result.press_tonnage:
         found = _find_press_tonnage(text)
         if found:
@@ -179,7 +393,7 @@ def _scan_loose_patterns(text: str, result: WorkorderExtract) -> None:
 
     if not result.plastic_material:
         match = re.search(
-            r"(?:plastic\s*)?material\s*[:\-#]?\s*([A-Za-z0-9][A-Za-z0-9 \-/%+.]{1,80})",
+            r"(?:plastic\s*(?:type|material)|material)\s*[:\-#]?\s*([A-Za-z0-9][A-Za-z0-9 \-/%+.]{1,100})",
             text,
             re.IGNORECASE,
         )
@@ -188,7 +402,7 @@ def _scan_loose_patterns(text: str, result: WorkorderExtract) -> None:
 
     if result.cavity_count is None:
         match = re.search(
-            r"(?:no\.?\s*of\s*)?cavit(?:y|ies)\s*[:\-#]?\s*(\d{1,3})",
+            r"(?:#\s*cav\.?|cavitation|no\.?\s*of\s*cavit(?:y|ies)|cavit(?:y|ies))\s*[:\-#]?\s*([A-Za-z0-9+][A-Za-z0-9 +\-]{0,20})",
             text,
             re.IGNORECASE,
         )
@@ -196,7 +410,7 @@ def _scan_loose_patterns(text: str, result: WorkorderExtract) -> None:
             _apply_field(result, "cavity_count", match.group(1))
 
 
-def _scan_table_cells(content: bytes, result: WorkorderExtract) -> None:
+def _scan_table_cells_pdf(content: bytes, result: WorkorderExtract) -> None:
     try:
         import pdfplumber
     except ImportError:
@@ -214,8 +428,7 @@ def _scan_table_cells(content: bytes, result: WorkorderExtract) -> None:
                             bucket = _match_label_bucket(cells[0])
                             if bucket:
                                 _apply_field(result, bucket, " ".join(cells[1:]))
-                        # flattened "Label Value" in one cell handled by text scan
-    except Exception:  # noqa: BLE001 — tables are optional enrichment
+    except Exception:  # noqa: BLE001
         result.warnings.append("Could not read some PDF tables; used page text only.")
 
 
@@ -227,17 +440,12 @@ def _unescape_pdf_literal(raw: bytes) -> str:
 
 
 def _extract_text_stdlib(content: bytes) -> str:
-    """
-    Best-effort text scrape with no third-party PDF libs.
-    Works for many simple text workorders; not a substitute for pdfplumber on complex PDFs.
-    """
     parts: list[str] = []
     for match in re.finditer(rb"\(((?:\\.|[^\\()\r\n])*)\)", content):
         value = _unescape_pdf_literal(match.group(1)).strip()
         if len(value) >= 2 and any(ch.isalnum() for ch in value):
             parts.append(value)
 
-    # TJ arrays: [(Hello) 10 (World)] style
     for match in re.finditer(rb"\[(.*?)\]\s*TJ", content, flags=re.IGNORECASE | re.DOTALL):
         chunk_parts: list[str] = []
         for inner in re.finditer(rb"\(((?:\\.|[^\\()])*)\)", match.group(1)):
@@ -247,31 +455,33 @@ def _extract_text_stdlib(content: bytes) -> str:
         if chunk_parts:
             parts.append("".join(chunk_parts))
 
-    # Readable ASCII lines embedded in the file (helps some exporters)
     latin = content.decode("latin-1", errors="ignore")
     for line in latin.splitlines():
         cleaned = "".join(ch if 32 <= ord(ch) < 127 else " " for ch in line)
         cleaned = " ".join(cleaned.split())
-        if len(cleaned) < 8:
+        if len(cleaned) < 6:
             continue
         lower = cleaned.lower()
         if any(
             token in lower
             for token in (
+                "part description",
+                "part name",
                 "work order",
                 "tonnage",
                 "material",
                 "cavity",
+                "cavitation",
                 "tool type",
-                "part description",
                 "plastic",
                 "general notes",
                 "press",
+                "resin",
+                "# cav",
             )
         ) or re.search(r"\b\d{3,5}\s*t\b", cleaned, re.IGNORECASE):
             parts.append(cleaned)
 
-    # Deduplicate while preserving order
     seen: set[str] = set()
     ordered: list[str] = []
     for part in parts:
@@ -312,54 +522,32 @@ def _extract_text_pypdf(content: bytes) -> str:
 
 
 def extract_pdf_text(content: bytes) -> str:
-    """Extract page text; prefer pdfplumber, then pypdf, then stdlib scrape."""
     errors: list[str] = []
-
-    try:
-        combined = _extract_text_pdfplumber(content)
-        if combined:
-            return combined
-        errors.append("pdfplumber found no text")
-    except ImportError:
-        errors.append("pdfplumber not installed")
-    except ProTrackValidationError:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"pdfplumber failed: {exc}")
-
-    try:
-        combined = _extract_text_pypdf(content)
-        if combined:
-            return combined
-        errors.append("pypdf found no text")
-    except ImportError:
-        errors.append("pypdf not installed")
-    except ProTrackValidationError:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"pypdf failed: {exc}")
-
-    try:
-        combined = _extract_text_stdlib(content)
-        if combined:
-            return combined
-        errors.append("stdlib scrape found no text")
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"stdlib scrape failed: {exc}")
+    for extractor, label in (
+        (_extract_text_pdfplumber, "pdfplumber"),
+        (_extract_text_pypdf, "pypdf"),
+        (_extract_text_stdlib, "stdlib scrape"),
+    ):
+        try:
+            combined = extractor(content)
+            if combined:
+                return combined
+            errors.append(f"{label} found no text")
+        except ImportError:
+            errors.append(f"{label} not installed")
+        except ProTrackValidationError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{label} failed: {exc}")
 
     if any("found no text" in item for item in errors):
         raise ProTrackValidationError(
-            "No extractable text found. Use a text-based PDF (not a scanned image) or enter details manually."
-            + (
-                " Tip: on the API host run `pip install -r requirements.txt` then restart for better PDF support."
-                if any("not installed" in item for item in errors)
-                else ""
-            )
+            "No extractable text found. Use a text-based PDF/Excel (not a scanned image) "
+            "or enter details manually."
         )
-
     raise ProTrackValidationError(
-        f"Could not read workorder PDF ({'; '.join(errors)}). "
-        "On the API host run: pip install -r requirements.txt  then restart the API, "
+        f"Could not read workorder file ({'; '.join(errors)}). "
+        "On the API host run: pip install -r requirements.txt then restart the API, "
         "or enter details manually."
     )
 
@@ -367,11 +555,11 @@ def extract_pdf_text(content: bytes) -> str:
 def extract_workorder_fields_from_text(text: str) -> WorkorderExtract:
     result = WorkorderExtract(source_chars=len(text))
     _scan_label_value_pairs(text, result)
+    _scan_customer_line_patterns(text, result)
     _scan_loose_patterns(text, result)
     if not any(
         [
             result.part_description,
-            result.work_order_number,
             result.press_tonnage,
             result.plastic_material,
             result.cavity_count is not None,
@@ -380,26 +568,104 @@ def extract_workorder_fields_from_text(text: str) -> WorkorderExtract:
         ]
     ):
         result.warnings.append(
-            "No labelled fields matched. Review the PDF and fill details manually, or adjust wording (Work Order, Tonnage, Material, Cavity)."
+            "No tooling fields matched. Check Part Name / Part Description, Press Tonnage, "
+            "Plastic Material, Cavity, and Tool Type on the workorder, or enter them manually."
         )
     return result
 
 
+def _extract_from_excel(content: bytes) -> WorkorderExtract:
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise ProTrackValidationError(
+            "Excel workorder import requires openpyxl. "
+            "On the API host run: pip install -r requirements.txt then restart the API."
+        ) from exc
+
+    try:
+        workbook = load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+    except Exception as exc:  # noqa: BLE001
+        raise ProTrackValidationError(f"Could not read Excel workorder: {exc}") from exc
+
+    result = WorkorderExtract()
+    text_chunks: list[str] = []
+    try:
+        for sheet in workbook.worksheets:
+            for row in sheet.iter_rows(min_row=1, max_row=120, max_col=16, values_only=True):
+                cells = ["" if cell is None else str(cell).strip() for cell in row]
+                nonempty = [cell for cell in cells if cell]
+                if not nonempty:
+                    continue
+                text_chunks.append(" | ".join(nonempty))
+                # Common B&B layout: label in col A, value in col B, alternates in later cols.
+                label = cells[0] if cells else ""
+                value = next((cell for cell in cells[1:] if cell), "")
+                bucket = _match_label_bucket(label)
+                if bucket and value:
+                    if bucket == "press_tonnage" and "/" in value:
+                        # "650T/720T" alternate list — take primary/first.
+                        value = value.split("/", 1)[0]
+                    _apply_field(result, bucket, value)
+                elif len(nonempty) >= 2:
+                    # Fallback when first cell is blank but second is label.
+                    maybe_label = nonempty[0]
+                    maybe_value = nonempty[1]
+                    bucket = _match_label_bucket(maybe_label)
+                    if bucket:
+                        _apply_field(result, bucket, maybe_value)
+    finally:
+        workbook.close()
+
+    joined = "\n".join(text_chunks)
+    result.source_chars = len(joined)
+    # Re-run text heuristics on flattened sheet text for any missed fields.
+    text_result = extract_workorder_fields_from_text(joined)
+    for field_name in (
+        "part_description",
+        "press_tonnage",
+        "plastic_material",
+        "tool_type",
+        "customer_specs",
+        "work_order_number",
+    ):
+        if not getattr(result, field_name) and getattr(text_result, field_name):
+            setattr(result, field_name, getattr(text_result, field_name))
+    if result.cavity_count is None and text_result.cavity_count is not None:
+        result.cavity_count = text_result.cavity_count
+    result.warnings.extend(text_result.warnings)
+    return result
+
+
 def extract_workorder_fields_from_pdf(content: bytes) -> WorkorderExtract:
+    """Backward-compatible PDF entry point."""
+    return extract_workorder_fields_from_file(content, filename="workorder.pdf")
+
+
+def extract_workorder_fields_from_file(
+    content: bytes,
+    *,
+    filename: str | None = None,
+) -> WorkorderExtract:
     if not content:
-        raise ProTrackValidationError("PDF file is empty.")
-    if len(content) > _MAX_PDF_BYTES:
-        raise ProTrackValidationError("PDF exceeds the 12 MB limit.")
+        raise ProTrackValidationError("Workorder file is empty.")
+    if len(content) > _MAX_FILE_BYTES:
+        raise ProTrackValidationError("Workorder file exceeds the 12 MB limit.")
+
+    suffix = Path(filename or "workorder.pdf").suffix.lower().lstrip(".")
+    if suffix in {"xlsx", "xlsm"}:
+        return _extract_from_excel(content)
+    if suffix and suffix != "pdf":
+        raise ProTrackValidationError("Only PDF and Excel (.xlsx/.xlsm) workorders are supported.")
 
     text = extract_pdf_text(content)
     result = extract_workorder_fields_from_text(text)
-    # Note stdlib fallback quality for UI/ops.
     try:
         import pdfplumber  # noqa: F401
     except ImportError:
         result.warnings.append(
-            "pdfplumber is not installed on the API host; used built-in PDF text scrape. "
+            "pdfplumber is not installed on the API host; used fallback PDF text scrape. "
             "Install requirements for better accuracy: pip install -r requirements.txt"
         )
-    _scan_table_cells(content, result)
+    _scan_table_cells_pdf(content, result)
     return result

@@ -125,18 +125,20 @@ export function ProjectWorkorderDetailsPanel({
       setExtractWarnings(extracted.warnings ?? []);
       setEditing(true);
       const filled = [
-        extracted.work_order_number,
+        extracted.part_description,
         extracted.press_tonnage,
         extracted.plastic_material,
         extracted.cavity_count,
         extracted.tool_type,
-        extracted.part_description,
         extracted.customer_specs,
+        extracted.work_order_number,
       ].filter((value) => value !== null && value !== undefined && String(value).trim() !== '');
       if (filled.length) {
-        showSuccess(`Imported ${filled.length} field${filled.length === 1 ? '' : 's'} from PDF — review and Save`);
+        showSuccess(
+          `Imported ${filled.length} field${filled.length === 1 ? '' : 's'} from workorder — review and Save`,
+        );
       } else {
-        showError('No workorder fields matched. Enter details manually or try another PDF.');
+        showError('No workorder fields matched. Enter details manually or try another file.');
       }
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
@@ -145,7 +147,8 @@ export function ProjectWorkorderDetailsPanel({
   const hasAnyDetail = useMemo(
     () =>
       Boolean(
-        project.work_order_number ||
+        project.part_description ||
+          project.work_order_number ||
           project.press_tonnage ||
           project.plastic_material ||
           project.cavity_count != null ||
@@ -155,10 +158,11 @@ export function ProjectWorkorderDetailsPanel({
     [project],
   );
 
-  const onPickPdf = (file: File | null) => {
+  const onPickWorkorder = (file: File | null) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      showError('Only PDF workorder files are supported.');
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith('.pdf') && !lower.endsWith('.xlsx') && !lower.endsWith('.xlsm')) {
+      showError('Only PDF and Excel (.xlsx/.xlsm) workorder files are supported.');
       return;
     }
     extractMutation.mutate(file);
@@ -177,12 +181,12 @@ export function ProjectWorkorderDetailsPanel({
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xlsm"
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0] ?? null;
           event.target.value = '';
-          onPickPdf(file);
+          onPickWorkorder(file);
         }}
       />
 
@@ -198,7 +202,8 @@ export function ProjectWorkorderDetailsPanel({
               Workorder / tooling details
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Import a customer workorder PDF to autofill, then review and Save. Formats vary by customer.
+              Import PDF or Excel to autofill Part description and tooling fields, then review and Save.
+              Work order number is optional. Formats vary by customer (CMT, ABC, B&amp;B, …).
             </Typography>
           </Box>
         </Box>
@@ -212,7 +217,7 @@ export function ProjectWorkorderDetailsPanel({
               loading={extractMutation.isPending}
               disabled={saveMutation.isPending}
             >
-              Import workorder PDF
+              Import workorder
             </ProsohmButton>
             {editing ? (
               <>
@@ -271,7 +276,7 @@ export function ProjectWorkorderDetailsPanel({
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormField
-              label="Work order number"
+              label="Work order number (optional)"
               value={form.work_order_number}
               onChange={(event) => setForm({ ...form, work_order_number: event.target.value })}
               maxLength={100}
@@ -326,7 +331,10 @@ export function ProjectWorkorderDetailsPanel({
             <DetailItem label="Part description" value={formatDisplayValue(project.part_description)} />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <DetailItem label="Work order number" value={formatCellValue(project.work_order_number)} />
+            <DetailItem
+              label="Work order number (optional)"
+              value={formatCellValue(project.work_order_number)}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
             <DetailItem label="Press tonnage" value={formatCellValue(project.press_tonnage)} />
@@ -353,7 +361,7 @@ export function ProjectWorkorderDetailsPanel({
           {!hasAnyDetail ? (
             <Grid size={{ xs: 12 }}>
               <Typography variant="body2" color="text.secondary">
-                No workorder metadata yet. Import a PDF or edit details so completed tools stay searchable.
+                No workorder metadata yet. Import a PDF/Excel or edit details so completed tools stay searchable.
               </Typography>
             </Grid>
           ) : null}

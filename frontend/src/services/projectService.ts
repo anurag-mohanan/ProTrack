@@ -112,6 +112,7 @@ export interface WorkorderPdfExtractResult {
   source_chars?: number;
 }
 
+/** Extract suggested Overview fields from a customer workorder PDF or Excel (does not save). */
 export async function extractWorkorderPdf(
   projectId: string,
   file: File,

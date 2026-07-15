@@ -1,5 +1,8 @@
 # RC5 — Top-bar project title + workorder PDF autofill
 
+> **Superseded for import formats:** see [RC5_WORKORDER_MULTI_CUSTOMER.md](./RC5_WORKORDER_MULTI_CUSTOMER.md)
+> (PDF + Excel, Part description priority, WO number optional, CMT/ABC/B&B heuristics).
+
 ## Ops + Engineering Manager brainstorm → Senior decision
 
 ### Problems

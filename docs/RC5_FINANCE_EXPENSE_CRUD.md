@@ -1,5 +1,7 @@
 # RC5 — Finance expense edit & soft-delete
 
+> **Status:** Direction locked. **Not yet implemented in UI/API** (Expenses tab is still create + list). Bundled for delivery with Team commercial UX cleanup in [RC5_FINANCE_COMMERCIAL_UX_EXPENSE_CRUD.md](./RC5_FINANCE_COMMERCIAL_UX_EXPENSE_CRUD.md).
+
 ## Problem
 
 Expenses support create + list only. Finance cannot correct team / amount / paid by / renewals or remove cancelled lines without DB work. `Expense.is_active` already exists; list, dashboard, and renewals should only use active rows.

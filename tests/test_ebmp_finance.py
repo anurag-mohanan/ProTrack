@@ -506,6 +506,47 @@ def test_team_commercial_terms_in_dashboard(client, auth_headers, session):
     assert float(dash["team_commercial_fee_monthly_inr"]) >= 120000.0
 
 
+def test_team_commercial_usd_with_fy_start_effective_date(client, auth_headers, session):
+    """USD terms dated at FY start must convert even when live FX was seeded mid-year."""
+    import uuid
+    from decimal import Decimal
+
+    from app.models.enums import WorkingModelCode
+    from app.models.models import Team, WorkingModel
+
+    team = Team(id=uuid.uuid4(), name="USD FY Commercial Team", is_active=True)
+    model = WorkingModel(
+        id=uuid.uuid4(),
+        code=f"retainer_{uuid.uuid4().hex[:8]}",
+        strategy_key=WorkingModelCode.retainer,
+        name="Retainer USD",
+        is_active=True,
+    )
+    session.add(team)
+    session.add(model)
+    session.commit()
+
+    create = client.post(
+        "/api/v1/finance/team-commercial",
+        headers=auth_headers,
+        json={
+            "team_id": str(team.id),
+            "working_model_id": str(model.id),
+            "customer_fee_amount": "2000",
+            "currency_code": "USD",
+            "billing_period": "monthly",
+            "effective_from": "2026-04-01",
+            "customer_pays_software": True,
+            "customer_pays_hardware": True,
+        },
+    )
+    assert create.status_code == 201, create.text
+    body = create.json()
+    assert body["currency_code"] == "USD"
+    assert Decimal(str(body["base_fee_inr"])) == Decimal("167000.00")  # 2000 * 83.50
+    assert Decimal(str(body["fx_rate"])) == Decimal("83.50")
+
+
 def test_expense_patch_and_soft_delete(client, auth_headers, session):
     team_id = _corporate_team_id(client, auth_headers, session)
     centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()

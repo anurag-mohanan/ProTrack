@@ -20,6 +20,7 @@ import { fetchTeams, fetchWorkingModels } from '../../api/lookups';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import { teamQueryParam } from './FinanceTeamFilter';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 type WorkingModel = {
   id: string;
@@ -134,8 +135,8 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
       void queryClient.invalidateQueries({ queryKey: ['finance-team-commercial'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      showError(error.response?.data?.detail ?? 'Could not save team commercial terms');
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not save team commercial terms'));
     },
   });
 
@@ -149,8 +150,8 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
       void queryClient.invalidateQueries({ queryKey: ['finance-team-commercial'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      showError(error.response?.data?.detail ?? 'Could not delete terms');
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not delete terms'));
     },
   });
 

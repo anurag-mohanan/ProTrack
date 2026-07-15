@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
-from decimal import Decimal
-
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -110,23 +107,18 @@ def _seed_finance(session: Session) -> None:
             existing.is_active = True
     session.flush()
 
-    # Seed common FX rates to INR (manual MVP defaults; update via Finance configure).
-    default_rates = [
-        ("USD", Decimal("83.50")),
-        ("EUR", Decimal("90.00")),
-        ("GBP", Decimal("105.00")),
-        ("AED", Decimal("22.75")),
-        ("SGD", Decimal("62.00")),
-        ("JPY", Decimal("0.55")),
-    ]
-    today = date.today()
-    for code, rate in default_rates:
+    # Seed common FX rates to INR once (early effective date so FY-start
+    # commercial terms / expenses convert). Do not reseed every calendar day.
+    from app.db.phase27_fx_rate_backfill import DEFAULT_RATES_TO_INR, SEED_FX_EFFECTIVE
+
+    for code, rate in DEFAULT_RATES_TO_INR:
         existing = session.scalar(
-            select(FxRate).where(
+            select(FxRate)
+            .where(
                 FxRate.from_currency == code,
                 FxRate.to_currency == "INR",
-                FxRate.effective_date == today,
             )
+            .limit(1)
         )
         if existing is None:
             session.add(
@@ -134,7 +126,7 @@ def _seed_finance(session: Session) -> None:
                     from_currency=code,
                     to_currency="INR",
                     rate=rate,
-                    effective_date=today,
+                    effective_date=SEED_FX_EFFECTIVE,
                     source="seed",
                 )
             )

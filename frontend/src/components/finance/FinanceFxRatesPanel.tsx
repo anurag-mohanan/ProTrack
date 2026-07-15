@@ -75,8 +75,9 @@ export function FinanceFxRatesPanel() {
           FX rates
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Enter a rate with an effective date. Overview always uses the INR amount stored when each
-          expense/quote was saved — updating FX later does not rewrite prior months.
+          Enter a rate with an effective date on or before the expense / commercial term date.
+          Overview always uses the INR amount stored when each row was saved — updating FX later
+          does not rewrite prior months.
         </Typography>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 120 }}>

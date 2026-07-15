@@ -62,12 +62,16 @@ class RetainerFinanceStrategy(FinanceKpiStrategy):
         consumed = Decimal(str(context.get("consumed_capacity") or 0))
         unused = reserved - consumed
         revenue = Decimal(str(context.get("revenue") or 0))
+        customer_fee = Decimal(str(context.get("customer_fee") or context.get("team_fee") or 0))
+        if customer_fee and not revenue:
+            revenue = customer_fee
         ehr = (revenue / consumed) if consumed else Decimal("0")
         return {
             "strategy": self.strategy_key.value,
             "reserved_capacity": reserved,
             "consumed_capacity": consumed,
             "unused_capacity": unused,
+            "customer_fee": customer_fee,
             "effective_hourly_rate": ehr.quantize(Decimal("0.01")),
             "response_sla": str(context.get("response_sla") or "n/a"),
         }

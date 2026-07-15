@@ -186,6 +186,7 @@ class NotificationType(enum.Enum):
     project_due_soon = "project_due_soon"
     import_completed = "import_completed"
     pending_approval = "pending_approval"
+    expense_renewal = "expense_renewal"
 
 
 class WorkingModelCode(enum.Enum):
@@ -225,12 +226,31 @@ class CostNature(enum.Enum):
     opex = "opex"
 
 
+class ExpensePaidBy(enum.Enum):
+    prosohm = "prosohm"
+    customer = "customer"
+
+
 class CostFrequency(enum.Enum):
     monthly = "monthly"
     quarterly = "quarterly"
     yearly = "yearly"
     one_time = "one_time"
     recurring = "recurring"
+
+
+class TeamBillingMode(enum.Enum):
+    fixed_price = "fixed_price"
+    subscription = "subscription"
+    time_materials = "time_materials"
+    project_based = "project_based"
+
+
+class TeamBillingPeriod(enum.Enum):
+    monthly = "monthly"
+    quarterly = "quarterly"
+    annual = "annual"
+    one_time = "one_time"
 
 
 class BudgetScopeType(enum.Enum):

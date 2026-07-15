@@ -35,8 +35,9 @@ from app.models.finance import (
     Expense,
     FxRate,
     Quote,
+    TeamCommercialTerms,
 )
-from app.models.models import Activity, User
+from app.models.models import Activity, Team, User, WorkingModel
 from app.schemas.finance import (
     BudgetCreate,
     BudgetRead,
@@ -46,6 +47,7 @@ from app.schemas.finance import (
     CurrencyRead,
     EmployeeCostProfileCreate,
     EmployeeCostProfileRead,
+    EmployeeCostRosterItem,
     ExpenseCreate,
     ExpenseRead,
     FinanceDashboardRead,
@@ -62,6 +64,10 @@ from app.schemas.finance import (
     FxRateRead,
     QuoteImportResult,
     QuoteRead,
+    RenewalNotifyResult,
+    TeamCommercialTermsCreate,
+    TeamCommercialTermsRead,
+    TeamCommercialTermsUpdate,
 )
 from app.services.finance import annual_plan_service
 from app.services.finance.dashboard_service import get_finance_dashboard
@@ -69,6 +75,8 @@ from app.services.finance.fx_service import to_base_amount
 from app.services.finance.quote_import_service import (
     import_quotes_from_upload,
 )
+from app.services.finance.renewal_notifier import notify_upcoming_renewals
+from app.services.finance.roster_service import get_employee_cost_roster
 
 router = APIRouter(prefix="/finance", tags=["financial-planning"])
 
@@ -228,6 +236,27 @@ def create_expense(
     return row
 
 
+@router.post("/renewals/notify", response_model=RenewalNotifyResult)
+def trigger_renewal_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create in-app notifications for expenses in the renewal window."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    count, expense_ids = notify_upcoming_renewals(db)
+    db.commit()
+    return RenewalNotifyResult(notified_count=count, expense_ids=expense_ids)
+
+
+@router.get("/employee-costs/roster", response_model=list[EmployeeCostRosterItem])
+def employee_cost_roster(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return get_employee_cost_roster(db)
+
+
 @router.get("/employee-costs", response_model=list[EmployeeCostProfileRead])
 def list_employee_costs(
     db: Session = Depends(get_db),
@@ -295,6 +324,140 @@ def upsert_employee_cost(
     db.commit()
     db.refresh(row)
     return row
+
+
+def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommercialTermsRead:
+    team = db.get(Team, row.team_id)
+    model = db.get(WorkingModel, row.working_model_id)
+    return TeamCommercialTermsRead(
+        id=row.id,
+        team_id=row.team_id,
+        working_model_id=row.working_model_id,
+        billing_mode=row.billing_mode,
+        customer_fee_amount=row.customer_fee_amount,
+        currency_code=row.currency_code,
+        billing_period=row.billing_period,
+        effective_from=row.effective_from,
+        effective_to=row.effective_to,
+        notes=row.notes,
+        base_fee_inr=row.base_fee_inr,
+        fx_rate=row.fx_rate,
+        is_active=row.is_active,
+        team_name=team.name if team else None,
+        working_model_name=model.name if model else None,
+    )
+
+
+@router.get("/team-commercial", response_model=list[TeamCommercialTermsRead])
+def list_team_commercial(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    rows = db.scalars(
+        select(TeamCommercialTerms).where(TeamCommercialTerms.is_active.is_(True)).order_by(
+            TeamCommercialTerms.effective_from.desc()
+        )
+    ).all()
+    return [_team_commercial_read(db, row) for row in rows]
+
+
+@router.post(
+    "/team-commercial",
+    response_model=TeamCommercialTermsRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_team_commercial(
+    payload: TeamCommercialTermsCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    if db.get(Team, payload.team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    if db.get(WorkingModel, payload.working_model_id) is None:
+        raise HTTPException(status_code=400, detail="Working model not found")
+    try:
+        base_fee, fx_rate, _ = to_base_amount(
+            db,
+            amount=payload.customer_fee_amount,
+            currency_code=payload.currency_code,
+            on_date=payload.effective_from,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    row = TeamCommercialTerms(
+        **payload.model_dump(),
+        base_fee_inr=base_fee,
+        fx_rate=fx_rate,
+        is_active=True,
+    )
+    db.add(row)
+    db.flush()
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.cost_updated,
+        entity_type=EntityType.team,
+        entity_id=row.team_id,
+        new_value=f"team_commercial:{row.billing_mode.value}",
+    )
+    db.commit()
+    db.refresh(row)
+    return _team_commercial_read(db, row)
+
+
+@router.put("/team-commercial/{terms_id}", response_model=TeamCommercialTermsRead)
+def update_team_commercial(
+    terms_id: UUID,
+    payload: TeamCommercialTermsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(TeamCommercialTerms, terms_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Team commercial terms not found")
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        setattr(row, key, value)
+    currency = row.currency_code
+    amount = row.customer_fee_amount
+    on_date = row.effective_from
+    try:
+        base_fee, fx_rate, _ = to_base_amount(
+            db, amount=amount, currency_code=currency, on_date=on_date
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    row.base_fee_inr = base_fee
+    row.fx_rate = fx_rate
+    db.flush()
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.cost_updated,
+        entity_type=EntityType.team,
+        entity_id=row.team_id,
+        new_value=f"team_commercial_update:{row.id}",
+    )
+    db.commit()
+    db.refresh(row)
+    return _team_commercial_read(db, row)
+
+
+@router.delete("/team-commercial/{terms_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_team_commercial(
+    terms_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(TeamCommercialTerms, terms_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Team commercial terms not found")
+    row.is_active = False
+    db.commit()
 
 
 @router.get("/budgets", response_model=list[BudgetRead])

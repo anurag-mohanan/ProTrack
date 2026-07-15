@@ -35,6 +35,7 @@ from app.db.phase19_timesheet_report_inclusion_schema_sync import (
 )
 from app.db.phase20_project_complexity_schema_sync import ensure_project_complexity
 from app.db.phase21_project_workorder_schema_sync import ensure_project_workorder_metadata
+from app.db.phase22_finance_rebuild_schema_sync import ensure_phase22_finance_rebuild_foundation
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -111,6 +112,7 @@ async def lifespan(app: FastAPI):
         ("phase19_timesheet_report_inclusion", ensure_phase19_timesheet_report_inclusion_foundation),
         ("project_complexity", ensure_project_complexity),
         ("project_workorder_metadata", ensure_project_workorder_metadata),
+        ("phase22_finance_rebuild", ensure_phase22_finance_rebuild_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

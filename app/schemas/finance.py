@@ -14,8 +14,11 @@ from app.models.enums import (
     BudgetScopeType,
     CostFrequency,
     CostNature,
+    ExpensePaidBy,
     FinancePlanSection,
     FinancePlanStatus,
+    TeamBillingMode,
+    TeamBillingPeriod,
 )
 
 
@@ -68,6 +71,11 @@ class ExpenseCreate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     is_recurring: bool = False
+    paid_by: ExpensePaidBy = ExpensePaidBy.prosohm
+    vendor_name: str | None = None
+    next_renewal_date: date | None = None
+    notify_before_days: int = Field(default=7, ge=0, le=365)
+    notify_enabled: bool = True
     team_id: UUID | None = None
     project_id: UUID | None = None
 
@@ -80,6 +88,7 @@ class ExpenseRead(ExpenseCreate):
     fx_rate: Decimal
     fx_date: date
     is_active: bool
+    renewal_notified_for: date | None = None
 
 
 class EmployeeCostProfileCreate(BaseModel):
@@ -100,6 +109,75 @@ class EmployeeCostProfileRead(EmployeeCostProfileCreate):
     base_hourly_cost_inr: Decimal
     fx_rate: Decimal
     is_active: bool
+
+
+class EmployeeCostRosterItem(BaseModel):
+    user_id: UUID
+    first_name: str
+    last_name: str
+    email: str
+    team_names: list[str] = Field(default_factory=list)
+    has_profile: bool
+    profile_id: UUID | None = None
+    currency_code: str | None = None
+    monthly_salary: Decimal | None = None
+    hourly_cost: Decimal | None = None
+    base_monthly_salary_inr: Decimal | None = None
+    effective_from: date | None = None
+    notes: str | None = None
+
+
+class TeamCommercialTermsCreate(BaseModel):
+    team_id: UUID
+    working_model_id: UUID
+    billing_mode: TeamBillingMode = TeamBillingMode.project_based
+    customer_fee_amount: Decimal = Decimal("0")
+    currency_code: str = "INR"
+    billing_period: TeamBillingPeriod = TeamBillingPeriod.monthly
+    effective_from: date
+    effective_to: date | None = None
+    notes: str | None = None
+
+
+class TeamCommercialTermsUpdate(BaseModel):
+    working_model_id: UUID | None = None
+    billing_mode: TeamBillingMode | None = None
+    customer_fee_amount: Decimal | None = None
+    currency_code: str | None = None
+    billing_period: TeamBillingPeriod | None = None
+    effective_from: date | None = None
+    effective_to: date | None = None
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+class TeamCommercialTermsRead(TeamCommercialTermsCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    base_fee_inr: Decimal
+    fx_rate: Decimal
+    is_active: bool
+    team_name: str | None = None
+    working_model_name: str | None = None
+
+
+class UpcomingRenewalRead(BaseModel):
+    expense_id: UUID
+    name: str
+    vendor_name: str | None = None
+    paid_by: ExpensePaidBy
+    next_renewal_date: date
+    notify_before_days: int
+    amount: Decimal
+    currency_code: str
+    base_amount_inr: Decimal
+    days_until: int
+
+
+class RenewalNotifyResult(BaseModel):
+    notified_count: int
+    expense_ids: list[UUID] = Field(default_factory=list)
 
 
 class BudgetCreate(BaseModel):
@@ -183,6 +261,10 @@ class FinanceDashboardRead(BaseModel):
     productivity: dict
     project_snapshots: list[dict]
     ai_placeholders: list[dict]
+    upcoming_renewals: list[UpcomingRenewalRead] = Field(default_factory=list)
+    team_commercial_fee_monthly_inr: Decimal = Decimal("0")
+    pass_through_opex_inr: Decimal = Decimal("0")
+    salary_cost_inr: Decimal = Decimal("0")
 
 
 class AiForecastPlaceholderRead(BaseModel):

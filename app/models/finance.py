@@ -29,8 +29,11 @@ from app.models.enums import (
     BudgetScopeType,
     CostFrequency,
     CostNature,
+    ExpensePaidBy,
     FinancePlanSection,
     FinancePlanStatus,
+    TeamBillingMode,
+    TeamBillingPeriod,
 )
 from app.models.mixins import TimestampMixin
 
@@ -164,12 +167,60 @@ class Expense(Base, TimestampMixin):
     start_date: Mapped[Optional[date]] = mapped_column(Date)
     end_date: Mapped[Optional[date]] = mapped_column(Date)
     is_recurring: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    paid_by: Mapped[ExpensePaidBy] = mapped_column(
+        Enum(ExpensePaidBy, name="expense_paid_by", native_enum=False),
+        nullable=False,
+        default=ExpensePaidBy.prosohm,
+    )
+    vendor_name: Mapped[Optional[str]] = mapped_column(String(200))
+    next_renewal_date: Mapped[Optional[date]] = mapped_column(Date)
+    notify_before_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    notify_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    renewal_notified_for: Mapped[Optional[date]] = mapped_column(Date)
     team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=True
     )
     project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("projects.id"), nullable=True
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class TeamCommercialTerms(Base, TimestampMixin):
+    """Per-team engagement model and customer fee used by finance rollups."""
+
+    __tablename__ = "team_commercial_terms"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False, index=True
+    )
+    working_model_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("working_models.id"), nullable=False
+    )
+    billing_mode: Mapped[TeamBillingMode] = mapped_column(
+        Enum(TeamBillingMode, name="team_billing_mode", native_enum=False),
+        nullable=False,
+        default=TeamBillingMode.project_based,
+    )
+    customer_fee_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, default=0
+    )
+    currency_code: Mapped[str] = mapped_column(
+        String(3), ForeignKey("currencies.code"), nullable=False, default="INR"
+    )
+    base_fee_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    fx_rate: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False, default=1)
+    billing_period: Mapped[TeamBillingPeriod] = mapped_column(
+        Enum(TeamBillingPeriod, name="team_billing_period", native_enum=False),
+        nullable=False,
+        default=TeamBillingPeriod.monthly,
+    )
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 

@@ -1,41 +1,67 @@
-"""Financial dashboard aggregates (base currency INR)."""
+"""Financial dashboard aggregates (base currency INR) — Finance Rebuild 1."""
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import BudgetApprovalStatus, CostNature
+from app.models.enums import BudgetApprovalStatus, CostNature, ExpensePaidBy, TeamBillingPeriod
 from app.models.finance import (
     AiForecastPlaceholder,
     Budget,
+    EmployeeCostProfile,
     Expense,
     ProjectFinancialSnapshot,
     QuoteRevision,
+    TeamCommercialTerms,
 )
 from app.models.models import Project
 from app.services.finance.fx_service import get_base_currency
+from app.services.finance.renewal_notifier import list_upcoming_renewals
 
 
 def _d(value) -> Decimal:
     return Decimal(str(value or 0)).quantize(Decimal("0.01"))
 
 
+def _normalize_monthly_fee(amount: Decimal, period: TeamBillingPeriod) -> Decimal:
+    if period == TeamBillingPeriod.monthly:
+        return amount
+    if period == TeamBillingPeriod.quarterly:
+        return (amount / Decimal("3")).quantize(Decimal("0.01"))
+    if period == TeamBillingPeriod.annual:
+        return (amount / Decimal("12")).quantize(Decimal("0.01"))
+    return amount
+
+
 def get_finance_dashboard(db: Session) -> dict:
     base = get_base_currency(db)
+    today = date.today()
     revenue = _d(
         db.scalar(select(func.coalesce(func.sum(QuoteRevision.base_quoted_revenue_inr), 0)))
     )
     estimated_cost = _d(
         db.scalar(select(func.coalesce(func.sum(QuoteRevision.base_estimated_cost_inr), 0)))
     )
-    opex = _d(
+
+    prosohm_opex = _d(
         db.scalar(
             select(func.coalesce(func.sum(Expense.base_amount_inr), 0)).where(
                 Expense.is_active.is_(True),
                 Expense.nature == CostNature.opex,
+                Expense.paid_by == ExpensePaidBy.prosohm,
+            )
+        )
+    )
+    pass_through_opex = _d(
+        db.scalar(
+            select(func.coalesce(func.sum(Expense.base_amount_inr), 0)).where(
+                Expense.is_active.is_(True),
+                Expense.nature == CostNature.opex,
+                Expense.paid_by == ExpensePaidBy.customer,
             )
         )
     )
@@ -44,13 +70,35 @@ def get_finance_dashboard(db: Session) -> dict:
             select(func.coalesce(func.sum(Expense.base_amount_inr), 0)).where(
                 Expense.is_active.is_(True),
                 Expense.nature == CostNature.capex,
+                Expense.paid_by == ExpensePaidBy.prosohm,
             )
         )
     )
-    gross_profit = revenue - estimated_cost
-    gross_margin = (gross_profit / revenue * 100) if revenue else Decimal("0.00")
-    net_profit = gross_profit - opex
-    net_margin = (net_profit / revenue * 100) if revenue else Decimal("0.00")
+    salary_cost = _d(
+        db.scalar(
+            select(func.coalesce(func.sum(EmployeeCostProfile.base_monthly_salary_inr), 0)).where(
+                EmployeeCostProfile.is_active.is_(True)
+            )
+        )
+    )
+
+    team_terms = db.scalars(
+        select(TeamCommercialTerms).where(TeamCommercialTerms.is_active.is_(True))
+    ).all()
+    team_fee_monthly = Decimal("0.00")
+    for term in team_terms:
+        if term.effective_from and term.effective_from > today:
+            continue
+        if term.effective_to and term.effective_to < today:
+            continue
+        team_fee_monthly += _normalize_monthly_fee(_d(term.base_fee_inr), term.billing_period)
+
+    planning_revenue = revenue + team_fee_monthly
+    operating_cost = prosohm_opex + salary_cost
+    gross_profit = planning_revenue - estimated_cost
+    gross_margin = (gross_profit / planning_revenue * 100) if planning_revenue else Decimal("0.00")
+    net_profit = gross_profit - operating_cost
+    net_margin = (net_profit / planning_revenue * 100) if planning_revenue else Decimal("0.00")
 
     budget_allocated = _d(
         db.scalar(select(func.coalesce(func.sum(Budget.base_allocated_inr), 0)).where(Budget.is_active.is_(True)))
@@ -80,26 +128,48 @@ def get_finance_dashboard(db: Session) -> dict:
         select(AiForecastPlaceholder).where(AiForecastPlaceholder.is_active.is_(True))
     ).all()
 
+    renewals = []
+    for expense in list_upcoming_renewals(db, today=today):
+        days_until = (expense.next_renewal_date - today).days  # type: ignore[operator]
+        renewals.append(
+            {
+                "expense_id": expense.id,
+                "name": expense.name,
+                "vendor_name": expense.vendor_name,
+                "paid_by": expense.paid_by,
+                "next_renewal_date": expense.next_renewal_date,
+                "notify_before_days": expense.notify_before_days,
+                "amount": expense.amount,
+                "currency_code": expense.currency_code,
+                "base_amount_inr": expense.base_amount_inr,
+                "days_until": days_until,
+            }
+        )
+
     return {
         "base_currency": base,
         "revenue": {
-            "monthly_revenue": revenue,
-            "quarterly_revenue": revenue,
-            "yearly_revenue": revenue,
-            "revenue_forecast": revenue,
+            "monthly_revenue": planning_revenue,
+            "quarterly_revenue": planning_revenue,
+            "yearly_revenue": planning_revenue,
+            "revenue_forecast": planning_revenue,
             "customer_revenue": revenue,
-            "business_model_revenue": revenue,
+            "business_model_revenue": team_fee_monthly,
+            "quote_revenue": revenue,
+            "team_commercial_fee_monthly": team_fee_monthly,
         },
         "cost": {
-            "salary_cost": Decimal("0.00"),
+            "salary_cost": salary_cost,
             "software_cost": Decimal("0.00"),
             "infrastructure_cost": Decimal("0.00"),
             "travel": Decimal("0.00"),
             "training": Decimal("0.00"),
             "capex": capex,
-            "recurring_costs": opex,
-            "monthly_operating_cost": opex,
-            "annual_operating_cost": opex * Decimal("12"),
+            "recurring_costs": prosohm_opex,
+            "monthly_operating_cost": operating_cost,
+            "annual_operating_cost": operating_cost * Decimal("12"),
+            "prosohm_opex": prosohm_opex,
+            "pass_through_opex": pass_through_opex,
         },
         "profitability": {
             "gross_profit": gross_profit,
@@ -133,7 +203,9 @@ def get_finance_dashboard(db: Session) -> dict:
                 else Decimal("0.00")
             ),
             "average_hourly_revenue": (
-                (revenue / quoted_hours).quantize(Decimal("0.01")) if quoted_hours else Decimal("0.00")
+                (planning_revenue / quoted_hours).quantize(Decimal("0.01"))
+                if quoted_hours
+                else Decimal("0.00")
             ),
             "engineering_productivity": recovery.quantize(Decimal("0.01")),
         },
@@ -160,4 +232,8 @@ def get_finance_dashboard(db: Session) -> dict:
             }
             for row in placeholders
         ],
+        "upcoming_renewals": renewals,
+        "team_commercial_fee_monthly_inr": team_fee_monthly,
+        "pass_through_opex_inr": pass_through_opex,
+        "salary_cost_inr": salary_cost,
     }

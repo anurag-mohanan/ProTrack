@@ -189,3 +189,158 @@ def test_em_defaults_include_financial_planning():
     assert MODULE_FINANCIAL_PLANNING in modules
     assert MODULE_FINANCIAL_PLANNING not in default_modules_for_role("Design Leader")
     assert MODULE_FINANCIAL_PLANNING not in default_modules_for_role("Designer")
+
+
+def test_expense_paid_by_customer_is_pass_through(client, auth_headers):
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers)
+    assert centres.status_code == 200
+    centre_id = centres.json()[0]["id"]
+
+    before = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    before_opex = float(before["cost"]["prosohm_opex"])
+    before_pass = float(before["pass_through_opex_inr"])
+
+    create = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": centre_id,
+            "name": "Customer NX seat",
+            "amount": "5000",
+            "currency_code": "INR",
+            "nature": "opex",
+            "frequency": "yearly",
+            "paid_by": "customer",
+            "is_recurring": True,
+        },
+    )
+    assert create.status_code == 201, create.text
+    assert create.json()["paid_by"] == "customer"
+
+    after = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    assert float(after["cost"]["prosohm_opex"]) == before_opex
+    assert float(after["pass_through_opex_inr"]) == before_pass + 5000.0
+
+
+def test_expense_renewal_window_and_notify(client, auth_headers):
+    from datetime import date, timedelta
+
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
+    centre_id = centres[0]["id"]
+    renewal = (date.today() + timedelta(days=5)).isoformat()
+
+    create = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": centre_id,
+            "name": "NX Mach 3",
+            "vendor_name": "Siemens",
+            "amount": "120000",
+            "currency_code": "INR",
+            "nature": "opex",
+            "frequency": "yearly",
+            "paid_by": "prosohm",
+            "is_recurring": True,
+            "next_renewal_date": renewal,
+            "notify_before_days": 7,
+            "notify_enabled": True,
+        },
+    )
+    assert create.status_code == 201, create.text
+
+    dash = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    names = {row["name"] for row in dash["upcoming_renewals"]}
+    assert "NX Mach 3" in names
+
+    notify = client.post("/api/v1/finance/renewals/notify", headers=auth_headers)
+    assert notify.status_code == 200, notify.text
+    assert notify.json()["notified_count"] >= 1
+
+    again = client.post("/api/v1/finance/renewals/notify", headers=auth_headers)
+    assert again.status_code == 200
+    assert again.json()["notified_count"] == 0
+
+
+def test_employee_cost_roster_lists_all_active_users(client, auth_headers):
+    roster = client.get("/api/v1/finance/employee-costs/roster", headers=auth_headers)
+    assert roster.status_code == 200, roster.text
+    rows = roster.json()
+    assert len(rows) >= 3
+    emails = {row["email"] for row in rows}
+    assert "admin@prosohm.com" in emails or any("admin" in e for e in emails)
+
+    target = next(row for row in rows if row["email"] == "binil@prosohm.com")
+    save = client.post(
+        "/api/v1/finance/employee-costs",
+        headers=auth_headers,
+        json={
+            "user_id": target["user_id"],
+            "monthly_salary": "75000",
+            "hourly_cost": "450",
+            "currency_code": "INR",
+            "effective_from": "2026-04-01",
+        },
+    )
+    assert save.status_code == 201, save.text
+    refreshed = client.get("/api/v1/finance/employee-costs/roster", headers=auth_headers).json()
+    updated = next(row for row in refreshed if row["user_id"] == target["user_id"])
+    assert updated["has_profile"] is True
+    assert float(updated["monthly_salary"]) == 75000.0
+
+
+def test_team_commercial_terms_in_dashboard(client, auth_headers, session):
+    import uuid
+    from datetime import date
+
+    from app.models.enums import WorkingModelCode
+    from app.models.models import Team, WorkingModel
+
+    team = Team(id=uuid.uuid4(), name="Finance Rebuild Team", is_active=True)
+    model = WorkingModel(
+        id=uuid.uuid4(),
+        code=f"retainer_{uuid.uuid4().hex[:8]}",
+        strategy_key=WorkingModelCode.retainer,
+        name="Retainer Sub",
+        is_active=True,
+    )
+    session.add(team)
+    session.add(model)
+    session.commit()
+
+    create = client.post(
+        "/api/v1/finance/team-commercial",
+        headers=auth_headers,
+        json={
+            "team_id": str(team.id),
+            "working_model_id": str(model.id),
+            "billing_mode": "subscription",
+            "customer_fee_amount": "120000",
+            "currency_code": "INR",
+            "billing_period": "monthly",
+            "effective_from": date.today().isoformat(),
+        },
+    )
+    assert create.status_code == 201, create.text
+
+    dash = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    assert float(dash["team_commercial_fee_monthly_inr"]) >= 120000.0
+
+
+def test_designer_forbidden_from_roster(client):
+    headers = _auth(client, "binil@prosohm.com")
+    response = client.get("/api/v1/finance/employee-costs/roster", headers=headers)
+    assert response.status_code == 403
+
+
+def test_retainer_strategy_includes_customer_fee():
+    strategy = finance_kpi_registry.get(WorkingModelCode.retainer)
+    result = strategy.calculate(
+        {
+            "reserved_capacity": Decimal("160"),
+            "consumed_capacity": Decimal("80"),
+            "customer_fee": Decimal("50000"),
+        }
+    )
+    assert result["customer_fee"] == Decimal("50000")
+    assert result["effective_hourly_rate"] == Decimal("625.00")

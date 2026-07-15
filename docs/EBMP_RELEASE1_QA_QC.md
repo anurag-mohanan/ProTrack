@@ -1,7 +1,8 @@
 # EBMP Release 1 — QA / QC / UAT Gate
 
 **Last updated:** 2026-07-13  
-**QC decision:** Conditional Internal UAT **GO** · Full Finance UAT / Production **NO-GO**
+**QC decision:** Conditional Internal UAT **GO** · Full Finance UAT / Production **NO-GO**  
+**Finance Rebuild 1:** see [RC5_FINANCE_REBUILD.md](./RC5_FINANCE_REBUILD.md) (paid_by, renewals, employee roster, team commercial).
 
 ## Phase 5 — Senior Developer Implementation Review
 

@@ -1,6 +1,8 @@
-"""Employee cost roster helpers for Financial Planning."""
+"""Employee cost roster helpers for Financial Planning (team-scoped)."""
 
 from __future__ import annotations
+
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -9,7 +11,23 @@ from app.models.finance import EmployeeCostProfile
 from app.models.models import TeamMember, User
 
 
-def get_employee_cost_roster(db: Session) -> list[dict]:
+def _user_matches_team(user: User, team_id: UUID) -> bool:
+    if user.team_id == team_id:
+        return True
+    memberships = user.team_memberships or []
+    primary = next((m for m in memberships if m.is_primary and m.team_id == team_id), None)
+    if primary is not None:
+        return True
+    if any(m.team_id == team_id for m in memberships):
+        # Prefer primary team for filter: if user has a primary elsewhere, only include if this team is primary.
+        has_primary = any(m.is_primary for m in memberships)
+        if has_primary:
+            return any(m.is_primary and m.team_id == team_id for m in memberships)
+        return True
+    return False
+
+
+def get_employee_cost_roster(db: Session, *, team_id: UUID | None = None) -> list[dict]:
     users = db.scalars(
         select(User)
         .where(User.is_active.is_(True))
@@ -25,6 +43,8 @@ def get_employee_cost_roster(db: Session) -> list[dict]:
 
     roster: list[dict] = []
     for user in users:
+        if team_id is not None and not _user_matches_team(user, team_id):
+            continue
         profile = profiles.get(user.id)
         team_names = sorted(
             {

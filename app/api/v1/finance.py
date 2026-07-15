@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -24,7 +24,7 @@ from app.core.module_actions import (
     user_has_module_action,
 )
 from app.core.permissions import get_role_name
-from app.models.enums import ActivityAction, BudgetApprovalStatus, EntityType
+from app.models.enums import ActivityAction, BudgetApprovalStatus, BudgetScopeType, EntityType
 from app.models.finance import (
     AiForecastPlaceholder,
     Budget,
@@ -62,6 +62,7 @@ from app.schemas.finance import (
     FinanceReportRow,
     FxRateCreate,
     FxRateRead,
+    PaidByDefaultRead,
     QuoteImportResult,
     QuoteRead,
     RenewalNotifyResult,
@@ -72,6 +73,7 @@ from app.schemas.finance import (
 from app.services.finance import annual_plan_service
 from app.services.finance.dashboard_service import get_finance_dashboard
 from app.services.finance.fx_service import to_base_amount
+from app.services.finance.paid_by_defaults import default_paid_by
 from app.services.finance.quote_import_service import (
     import_quotes_from_upload,
 )
@@ -116,11 +118,35 @@ def _audit(
 
 @router.get("/dashboard", response_model=FinanceDashboardRead)
 def finance_dashboard(
+    team_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    return get_finance_dashboard(db)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    return get_finance_dashboard(db, team_id=team_id)
+
+
+@router.get("/expenses/paid-by-default", response_model=PaidByDefaultRead)
+def get_paid_by_default(
+    team_id: UUID = Query(...),
+    cost_centre_id: UUID = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    if db.get(CostCentre, cost_centre_id) is None:
+        raise HTTPException(status_code=400, detail="Cost centre not found")
+    paid = default_paid_by(db, team_id=team_id, cost_centre_id=cost_centre_id)
+    reason = (
+        "Defaulted from Team commercial: customer pays software/hardware"
+        if paid.value == "customer"
+        else "Defaulted to Paid by Prosohm (team commercial or cost centre)"
+    )
+    return PaidByDefaultRead(paid_by=paid, reason=reason)
 
 
 @router.get("/currencies", response_model=list[CurrencyRead])
@@ -191,11 +217,15 @@ def list_cost_centres(
 
 @router.get("/expenses", response_model=list[ExpenseRead])
 def list_expenses(
+    team_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    return db.scalars(select(Expense).where(Expense.is_active.is_(True)).order_by(Expense.name)).all()
+    stmt = select(Expense).where(Expense.is_active.is_(True)).order_by(Expense.name)
+    if team_id is not None:
+        stmt = stmt.where(Expense.team_id == team_id)
+    return db.scalars(stmt).all()
 
 
 @router.post("/expenses", response_model=ExpenseRead, status_code=status.HTTP_201_CREATED)
@@ -205,6 +235,10 @@ def create_expense(
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    if db.get(Team, payload.team_id) is None:
+        raise HTTPException(status_code=400, detail="Team is required and must exist.")
+    if db.get(CostCentre, payload.cost_centre_id) is None:
+        raise HTTPException(status_code=400, detail="Cost centre not found")
     try:
         base_amount, fx_rate, fx_date = to_base_amount(
             db,
@@ -214,8 +248,15 @@ def create_expense(
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    data = payload.model_dump()
+    paid_by = data.pop("paid_by", None)
+    if paid_by is None:
+        paid_by = default_paid_by(
+            db, team_id=payload.team_id, cost_centre_id=payload.cost_centre_id
+        )
     row = Expense(
-        **payload.model_dump(),
+        **data,
+        paid_by=paid_by,
         base_amount_inr=base_amount,
         fx_rate=fx_rate,
         fx_date=fx_date,
@@ -238,23 +279,25 @@ def create_expense(
 
 @router.post("/renewals/notify", response_model=RenewalNotifyResult)
 def trigger_renewal_notifications(
+    team_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Create in-app notifications for expenses in the renewal window."""
     _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
-    count, expense_ids = notify_upcoming_renewals(db)
+    count, expense_ids = notify_upcoming_renewals(db, team_id=team_id)
     db.commit()
     return RenewalNotifyResult(notified_count=count, expense_ids=expense_ids)
 
 
 @router.get("/employee-costs/roster", response_model=list[EmployeeCostRosterItem])
 def employee_cost_roster(
+    team_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    return get_employee_cost_roster(db)
+    return get_employee_cost_roster(db, team_id=team_id)
 
 
 @router.get("/employee-costs", response_model=list[EmployeeCostProfileRead])
@@ -340,6 +383,8 @@ def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommerci
         effective_from=row.effective_from,
         effective_to=row.effective_to,
         notes=row.notes,
+        customer_pays_software=bool(getattr(row, "customer_pays_software", False)),
+        customer_pays_hardware=bool(getattr(row, "customer_pays_hardware", False)),
         base_fee_inr=row.base_fee_inr,
         fx_rate=row.fx_rate,
         is_active=row.is_active,
@@ -350,15 +395,19 @@ def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommerci
 
 @router.get("/team-commercial", response_model=list[TeamCommercialTermsRead])
 def list_team_commercial(
+    team_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    rows = db.scalars(
-        select(TeamCommercialTerms).where(TeamCommercialTerms.is_active.is_(True)).order_by(
-            TeamCommercialTerms.effective_from.desc()
-        )
-    ).all()
+    stmt = (
+        select(TeamCommercialTerms)
+        .where(TeamCommercialTerms.is_active.is_(True))
+        .order_by(TeamCommercialTerms.effective_from.desc())
+    )
+    if team_id is not None:
+        stmt = stmt.where(TeamCommercialTerms.team_id == team_id)
+    rows = db.scalars(stmt).all()
     return [_team_commercial_read(db, row) for row in rows]
 
 
@@ -386,6 +435,17 @@ def create_team_commercial(
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Soft-close prior active terms for this team (one active row per team).
+    prior = db.scalars(
+        select(TeamCommercialTerms).where(
+            TeamCommercialTerms.team_id == payload.team_id,
+            TeamCommercialTerms.is_active.is_(True),
+        )
+    ).all()
+    for old in prior:
+        old.is_active = False
+        if old.effective_to is None:
+            old.effective_to = payload.effective_from
     row = TeamCommercialTerms(
         **payload.model_dump(),
         base_fee_inr=base_fee,
@@ -462,11 +522,15 @@ def delete_team_commercial(
 
 @router.get("/budgets", response_model=list[BudgetRead])
 def list_budgets(
+    team_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    return db.scalars(select(Budget).where(Budget.is_active.is_(True)).order_by(Budget.name)).all()
+    stmt = select(Budget).where(Budget.is_active.is_(True))
+    if team_id is not None:
+        stmt = stmt.where(Budget.scope_type == BudgetScopeType.team, Budget.scope_id == team_id)
+    return db.scalars(stmt.order_by(Budget.name)).all()
 
 
 @router.post("/budgets", response_model=BudgetRead, status_code=status.HTTP_201_CREATED)

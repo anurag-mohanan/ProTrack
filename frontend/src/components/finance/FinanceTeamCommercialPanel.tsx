@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Button,
   Card,
   CardContent,
+  Checkbox,
   FormControl,
+  FormControlLabel,
   InputLabel,
   MenuItem,
   Select,
@@ -16,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { fetchTeams, fetchWorkingModels } from '../../api/lookups';
 import { useToast } from '../../context/ToastContext';
+import { teamQueryParam } from './FinanceTeamFilter';
 
 type TeamCommercial = {
   id: string;
@@ -29,13 +32,15 @@ type TeamCommercial = {
   billing_period: string;
   effective_from: string;
   notes?: string | null;
+  customer_pays_software?: boolean;
+  customer_pays_hardware?: boolean;
 };
 
-export function FinanceTeamCommercialPanel() {
+export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
-    team_id: '',
+    team_id: teamId,
     working_model_id: '',
     billing_mode: 'subscription',
     customer_fee_amount: '',
@@ -43,7 +48,13 @@ export function FinanceTeamCommercialPanel() {
     billing_period: 'monthly',
     effective_from: new Date().toISOString().slice(0, 10),
     notes: '',
+    customer_pays_software: false,
+    customer_pays_hardware: false,
   });
+
+  useEffect(() => {
+    if (teamId) setForm((prev) => ({ ...prev, team_id: teamId }));
+  }, [teamId]);
 
   const teamsQuery = useQuery({
     queryKey: ['lookup-teams'],
@@ -53,9 +64,11 @@ export function FinanceTeamCommercialPanel() {
     queryKey: ['lookup-working-models'],
     queryFn: fetchWorkingModels,
   });
+  const q = teamQueryParam(teamId);
   const termsQuery = useQuery({
-    queryKey: ['finance-team-commercial'],
-    queryFn: async () => (await apiClient.get<TeamCommercial[]>('/finance/team-commercial')).data,
+    queryKey: ['finance-team-commercial', teamId || 'all'],
+    queryFn: async () =>
+      (await apiClient.get<TeamCommercial[]>(`/finance/team-commercial${q}`)).data,
   });
 
   const createMutation = useMutation({
@@ -70,6 +83,8 @@ export function FinanceTeamCommercialPanel() {
           billing_period: form.billing_period,
           effective_from: form.effective_from,
           notes: form.notes || null,
+          customer_pays_software: form.customer_pays_software,
+          customer_pays_hardware: form.customer_pays_hardware,
         })
       ).data,
     onSuccess: () => {
@@ -83,8 +98,8 @@ export function FinanceTeamCommercialPanel() {
     },
   });
 
-  const teams = (teamsQuery.data ?? []) as Array<{ id: string; name: string }>;
-  const models = (modelsQuery.data ?? []) as Array<{ id: string; name: string }>;
+  const teams = teamsQuery.data ?? [];
+  const models = modelsQuery.data ?? [];
 
   return (
     <Stack spacing={3}>
@@ -93,8 +108,7 @@ export function FinanceTeamCommercialPanel() {
           Team cost / commercial model
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Select the engagement model and the fixed / subscription fee the customer pays so finance
-          calculations stay accurate.
+          Engagement model, customer fee, and whether the customer pays software / hardware for this team.
         </Typography>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -165,6 +179,24 @@ export function FinanceTeamCommercialPanel() {
             onChange={(e) => setForm((p) => ({ ...p, effective_from: e.target.value }))}
             slotProps={{ inputLabel: { shrink: true } }}
           />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={form.customer_pays_software}
+                onChange={(e) => setForm((p) => ({ ...p, customer_pays_software: e.target.checked }))}
+              />
+            }
+            label="Customer pays software"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={form.customer_pays_hardware}
+                onChange={(e) => setForm((p) => ({ ...p, customer_pays_hardware: e.target.checked }))}
+              />
+            }
+            label="Customer pays hardware"
+          />
           <Button
             variant="contained"
             disabled={
@@ -190,6 +222,8 @@ export function FinanceTeamCommercialPanel() {
               <Typography variant="body2" color="text.secondary">
                 {row.billing_mode} · {row.customer_fee_amount} {row.currency_code} / {row.billing_period}{' '}
                 · from {row.effective_from}
+                {row.customer_pays_software ? ' · customer SW' : ''}
+                {row.customer_pays_hardware ? ' · customer HW' : ''}
               </Typography>
             </CardContent>
           </Card>

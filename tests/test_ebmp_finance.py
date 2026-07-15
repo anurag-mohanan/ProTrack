@@ -191,10 +191,23 @@ def test_em_defaults_include_financial_planning():
     assert MODULE_FINANCIAL_PLANNING not in default_modules_for_role("Designer")
 
 
-def test_expense_paid_by_customer_is_pass_through(client, auth_headers):
+def _corporate_team_id(client, auth_headers, session) -> str:
+    from app.db.phase23_finance_team_scope_schema_sync import (
+        CORPORATE_TEAM_NAME,
+        ensure_corporate_shared_services_team,
+    )
+
+    team = ensure_corporate_shared_services_team(session)
+    session.commit()
+    assert team.name == CORPORATE_TEAM_NAME
+    return str(team.id)
+
+
+def test_expense_paid_by_customer_is_pass_through(client, auth_headers, session):
     centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers)
     assert centres.status_code == 200
     centre_id = centres.json()[0]["id"]
+    team_id = _corporate_team_id(client, auth_headers, session)
 
     before = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
     before_opex = float(before["cost"]["prosohm_opex"])
@@ -205,6 +218,7 @@ def test_expense_paid_by_customer_is_pass_through(client, auth_headers):
         headers=auth_headers,
         json={
             "cost_centre_id": centre_id,
+            "team_id": team_id,
             "name": "Customer NX seat",
             "amount": "5000",
             "currency_code": "INR",
@@ -222,11 +236,28 @@ def test_expense_paid_by_customer_is_pass_through(client, auth_headers):
     assert float(after["pass_through_opex_inr"]) == before_pass + 5000.0
 
 
-def test_expense_renewal_window_and_notify(client, auth_headers):
+def test_expense_without_team_rejected(client, auth_headers):
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
+    create = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": centres[0]["id"],
+            "name": "No team expense",
+            "amount": "100",
+            "currency_code": "INR",
+        },
+    )
+    # Missing required team_id → request validation (422) or business rule (400)
+    assert create.status_code in (400, 422)
+
+
+def test_expense_renewal_window_and_notify(client, auth_headers, session):
     from datetime import date, timedelta
 
     centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
     centre_id = centres[0]["id"]
+    team_id = _corporate_team_id(client, auth_headers, session)
     renewal = (date.today() + timedelta(days=5)).isoformat()
 
     create = client.post(
@@ -234,6 +265,7 @@ def test_expense_renewal_window_and_notify(client, auth_headers):
         headers=auth_headers,
         json={
             "cost_centre_id": centre_id,
+            "team_id": team_id,
             "name": "NX Mach 3",
             "vendor_name": "Siemens",
             "amount": "120000",
@@ -260,6 +292,77 @@ def test_expense_renewal_window_and_notify(client, auth_headers):
     again = client.post("/api/v1/finance/renewals/notify", headers=auth_headers)
     assert again.status_code == 200
     assert again.json()["notified_count"] == 0
+
+
+def test_who_pays_software_default_from_team_commercial(client, auth_headers, session):
+    import uuid
+    from datetime import date
+
+    from app.models.enums import WorkingModelCode
+    from app.models.models import Team, WorkingModel
+
+    team = Team(id=uuid.uuid4(), name="Who Pays Team A", is_active=True)
+    model = WorkingModel(
+        id=uuid.uuid4(),
+        code=f"wm_{uuid.uuid4().hex[:8]}",
+        strategy_key=WorkingModelCode.retainer,
+        name="Retainer A",
+        is_active=True,
+    )
+    session.add(team)
+    session.add(model)
+    session.commit()
+
+    terms = client.post(
+        "/api/v1/finance/team-commercial",
+        headers=auth_headers,
+        json={
+            "team_id": str(team.id),
+            "working_model_id": str(model.id),
+            "billing_mode": "subscription",
+            "customer_fee_amount": "10000",
+            "currency_code": "INR",
+            "billing_period": "monthly",
+            "effective_from": date.today().isoformat(),
+            "customer_pays_software": True,
+            "customer_pays_hardware": False,
+        },
+    )
+    assert terms.status_code == 201, terms.text
+
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
+    sw = next(row for row in centres if row["code"] == "SW_LICENSES")
+    default = client.get(
+        f"/api/v1/finance/expenses/paid-by-default?team_id={team.id}&cost_centre_id={sw['id']}",
+        headers=auth_headers,
+    )
+    assert default.status_code == 200
+    assert default.json()["paid_by"] == "customer"
+
+    before = client.get(
+        f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers
+    ).json()
+    create = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": sw["id"],
+            "team_id": str(team.id),
+            "name": "NX for Team A",
+            "amount": "8000",
+            "currency_code": "INR",
+            "nature": "opex",
+            "frequency": "yearly",
+        },
+    )
+    assert create.status_code == 201, create.text
+    assert create.json()["paid_by"] == "customer"
+
+    after = client.get(
+        f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers
+    ).json()
+    assert float(after["pass_through_opex_inr"]) == float(before["pass_through_opex_inr"]) + 8000.0
+    assert float(after["cost"]["prosohm_opex"]) == float(before["cost"]["prosohm_opex"])
 
 
 def test_employee_cost_roster_lists_all_active_users(client, auth_headers):
@@ -331,6 +434,166 @@ def test_designer_forbidden_from_roster(client):
     headers = _auth(client, "binil@prosohm.com")
     response = client.get("/api/v1/finance/employee-costs/roster", headers=headers)
     assert response.status_code == 403
+
+
+def test_who_pays_software_defaults_prosohm_when_flags_false(client, auth_headers, session):
+    import uuid
+    from datetime import date
+
+    from app.models.enums import WorkingModelCode
+    from app.models.models import Team, WorkingModel
+
+    team = Team(id=uuid.uuid4(), name="Who Pays Team B", is_active=True)
+    model = WorkingModel(
+        id=uuid.uuid4(),
+        code=f"wm_{uuid.uuid4().hex[:8]}",
+        strategy_key=WorkingModelCode.retainer,
+        name="Retainer B",
+        is_active=True,
+    )
+    session.add(team)
+    session.add(model)
+    session.commit()
+
+    terms = client.post(
+        "/api/v1/finance/team-commercial",
+        headers=auth_headers,
+        json={
+            "team_id": str(team.id),
+            "working_model_id": str(model.id),
+            "billing_mode": "subscription",
+            "customer_fee_amount": "5000",
+            "currency_code": "INR",
+            "billing_period": "monthly",
+            "effective_from": date.today().isoformat(),
+            "customer_pays_software": False,
+            "customer_pays_hardware": False,
+        },
+    )
+    assert terms.status_code == 201, terms.text
+
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
+    sw = next(row for row in centres if row["code"] == "SW_LICENSES")
+    default = client.get(
+        f"/api/v1/finance/expenses/paid-by-default?team_id={team.id}&cost_centre_id={sw['id']}",
+        headers=auth_headers,
+    )
+    assert default.status_code == 200
+    assert default.json()["paid_by"] == "prosohm"
+
+    before = client.get(
+        f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers
+    ).json()
+    create = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": sw["id"],
+            "team_id": str(team.id),
+            "name": "NX for Team B",
+            "amount": "9000",
+            "currency_code": "INR",
+            "nature": "opex",
+            "frequency": "yearly",
+        },
+    )
+    assert create.status_code == 201, create.text
+    assert create.json()["paid_by"] == "prosohm"
+
+    after = client.get(
+        f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers
+    ).json()
+    assert float(after["cost"]["prosohm_opex"]) == float(before["cost"]["prosohm_opex"]) + 9000.0
+    assert float(after["pass_through_opex_inr"]) == float(before["pass_through_opex_inr"])
+
+
+def test_dashboard_and_expenses_filter_by_team(client, auth_headers, session):
+    import uuid
+
+    from app.models.models import Team
+
+    team_a = Team(id=uuid.uuid4(), name="Filter Team A", is_active=True)
+    team_b = Team(id=uuid.uuid4(), name="Filter Team B", is_active=True)
+    session.add(team_a)
+    session.add(team_b)
+    session.commit()
+
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
+    centre_id = centres[0]["id"]
+
+    for team, name, amount in (
+        (team_a, "A-only expense", "111"),
+        (team_b, "B-only expense", "222"),
+    ):
+        created = client.post(
+            "/api/v1/finance/expenses",
+            headers=auth_headers,
+            json={
+                "cost_centre_id": centre_id,
+                "team_id": str(team.id),
+                "name": name,
+                "amount": amount,
+                "currency_code": "INR",
+                "nature": "opex",
+                "frequency": "one_time",
+                "paid_by": "prosohm",
+            },
+        )
+        assert created.status_code == 201, created.text
+
+    list_a = client.get(
+        f"/api/v1/finance/expenses?team_id={team_a.id}", headers=auth_headers
+    ).json()
+    names_a = {row["name"] for row in list_a}
+    assert "A-only expense" in names_a
+    assert "B-only expense" not in names_a
+
+    dash_a = client.get(
+        f"/api/v1/finance/dashboard?team_id={team_a.id}", headers=auth_headers
+    ).json()
+    dash_all = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    assert dash_a.get("selected_team_id") in (str(team_a.id), team_a.id)
+    assert float(dash_all["cost"]["prosohm_opex"]) >= float(dash_a["cost"]["prosohm_opex"])
+    team_ids = {row["team_id"] for row in dash_all.get("by_team") or []}
+    assert str(team_a.id) in team_ids or any(str(team_a.id) == tid for tid in team_ids)
+
+
+def test_corporate_expense_not_on_other_team_dashboard(client, auth_headers, session):
+    import uuid
+
+    from app.models.models import Team
+
+    corporate_id = _corporate_team_id(client, auth_headers, session)
+    other = Team(id=uuid.uuid4(), name="Tooling Isolate", is_active=True)
+    session.add(other)
+    session.commit()
+
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
+    create = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": centres[0]["id"],
+            "team_id": corporate_id,
+            "name": "Shared HQ rent",
+            "amount": "3333",
+            "currency_code": "INR",
+            "nature": "opex",
+            "frequency": "monthly",
+            "paid_by": "prosohm",
+        },
+    )
+    assert create.status_code == 201, create.text
+
+    other_expenses = client.get(
+        f"/api/v1/finance/expenses?team_id={other.id}", headers=auth_headers
+    ).json()
+    assert "Shared HQ rent" not in {row["name"] for row in other_expenses}
+
+    corp_expenses = client.get(
+        f"/api/v1/finance/expenses?team_id={corporate_id}", headers=auth_headers
+    ).json()
+    assert "Shared HQ rent" in {row["name"] for row in corp_expenses}
 
 
 def test_retainer_strategy_includes_customer_fee():

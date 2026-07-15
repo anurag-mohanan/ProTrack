@@ -3,9 +3,11 @@ import { Box, Card, CardContent, Grid, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
+import { teamQueryParam } from './FinanceTeamFilter';
 
 type FinanceDashboard = {
   base_currency: string;
+  selected_team_name?: string | null;
   revenue: Record<string, number | string>;
   cost: Record<string, number | string>;
   profitability: Record<string, number | string>;
@@ -18,10 +20,18 @@ type FinanceDashboard = {
     days_until: number;
     amount: number;
     currency_code: string;
+    team_name?: string | null;
   }>;
   pass_through_opex_inr?: number;
   salary_cost_inr?: number;
   team_commercial_fee_monthly_inr?: number;
+  by_team?: Array<{
+    team_id: string;
+    team_name: string;
+    monthly_operating_cost_inr: number;
+    pass_through_opex_inr: number;
+    team_commercial_fee_monthly_inr: number;
+  }>;
 };
 
 function MetricCard({ title, value, suffix }: { title: string; value: string | number; suffix?: string }) {
@@ -45,33 +55,31 @@ function fmt(value: number | string | undefined) {
   return Number.isFinite(n) ? n.toLocaleString() : String(value ?? '—');
 }
 
-export function FinanceOverviewPanel() {
+export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
   const { showSuccess } = useToast();
   const queryClient = useQueryClient();
+  const q = teamQueryParam(teamId);
 
   const dashboardQuery = useQuery({
-    queryKey: ['finance-dashboard'],
-    queryFn: async () => (await apiClient.get<FinanceDashboard>('/finance/dashboard')).data,
+    queryKey: ['finance-dashboard', teamId || 'all'],
+    queryFn: async () => (await apiClient.get<FinanceDashboard>(`/finance/dashboard${q}`)).data,
   });
 
   const notifyMutation = useMutation({
-    mutationFn: async () => (await apiClient.post('/finance/renewals/notify')).data,
+    mutationFn: async () => (await apiClient.post(`/finance/renewals/notify${q}`)).data,
     onSuccess: (data: { notified_count: number }) => {
       if (data.notified_count > 0) {
         showSuccess(`Sent ${data.notified_count} renewal notification(s)`);
       }
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
-    onError: () => {
-      // View-only finance users cannot trigger notify; Overview still loads renewals from dashboard.
-    },
+    onError: () => {},
   });
 
   useEffect(() => {
     notifyMutation.mutate();
-    // Run once on Overview mount to refresh in-app renewal alerts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [teamId]);
 
   const data = dashboardQuery.data;
   const currency = data?.base_currency ?? 'INR';
@@ -84,7 +92,9 @@ export function FinanceOverviewPanel() {
     <Stack spacing={3}>
       <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>
-          Company cost snapshot
+          {data.selected_team_name
+            ? `Cost snapshot · ${data.selected_team_name}`
+            : 'Company cost snapshot (all teams)'}
         </Typography>
         <Grid container spacing={1.5}>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -123,13 +133,37 @@ export function FinanceOverviewPanel() {
         </Grid>
       </Box>
 
+      {!teamId && (data.by_team?.length ?? 0) > 0 ? (
+        <Box>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Per-team breakdown
+          </Typography>
+          <Grid container spacing={1.5}>
+            {(data.by_team ?? []).map((row) => (
+              <Grid key={row.team_id} size={{ xs: 12, sm: 6, md: 4 }}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography sx={{ fontWeight: 700 }}>{row.team_name}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      OpEx {fmt(row.monthly_operating_cost_inr)} · Pass-through{' '}
+                      {fmt(row.pass_through_opex_inr)} · Fee {fmt(row.team_commercial_fee_monthly_inr)}{' '}
+                      {currency}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+      ) : null}
+
       <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>
           Upcoming renewals (≤ notify window)
         </Typography>
         {(data.upcoming_renewals ?? []).length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            No renewals in the notification window. Set next renewal date on software / subscription expenses.
+            No renewals in the notification window for this scope.
           </Typography>
         ) : (
           <Stack spacing={1}>
@@ -139,6 +173,7 @@ export function FinanceOverviewPanel() {
                   <Typography sx={{ fontWeight: 600 }}>
                     {row.name}
                     {row.vendor_name ? ` · ${row.vendor_name}` : ''}
+                    {row.team_name ? ` · ${row.team_name}` : ''}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Renews {row.next_renewal_date} ({row.days_until} day

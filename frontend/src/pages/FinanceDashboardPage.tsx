@@ -26,6 +26,11 @@ import { FinanceExpensesPanel } from '../components/finance/FinanceExpensesPanel
 import { FinanceOverviewPanel } from '../components/finance/FinanceOverviewPanel';
 import { FinancePeopleCostsPanel } from '../components/finance/FinancePeopleCostsPanel';
 import { FinanceTeamCommercialPanel } from '../components/finance/FinanceTeamCommercialPanel';
+import {
+  FinanceTeamFilter,
+  readStoredFinanceTeamId,
+  teamQueryParam,
+} from '../components/finance/FinanceTeamFilter';
 import { useToast } from '../context/ToastContext';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -37,6 +42,7 @@ type FinanceDashboard = {
 
 export function FinanceDashboardPage() {
   const [tab, setTab] = useState(0);
+  const [teamId, setTeamId] = useState(readStoredFinanceTeamId);
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
 
@@ -49,8 +55,9 @@ export function FinanceDashboardPage() {
   });
 
   const dashboardQuery = useQuery({
-    queryKey: ['finance-dashboard'],
-    queryFn: async () => (await apiClient.get<FinanceDashboard>('/finance/dashboard')).data,
+    queryKey: ['finance-dashboard', teamId || 'all'],
+    queryFn: async () =>
+      (await apiClient.get<FinanceDashboard>(`/finance/dashboard${teamQueryParam(teamId)}`)).data,
   });
   const quotesQuery = useQuery({
     queryKey: ['finance-quotes'],
@@ -58,8 +65,9 @@ export function FinanceDashboardPage() {
     enabled: tab === 5,
   });
   const budgetsQuery = useQuery({
-    queryKey: ['finance-budgets'],
-    queryFn: async () => (await apiClient.get('/finance/budgets')).data,
+    queryKey: ['finance-budgets', teamId || 'all'],
+    queryFn: async () =>
+      (await apiClient.get(`/finance/budgets${teamQueryParam(teamId)}`)).data,
     enabled: tab === 6,
   });
   const costCentresQuery = useQuery({
@@ -95,6 +103,7 @@ export function FinanceDashboardPage() {
         await apiClient.post('/finance/budgets', {
           name: budgetForm.name,
           scope_type: budgetForm.scope_type,
+          scope_id: budgetForm.scope_type === 'team' && teamId ? teamId : null,
           allocated: budgetForm.allocated,
           currency_code: budgetForm.currency_code,
           fiscal_year: Number(budgetForm.fiscal_year) || null,
@@ -143,6 +152,8 @@ export function FinanceDashboardPage() {
         }). Grant the Financial Planning module in Admin → Users.`}
       />
 
+      <FinanceTeamFilter value={teamId} onChange={setTeamId} />
+
       <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 2 }} variant="scrollable">
         <Tab label="Overview" />
         <Tab label="People costs" />
@@ -153,10 +164,10 @@ export function FinanceDashboardPage() {
         <Tab label="Budgets & reports" />
       </Tabs>
 
-      {tab === 0 && <FinanceOverviewPanel />}
-      {tab === 1 && <FinancePeopleCostsPanel />}
-      {tab === 2 && <FinanceExpensesPanel />}
-      {tab === 3 && <FinanceTeamCommercialPanel />}
+      {tab === 0 && <FinanceOverviewPanel teamId={teamId} />}
+      {tab === 1 && <FinancePeopleCostsPanel teamId={teamId} />}
+      {tab === 2 && <FinanceExpensesPanel teamId={teamId} />}
+      {tab === 3 && <FinanceTeamCommercialPanel teamId={teamId} />}
       {tab === 4 && <AnnualPlanPanel />}
 
       {tab === 5 && (

@@ -71,24 +71,46 @@ class ExpenseCreate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     is_recurring: bool = False
-    paid_by: ExpensePaidBy = ExpensePaidBy.prosohm
+    paid_by: ExpensePaidBy | None = None
     vendor_name: str | None = None
     next_renewal_date: date | None = None
     notify_before_days: int = Field(default=7, ge=0, le=365)
     notify_enabled: bool = True
-    team_id: UUID | None = None
+    team_id: UUID
     project_id: UUID | None = None
 
 
-class ExpenseRead(ExpenseCreate):
+class ExpenseRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    cost_centre_id: UUID
+    name: str
+    description: str | None = None
+    nature: CostNature
+    frequency: CostFrequency
+    currency_code: str
+    amount: Decimal
+    start_date: date | None = None
+    end_date: date | None = None
+    is_recurring: bool
+    paid_by: ExpensePaidBy
+    vendor_name: str | None = None
+    next_renewal_date: date | None = None
+    notify_before_days: int
+    notify_enabled: bool
+    team_id: UUID | None = None
+    project_id: UUID | None = None
     base_amount_inr: Decimal
     fx_rate: Decimal
     fx_date: date
     is_active: bool
     renewal_notified_for: date | None = None
+
+
+class PaidByDefaultRead(BaseModel):
+    paid_by: ExpensePaidBy
+    reason: str
 
 
 class EmployeeCostProfileCreate(BaseModel):
@@ -137,6 +159,8 @@ class TeamCommercialTermsCreate(BaseModel):
     effective_from: date
     effective_to: date | None = None
     notes: str | None = None
+    customer_pays_software: bool = False
+    customer_pays_hardware: bool = False
 
 
 class TeamCommercialTermsUpdate(BaseModel):
@@ -149,6 +173,8 @@ class TeamCommercialTermsUpdate(BaseModel):
     effective_to: date | None = None
     notes: str | None = None
     is_active: bool | None = None
+    customer_pays_software: bool | None = None
+    customer_pays_hardware: bool | None = None
 
 
 class TeamCommercialTermsRead(TeamCommercialTermsCreate):
@@ -162,6 +188,17 @@ class TeamCommercialTermsRead(TeamCommercialTermsCreate):
     working_model_name: str | None = None
 
 
+class TeamFinanceBreakdown(BaseModel):
+    team_id: str
+    team_name: str
+    salary_cost_inr: Decimal
+    prosohm_opex_inr: Decimal
+    pass_through_opex_inr: Decimal
+    monthly_operating_cost_inr: Decimal
+    team_commercial_fee_monthly_inr: Decimal
+    planning_revenue_signal_inr: Decimal
+
+
 class UpcomingRenewalRead(BaseModel):
     expense_id: UUID
     name: str
@@ -173,6 +210,8 @@ class UpcomingRenewalRead(BaseModel):
     currency_code: str
     base_amount_inr: Decimal
     days_until: int
+    team_id: UUID | None = None
+    team_name: str | None = None
 
 
 class RenewalNotifyResult(BaseModel):
@@ -265,6 +304,9 @@ class FinanceDashboardRead(BaseModel):
     team_commercial_fee_monthly_inr: Decimal = Decimal("0")
     pass_through_opex_inr: Decimal = Decimal("0")
     salary_cost_inr: Decimal = Decimal("0")
+    selected_team_id: str | None = None
+    selected_team_name: str | None = None
+    by_team: list[TeamFinanceBreakdown] = Field(default_factory=list)
 
 
 class AiForecastPlaceholderRead(BaseModel):

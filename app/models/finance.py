@@ -221,6 +221,8 @@ class TeamCommercialTerms(Base, TimestampMixin):
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
     effective_to: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    customer_pays_software: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    customer_pays_hardware: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 

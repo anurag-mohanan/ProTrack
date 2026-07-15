@@ -16,6 +16,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
+import { teamQueryParam } from './FinanceTeamFilter';
 
 type RosterItem = {
   user_id: string;
@@ -37,15 +38,17 @@ type Draft = {
   effective_from: string;
 };
 
-export function FinancePeopleCostsPanel() {
+export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [missingOnly, setMissingOnly] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const q = teamQueryParam(teamId);
 
   const rosterQuery = useQuery({
-    queryKey: ['finance-employee-roster'],
-    queryFn: async () => (await apiClient.get<RosterItem[]>('/finance/employee-costs/roster')).data,
+    queryKey: ['finance-employee-roster', teamId || 'all'],
+    queryFn: async () =>
+      (await apiClient.get<RosterItem[]>(`/finance/employee-costs/roster${q}`)).data,
   });
 
   const saveMutation = useMutation({
@@ -93,7 +96,9 @@ export function FinancePeopleCostsPanel() {
     <Stack spacing={2}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="body2" color="text.secondary">
-          All active employees. Salaries stay inside Financial Planning (not Ops).
+          {teamId
+            ? 'Employees for the selected team (primary membership preferred).'
+            : 'All active employees. Use the team filter to scope by team.'}
         </Typography>
         <FormControlLabel
           control={<Checkbox checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />}
@@ -168,9 +173,9 @@ export function FinancePeopleCostsPanel() {
                     variant="contained"
                     disabled={saveMutation.isPending}
                     onClick={() => {
-                      const draft = ensureDraft(row);
-                      setDrafts((prev) => ({ ...prev, [row.user_id]: draft }));
-                      saveMutation.mutate({ userId: row.user_id, draft });
+                      const next = ensureDraft(row);
+                      setDrafts((prev) => ({ ...prev, [row.user_id]: next }));
+                      saveMutation.mutate({ userId: row.user_id, draft: next });
                     }}
                   >
                     Save

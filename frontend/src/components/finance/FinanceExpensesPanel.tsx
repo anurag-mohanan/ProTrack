@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Button,
@@ -16,9 +16,11 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
+import { fetchTeams } from '../../api/lookups';
 import { useToast } from '../../context/ToastContext';
+import { teamQueryParam } from './FinanceTeamFilter';
 
-type CostCentre = { id: string; name: string };
+type CostCentre = { id: string; name: string; code?: string };
 type Expense = {
   id: string;
   name: string;
@@ -31,11 +33,12 @@ type Expense = {
   next_renewal_date?: string | null;
   notify_before_days?: number;
   notify_enabled?: boolean;
-  is_recurring?: boolean;
+  team_id?: string | null;
 };
 
 const emptyForm = {
   cost_centre_id: '',
+  team_id: '',
   name: '',
   amount: '',
   currency_code: 'INR',
@@ -49,25 +52,52 @@ const emptyForm = {
   notify_enabled: true,
 };
 
-export function FinanceExpensesPanel() {
+export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState({ ...emptyForm, team_id: teamId });
+  const [paidByHint, setPaidByHint] = useState('');
+  const q = teamQueryParam(teamId);
+
+  useEffect(() => {
+    setForm((prev) => ({ ...prev, team_id: teamId || prev.team_id }));
+  }, [teamId]);
 
   const costCentresQuery = useQuery({
     queryKey: ['finance-cost-centres'],
     queryFn: async () => (await apiClient.get<CostCentre[]>('/finance/cost-centres')).data,
   });
-  const expensesQuery = useQuery({
-    queryKey: ['finance-expenses'],
-    queryFn: async () => (await apiClient.get<Expense[]>('/finance/expenses')).data,
+  const teamsQuery = useQuery({
+    queryKey: ['lookup-teams'],
+    queryFn: fetchTeams,
   });
+  const expensesQuery = useQuery({
+    queryKey: ['finance-expenses', teamId || 'all'],
+    queryFn: async () => (await apiClient.get<Expense[]>(`/finance/expenses${q}`)).data,
+  });
+
+  const refreshPaidByDefault = async (nextTeamId: string, nextCentreId: string) => {
+    if (!nextTeamId || !nextCentreId) {
+      setPaidByHint('');
+      return;
+    }
+    try {
+      const { data } = await apiClient.get<{ paid_by: string; reason: string }>(
+        `/finance/expenses/paid-by-default?team_id=${encodeURIComponent(nextTeamId)}&cost_centre_id=${encodeURIComponent(nextCentreId)}`,
+      );
+      setForm((prev) => ({ ...prev, paid_by: data.paid_by }));
+      setPaidByHint(data.reason);
+    } catch {
+      setPaidByHint('');
+    }
+  };
 
   const mutation = useMutation({
     mutationFn: async () =>
       (
         await apiClient.post('/finance/expenses', {
           cost_centre_id: form.cost_centre_id,
+          team_id: form.team_id,
           name: form.name,
           amount: form.amount,
           currency_code: form.currency_code,
@@ -83,7 +113,12 @@ export function FinanceExpensesPanel() {
       ).data,
     onSuccess: () => {
       showSuccess('Expense saved');
-      setForm((prev) => ({ ...emptyForm, cost_centre_id: prev.cost_centre_id, currency_code: prev.currency_code }));
+      setForm((prev) => ({
+        ...emptyForm,
+        cost_centre_id: prev.cost_centre_id,
+        team_id: prev.team_id || teamId,
+        currency_code: prev.currency_code,
+      }));
       void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
@@ -92,6 +127,8 @@ export function FinanceExpensesPanel() {
     },
   });
 
+  const teams = teamsQuery.data ?? [];
+
   return (
     <Stack spacing={3}>
       <Box>
@@ -99,16 +136,38 @@ export function FinanceExpensesPanel() {
           Add expense / subscription
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Paid by Prosohm counts toward company cost. Paid by customer is pass-through only.
-          Enable notify one week before renewal for software licenses and similar.
+          Team is required. Paid by defaults from Team commercial (customer pays software/hardware) for SW/HW cost
+          centres — you can override.
         </Typography>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', mb: 1 }}>
+          <FormControl size="small" sx={{ minWidth: 200 }} required>
+            <InputLabel>Team</InputLabel>
+            <Select
+              label="Team"
+              value={form.team_id}
+              onChange={(e) => {
+                const next = e.target.value;
+                setForm((p) => ({ ...p, team_id: next }));
+                void refreshPaidByDefault(next, form.cost_centre_id);
+              }}
+            >
+              {teams.map((team) => (
+                <MenuItem key={team.id} value={team.id}>
+                  {team.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Cost centre</InputLabel>
             <Select
               label="Cost centre"
               value={form.cost_centre_id}
-              onChange={(e) => setForm((p) => ({ ...p, cost_centre_id: e.target.value }))}
+              onChange={(e) => {
+                const next = e.target.value;
+                setForm((p) => ({ ...p, cost_centre_id: next }));
+                void refreshPaidByDefault(form.team_id, next);
+              }}
             >
               {(costCentresQuery.data ?? []).map((c) => (
                 <MenuItem key={c.id} value={c.id}>
@@ -140,7 +199,10 @@ export function FinanceExpensesPanel() {
             <Select
               label="Paid by"
               value={form.paid_by}
-              onChange={(e) => setForm((p) => ({ ...p, paid_by: e.target.value }))}
+              onChange={(e) => {
+                setForm((p) => ({ ...p, paid_by: e.target.value }));
+                setPaidByHint('Manual override');
+              }}
             >
               <MenuItem value="prosohm">Paid by Prosohm</MenuItem>
               <MenuItem value="customer">Paid by customer</MenuItem>
@@ -206,12 +268,23 @@ export function FinanceExpensesPanel() {
           />
           <Button
             variant="contained"
-            disabled={!form.cost_centre_id || !form.name || !form.amount || mutation.isPending}
+            disabled={
+              !form.team_id ||
+              !form.cost_centre_id ||
+              !form.name ||
+              !form.amount ||
+              mutation.isPending
+            }
             onClick={() => mutation.mutate()}
           >
             Add expense
           </Button>
         </Stack>
+        {paidByHint ? (
+          <Typography variant="caption" color="text.secondary">
+            {paidByHint}
+          </Typography>
+        ) : null}
       </Box>
 
       <Box>

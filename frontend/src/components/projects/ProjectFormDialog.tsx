@@ -643,7 +643,6 @@ export function ProjectFormDialog({
             <FormSelect
               label="Customer"
               required
-              searchable
               value={form.customer_id}
               selectedLabel={project?.customer_name}
               helper="Select the customer first to filter contacts and templates."
@@ -654,7 +653,6 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormSelect
               label="Customer Contact"
-              searchable
               disabled={!form.customer_id}
               value={form.customer_contact_id}
               helper="Defaults to the primary contact when available."
@@ -715,7 +713,6 @@ export function ProjectFormDialog({
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormSelect
                   label="Team"
-                  searchable
                   required={!isEdit}
                   value={form.team_id ?? ''}
                   options={[
@@ -808,7 +805,6 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12, sm: 4 }}>
             <FormSelect
               label="Design Leader"
-              searchable
               value={form.design_leader_id}
               selectedLabel={project?.design_leader_name}
               options={[{ value: '', label: 'None' }, ...userOptions]}
@@ -820,7 +816,6 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12, sm: 4 }}>
             <FormSelect
               label="Designer"
-              searchable
               value={form.designer_id ?? ''}
               selectedLabel={project?.designer_name}
               options={[{ value: '', label: 'None' }, ...userOptions]}
@@ -838,7 +833,6 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12, sm: 4 }}>
             <FormSelect
               label="Surfacer"
-              searchable
               value={form.surfacer_id ?? ''}
               selectedLabel={project?.surfacer_name}
               options={[{ value: '', label: 'None' }, ...userOptions]}
@@ -850,7 +844,6 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12 }}>
             <FormSelect
               label="Team"
-              searchable
               required={!isEdit}
               value={form.team_id ?? ''}
               selectedLabel={project?.team_name}

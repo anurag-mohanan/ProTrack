@@ -72,17 +72,22 @@ export function FormSelect({
           }
         : null);
     const mergedOptions =
-      selected && !matched ? [selected, ...options.filter((o) => String(o.value) !== valueStr)] : options;
+      selected && !matched
+        ? [selected, ...options.filter((o) => String(o.value) !== valueStr)]
+        : options;
 
     return (
       <Box>
         {helpAffordance}
         <Autocomplete
+          fullWidth
           options={mergedOptions}
           value={selected}
           disabled={disabled}
-          getOptionLabel={(option) => option.label}
-          isOptionEqualToValue={(a, b) => String(a.value) === String(b.value)}
+          forcePopupIcon
+          clearOnEscape
+          getOptionLabel={(option) => option?.label ?? ''}
+          isOptionEqualToValue={(a, b) => String(a?.value ?? '') === String(b?.value ?? '')}
           onChange={(_, option) => {
             onChange?.(
               { target: { value: option?.value ?? '' } } as never,
@@ -90,16 +95,13 @@ export function FormSelect({
             );
           }}
           renderInput={(params) => (
+            // Critical: spread Autocomplete params first and do NOT replace its
+            // slotProps/InputProps — otherwise the field renders blank with no caret.
             <TextField
               {...params}
               label={label}
               required={required}
               placeholder={placeholder}
-              slotProps={{
-                inputLabel: {
-                  shrink: Boolean(selected) || Boolean(placeholder) || undefined,
-                },
-              }}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2.5,
@@ -113,6 +115,14 @@ export function FormSelect({
     );
   }
 
+  // Native Select: ensure current value remains a valid MenuItem (orphan injection).
+  const valueStr = value === null || value === undefined ? '' : String(value);
+  const hasOption = options.some((option) => String(option.value) === valueStr);
+  const selectOptions =
+    valueStr && !hasOption
+      ? [{ value: valueStr, label: selectedLabel?.trim() || valueStr }, ...options]
+      : options;
+
   return (
     <Box>
       {helpAffordance}
@@ -125,7 +135,7 @@ export function FormSelect({
           labelId={labelId}
           label={label}
           notched={shrink}
-          value={value ?? ''}
+          value={valueStr}
           displayEmpty={Boolean(placeholder)}
           open={open}
           onOpen={(event) => {
@@ -147,7 +157,7 @@ export function FormSelect({
               <em>{placeholder}</em>
             </MenuItem>
           ) : null}
-          {options.map((option) => (
+          {selectOptions.map((option) => (
             <MenuItem key={option.value || '__none__'} value={option.value}>
               {option.label}
             </MenuItem>

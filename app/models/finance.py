@@ -236,6 +236,9 @@ class Quote(Base, TimestampMixin):
     customer_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=False
     )
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=True, index=True
+    )
     project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("projects.id"), nullable=True
     )

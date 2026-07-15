@@ -17,15 +17,12 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
-import {
-  IMPORT_ACCEPT_WITH_CSV,
-  IMPORT_FORMAT_LABEL_WITH_CSV,
-} from '../config/importFormats';
 import { AnnualPlanPanel } from '../components/finance/AnnualPlanPanel';
 import { FinanceExpensesPanel } from '../components/finance/FinanceExpensesPanel';
 import { FinanceFxRatesPanel } from '../components/finance/FinanceFxRatesPanel';
 import { FinanceOverviewPanel } from '../components/finance/FinanceOverviewPanel';
 import { FinancePeopleCostsPanel } from '../components/finance/FinancePeopleCostsPanel';
+import { FinanceQuotesPanel } from '../components/finance/FinanceQuotesPanel';
 import { FinanceTeamCommercialPanel } from '../components/finance/FinanceTeamCommercialPanel';
 import {
   FinanceTeamFilter,
@@ -35,6 +32,7 @@ import {
 import { useToast } from '../context/ToastContext';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 
 type FinanceDashboard = {
   base_currency: string;
@@ -60,11 +58,6 @@ export function FinanceDashboardPage() {
     queryFn: async () =>
       (await apiClient.get<FinanceDashboard>(`/finance/dashboard${teamQueryParam(teamId)}`)).data,
   });
-  const quotesQuery = useQuery({
-    queryKey: ['finance-quotes'],
-    queryFn: async () => (await apiClient.get('/finance/quotes')).data,
-    enabled: tab === 5,
-  });
   const budgetsQuery = useQuery({
     queryKey: ['finance-budgets', teamId || 'all'],
     queryFn: async () =>
@@ -80,22 +73,6 @@ export function FinanceDashboardPage() {
     queryKey: ['finance-pl'],
     queryFn: async () => (await apiClient.get('/finance/reports/profit-loss')).data,
     enabled: tab === 6,
-  });
-
-  const importMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const form = new FormData();
-      form.append('file', file);
-      return (await apiClient.post('/finance/quotes/import', form)).data;
-    },
-    onSuccess: (data) => {
-      showSuccess(`Imported ${data.imported_count} quote(s)`);
-      void queryClient.invalidateQueries({ queryKey: ['finance-quotes'] });
-      void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
-    },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      showError(error.response?.data?.detail ?? 'Quote import failed');
-    },
   });
 
   const budgetMutation = useMutation({
@@ -118,8 +95,8 @@ export function FinanceDashboardPage() {
       void queryClient.invalidateQueries({ queryKey: ['finance-budgets'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      showError(error.response?.data?.detail ?? 'Could not create budget');
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not create budget'));
     },
   });
 
@@ -135,8 +112,8 @@ export function FinanceDashboardPage() {
       void queryClient.invalidateQueries({ queryKey: ['finance-budgets'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      showError(error.response?.data?.detail ?? 'Could not approve budget');
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not approve budget'));
     },
   });
 
@@ -170,51 +147,7 @@ export function FinanceDashboardPage() {
       {tab === 2 && <FinanceExpensesPanel teamId={teamId} />}
       {tab === 3 && <FinanceTeamCommercialPanel teamId={teamId} />}
       {tab === 4 && <AnnualPlanPanel />}
-
-      {tab === 5 && (
-        <Stack spacing={2}>
-          <Typography>
-            Import quotes with customer, tool number, quoted hours, estimated cost, quoted revenue,
-            margin, business model, dates, version and revision.
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Default formats: {IMPORT_FORMAT_LABEL_WITH_CSV}. PDF must be a text table with a header
-            row (same columns as Excel/CSV). Legacy .xls is not supported — save as .xlsx.
-          </Typography>
-          <Button variant="contained" component="label" disabled={importMutation.isPending}>
-            Upload Quote File
-            <input
-              hidden
-              type="file"
-              accept={IMPORT_ACCEPT_WITH_CSV}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) importMutation.mutate(file);
-              }}
-            />
-          </Button>
-          <Typography variant="subtitle2">Imported quotes</Typography>
-          <Stack spacing={1}>
-            {(quotesQuery.data ?? []).map(
-              (quote: {
-                id: string;
-                tool_number: string;
-                currency_code: string;
-                current_revision: string;
-              }) => (
-                <Card key={quote.id} variant="outlined">
-                  <CardContent>
-                    <Typography sx={{ fontWeight: 600 }}>{quote.tool_number}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {quote.currency_code} · rev {quote.current_revision}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              ),
-            )}
-          </Stack>
-        </Stack>
-      )}
+      {tab === 5 && <FinanceQuotesPanel teamId={teamId} />}
 
       {tab === 6 && (
         <Stack spacing={3}>

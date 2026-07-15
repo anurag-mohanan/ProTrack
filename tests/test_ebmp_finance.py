@@ -54,7 +54,11 @@ def test_cost_centres_seeded(client, auth_headers):
     assert "SW_LICENSES" in codes
 
 
-def test_quote_csv_import(client, auth_headers):
+def test_quote_csv_import(client, auth_headers, session):
+    from app.db.phase23_finance_team_scope_schema_sync import ensure_corporate_shared_services_team
+
+    team = ensure_corporate_shared_services_team(session)
+    session.commit()
     csv_content = (
         "Customer,Tool Number,Quoted Hours,Estimated Cost,Quoted Revenue,Currency,Version,Revision\n"
         "Prosohm Test Customer,QUOTE-T-1,40,1000,2500,USD,1,A\n"
@@ -62,12 +66,15 @@ def test_quote_csv_import(client, auth_headers):
     response = client.post(
         "/api/v1/finance/quotes/import",
         headers=auth_headers,
+        data={"team_id": str(team.id)},
         files={"file": ("quotes.csv", BytesIO(csv_content), "text/csv")},
     )
     assert response.status_code == 200, response.text
     assert response.json()["imported_count"] == 1
 
-    quotes = client.get("/api/v1/finance/quotes", headers=auth_headers)
+    quotes = client.get(
+        f"/api/v1/finance/quotes?team_id={team.id}", headers=auth_headers
+    )
     assert quotes.status_code == 200
     tools = {row["tool_number"] for row in quotes.json()}
     assert "QUOTE-T-1" in tools

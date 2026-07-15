@@ -39,13 +39,68 @@ def _normalize_monthly_fee(amount: Decimal, period: TeamBillingPeriod) -> Decima
 
 
 def _user_ids_for_team(db: Session, team_id: UUID) -> set[UUID]:
+    """Salary rollup: primary team home (User.team_id or is_primary membership).
+
+    Secondary delivery memberships (e.g. manager on Sybridge with primary Corporate)
+    do not pull salary into the delivery team's operating cost.
+    """
     ids: set[UUID] = set()
-    members = db.scalars(select(TeamMember.user_id).where(TeamMember.team_id == team_id)).all()
-    ids.update(members)
-    legacy = db.scalars(select(User.id).where(User.team_id == team_id, User.is_active.is_(True))).all()
+    primary_members = db.scalars(
+        select(TeamMember.user_id).where(
+            TeamMember.team_id == team_id,
+            TeamMember.is_primary.is_(True),
+        )
+    ).all()
+    ids.update(primary_members)
+    legacy = db.scalars(
+        select(User.id).where(User.team_id == team_id, User.is_active.is_(True))
+    ).all()
     ids.update(legacy)
-    # Prefer primary membership when multiple, but for cost rollup include all members of the team.
     return ids
+
+
+def _quote_revenue_cost(
+    db: Session, *, team_id: UUID | None
+) -> tuple[Decimal, Decimal]:
+    """Sum current revision INR for active quotes (all company or one team)."""
+    from app.models.finance import Quote
+
+    if team_id is None:
+        revenue = _d(
+            db.scalar(select(func.coalesce(func.sum(QuoteRevision.base_quoted_revenue_inr), 0)))
+        )
+        cost = _d(
+            db.scalar(select(func.coalesce(func.sum(QuoteRevision.base_estimated_cost_inr), 0)))
+        )
+        return revenue, cost
+
+    quotes = db.scalars(
+        select(Quote).where(Quote.is_active.is_(True), Quote.team_id == team_id)
+    ).all()
+    revenue = Decimal("0.00")
+    cost = Decimal("0.00")
+    for quote in quotes:
+        rev = db.scalar(
+            select(QuoteRevision)
+            .where(
+                QuoteRevision.quote_id == quote.id,
+                QuoteRevision.version == quote.current_version,
+                QuoteRevision.revision == quote.current_revision,
+            )
+            .limit(1)
+        )
+        if rev is None:
+            rev = db.scalar(
+                select(QuoteRevision)
+                .where(QuoteRevision.quote_id == quote.id)
+                .order_by(QuoteRevision.version.desc())
+                .limit(1)
+            )
+        if rev is None:
+            continue
+        revenue += _d(rev.base_quoted_revenue_inr)
+        cost += _d(rev.base_estimated_cost_inr)
+    return revenue, cost
 
 
 def _salary_for_users(db: Session, user_ids: set[UUID] | None) -> Decimal:
@@ -148,12 +203,7 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     today = date.today()
     fy_start = current_fy_start(today)
     fy_label = current_fy_label(today)
-    revenue = _d(
-        db.scalar(select(func.coalesce(func.sum(QuoteRevision.base_quoted_revenue_inr), 0)))
-    )
-    estimated_cost = _d(
-        db.scalar(select(func.coalesce(func.sum(QuoteRevision.base_estimated_cost_inr), 0)))
-    )
+    revenue, estimated_cost = _quote_revenue_cost(db, team_id=team_id)
 
     user_ids = _user_ids_for_team(db, team_id) if team_id else None
     salary_cost = _salary_for_users(db, user_ids)
@@ -168,21 +218,15 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     )
     team_fee_monthly = _team_fee_monthly(db, team_id=team_id, today=today)
 
-    # Quotes stay company-level signal; commercial fees are team-scoped.
-    planning_revenue = revenue + team_fee_monthly if team_id is None else team_fee_monthly
-    # When filtered to a team, still show company quote revenue separately but operating cost is team.
-    if team_id is not None:
-        planning_revenue = team_fee_monthly  # team lens focuses fee + costs; quote stays in customer_revenue
+    planning_revenue = revenue + team_fee_monthly
     operating_cost = prosohm_opex + salary_cost
-    display_revenue = revenue + team_fee_monthly if team_id is None else (team_fee_monthly)
-    gross_profit = (revenue + team_fee_monthly) - estimated_cost if team_id is None else team_fee_monthly - Decimal("0")
+    display_revenue = revenue + team_fee_monthly
+    gross_profit = display_revenue - estimated_cost
     gross_margin = (
-        (gross_profit / (revenue + team_fee_monthly) * 100) if (revenue + team_fee_monthly) else Decimal("0.00")
+        (gross_profit / display_revenue * 100) if display_revenue else Decimal("0.00")
     )
-    net_profit = ((revenue + team_fee_monthly) - estimated_cost - operating_cost) if team_id is None else (
-        team_fee_monthly - operating_cost
-    )
-    net_base = (revenue + team_fee_monthly) if team_id is None else team_fee_monthly
+    net_profit = display_revenue - estimated_cost - operating_cost
+    net_base = display_revenue
     net_margin = (net_profit / net_base * 100) if net_base else Decimal("0.00")
 
     budget_stmt = select(func.coalesce(func.sum(Budget.base_allocated_inr), 0)).where(Budget.is_active.is_(True))
@@ -250,7 +294,10 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     if team_id is None:
         teams = db.scalars(select(Team).where(Team.is_active.is_(True)).order_by(Team.name)).all()
         for team in teams:
-            by_team.append(_team_rollups(db, team, today=today, quote_revenue_share=Decimal("0")))
+            team_quote, _ = _quote_revenue_cost(db, team_id=team.id)
+            by_team.append(
+                _team_rollups(db, team, today=today, quote_revenue_share=team_quote)
+            )
 
     selected_team_name = None
     if team_id is not None:
@@ -264,10 +311,10 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         "planning_fy_start": fy_start.isoformat(),
         "planning_fy_label": fy_label,
         "revenue": {
-            "monthly_revenue": revenue + team_fee_monthly if team_id is None else display_revenue,
-            "quarterly_revenue": revenue + team_fee_monthly if team_id is None else display_revenue,
-            "yearly_revenue": revenue + team_fee_monthly if team_id is None else display_revenue,
-            "revenue_forecast": revenue + team_fee_monthly if team_id is None else display_revenue,
+            "monthly_revenue": display_revenue,
+            "quarterly_revenue": display_revenue,
+            "yearly_revenue": display_revenue,
+            "revenue_forecast": display_revenue,
             "customer_revenue": revenue,
             "business_model_revenue": team_fee_monthly,
             "quote_revenue": revenue,

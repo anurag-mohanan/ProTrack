@@ -50,27 +50,16 @@ flowchart TD
 
 ## Current state (as-of code)
 
-| Area | Today | Gap |
-|------|--------|-----|
-| UI | `FinanceDashboardPage` tab **Revenue / quotes** — upload only | No team required on upload; weak error toast |
-| API | `POST /api/v1/finance/quotes/import` (multipart `file`) | No `team_id` Form/Query param |
-| Service | [`quote_import_service.py`](../app/services/finance/quote_import_service.py) — Excel / PDF / CSV | No team; customer must pre-exist; FX on start date |
-| Model | [`Quote`](../app/models/finance.py) — customer, optional project, currency, revisions | **No `team_id`** |
-| List | `GET /finance/quotes` — all active quotes | No team filter; thin card UI |
-| Overview | Quote revenue summed company-wide | Not attributed to team |
+| Area | Status |
+|------|--------|
+| UI | **Awarded** copy + required Team for upload (`FinanceQuotesPanel`) |
+| API | `POST /finance/quotes/import` requires `team_id` Form; list `?team_id=` |
+| Model | `quotes.team_id` (phase29) |
+| Currency | Blank → customer `default_currency_code` → INR |
+| Overview | Team filter uses quote revenue for that `team_id` |
 
-Common real failure causes behind the red toast (fix visibility first):
+## Pipeline
 
-1. **Customer not found** — name/code not exact match to Admin → Customers.
-2. **No FX rate** for row currency on/before Start Date (same class of bug as team commercial FY start).
-3. **PDF not a machine table** — scanned image / no header row / different column titles.
-4. **Wrong headers** — missing Customer / Tool Number.
-5. **Duplicate version-revision** for same tool.
-6. Legacy **.xls**.
-
----
-
-## Click map (target UX)
 
 | What | Where |
 |------|--------|

@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -37,7 +37,7 @@ from app.models.finance import (
     Quote,
     TeamCommercialTerms,
 )
-from app.models.models import Activity, Team, TeamMember, User, WorkingModel
+from app.models.models import Activity, Customer, Team, TeamMember, User, WorkingModel
 from app.schemas.finance import (
     BudgetCreate,
     BudgetRead,
@@ -755,21 +755,27 @@ def update_budget_status(
 
 @router.get("/quotes", response_model=list[QuoteRead])
 def list_quotes(
+    team_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    quotes = db.scalars(select(Quote).where(Quote.is_active.is_(True)).order_by(Quote.tool_number)).all()
-    return quotes
+    stmt = select(Quote).where(Quote.is_active.is_(True)).order_by(Quote.tool_number)
+    if team_id is not None:
+        stmt = stmt.where(Quote.team_id == team_id)
+    return [_quote_read(db, row) for row in db.scalars(stmt).all()]
 
 
 @router.post("/quotes/import", response_model=QuoteImportResult)
 async def import_quotes(
     file: UploadFile = File(...),
+    team_id: UUID = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    if db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team is required and must exist.")
     content = await file.read()
     filename = file.filename or "upload"
     try:
@@ -779,7 +785,11 @@ async def import_quotes(
                 detail="Legacy .xls is not supported. Save as .xlsx or upload PDF/CSV.",
             )
         quotes = import_quotes_from_upload(
-            db, filename=filename, content=content, actor=current_user
+            db,
+            filename=filename,
+            content=content,
+            actor=current_user,
+            team_id=team_id,
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -798,6 +808,20 @@ async def import_quotes(
     return QuoteImportResult(
         imported_count=len(quotes),
         quote_ids=[quote.id for quote in quotes],
+    )
+
+
+def _quote_read(db: Session, row: Quote) -> QuoteRead:
+    customer = db.get(Customer, row.customer_id)
+    team = db.get(Team, row.team_id) if row.team_id else None
+    data = QuoteRead.model_validate(row)
+    return data.model_copy(
+        update={
+            "team_name": team.name if team else None,
+            "customer_name": customer.name if customer else None,
+            "project_linked": row.project_id is not None,
+            "revisions": [],
+        }
     )
 
 

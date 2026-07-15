@@ -68,13 +68,16 @@ def import_quote_row(
     row: dict[str, object],
     actor: User,
     source: str = "csv",
+    team_id: UUID | None = None,
 ) -> Quote:
     customer_key = str(row.get("customer") or row.get("Customer") or "").strip()
     tool_number = str(row.get("tool_number") or row.get("Tool Number") or "").strip()
     if not customer_key or not tool_number:
         raise ProTrackValidationError("Customer and Tool Number are required")
 
-    currency = str(row.get("currency") or row.get("Currency") or "USD").strip().upper()
+    customer = _find_customer(db, customer_key)
+    currency_raw = str(row.get("currency") or row.get("Currency") or "").strip().upper()
+    currency = currency_raw or (customer.default_currency_code or "INR").strip().upper()
     quoted_hours = _parse_decimal(row.get("quoted_hours") or row.get("Quoted Hours") or 0, "quoted_hours")
     estimated_cost = _parse_decimal(
         row.get("estimated_cost") or row.get("Estimated Cost") or 0, "estimated_cost"
@@ -102,7 +105,6 @@ def import_quote_row(
         db, amount=quoted_revenue, currency_code=currency, on_date=fx_date
     )
 
-    customer = _find_customer(db, customer_key)
     working_model = _find_working_model(
         db, str(row.get("business_model") or row.get("Business Model") or "") or None
     )
@@ -123,6 +125,7 @@ def import_quote_row(
     if quote is None:
         quote = Quote(
             customer_id=customer.id,
+            team_id=team_id,
             project_id=project.id if project is not None else None,
             tool_number=tool_number,
             business_model_id=working_model.id if working_model else None,
@@ -148,6 +151,8 @@ def import_quote_row(
         quote.current_version = version
         quote.current_revision = revision
         quote.currency_code = currency
+        if team_id is not None:
+            quote.team_id = team_id
         if working_model is not None:
             quote.business_model_id = working_model.id
         if project is not None:
@@ -182,6 +187,7 @@ def import_quotes_from_csv(
     *,
     content: bytes,
     actor: User,
+    team_id: UUID | None = None,
 ) -> list[Quote]:
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
@@ -190,7 +196,9 @@ def import_quotes_from_csv(
     quotes: list[Quote] = []
     for index, row in enumerate(reader, start=2):
         try:
-            quotes.append(import_quote_row(db, row=row, actor=actor, source="csv"))
+            quotes.append(
+                import_quote_row(db, row=row, actor=actor, source="csv", team_id=team_id)
+            )
         except ProTrackValidationError as exc:
             raise ProTrackValidationError(f"Row {index}: {exc}") from exc
     return quotes
@@ -201,6 +209,7 @@ def import_quotes_from_excel(
     *,
     content: bytes,
     actor: User,
+    team_id: UUID | None = None,
 ) -> list[Quote]:
     try:
         from openpyxl import load_workbook
@@ -221,7 +230,9 @@ def import_quotes_from_excel(
             continue
         row = {headers[i]: values[i] for i in range(min(len(headers), len(values)))}
         try:
-            quotes.append(import_quote_row(db, row=row, actor=actor, source="excel"))
+            quotes.append(
+                import_quote_row(db, row=row, actor=actor, source="excel", team_id=team_id)
+            )
         except ProTrackValidationError as exc:
             raise ProTrackValidationError(f"Row {index}: {exc}") from exc
     return quotes
@@ -232,6 +243,7 @@ def import_quotes_from_pdf(
     *,
     content: bytes,
     actor: User,
+    team_id: UUID | None = None,
 ) -> list[Quote]:
     from app.services.pdf_table_import import extract_tables_as_dicts
 
@@ -239,7 +251,9 @@ def import_quotes_from_pdf(
     quotes: list[Quote] = []
     for index, row in enumerate(rows, start=2):
         try:
-            quotes.append(import_quote_row(db, row=row, actor=actor, source="pdf"))
+            quotes.append(
+                import_quote_row(db, row=row, actor=actor, source="pdf", team_id=team_id)
+            )
         except ProTrackValidationError as exc:
             raise ProTrackValidationError(f"Row {index}: {exc}") from exc
     return quotes
@@ -251,6 +265,7 @@ def import_quotes_from_upload(
     filename: str,
     content: bytes,
     actor: User,
+    team_id: UUID | None = None,
 ) -> list[Quote]:
     from app.services.import_file_formats import (
         assert_supported_suffix,
@@ -262,11 +277,11 @@ def import_quotes_from_upload(
 
     suffix = assert_supported_suffix(filename, allowed=with_csv())
     if is_csv(suffix):
-        return import_quotes_from_csv(db, content=content, actor=actor)
+        return import_quotes_from_csv(db, content=content, actor=actor, team_id=team_id)
     if is_excel(suffix):
-        return import_quotes_from_excel(db, content=content, actor=actor)
+        return import_quotes_from_excel(db, content=content, actor=actor, team_id=team_id)
     if is_pdf(suffix):
-        return import_quotes_from_pdf(db, content=content, actor=actor)
+        return import_quotes_from_pdf(db, content=content, actor=actor, team_id=team_id)
     raise ProTrackValidationError(
         "Supported formats: Excel (.xlsx/.xlsm), PDF (table layout), CSV."
     )

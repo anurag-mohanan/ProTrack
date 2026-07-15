@@ -314,6 +314,7 @@ class QuoteRead(BaseModel):
 
     id: UUID
     customer_id: UUID
+    team_id: UUID | None = None
     project_id: UUID | None = None
     tool_number: str
     business_model_id: UUID | None = None
@@ -322,6 +323,9 @@ class QuoteRead(BaseModel):
     current_version: int
     current_revision: str
     is_active: bool
+    team_name: str | None = None
+    customer_name: str | None = None
+    project_linked: bool = False
     revisions: list[QuoteRevisionRead] = Field(default_factory=list)
 
 

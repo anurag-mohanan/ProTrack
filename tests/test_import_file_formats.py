@@ -81,11 +81,14 @@ def test_normalize_import_bytes_passes_excel_through():
 
 
 def test_quote_import_from_pdf(client, auth_headers, monkeypatch, session):
+    from app.db.phase23_finance_team_scope_schema_sync import ensure_corporate_shared_services_team
     from app.models.models import Customer
     from app.services.finance import quote_import_service
 
     customer = session.query(Customer).filter(Customer.is_active.is_(True)).first()
     assert customer is not None
+    team = ensure_corporate_shared_services_team(session)
+    session.commit()
 
     monkeypatch.setattr(
         "app.services.pdf_table_import.extract_tables_as_matrix",
@@ -116,21 +119,41 @@ def test_quote_import_from_pdf(client, auth_headers, monkeypatch, session):
     response = client.post(
         "/api/v1/finance/quotes/import",
         headers=auth_headers,
+        data={"team_id": str(team.id)},
         files={"file": ("quotes.pdf", BytesIO(b"%PDF-fake"), "application/pdf")},
     )
     assert response.status_code == 200, response.text
     assert response.json()["imported_count"] == 1
+    listed = client.get(
+        f"/api/v1/finance/quotes?team_id={team.id}", headers=auth_headers
+    ).json()
+    match = next((q for q in listed if q["tool_number"] == "PDF-QUOTE-1"), None)
+    assert match is not None
+    assert match["team_id"] == str(team.id)
 
 
-def test_quote_import_rejects_legacy_xls(client, auth_headers):
+def test_quote_import_requires_team(client, auth_headers):
     response = client.post(
         "/api/v1/finance/quotes/import",
         headers=auth_headers,
+        files={"file": ("quotes.csv", BytesIO(b"Customer,Tool Number\nAcme,T1"), "text/csv")},
+    )
+    assert response.status_code in (400, 422)
+
+
+def test_quote_import_rejects_legacy_xls(client, auth_headers, session):
+    from app.db.phase23_finance_team_scope_schema_sync import ensure_corporate_shared_services_team
+
+    team = ensure_corporate_shared_services_team(session)
+    session.commit()
+    response = client.post(
+        "/api/v1/finance/quotes/import",
+        headers=auth_headers,
+        data={"team_id": str(team.id)},
         files={"file": ("old.xls", BytesIO(b"not-excel"), "application/vnd.ms-excel")},
     )
     assert response.status_code == 400
     assert "xls" in response.json()["detail"].lower()
-
 
 def test_empty_pdf_raises(monkeypatch):
     def _boom(_content: bytes):

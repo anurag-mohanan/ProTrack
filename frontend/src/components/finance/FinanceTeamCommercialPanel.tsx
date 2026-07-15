@@ -232,7 +232,7 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
               label="Rate per resource / month"
               value={form.customer_fee_amount}
               onChange={(e) => setForm((p) => ({ ...p, customer_fee_amount: e.target.value }))}
-              helperText="Overview fee = rate × people on this team who require salary"
+              helperText="Overview fee = rate × billable salary-required headcount (excludes management overhead)"
             />
           ) : (
             <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center', maxWidth: 280 }}>

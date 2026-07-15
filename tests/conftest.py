@@ -30,6 +30,9 @@ from app.db.phase23_finance_team_scope_schema_sync import (
 from app.db.phase24_user_requires_salary_schema_sync import (
     ensure_phase24_user_requires_salary_foundation,
 )
+from app.db.phase25_expense_purchase_date_schema_sync import (
+    ensure_phase25_expense_purchase_date_foundation,
+)
 from app.db.phase26_customer_currency_schema_sync import (
     ensure_phase26_customer_currency_foundation,
 )
@@ -328,6 +331,7 @@ def test_engine():
     ensure_phase22_finance_rebuild_foundation(engine)
     ensure_phase23_finance_team_scope_foundation(engine)
     ensure_phase24_user_requires_salary_foundation(engine)
+    ensure_phase25_expense_purchase_date_foundation(engine)
     ensure_phase26_customer_currency_foundation(engine)
     ensure_phase27_fx_rate_backfill(engine)
     ensure_project_complexity(engine)
@@ -355,6 +359,7 @@ def seeded_db(test_session_factory, test_engine):
     ensure_phase22_finance_rebuild_foundation(test_engine)
     ensure_phase23_finance_team_scope_foundation(test_engine)
     ensure_phase24_user_requires_salary_foundation(test_engine)
+    ensure_phase25_expense_purchase_date_foundation(test_engine)
     ensure_phase26_customer_currency_foundation(test_engine)
     ensure_phase27_fx_rate_backfill(test_engine)
     ensure_project_complexity(test_engine)

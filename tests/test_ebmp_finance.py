@@ -221,6 +221,7 @@ def test_expense_paid_by_customer_is_pass_through(client, auth_headers, session)
             "team_id": team_id,
             "name": "Customer NX seat",
             "amount": "5000",
+            "purchase_date": "2026-07-01",
             "currency_code": "INR",
             "nature": "opex",
             "frequency": "yearly",
@@ -245,6 +246,7 @@ def test_expense_without_team_rejected(client, auth_headers):
             "cost_centre_id": centres[0]["id"],
             "name": "No team expense",
             "amount": "100",
+            "purchase_date": "2026-07-01",
             "currency_code": "INR",
         },
     )
@@ -269,6 +271,7 @@ def test_expense_renewal_window_and_notify(client, auth_headers, session):
             "name": "NX Mach 3",
             "vendor_name": "Siemens",
             "amount": "120000",
+            "purchase_date": "2026-07-01",
             "currency_code": "INR",
             "nature": "opex",
             "frequency": "yearly",
@@ -350,6 +353,7 @@ def test_who_pays_software_default_from_team_commercial(client, auth_headers, se
             "team_id": str(team.id),
             "name": "NX for Team A",
             "amount": "8000",
+            "purchase_date": "2026-07-01",
             "currency_code": "INR",
             "nature": "opex",
             "frequency": "yearly",
@@ -558,6 +562,7 @@ def test_expense_patch_and_soft_delete(client, auth_headers, session):
             "team_id": team_id,
             "name": "Editable license",
             "amount": "1000",
+            "purchase_date": "2026-07-01",
             "currency_code": "INR",
             "nature": "opex",
             "frequency": "yearly",
@@ -570,7 +575,8 @@ def test_expense_patch_and_soft_delete(client, auth_headers, session):
     patched = client.patch(
         f"/api/v1/finance/expenses/{expense_id}",
         headers=auth_headers,
-        json={"amount": "2500", "name": "Editable license v2"},
+        json={"amount": "2500",
+            "purchase_date": "2026-07-01", "name": "Editable license v2"},
     )
     assert patched.status_code == 200, patched.text
     assert float(patched.json()["amount"]) == 2500.0
@@ -697,6 +703,7 @@ def test_who_pays_software_defaults_prosohm_when_flags_false(client, auth_header
             "team_id": str(team.id),
             "name": "NX for Team B",
             "amount": "9000",
+            "purchase_date": "2026-07-01",
             "currency_code": "INR",
             "nature": "opex",
             "frequency": "yearly",
@@ -738,6 +745,7 @@ def test_dashboard_and_expenses_filter_by_team(client, auth_headers, session):
                 "team_id": str(team.id),
                 "name": name,
                 "amount": amount,
+                "purchase_date": "2026-07-01",
                 "currency_code": "INR",
                 "nature": "opex",
                 "frequency": "one_time",
@@ -782,6 +790,7 @@ def test_corporate_expense_not_on_other_team_dashboard(client, auth_headers, ses
             "team_id": corporate_id,
             "name": "Shared HQ rent",
             "amount": "3333",
+            "purchase_date": "2026-07-01",
             "currency_code": "INR",
             "nature": "opex",
             "frequency": "monthly",
@@ -823,6 +832,80 @@ def test_customer_default_currency(client, auth_headers, session):
     match = next((row for row in items if row["id"] == str(customer.id)), None)
     assert match is not None
     assert match.get("default_currency_code") == "USD"
+
+
+def test_expense_requires_purchase_date(client, auth_headers, session):
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
+    team_id = _corporate_team_id(client, auth_headers, session)
+    create = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": centres[0]["id"],
+            "team_id": team_id,
+            "name": "No purchase date",
+            "amount": "50",
+            "currency_code": "INR",
+        },
+    )
+    assert create.status_code == 422
+
+
+def test_prior_fy_expense_excluded_from_overview(client, auth_headers, session):
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
+    team_id = _corporate_team_id(client, auth_headers, session)
+    before = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    before_opex = float(before["cost"]["prosohm_opex"])
+    assert before.get("planning_fy_start") == "2026-04-01"
+
+    prior = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": centres[0]["id"],
+            "team_id": team_id,
+            "name": "Prior FY hardware",
+            "amount": "7777",
+            "purchase_date": "2025-03-15",
+            "currency_code": "INR",
+            "nature": "opex",
+            "frequency": "one_time",
+            "paid_by": "prosohm",
+        },
+    )
+    assert prior.status_code == 201, prior.text
+    assert prior.json()["prior_fy_excluded_from_overview"] is True
+
+    after_prior = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    assert float(after_prior["cost"]["prosohm_opex"]) == before_opex
+
+    current = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": centres[0]["id"],
+            "team_id": team_id,
+            "name": "Current FY software",
+            "amount": "1111",
+            "purchase_date": "2026-05-01",
+            "currency_code": "INR",
+            "nature": "opex",
+            "frequency": "one_time",
+            "paid_by": "prosohm",
+        },
+    )
+    assert current.status_code == 201, current.text
+    assert current.json()["prior_fy_excluded_from_overview"] is False
+
+    after = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    assert float(after["cost"]["prosohm_opex"]) == before_opex + 1111.0
+
+    fy_only = client.get(
+        "/api/v1/finance/expenses?current_fy_only=true", headers=auth_headers
+    ).json()
+    names = {row["name"] for row in fy_only}
+    assert "Current FY software" in names
+    assert "Prior FY hardware" not in names
 
 
 def test_retainer_strategy_includes_customer_fee():

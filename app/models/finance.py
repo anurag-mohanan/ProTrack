@@ -164,6 +164,7 @@ class Expense(Base, TimestampMixin):
     base_amount_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     fx_rate: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False, default=1)
     fx_date: Mapped[date] = mapped_column(Date, nullable=False)
+    purchase_date: Mapped[Optional[date]] = mapped_column(Date)
     start_date: Mapped[Optional[date]] = mapped_column(Date)
     end_date: Mapped[Optional[date]] = mapped_column(Date)
     is_recurring: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

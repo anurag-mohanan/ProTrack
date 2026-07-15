@@ -74,6 +74,7 @@ from app.schemas.finance import (
 from app.services.finance import annual_plan_service
 from app.services.finance.dashboard_service import get_finance_dashboard
 from app.services.finance.fx_service import to_base_amount
+from app.services.finance.annual_plan_service import current_fy_start
 from app.services.finance.paid_by_defaults import default_paid_by
 from app.services.finance.commercial_fee_rules import (
     billing_mode_for_strategy,
@@ -88,6 +89,14 @@ from app.core.salary_eligibility import user_requires_salary
 from app.models.enums import WorkingModelCode
 
 router = APIRouter(prefix="/finance", tags=["financial-planning"])
+
+
+def _expense_read(row: Expense, *, fy_start: date | None = None) -> ExpenseRead:
+    start = fy_start or current_fy_start()
+    data = ExpenseRead.model_validate(row)
+    purchase = row.purchase_date
+    excluded = purchase is None or purchase < start
+    return data.model_copy(update={"prior_fy_excluded_from_overview": excluded})
 
 
 def _role(db: Session, user: User) -> str:
@@ -225,14 +234,18 @@ def list_cost_centres(
 @router.get("/expenses", response_model=list[ExpenseRead])
 def list_expenses(
     team_id: UUID | None = Query(default=None),
+    current_fy_only: bool = Query(default=False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    fy_start = current_fy_start()
     stmt = select(Expense).where(Expense.is_active.is_(True)).order_by(Expense.name)
     if team_id is not None:
         stmt = stmt.where(Expense.team_id == team_id)
-    return db.scalars(stmt).all()
+    if current_fy_only:
+        stmt = stmt.where(Expense.purchase_date.is_not(None), Expense.purchase_date >= fy_start)
+    return [_expense_read(row, fy_start=fy_start) for row in db.scalars(stmt).all()]
 
 
 @router.post("/expenses", response_model=ExpenseRead, status_code=status.HTTP_201_CREATED)
@@ -251,7 +264,7 @@ def create_expense(
             db,
             amount=payload.amount,
             currency_code=payload.currency_code,
-            on_date=payload.start_date or date.today(),
+            on_date=payload.purchase_date,
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -281,7 +294,7 @@ def create_expense(
     )
     db.commit()
     db.refresh(row)
-    return row
+    return _expense_read(row)
 
 
 @router.patch("/expenses/{expense_id}", response_model=ExpenseRead)
@@ -296,6 +309,8 @@ def update_expense(
     if row is None or not row.is_active:
         raise HTTPException(status_code=404, detail="Expense not found")
     data = payload.model_dump(exclude_unset=True)
+    if "purchase_date" in data and data["purchase_date"] is None:
+        raise HTTPException(status_code=400, detail="Date of purchase is required.")
     if "team_id" in data:
         if data["team_id"] is None or db.get(Team, data["team_id"]) is None:
             raise HTTPException(status_code=400, detail="Team is required and must exist.")
@@ -311,6 +326,8 @@ def update_expense(
     cost_centre_id = row.cost_centre_id
     if team_id is None:
         raise HTTPException(status_code=400, detail="Team is required and must exist.")
+    if row.purchase_date is None:
+        raise HTTPException(status_code=400, detail="Date of purchase is required.")
     if not paid_by_explicit and ("team_id" in data or "cost_centre_id" in data):
         row.paid_by = default_paid_by(db, team_id=team_id, cost_centre_id=cost_centre_id)
 
@@ -319,7 +336,7 @@ def update_expense(
             db,
             amount=row.amount,
             currency_code=row.currency_code,
-            on_date=row.start_date or date.today(),
+            on_date=row.purchase_date,
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -337,8 +354,7 @@ def update_expense(
     )
     db.commit()
     db.refresh(row)
-    return row
-
+    return _expense_read(row)
 
 @router.delete("/expenses/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_expense(

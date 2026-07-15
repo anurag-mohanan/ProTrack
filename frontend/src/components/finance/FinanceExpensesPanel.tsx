@@ -19,7 +19,7 @@ import { apiClient } from '../../api/client';
 import { fetchTeams } from '../../api/lookups';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
-import { teamQueryParam } from './FinanceTeamFilter';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 type CostCentre = { id: string; name: string; code?: string };
 type Expense = {
@@ -32,11 +32,13 @@ type Expense = {
   frequency: string;
   paid_by: string;
   vendor_name?: string | null;
+  purchase_date?: string | null;
   next_renewal_date?: string | null;
   notify_before_days?: number;
   notify_enabled?: boolean;
   is_recurring?: boolean;
   team_id?: string | null;
+  prior_fy_excluded_from_overview?: boolean;
 };
 
 const emptyForm = {
@@ -49,6 +51,7 @@ const emptyForm = {
   frequency: 'monthly',
   paid_by: 'prosohm',
   vendor_name: '',
+  purchase_date: new Date().toISOString().slice(0, 10),
   is_recurring: false,
   next_renewal_date: '',
   notify_before_days: '7',
@@ -62,7 +65,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [paidByHint, setPaidByHint] = useState('');
-  const q = teamQueryParam(teamId);
+  const [currentFyOnly, setCurrentFyOnly] = useState(false);
 
   useEffect(() => {
     if (!editingId) setForm((prev) => ({ ...prev, team_id: teamId || prev.team_id }));
@@ -82,8 +85,14 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     queryFn: fetchTeams,
   });
   const expensesQuery = useQuery({
-    queryKey: ['finance-expenses', teamId || 'all'],
-    queryFn: async () => (await apiClient.get<Expense[]>(`/finance/expenses${q}`)).data,
+    queryKey: ['finance-expenses', teamId || 'all', currentFyOnly ? 'fy' : 'all'],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (teamId) params.set('team_id', teamId);
+      if (currentFyOnly) params.set('current_fy_only', 'true');
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      return (await apiClient.get<Expense[]>(`/finance/expenses${suffix}`)).data;
+    },
   });
 
   const refreshPaidByDefault = async (nextTeamId: string, nextCentreId: string) => {
@@ -112,6 +121,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     frequency: form.frequency,
     paid_by: form.paid_by,
     vendor_name: form.vendor_name || null,
+    purchase_date: form.purchase_date,
     is_recurring: form.is_recurring || form.frequency === 'recurring',
     next_renewal_date: form.next_renewal_date || null,
     notify_before_days: Number(form.notify_before_days) || 7,
@@ -138,8 +148,8 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      showError(error.response?.data?.detail ?? 'Could not save expense');
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not save expense'));
     },
   });
 
@@ -157,8 +167,8 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      showError(error.response?.data?.detail ?? 'Could not delete expense');
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not delete expense'));
     },
   });
 
@@ -174,6 +184,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       frequency: row.frequency,
       paid_by: row.paid_by,
       vendor_name: row.vendor_name || '',
+      purchase_date: row.purchase_date || new Date().toISOString().slice(0, 10),
       is_recurring: Boolean(row.is_recurring),
       next_renewal_date: row.next_renewal_date || '',
       notify_before_days: String(row.notify_before_days ?? 7),
@@ -191,7 +202,8 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
           {editingId ? 'Edit expense / subscription' : 'Add expense / subscription'}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Team is required. Paid by defaults from Team commercial for SW/HW cost centres — you can override.
+          Team and date of purchase are required. Overview only counts purchases in the current
+          Indian FY (Apr–Mar). Paid by defaults from Team commercial for SW/HW — you can override.
         </Typography>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', mb: 1 }}>
           <FormControl size="small" sx={{ minWidth: 200 }} required>
@@ -247,6 +259,15 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             label="Amount"
             value={form.amount}
             onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
+          />
+          <TextField
+            size="small"
+            type="date"
+            label="Date of purchase"
+            value={form.purchase_date}
+            onChange={(e) => setForm((p) => ({ ...p, purchase_date: e.target.value }))}
+            required
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           <FormControl size="small" sx={{ minWidth: 110 }}>
             <InputLabel>Currency</InputLabel>
@@ -343,6 +364,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
               !form.cost_centre_id ||
               !form.name ||
               !form.amount ||
+              !form.purchase_date ||
               saveMutation.isPending
             }
             onClick={() => saveMutation.mutate()}
@@ -370,9 +392,22 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       </Box>
 
       <Box>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Expenses
-        </Typography>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1}
+          sx={{ mb: 1, alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
+        >
+          <Typography variant="subtitle2">Expenses</Typography>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={currentFyOnly}
+                onChange={(e) => setCurrentFyOnly(e.target.checked)}
+              />
+            }
+            label="Current FY only"
+          />
+        </Stack>
         <Stack spacing={1}>
           {(expensesQuery.data ?? []).map((row) => (
             <Card key={row.id} variant="outlined">
@@ -384,6 +419,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
                   <Typography variant="body2" color="text.secondary">
                     {row.amount} {row.currency_code} · {row.nature} · {row.frequency} · Paid by{' '}
                     {row.paid_by}
+                    {row.purchase_date ? ` · Purchased ${row.purchase_date}` : ''}
                     {row.vendor_name ? ` · ${row.vendor_name}` : ''}
                     {row.next_renewal_date
                       ? ` · Renews ${row.next_renewal_date}${
@@ -393,6 +429,11 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
                         }`
                       : ''}
                   </Typography>
+                  {row.prior_fy_excluded_from_overview ? (
+                    <Typography variant="caption" color="warning.main">
+                      Prior FY — not in Overview
+                    </Typography>
+                  ) : null}
                 </Box>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                   <Button size="small" variant="contained" onClick={() => startEdit(row)}>

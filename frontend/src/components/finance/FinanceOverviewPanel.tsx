@@ -8,6 +8,8 @@ import { teamQueryParam } from './FinanceTeamFilter';
 type FinanceDashboard = {
   base_currency: string;
   selected_team_name?: string | null;
+  planning_fy_label?: string | null;
+  planning_fy_start?: string | null;
   revenue: Record<string, number | string>;
   cost: Record<string, number | string>;
   profitability: Record<string, number | string>;
@@ -96,6 +98,12 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
             ? `Cost snapshot · ${data.selected_team_name}`
             : 'Company cost snapshot (all teams)'}
         </Typography>
+        {data.planning_fy_label ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Planning opex / pass-through uses {data.planning_fy_label} purchases only (from{' '}
+            {data.planning_fy_start}).
+          </Typography>
+        ) : null}
         <Grid container spacing={1.5}>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <MetricCard

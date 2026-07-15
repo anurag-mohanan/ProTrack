@@ -42,6 +42,9 @@ from app.db.phase23_finance_team_scope_schema_sync import (
 from app.db.phase24_user_requires_salary_schema_sync import (
     ensure_phase24_user_requires_salary_foundation,
 )
+from app.db.phase25_expense_purchase_date_schema_sync import (
+    ensure_phase25_expense_purchase_date_foundation,
+)
 from app.db.phase26_customer_currency_schema_sync import (
     ensure_phase26_customer_currency_foundation,
 )
@@ -125,6 +128,7 @@ async def lifespan(app: FastAPI):
         ("phase22_finance_rebuild", ensure_phase22_finance_rebuild_foundation),
         ("phase23_finance_team_scope", ensure_phase23_finance_team_scope_foundation),
         ("phase24_user_requires_salary", ensure_phase24_user_requires_salary_foundation),
+        ("phase25_expense_purchase_date", ensure_phase25_expense_purchase_date_foundation),
         ("phase26_customer_currency", ensure_phase26_customer_currency_foundation),
         ("phase27_fx_rate_backfill", ensure_phase27_fx_rate_backfill),
         ("performance_indexes", ensure_performance_indexes),

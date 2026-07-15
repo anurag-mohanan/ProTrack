@@ -72,8 +72,13 @@ def _expense_sum(
     team_id: UUID | None,
     paid_by: ExpensePaidBy | None = None,
     nature: CostNature | None = None,
+    fy_start: date | None = None,
 ) -> Decimal:
+    from app.services.finance.annual_plan_service import current_fy_start
+
     stmt = select(func.coalesce(func.sum(Expense.base_amount_inr), 0)).where(Expense.is_active.is_(True))
+    start = fy_start if fy_start is not None else current_fy_start()
+    stmt = stmt.where(Expense.purchase_date.is_not(None), Expense.purchase_date >= start)
     if team_id is not None:
         stmt = stmt.where(Expense.team_id == team_id)
     if paid_by is not None:
@@ -151,8 +156,12 @@ def _team_rollups(db: Session, team: Team, *, today: date, quote_revenue_share: 
 
 
 def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
+    from app.services.finance.annual_plan_service import current_fy_label, current_fy_start
+
     base = get_base_currency(db)
     today = date.today()
+    fy_start = current_fy_start(today)
+    fy_label = current_fy_label(today)
     revenue = _d(
         db.scalar(select(func.coalesce(func.sum(QuoteRevision.base_quoted_revenue_inr), 0)))
     )
@@ -266,6 +275,8 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         "base_currency": base,
         "selected_team_id": str(team_id) if team_id else None,
         "selected_team_name": selected_team_name,
+        "planning_fy_start": fy_start.isoformat(),
+        "planning_fy_label": fy_label,
         "revenue": {
             "monthly_revenue": revenue + team_fee_monthly if team_id is None else display_revenue,
             "quarterly_revenue": revenue + team_fee_monthly if team_id is None else display_revenue,

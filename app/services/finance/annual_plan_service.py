@@ -51,6 +51,19 @@ def fiscal_year_bounds(start_year: int, *, fy_start_month: int = 4) -> tuple[dat
     return start, end, label
 
 
+def current_fy_start(today: date | None = None, *, fy_start_month: int = 4) -> date:
+    """Most recent FY start (default 1 Apr) on or before today."""
+    today = today or date.today()
+    year = today.year if today.month >= fy_start_month else today.year - 1
+    return date(year, fy_start_month, 1)
+
+
+def current_fy_label(today: date | None = None, *, fy_start_month: int = 4) -> str:
+    start = current_fy_start(today, fy_start_month=fy_start_month)
+    _, _, label = fiscal_year_bounds(start.year, fy_start_month=fy_start_month)
+    return f"FY {label}"
+
+
 def _zero_months() -> dict[str, Decimal]:
     return {field: Decimal("0") for field in MONTH_FIELDS}
 

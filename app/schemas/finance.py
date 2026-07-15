@@ -68,6 +68,7 @@ class ExpenseCreate(BaseModel):
     frequency: CostFrequency = CostFrequency.monthly
     currency_code: str = "INR"
     amount: Decimal
+    purchase_date: date
     start_date: date | None = None
     end_date: date | None = None
     is_recurring: bool = False
@@ -88,6 +89,7 @@ class ExpenseUpdate(BaseModel):
     frequency: CostFrequency | None = None
     currency_code: str | None = None
     amount: Decimal | None = None
+    purchase_date: date | None = None
     start_date: date | None = None
     end_date: date | None = None
     is_recurring: bool | None = None
@@ -111,6 +113,7 @@ class ExpenseRead(BaseModel):
     frequency: CostFrequency
     currency_code: str
     amount: Decimal
+    purchase_date: date | None = None
     start_date: date | None = None
     end_date: date | None = None
     is_recurring: bool
@@ -126,6 +129,7 @@ class ExpenseRead(BaseModel):
     fx_date: date
     is_active: bool
     renewal_notified_for: date | None = None
+    prior_fy_excluded_from_overview: bool = False
 
 
 class PaidByDefaultRead(BaseModel):
@@ -341,6 +345,8 @@ class FinanceDashboardRead(BaseModel):
     salary_cost_inr: Decimal = Decimal("0")
     selected_team_id: str | None = None
     selected_team_name: str | None = None
+    planning_fy_start: date | None = None
+    planning_fy_label: str | None = None
     by_team: list[TeamFinanceBreakdown] = Field(default_factory=list)
 
 

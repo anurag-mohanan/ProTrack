@@ -365,13 +365,14 @@ def test_who_pays_software_default_from_team_commercial(client, auth_headers, se
     assert float(after["cost"]["prosohm_opex"]) == float(before["cost"]["prosohm_opex"])
 
 
-def test_employee_cost_roster_lists_all_active_users(client, auth_headers):
+def test_employee_cost_roster_lists_salary_required_users(client, auth_headers):
     roster = client.get("/api/v1/finance/employee-costs/roster", headers=auth_headers)
     assert roster.status_code == 200, roster.text
     rows = roster.json()
-    assert len(rows) >= 3
+    assert len(rows) >= 1
     emails = {row["email"] for row in rows}
-    assert "admin@prosohm.com" in emails or any("admin" in e for e in emails)
+    assert "admin@prosohm.com" not in emails
+    assert "binil@prosohm.com" in emails
 
     target = next(row for row in rows if row["email"] == "binil@prosohm.com")
     save = client.post(
@@ -390,6 +391,74 @@ def test_employee_cost_roster_lists_all_active_users(client, auth_headers):
     updated = next(row for row in refreshed if row["user_id"] == target["user_id"])
     assert updated["has_profile"] is True
     assert float(updated["monthly_salary"]) == 75000.0
+
+
+def test_salary_exempt_admin_hidden_and_post_rejected(client, auth_headers, session):
+    from app.models.finance import EmployeeCostProfile
+    from decimal import Decimal
+    from datetime import date
+
+    roster = client.get("/api/v1/finance/employee-costs/roster", headers=auth_headers).json()
+    assert all(row.get("requires_salary", True) for row in roster)
+    assert "admin@prosohm.com" not in {row["email"] for row in roster}
+
+    with_exempt = client.get(
+        "/api/v1/finance/employee-costs/roster?include_exempt=true",
+        headers=auth_headers,
+    ).json()
+    admin_row = next(row for row in with_exempt if row["email"] == "admin@prosohm.com")
+    assert admin_row["requires_salary"] is False
+
+    admin = session.get(User, IDS["user_admin"])
+    assert admin is not None
+    assert admin.requires_salary is False
+
+    # Stale profile must not roll into Overview salary
+    session.add(
+        EmployeeCostProfile(
+            user_id=admin.id,
+            monthly_salary=Decimal("99999"),
+            hourly_cost=Decimal("0"),
+            currency_code="INR",
+            base_monthly_salary_inr=Decimal("99999"),
+            base_hourly_cost_inr=Decimal("0"),
+            fx_rate=Decimal("1"),
+            effective_from=date(2026, 1, 1),
+            is_active=True,
+        )
+    )
+    session.commit()
+
+    before = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    salary_before = float(before["salary_cost_inr"])
+
+    reject = client.post(
+        "/api/v1/finance/employee-costs",
+        headers=auth_headers,
+        json={
+            "user_id": str(admin.id),
+            "monthly_salary": "5000",
+            "hourly_cost": "10",
+            "currency_code": "INR",
+            "effective_from": "2026-04-01",
+        },
+    )
+    assert reject.status_code == 400
+
+    after = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
+    assert float(after["salary_cost_inr"]) == salary_before
+
+
+def test_planning_board_default_requires_salary_false(session):
+    from app.core.salary_eligibility import default_requires_salary_for_role
+
+    assert default_requires_salary_for_role("Planning Board") is False
+    assert default_requires_salary_for_role("Admin") is False
+    assert default_requires_salary_for_role("Designer") is True
+
+    board = session.get(User, IDS["user_planning_board"])
+    assert board is not None
+    assert board.requires_salary is False
 
 
 def test_team_commercial_terms_in_dashboard(client, auth_headers, session):

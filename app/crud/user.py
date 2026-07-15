@@ -14,6 +14,7 @@ from app.core.access_control import (
 )
 from app.core.permissions import get_role_name, project_assignment_filter
 from app.core.timesheet_eligibility import default_requires_timesheet_for_role
+from app.core.salary_eligibility import default_requires_salary_for_role
 from app.core.pagination import PaginatedResponse, apply_sort
 from app.core.security import hash_password
 from app.crud.base import CRUDBase
@@ -315,6 +316,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         role_name = role.name if role is not None else ""
         if data.get("requires_timesheet") is None:
             data["requires_timesheet"] = default_requires_timesheet_for_role(role_name)
+        if data.get("requires_salary") is None:
+            data["requires_salary"] = default_requires_salary_for_role(role_name)
         db_obj = User(
             **data,
             team_id=None,
@@ -371,10 +374,17 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         reset_kpi_defaults = update_data.pop("reset_kpi_defaults", False)
         role_changed = "role_id" in update_data
         requires_explicit = "requires_timesheet" in update_data
+        salary_explicit = "requires_salary" in update_data
         if role_changed and not requires_explicit:
             new_role = db.get(Role, update_data["role_id"])
             if new_role is not None:
                 update_data["requires_timesheet"] = default_requires_timesheet_for_role(
+                    new_role.name
+                )
+        if role_changed and not salary_explicit:
+            new_role = db.get(Role, update_data["role_id"])
+            if new_role is not None:
+                update_data["requires_salary"] = default_requires_salary_for_role(
                     new_role.name
                 )
         update_data = _apply_access_payload(update_data)

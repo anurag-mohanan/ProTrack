@@ -96,6 +96,7 @@ interface UserFormState {
   reset_kpi_defaults: boolean;
   default_working_model_id: string;
   requires_timesheet: boolean;
+  requires_salary: boolean;
 }
 
 const emptyForm: UserFormState = {
@@ -132,6 +133,7 @@ const emptyForm: UserFormState = {
   reset_kpi_defaults: true,
   default_working_model_id: '',
   requires_timesheet: true,
+  requires_salary: true,
 };
 
 export default function UsersPage() {
@@ -363,6 +365,7 @@ export default function UsersPage() {
       reset_kpi_defaults: false,
       default_working_model_id: user.default_working_model_id ?? '',
       requires_timesheet: user.requires_timesheet ?? false,
+      requires_salary: user.requires_salary ?? true,
     });
     setFormOpen(true);
   };
@@ -451,6 +454,7 @@ export default function UsersPage() {
           ...buildKpiPayload(),
           default_working_model_id: optionalUuid(form.default_working_model_id),
           requires_timesheet: form.requires_timesheet,
+          requires_salary: form.requires_salary,
           module_access: form.module_access,
           special_permissions: form.special_permissions,
         });
@@ -474,6 +478,7 @@ export default function UsersPage() {
           ...buildKpiPayload(),
           default_working_model_id: optionalUuid(form.default_working_model_id),
           requires_timesheet: form.requires_timesheet,
+          requires_salary: form.requires_salary,
           module_access: form.module_access,
           special_permissions: form.special_permissions,
         } as Partial<User> & { password: string; must_change_password?: boolean });
@@ -936,6 +941,8 @@ export default function UsersPage() {
                       nextRoleName === ROLES.DESIGNER ||
                       nextRoleName === ROLES.JUNIOR_DESIGNER ||
                       nextRoleName === ROLES.SURFACER,
+                    requires_salary:
+                      nextRoleName !== ROLES.ADMIN && nextRoleName !== ROLES.PLANNING_BOARD,
                   }));
                 }}
               />
@@ -1104,6 +1111,25 @@ export default function UsersPage() {
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               On for Designers and Design Leaders (even on Overheads). Off for Planning Board,
               Admin, HR, and Engineering Manager (optional logging). Override per user as needed.
+            </Typography>
+            <FormControlLabel
+              sx={{ mt: 1.5 }}
+              control={
+                <Switch
+                  checked={form.requires_salary}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      requires_salary: event.target.checked,
+                    }))
+                  }
+                />
+              }
+              label="Requires salary (People costs)"
+            />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Off for System Admin, Planning Board, and other non-headcount accounts. When off, the
+              user is excluded from Financial Planning People costs and salary rollups.
             </Typography>
           </FormSection>
 

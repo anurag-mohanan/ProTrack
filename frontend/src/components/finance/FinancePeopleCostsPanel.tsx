@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Box,
   Button,
+  Chip,
   FormControlLabel,
   Checkbox,
   Stack,
@@ -24,6 +25,7 @@ type RosterItem = {
   last_name: string;
   email: string;
   team_names: string[];
+  requires_salary: boolean;
   has_profile: boolean;
   monthly_salary: number | null;
   hourly_cost: number | null;
@@ -38,15 +40,23 @@ type Draft = {
   effective_from: string;
 };
 
+function rosterQueryString(teamId: string, includeExempt: boolean): string {
+  const base = teamQueryParam(teamId);
+  if (!includeExempt) return base;
+  if (!base) return '?include_exempt=true';
+  return `${base}&include_exempt=true`;
+}
+
 export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [missingOnly, setMissingOnly] = useState(false);
+  const [showExempt, setShowExempt] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const q = teamQueryParam(teamId);
+  const q = rosterQueryString(teamId, showExempt);
 
   const rosterQuery = useQuery({
-    queryKey: ['finance-employee-roster', teamId || 'all'],
+    queryKey: ['finance-employee-roster', teamId || 'all', showExempt ? 'with-exempt' : 'required'],
     queryFn: async () =>
       (await apiClient.get<RosterItem[]>(`/finance/employee-costs/roster${q}`)).data,
   });
@@ -74,7 +84,9 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
 
   const rows = useMemo(() => {
     const list = rosterQuery.data ?? [];
-    return missingOnly ? list.filter((row) => !row.has_profile) : list;
+    return missingOnly
+      ? list.filter((row) => row.requires_salary !== false && !row.has_profile)
+      : list;
   }, [rosterQuery.data, missingOnly]);
 
   const ensureDraft = (row: RosterItem): Draft => {
@@ -97,13 +109,21 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="body2" color="text.secondary">
           {teamId
-            ? 'Employees for the selected team (primary membership preferred).'
-            : 'All active employees. Use the team filter to scope by team.'}
+            ? 'Employees for the selected team (primary membership preferred). Salary-exempt accounts are hidden unless shown.'
+            : 'Active employees who require salary. Use Show salary-exempt for Admin / Planning Board accounts.'}
         </Typography>
-        <FormControlLabel
-          control={<Checkbox checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />}
-          label="Missing salary only"
-        />
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+          <FormControlLabel
+            control={
+              <Checkbox checked={showExempt} onChange={(e) => setShowExempt(e.target.checked)} />
+            }
+            label="Show salary-exempt"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />}
+            label="Missing salary only"
+          />
+        </Stack>
       </Box>
 
       <Table size="small">
@@ -121,16 +141,22 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
         <TableBody>
           {rows.map((row) => {
             const draft = ensureDraft(row);
+            const exempt = row.requires_salary === false;
             return (
               <TableRow key={row.user_id} hover>
                 <TableCell>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {row.first_name} {row.last_name}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {row.email}
-                    {!row.has_profile ? ' · missing profile' : ''}
-                  </Typography>
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {row.first_name} {row.last_name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {row.email}
+                        {!row.has_profile && !exempt ? ' · missing profile' : ''}
+                      </Typography>
+                    </Box>
+                    {exempt ? <Chip size="small" label="Salary not required" variant="outlined" /> : null}
+                  </Stack>
                 </TableCell>
                 <TableCell>{row.team_names.join(', ') || '—'}</TableCell>
                 <TableCell>
@@ -138,6 +164,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
                     size="small"
                     value={draft.monthly_salary}
                     onChange={(e) => setDraftField(row.user_id, 'monthly_salary', e.target.value, row)}
+                    disabled={exempt}
                     sx={{ width: 110 }}
                   />
                 </TableCell>
@@ -146,6 +173,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
                     size="small"
                     value={draft.hourly_cost}
                     onChange={(e) => setDraftField(row.user_id, 'hourly_cost', e.target.value, row)}
+                    disabled={exempt}
                     sx={{ width: 100 }}
                   />
                 </TableCell>
@@ -154,6 +182,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
                     size="small"
                     value={draft.currency_code}
                     onChange={(e) => setDraftField(row.user_id, 'currency_code', e.target.value, row)}
+                    disabled={exempt}
                     sx={{ width: 80 }}
                   />
                 </TableCell>
@@ -163,6 +192,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
                     type="date"
                     value={draft.effective_from}
                     onChange={(e) => setDraftField(row.user_id, 'effective_from', e.target.value, row)}
+                    disabled={exempt}
                     slotProps={{ inputLabel: { shrink: true } }}
                     sx={{ width: 150 }}
                   />
@@ -171,7 +201,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
                   <Button
                     size="small"
                     variant="contained"
-                    disabled={saveMutation.isPending}
+                    disabled={exempt || saveMutation.isPending}
                     onClick={() => {
                       const next = ensureDraft(row);
                       setDrafts((prev) => ({ ...prev, [row.user_id]: next }));

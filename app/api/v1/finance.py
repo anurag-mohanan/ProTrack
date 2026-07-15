@@ -79,6 +79,7 @@ from app.services.finance.quote_import_service import (
 )
 from app.services.finance.renewal_notifier import notify_upcoming_renewals
 from app.services.finance.roster_service import get_employee_cost_roster
+from app.core.salary_eligibility import user_requires_salary
 
 router = APIRouter(prefix="/finance", tags=["financial-planning"])
 
@@ -293,11 +294,12 @@ def trigger_renewal_notifications(
 @router.get("/employee-costs/roster", response_model=list[EmployeeCostRosterItem])
 def employee_cost_roster(
     team_id: UUID | None = Query(default=None),
+    include_exempt: bool = Query(default=False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    return get_employee_cost_roster(db, team_id=team_id)
+    return get_employee_cost_roster(db, team_id=team_id, include_exempt=include_exempt)
 
 
 @router.get("/employee-costs", response_model=list[EmployeeCostProfileRead])
@@ -322,6 +324,14 @@ def upsert_employee_cost(
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    target = db.get(User, payload.user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user_requires_salary(target):
+        raise HTTPException(
+            status_code=400,
+            detail="User is salary-exempt (Requires salary is off). Enable it on Admin → Users first.",
+        )
     try:
         base_salary, fx_rate, _ = to_base_amount(
             db,

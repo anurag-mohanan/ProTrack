@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.salary_eligibility import user_requires_salary
 from app.models.finance import EmployeeCostProfile
 from app.models.models import TeamMember, User
 
@@ -27,7 +28,12 @@ def _user_matches_team(user: User, team_id: UUID) -> bool:
     return False
 
 
-def get_employee_cost_roster(db: Session, *, team_id: UUID | None = None) -> list[dict]:
+def get_employee_cost_roster(
+    db: Session,
+    *,
+    team_id: UUID | None = None,
+    include_exempt: bool = False,
+) -> list[dict]:
     users = db.scalars(
         select(User)
         .where(User.is_active.is_(True))
@@ -43,6 +49,9 @@ def get_employee_cost_roster(db: Session, *, team_id: UUID | None = None) -> lis
 
     roster: list[dict] = []
     for user in users:
+        requires = user_requires_salary(user)
+        if not include_exempt and not requires:
+            continue
         if team_id is not None and not _user_matches_team(user, team_id):
             continue
         profile = profiles.get(user.id)
@@ -64,6 +73,7 @@ def get_employee_cost_roster(db: Session, *, team_id: UUID | None = None) -> lis
                 "last_name": user.last_name,
                 "email": user.email,
                 "team_names": team_names,
+                "requires_salary": requires,
                 "has_profile": profile is not None,
                 "profile_id": profile.id if profile else None,
                 "currency_code": profile.currency_code if profile else None,

@@ -70,6 +70,8 @@ DESIGN_TEAM: tuple[DesignTeamMember, ...] = (
 
 
 def build_design_team_users(password_hash: str, role_by_name: dict[str, uuid.UUID]):
+    from app.core.salary_eligibility import default_requires_salary_for_role
+    from app.core.timesheet_eligibility import default_requires_timesheet_for_role
     from app.models.models import User
 
     return [
@@ -81,12 +83,16 @@ def build_design_team_users(password_hash: str, role_by_name: dict[str, uuid.UUI
             first_name=member.first_name,
             last_name=member.last_name,
             is_active=True,
+            requires_timesheet=default_requires_timesheet_for_role(member.role_name),
+            requires_salary=default_requires_salary_for_role(member.role_name),
         )
         for member in DESIGN_TEAM
     ]
 
 
 def ensure_design_team_users(session, password_hash: str) -> None:
+    from app.core.salary_eligibility import default_requires_salary_for_role
+    from app.core.timesheet_eligibility import default_requires_timesheet_for_role
     from app.models.models import Role, User
 
     roles = {
@@ -109,6 +115,8 @@ def ensure_design_team_users(session, password_hash: str) -> None:
                 first_name=member.first_name,
                 last_name=member.last_name,
                 is_active=True,
+                requires_timesheet=default_requires_timesheet_for_role(member.role_name),
+                requires_salary=default_requires_salary_for_role(member.role_name),
             )
         )
     session.commit()

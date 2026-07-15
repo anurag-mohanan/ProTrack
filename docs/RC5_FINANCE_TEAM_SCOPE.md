@@ -8,7 +8,7 @@
 | Expenses | `team_id` **required**; shared HQ → **Corporate / Shared Services** |
 | Commercial | One active terms row per team; `customer_pays_software` / `customer_pays_hardware` |
 | Who pays defaults | SW_* / HARDWARE/SERVERS/CLOUD cost centres inherit team flags (overridable) |
-| Salaries | Roster filter by primary team |
+| Salaries | Roster filter by primary team; salary-exempt via [RC5_SALARY_ELIGIBILITY.md](./RC5_SALARY_ELIGIBILITY.md) |
 | Rollups | Team-scoped operating cost / pass-through / commercial fee |
 
 ## Click map
@@ -43,3 +43,4 @@
 ## Related
 
 - Prior: [RC5_FINANCE_REBUILD.md](./RC5_FINANCE_REBUILD.md)
+- Salary exempt: [RC5_SALARY_ELIGIBILITY.md](./RC5_SALARY_ELIGIBILITY.md)

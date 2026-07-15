@@ -39,6 +39,9 @@ from app.db.phase22_finance_rebuild_schema_sync import ensure_phase22_finance_re
 from app.db.phase23_finance_team_scope_schema_sync import (
     ensure_phase23_finance_team_scope_foundation,
 )
+from app.db.phase24_user_requires_salary_schema_sync import (
+    ensure_phase24_user_requires_salary_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -117,6 +120,7 @@ async def lifespan(app: FastAPI):
         ("project_workorder_metadata", ensure_project_workorder_metadata),
         ("phase22_finance_rebuild", ensure_phase22_finance_rebuild_foundation),
         ("phase23_finance_team_scope", ensure_phase23_finance_team_scope_foundation),
+        ("phase24_user_requires_salary", ensure_phase24_user_requires_salary_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

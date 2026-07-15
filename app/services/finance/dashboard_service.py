@@ -49,8 +49,15 @@ def _user_ids_for_team(db: Session, team_id: UUID) -> set[UUID]:
 
 
 def _salary_for_users(db: Session, user_ids: set[UUID] | None) -> Decimal:
-    stmt = select(func.coalesce(func.sum(EmployeeCostProfile.base_monthly_salary_inr), 0)).where(
-        EmployeeCostProfile.is_active.is_(True)
+    stmt = (
+        select(func.coalesce(func.sum(EmployeeCostProfile.base_monthly_salary_inr), 0))
+        .select_from(EmployeeCostProfile)
+        .join(User, User.id == EmployeeCostProfile.user_id)
+        .where(
+            EmployeeCostProfile.is_active.is_(True),
+            User.requires_salary.is_(True),
+            User.is_active.is_(True),
+        )
     )
     if user_ids is not None:
         if not user_ids:

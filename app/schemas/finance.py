@@ -139,6 +139,7 @@ class EmployeeCostRosterItem(BaseModel):
     last_name: str
     email: str
     team_names: list[str] = Field(default_factory=list)
+    requires_salary: bool = True
     has_profile: bool
     profile_id: UUID | None = None
     currency_code: str | None = None

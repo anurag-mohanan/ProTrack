@@ -74,6 +74,7 @@ export interface User {
   kpi_dashboard_productivity?: boolean;
   default_working_model_id?: string | null;
   requires_timesheet?: boolean;
+  requires_salary?: boolean;
   kpi_configuration?: {
     operational_role_type_id?: string | null;
     operational_role_name?: string | null;

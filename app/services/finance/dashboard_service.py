@@ -59,9 +59,10 @@ def _user_ids_for_team(db: Session, team_id: UUID) -> set[UUID]:
     )
     from app.core.permissions import get_role_name
     from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
+    from app.db.phase33_management_team_schema_sync import is_management_team
 
     team = db.get(Team, team_id)
-    corporate = is_corporate_team(team)
+    corporate = is_corporate_team(team) or is_management_team(team)
     ids: set[UUID] = set()
     members = db.scalars(
         select(TeamMember).where(
@@ -136,10 +137,14 @@ def _quote_revenue_cost(
     return revenue, cost
 
 
-def _salary_for_users(db: Session, user_ids: set[UUID] | None) -> Decimal:
+def _salary_for_users(
+    db: Session, user_ids: set[UUID] | None, *, as_of: date | None = None
+) -> Decimal:
+    from app.services.finance.employment_cost import employment_salary_factor
+
+    ref = as_of or date.today()
     stmt = (
-        select(func.coalesce(func.sum(EmployeeCostProfile.base_monthly_salary_inr), 0))
-        .select_from(EmployeeCostProfile)
+        select(EmployeeCostProfile, User)
         .join(User, User.id == EmployeeCostProfile.user_id)
         .where(
             EmployeeCostProfile.is_active.is_(True),
@@ -151,7 +156,13 @@ def _salary_for_users(db: Session, user_ids: set[UUID] | None) -> Decimal:
         if not user_ids:
             return Decimal("0.00")
         stmt = stmt.where(EmployeeCostProfile.user_id.in_(user_ids))
-    return _d(db.scalar(stmt))
+    total = Decimal("0.00")
+    for profile, user in db.execute(stmt).all():
+        factor = employment_salary_factor(user, as_of=ref)
+        if factor <= 0:
+            continue
+        total += _d(profile.base_monthly_salary_inr) * factor
+    return total.quantize(Decimal("0.01"))
 
 
 def _expense_sum(
@@ -161,10 +172,13 @@ def _expense_sum(
     paid_by: ExpensePaidBy | None = None,
     nature: CostNature | None = None,
     fy_start: date | None = None,
+    as_of: date | None = None,
 ) -> Decimal:
     from app.services.finance.annual_plan_service import current_fy_start
+    from app.services.finance.employment_cost import expense_month_factor
 
-    stmt = select(func.coalesce(func.sum(Expense.base_amount_inr), 0)).where(Expense.is_active.is_(True))
+    ref = as_of or date.today()
+    stmt = select(Expense).where(Expense.is_active.is_(True))
     start = fy_start if fy_start is not None else current_fy_start()
     stmt = stmt.where(Expense.purchase_date.is_not(None), Expense.purchase_date >= start)
     if team_id is not None:
@@ -173,7 +187,13 @@ def _expense_sum(
         stmt = stmt.where(Expense.paid_by == paid_by)
     if nature is not None:
         stmt = stmt.where(Expense.nature == nature)
-    return _d(db.scalar(stmt))
+    total = Decimal("0.00")
+    for expense in db.scalars(stmt).all():
+        factor = expense_month_factor(expense, as_of=ref)
+        if factor <= 0:
+            continue
+        total += _d(expense.base_amount_inr) * factor
+    return total.quantize(Decimal("0.01"))
 
 
 def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Decimal:
@@ -248,38 +268,65 @@ def _team_rollups(db: Session, team: Team, *, today: date, quote_revenue_share: 
 def _overhead_metrics(
     db: Session, *, fy_start: date, team_id: UUID | None = None
 ) -> dict:
-    """Corporate overhead pool ÷ delivery billable FTE (analytical CPR)."""
+    """Management + Corporate overhead pool ÷ delivery billable FTE (analytical CPR)."""
     from app.db.phase23_finance_team_scope_schema_sync import (
         ensure_corporate_shared_services_team,
     )
     from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
+    from app.db.phase33_management_team_schema_sync import (
+        ensure_management_team,
+        is_management_team,
+    )
 
+    as_of = date.today()
     corporate = ensure_corporate_shared_services_team(db)
-    corp_salary = _salary_for_users(db, _user_ids_for_team(db, corporate.id))
+    management = ensure_management_team(db)
+
+    mgmt_salary = _salary_for_users(
+        db, _user_ids_for_team(db, management.id), as_of=as_of
+    )
+    corp_salary = _salary_for_users(
+        db, _user_ids_for_team(db, corporate.id), as_of=as_of
+    )
+    mgmt_opex = _expense_sum(
+        db,
+        team_id=management.id,
+        paid_by=ExpensePaidBy.prosohm,
+        nature=CostNature.opex,
+        fy_start=fy_start,
+        as_of=as_of,
+    )
     corp_opex = _expense_sum(
         db,
         team_id=corporate.id,
         paid_by=ExpensePaidBy.prosohm,
         nature=CostNature.opex,
         fy_start=fy_start,
+        as_of=as_of,
     )
-    pool = (corp_salary + corp_opex).quantize(Decimal("0.01"))
-    n = company_delivery_billable_salary_headcount(db)
+    overhead_salary = (mgmt_salary + corp_salary).quantize(Decimal("0.01"))
+    overhead_opex = (mgmt_opex + corp_opex).quantize(Decimal("0.01"))
+    pool = (overhead_salary + overhead_opex).quantize(Decimal("0.01"))
+    n = company_delivery_billable_salary_headcount(db, as_of=as_of)
     cpr = (pool / Decimal(n)).quantize(Decimal("0.01")) if n else Decimal("0.00")
 
     team_n = 0
     allocated = Decimal("0.00")
     if team_id is not None:
         team = db.get(Team, team_id)
-        if team is not None and not is_corporate_team(team):
-            team_n = billable_salary_headcount(db, team_id)
+        if team is not None and not is_corporate_team(team) and not is_management_team(team):
+            team_n = billable_salary_headcount(db, team_id, as_of=as_of)
             allocated = (cpr * Decimal(team_n)).quantize(Decimal("0.01"))
 
     return {
         "corporate_team_id": str(corporate.id),
         "corporate_team_name": corporate.name,
-        "overhead_salary_inr": corp_salary,
-        "overhead_opex_inr": corp_opex,
+        "management_team_id": str(management.id),
+        "management_team_name": management.name,
+        "overhead_salary_inr": overhead_salary,
+        "overhead_management_salary_inr": mgmt_salary,
+        "overhead_corporate_salary_inr": corp_salary,
+        "overhead_opex_inr": overhead_opex,
         "overhead_pool_monthly_inr": pool,
         "billable_resource_count": n,
         "overhead_cost_per_resource_inr": cpr,
@@ -297,16 +344,17 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     fy_label = current_fy_label(today)
     revenue, estimated_cost = _quote_revenue_cost(db, team_id=team_id)
 
+    as_of = today
     user_ids = _user_ids_for_team(db, team_id) if team_id else None
-    salary_cost = _salary_for_users(db, user_ids)
+    salary_cost = _salary_for_users(db, user_ids, as_of=as_of)
     prosohm_opex = _expense_sum(
-        db, team_id=team_id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.opex
+        db, team_id=team_id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.opex, as_of=as_of
     )
     pass_through_opex = _expense_sum(
-        db, team_id=team_id, paid_by=ExpensePaidBy.customer, nature=CostNature.opex
+        db, team_id=team_id, paid_by=ExpensePaidBy.customer, nature=CostNature.opex, as_of=as_of
     )
     capex = _expense_sum(
-        db, team_id=team_id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.capex
+        db, team_id=team_id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.capex, as_of=as_of
     )
     team_fee_monthly = _team_fee_monthly(db, team_id=team_id, today=today)
 

@@ -1130,8 +1130,8 @@ export default function UsersPage() {
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               Off for System Admin, Planning Board, and other non-headcount accounts. When off, the
               user is excluded from Financial Planning People costs and salary rollups. Managers paid
-              from overhead (not customer retainer) should be on Corporate / Shared Services with
-              Billable headcount off on customer teams.
+              from overhead (not customer retainer) should be on <strong>Management</strong> (or
+              Corporate / Shared Services) with Billable headcount off on customer teams.
             </Typography>
           </FormSection>
 
@@ -1275,13 +1275,14 @@ export default function UsersPage() {
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
                   <FormField
-                    label="Leaving Date"
+                    label="Last working day"
                     type="date"
                     slotProps={{ inputLabel: { shrink: true } }}
                     value={form.leaving_date}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, leaving_date: event.target.value }))
                     }
+                    helperText="Salaries and overhead headcount count only through this date."
                   />
                 </Grid>
               </FormSection>

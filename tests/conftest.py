@@ -47,6 +47,12 @@ from app.db.phase30_quote_external_number_schema_sync import (
 from app.db.phase31_overhead_role_billable_backfill import (
     ensure_phase31_overhead_role_billable_backfill,
 )
+from app.db.phase32_finance_quarterly_fee_bands_schema_sync import (
+    ensure_phase32_finance_quarterly_fee_bands_foundation,
+)
+from app.db.phase33_management_team_schema_sync import (
+    ensure_phase33_management_team_foundation,
+)
 from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_user_auth_schema, ensure_user_access_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_timesheet_entry_leave_count, ensure_timesheet_entry_soft_delete, ensure_team_schema, ensure_user_team_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -348,6 +354,8 @@ def test_engine():
     ensure_phase29_quote_team_foundation(engine)
     ensure_phase30_quote_external_number_foundation(engine)
     ensure_phase31_overhead_role_billable_backfill(engine)
+    ensure_phase32_finance_quarterly_fee_bands_foundation(engine)
+    ensure_phase33_management_team_foundation(engine)
     ensure_project_complexity(engine)
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
@@ -380,6 +388,8 @@ def seeded_db(test_session_factory, test_engine):
     ensure_phase29_quote_team_foundation(test_engine)
     ensure_phase30_quote_external_number_foundation(test_engine)
     ensure_phase31_overhead_role_billable_backfill(test_engine)
+    ensure_phase32_finance_quarterly_fee_bands_foundation(test_engine)
+    ensure_phase33_management_team_foundation(test_engine)
     ensure_project_complexity(test_engine)
     ensure_standard_task_types(test_engine)
     return milestone

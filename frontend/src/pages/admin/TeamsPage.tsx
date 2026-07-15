@@ -168,7 +168,7 @@ export default function TeamsPage() {
   ]);
 
   const defaultBillableForUser = (team: Team, userId: string) => {
-    if (team.name === 'Corporate / Shared Services') return false;
+    if (team.name === 'Corporate / Shared Services' || team.name === 'Management') return false;
     const selected = users.find((u) => u.id === userId);
     const role = selected?.role_name ?? '';
     return FIXED_RESOURCE_ROLES.has(role);

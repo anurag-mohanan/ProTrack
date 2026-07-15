@@ -34,9 +34,14 @@ def get_employee_cost_roster(
     team_id: UUID | None = None,
     include_exempt: bool = False,
 ) -> list[dict]:
+    from datetime import date
+
+    from app.services.finance.employment_cost import employment_salary_factor
+
+    as_of = date.today()
+    month_start = as_of.replace(day=1)
     users = db.scalars(
         select(User)
-        .where(User.is_active.is_(True))
         .options(selectinload(User.team_memberships).selectinload(TeamMember.team))
         .order_by(User.last_name, User.first_name)
     ).all()
@@ -49,6 +54,10 @@ def get_employee_cost_roster(
 
     roster: list[dict] = []
     for user in users:
+        leaving = getattr(user, "leaving_date", None)
+        # Active, or left this month (still prorated in P&L).
+        if not user.is_active and (leaving is None or leaving < month_start):
+            continue
         requires = user_requires_salary(user)
         if not include_exempt and not requires:
             continue
@@ -66,6 +75,7 @@ def get_employee_cost_roster(
             if user.team.name not in team_names:
                 team_names.append(user.team.name)
                 team_names.sort()
+        factor = employment_salary_factor(user, as_of=as_of)
         roster.append(
             {
                 "user_id": user.id,
@@ -82,6 +92,9 @@ def get_employee_cost_roster(
                 "base_monthly_salary_inr": profile.base_monthly_salary_inr if profile else None,
                 "effective_from": profile.effective_from if profile else None,
                 "notes": profile.notes if profile else None,
+                "joining_date": getattr(user, "joining_date", None),
+                "leaving_date": leaving,
+                "salary_month_factor": str(factor),
             }
         )
     return roster

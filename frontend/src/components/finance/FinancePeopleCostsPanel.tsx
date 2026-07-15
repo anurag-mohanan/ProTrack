@@ -17,6 +17,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { teamQueryParam } from './FinanceTeamFilter';
 
 type RosterItem = {
@@ -30,12 +31,15 @@ type RosterItem = {
   monthly_salary: number | null;
   currency_code: string | null;
   effective_from: string | null;
+  leaving_date?: string | null;
+  salary_month_factor?: string | null;
 };
 
 type Draft = {
   monthly_salary: string;
   currency_code: string;
   effective_from: string;
+  leaving_date: string;
 };
 
 function rosterQueryString(teamId: string, includeExempt: boolean): string {
@@ -60,8 +64,11 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (payload: { userId: string; draft: Draft }) =>
-      (
+    mutationFn: async (payload: { userId: string; draft: Draft }) => {
+      await apiClient.patch(`/finance/employee-costs/roster/${payload.userId}/leaving-date`, {
+        leaving_date: payload.draft.leaving_date || null,
+      });
+      return (
         await apiClient.post('/finance/employee-costs', {
           user_id: payload.userId,
           monthly_salary: payload.draft.monthly_salary || '0',
@@ -69,14 +76,15 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
           currency_code: payload.draft.currency_code || 'INR',
           effective_from: payload.draft.effective_from,
         })
-      ).data,
+      ).data;
+    },
     onSuccess: () => {
-      showSuccess('Salary saved');
+      showSuccess('Salary / last working day saved');
       void queryClient.invalidateQueries({ queryKey: ['finance-employee-roster'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
-    onError: (error: { response?: { data?: { detail?: string } }; message?: string }) => {
-      showError(error.response?.data?.detail ?? error.message ?? 'Could not save salary');
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not save salary'));
     },
   });
 
@@ -93,6 +101,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
       monthly_salary: row.monthly_salary != null ? String(row.monthly_salary) : '',
       currency_code: row.currency_code ?? 'INR',
       effective_from: row.effective_from ?? new Date().toISOString().slice(0, 10),
+      leaving_date: row.leaving_date ?? '',
     };
   };
 
@@ -106,8 +115,8 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="body2" color="text.secondary">
           {teamId
-            ? 'Employees for the selected team (primary membership preferred). Salary-exempt accounts are hidden unless shown.'
-            : 'Active employees who require salary. Use Show salary-exempt for Admin / Planning Board accounts.'}
+            ? 'Employees for the selected team. Set Last working day so salaries stop after that date.'
+            : 'Set Last working day when someone leaves — monthly salary prorates in that month and drops after.'}
         </Typography>
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <FormControlLabel
@@ -131,6 +140,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
             <TableCell>Monthly salary</TableCell>
             <TableCell>Currency</TableCell>
             <TableCell>Effective</TableCell>
+            <TableCell>Last working day</TableCell>
             <TableCell align="right">Action</TableCell>
           </TableRow>
         </TableHead>
@@ -138,6 +148,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
           {rows.map((row) => {
             const draft = ensureDraft(row);
             const exempt = row.requires_salary === false;
+            const factor = Number(row.salary_month_factor ?? 1);
             return (
               <TableRow key={row.user_id} hover>
                 <TableCell>
@@ -152,6 +163,10 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
                       </Typography>
                     </Box>
                     {exempt ? <Chip size="small" label="Salary not required" variant="outlined" /> : null}
+                    {factor > 0 && factor < 1 ? (
+                      <Chip size="small" color="warning" label={`${Math.round(factor * 100)}% this month`} />
+                    ) : null}
+                    {factor === 0 ? <Chip size="small" color="default" label="Left" /> : null}
                   </Stack>
                 </TableCell>
                 <TableCell>{row.team_names.join(', ') || '—'}</TableCell>
@@ -184,6 +199,16 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
                     sx={{ width: 150 }}
                   />
                 </TableCell>
+                <TableCell>
+                  <TextField
+                    size="small"
+                    type="date"
+                    value={draft.leaving_date}
+                    onChange={(e) => setDraftField(row.user_id, 'leaving_date', e.target.value, row)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    sx={{ width: 150 }}
+                  />
+                </TableCell>
                 <TableCell align="right">
                   <Button
                     size="small"
@@ -203,11 +228,6 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
           })}
         </TableBody>
       </Table>
-      {rows.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          No employees match this filter.
-        </Typography>
-      ) : null}
     </Stack>
   );
 }

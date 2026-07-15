@@ -49,6 +49,7 @@ from app.schemas.finance import (
     EmployeeCostProfileCreate,
     EmployeeCostProfileRead,
     EmployeeCostRosterItem,
+    EmployeeLeavingDateUpdate,
     ExpenseCreate,
     ExpenseRead,
     ExpenseUpdate,
@@ -407,6 +408,50 @@ def employee_cost_roster(
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
     return get_employee_cost_roster(db, team_id=team_id, include_exempt=include_exempt)
+
+
+@router.patch(
+    "/employee-costs/roster/{user_id}/leaving-date",
+    response_model=EmployeeCostRosterItem,
+)
+def update_employee_leaving_date(
+    user_id: UUID,
+    payload: EmployeeLeavingDateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set last working day — salaries/headcount honor this for P&L."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.leaving_date = payload.leaving_date
+    db.flush()
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.cost_updated,
+        entity_type=EntityType.user,
+        entity_id=user.id,
+        new_value=f"leaving_date:{payload.leaving_date}",
+    )
+    db.commit()
+    rows = get_employee_cost_roster(db, include_exempt=True)
+    match = next((row for row in rows if row["user_id"] == user_id), None)
+    if match is None:
+        return {
+            "user_id": user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "team_names": [],
+            "requires_salary": user.requires_salary,
+            "has_profile": False,
+            "joining_date": user.joining_date,
+            "leaving_date": user.leaving_date,
+            "salary_month_factor": "0",
+        }
+    return match
 
 
 @router.get("/employee-costs", response_model=list[EmployeeCostProfileRead])

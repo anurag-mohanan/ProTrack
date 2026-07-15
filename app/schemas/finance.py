@@ -172,6 +172,13 @@ class EmployeeCostRosterItem(BaseModel):
     base_monthly_salary_inr: Decimal | None = None
     effective_from: date | None = None
     notes: str | None = None
+    joining_date: date | None = None
+    leaving_date: date | None = None
+    salary_month_factor: str | None = None
+
+
+class EmployeeLeavingDateUpdate(BaseModel):
+    leaving_date: date | None = None
 
 
 class TeamCommercialFeeBandInput(BaseModel):

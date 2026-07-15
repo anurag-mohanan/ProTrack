@@ -45,6 +45,10 @@ MANAGEMENT_OVERHEAD_ROLE_DEFAULTS = frozenset(
     }
 )
 
+# Keep name literal to avoid circular import with phase33.
+_MANAGEMENT_TEAM_NAME = "Management"
+_OVERHEAD_TEAM_NAMES = frozenset({CORPORATE_TEAM_NAME, _MANAGEMENT_TEAM_NAME})
+
 
 def role_is_fixed_resource_default(role_name: str) -> bool:
     return normalize_role_name(role_name) in FIXED_RESOURCE_ROLE_DEFAULTS
@@ -60,7 +64,7 @@ def default_is_billable_headcount(
     role_name: str | None,
 ) -> bool:
     """Default for new memberships: designers/surfacer on delivery teams only."""
-    if team is not None and team.name == CORPORATE_TEAM_NAME:
+    if team is not None and team.name in _OVERHEAD_TEAM_NAMES:
         return False
     if not role_name:
         return False

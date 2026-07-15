@@ -378,6 +378,7 @@ class Customer(Base, TimestampMixin):
     project_number_format: Mapped[Optional[str]] = mapped_column(String(100))
     project_number_prefix: Mapped[Optional[str]] = mapped_column(String(50))
     next_project_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    default_currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
 
     contacts: Mapped[list[Contact]] = relationship(
         back_populates="customer", cascade="all, delete-orphan"

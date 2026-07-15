@@ -23,6 +23,7 @@ import {
 } from '../config/importFormats';
 import { AnnualPlanPanel } from '../components/finance/AnnualPlanPanel';
 import { FinanceExpensesPanel } from '../components/finance/FinanceExpensesPanel';
+import { FinanceFxRatesPanel } from '../components/finance/FinanceFxRatesPanel';
 import { FinanceOverviewPanel } from '../components/finance/FinanceOverviewPanel';
 import { FinancePeopleCostsPanel } from '../components/finance/FinancePeopleCostsPanel';
 import { FinanceTeamCommercialPanel } from '../components/finance/FinanceTeamCommercialPanel';
@@ -217,6 +218,8 @@ export function FinanceDashboardPage() {
 
       {tab === 6 && (
         <Stack spacing={3}>
+          <FinanceFxRatesPanel />
+
           <Box>
             <Typography variant="h6" sx={{ mb: 1 }}>
               Budgets

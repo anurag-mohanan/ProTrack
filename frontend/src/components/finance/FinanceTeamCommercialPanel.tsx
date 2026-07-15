@@ -84,6 +84,11 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
     queryKey: ['lookup-working-models'],
     queryFn: fetchWorkingModels,
   });
+  const currenciesQuery = useQuery({
+    queryKey: ['finance-currencies'],
+    queryFn: async () =>
+      (await apiClient.get<Array<{ code: string; name: string }>>('/finance/currencies')).data,
+  });
   const q = teamQueryParam(teamId);
   const termsQuery = useQuery({
     queryKey: ['finance-team-commercial', teamId || 'all'],
@@ -233,6 +238,22 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
               No team customer fee for this model — use Revenue / quotes for project revenue.
             </Typography>
           )}
+          <FormControl size="small" sx={{ minWidth: 110 }}>
+            <InputLabel>Currency</InputLabel>
+            <Select
+              label="Currency"
+              value={form.currency_code}
+              onChange={(e) => setForm((p) => ({ ...p, currency_code: e.target.value }))}
+            >
+              {(currenciesQuery.data ?? [{ code: 'INR' }, { code: 'USD' }, { code: 'EUR' }]).map(
+                (c) => (
+                  <MenuItem key={c.code} value={c.code}>
+                    {c.code}
+                  </MenuItem>
+                ),
+              )}
+            </Select>
+          </FormControl>
           <FormControl size="small" sx={{ minWidth: 130 }}>
             <InputLabel>Period</InputLabel>
             <Select
@@ -313,8 +334,8 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
                   {row.customer_pays_hardware ? ' · customer HW' : ''}
                 </Typography>
               </Box>
-              <Stack direction="row" spacing={1}>
-                <Button size="small" variant="outlined" onClick={() => startEdit(row)}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <Button size="small" variant="contained" onClick={() => startEdit(row)}>
                   Edit
                 </Button>
                 <Button size="small" color="error" variant="outlined" onClick={() => setDeleteTarget(row)}>

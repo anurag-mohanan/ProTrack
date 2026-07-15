@@ -760,6 +760,30 @@ def test_corporate_expense_not_on_other_team_dashboard(client, auth_headers, ses
     assert "Shared HQ rent" in {row["name"] for row in corp_expenses}
 
 
+def test_customer_default_currency(client, auth_headers, session):
+    import uuid
+
+    from app.models.models import Customer
+
+    customer = Customer(
+        id=uuid.uuid4(),
+        name="USD Customer Co",
+        code=f"USD{uuid.uuid4().hex[:4]}",
+        is_active=True,
+        default_currency_code="USD",
+    )
+    session.add(customer)
+    session.commit()
+
+    listed = client.get("/api/v1/customers?limit=200", headers=auth_headers)
+    assert listed.status_code == 200, listed.text
+    rows = listed.json()
+    items = rows.get("items", rows) if isinstance(rows, dict) else rows
+    match = next((row for row in items if row["id"] == str(customer.id)), None)
+    assert match is not None
+    assert match.get("default_currency_code") == "USD"
+
+
 def test_retainer_strategy_includes_customer_fee():
     strategy = finance_kpi_registry.get(WorkingModelCode.retainer)
     result = strategy.calculate(

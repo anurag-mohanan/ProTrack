@@ -61,6 +61,7 @@ interface CustomerFormState {
   due_date_calculation: string;
   project_number_format: string;
   project_number_prefix: string;
+  default_currency_code: string;
 }
 
 const emptyForm: CustomerFormState = {
@@ -76,6 +77,7 @@ const emptyForm: CustomerFormState = {
   due_date_calculation: 'from_start',
   project_number_format: '',
   project_number_prefix: '',
+  default_currency_code: 'INR',
 };
 
 const CUSTOMER_SECTION_STORAGE_KEY = 'protrack:sections:customer-form';
@@ -185,6 +187,7 @@ export default function CustomersPage() {
       due_date_calculation: customer.due_date_calculation ?? 'from_start',
       project_number_format: customer.project_number_format ?? '',
       project_number_prefix: customer.project_number_prefix ?? '',
+      default_currency_code: customer.default_currency_code ?? 'INR',
     };
     setForm(nextForm);
     baselineRef.current = serializeForm(nextForm);
@@ -216,6 +219,7 @@ export default function CustomersPage() {
         due_date_calculation: form.due_date_calculation as Customer['due_date_calculation'],
         project_number_format: optionalString(form.project_number_format),
         project_number_prefix: optionalString(form.project_number_prefix),
+        default_currency_code: form.default_currency_code || 'INR',
       };
       if (editingCustomer) {
         await customersApi.update(editingCustomer.id, payload);
@@ -418,6 +422,27 @@ export default function CustomersPage() {
                   />
                 }
                 label="Active customer"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Default currency"
+                value={form.default_currency_code}
+                helper="Used as the default for quotes and multi-country customers. Changing this does not rewrite historical INR postings."
+                options={[
+                  { value: 'INR', label: 'INR — Indian Rupee' },
+                  { value: 'USD', label: 'USD — US Dollar' },
+                  { value: 'EUR', label: 'EUR — Euro' },
+                  { value: 'GBP', label: 'GBP — British Pound' },
+                  { value: 'AED', label: 'AED — UAE Dirham' },
+                  { value: 'SGD', label: 'SGD — Singapore Dollar' },
+                ]}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    default_currency_code: String(event.target.value),
+                  }))
+                }
               />
             </Grid>
           </CollapsibleFormSection>

@@ -72,6 +72,7 @@ class CustomerBase(BaseModel):
     due_date_calculation: DueDateCalculationMode = DueDateCalculationMode.from_start
     project_number_format: str | None = Field(default=None, max_length=100)
     project_number_prefix: str | None = Field(default=None, max_length=50)
+    default_currency_code: str = Field(default="INR", min_length=3, max_length=3)
 
 
 class CustomerCreate(BlankOptionalFieldsMixin, CustomerBase):
@@ -92,6 +93,7 @@ class CustomerUpdate(BlankOptionalFieldsMixin, BaseModel):
     due_date_calculation: DueDateCalculationMode | None = None
     project_number_format: str | None = Field(default=None, max_length=100)
     project_number_prefix: str | None = Field(default=None, max_length=50)
+    default_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
 
 
 class CustomerRead(CustomerBase, TimestampSchema):

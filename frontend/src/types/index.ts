@@ -104,6 +104,7 @@ export interface Customer {
   due_date_calculation?: 'from_start' | 'from_previous_milestone' | 'business_days';
   project_number_format?: string | null;
   project_number_prefix?: string | null;
+  default_currency_code?: string | null;
   created_at?: string;
   updated_at?: string;
 }

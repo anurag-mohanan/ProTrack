@@ -481,15 +481,9 @@ def upsert_employee_cost(
 
 
 def _salary_required_headcount(db: Session, team_id: UUID) -> int:
-    user_ids = set()
-    members = db.scalars(select(TeamMember.user_id).where(TeamMember.team_id == team_id)).all()
-    user_ids.update(members)
-    legacy = db.scalars(select(User.id).where(User.team_id == team_id, User.is_active.is_(True))).all()
-    user_ids.update(legacy)
-    if not user_ids:
-        return 0
-    users = db.scalars(select(User).where(User.id.in_(user_ids), User.is_active.is_(True))).all()
-    return sum(1 for user in users if user_requires_salary(user))
+    from app.services.finance.billable_headcount import billable_salary_headcount
+
+    return billable_salary_headcount(db, team_id)
 
 
 def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommercialTermsRead:

@@ -110,23 +110,9 @@ def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Deci
         if strategy == WorkingModelCode.retainer or (
             hasattr(strategy, "value") and strategy.value == WorkingModelCode.retainer.value
         ):
-            # salary-required headcount
-            user_ids: set[UUID] = set()
-            members = db.scalars(
-                select(TeamMember.user_id).where(TeamMember.team_id == term.team_id)
-            ).all()
-            user_ids.update(members)
-            legacy = db.scalars(
-                select(User.id).where(User.team_id == term.team_id, User.is_active.is_(True))
-            ).all()
-            user_ids.update(legacy)
-            count = 0
-            if user_ids:
-                for user in db.scalars(
-                    select(User).where(User.id.in_(user_ids), User.is_active.is_(True))
-                ).all():
-                    if bool(getattr(user, "requires_salary", True)):
-                        count += 1
+            from app.services.finance.billable_headcount import billable_salary_headcount
+
+            count = billable_salary_headcount(db, term.team_id)
             rate = rate * Decimal(count)
         total += _normalize_monthly_fee(rate, term.billing_period)
     return total

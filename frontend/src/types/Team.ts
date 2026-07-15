@@ -18,6 +18,7 @@ export interface TeamMember extends Timestamped {
   user_email: string;
   role_within_team: string | null;
   joined_at: string;
+  is_billable_headcount?: boolean;
 }
 
 export interface TeamCreate {
@@ -41,6 +42,7 @@ export interface TeamUpdate {
 export interface TeamMemberCreate {
   user_id: string;
   role_within_team?: string | null;
+  is_billable_headcount?: boolean;
 }
 
 export interface TeamResourcePlanningRow {

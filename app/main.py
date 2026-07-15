@@ -49,6 +49,9 @@ from app.db.phase26_customer_currency_schema_sync import (
     ensure_phase26_customer_currency_foundation,
 )
 from app.db.phase27_fx_rate_backfill import ensure_phase27_fx_rate_backfill
+from app.db.phase28_team_member_billable_schema_sync import (
+    ensure_phase28_team_member_billable_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -131,6 +134,7 @@ async def lifespan(app: FastAPI):
         ("phase25_expense_purchase_date", ensure_phase25_expense_purchase_date_foundation),
         ("phase26_customer_currency", ensure_phase26_customer_currency_foundation),
         ("phase27_fx_rate_backfill", ensure_phase27_fx_rate_backfill),
+        ("phase28_team_member_billable", ensure_phase28_team_member_billable_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

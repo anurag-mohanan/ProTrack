@@ -328,12 +328,17 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {isRetainer(row.working_model_strategy)
-                    ? `Rate ${row.customer_fee_amount} ${row.currency_code}/resource/mo × ${row.resource_count ?? 0} ≈ ${row.monthly_fee_signal_inr ?? 0} INR/mo`
+                    ? `Rate ${row.customer_fee_amount} ${row.currency_code}/resource/mo × ${row.resource_count ?? 0} billable ≈ ${row.monthly_fee_signal_inr ?? 0} INR/mo`
                     : `No team flat fee (quotes drive revenue) · ${row.billing_period}`}
                   {` · from ${row.effective_from}`}
                   {row.customer_pays_software ? ' · customer SW' : ''}
                   {row.customer_pays_hardware ? ' · customer HW' : ''}
                 </Typography>
+                {isRetainer(row.working_model_strategy) ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Billable resources exclude management / overhead (Billable headcount off).
+                  </Typography>
+                ) : null}
               </Box>
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                 <Button size="small" variant="contained" onClick={() => startEdit(row)}>

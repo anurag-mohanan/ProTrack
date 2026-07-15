@@ -510,6 +510,84 @@ def test_team_commercial_terms_in_dashboard(client, auth_headers, session):
     assert float(dash["team_commercial_fee_monthly_inr"]) >= 120000.0
 
 
+def test_non_billable_member_excluded_from_retainer_fee(client, auth_headers, session):
+    import uuid
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.models.enums import WorkingModelCode
+    from app.models.models import Team, TeamMember, User, WorkingModel
+
+    team = Team(id=uuid.uuid4(), name="Billable Headcount Team", is_active=True)
+    model = WorkingModel(
+        id=uuid.uuid4(),
+        code=f"retainer_{uuid.uuid4().hex[:8]}",
+        strategy_key=WorkingModelCode.retainer,
+        name="Retainer Billable Test",
+        is_active=True,
+        is_archived=False,
+    )
+    session.add(team)
+    session.add(model)
+    billable = session.get(User, IDS["user_binil"])
+    manager = session.get(User, IDS["user_planning_board"])
+    assert billable is not None and manager is not None
+    billable.requires_salary = True
+    manager.requires_salary = True  # salary-required but not customer-billable on this team
+    session.add(
+        TeamMember(
+            team_id=team.id,
+            user_id=billable.id,
+            is_primary=True,
+            is_billable_headcount=True,
+        )
+    )
+    session.add(
+        TeamMember(
+            team_id=team.id,
+            user_id=manager.id,
+            is_primary=False,
+            is_billable_headcount=False,
+        )
+    )
+    session.commit()
+
+    create = client.post(
+        "/api/v1/finance/team-commercial",
+        headers=auth_headers,
+        json={
+            "team_id": str(team.id),
+            "working_model_id": str(model.id),
+            "customer_fee_amount": "10000",
+            "currency_code": "INR",
+            "billing_period": "monthly",
+            "effective_from": date.today().isoformat(),
+        },
+    )
+    assert create.status_code == 201, create.text
+    body = create.json()
+    assert body["resource_count"] == 1
+    assert float(body["monthly_fee_signal_inr"]) == 10000.0
+
+    membership = session.scalar(
+        select(TeamMember).where(
+            TeamMember.team_id == team.id, TeamMember.user_id == manager.id
+        )
+    )
+    assert membership is not None
+    patched = client.patch(
+        f"/api/v1/teams/{team.id}/members/{membership.id}",
+        headers=auth_headers,
+        json={"is_billable_headcount": True},
+    )
+    assert patched.status_code == 200, patched.text
+    listed = client.get(
+        f"/api/v1/finance/team-commercial?team_id={team.id}", headers=auth_headers
+    ).json()
+    assert listed[0]["resource_count"] == 2
+
+
 def test_team_commercial_usd_with_fy_start_effective_date(client, auth_headers, session):
     """USD terms dated at FY start must convert even when live FX was seeded mid-year."""
     import uuid

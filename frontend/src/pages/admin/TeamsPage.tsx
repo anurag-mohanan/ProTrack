@@ -77,6 +77,7 @@ export default function TeamsPage() {
   const [memberForm, setMemberForm] = useState<TeamMemberCreate>({
     user_id: '',
     role_within_team: '',
+    is_billable_headcount: true,
   });
   const [removeMemberTarget, setRemoveMemberTarget] = useState<TeamMember | null>(null);
 
@@ -161,6 +162,12 @@ export default function TeamsPage() {
 
   const openMembers = async (team: Team) => {
     setMemberTeam(team);
+    const corporate = team.name === 'Corporate / Shared Services';
+    setMemberForm({
+      user_id: '',
+      role_within_team: '',
+      is_billable_headcount: !corporate,
+    });
     try {
       const { data } = await apiClient.get<TeamMember[]>(`/teams/${team.id}/members`);
       setMembers(data);
@@ -175,8 +182,20 @@ export default function TeamsPage() {
       await apiClient.post(`/teams/${memberTeam.id}/members`, memberForm);
       showSuccess('Member added');
       await openMembers(memberTeam);
-      setMemberForm({ user_id: '', role_within_team: '' });
       await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    }
+  };
+
+  const handleToggleBillable = async (member: TeamMember, next: boolean) => {
+    if (!memberTeam) return;
+    try {
+      await apiClient.patch(`/teams/${memberTeam.id}/members/${member.id}`, {
+        is_billable_headcount: next,
+      });
+      showSuccess(next ? 'Marked billable for retainer headcount' : 'Excluded from retainer headcount');
+      await openMembers(memberTeam);
     } catch (error) {
       showError(getErrorMessage(error));
     }
@@ -416,6 +435,26 @@ export default function TeamsPage() {
                 }
               />
             </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={memberForm.is_billable_headcount !== false}
+                    onChange={(event) =>
+                      setMemberForm({
+                        ...memberForm,
+                        is_billable_headcount: event.target.checked,
+                      })
+                    }
+                  />
+                }
+                label="Billable headcount (retainer / customer rate)"
+              />
+              <Box sx={{ color: 'text.secondary', fontSize: '0.875rem', mt: 0.5 }}>
+                Off for management / overhead people — they are not paid by the customer on fixed or
+                retainer models. Corporate / Shared Services defaults to off.
+              </Box>
+            </Grid>
           </FormSection>
           <FormSection title="Current Members" icon={GroupsIcon}>
             {members.map((member) => (
@@ -428,22 +467,38 @@ export default function TeamsPage() {
                     py: 1,
                     borderBottom: '1px solid',
                     borderColor: 'divider',
+                    gap: 1,
+                    flexWrap: 'wrap',
                   }}
                 >
-                  <Box>
+                  <Box sx={{ minWidth: 180 }}>
                     <Box sx={{ fontWeight: 600 }}>{member.user_name}</Box>
                     <Box sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
                       {member.role_within_team || 'Member'} · {member.user_email}
                     </Box>
                   </Box>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    aria-label={`Remove ${member.user_name}`}
-                    onClick={() => setRemoveMemberTarget(member)}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={member.is_billable_headcount !== false}
+                          onChange={(event) =>
+                            void handleToggleBillable(member, event.target.checked)
+                          }
+                        />
+                      }
+                      label="Billable"
+                    />
+                    <IconButton
+                      size="small"
+                      color="error"
+                      aria-label={`Remove ${member.user_name}`}
+                      onClick={() => setRemoveMemberTarget(member)}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
                 </Box>
               </Grid>
             ))}

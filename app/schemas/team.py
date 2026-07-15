@@ -39,6 +39,7 @@ class TeamMemberBase(BaseModel):
     role_within_team: str | None = Field(default=None, max_length=100)
     relationship_type: TeamRelationshipType = TeamRelationshipType.member
     is_primary: bool = False
+    is_billable_headcount: bool | None = None
 
 
 class TeamMemberCreate(BlankOptionalFieldsMixin, TeamMemberBase):
@@ -49,6 +50,7 @@ class TeamMemberUpdate(BlankOptionalFieldsMixin, BaseModel):
     role_within_team: str | None = Field(default=None, max_length=100)
     relationship_type: TeamRelationshipType | None = None
     is_primary: bool | None = None
+    is_billable_headcount: bool | None = None
 
 
 class TeamMemberRead(TeamMemberBase, TimestampSchema):
@@ -56,6 +58,7 @@ class TeamMemberRead(TeamMemberBase, TimestampSchema):
     user_name: str
     user_email: str
     joined_at: datetime
+    is_billable_headcount: bool = True
 
 
 class TeamMemberTransfer(BaseModel):

@@ -64,6 +64,7 @@ def build_team_member_read(db: Session, member: TeamMember) -> TeamMemberRead:
         role_within_team=member.role_within_team,
         relationship_type=member.relationship_type,
         is_primary=member.is_primary,
+        is_billable_headcount=bool(getattr(member, "is_billable_headcount", True)),
         joined_at=member.joined_at,
         created_at=member.created_at,
         updated_at=member.updated_at,
@@ -179,12 +180,18 @@ class CRUDTeam(CRUDBase[Team, TeamCreate, TeamUpdate]):
         )
         if existing is not None:
             raise ProTrackValidationError("User is already a member of this team")
+        from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
+
+        billable = obj_in.is_billable_headcount
+        if billable is None:
+            billable = not is_corporate_team(team)
         member = TeamMember(
             team_id=team_id,
             user_id=obj_in.user_id,
             role_within_team=obj_in.role_within_team,
             relationship_type=obj_in.relationship_type,
             is_primary=False,
+            is_billable_headcount=bool(billable),
             joined_at=_utcnow(),
         )
         db.add(member)

@@ -335,6 +335,7 @@ class TeamMember(Base, TimestampMixin):
         default=TeamRelationshipType.member,
     )
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_billable_headcount: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     include_in_timesheet_reports: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )

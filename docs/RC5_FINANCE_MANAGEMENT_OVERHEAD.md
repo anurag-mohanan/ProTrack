@@ -117,6 +117,10 @@ flowchart TD
 
 ---
 
+## Status
+
+**Implemented** (phase28 + UI): `team_members.is_billable_headcount`, Corporate backfill/defaults, retainer uses billable ∩ requires_salary, Teams membership Billable toggle, Team commercial “billable” copy.
+
 ## Pipeline (mandatory)
 
 ```mermaid

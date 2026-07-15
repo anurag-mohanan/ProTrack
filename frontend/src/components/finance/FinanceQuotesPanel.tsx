@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -11,11 +11,12 @@ import {
   MenuItem,
   Select,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
-import { fetchTeams } from '../../api/lookups';
+import { fetchCustomers, fetchTeams } from '../../api/lookups';
 import {
   IMPORT_ACCEPT_WITH_CSV,
   IMPORT_FORMAT_LABEL_WITH_CSV,
@@ -55,11 +56,28 @@ type QuoteImportResult = {
   items?: QuoteImportItem[];
 };
 
+type ManualQuoteForm = {
+  customerId: string;
+  quoteNumber: string;
+  projectNumber: string;
+  cost: string;
+  currencyCode: string;
+};
+
+const emptyManual: ManualQuoteForm = {
+  customerId: '',
+  quoteNumber: '',
+  projectNumber: '',
+  cost: '',
+  currencyCode: '',
+};
+
 export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [importTeamId, setImportTeamId] = useState(teamId);
   const [createProject, setCreateProject] = useState(true);
+  const [manual, setManual] = useState<ManualQuoteForm>(emptyManual);
   const [lastImport, setLastImport] = useState<QuoteImportItem[]>([]);
 
   useEffect(() => {
@@ -70,10 +88,69 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     queryKey: ['lookup-teams'],
     queryFn: fetchTeams,
   });
+  const customersQuery = useQuery({
+    queryKey: ['lookup-customers'],
+    queryFn: fetchCustomers,
+  });
   const listQ = teamQueryParam(teamId);
   const quotesQuery = useQuery({
     queryKey: ['finance-quotes', teamId || 'all'],
     queryFn: async () => (await apiClient.get<QuoteRow[]>(`/finance/quotes${listQ}`)).data,
+  });
+
+  const applyImportResult = (data: QuoteImportResult, successLabel: string) => {
+    setLastImport(data.items ?? []);
+    const created = (data.items ?? []).filter((item) => item.project_created).length;
+    const linked = (data.items ?? []).filter((item) => item.project_linked).length;
+    showSuccess(
+      `${successLabel}: ${data.imported_count}` +
+        (created ? ` · ${created} project(s) created` : '') +
+        (linked && !created ? ` · ${linked} linked` : ''),
+    );
+    void queryClient.invalidateQueries({ queryKey: ['finance-quotes'] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+    void queryClient.invalidateQueries({ queryKey: ['projects'] });
+  };
+
+  const manualMutation = useMutation({
+    mutationFn: async () => {
+      if (!importTeamId) throw new Error('Select a team.');
+      if (!manual.customerId) throw new Error('Select a customer.');
+      const projectNumber = manual.projectNumber.trim();
+      if (!projectNumber) throw new Error('Project # is required.');
+      const costRaw = manual.cost.trim().replace(/,/g, '');
+      if (!costRaw) throw new Error('Cost (quoted amount) is required.');
+      const cost = Number(costRaw);
+      if (!Number.isFinite(cost) || cost < 0) {
+        throw new Error('Cost must be a valid number.');
+      }
+      const currency =
+        manual.currencyCode.trim().toUpperCase() ||
+        customersQuery.data?.find((c) => c.id === manual.customerId)?.default_currency_code ||
+        undefined;
+      return (
+        await apiClient.post<QuoteImportResult>('/finance/quotes/manual', {
+          team_id: importTeamId,
+          customer_id: manual.customerId,
+          tool_number: projectNumber,
+          quoted_revenue: cost,
+          external_quote_number: manual.quoteNumber.trim() || null,
+          currency_code: currency || null,
+          create_project: createProject,
+        })
+      ).data;
+    },
+    onSuccess: (data) => {
+      applyImportResult(data, 'Saved awarded quote');
+      setManual((prev) => ({
+        ...emptyManual,
+        customerId: prev.customerId,
+        currencyCode: prev.currencyCode,
+      }));
+    },
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not save quote'));
+    },
   });
 
   const importMutation = useMutation({
@@ -85,21 +162,10 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       form.append('file', file);
       form.append('team_id', importTeamId);
       form.append('create_project', createProject ? 'true' : 'false');
-      // Leave Content-Type unset so the browser adds multipart boundary (see apiClient).
       return (await apiClient.post<QuoteImportResult>('/finance/quotes/import', form)).data;
     },
     onSuccess: (data) => {
-      setLastImport(data.items ?? []);
-      const created = (data.items ?? []).filter((item) => item.project_created).length;
-      const linked = (data.items ?? []).filter((item) => item.project_linked).length;
-      showSuccess(
-        `Imported ${data.imported_count} awarded quote(s)` +
-          (created ? ` · ${created} project(s) created` : '') +
-          (linked && !created ? ` · ${linked} linked` : ''),
-      );
-      void queryClient.invalidateQueries({ queryKey: ['finance-quotes'] });
-      void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
-      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      applyImportResult(data, 'Imported awarded quote(s)');
     },
     onError: (error: unknown) => {
       showError(apiErrorMessage(error, 'Quote import failed'));
@@ -107,6 +173,16 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   });
 
   const teams = teamsQuery.data ?? [];
+  const customers = useMemo(
+    () => (customersQuery.data ?? []).filter((c) => c.is_active),
+    [customersQuery.data],
+  );
+  const canSaveManual =
+    Boolean(importTeamId) &&
+    Boolean(manual.customerId) &&
+    Boolean(manual.projectNumber.trim()) &&
+    Boolean(manual.cost.trim()) &&
+    !manualMutation.isPending;
   const canUpload = Boolean(importTeamId) && !importMutation.isPending;
 
   return (
@@ -116,62 +192,150 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           Awarded project quotes
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Import <strong>awarded</strong> (won) project packs only — not bid drafts. AI field
-          recognition maps <strong>Customer</strong> (Prepared For), <strong>Customer Project #</strong>,
-          and <strong>Total / cost</strong> (quoted amount), plus Quote# and hours from Prosohm QT
-          PDFs and Excel/CSV packs. Short names like &quot;Crest Mold&quot; soft-match the customer directory. Team is required so Overview can attribute quote revenue. Formats:{' '}
-          {IMPORT_FORMAT_LABEL_WITH_CSV}. Legacy .xls is not supported.
+          <strong>This phase:</strong> type <strong>Quote #</strong>, <strong>Project #</strong>{' '}
+          (Customer Project #), and <strong>Cost</strong> (quoted amount). Select Customer + Team.
+          Smart PDF recognition is deferred — use manual entry for UAT.
         </Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-          <FormControl size="small" sx={{ minWidth: 220 }} required>
-            <InputLabel>Team for this upload</InputLabel>
-            <Select
-              label="Team for this upload"
-              value={importTeamId}
-              onChange={(e) => setImportTeamId(e.target.value)}
-            >
-              {teams.map((team) => (
-                <MenuItem key={team.id} value={team.id}>
-                  {team.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={createProject}
-                onChange={(e) => setCreateProject(e.target.checked)}
-                size="small"
-              />
-            }
-            label="Create project if missing"
-          />
-          <Button variant="contained" component="label" disabled={!canUpload}>
-            Upload Quote File
-            <input
-              hidden
-              type="file"
-              accept={IMPORT_ACCEPT_WITH_CSV}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) importMutation.mutate(file);
-                event.target.value = '';
-              }}
+
+        <Stack spacing={1.5} sx={{ mb: 2, maxWidth: 720 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+            <FormControl size="small" sx={{ minWidth: 220 }} required>
+              <InputLabel>Team</InputLabel>
+              <Select
+                label="Team"
+                value={importTeamId}
+                onChange={(e) => setImportTeamId(e.target.value)}
+              >
+                {teams.map((team) => (
+                  <MenuItem key={team.id} value={team.id}>
+                    {team.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 260 }} required>
+              <InputLabel>Customer</InputLabel>
+              <Select
+                label="Customer"
+                value={manual.customerId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  const customer = customers.find((c) => c.id === id);
+                  setManual((prev) => ({
+                    ...prev,
+                    customerId: id,
+                    currencyCode:
+                      prev.currencyCode ||
+                      customer?.default_currency_code?.toUpperCase() ||
+                      '',
+                  }));
+                }}
+              >
+                {customers.map((customer) => (
+                  <MenuItem key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              label="Quote #"
+              placeholder="e.g. QT-2026-27-005"
+              value={manual.quoteNumber}
+              onChange={(e) => setManual({ ...manual, quoteNumber: e.target.value })}
+              sx={{ minWidth: 200, flex: 1 }}
             />
-          </Button>
+            <TextField
+              size="small"
+              required
+              label="Project #"
+              placeholder="Customer Project #"
+              value={manual.projectNumber}
+              onChange={(e) => setManual({ ...manual, projectNumber: e.target.value })}
+              sx={{ minWidth: 160, flex: 1 }}
+            />
+            <TextField
+              size="small"
+              required
+              label="Cost"
+              placeholder="Quoted amount"
+              value={manual.cost}
+              onChange={(e) => setManual({ ...manual, cost: e.target.value })}
+              sx={{ minWidth: 140, flex: 1 }}
+              helperText="Quoted revenue / Total"
+            />
+            <TextField
+              size="small"
+              label="Currency"
+              placeholder="USD / INR"
+              value={manual.currencyCode}
+              onChange={(e) =>
+                setManual({ ...manual, currencyCode: e.target.value.toUpperCase() })
+              }
+              sx={{ minWidth: 110, maxWidth: 140 }}
+            />
+          </Stack>
+
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            sx={{ alignItems: 'center' }}
+          >
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={createProject}
+                  onChange={(e) => setCreateProject(e.target.checked)}
+                  size="small"
+                />
+              }
+              label="Create project if missing"
+            />
+            <Button
+              variant="contained"
+              disabled={!canSaveManual}
+              onClick={() => manualMutation.mutate()}
+            >
+              {manualMutation.isPending ? 'Saving…' : 'Save quote'}
+            </Button>
+          </Stack>
+          {!importTeamId ? (
+            <Typography variant="caption" color="warning.main">
+              Select a team. All teams is not valid for save/import.
+            </Typography>
+          ) : null}
         </Stack>
-        {!importTeamId ? (
-          <Typography variant="caption" color="warning.main">
-            Select a team (page filter or upload team). All teams is not valid for import.
-          </Typography>
-        ) : null}
+
+        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+          Optional file upload
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Batch Excel/PDF/CSV still available ({IMPORT_FORMAT_LABEL_WITH_CSV}). Prefer manual entry
+          above when smart parse fails.
+        </Typography>
+        <Button variant="outlined" component="label" disabled={!canUpload}>
+          Upload Quote File
+          <input
+            hidden
+            type="file"
+            accept={IMPORT_ACCEPT_WITH_CSV}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) importMutation.mutate(file);
+              event.target.value = '';
+            }}
+          />
+        </Button>
       </Box>
 
       {lastImport.length > 0 ? (
         <Box>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Last import
+            Last save / import
           </Typography>
           <Stack spacing={1}>
             {lastImport.map((item) => (
@@ -193,7 +357,12 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                         : ' · Unlinked'}
                   </Typography>
                   {(item.warnings ?? []).map((warning) => (
-                    <Typography key={warning} variant="caption" color="warning.main" sx={{ display: 'block' }}>
+                    <Typography
+                      key={warning}
+                      variant="caption"
+                      color="warning.main"
+                      sx={{ display: 'block' }}
+                    >
                       {warning}
                     </Typography>
                   ))}

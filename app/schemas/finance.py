@@ -382,6 +382,21 @@ class QuoteImportResult(BaseModel):
     items: list[QuoteImportItemResult] = Field(default_factory=list)
 
 
+class QuoteManualCreate(BaseModel):
+    """Phase lock: typed Quote # / Project # / Cost — no AI/PDF required."""
+
+    team_id: UUID
+    customer_id: UUID
+    tool_number: str = Field(..., min_length=1, description="Customer Project #")
+    quoted_revenue: Decimal = Field(..., ge=0, description="Quoted amount / cost")
+    external_quote_number: str | None = Field(
+        default=None, description="Quote # (e.g. QT-2026-27-005)"
+    )
+    currency_code: str | None = None
+    quoted_hours: Decimal = Field(default=Decimal("0"), ge=0)
+    create_project: bool = True
+
+
 class FinanceDashboardRead(BaseModel):
     base_currency: str
     revenue: dict

@@ -176,6 +176,56 @@ def ensure_project_for_quote_import(
     return project, True
 
 
+def import_manual_quote(
+    db: Session,
+    *,
+    actor: User,
+    team_id: UUID,
+    customer_id: UUID,
+    tool_number: str,
+    quoted_revenue: Decimal,
+    external_quote_number: str | None = None,
+    currency_code: str | None = None,
+    quoted_hours: Decimal = Decimal("0"),
+    create_project: bool = True,
+) -> QuoteImportOutcome:
+    """Create/update an awarded quote from typed fields (no file / AI parse)."""
+    customer = db.get(Customer, customer_id)
+    if customer is None or not customer.is_active:
+        raise ProTrackValidationError("Customer not found or inactive.")
+    tool = tool_number.strip()
+    if not tool:
+        raise ProTrackValidationError("Project # (tool number) is required.")
+    quote_no = (external_quote_number or "").strip() or None
+    currency = (currency_code or "").strip().upper() or None
+    row: dict[str, object] = {
+        "customer": customer.name,
+        "Customer": customer.name,
+        "tool_number": tool,
+        "Tool Number": tool,
+        "quoted_revenue": quoted_revenue,
+        "Quoted Revenue": quoted_revenue,
+        "quoted_hours": quoted_hours,
+        "Quoted Hours": quoted_hours,
+        "estimated_cost": Decimal("0"),
+        "Estimated Cost": Decimal("0"),
+    }
+    if quote_no:
+        row["external_quote_number"] = quote_no
+        row["Quote#"] = quote_no
+    if currency:
+        row["currency"] = currency
+        row["Currency"] = currency
+    return import_quote_row(
+        db,
+        row=row,
+        actor=actor,
+        source="manual",
+        team_id=team_id,
+        create_project=create_project,
+    )
+
+
 def import_quote_row(
     db: Session,
     *,

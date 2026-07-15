@@ -67,6 +67,7 @@ from app.schemas.finance import (
     PaidByDefaultRead,
     QuoteImportItemResult,
     QuoteImportResult,
+    QuoteManualCreate,
     QuoteRead,
     RenewalNotifyResult,
     TeamCommercialFeeBandInput,
@@ -912,39 +913,17 @@ def list_quotes(
     return [_quote_read(db, row) for row in db.scalars(stmt).all()]
 
 
-@router.post("/quotes/import", response_model=QuoteImportResult)
-async def import_quotes(
-    file: UploadFile = File(...),
-    team_id: UUID = Form(...),
-    create_project: bool = Form(True),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
-    if db.get(Team, team_id) is None:
-        raise HTTPException(status_code=400, detail="Team is required and must exist.")
-    content = await file.read()
-    filename = file.filename or "upload"
-    try:
-        if filename.lower().endswith(".xls") and not filename.lower().endswith(".xlsx"):
-            raise HTTPException(
-                status_code=400,
-                detail="Legacy .xls is not supported. Save as .xlsx or upload PDF/CSV.",
-            )
-        outcomes = import_quotes_from_upload(
-            db,
-            filename=filename,
-            content=content,
-            actor=current_user,
-            team_id=team_id,
-            create_project=create_project,
-        )
-    except ProTrackValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+def _quote_import_items(
+    db: Session,
+    *,
+    current_user: User,
+    outcomes: list,
+) -> list[QuoteImportItemResult]:
+    from app.services.finance.quote_import_service import QuoteImportOutcome
+
     items: list[QuoteImportItemResult] = []
     for outcome in outcomes:
+        assert isinstance(outcome, QuoteImportOutcome)
         quote = outcome.quote
         if outcome.project_created and quote.project_id is not None:
             _audit(
@@ -980,6 +959,79 @@ async def import_quotes(
                 warnings=outcome.warnings,
             )
         )
+    return items
+
+
+@router.post("/quotes/manual", response_model=QuoteImportResult)
+def create_manual_quote(
+    payload: QuoteManualCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Phase path: type Quote #, Project #, and cost — no smart PDF required."""
+    from app.services.finance.quote_import_service import import_manual_quote
+
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    if db.get(Team, payload.team_id) is None:
+        raise HTTPException(status_code=400, detail="Team is required and must exist.")
+    try:
+        outcome = import_manual_quote(
+            db,
+            actor=current_user,
+            team_id=payload.team_id,
+            customer_id=payload.customer_id,
+            tool_number=payload.tool_number,
+            quoted_revenue=payload.quoted_revenue,
+            external_quote_number=payload.external_quote_number,
+            currency_code=payload.currency_code,
+            quoted_hours=payload.quoted_hours,
+            create_project=payload.create_project,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items = _quote_import_items(db, current_user=current_user, outcomes=[outcome])
+    db.commit()
+    return QuoteImportResult(
+        imported_count=1,
+        quote_ids=[outcome.quote.id],
+        items=items,
+    )
+
+
+@router.post("/quotes/import", response_model=QuoteImportResult)
+async def import_quotes(
+    file: UploadFile = File(...),
+    team_id: UUID = Form(...),
+    create_project: bool = Form(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    if db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team is required and must exist.")
+    content = await file.read()
+    filename = file.filename or "upload"
+    try:
+        if filename.lower().endswith(".xls") and not filename.lower().endswith(".xlsx"):
+            raise HTTPException(
+                status_code=400,
+                detail="Legacy .xls is not supported. Save as .xlsx or upload PDF/CSV.",
+            )
+        outcomes = import_quotes_from_upload(
+            db,
+            filename=filename,
+            content=content,
+            actor=current_user,
+            team_id=team_id,
+            create_project=create_project,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items = _quote_import_items(db, current_user=current_user, outcomes=outcomes)
     db.commit()
     return QuoteImportResult(
         imported_count=len(outcomes),

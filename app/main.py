@@ -56,6 +56,9 @@ from app.db.phase29_quote_team_schema_sync import ensure_phase29_quote_team_foun
 from app.db.phase30_quote_external_number_schema_sync import (
     ensure_phase30_quote_external_number_foundation,
 )
+from app.db.phase31_overhead_role_billable_backfill import (
+    ensure_phase31_overhead_role_billable_backfill,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -141,6 +144,7 @@ async def lifespan(app: FastAPI):
         ("phase28_team_member_billable", ensure_phase28_team_member_billable_foundation),
         ("phase29_quote_team", ensure_phase29_quote_team_foundation),
         ("phase30_quote_external_number", ensure_phase30_quote_external_number_foundation),
+        ("phase31_overhead_role_billable", ensure_phase31_overhead_role_billable_backfill),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

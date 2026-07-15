@@ -99,9 +99,13 @@ def sync_user_team_assignments(
 
     db.execute(delete(TeamMember).where(TeamMember.user_id == user_id))
     primary_team_id: UUID | None = None
+    from app.core.fixed_resource_eligibility import default_is_billable_headcount_for_user
+
     for row in resolved:
         if row.is_primary:
             primary_team_id = row.team_id
+        team = db.get(Team, row.team_id)
+        billable = default_is_billable_headcount_for_user(db, team=team, user=user)
         db.add(
             TeamMember(
                 team_id=row.team_id,
@@ -109,6 +113,7 @@ def sync_user_team_assignments(
                 relationship_type=row.relationship_type,
                 is_primary=row.is_primary,
                 include_in_timesheet_reports=row.include_in_timesheet_reports,
+                is_billable_headcount=billable,
                 role_within_team=row.relationship_type.value.replace("_", " ").title(),
                 joined_at=_utcnow(),
             )

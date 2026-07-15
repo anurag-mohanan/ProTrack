@@ -39,23 +39,52 @@ def _normalize_monthly_fee(amount: Decimal, period: TeamBillingPeriod) -> Decima
 
 
 def _user_ids_for_team(db: Session, team_id: UUID) -> set[UUID]:
-    """Salary rollup: primary team home (User.team_id or is_primary membership).
+    """Salary rollup for a team operating cost.
 
-    Secondary delivery memberships (e.g. manager on Sybridge with primary Corporate)
-    do not pull salary into the delivery team's operating cost.
+    - Primary home on this team.
+    - Delivery teams: only **billable** membership (fixed-resource engineers).
+      Managers / Planning Board / Design Leaders with ``is_billable_headcount=False``
+      are Prosohm overhead and must not inflate delivery-team salary even if listed.
+    - Corporate / Shared Services: all primary members (overhead pool).
+    - Legacy ``User.team_id`` without a membership row: include only when the user's
+      role is a fixed-resource default (or team is Corporate).
     """
+    from app.core.fixed_resource_eligibility import (
+        default_is_billable_headcount_for_user,
+        role_is_fixed_resource_default,
+    )
+    from app.core.permissions import get_role_name
+    from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
+
+    team = db.get(Team, team_id)
+    corporate = is_corporate_team(team)
     ids: set[UUID] = set()
-    primary_members = db.scalars(
-        select(TeamMember.user_id).where(
+    members = db.scalars(
+        select(TeamMember).where(
             TeamMember.team_id == team_id,
             TeamMember.is_primary.is_(True),
         )
     ).all()
-    ids.update(primary_members)
+    for member in members:
+        if corporate or bool(getattr(member, "is_billable_headcount", True)):
+            ids.add(member.user_id)
+
+    member_user_ids = {
+        row
+        for row in db.scalars(
+            select(TeamMember.user_id).where(TeamMember.team_id == team_id)
+        ).all()
+    }
     legacy = db.scalars(
-        select(User.id).where(User.team_id == team_id, User.is_active.is_(True))
+        select(User).where(User.team_id == team_id, User.is_active.is_(True))
     ).all()
-    ids.update(legacy)
+    for user in legacy:
+        if user.id in member_user_ids:
+            continue
+        if corporate or role_is_fixed_resource_default(get_role_name(db, user)):
+            ids.add(user.id)
+        elif default_is_billable_headcount_for_user(db, team=team, user=user):
+            ids.add(user.id)
     return ids
 
 

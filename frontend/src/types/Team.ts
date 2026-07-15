@@ -9,6 +9,8 @@ export interface Team extends Timestamped {
   is_active: boolean;
   organization_id: string | null;
   member_count: number;
+  /** Customer-paid fixed / retainer headcount (designers & surfacers). */
+  billable_member_count?: number;
 }
 
 export interface TeamMember extends Timestamped {

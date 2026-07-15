@@ -117,9 +117,7 @@ flowchart TD
 
 ---
 
-## Status
-
-**Implemented** (phase28 + UI): `team_members.is_billable_headcount`, Corporate backfill/defaults, retainer uses billable ∩ requires_salary, Teams membership Billable toggle, Team commercial “billable” copy.
+**Status:** Extended by role-aware fixed resource rules — see [RC5_FINANCE_FIXED_RESOURCE_VS_OVERHEAD.md](./RC5_FINANCE_FIXED_RESOURCE_VS_OVERHEAD.md) (phase31). Only designers/surfacer default to customer-paid billable headcount.
 
 ## Pipeline (mandatory)
 
@@ -132,7 +130,7 @@ flowchart LR
   QC --> UAT[UAT]
 ```
 
-1. **Development** — implement locks; API/UI/tests green; deploy `app/` + `frontend/dist`; restart API (phase28).  
+1. **Development** — implement locks; API/UI/tests green; deploy `app/` + `frontend/dist`; restart API (phase28 + phase31).  
 2. **Senior Tester** — verify matrix; gate Testing.  
 3. **Testing** — debug with real Sybridge manager cases; log repros.  
 4. **Senior Tester** — re-approve.  

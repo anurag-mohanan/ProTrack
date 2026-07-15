@@ -39,6 +39,17 @@ def build_team_read(db: Session, team: Team) -> TeamRead:
         )
         or 0
     )
+    billable_member_count = int(
+        db.scalar(
+            select(func.count())
+            .select_from(TeamMember)
+            .where(
+                TeamMember.team_id == team.id,
+                TeamMember.is_billable_headcount.is_(True),
+            )
+        )
+        or 0
+    )
     team_lead = db.get(User, team.team_lead_id) if team.team_lead_id else None
     return TeamRead(
         id=team.id,
@@ -51,6 +62,7 @@ def build_team_read(db: Session, team: Team) -> TeamRead:
         created_at=team.created_at,
         updated_at=team.updated_at,
         member_count=member_count,
+        billable_member_count=billable_member_count,
         team_lead_name=_user_display(team_lead) if team_lead else None,
     )
 
@@ -180,11 +192,17 @@ class CRUDTeam(CRUDBase[Team, TeamCreate, TeamUpdate]):
         )
         if existing is not None:
             raise ProTrackValidationError("User is already a member of this team")
+        from app.core.fixed_resource_eligibility import default_is_billable_headcount_for_user
         from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
 
         billable = obj_in.is_billable_headcount
         if billable is None:
-            billable = not is_corporate_team(team)
+            if is_corporate_team(team):
+                billable = False
+            else:
+                billable = default_is_billable_headcount_for_user(
+                    db, team=team, user=user
+                )
         member = TeamMember(
             team_id=team_id,
             user_id=obj_in.user_id,

@@ -52,3 +52,4 @@
 - Awarded quote import (team + PDF/Excel): [RC5_FINANCE_AWARDED_QUOTE_IMPORT.md](./RC5_FINANCE_AWARDED_QUOTE_IMPORT.md)
 - Prosohm QT PDF extract + project create: [RC5_FINANCE_PROSOHM_QT_PDF.md](./RC5_FINANCE_PROSOHM_QT_PDF.md)
 - Management / overhead vs billable headcount: [RC5_FINANCE_MANAGEMENT_OVERHEAD.md](./RC5_FINANCE_MANAGEMENT_OVERHEAD.md)
+- Fixed resource (engineers only) vs Prosohm overhead roles: [RC5_FINANCE_FIXED_RESOURCE_VS_OVERHEAD.md](./RC5_FINANCE_FIXED_RESOURCE_VS_OVERHEAD.md)

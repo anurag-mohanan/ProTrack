@@ -160,13 +160,26 @@ export default function TeamsPage() {
     }
   };
 
+  const FIXED_RESOURCE_ROLES = new Set([
+    'Senior Designer',
+    'Designer',
+    'Junior Designer',
+    'Surfacer',
+  ]);
+
+  const defaultBillableForUser = (team: Team, userId: string) => {
+    if (team.name === 'Corporate / Shared Services') return false;
+    const selected = users.find((u) => u.id === userId);
+    const role = selected?.role_name ?? '';
+    return FIXED_RESOURCE_ROLES.has(role);
+  };
+
   const openMembers = async (team: Team) => {
     setMemberTeam(team);
-    const corporate = team.name === 'Corporate / Shared Services';
     setMemberForm({
       user_id: '',
       role_within_team: '',
-      is_billable_headcount: !corporate,
+      is_billable_headcount: false,
     });
     try {
       const { data } = await apiClient.get<TeamMember[]>(`/teams/${team.id}/members`);
@@ -235,7 +248,22 @@ export default function TeamsPage() {
     },
     { field: 'description', headerName: 'Description', flex: 1.5, minWidth: 180, valueFormatter: (value) => formatCellValue(value as string | null) },
     { field: 'team_lead_name', headerName: 'Team Lead', flex: 1, minWidth: 140 },
-    { field: 'member_count', headerName: 'Members', width: 100 },
+    {
+      field: 'billable_member_count',
+      headerName: 'Billable / Members',
+      width: 150,
+      valueGetter: (_value, row) =>
+        `${row.billable_member_count ?? 0} / ${row.member_count ?? 0}`,
+      renderCell: (params) => (
+        <Box title="Billable = designers/surfacer for customer fixed/retainer cost. Others are Prosohm overhead.">
+          <strong>{params.row.billable_member_count ?? 0}</strong>
+          <Box component="span" sx={{ color: 'text.secondary' }}>
+            {' '}
+            / {params.row.member_count ?? 0}
+          </Box>
+        </Box>
+      ),
+    },
     {
       field: 'is_active',
       headerName: 'Active',
@@ -283,7 +311,7 @@ export default function TeamsPage() {
     <PageContainer>
       <PageHeader
         title="Teams"
-        subtitle="Manage engineering teams, leads, and membership"
+        subtitle="Delivery engineers count toward customer fixed/retainer cost; managers and HQ are Prosohm overhead"
         action={
           <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Create Team
@@ -421,9 +449,16 @@ export default function TeamsPage() {
                   value: user.id,
                   label: userDisplayName(user),
                 }))}
-                onChange={(event) =>
-                  setMemberForm({ ...memberForm, user_id: String(event.target.value) })
-                }
+                onChange={(event) => {
+                  const userId = String(event.target.value);
+                  setMemberForm({
+                    ...memberForm,
+                    user_id: userId,
+                    is_billable_headcount: memberTeam
+                      ? defaultBillableForUser(memberTeam, userId)
+                      : false,
+                  });
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -439,7 +474,7 @@ export default function TeamsPage() {
               <FormControlLabel
                 control={
                   <Switch
-                    checked={memberForm.is_billable_headcount !== false}
+                    checked={Boolean(memberForm.is_billable_headcount)}
                     onChange={(event) =>
                       setMemberForm({
                         ...memberForm,
@@ -448,11 +483,12 @@ export default function TeamsPage() {
                     }
                   />
                 }
-                label="Billable headcount (retainer / customer rate)"
+                label="Billable headcount (customer fixed / retainer cost)"
               />
               <Box sx={{ color: 'text.secondary', fontSize: '0.875rem', mt: 0.5 }}>
-                Off for management / overhead people — they are not paid by the customer on fixed or
-                retainer models. Corporate / Shared Services defaults to off.
+                On only for delivery engineers (Senior Designer, Designer, Junior Designer, Surfacer).
+                Office Admin, Planning Board, Design Leader, Engineering Manager and similar roles are
+                Prosohm overhead — paid by the company, not customers. Corporate defaults off.
               </Box>
             </Grid>
           </FormSection>
@@ -582,8 +618,8 @@ export default function TeamsPage() {
               slotProps={{ input: { readOnly: true } }}
             />
             <FormField
-              label="Members"
-              value={String(selectedTeam.member_count ?? 0)}
+              label="Billable / Members"
+              value={`${selectedTeam.billable_member_count ?? 0} / ${selectedTeam.member_count ?? 0}`}
               slotProps={{ input: { readOnly: true } }}
             />
           </FormSection>

@@ -31,6 +31,7 @@ class TeamUpdate(BlankOptionalFieldsMixin, BaseModel):
 
 class TeamRead(TeamBase, TimestampSchema):
     member_count: int = 0
+    billable_member_count: int = 0
     team_lead_name: str | None = None
 
 

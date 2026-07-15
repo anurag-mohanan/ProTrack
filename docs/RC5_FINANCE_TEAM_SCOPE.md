@@ -17,7 +17,7 @@
 |------|--------|
 | Team filter | Top of `/finance` (persists in localStorage) |
 | Who-pays flags | **Team commercial** → Customer pays software / hardware |
-| Team on expense | **Expenses & subscriptions** → Team required |
+| Team on expense | **Expenses & subscriptions** → Team required; edit/delete per [RC5_FINANCE_EXPENSE_CRUD.md](./RC5_FINANCE_EXPENSE_CRUD.md) |
 | Per-team Overview | **Overview** with filter; All teams shows breakdown |
 
 ## Pipeline
@@ -44,3 +44,4 @@
 
 - Prior: [RC5_FINANCE_REBUILD.md](./RC5_FINANCE_REBUILD.md)
 - Salary exempt: [RC5_SALARY_ELIGIBILITY.md](./RC5_SALARY_ELIGIBILITY.md)
+- Expense edit/delete: [RC5_FINANCE_EXPENSE_CRUD.md](./RC5_FINANCE_EXPENSE_CRUD.md)

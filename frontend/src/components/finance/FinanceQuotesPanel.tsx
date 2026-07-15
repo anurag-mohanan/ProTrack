@@ -188,7 +188,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                         : ' · Unlinked'}
                   </Typography>
                   {(item.warnings ?? []).map((warning) => (
-                    <Typography key={warning} variant="caption" color="warning.main" display="block">
+                    <Typography key={warning} variant="caption" color="warning.main" sx={{ display: 'block' }}>
                       {warning}
                     </Typography>
                   ))}

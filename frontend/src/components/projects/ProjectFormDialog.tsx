@@ -100,19 +100,20 @@ const emptyForm: ProjectFormValues = {
 };
 
 function projectToForm(project: Project): ProjectFormValues {
+  const id = (value: string | null | undefined) => (value == null || value === '' ? '' : String(value));
   return {
-    tool_number: project.tool_number,
-    part_description: project.part_description,
-    customer_id: project.customer_id,
-    customer_contact_id: project.customer_contact_id ?? '',
-    design_leader_id: project.design_leader_id ?? '',
-    designer_id: project.designer_id ?? '',
-    surfacer_id: project.surfacer_id ?? '',
-    stream_id: project.stream_id ?? '',
-    project_type_id: project.project_type_id ?? '',
-    project_template_id: project.project_template_id ?? '',
-    working_model_id: project.working_model_id ?? '',
-    team_id: project.team_id ?? '',
+    tool_number: project.tool_number ?? '',
+    part_description: project.part_description ?? '',
+    customer_id: id(project.customer_id),
+    customer_contact_id: id(project.customer_contact_id),
+    design_leader_id: id(project.design_leader_id),
+    designer_id: id(project.designer_id),
+    surfacer_id: id(project.surfacer_id),
+    stream_id: id(project.stream_id),
+    project_type_id: id(project.project_type_id),
+    project_template_id: id(project.project_template_id),
+    working_model_id: id(project.working_model_id),
+    team_id: id(project.team_id),
     code: project.code ?? '',
     quoted_hours: project.quoted_hours,
     due_date: project.due_date ?? '',
@@ -132,6 +133,18 @@ function projectToForm(project: Project): ProjectFormValues {
     execution_status: project.execution_status,
     health: project.health,
   };
+}
+
+/** Ensure the currently saved ID stays in the select even if lookups omit it. */
+function withCurrentOption(
+  options: { value: string; label: string }[],
+  currentId: string | null | undefined,
+  currentLabel: string | null | undefined,
+): { value: string; label: string }[] {
+  const id = currentId == null || currentId === '' ? '' : String(currentId);
+  if (!id) return options;
+  if (options.some((option) => String(option.value) === id)) return options;
+  return [{ value: id, label: currentLabel?.trim() || id }, ...options];
 }
 
 interface ProjectFormDialogProps {
@@ -155,6 +168,7 @@ export function ProjectFormDialog({
   const [form, setForm] = useState<ProjectFormValues>(emptyForm);
   const [changeTemplateOpen, setChangeTemplateOpen] = useState(false);
   const baselineRef = useRef('');
+  const hydratedForRef = useRef<string | null>(null);
 
   const serializeForm = (values: ProjectFormValues) => JSON.stringify(values);
 
@@ -216,14 +230,31 @@ export function ProjectFormDialog({
 
   useEffect(() => {
     if (!open) {
+      hydratedForRef.current = null;
       setForm(emptyForm);
       baselineRef.current = serializeForm(emptyForm);
       return;
     }
+    // Hydrate once per open (or when switching to a different project). Avoids
+    // command-center refetch while the drawer is open wiping Customer/Team selects.
+    const hydrateKey = project?.id ?? 'create';
+    if (hydratedForRef.current === hydrateKey) return;
     const initial = project ? projectToForm(project) : emptyForm;
     setForm(initial);
     baselineRef.current = serializeForm(initial);
+    hydratedForRef.current = hydrateKey;
   }, [open, project]);
+
+  // If the open project payload arrives asynchronously (id already hydrated as
+  // empty), re-hydrate when IDs become available without clearing edits mid-type.
+  useEffect(() => {
+    if (!open || !project?.id) return;
+    if (hydratedForRef.current !== project.id) return;
+    if (form.customer_id || !project.customer_id) return;
+    const initial = projectToForm(project);
+    setForm(initial);
+    baselineRef.current = serializeForm(initial);
+  }, [open, project, form.customer_id]);
 
   const isDirty = useMemo(
     () => serializeForm(form) !== baselineRef.current,
@@ -335,12 +366,12 @@ export function ProjectFormDialog({
   });
 
   const activeStreams = useMemo(
-    () => (streamsQuery.data ?? []).filter((stream) => stream.is_active),
+    () => (streamsQuery.data ?? []).filter((stream) => stream.is_active !== false),
     [streamsQuery.data],
   );
 
   const activeCustomers = useMemo(
-    () => (customersQuery.data ?? []).filter((customer) => customer.is_active),
+    () => (customersQuery.data ?? []).filter((customer) => customer.is_active !== false),
     [customersQuery.data],
   );
 
@@ -437,31 +468,89 @@ export function ProjectFormDialog({
   };
 
   const handleCustomerChange = (customerId: string) => {
-    const customer = activeCustomers.find((item) => item.id === customerId);
+    const customer = activeCustomers.find((item) => String(item.id) === customerId);
     setForm((current) => ({
       ...current,
       customer_id: customerId,
       customer_contact_id:
-        project && customerId === project.customer_id
-          ? (project.customer_contact_id ?? '')
+        project && customerId === String(project.customer_id ?? '')
+          ? String(project.customer_contact_id ?? '')
           : '',
       project_type_id: customer?.default_project_type_id ?? current.project_type_id,
       working_model_id: customer?.default_working_model_id ?? current.working_model_id,
       team_id: customer?.default_team_id ?? current.team_id,
-      project_template_id: customer?.default_project_template_id ?? '',
+      project_template_id: isEdit
+        ? current.project_template_id
+        : (customer?.default_project_template_id ?? ''),
     }));
   };
 
-  const userOptions = (usersQuery.data ?? []).map((user) => ({
-    value: user.id,
-    label: userDisplayName(user),
-  }));
+  const userOptions = useMemo(() => {
+    const base = (usersQuery.data ?? []).map((user) => ({
+      value: String(user.id),
+      label: userDisplayName(user),
+    }));
+    return withCurrentOption(
+      withCurrentOption(
+        withCurrentOption(base, form.design_leader_id, project?.design_leader_name),
+        form.designer_id,
+        project?.designer_name,
+      ),
+      form.surfacer_id,
+      project?.surfacer_name,
+    );
+  }, [
+    form.design_leader_id,
+    form.designer_id,
+    form.surfacer_id,
+    project?.design_leader_name,
+    project?.designer_name,
+    project?.surfacer_name,
+    usersQuery.data,
+  ]);
+
+  const customerOptions = useMemo(
+    () =>
+      withCurrentOption(
+        activeCustomers.map((customer) => ({
+          value: String(customer.id),
+          label: customer.name,
+        })),
+        form.customer_id,
+        project?.customer_name,
+      ),
+    [activeCustomers, form.customer_id, project?.customer_name],
+  );
+
+  const teamOptions = useMemo(
+    () =>
+      withCurrentOption(
+        (teamsQuery.data ?? []).map((team) => ({
+          value: String(team.id),
+          label: team.name,
+        })),
+        form.team_id,
+        project?.team_name,
+      ),
+    [form.team_id, project?.team_name, teamsQuery.data],
+  );
+
+  const contactOptions = useMemo(() => {
+    const base = [
+      { value: '', label: 'None' },
+      ...(contactsQuery.data ?? []).map((contact) => ({
+        value: String(contact.id),
+        label: userDisplayName(contact),
+      })),
+    ];
+    return withCurrentOption(base, form.customer_contact_id, null);
+  }, [contactsQuery.data, form.customer_contact_id]);
 
   const selectedCustomerName = useMemo(() => {
-    if (project?.customer_name && form.customer_id === project.customer_id) {
+    if (project?.customer_name && form.customer_id === String(project.customer_id ?? '')) {
       return project.customer_name;
     }
-    return activeCustomers.find((customer) => customer.id === form.customer_id)?.name ?? null;
+    return activeCustomers.find((customer) => String(customer.id) === form.customer_id)?.name ?? null;
   }, [activeCustomers, form.customer_id, project]);
 
   return (
@@ -556,11 +645,9 @@ export function ProjectFormDialog({
               required
               searchable
               value={form.customer_id}
+              selectedLabel={project?.customer_name}
               helper="Select the customer first to filter contacts and templates."
-              options={activeCustomers.map((customer) => ({
-                value: customer.id,
-                label: customer.name,
-              }))}
+              options={customerOptions}
               onChange={(event) => handleCustomerChange(String(event.target.value))}
             />
           </Grid>
@@ -571,13 +658,7 @@ export function ProjectFormDialog({
               disabled={!form.customer_id}
               value={form.customer_contact_id}
               helper="Defaults to the primary contact when available."
-              options={[
-                { value: '', label: 'None' },
-                ...(contactsQuery.data ?? []).map((contact) => ({
-                  value: contact.id,
-                  label: userDisplayName(contact),
-                })),
-              ]}
+              options={contactOptions}
               onChange={(event) =>
                 setForm({ ...form, customer_contact_id: String(event.target.value) })
               }
@@ -729,6 +810,7 @@ export function ProjectFormDialog({
               label="Design Leader"
               searchable
               value={form.design_leader_id}
+              selectedLabel={project?.design_leader_name}
               options={[{ value: '', label: 'None' }, ...userOptions]}
               onChange={(event) =>
                 setForm({ ...form, design_leader_id: String(event.target.value) })
@@ -740,10 +822,11 @@ export function ProjectFormDialog({
               label="Designer"
               searchable
               value={form.designer_id ?? ''}
+              selectedLabel={project?.designer_name}
               options={[{ value: '', label: 'None' }, ...userOptions]}
               onChange={(event) => {
                 const designerId = String(event.target.value);
-                const designer = (usersQuery.data ?? []).find((user) => user.id === designerId);
+                const designer = (usersQuery.data ?? []).find((user) => String(user.id) === designerId);
                 setForm({
                   ...form,
                   designer_id: designerId,
@@ -757,6 +840,7 @@ export function ProjectFormDialog({
               label="Surfacer"
               searchable
               value={form.surfacer_id ?? ''}
+              selectedLabel={project?.surfacer_name}
               options={[{ value: '', label: 'None' }, ...userOptions]}
               onChange={(event) =>
                 setForm({ ...form, surfacer_id: String(event.target.value) })
@@ -769,12 +853,10 @@ export function ProjectFormDialog({
               searchable
               required={!isEdit}
               value={form.team_id ?? ''}
+              selectedLabel={project?.team_name}
               options={[
                 ...(isEdit ? [{ value: '', label: 'None' }] : [{ value: '', label: 'Select team' }]),
-                ...(teamsQuery.data ?? []).map((team) => ({
-                  value: team.id,
-                  label: team.name,
-                })),
+                ...teamOptions,
               ]}
               onChange={(event) =>
                 setForm({ ...form, team_id: String(event.target.value) })

@@ -34,6 +34,54 @@ Total In Words
 United States Dollar Six Thousand One Hundred Sixty
 """
 
+CREST_MOLD_QT_TEXT = """
+Prosohm Projects (OPC) Private Limited
+QUOTE
+Quote# : QT-2026-27-005
+Sales person : Anurag Mohanan
+Quote Date : 06/05/2026
+Customer Project # : 2649
+Prepared For
+Crest Mold
+2055 Blackacre Drive, Windsor, N0R 1L0, Ontario, Canada
+Kind Attention: Mr. Kevin Peltier
+# Item & Description Qty/Hrs Rate Amount
+1 Full Tool Design (Export) 210.00 25.00 5,250.00
+INTERMEDIATE DESIGN+DOCUMENTATION - 90 HRS
+FINAL DESIGN+DOCUMENTATION - 120 HRS
+Sub Total 5,250.00
+Total In Words
+United States Dollar Five Thousand Two Hundred Fifty
+Total $5,250.00
+Looking forward for your business.
+"""
+
+
+def test_crest_mold_qt_customer_project_cost():
+    extract = parse_prosohm_quote_text(
+        CREST_MOLD_QT_TEXT,
+        filename="QT-2026-27-005-Crest#2649.pdf",
+    )
+    assert extract.prepared_for == "Crest Mold"
+    assert extract.tool_number == "2649"
+    assert extract.quoted_revenue == Decimal("5250.00")
+    assert extract.quoted_hours == Decimal("210.00")
+    assert extract.currency_code == "USD"
+    assert extract.external_quote_number == "QT-2026-27-005"
+
+
+def test_crest_mold_prefix_recovers_directory_customer():
+    from app.services.finance.prosohm_quote_pdf_parser import recover_customer_from_candidates
+
+    recovered = recover_customer_from_candidates(
+        CREST_MOLD_QT_TEXT,
+        [
+            ("Crest Mold Technologies (CMT)", "CMTC"),
+            ("Sybridge Technologies Canada Inc", "SYB"),
+        ],
+    )
+    assert recovered == "Crest Mold Technologies (CMT)"
+
 
 def test_prepared_for_same_line_colon():
     text = """

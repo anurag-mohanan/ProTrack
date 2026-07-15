@@ -109,7 +109,23 @@ def _to_decimal(raw: str | None) -> Decimal:
 def _looks_like_address_line(line: str) -> bool:
     lower = line.lower()
     if re.search(r"\d{3,}", line) and any(
-        token in lower for token in ("street", "st ", "road", "rd ", "ave", "suite", "floor", "india", "canada", "usa")
+        token in lower
+        for token in (
+            "street",
+            "st ",
+            "road",
+            "rd ",
+            "ave",
+            "avenue",
+            "drive",
+            "dr ",
+            "suite",
+            "floor",
+            "india",
+            "canada",
+            "ontario",
+            "usa",
+        )
     ):
         return True
     if re.match(r"^\d+[\w\s,.\-/#]*$", line) and len(line) < 80:
@@ -156,23 +172,36 @@ def recover_customer_from_candidates(
     text: str,
     candidates: list[tuple[str, str]],
 ) -> str | None:
-    """Pick longest active customer name/code appearing in QT text near Prepared For."""
+    """Pick best active customer name/code against QT text (substring + prefix)."""
     if not text or not candidates:
         return None
     prepared_idx = text.lower().find("prepared")
     window = text if prepared_idx < 0 else text[max(0, prepared_idx - 40) : prepared_idx + 600]
     haystacks = (window, text)
+    # Prefer the Prepared For first-line fragment when present.
+    prepared = _extract_prepared_for(text)
     best: tuple[int, str] | None = None
     for name, code in candidates:
         for label in (name, code):
             label = (label or "").strip()
             if len(label) < 3:
                 continue
+            label_l = label.lower()
+            score = 0
+            if prepared:
+                prep_l = prepared.lower()
+                if prep_l == label_l:
+                    score = 10_000 + len(label)
+                elif label_l.startswith(prep_l) or prep_l.startswith(label_l):
+                    # "Crest Mold" ↔ "Crest Mold Technologies (CMT)"
+                    score = 5_000 + len(prep_l)
+                elif prep_l in label_l or label_l in prep_l:
+                    score = 2_000 + len(prep_l)
             for hay in haystacks:
-                if label.lower() in hay.lower():
-                    score = len(label) + (50 if hay is window else 0)
-                    if best is None or score > best[0]:
-                        best = (score, name)
+                if label_l in hay.lower():
+                    score = max(score, len(label) + (50 if hay is window else 0))
+            if score and (best is None or score > best[0]):
+                best = (score, name)
     return best[1] if best else None
 
 

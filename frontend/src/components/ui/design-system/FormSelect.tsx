@@ -24,6 +24,8 @@ interface FormSelectProps extends Omit<SelectProps, 'variant' | 'label'> {
   placeholder?: string;
   helper?: string;
   tooltip?: string;
+  /** Display label when `value` is not yet present in `options`. */
+  selectedLabel?: string | null;
 }
 
 /**
@@ -42,6 +44,7 @@ export function FormSelect({
   placeholder,
   helper,
   tooltip,
+  selectedLabel,
   ...props
 }: FormSelectProps) {
   const labelId = useId();
@@ -57,16 +60,29 @@ export function FormSelect({
   ) : null;
 
   if (searchable) {
-    const selected = options.find((option) => option.value === value) ?? null;
+    const valueStr = value === null || value === undefined ? '' : String(value);
+    const matched = options.find((option) => String(option.value) === valueStr) ?? null;
+    // Keep current selection visible even if lookups omit it (inactive, pagination, etc.).
+    const selected =
+      matched ??
+      (valueStr
+        ? {
+            value: valueStr,
+            label: selectedLabel?.trim() || valueStr,
+          }
+        : null);
+    const mergedOptions =
+      selected && !matched ? [selected, ...options.filter((o) => String(o.value) !== valueStr)] : options;
+
     return (
       <Box>
         {helpAffordance}
         <Autocomplete
-          options={options}
+          options={mergedOptions}
           value={selected}
           disabled={disabled}
           getOptionLabel={(option) => option.label}
-          isOptionEqualToValue={(a, b) => a.value === b.value}
+          isOptionEqualToValue={(a, b) => String(a.value) === String(b.value)}
           onChange={(_, option) => {
             onChange?.(
               { target: { value: option?.value ?? '' } } as never,

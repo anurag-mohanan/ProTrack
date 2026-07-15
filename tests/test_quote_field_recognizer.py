@@ -19,6 +19,12 @@ def test_recognize_prosohm_headers():
     assert recognize_header_key("Quote#") == "external_quote_number"
 
 
+def test_recognize_cost_and_project_synonyms():
+    assert recognize_header_key("Cost") == "quoted_revenue"
+    assert recognize_header_key("Project #") == "tool_number"
+    assert recognize_header_key("Customer Project #") == "tool_number"
+
+
 def test_recognize_table_row_synonyms():
     row = recognize_table_row(
         {

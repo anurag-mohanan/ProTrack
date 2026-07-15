@@ -76,6 +76,9 @@ def _find_customer(db: Session, name_or_code: str, *, soft_match: bool = False) 
         return customer
 
     if soft_match:
+        customers = list(
+            db.scalars(select(Customer).where(Customer.is_active.is_(True))).all()
+        )
         for variant in _customer_name_variants(key):
             customer = db.scalar(
                 select(Customer).where(
@@ -93,15 +96,28 @@ def _find_customer(db: Session, name_or_code: str, *, soft_match: bool = False) 
             )
             if customer is not None:
                 return customer
-            # Customer name contained in Prepared For
-            customers = db.scalars(
-                select(Customer).where(Customer.is_active.is_(True))
-            ).all()
+
+            # Prefix / short Prepared For names: "Crest Mold" → "Crest Mold Technologies (CMT)"
+            variant_l = variant.lower()
+            best: Customer | None = None
+            best_score = 0
             for candidate in customers:
-                if candidate.name and candidate.name.lower() in variant.lower():
-                    return candidate
-                if candidate.code and candidate.code.lower() in variant.lower():
-                    return candidate
+                name_l = (candidate.name or "").lower()
+                code_l = (candidate.code or "").lower()
+                score = 0
+                if name_l == variant_l or code_l == variant_l:
+                    score = 10_000
+                elif name_l.startswith(variant_l) or variant_l.startswith(name_l):
+                    score = 5_000 + len(variant_l)
+                elif variant_l in name_l or name_l in variant_l:
+                    score = 1_000 + len(variant_l)
+                elif code_l and (variant_l in code_l or code_l in variant_l):
+                    score = 500 + len(variant_l)
+                if score > best_score:
+                    best_score = score
+                    best = candidate
+            if best is not None and best_score >= 1_000:
+                return best
 
     raise ProTrackValidationError(f"Customer not found: {key}")
 

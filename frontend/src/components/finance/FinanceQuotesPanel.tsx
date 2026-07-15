@@ -117,8 +117,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           Import <strong>awarded</strong> (won) project packs only — not bid drafts. AI field
-          recognition maps Quote#, Customer Project #, Prepared For, hours and amount from Prosohm QT
-          PDFs and Excel/CSV packs. Team is required so Overview can attribute quote revenue. Formats:{' '}
+          recognition maps <strong>Customer</strong> (Prepared For), <strong>Customer Project #</strong>,
+          and <strong>Total / cost</strong> (quoted amount), plus Quote# and hours from Prosohm QT
+          PDFs and Excel/CSV packs. Short names like &quot;Crest Mold&quot; soft-match the customer directory. Team is required so Overview can attribute quote revenue. Formats:{' '}
           {IMPORT_FORMAT_LABEL_WITH_CSV}. Legacy .xls is not supported.
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 1.5, flexWrap: 'wrap' }}>

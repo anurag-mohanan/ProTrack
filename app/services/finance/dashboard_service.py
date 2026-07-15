@@ -84,6 +84,10 @@ def _expense_sum(
 
 
 def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Decimal:
+    from app.models.enums import WorkingModelCode
+    from app.models.models import WorkingModel
+    from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
+
     stmt = select(TeamCommercialTerms).where(TeamCommercialTerms.is_active.is_(True))
     if team_id is not None:
         stmt = stmt.where(TeamCommercialTerms.team_id == team_id)
@@ -93,7 +97,33 @@ def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Deci
             continue
         if term.effective_to and term.effective_to < today:
             continue
-        total += _normalize_monthly_fee(_d(term.base_fee_inr), term.billing_period)
+        model = db.get(WorkingModel, term.working_model_id)
+        strategy = model.strategy_key if model is not None else None
+        if not uses_flat_customer_fee(strategy):
+            continue
+        rate = _d(term.base_fee_inr)
+        if strategy == WorkingModelCode.retainer or (
+            hasattr(strategy, "value") and strategy.value == WorkingModelCode.retainer.value
+        ):
+            # salary-required headcount
+            user_ids: set[UUID] = set()
+            members = db.scalars(
+                select(TeamMember.user_id).where(TeamMember.team_id == term.team_id)
+            ).all()
+            user_ids.update(members)
+            legacy = db.scalars(
+                select(User.id).where(User.team_id == term.team_id, User.is_active.is_(True))
+            ).all()
+            user_ids.update(legacy)
+            count = 0
+            if user_ids:
+                for user in db.scalars(
+                    select(User).where(User.id.in_(user_ids), User.is_active.is_(True))
+                ).all():
+                    if bool(getattr(user, "requires_salary", True)):
+                        count += 1
+            rate = rate * Decimal(count)
+        total += _normalize_monthly_fee(rate, term.billing_period)
     return total
 
 

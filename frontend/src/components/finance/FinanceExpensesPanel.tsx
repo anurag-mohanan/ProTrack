@@ -17,12 +17,14 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { fetchTeams } from '../../api/lookups';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import { teamQueryParam } from './FinanceTeamFilter';
 
 type CostCentre = { id: string; name: string; code?: string };
 type Expense = {
   id: string;
+  cost_centre_id: string;
   name: string;
   amount: number;
   currency_code: string;
@@ -33,6 +35,7 @@ type Expense = {
   next_renewal_date?: string | null;
   notify_before_days?: number;
   notify_enabled?: boolean;
+  is_recurring?: boolean;
   team_id?: string | null;
 };
 
@@ -56,12 +59,14 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ ...emptyForm, team_id: teamId });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [paidByHint, setPaidByHint] = useState('');
   const q = teamQueryParam(teamId);
 
   useEffect(() => {
-    setForm((prev) => ({ ...prev, team_id: teamId || prev.team_id }));
-  }, [teamId]);
+    if (!editingId) setForm((prev) => ({ ...prev, team_id: teamId || prev.team_id }));
+  }, [teamId, editingId]);
 
   const costCentresQuery = useQuery({
     queryKey: ['finance-cost-centres'],
@@ -92,33 +97,39 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     }
   };
 
-  const mutation = useMutation({
-    mutationFn: async () =>
-      (
-        await apiClient.post('/finance/expenses', {
-          cost_centre_id: form.cost_centre_id,
-          team_id: form.team_id,
-          name: form.name,
-          amount: form.amount,
-          currency_code: form.currency_code,
-          nature: form.nature,
-          frequency: form.frequency,
-          paid_by: form.paid_by,
-          vendor_name: form.vendor_name || null,
-          is_recurring: form.is_recurring || form.frequency === 'recurring',
-          next_renewal_date: form.next_renewal_date || null,
-          notify_before_days: Number(form.notify_before_days) || 7,
-          notify_enabled: form.notify_enabled,
-        })
-      ).data,
+  const payloadBody = () => ({
+    cost_centre_id: form.cost_centre_id,
+    team_id: form.team_id,
+    name: form.name,
+    amount: form.amount,
+    currency_code: form.currency_code,
+    nature: form.nature,
+    frequency: form.frequency,
+    paid_by: form.paid_by,
+    vendor_name: form.vendor_name || null,
+    is_recurring: form.is_recurring || form.frequency === 'recurring',
+    next_renewal_date: form.next_renewal_date || null,
+    notify_before_days: Number(form.notify_before_days) || 7,
+    notify_enabled: form.notify_enabled,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (editingId) {
+        return (await apiClient.patch(`/finance/expenses/${editingId}`, payloadBody())).data;
+      }
+      return (await apiClient.post('/finance/expenses', payloadBody())).data;
+    },
     onSuccess: () => {
-      showSuccess('Expense saved');
+      showSuccess(editingId ? 'Expense updated' : 'Expense saved');
+      setEditingId(null);
       setForm((prev) => ({
         ...emptyForm,
         cost_centre_id: prev.cost_centre_id,
         team_id: prev.team_id || teamId,
         currency_code: prev.currency_code,
       }));
+      setPaidByHint('');
       void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
@@ -127,17 +138,55 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/finance/expenses/${id}`);
+    },
+    onSuccess: () => {
+      showSuccess('Expense deleted');
+      setDeleteTarget(null);
+      if (editingId && deleteTarget?.id === editingId) {
+        setEditingId(null);
+        setForm({ ...emptyForm, team_id: teamId });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
+      void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) => {
+      showError(error.response?.data?.detail ?? 'Could not delete expense');
+    },
+  });
+
+  const startEdit = (row: Expense) => {
+    setEditingId(row.id);
+    setForm({
+      cost_centre_id: row.cost_centre_id,
+      team_id: row.team_id || teamId || '',
+      name: row.name,
+      amount: String(row.amount),
+      currency_code: row.currency_code || 'INR',
+      nature: row.nature,
+      frequency: row.frequency,
+      paid_by: row.paid_by,
+      vendor_name: row.vendor_name || '',
+      is_recurring: Boolean(row.is_recurring),
+      next_renewal_date: row.next_renewal_date || '',
+      notify_before_days: String(row.notify_before_days ?? 7),
+      notify_enabled: row.notify_enabled !== false,
+    });
+    setPaidByHint('');
+  };
+
   const teams = teamsQuery.data ?? [];
 
   return (
     <Stack spacing={3}>
       <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>
-          Add expense / subscription
+          {editingId ? 'Edit expense / subscription' : 'Add expense / subscription'}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Team is required. Paid by defaults from Team commercial (customer pays software/hardware) for SW/HW cost
-          centres — you can override.
+          Team is required. Paid by defaults from Team commercial for SW/HW cost centres — you can override.
         </Typography>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', mb: 1 }}>
           <FormControl size="small" sx={{ minWidth: 200 }} required>
@@ -273,12 +322,24 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
               !form.cost_centre_id ||
               !form.name ||
               !form.amount ||
-              mutation.isPending
+              saveMutation.isPending
             }
-            onClick={() => mutation.mutate()}
+            onClick={() => saveMutation.mutate()}
           >
-            Add expense
+            {editingId ? 'Save changes' : 'Add expense'}
           </Button>
+          {editingId ? (
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setEditingId(null);
+                setForm({ ...emptyForm, team_id: teamId });
+                setPaidByHint('');
+              }}
+            >
+              Cancel
+            </Button>
+          ) : null}
         </Stack>
         {paidByHint ? (
           <Typography variant="caption" color="text.secondary">
@@ -294,25 +355,55 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
         <Stack spacing={1}>
           {(expensesQuery.data ?? []).map((row) => (
             <Card key={row.id} variant="outlined">
-              <CardContent>
-                <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {row.amount} {row.currency_code} · {row.nature} · {row.frequency} · Paid by{' '}
-                  {row.paid_by}
-                  {row.vendor_name ? ` · ${row.vendor_name}` : ''}
-                  {row.next_renewal_date
-                    ? ` · Renews ${row.next_renewal_date}${
-                        row.notify_enabled
-                          ? ` (notify ${row.notify_before_days ?? 7}d before)`
-                          : ''
-                      }`
-                    : ''}
-                </Typography>
+              <CardContent
+                sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}
+              >
+                <Box>
+                  <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {row.amount} {row.currency_code} · {row.nature} · {row.frequency} · Paid by{' '}
+                    {row.paid_by}
+                    {row.vendor_name ? ` · ${row.vendor_name}` : ''}
+                    {row.next_renewal_date
+                      ? ` · Renews ${row.next_renewal_date}${
+                          row.notify_enabled
+                            ? ` (notify ${row.notify_before_days ?? 7}d before)`
+                            : ''
+                        }`
+                      : ''}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1}>
+                  <Button size="small" variant="outlined" onClick={() => startEdit(row)}>
+                    Edit
+                  </Button>
+                  <Button size="small" color="error" variant="outlined" onClick={() => setDeleteTarget(row)}>
+                    Delete
+                  </Button>
+                </Stack>
               </CardContent>
             </Card>
           ))}
         </Stack>
       </Box>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete expense?"
+        message="This removes the expense from Financial Planning lists and Overview totals (soft-delete)."
+        recordName={
+          deleteTarget
+            ? `${deleteTarget.name} · ${deleteTarget.amount} ${deleteTarget.currency_code} · Paid by ${deleteTarget.paid_by}`
+            : undefined
+        }
+        confirmLabel="Delete"
+        danger
+        loading={deleteMutation.isPending}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+        }}
+      />
     </Stack>
   );
 }

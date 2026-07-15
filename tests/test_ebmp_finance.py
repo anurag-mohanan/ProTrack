@@ -466,7 +466,7 @@ def test_team_commercial_terms_in_dashboard(client, auth_headers, session):
     from datetime import date
 
     from app.models.enums import WorkingModelCode
-    from app.models.models import Team, WorkingModel
+    from app.models.models import Team, TeamMember, User, WorkingModel
 
     team = Team(id=uuid.uuid4(), name="Finance Rebuild Team", is_active=True)
     model = WorkingModel(
@@ -478,6 +478,13 @@ def test_team_commercial_terms_in_dashboard(client, auth_headers, session):
     )
     session.add(team)
     session.add(model)
+    # One salary-required member so rate × headcount feeds Overview
+    member = session.get(User, IDS["user_binil"])
+    assert member is not None
+    member.requires_salary = True
+    session.add(
+        TeamMember(team_id=team.id, user_id=member.id, is_primary=True)
+    )
     session.commit()
 
     create = client.post(
@@ -486,7 +493,6 @@ def test_team_commercial_terms_in_dashboard(client, auth_headers, session):
         json={
             "team_id": str(team.id),
             "working_model_id": str(model.id),
-            "billing_mode": "subscription",
             "customer_fee_amount": "120000",
             "currency_code": "INR",
             "billing_period": "monthly",
@@ -494,9 +500,98 @@ def test_team_commercial_terms_in_dashboard(client, auth_headers, session):
         },
     )
     assert create.status_code == 201, create.text
+    assert create.json()["billing_mode"] == "subscription"
 
     dash = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
     assert float(dash["team_commercial_fee_monthly_inr"]) >= 120000.0
+
+
+def test_expense_patch_and_soft_delete(client, auth_headers, session):
+    team_id = _corporate_team_id(client, auth_headers, session)
+    centres = client.get("/api/v1/finance/cost-centres", headers=auth_headers).json()
+    create = client.post(
+        "/api/v1/finance/expenses",
+        headers=auth_headers,
+        json={
+            "cost_centre_id": centres[0]["id"],
+            "team_id": team_id,
+            "name": "Editable license",
+            "amount": "1000",
+            "currency_code": "INR",
+            "nature": "opex",
+            "frequency": "yearly",
+            "paid_by": "prosohm",
+        },
+    )
+    assert create.status_code == 201, create.text
+    expense_id = create.json()["id"]
+
+    patched = client.patch(
+        f"/api/v1/finance/expenses/{expense_id}",
+        headers=auth_headers,
+        json={"amount": "2500", "name": "Editable license v2"},
+    )
+    assert patched.status_code == 200, patched.text
+    assert float(patched.json()["amount"]) == 2500.0
+    assert patched.json()["name"] == "Editable license v2"
+
+    deleted = client.delete(f"/api/v1/finance/expenses/{expense_id}", headers=auth_headers)
+    assert deleted.status_code == 204
+
+    listed = client.get("/api/v1/finance/expenses", headers=auth_headers).json()
+    assert expense_id not in {row["id"] for row in listed}
+
+    again = client.patch(
+        f"/api/v1/finance/expenses/{expense_id}",
+        headers=auth_headers,
+        json={"amount": "1"},
+    )
+    assert again.status_code == 404
+
+
+def test_project_based_team_commercial_hides_fee_in_overview(client, auth_headers, session):
+    import uuid
+    from datetime import date
+
+    from app.models.enums import WorkingModelCode
+    from app.models.models import Team, WorkingModel
+
+    team = Team(id=uuid.uuid4(), name="PB Fee Hidden", is_active=True)
+    model = WorkingModel(
+        id=uuid.uuid4(),
+        code=f"pb_{uuid.uuid4().hex[:8]}",
+        strategy_key=WorkingModelCode.project_based,
+        name="Project Based",
+        is_active=True,
+    )
+    session.add(team)
+    session.add(model)
+    session.commit()
+
+    before = client.get(
+        f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers
+    ).json()
+    create = client.post(
+        "/api/v1/finance/team-commercial",
+        headers=auth_headers,
+        json={
+            "team_id": str(team.id),
+            "working_model_id": str(model.id),
+            "customer_fee_amount": "999999",
+            "currency_code": "INR",
+            "billing_period": "annual",
+            "effective_from": date.today().isoformat(),
+        },
+    )
+    assert create.status_code == 201, create.text
+    assert float(create.json()["customer_fee_amount"]) == 0.0
+
+    after = client.get(
+        f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers
+    ).json()
+    assert float(after["team_commercial_fee_monthly_inr"]) == float(
+        before["team_commercial_fee_monthly_inr"]
+    )
 
 
 def test_designer_forbidden_from_roster(client):

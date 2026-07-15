@@ -80,6 +80,26 @@ class ExpenseCreate(BaseModel):
     project_id: UUID | None = None
 
 
+class ExpenseUpdate(BaseModel):
+    cost_centre_id: UUID | None = None
+    name: str | None = None
+    description: str | None = None
+    nature: CostNature | None = None
+    frequency: CostFrequency | None = None
+    currency_code: str | None = None
+    amount: Decimal | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    is_recurring: bool | None = None
+    paid_by: ExpensePaidBy | None = None
+    vendor_name: str | None = None
+    next_renewal_date: date | None = None
+    notify_before_days: int | None = Field(default=None, ge=0, le=365)
+    notify_enabled: bool | None = None
+    team_id: UUID | None = None
+    project_id: UUID | None = None
+
+
 class ExpenseRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -153,7 +173,7 @@ class EmployeeCostRosterItem(BaseModel):
 class TeamCommercialTermsCreate(BaseModel):
     team_id: UUID
     working_model_id: UUID
-    billing_mode: TeamBillingMode = TeamBillingMode.project_based
+    billing_mode: TeamBillingMode | None = None
     customer_fee_amount: Decimal = Decimal("0")
     currency_code: str = "INR"
     billing_period: TeamBillingPeriod = TeamBillingPeriod.monthly
@@ -178,15 +198,29 @@ class TeamCommercialTermsUpdate(BaseModel):
     customer_pays_hardware: bool | None = None
 
 
-class TeamCommercialTermsRead(TeamCommercialTermsCreate):
+class TeamCommercialTermsRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    team_id: UUID
+    working_model_id: UUID
+    billing_mode: TeamBillingMode
+    customer_fee_amount: Decimal
+    currency_code: str
+    billing_period: TeamBillingPeriod
+    effective_from: date
+    effective_to: date | None = None
+    notes: str | None = None
+    customer_pays_software: bool = False
+    customer_pays_hardware: bool = False
     base_fee_inr: Decimal
     fx_rate: Decimal
     is_active: bool
     team_name: str | None = None
     working_model_name: str | None = None
+    working_model_strategy: str | None = None
+    resource_count: int | None = None
+    monthly_fee_signal_inr: Decimal | None = None
 
 
 class TeamFinanceBreakdown(BaseModel):

@@ -37,7 +37,7 @@ from app.models.finance import (
     Quote,
     TeamCommercialTerms,
 )
-from app.models.models import Activity, Team, User, WorkingModel
+from app.models.models import Activity, Team, TeamMember, User, WorkingModel
 from app.schemas.finance import (
     BudgetCreate,
     BudgetRead,
@@ -50,6 +50,7 @@ from app.schemas.finance import (
     EmployeeCostRosterItem,
     ExpenseCreate,
     ExpenseRead,
+    ExpenseUpdate,
     FinanceDashboardRead,
     FinancePlanCreate,
     FinancePlanDetail,
@@ -74,12 +75,17 @@ from app.services.finance import annual_plan_service
 from app.services.finance.dashboard_service import get_finance_dashboard
 from app.services.finance.fx_service import to_base_amount
 from app.services.finance.paid_by_defaults import default_paid_by
+from app.services.finance.commercial_fee_rules import (
+    billing_mode_for_strategy,
+    uses_flat_customer_fee,
+)
 from app.services.finance.quote_import_service import (
     import_quotes_from_upload,
 )
 from app.services.finance.renewal_notifier import notify_upcoming_renewals
 from app.services.finance.roster_service import get_employee_cost_roster
 from app.core.salary_eligibility import user_requires_salary
+from app.models.enums import WorkingModelCode
 
 router = APIRouter(prefix="/finance", tags=["financial-planning"])
 
@@ -278,6 +284,85 @@ def create_expense(
     return row
 
 
+@router.patch("/expenses/{expense_id}", response_model=ExpenseRead)
+def update_expense(
+    expense_id: UUID,
+    payload: ExpenseUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Expense, expense_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "team_id" in data:
+        if data["team_id"] is None or db.get(Team, data["team_id"]) is None:
+            raise HTTPException(status_code=400, detail="Team is required and must exist.")
+    if "cost_centre_id" in data and data["cost_centre_id"] is not None:
+        if db.get(CostCentre, data["cost_centre_id"]) is None:
+            raise HTTPException(status_code=400, detail="Cost centre not found")
+
+    paid_by_explicit = "paid_by" in data
+    for key, value in data.items():
+        setattr(row, key, value)
+
+    team_id = row.team_id
+    cost_centre_id = row.cost_centre_id
+    if team_id is None:
+        raise HTTPException(status_code=400, detail="Team is required and must exist.")
+    if not paid_by_explicit and ("team_id" in data or "cost_centre_id" in data):
+        row.paid_by = default_paid_by(db, team_id=team_id, cost_centre_id=cost_centre_id)
+
+    try:
+        base_amount, fx_rate, fx_date = to_base_amount(
+            db,
+            amount=row.amount,
+            currency_code=row.currency_code,
+            on_date=row.start_date or date.today(),
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    row.base_amount_inr = base_amount
+    row.fx_rate = fx_rate
+    row.fx_date = fx_date
+    db.flush()
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.cost_updated,
+        entity_type=EntityType.expense,
+        entity_id=row.id,
+        new_value=f"expense_update:{row.name}",
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/expenses/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_expense(
+    expense_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Expense, expense_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    row.is_active = False
+    db.flush()
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.cost_updated,
+        entity_type=EntityType.expense,
+        entity_id=row.id,
+        new_value=f"expense_deleted:{row.name}",
+    )
+    db.commit()
+
+
 @router.post("/renewals/notify", response_model=RenewalNotifyResult)
 def trigger_renewal_notifications(
     team_id: UUID | None = Query(default=None),
@@ -379,9 +464,34 @@ def upsert_employee_cost(
     return row
 
 
+def _salary_required_headcount(db: Session, team_id: UUID) -> int:
+    user_ids = set()
+    members = db.scalars(select(TeamMember.user_id).where(TeamMember.team_id == team_id)).all()
+    user_ids.update(members)
+    legacy = db.scalars(select(User.id).where(User.team_id == team_id, User.is_active.is_(True))).all()
+    user_ids.update(legacy)
+    if not user_ids:
+        return 0
+    users = db.scalars(select(User).where(User.id.in_(user_ids), User.is_active.is_(True))).all()
+    return sum(1 for user in users if user_requires_salary(user))
+
+
 def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommercialTermsRead:
+    from app.services.finance.dashboard_service import _normalize_monthly_fee
+    from decimal import Decimal
+
     team = db.get(Team, row.team_id)
     model = db.get(WorkingModel, row.working_model_id)
+    strategy = model.strategy_key.value if model is not None else None
+    resource_count = _salary_required_headcount(db, row.team_id)
+    monthly_signal = None
+    if strategy == WorkingModelCode.retainer.value:
+        rate = Decimal(str(row.base_fee_inr or 0))
+        monthly_signal = _normalize_monthly_fee(rate * Decimal(resource_count), row.billing_period)
+    elif uses_flat_customer_fee(strategy):
+        monthly_signal = _normalize_monthly_fee(Decimal(str(row.base_fee_inr or 0)), row.billing_period)
+    else:
+        monthly_signal = Decimal("0.00")
     return TeamCommercialTermsRead(
         id=row.id,
         team_id=row.team_id,
@@ -400,6 +510,9 @@ def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommerci
         is_active=row.is_active,
         team_name=team.name if team else None,
         working_model_name=model.name if model else None,
+        working_model_strategy=strategy,
+        resource_count=resource_count,
+        monthly_fee_signal_inr=monthly_signal,
     )
 
 
@@ -434,14 +547,20 @@ def create_team_commercial(
     _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
     if db.get(Team, payload.team_id) is None:
         raise HTTPException(status_code=400, detail="Team not found")
-    if db.get(WorkingModel, payload.working_model_id) is None:
+    model = db.get(WorkingModel, payload.working_model_id)
+    if model is None:
         raise HTTPException(status_code=400, detail="Working model not found")
+    data = payload.model_dump()
+    strategy = model.strategy_key
+    data["billing_mode"] = data.get("billing_mode") or billing_mode_for_strategy(strategy)
+    if not uses_flat_customer_fee(strategy):
+        data["customer_fee_amount"] = 0
     try:
         base_fee, fx_rate, _ = to_base_amount(
             db,
-            amount=payload.customer_fee_amount,
-            currency_code=payload.currency_code,
-            on_date=payload.effective_from,
+            amount=data["customer_fee_amount"],
+            currency_code=data["currency_code"],
+            on_date=data["effective_from"],
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -457,7 +576,7 @@ def create_team_commercial(
         if old.effective_to is None:
             old.effective_to = payload.effective_from
     row = TeamCommercialTerms(
-        **payload.model_dump(),
+        **data,
         base_fee_inr=base_fee,
         fx_rate=fx_rate,
         is_active=True,
@@ -486,11 +605,19 @@ def update_team_commercial(
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
     row = db.get(TeamCommercialTerms, terms_id)
-    if row is None:
+    if row is None or not row.is_active:
         raise HTTPException(status_code=404, detail="Team commercial terms not found")
     data = payload.model_dump(exclude_unset=True)
     for key, value in data.items():
         setattr(row, key, value)
+    model = db.get(WorkingModel, row.working_model_id)
+    if model is None:
+        raise HTTPException(status_code=400, detail="Working model not found")
+    strategy = model.strategy_key
+    if "billing_mode" not in data or data.get("billing_mode") is None:
+        row.billing_mode = billing_mode_for_strategy(strategy)
+    if not uses_flat_customer_fee(strategy):
+        row.customer_fee_amount = 0
     currency = row.currency_code
     amount = row.customer_fee_amount
     on_date = row.effective_from

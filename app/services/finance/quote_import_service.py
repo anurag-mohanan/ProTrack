@@ -331,7 +331,10 @@ def import_quotes_from_csv(
     actor: User,
     team_id: UUID | None = None,
     create_project: bool = True,
+    filename: str | None = None,
 ) -> list[QuoteImportOutcome]:
+    from app.services.finance.quote_field_recognizer import enrich_import_row
+
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     if reader.fieldnames is None:
@@ -342,7 +345,7 @@ def import_quotes_from_csv(
             outcomes.append(
                 import_quote_row(
                     db,
-                    row=row,
+                    row=enrich_import_row(dict(row), filename=filename),
                     actor=actor,
                     source="csv",
                     team_id=team_id,
@@ -361,7 +364,10 @@ def import_quotes_from_excel(
     actor: User,
     team_id: UUID | None = None,
     create_project: bool = True,
+    filename: str | None = None,
 ) -> list[QuoteImportOutcome]:
+    from app.services.finance.quote_field_recognizer import enrich_import_row
+
     try:
         from openpyxl import load_workbook
     except ImportError as exc:
@@ -384,7 +390,7 @@ def import_quotes_from_excel(
             outcomes.append(
                 import_quote_row(
                     db,
-                    row=row,
+                    row=enrich_import_row(row, filename=filename),
                     actor=actor,
                     source="excel",
                     team_id=team_id,
@@ -410,6 +416,7 @@ def import_quotes_from_pdf(
         looks_like_prosohm_qt_pdf,
         parse_prosohm_quote_text,
     )
+    from app.services.finance.quote_field_recognizer import enrich_import_row
     from app.services.pdf_table_import import extract_tables_as_dicts
 
     # Prefer Prosohm QT layout when filename or text markers match.
@@ -429,7 +436,7 @@ def import_quotes_from_pdf(
         return [
             import_quote_row(
                 db,
-                row=extract.to_import_row(),
+                row=enrich_import_row(extract.to_import_row(), filename=filename),
                 actor=actor,
                 source="pdf_qt",
                 team_id=team_id,
@@ -444,7 +451,7 @@ def import_quotes_from_pdf(
             outcomes.append(
                 import_quote_row(
                     db,
-                    row=row,
+                    row=enrich_import_row(row, filename=filename),
                     actor=actor,
                     source="pdf",
                     team_id=team_id,
@@ -481,6 +488,7 @@ def import_quotes_from_upload(
             actor=actor,
             team_id=team_id,
             create_project=create_project,
+            filename=filename,
         )
     if is_excel(suffix):
         return import_quotes_from_excel(
@@ -489,6 +497,7 @@ def import_quotes_from_upload(
             actor=actor,
             team_id=team_id,
             create_project=create_project,
+            filename=filename,
         )
     if is_pdf(suffix):
         return import_quotes_from_pdf(

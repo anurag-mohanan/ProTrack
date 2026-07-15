@@ -78,10 +78,14 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
 
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
+      if (!importTeamId) {
+        throw new Error('Select a team for this upload.');
+      }
       const form = new FormData();
       form.append('file', file);
       form.append('team_id', importTeamId);
       form.append('create_project', createProject ? 'true' : 'false');
+      // Leave Content-Type unset so the browser adds multipart boundary (see apiClient).
       return (await apiClient.post<QuoteImportResult>('/finance/quotes/import', form)).data;
     },
     onSuccess: (data) => {
@@ -112,10 +116,10 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           Awarded project quotes
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Import <strong>awarded</strong> (won) project packs only — not bid drafts. Supports{' '}
-          <strong>Prosohm QT PDFs</strong> (Quote# / Customer Project #) and Excel/CSV packs. Team is
-          required so Overview can attribute quote revenue. Formats: {IMPORT_FORMAT_LABEL_WITH_CSV}.
-          Legacy .xls is not supported.
+          Import <strong>awarded</strong> (won) project packs only — not bid drafts. AI field
+          recognition maps Quote#, Customer Project #, Prepared For, hours and amount from Prosohm QT
+          PDFs and Excel/CSV packs. Team is required so Overview can attribute quote revenue. Formats:{' '}
+          {IMPORT_FORMAT_LABEL_WITH_CSV}. Legacy .xls is not supported.
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 220 }} required>

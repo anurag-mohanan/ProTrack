@@ -96,15 +96,29 @@ export function getUserFriendlyErrorMessage(error: unknown): string {
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Never force JSON on FormData — FastAPI needs multipart with boundary.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    if (typeof config.headers.delete === 'function') {
+      config.headers.delete('Content-Type');
+    } else {
+      delete (config.headers as Record<string, unknown>)['Content-Type'];
+    }
+  } else if (
+    config.data != null &&
+    typeof config.data === 'object' &&
+    !(typeof FormData !== 'undefined' && config.data instanceof FormData)
+  ) {
+    const current = config.headers.get?.('Content-Type') ?? (config.headers as Record<string, unknown>)['Content-Type'];
+    if (!current) {
+      config.headers.set('Content-Type', 'application/json');
+    }
   }
   return config;
 });

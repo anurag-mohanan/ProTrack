@@ -1,8 +1,14 @@
 /** Normalize FastAPI / Axios error payloads into a toast-safe string. */
 export function apiErrorMessage(error: unknown, fallback: string): string {
+  const friendlyFieldRequired =
+    'Upload did not reach the server correctly (missing file or team). ' +
+    'Hard-refresh the page and try again — select a team, then upload the quote file.';
+
   const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data
     ?.detail;
-  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail.toLowerCase().includes('field required') ? friendlyFieldRequired : detail;
+  }
   if (Array.isArray(detail) && detail.length) {
     const parts = detail.map((item) => {
       if (typeof item === 'string') return item;
@@ -16,6 +22,7 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
       return null;
     });
     const joined = parts.filter(Boolean).join('; ');
+    if (joined.toLowerCase().includes('field required')) return friendlyFieldRequired;
     if (joined) return joined;
   }
   if (detail && typeof detail === 'object' && 'message' in detail) {
@@ -23,6 +30,8 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
     if (msg.trim()) return msg;
   }
   const message = (error as { message?: string })?.message;
-  if (typeof message === 'string' && message.trim()) return message;
+  if (typeof message === 'string' && message.trim()) {
+    return message.toLowerCase().includes('field required') ? friendlyFieldRequired : message;
+  }
   return fallback;
 }

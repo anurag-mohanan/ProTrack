@@ -57,6 +57,8 @@ from app.schemas.finance import (
     FinancePlanCloneRequest,
     FinancePlanCreate,
     FinancePlanDetail,
+    FinancePlanAiApplyRequest,
+    FinancePlanAiInsightsRead,
     FinancePlanLineCreate,
     FinancePlanLineRead,
     FinancePlanLineUpdate,
@@ -88,6 +90,7 @@ from app.services.finance.plan_vs_actual_service import (
     compute_plan_vs_actual,
     seed_plan_from_live,
 )
+from app.services.finance.plan_ai_service import apply_ai_action, build_ai_insights
 from app.services.finance.paid_by_defaults import default_paid_by
 from app.services.finance.commercial_fee_rules import (
     billing_mode_for_strategy,
@@ -972,6 +975,39 @@ def clone_finance_plan(
         plan = annual_plan_service.clone_plan(
             db, plan_id, scenario_name=payload.scenario_name
         )
+        db.commit()
+        plan = annual_plan_service.get_plan(db, plan.id)
+        return _plan_detail_response(plan)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/plans/{plan_id}/ai-insights", response_model=FinancePlanAiInsightsRead)
+def get_plan_ai_insights(
+    plan_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Deterministic AI Assist insights for an annual plan (no external LLM)."""
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    try:
+        return FinancePlanAiInsightsRead.model_validate(build_ai_insights(db, plan_id))
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/plans/{plan_id}/ai-apply", response_model=FinancePlanDetail)
+def apply_plan_ai_action(
+    plan_id: UUID,
+    payload: FinancePlanAiApplyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Apply an opt-in AI Assist action to the plan workbook."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        plan = apply_ai_action(db, plan_id, action_code=payload.action_code)
         db.commit()
         plan = annual_plan_service.get_plan(db, plan.id)
         return _plan_detail_response(plan)

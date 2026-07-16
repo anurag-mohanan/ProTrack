@@ -25,6 +25,7 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { teamQueryParam } from './FinanceTeamFilter';
+import { FinanceHeroBanner } from './FinanceCockpitPrimitives';
 
 type QuoteRow = {
   id: string;
@@ -249,6 +250,10 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
 
   return (
     <Stack spacing={2}>
+      <FinanceHeroBanner
+        title="Revenue / awarded quotes"
+        subtitle="Booked quote revenue signals for planning — manual entry, edit/delete, and optional file import."
+      />
       <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>
           Awarded project quotes

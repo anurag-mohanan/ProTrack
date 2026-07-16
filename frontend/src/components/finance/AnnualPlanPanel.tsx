@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Button,
-  Card,
-  CardContent,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -38,6 +37,7 @@ import {
   FinanceSection,
   financeMoney,
 } from './FinanceCockpitPrimitives';
+import { AnnualPlanAiAssist } from './AnnualPlanAiAssist';
 
 const QUARTER_KEYS = ['q1', 'q2', 'q3', 'q4'] as const;
 const QUARTER_LABELS = ['Q1 Apr–Jun', 'Q2 Jul–Sep', 'Q3 Oct–Dec', 'Q4 Jan–Mar'];
@@ -190,6 +190,7 @@ export function AnnualPlanPanel() {
     void queryClient.invalidateQueries({ queryKey: ['finance-plans'] });
     void queryClient.invalidateQueries({ queryKey: ['finance-plan', activePlanId] });
     void queryClient.invalidateQueries({ queryKey: ['finance-plan-vs-actual', activePlanId] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-plan-ai', activePlanId] });
   };
 
   const createMutation = useMutation({
@@ -328,8 +329,18 @@ export function AnnualPlanPanel() {
   return (
     <Stack spacing={2.5}>
       <FinanceHeroBanner
-        title="Annual plan workbook"
-        subtitle="Quarterly Sales & Expenses (Apr–Mar). Charts show Adaptive-style Plan vs Actual; grids stay the source of truth for edits."
+        title="Annual plan studio"
+        subtitle="Workbook + Plan vs Actual + AI Assist. Seed costs, fill quarters, and project remaining periods from live run-rates — opt-in actions only."
+        chips={
+          detailQuery.data ? (
+            <Chip
+              size="small"
+              label={detailQuery.data.status}
+              color={detailQuery.data.status === 'active' ? 'success' : 'default'}
+              sx={{ fontWeight: 700, textTransform: 'capitalize' }}
+            />
+          ) : undefined
+        }
       />
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
@@ -408,12 +419,13 @@ export function AnnualPlanPanel() {
       ) : detailQuery.isLoading ? (
         <LoadingState message="Loading plan…" />
       ) : detailQuery.data ? (
-        <>
-          <Card variant="outlined">
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 600 }}>
-                Settings (FY {detailQuery.data.fiscal_year_label})
-              </Typography>
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, lg: 8 }}>
+            <Stack spacing={2.5}>
+          <FinanceSection
+            title={`Settings · FY ${detailQuery.data.fiscal_year_label}`}
+            subtitle="Tax and provision drive the computed summary"
+          >
               <Stack
                 direction={{ xs: 'column', sm: 'row' }}
                 spacing={1.5}
@@ -441,8 +453,36 @@ export function AnnualPlanPanel() {
                   Save settings
                 </Button>
               </Stack>
-            </CardContent>
-          </Card>
+          </FinanceSection>
+
+          {(detailQuery.data.summary.sales_by_quarter ||
+            detailQuery.data.summary.expenses_by_quarter) && (
+            <FinanceSection
+              title="Quarterly P&L shape"
+              subtitle="Sales vs expenses by fiscal quarter (plan workbook)"
+            >
+              <AnalyticsBarChart
+                categories={QUARTER_LABELS}
+                height={260}
+                series={[
+                  {
+                    label: 'Sales',
+                    data: QUARTER_KEYS.map((key) =>
+                      toFiniteNumber(detailQuery.data?.summary.sales_by_quarter?.[key]),
+                    ),
+                    color: designTokens.semantic.success,
+                  },
+                  {
+                    label: 'Expenses',
+                    data: QUARTER_KEYS.map((key) =>
+                      toFiniteNumber(detailQuery.data?.summary.expenses_by_quarter?.[key]),
+                    ),
+                    color: designTokens.semantic.warning,
+                  },
+                ]}
+              />
+            </FinanceSection>
+          )}
 
           <PlanSectionGrid
             title="Sales"
@@ -566,7 +606,12 @@ export function AnnualPlanPanel() {
                 ))}
               </Grid>
           </FinanceSection>
-        </>
+            </Stack>
+          </Grid>
+          <Grid size={{ xs: 12, lg: 4 }}>
+            <AnnualPlanAiAssist planId={activePlanId} onApplied={invalidate} />
+          </Grid>
+        </Grid>
       ) : null}
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="xs">

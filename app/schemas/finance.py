@@ -610,3 +610,28 @@ class PlanVsActualRead(BaseModel):
     remaining_plan_sales: str
     remaining_plan_expenses: str
     methodology: str
+
+
+class FinancePlanAiInsight(BaseModel):
+    id: str
+    severity: str
+    title: str
+    detail: str
+    action_code: str | None = None
+    action_label: str | None = None
+
+
+class FinancePlanAiInsightsRead(BaseModel):
+    plan_id: UUID
+    fiscal_year_label: str
+    engine: str
+    disclaimer: str
+    confidence_percent: int
+    fill_ratio_percent: int
+    months_elapsed: int
+    insights: list[FinancePlanAiInsight]
+    headline: str
+
+
+class FinancePlanAiApplyRequest(BaseModel):
+    action_code: str = Field(..., min_length=1, max_length=80)

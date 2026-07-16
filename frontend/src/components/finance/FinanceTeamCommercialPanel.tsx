@@ -21,6 +21,7 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import { teamQueryParam } from './FinanceTeamFilter';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { FinanceHeroBanner } from './FinanceCockpitPrimitives';
 
 type WorkingModel = {
   id: string;
@@ -211,6 +212,10 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
 
   return (
     <Stack spacing={3}>
+      <FinanceHeroBanner
+        title="Team commercial"
+        subtitle="Retainer and subscription fee models that drive Overview revenue signals and Annual Plan sales context."
+      />
       <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>
           {editingId ? 'Edit team commercial terms' : 'Team cost / commercial model'}

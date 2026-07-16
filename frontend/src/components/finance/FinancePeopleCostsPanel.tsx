@@ -19,6 +19,7 @@ import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { teamQueryParam } from './FinanceTeamFilter';
+import { FinanceHeroBanner } from './FinanceCockpitPrimitives';
 
 type RosterItem = {
   user_id: string;
@@ -112,6 +113,10 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
 
   return (
     <Stack spacing={2}>
+      <FinanceHeroBanner
+        title="People costs"
+        subtitle="Salary roster with last working day proration — costs stop after the leave date so Annual Plan wages stay realistic."
+      />
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
         <Typography variant="body2" color="text.secondary">
           {teamId

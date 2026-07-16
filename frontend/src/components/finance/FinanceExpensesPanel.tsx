@@ -20,6 +20,7 @@ import { fetchTeams } from '../../api/lookups';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { FinanceHeroBanner } from './FinanceCockpitPrimitives';
 
 type CostCentre = { id: string; name: string; code?: string };
 type Expense = {
@@ -197,6 +198,10 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
 
   return (
     <Stack spacing={3}>
+      <FinanceHeroBanner
+        title="Expenses & subscriptions"
+        subtitle="Capture Prosohm vs customer-paid spend with purchase dates and renewal radar — feeds Overview and Annual Plan renewals sync."
+      />
       <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>
           {editingId ? 'Edit expense / subscription' : 'Add expense / subscription'}

@@ -153,6 +153,7 @@ class User(Base, TimestampMixin):
         nullable=True,
     )
     joining_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    first_job_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     leaving_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     availability_status: Mapped[UserAvailabilityStatus] = mapped_column(
         Enum(UserAvailabilityStatus, name="user_availability_status", native_enum=False),
@@ -497,6 +498,7 @@ class PerformanceReviewProject(Base, TimestampMixin):
     achievement_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ownership_type: Mapped[str] = mapped_column(String(32), nullable=False, default="owned")
     tasks_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    complexity: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     is_auto_imported: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

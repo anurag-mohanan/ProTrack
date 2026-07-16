@@ -15,13 +15,14 @@ from app.core.access_control import MODULE_HUMAN_RESOURCES
 from app.core.module_actions import MODULE_ACTION_VIEW, user_has_module_action
 from app.core.permissions import get_role_name
 from app.core.team_access import get_accessible_team_ids, team_member_user_ids
-from app.models.enums import TeamRelationshipType, TimesheetStatus
+from app.models.enums import ProjectComplexity, TeamRelationshipType, TimesheetStatus
 from app.models.models import (
     PerformanceReviewCycle,
     PerformanceReviewItem,
     PerformanceReviewProject,
     PerformanceReviewSection,
     PerformanceReviewSheet,
+    Project,
     Team,
     TeamMember,
     Timesheet,
@@ -190,7 +191,10 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
     role_name = None
     if sheet.employee.role is not None:
         role_name = sheet.employee.role.name
-    company_experience = sheet.total_experience or format_tenure(sheet.employee.joining_date)
+    company_auto = format_tenure(sheet.employee.joining_date)
+    industry_auto = format_tenure(sheet.employee.first_job_date)
+    company_experience = sheet.total_experience or company_auto
+    industry_experience = sheet.industry_experience or industry_auto
     return PerformanceReviewRead(
         id=sheet.id,
         cycle_id=sheet.cycle_id,
@@ -201,6 +205,7 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         employee_designation=sheet.employee.designation or role_name,
         employee_role=role_name,
         employee_joining_date=sheet.employee.joining_date,
+        employee_first_job_date=sheet.employee.first_job_date,
         company_experience=company_experience,
         reviewer_id=sheet.reviewer_id,
         reviewer_name=reviewer_name,
@@ -213,7 +218,7 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         review_period_start=sheet.review_period_start,
         review_period_end=sheet.review_period_end,
         total_experience=sheet.total_experience or company_experience,
-        industry_experience=sheet.industry_experience,
+        industry_experience=industry_experience,
         overall_score=sheet.overall_score,
         overall_score_label=rating_label(sheet.overall_score),
         completion_percent=completion_percent,
@@ -234,9 +239,22 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
     )
 
 
-def _apply_projects(sheet: PerformanceReviewSheet, projects: list) -> None:
+def _sync_project_complexity(db: Session, project_id: UUID | None, complexity: str | None) -> None:
+    if project_id is None or not complexity:
+        return
+    project = db.get(Project, project_id)
+    if project is None:
+        return
+    try:
+        project.complexity = ProjectComplexity(complexity)
+    except ValueError:
+        return
+
+
+def _apply_projects(sheet: PerformanceReviewSheet, projects: list, db: Session | None = None) -> None:
     sheet.projects.clear()
     for index, project_row in enumerate(projects):
+        complexity = getattr(project_row, "complexity", None)
         sheet.projects.append(
             PerformanceReviewProject(
                 project_id=project_row.project_id,
@@ -252,10 +270,13 @@ def _apply_projects(sheet: PerformanceReviewSheet, projects: list) -> None:
                 achievement_notes=project_row.achievement_notes,
                 ownership_type=getattr(project_row, "ownership_type", None) or "owned",
                 tasks_summary=getattr(project_row, "tasks_summary", None),
+                complexity=complexity,
                 is_auto_imported=project_row.is_auto_imported,
                 sort_order=project_row.sort_order if project_row.sort_order else index,
             )
         )
+        if db is not None:
+            _sync_project_complexity(db, project_row.project_id, complexity)
 
 
 def _apply_employee_project_updates(sheet: PerformanceReviewSheet, projects: list) -> None:
@@ -708,6 +729,16 @@ def create_performance_review(
     period_start, period_end = review_period_bounds(review_year)
     period_label = payload.period_label or default_period_label(review_year)
 
+    if "employee_joining_date" in payload.model_fields_set:
+        employee.joining_date = payload.employee_joining_date
+    if "employee_first_job_date" in payload.model_fields_set:
+        employee.first_job_date = payload.employee_first_job_date
+
+    company_auto = format_tenure(employee.joining_date)
+    industry_auto = format_tenure(employee.first_job_date)
+    total_experience = payload.total_experience or company_auto
+    industry_experience = payload.industry_experience or industry_auto
+
     sheet = PerformanceReviewSheet(
         cycle_id=payload.cycle_id,
         employee_id=payload.employee_id,
@@ -719,8 +750,8 @@ def create_performance_review(
         due_date=payload.due_date,
         review_period_start=period_start,
         review_period_end=period_end,
-        total_experience=payload.total_experience,
-        industry_experience=payload.industry_experience,
+        total_experience=total_experience,
+        industry_experience=industry_experience,
         overall_score=payload.overall_score,
         employee_summary=payload.employee_summary,
         manager_summary=payload.manager_summary,
@@ -735,7 +766,7 @@ def create_performance_review(
         _seed_sections(sheet)
         sheet.overall_score = sheet_overall_score(sheet)
     if payload.projects:
-        _apply_projects(sheet, payload.projects)
+        _apply_projects(sheet, payload.projects, db)
     else:
         seed_review_projects(
             sheet,
@@ -797,6 +828,14 @@ def update_performance_review(
             value = getattr(payload, field)
             if value is not None:
                 setattr(sheet, field, value)
+        if "employee_joining_date" in payload.model_fields_set:
+            sheet.employee.joining_date = payload.employee_joining_date
+            if payload.total_experience is None:
+                sheet.total_experience = format_tenure(payload.employee_joining_date)
+        if "employee_first_job_date" in payload.model_fields_set:
+            sheet.employee.first_job_date = payload.employee_first_job_date
+            if payload.industry_experience is None:
+                sheet.industry_experience = format_tenure(payload.employee_first_job_date)
         if payload.reviewer_id is not None:
             sheet.reviewer_id = payload.reviewer_id
         if payload.team_id is not None:
@@ -806,7 +845,7 @@ def update_performance_review(
         if payload.sections is not None:
             _apply_manager_sections(sheet, payload.sections)
         if payload.projects is not None:
-            _apply_projects(sheet, payload.projects)
+            _apply_projects(sheet, payload.projects, db)
         elif payload.import_suggested_projects:
             period_start = sheet.review_period_start
             period_end = sheet.review_period_end
@@ -841,6 +880,7 @@ def update_performance_review(
                         achievement_notes=row.get("achievement_notes"),
                         ownership_type=str(row.get("ownership_type") or "owned"),
                         tasks_summary=row.get("tasks_summary"),
+                        complexity=row.get("complexity"),
                         is_auto_imported=True,
                         sort_order=next_order,
                     )

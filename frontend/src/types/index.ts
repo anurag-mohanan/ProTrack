@@ -47,6 +47,7 @@ export interface User {
   employment_type?: 'full_time' | 'part_time' | 'contract' | 'intern' | null;
   skill_level?: 'beginner' | 'intermediate' | 'advanced' | 'expert' | null;
   joining_date?: string | null;
+  first_job_date?: string | null;
   leaving_date?: string | null;
   phone?: string | null;
   designation?: string | null;

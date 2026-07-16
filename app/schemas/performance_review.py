@@ -55,6 +55,7 @@ class PerformanceReviewProjectUpdate(BaseModel):
     achievement_notes: str | None = None
     ownership_type: str = "owned"
     tasks_summary: str | None = None
+    complexity: str | None = None
     is_auto_imported: bool = False
     sort_order: int = 0
 
@@ -76,6 +77,7 @@ class PerformanceReviewProjectRead(BaseModel):
     achievement_notes: str | None = None
     ownership_type: str = "owned"
     tasks_summary: str | None = None
+    complexity: str | None = None
     is_auto_imported: bool = False
     sort_order: int
 
@@ -94,6 +96,7 @@ class PerformanceReviewProjectSuggestionRead(BaseModel):
     achievement_notes: str | None = None
     ownership_type: str = "owned"
     tasks_summary: str | None = None
+    complexity: str | None = None
     is_auto_imported: bool = True
     sort_order: int = 0
 
@@ -144,6 +147,8 @@ class PerformanceReviewCreate(BaseModel):
     review_date: date | None = None
     due_date: date | None = None
     review_year: int | None = None
+    employee_joining_date: date | None = None
+    employee_first_job_date: date | None = None
     total_experience: str | None = None
     industry_experience: str | None = None
     overall_score: Decimal | None = Field(default=None, ge=0, le=5)
@@ -163,6 +168,8 @@ class PerformanceReviewUpdate(BaseModel):
     period_label: str | None = None
     review_date: date | None = None
     due_date: date | None = None
+    employee_joining_date: date | None = None
+    employee_first_job_date: date | None = None
     total_experience: str | None = None
     industry_experience: str | None = None
     overall_score: Decimal | None = Field(default=None, ge=0, le=5)
@@ -217,6 +224,7 @@ class PerformanceReviewRead(BaseModel):
     employee_designation: str | None = None
     employee_role: str | None = None
     employee_joining_date: date | None = None
+    employee_first_job_date: date | None = None
     company_experience: str | None = None
     reviewer_id: UUID
     reviewer_name: str

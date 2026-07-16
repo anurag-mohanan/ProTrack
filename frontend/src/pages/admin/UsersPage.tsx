@@ -78,6 +78,7 @@ interface UserFormState {
   employment_type: string;
   skill_level: string;
   joining_date: string;
+  first_job_date: string;
   leaving_date: string;
   availability_status: string;
   max_allocation_percent: number;
@@ -115,6 +116,7 @@ const emptyForm: UserFormState = {
   employment_type: '',
   skill_level: '',
   joining_date: '',
+  first_job_date: '',
   leaving_date: '',
   availability_status: 'available',
   max_allocation_percent: 100,
@@ -347,6 +349,7 @@ export default function UsersPage() {
       employment_type: user.employment_type ?? '',
       skill_level: user.skill_level ?? '',
       joining_date: user.joining_date ?? '',
+      first_job_date: user.first_job_date ?? '',
       leaving_date: user.leaving_date ?? '',
       availability_status: user.availability_status ?? 'available',
       max_allocation_percent: user.max_allocation_percent ?? 100,
@@ -387,6 +390,7 @@ export default function UsersPage() {
     employment_type: (optionalString(form.employment_type) || null) as User['employment_type'],
     skill_level: (optionalString(form.skill_level) || null) as User['skill_level'],
     joining_date: optionalString(form.joining_date),
+    first_job_date: optionalString(form.first_job_date),
     leaving_date: optionalString(form.leaving_date),
     availability_status: form.availability_status as User['availability_status'],
     max_allocation_percent: form.max_allocation_percent,
@@ -1271,6 +1275,18 @@ export default function UsersPage() {
                     onChange={(event) =>
                       setForm((current) => ({ ...current, joining_date: event.target.value }))
                     }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormField
+                    label="First job date"
+                    type="date"
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    value={form.first_job_date}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, first_job_date: event.target.value }))
+                    }
+                    helperText="Used to calculate industry experience on performance reviews."
                   />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>

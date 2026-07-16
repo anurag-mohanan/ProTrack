@@ -206,6 +206,29 @@ def format_tenure(start: date | None, as_of: date | None = None) -> str | None:
     return f"{rem} month{'s' if rem != 1 else ''}"
 
 
+def _project_complexity(project: Project) -> str | None:
+    if project.complexity is None:
+        return None
+    return project.complexity.value if hasattr(project.complexity, "value") else str(project.complexity)
+
+
+def _owned_project_row(project: Project, employee_id: UUID, hours: Decimal | None = None) -> dict[str, Any]:
+    return {
+        "project_id": project.id,
+        "tool_number": project.tool_number,
+        "part_description": project.part_description,
+        "customer_name": project.customer.name if project.customer is not None else None,
+        "assignment_role": _project_role_label(project, employee_id),
+        "hours_logged": hours if hours is not None else Decimal("0"),
+        "execution_status": project.execution_status.value if project.execution_status else None,
+        "project_stage": project.project_stage.value if project.project_stage else None,
+        "completed_at": project.completed_at.date() if project.completed_at else None,
+        "ownership_type": "owned",
+        "tasks_summary": None,
+        "complexity": _project_complexity(project),
+    }
+
+
 def _is_project_owner(project: Project, user_id: UUID) -> bool:
     return user_id in {
         project.design_leader_id,
@@ -265,7 +288,7 @@ def discover_employee_projects(
     period_start: date,
     period_end: date,
 ) -> list[dict[str, Any]]:
-    """Owned projects get full detail + tasks; contributed projects are tool# + Supported only."""
+    """Owned projects completed/worked in the review year; contributed = tool# + Supported."""
     owned: dict[UUID, dict[str, Any]] = {}
     supported: dict[UUID, dict[str, Any]] = {}
 
@@ -282,19 +305,7 @@ def discover_employee_projects(
         )
     ).all()
     for project in direct_projects:
-        owned[project.id] = {
-            "project_id": project.id,
-            "tool_number": project.tool_number,
-            "part_description": project.part_description,
-            "customer_name": project.customer.name if project.customer is not None else None,
-            "assignment_role": _project_role_label(project, employee_id),
-            "hours_logged": Decimal("0"),
-            "execution_status": project.execution_status.value if project.execution_status else None,
-            "project_stage": project.project_stage.value if project.project_stage else None,
-            "completed_at": project.completed_at.date() if project.completed_at else None,
-            "ownership_type": "owned",
-            "tasks_summary": None,
-        }
+        owned[project.id] = _owned_project_row(project, employee_id)
 
     timesheet_rows = db.execute(
         select(
@@ -325,19 +336,7 @@ def discover_employee_projects(
         if project is None or project.is_deleted:
             continue
         if _is_project_owner(project, employee_id):
-            owned[project.id] = {
-                "project_id": project.id,
-                "tool_number": project.tool_number,
-                "part_description": project.part_description,
-                "customer_name": project.customer.name if project.customer is not None else None,
-                "assignment_role": _project_role_label(project, employee_id),
-                "hours_logged": hours_decimal,
-                "execution_status": project.execution_status.value if project.execution_status else None,
-                "project_stage": project.project_stage.value if project.project_stage else None,
-                "completed_at": project.completed_at.date() if project.completed_at else None,
-                "ownership_type": "owned",
-                "tasks_summary": None,
-            }
+            owned[project.id] = _owned_project_row(project, employee_id, hours_decimal)
         else:
             supported[project_id] = {
                 "project_id": project.id,
@@ -351,52 +350,13 @@ def discover_employee_projects(
                 "completed_at": None,
                 "ownership_type": "supported",
                 "tasks_summary": None,
+                "complexity": _project_complexity(project),
                 "contribution_summary": "Supported",
                 "achievement_notes": None,
             }
 
-    milestone_project_ids = db.scalars(
-        select(Milestone.project_id).where(Milestone.assigned_user_id == employee_id).distinct()
-    ).all()
-    for project_id in milestone_project_ids:
-        if project_id in owned or project_id in supported:
-            continue
-        project = db.scalar(
-            select(Project).options(selectinload(Project.customer)).where(Project.id == project_id)
-        )
-        if project is None or project.is_deleted:
-            continue
-        if _is_project_owner(project, employee_id):
-            owned[project.id] = {
-                "project_id": project.id,
-                "tool_number": project.tool_number,
-                "part_description": project.part_description,
-                "customer_name": project.customer.name if project.customer is not None else None,
-                "assignment_role": _project_role_label(project, employee_id),
-                "hours_logged": Decimal("0"),
-                "execution_status": project.execution_status.value if project.execution_status else None,
-                "project_stage": project.project_stage.value if project.project_stage else None,
-                "completed_at": project.completed_at.date() if project.completed_at else None,
-                "ownership_type": "owned",
-                "tasks_summary": None,
-            }
-        else:
-            supported[project_id] = {
-                "project_id": project.id,
-                "tool_number": project.tool_number,
-                "part_description": None,
-                "customer_name": None,
-                "assignment_role": "Supported",
-                "hours_logged": None,
-                "execution_status": None,
-                "project_stage": None,
-                "completed_at": None,
-                "ownership_type": "supported",
-                "tasks_summary": None,
-                "contribution_summary": "Supported",
-                "achievement_notes": None,
-            }
-
+    # Only include owned projects completed in the review year (last July → this June)
+    # or with timesheet hours logged in that same window.
     results: list[dict[str, Any]] = []
     owned_rows = sorted(
         owned.values(),
@@ -408,31 +368,19 @@ def discover_employee_projects(
     for index, row in enumerate(owned_rows):
         hours = row.get("hours_logged") or Decimal("0")
         completed_at = row.get("completed_at")
-        in_period = bool(hours > 0)
-        if not in_period and completed_at is not None:
-            in_period = period_start <= completed_at <= period_end
-        if not in_period and hours == 0 and completed_at is None:
-            # Keep active owned assignments that still have work in period via milestones/tasks
-            tasks = _tasks_for_employee_project(
-                db,
-                employee_id,
-                row["project_id"],
-                period_start=period_start,
-                period_end=period_end,
-            )
-            if not tasks:
-                continue
-            row["tasks_summary"] = tasks
-        else:
-            if not in_period:
-                continue
-            row["tasks_summary"] = _tasks_for_employee_project(
-                db,
-                employee_id,
-                row["project_id"],
-                period_start=period_start,
-                period_end=period_end,
-            )
+        completed_in_period = bool(
+            completed_at is not None and period_start <= completed_at <= period_end
+        )
+        worked_in_period = bool(hours > 0)
+        if not (completed_in_period or worked_in_period):
+            continue
+        row["tasks_summary"] = _tasks_for_employee_project(
+            db,
+            employee_id,
+            row["project_id"],
+            period_start=period_start,
+            period_end=period_end,
+        )
         results.append(
             {
                 **row,
@@ -486,6 +434,7 @@ def seed_review_projects(
                 achievement_notes=row.get("achievement_notes"),
                 ownership_type=str(row.get("ownership_type") or "owned"),
                 tasks_summary=row.get("tasks_summary"),
+                complexity=row.get("complexity"),
                 is_auto_imported=bool(row.get("is_auto_imported")),
                 sort_order=int(row.get("sort_order") or 0),
             )

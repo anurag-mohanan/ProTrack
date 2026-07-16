@@ -93,6 +93,7 @@ class UserBase(BaseModel):
     employment_type: EmploymentType | None = None
     skill_level: SkillLevel | None = None
     joining_date: date | None = None
+    first_job_date: date | None = None
     leaving_date: date | None = None
     availability_status: UserAvailabilityStatus = UserAvailabilityStatus.available
     max_allocation_percent: int = 100
@@ -131,6 +132,7 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     employment_type: EmploymentType | None = None
     skill_level: SkillLevel | None = None
     joining_date: date | None = None
+    first_job_date: date | None = None
     leaving_date: date | None = None
     availability_status: UserAvailabilityStatus | None = None
     max_allocation_percent: int | None = Field(default=None, ge=0, le=100)

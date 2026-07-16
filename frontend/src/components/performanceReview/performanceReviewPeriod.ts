@@ -19,3 +19,19 @@ export function formatReviewPeriod(start?: string | null, end?: string | null): 
   if (!start || !end) return 'July–June review year';
   return `${start} → ${end}`;
 }
+
+/** Format tenure from an ISO date string (yyyy-mm-dd) to e.g. "2y 3m". */
+export function formatTenureFromDate(start?: string | null, asOf = new Date()): string {
+  if (!start) return '';
+  const parsed = new Date(`${start}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return '';
+  let months =
+    (asOf.getFullYear() - parsed.getFullYear()) * 12 + (asOf.getMonth() - parsed.getMonth());
+  if (asOf.getDate() < parsed.getDate()) months -= 1;
+  if (months < 0) months = 0;
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  if (years && rem) return `${years}y ${rem}m`;
+  if (years) return `${years} year${years === 1 ? '' : 's'}`;
+  return `${rem} month${rem === 1 ? '' : 's'}`;
+}

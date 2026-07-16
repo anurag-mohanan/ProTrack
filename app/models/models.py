@@ -445,6 +445,7 @@ class PerformanceReviewSheet(Base, TimestampMixin):
     improvement_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     career_goals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     total_experience: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    industry_experience: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     review_period_start: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     review_period_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -494,6 +495,8 @@ class PerformanceReviewProject(Base, TimestampMixin):
     completed_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     contribution_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     achievement_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ownership_type: Mapped[str] = mapped_column(String(32), nullable=False, default="owned")
+    tasks_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_auto_imported: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

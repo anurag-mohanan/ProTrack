@@ -187,6 +187,77 @@ def _project_role_label(project: Project, user_id: UUID) -> str | None:
     return None
 
 
+def format_tenure(start: date | None, as_of: date | None = None) -> str | None:
+    if start is None:
+        return None
+    end = as_of or date.today()
+    if end < start:
+        return None
+    months = (end.year - start.year) * 12 + (end.month - start.month)
+    if end.day < start.day:
+        months -= 1
+    if months < 0:
+        months = 0
+    years, rem = divmod(months, 12)
+    if years and rem:
+        return f"{years}y {rem}m"
+    if years:
+        return f"{years} year{'s' if years != 1 else ''}"
+    return f"{rem} month{'s' if rem != 1 else ''}"
+
+
+def _is_project_owner(project: Project, user_id: UUID) -> bool:
+    return user_id in {
+        project.design_leader_id,
+        project.designer_id,
+        project.surfacer_id,
+    }
+
+
+def _tasks_for_employee_project(
+    db: Session,
+    employee_id: UUID,
+    project_id: UUID,
+    *,
+    period_start: date,
+    period_end: date,
+) -> str | None:
+    from app.models.models import TaskType
+
+    task_names = db.scalars(
+        select(TaskType.name)
+        .join(TimesheetEntry, TimesheetEntry.task_type_id == TaskType.id)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(
+            Timesheet.user_id == employee_id,
+            TimesheetEntry.project_id == project_id,
+            TimesheetEntry.is_deleted.is_(False),
+            TimesheetEntry.entry_date >= period_start,
+            TimesheetEntry.entry_date <= period_end,
+        )
+        .distinct()
+        .order_by(TaskType.name)
+    ).all()
+    milestone_names = db.scalars(
+        select(Milestone.name)
+        .where(
+            Milestone.project_id == project_id,
+            Milestone.assigned_user_id == employee_id,
+        )
+        .order_by(Milestone.sort_order, Milestone.name)
+    ).all()
+    labels: list[str] = []
+    for name in task_names:
+        if name and name not in labels:
+            labels.append(str(name))
+    for name in milestone_names:
+        if name and name not in labels:
+            labels.append(str(name))
+    if not labels:
+        return None
+    return ", ".join(labels[:12])
+
+
 def discover_employee_projects(
     db: Session,
     employee_id: UUID,
@@ -194,8 +265,9 @@ def discover_employee_projects(
     period_start: date,
     period_end: date,
 ) -> list[dict[str, Any]]:
-    """Suggest projects completed or contributed to during the annual review window."""
-    discovered: dict[UUID, dict[str, Any]] = {}
+    """Owned projects get full detail + tasks; contributed projects are tool# + Supported only."""
+    owned: dict[UUID, dict[str, Any]] = {}
+    supported: dict[UUID, dict[str, Any]] = {}
 
     direct_projects = db.scalars(
         select(Project)
@@ -210,56 +282,24 @@ def discover_employee_projects(
         )
     ).all()
     for project in direct_projects:
-        role = _project_role_label(project, employee_id)
-        discovered[project.id] = {
+        owned[project.id] = {
             "project_id": project.id,
             "tool_number": project.tool_number,
             "part_description": project.part_description,
             "customer_name": project.customer.name if project.customer is not None else None,
-            "assignment_role": role,
+            "assignment_role": _project_role_label(project, employee_id),
             "hours_logged": Decimal("0"),
             "execution_status": project.execution_status.value if project.execution_status else None,
             "project_stage": project.project_stage.value if project.project_stage else None,
             "completed_at": project.completed_at.date() if project.completed_at else None,
-            "sources": {"assignment"},
+            "ownership_type": "owned",
+            "tasks_summary": None,
         }
-
-    milestone_rows = db.execute(
-        select(Milestone.project_id, func.count(Milestone.id))
-        .where(Milestone.assigned_user_id == employee_id)
-        .group_by(Milestone.project_id)
-    ).all()
-    for project_id, milestone_count in milestone_rows:
-        project = db.scalar(
-            select(Project).options(selectinload(Project.customer)).where(Project.id == project_id)
-        )
-        if project is None or project.is_deleted:
-            continue
-        row = discovered.setdefault(
-            project_id,
-            {
-                "project_id": project.id,
-                "tool_number": project.tool_number,
-                "part_description": project.part_description,
-                "customer_name": project.customer.name if project.customer is not None else None,
-                "assignment_role": "Milestone assignee",
-                "hours_logged": Decimal("0"),
-                "execution_status": project.execution_status.value if project.execution_status else None,
-                "project_stage": project.project_stage.value if project.project_stage else None,
-                "completed_at": project.completed_at.date() if project.completed_at else None,
-                "sources": set(),
-            },
-        )
-        row["sources"].add("milestone")
-        if milestone_count and row.get("assignment_role") in (None, "Milestone assignee"):
-            row["assignment_role"] = f"Milestone assignee ({int(milestone_count)})"
 
     timesheet_rows = db.execute(
         select(
             TimesheetEntry.project_id,
             func.coalesce(func.sum(TimesheetEntry.hours), 0),
-            func.min(TimesheetEntry.entry_date),
-            func.max(TimesheetEntry.entry_date),
         )
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
@@ -272,66 +312,146 @@ def discover_employee_projects(
         .group_by(TimesheetEntry.project_id)
     ).all()
 
-    for project_id, hours, first_entry, last_entry in timesheet_rows:
+    for project_id, hours in timesheet_rows:
         if project_id is None:
+            continue
+        hours_decimal = Decimal(str(hours or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if project_id in owned:
+            owned[project_id]["hours_logged"] = hours_decimal
             continue
         project = db.scalar(
             select(Project).options(selectinload(Project.customer)).where(Project.id == project_id)
         )
         if project is None or project.is_deleted:
             continue
-        hours_decimal = Decimal(str(hours or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if project_id in discovered:
-            row = discovered[project_id]
-            row["hours_logged"] = hours_decimal
-            row["sources"].add("timesheet")
-            if row.get("assignment_role") is None:
-                row["assignment_role"] = "Contributor"
-        else:
-            discovered[project_id] = {
+        if _is_project_owner(project, employee_id):
+            owned[project.id] = {
                 "project_id": project.id,
                 "tool_number": project.tool_number,
                 "part_description": project.part_description,
                 "customer_name": project.customer.name if project.customer is not None else None,
-                "assignment_role": "Contributor",
+                "assignment_role": _project_role_label(project, employee_id),
                 "hours_logged": hours_decimal,
                 "execution_status": project.execution_status.value if project.execution_status else None,
                 "project_stage": project.project_stage.value if project.project_stage else None,
                 "completed_at": project.completed_at.date() if project.completed_at else None,
-                "sources": {"timesheet"},
+                "ownership_type": "owned",
+                "tasks_summary": None,
+            }
+        else:
+            supported[project_id] = {
+                "project_id": project.id,
+                "tool_number": project.tool_number,
+                "part_description": None,
+                "customer_name": None,
+                "assignment_role": "Supported",
+                "hours_logged": hours_decimal,
+                "execution_status": None,
+                "project_stage": None,
+                "completed_at": None,
+                "ownership_type": "supported",
+                "tasks_summary": None,
+                "contribution_summary": "Supported",
+                "achievement_notes": None,
+            }
+
+    milestone_project_ids = db.scalars(
+        select(Milestone.project_id).where(Milestone.assigned_user_id == employee_id).distinct()
+    ).all()
+    for project_id in milestone_project_ids:
+        if project_id in owned or project_id in supported:
+            continue
+        project = db.scalar(
+            select(Project).options(selectinload(Project.customer)).where(Project.id == project_id)
+        )
+        if project is None or project.is_deleted:
+            continue
+        if _is_project_owner(project, employee_id):
+            owned[project.id] = {
+                "project_id": project.id,
+                "tool_number": project.tool_number,
+                "part_description": project.part_description,
+                "customer_name": project.customer.name if project.customer is not None else None,
+                "assignment_role": _project_role_label(project, employee_id),
+                "hours_logged": Decimal("0"),
+                "execution_status": project.execution_status.value if project.execution_status else None,
+                "project_stage": project.project_stage.value if project.project_stage else None,
+                "completed_at": project.completed_at.date() if project.completed_at else None,
+                "ownership_type": "owned",
+                "tasks_summary": None,
+            }
+        else:
+            supported[project_id] = {
+                "project_id": project.id,
+                "tool_number": project.tool_number,
+                "part_description": None,
+                "customer_name": None,
+                "assignment_role": "Supported",
+                "hours_logged": None,
+                "execution_status": None,
+                "project_stage": None,
+                "completed_at": None,
+                "ownership_type": "supported",
+                "tasks_summary": None,
+                "contribution_summary": "Supported",
+                "achievement_notes": None,
             }
 
     results: list[dict[str, Any]] = []
-    for index, row in enumerate(
-        sorted(
-            discovered.values(),
-            key=lambda item: (
-                -(float(item.get("hours_logged") or 0)),
-                item.get("tool_number") or "",
-            ),
-        )
-    ):
+    owned_rows = sorted(
+        owned.values(),
+        key=lambda item: (
+            -(float(item.get("hours_logged") or 0)),
+            item.get("tool_number") or "",
+        ),
+    )
+    for index, row in enumerate(owned_rows):
         hours = row.get("hours_logged") or Decimal("0")
         completed_at = row.get("completed_at")
         in_period = bool(hours > 0)
         if not in_period and completed_at is not None:
             in_period = period_start <= completed_at <= period_end
-        if not in_period:
-            continue
-        sources = row.pop("sources", set())
-        source_label = ", ".join(sorted(sources)) if sources else "platform"
-        contribution = (
-            f"Auto-imported from ProTrack ({source_label}). "
-            f"Logged {row.get('hours_logged') or 0}h between "
-            f"{period_start.isoformat()} and {period_end.isoformat()}."
-        )
+        if not in_period and hours == 0 and completed_at is None:
+            # Keep active owned assignments that still have work in period via milestones/tasks
+            tasks = _tasks_for_employee_project(
+                db,
+                employee_id,
+                row["project_id"],
+                period_start=period_start,
+                period_end=period_end,
+            )
+            if not tasks:
+                continue
+            row["tasks_summary"] = tasks
+        else:
+            if not in_period:
+                continue
+            row["tasks_summary"] = _tasks_for_employee_project(
+                db,
+                employee_id,
+                row["project_id"],
+                period_start=period_start,
+                period_end=period_end,
+            )
         results.append(
             {
                 **row,
-                "contribution_summary": contribution,
+                "contribution_summary": row.get("assignment_role"),
                 "achievement_notes": None,
                 "is_auto_imported": True,
                 "sort_order": index,
+            }
+        )
+
+    supported_start = len(results)
+    for index, row in enumerate(
+        sorted(supported.values(), key=lambda item: item.get("tool_number") or "")
+    ):
+        results.append(
+            {
+                **row,
+                "is_auto_imported": True,
+                "sort_order": supported_start + index,
             }
         )
     return results
@@ -364,6 +484,8 @@ def seed_review_projects(
                 completed_at=row.get("completed_at"),
                 contribution_summary=row.get("contribution_summary"),
                 achievement_notes=row.get("achievement_notes"),
+                ownership_type=str(row.get("ownership_type") or "owned"),
+                tasks_summary=row.get("tasks_summary"),
                 is_auto_imported=bool(row.get("is_auto_imported")),
                 sort_order=int(row.get("sort_order") or 0),
             )

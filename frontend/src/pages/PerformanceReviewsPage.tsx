@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box,
   Button,
   Chip,
   Divider,
@@ -33,20 +32,12 @@ import { KpiMetricCard } from '../components/ui/design-system/KpiMetricCard';
 import {
   FALLBACK_RATING_SCALE,
   formatScore,
-  ratingLabelForValue,
   statusChipColor,
   type RatingScaleItem,
 } from '../components/performanceReview/performanceReviewConstants';
-import { PerformanceReviewRatingPicker } from '../components/performanceReview/PerformanceReviewRatingPicker';
-import {
-  PerformanceReviewCompletionMeter,
-  PerformanceReviewHero,
-  PerformanceReviewScoreBadge,
-} from '../components/performanceReview/PerformanceReviewPrimitives';
-import {
-  PerformanceReviewProjectsPanel,
-  type ReviewProjectRow,
-} from '../components/performanceReview/PerformanceReviewProjectsPanel';
+import { PerformanceReviewHero } from '../components/performanceReview/PerformanceReviewPrimitives';
+import { type ReviewProjectRow } from '../components/performanceReview/PerformanceReviewProjectsPanel';
+import { PerformanceReviewFormDocument } from '../components/performanceReview/PerformanceReviewFormDocument';
 import {
   currentReviewYear,
   defaultPeriodLabel,
@@ -86,7 +77,10 @@ type Review = {
   employee_id: string;
   employee_name: string;
   employee_department?: string | null;
+  employee_designation?: string | null;
+  employee_role?: string | null;
   employee_joining_date?: string | null;
+  company_experience?: string | null;
   reviewer_id: string;
   reviewer_name: string;
   team_id?: string | null;
@@ -98,6 +92,7 @@ type Review = {
   review_date?: string | null;
   due_date?: string | null;
   total_experience?: string | null;
+  industry_experience?: string | null;
   overall_score?: number | string | null;
   overall_score_label?: string | null;
   completion_percent?: number;
@@ -147,6 +142,7 @@ type EditorState = {
   review_date: string;
   due_date: string;
   total_experience: string;
+  industry_experience: string;
   overall_score: string;
   employee_summary: string;
   manager_summary: string;
@@ -169,7 +165,8 @@ function reviewToEditor(review: Review): EditorState {
     period_label: review.period_label ?? '',
     review_date: review.review_date ?? '',
     due_date: review.due_date ?? '',
-    total_experience: review.total_experience ?? '',
+    total_experience: review.total_experience ?? review.company_experience ?? '',
+    industry_experience: review.industry_experience ?? '',
     overall_score:
       review.overall_score === null || review.overall_score === undefined
         ? ''
@@ -182,10 +179,6 @@ function reviewToEditor(review: Review): EditorState {
     sections: cloneSections(review.sections ?? []),
     projects: (review.projects ?? []).map((row) => ({ ...row })),
   };
-}
-
-function sectionRatedCount(section: ReviewSection): number {
-  return section.items.filter((item) => item.rating !== null && item.rating !== undefined && item.rating !== '').length;
 }
 
 export function PerformanceReviewsPage() {
@@ -568,6 +561,7 @@ export function PerformanceReviewsPage() {
                     review_date: editor.review_date || null,
                     due_date: editor.due_date || null,
                     total_experience: editor.total_experience || null,
+                    industry_experience: editor.industry_experience || null,
                     employee_summary: editor.employee_summary || null,
                     manager_summary: editor.manager_summary || null,
                     strengths_summary: editor.strengths_summary || null,
@@ -712,326 +706,67 @@ function ReviewDetailCard({
   importingProjects?: boolean;
   saving: boolean;
 }) {
+  const formRef = useRef<HTMLDivElement | null>(null);
+
   if (!review || !editor) {
     return (
-      <FinanceSection title="Review workspace" subtitle="Select a review to inspect or edit.">
+      <FinanceSection title="Review form" subtitle="Select a review to inspect or edit.">
         <Typography color="text.secondary">No review selected.</Typography>
       </FinanceSection>
     );
   }
 
-  const setField = (field: keyof EditorState, value: string) =>
-    onChange({ ...editor, [field]: value });
-
-  const ratedCount = editor.sections.reduce((sum, section) => sum + sectionRatedCount(section), 0);
-  const totalCount = editor.sections.reduce((sum, section) => sum + section.items.length, 0);
-  const completionPercent =
-    review.completion_percent ?? (totalCount ? Math.round((ratedCount / totalCount) * 100) : 0);
-
-  const coreSection = editor.sections.find((section) => section.title.includes('Core'));
-  const technicalSection = editor.sections.find((section) => section.title.includes('Technical'));
+  const actions = (
+    <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+      {canManage && onImportProjects ? (
+        <Button size="small" variant="outlined" disabled={importingProjects} onClick={onImportProjects}>
+          Refresh projects
+        </Button>
+      ) : null}
+      {canManage && onDeleteRequest ? (
+        <Button
+          size="small"
+          color="error"
+          variant="outlined"
+          disabled={saving}
+          onClick={() => onDeleteRequest(review)}
+        >
+          Delete
+        </Button>
+      ) : null}
+      {canManage && onSave ? (
+        <>
+          <Button size="small" variant="outlined" disabled={saving} onClick={() => onSave('draft')}>
+            Save Draft
+          </Button>
+          <Button size="small" variant="contained" disabled={saving} onClick={() => onSave('submitted')}>
+            Submit
+          </Button>
+        </>
+      ) : null}
+      {!canManage && review.status !== 'acknowledged' && onEmployeeSave ? (
+        <Button size="small" variant="outlined" disabled={saving} onClick={onEmployeeSave}>
+          Save My Comments
+        </Button>
+      ) : null}
+      {!canManage && review.can_acknowledge && onAcknowledge ? (
+        <Button size="small" variant="contained" disabled={saving} onClick={onAcknowledge}>
+          Acknowledge
+        </Button>
+      ) : null}
+    </Stack>
+  );
 
   return (
-    <Stack spacing={2}>
-      <FinanceSection
-        title={review.employee_name}
-        subtitle={`${review.team_name ?? 'Team'} · Reviewer ${review.reviewer_name}`}
-        action={
-          <Stack direction="row" spacing={1}>
-            <Chip size="small" label={review.status} color={statusChipColor(review.status)} />
-            {review.cycle_title ? <Chip size="small" variant="outlined" label={review.cycle_title} /> : null}
-          </Stack>
-        }
-      >
-        <Grid container spacing={1.5} sx={{ mb: 2 }}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Typography variant="caption" color="text.secondary">Department</Typography>
-            <Typography sx={{ fontWeight: 600 }}>{review.employee_department ?? '—'}</Typography>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Typography variant="caption" color="text.secondary">Date joined</Typography>
-            <Typography sx={{ fontWeight: 600 }}>{review.employee_joining_date ?? '—'}</Typography>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Total experience"
-              value={editor.total_experience}
-              onChange={(e) => setField('total_experience', e.target.value)}
-              disabled={!canManage}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <TextField
-              fullWidth
-              size="small"
-              type="date"
-              label="Review date"
-              value={editor.review_date}
-              onChange={(e) => setField('review_date', e.target.value)}
-              disabled={!canManage}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-          </Grid>
-        </Grid>
-
-        <Grid container spacing={1.5} sx={{ mb: 2 }}>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <PerformanceReviewScoreBadge
-              label="Overall score"
-              score={review.overall_score}
-              scoreLabel={review.overall_score_label}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <PerformanceReviewScoreBadge
-              label="Core competencies"
-              score={coreSection?.average_score}
-              scoreLabel={ratingLabelForValue(coreSection?.average_score, ratingScale)}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <PerformanceReviewScoreBadge
-              label="Technical competencies"
-              score={technicalSection?.average_score}
-              scoreLabel={ratingLabelForValue(technicalSection?.average_score, ratingScale)}
-            />
-          </Grid>
-        </Grid>
-
-        <PerformanceReviewCompletionMeter
-          percent={completionPercent}
-          rated={ratedCount}
-          total={totalCount}
-        />
-      </FinanceSection>
-
-      <FinanceSection title="Rating scale" subtitle="Aligned to PP-HRD-FO-20 guidance">
-        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-          {ratingScale.map((row) => (
-            <Chip
-              key={row.value}
-              label={`${row.short_label} · ${row.label}`}
-              variant="outlined"
-              title={row.guidance}
-            />
-          ))}
-        </Stack>
-      </FinanceSection>
-
-      <PerformanceReviewProjectsPanel
-        projects={editor.projects}
-        periodStart={review.review_period_start}
-        periodEnd={review.review_period_end}
-        canManage={canManage}
-        importing={importingProjects}
-        onChange={(projects) => onChange({ ...editor, projects })}
-        onImportSuggested={canManage ? onImportProjects : undefined}
-      />
-
-      {editor.sections.map((section, sectionIndex) => (
-        <FinanceSection
-          key={section.id ?? `${section.title}-${sectionIndex}`}
-          title={section.title}
-          subtitle={section.description ?? undefined}
-          action={
-            <Chip
-              size="small"
-              variant="outlined"
-              label={`Avg ${formatScore(section.average_score)}`}
-            />
-          }
-        >
-          <Stack spacing={1.5}>
-            {section.items.map((item, itemIndex) => (
-              <Box
-                key={item.id ?? `${item.prompt}-${itemIndex}`}
-                sx={{
-                  p: 1.5,
-                  borderRadius: 2,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  bgcolor: 'background.paper',
-                }}
-              >
-                <Typography sx={{ fontWeight: 700, mb: 0.5 }}>{item.prompt}</Typography>
-                {item.guidance ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
-                    {item.guidance}
-                  </Typography>
-                ) : null}
-                <PerformanceReviewRatingPicker
-                  value={item.rating}
-                  disabled={!canManage}
-                  scale={ratingScale}
-                  onChange={(next) => {
-                    const sections = cloneSections(editor.sections);
-                    sections[sectionIndex].items[itemIndex].rating = next;
-                    onChange({ ...editor, sections });
-                  }}
-                />
-                <Grid container spacing={1.5} sx={{ mt: 1.25 }}>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      multiline
-                      minRows={2}
-                      label="Manager comment"
-                      value={item.manager_comment ?? ''}
-                      onChange={(e) => {
-                        const sections = cloneSections(editor.sections);
-                        sections[sectionIndex].items[itemIndex].manager_comment = e.target.value;
-                        onChange({ ...editor, sections });
-                      }}
-                      disabled={!canManage}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      multiline
-                      minRows={2}
-                      label="Employee comment"
-                      value={item.employee_comment ?? ''}
-                      onChange={(e) => {
-                        const sections = cloneSections(editor.sections);
-                        sections[sectionIndex].items[itemIndex].employee_comment = e.target.value;
-                        onChange({ ...editor, sections });
-                      }}
-                    />
-                  </Grid>
-                </Grid>
-              </Box>
-            ))}
-
-            <TextField
-              fullWidth
-              multiline
-              minRows={3}
-              size="small"
-              label={section.employee_notes_label ?? 'Section notes'}
-              value={section.employee_notes ?? ''}
-              onChange={(e) => {
-                const sections = cloneSections(editor.sections);
-                sections[sectionIndex].employee_notes = e.target.value;
-                onChange({ ...editor, sections });
-              }}
-            />
-            {canManage ? (
-              <TextField
-                fullWidth
-                multiline
-                minRows={2}
-                size="small"
-                label="Reviewer section notes"
-                value={section.reviewer_notes ?? ''}
-                onChange={(e) => {
-                  const sections = cloneSections(editor.sections);
-                  sections[sectionIndex].reviewer_notes = e.target.value;
-                  onChange({ ...editor, sections });
-                }}
-              />
-            ) : null}
-          </Stack>
-        </FinanceSection>
-      ))}
-
-      <FinanceSection title="Summary & development" subtitle="Employee and reviewer closing comments">
-        <Stack spacing={1.5}>
-          <TextField
-            fullWidth
-            multiline
-            minRows={3}
-            size="small"
-            label="Employee comments"
-            value={editor.employee_summary}
-            onChange={(e) => setField('employee_summary', e.target.value)}
-          />
-          <TextField
-            fullWidth
-            multiline
-            minRows={3}
-            size="small"
-            label="Reviewer comments"
-            value={editor.manager_summary}
-            onChange={(e) => setField('manager_summary', e.target.value)}
-            disabled={!canManage}
-          />
-          <Grid container spacing={1.5}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                multiline
-                minRows={2}
-                size="small"
-                label="Strengths"
-                value={editor.strengths_summary}
-                onChange={(e) => setField('strengths_summary', e.target.value)}
-                disabled={!canManage}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                multiline
-                minRows={2}
-                size="small"
-                label="Improvement areas"
-                value={editor.improvement_summary}
-                onChange={(e) => setField('improvement_summary', e.target.value)}
-                disabled={!canManage}
-              />
-            </Grid>
-          </Grid>
-          <TextField
-            fullWidth
-            multiline
-            minRows={2}
-            size="small"
-            label="Career goals / development focus"
-            value={editor.career_goals}
-            onChange={(e) => setField('career_goals', e.target.value)}
-          />
-        </Stack>
-
-        <Stack direction="row" spacing={1} sx={{ mt: 2, justifyContent: 'flex-end' }}>
-          {canManage && onDeleteRequest ? (
-            <Button
-              color="error"
-              variant="outlined"
-              disabled={saving}
-              onClick={() => onDeleteRequest(review)}
-              sx={{ mr: 'auto' }}
-            >
-              Delete Review
-            </Button>
-          ) : null}
-          {canManage && onSave ? (
-            <>
-              <Button variant="outlined" disabled={saving} onClick={() => onSave('draft')}>
-                Save Draft
-              </Button>
-              <Button variant="contained" disabled={saving} onClick={() => onSave('submitted')}>
-                Submit Review
-              </Button>
-            </>
-          ) : null}
-          {!canManage && review.status !== 'acknowledged' && onEmployeeSave ? (
-            <Button variant="outlined" disabled={saving} onClick={onEmployeeSave}>
-              Save My Comments
-            </Button>
-          ) : null}
-          {!canManage && review.can_acknowledge && onAcknowledge ? (
-            <Button variant="contained" disabled={saving} onClick={onAcknowledge}>
-              Acknowledge Review
-            </Button>
-          ) : null}
-        </Stack>
-      </FinanceSection>
-    </Stack>
+    <PerformanceReviewFormDocument
+      review={review}
+      editor={editor}
+      ratingScale={ratingScale}
+      canManage={canManage}
+      formRef={formRef}
+      onChange={(next) => onChange(next)}
+      actions={actions}
+    />
   );
 }
 

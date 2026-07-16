@@ -53,6 +53,8 @@ class PerformanceReviewProjectUpdate(BaseModel):
     completed_at: date | None = None
     contribution_summary: str | None = None
     achievement_notes: str | None = None
+    ownership_type: str = "owned"
+    tasks_summary: str | None = None
     is_auto_imported: bool = False
     sort_order: int = 0
 
@@ -72,6 +74,8 @@ class PerformanceReviewProjectRead(BaseModel):
     completed_at: date | None = None
     contribution_summary: str | None = None
     achievement_notes: str | None = None
+    ownership_type: str = "owned"
+    tasks_summary: str | None = None
     is_auto_imported: bool = False
     sort_order: int
 
@@ -88,6 +92,8 @@ class PerformanceReviewProjectSuggestionRead(BaseModel):
     completed_at: date | None = None
     contribution_summary: str | None = None
     achievement_notes: str | None = None
+    ownership_type: str = "owned"
+    tasks_summary: str | None = None
     is_auto_imported: bool = True
     sort_order: int = 0
 
@@ -139,6 +145,7 @@ class PerformanceReviewCreate(BaseModel):
     due_date: date | None = None
     review_year: int | None = None
     total_experience: str | None = None
+    industry_experience: str | None = None
     overall_score: Decimal | None = Field(default=None, ge=0, le=5)
     employee_summary: str | None = None
     manager_summary: str | None = None
@@ -157,6 +164,7 @@ class PerformanceReviewUpdate(BaseModel):
     review_date: date | None = None
     due_date: date | None = None
     total_experience: str | None = None
+    industry_experience: str | None = None
     overall_score: Decimal | None = Field(default=None, ge=0, le=5)
     employee_summary: str | None = None
     manager_summary: str | None = None
@@ -206,7 +214,10 @@ class PerformanceReviewRead(BaseModel):
     employee_id: UUID
     employee_name: str
     employee_department: str | None = None
+    employee_designation: str | None = None
+    employee_role: str | None = None
     employee_joining_date: date | None = None
+    company_experience: str | None = None
     reviewer_id: UUID
     reviewer_name: str
     team_id: UUID | None = None
@@ -218,6 +229,7 @@ class PerformanceReviewRead(BaseModel):
     review_period_start: date | None = None
     review_period_end: date | None = None
     total_experience: str | None = None
+    industry_experience: str | None = None
     overall_score: Decimal | None = None
     overall_score_label: str | None = None
     completion_percent: int = 0

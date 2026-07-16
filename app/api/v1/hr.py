@@ -52,6 +52,7 @@ from app.services.performance_review_service import (
     current_review_year,
     default_period_label,
     discover_employee_projects,
+    format_tenure,
     rating_label,
     review_period_bounds,
     seed_review_projects,
@@ -127,6 +128,7 @@ def _managed_team_ids(db: Session, current_user: User) -> list:
 def _review_load_options():
     return (
         selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
+        selectinload(PerformanceReviewSheet.employee).selectinload(User.role),
         selectinload(PerformanceReviewSheet.reviewer),
         selectinload(PerformanceReviewSheet.team),
         selectinload(PerformanceReviewSheet.cycle),
@@ -185,6 +187,10 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
     department_name = None
     if sheet.employee.department is not None:
         department_name = sheet.employee.department.name
+    role_name = None
+    if sheet.employee.role is not None:
+        role_name = sheet.employee.role.name
+    company_experience = sheet.total_experience or format_tenure(sheet.employee.joining_date)
     return PerformanceReviewRead(
         id=sheet.id,
         cycle_id=sheet.cycle_id,
@@ -192,7 +198,10 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         employee_id=sheet.employee_id,
         employee_name=employee_name,
         employee_department=department_name,
+        employee_designation=sheet.employee.designation or role_name,
+        employee_role=role_name,
         employee_joining_date=sheet.employee.joining_date,
+        company_experience=company_experience,
         reviewer_id=sheet.reviewer_id,
         reviewer_name=reviewer_name,
         team_id=sheet.team_id,
@@ -203,7 +212,8 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         due_date=sheet.due_date,
         review_period_start=sheet.review_period_start,
         review_period_end=sheet.review_period_end,
-        total_experience=sheet.total_experience,
+        total_experience=sheet.total_experience or company_experience,
+        industry_experience=sheet.industry_experience,
         overall_score=sheet.overall_score,
         overall_score_label=rating_label(sheet.overall_score),
         completion_percent=completion_percent,
@@ -240,6 +250,8 @@ def _apply_projects(sheet: PerformanceReviewSheet, projects: list) -> None:
                 completed_at=project_row.completed_at,
                 contribution_summary=project_row.contribution_summary,
                 achievement_notes=project_row.achievement_notes,
+                ownership_type=getattr(project_row, "ownership_type", None) or "owned",
+                tasks_summary=getattr(project_row, "tasks_summary", None),
                 is_auto_imported=project_row.is_auto_imported,
                 sort_order=project_row.sort_order if project_row.sort_order else index,
             )
@@ -708,6 +720,7 @@ def create_performance_review(
         review_period_start=period_start,
         review_period_end=period_end,
         total_experience=payload.total_experience,
+        industry_experience=payload.industry_experience,
         overall_score=payload.overall_score,
         employee_summary=payload.employee_summary,
         manager_summary=payload.manager_summary,
@@ -772,6 +785,7 @@ def update_performance_review(
             "due_date",
             "overall_score",
             "total_experience",
+            "industry_experience",
             "employee_summary",
             "manager_summary",
             "strengths_summary",
@@ -825,6 +839,8 @@ def update_performance_review(
                         completed_at=row.get("completed_at"),
                         contribution_summary=row.get("contribution_summary"),
                         achievement_notes=row.get("achievement_notes"),
+                        ownership_type=str(row.get("ownership_type") or "owned"),
+                        tasks_summary=row.get("tasks_summary"),
                         is_auto_imported=True,
                         sort_order=next_order,
                     )

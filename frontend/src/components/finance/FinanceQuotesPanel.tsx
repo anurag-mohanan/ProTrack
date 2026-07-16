@@ -51,6 +51,9 @@ type QuoteRow = {
   project_linked?: boolean;
   quoted_hours?: number | string | null;
   quoted_revenue?: number | string | null;
+  base_quoted_revenue_inr?: number | string | null;
+  fx_rate?: number | string | null;
+  fx_date?: string | null;
   quoted_date?: string | null;
 };
 
@@ -271,10 +274,21 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   );
   const quotes = quotesQuery.data ?? [];
   const quoteStats = useMemo(() => {
-    const revenue = quotes.reduce((s, q) => s + toFiniteNumber(q.quoted_revenue), 0);
+    // Always sum FX-snapshotted base INR — never mix USD/EUR source amounts as "INR".
+    const revenue = quotes.reduce((s, q) => s + toFiniteNumber(q.base_quoted_revenue_inr), 0);
     const linked = quotes.filter((q) => q.project_linked).length;
     const missingDate = quotes.filter((q) => !q.quoted_date).length;
-    return { count: quotes.length, revenue, linked, missingDate };
+    const currencies = new Set(
+      quotes.map((q) => (q.currency_code || 'INR').toUpperCase()).filter(Boolean),
+    );
+    return {
+      count: quotes.length,
+      revenue,
+      linked,
+      missingDate,
+      mixedFx: currencies.size > 1,
+      currencyCount: currencies.size,
+    };
   }, [quotes]);
 
   const canSaveManual =
@@ -294,6 +308,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           <>
             <Chip size="small" label={teamId ? 'Team scope' : 'All teams'} sx={{ fontWeight: 700 }} />
             <Chip size="small" variant="outlined" label={`${quoteStats.count} quotes`} />
+            {quoteStats.mixedFx ? (
+              <Chip size="small" color="info" label="Mixed FX → base INR" />
+            ) : null}
             {quoteStats.missingDate > 0 ? (
               <Chip size="small" color="warning" label={`${quoteStats.missingDate} missing date`} />
             ) : null}
@@ -319,7 +336,11 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             icon={TrendingUpOutlinedIcon}
             title="Booked revenue Σ"
             value={financeMoney(quoteStats.revenue, 'INR')}
-            subtitle="Quoted amounts"
+            subtitle={
+              quoteStats.mixedFx
+                ? `Base INR · ${quoteStats.currencyCount} currencies FX-converted`
+                : 'Base INR · FX at quote date'
+            }
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -574,8 +595,12 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                   </Stack>
                   <Typography variant="body2" color="text.secondary">
                     {quote.customer_name ?? 'Customer'} · {quote.team_name ?? 'No team'} ·{' '}
-                    {financeMoney(quote.quoted_revenue, quote.currency_code || 'INR')} · rev{' '}
-                    {quote.current_revision}
+                    {financeMoney(quote.quoted_revenue, quote.currency_code || 'INR')}
+                    {quote.base_quoted_revenue_inr != null &&
+                    (quote.currency_code || 'INR').toUpperCase() !== 'INR'
+                      ? ` ≈ ${financeMoney(quote.base_quoted_revenue_inr, 'INR')}`
+                      : ''}{' '}
+                    · rev {quote.current_revision}
                     {quote.quoted_date ? ` · quoted ${quote.quoted_date}` : ''}
                   </Typography>
                 </Box>

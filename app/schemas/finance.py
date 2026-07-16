@@ -427,6 +427,9 @@ class QuoteRead(BaseModel):
     project_linked: bool = False
     quoted_hours: Decimal | None = None
     quoted_revenue: Decimal | None = None
+    base_quoted_revenue_inr: Decimal | None = None
+    fx_rate: Decimal | None = None
+    fx_date: date | None = None
     revisions: list[QuoteRevisionRead] = Field(default_factory=list)
 
 

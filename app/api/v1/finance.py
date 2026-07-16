@@ -1349,6 +1349,11 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
             "project_linked": row.project_id is not None,
             "quoted_hours": revision.quoted_hours if revision else None,
             "quoted_revenue": revision.quoted_revenue if revision else None,
+            "base_quoted_revenue_inr": (
+                revision.base_quoted_revenue_inr if revision else None
+            ),
+            "fx_rate": revision.fx_rate if revision else None,
+            "fx_date": revision.fx_date if revision else None,
             "revisions": [],
         }
     )

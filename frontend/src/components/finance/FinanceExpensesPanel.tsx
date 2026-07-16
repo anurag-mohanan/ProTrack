@@ -50,6 +50,7 @@ type Expense = {
   notify_enabled?: boolean;
   is_recurring?: boolean;
   team_id?: string | null;
+  base_amount_inr?: number | string | null;
   prior_fy_excluded_from_overview?: boolean;
 };
 
@@ -224,11 +225,16 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     const prosohm = expenses.filter((e) => e.paid_by === 'prosohm');
     const customer = expenses.filter((e) => e.paid_by === 'customer');
     const renewals = expenses.filter((e) => Boolean(e.next_renewal_date)).length;
+    const baseOf = (e: Expense) => toFiniteNumber(e.base_amount_inr ?? e.amount);
+    const currencies = new Set(
+      expenses.map((e) => (e.currency_code || 'INR').toUpperCase()).filter(Boolean),
+    );
     return {
       count: expenses.length,
-      prosohmSum: prosohm.reduce((s, e) => s + toFiniteNumber(e.amount), 0),
-      customerSum: customer.reduce((s, e) => s + toFiniteNumber(e.amount), 0),
+      prosohmSum: prosohm.reduce((s, e) => s + baseOf(e), 0),
+      customerSum: customer.reduce((s, e) => s + baseOf(e), 0),
       renewals,
+      mixedFx: currencies.size > 1,
     };
   }, [expenses]);
 
@@ -241,6 +247,9 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
           <>
             <Chip size="small" label={currentFyOnly ? 'Current FY' : 'All years'} sx={{ fontWeight: 700 }} />
             <Chip size="small" variant="outlined" label={`${expenseStats.count} lines`} />
+            {expenseStats.mixedFx ? (
+              <Chip size="small" color="info" label="Mixed FX → base INR" />
+            ) : null}
           </>
         }
       />
@@ -263,7 +272,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             icon={PaymentsOutlinedIcon}
             title="Prosohm paid Σ"
             value={financeMoney(expenseStats.prosohmSum, 'INR')}
-            subtitle="Listed amounts"
+            subtitle="Base INR · FX at purchase"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -273,7 +282,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             icon={StorefrontOutlinedIcon}
             title="Customer paid Σ"
             value={financeMoney(expenseStats.customerSum, 'INR')}
-            subtitle="Pass-through"
+            subtitle="Base INR · pass-through"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>

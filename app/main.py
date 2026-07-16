@@ -16,6 +16,7 @@ from app.db.project_template_seed import (
     ensure_project_types_and_templates,
     validate_project_template_health,
 )
+from app.db.engineering_stream_seed import ensure_engineering_streams
 from app.db.phase7_schema_sync import ensure_phase7_foundation
 from app.db.phase8_schema_sync import ensure_phase8_foundation
 from app.db.phase9_schema_sync import ensure_phase9_foundation
@@ -209,9 +210,12 @@ async def lifespan(app: FastAPI):
 
     seed_session = sessionmaker(bind=engine)()
     try:
+        ensure_engineering_streams(seed_session)
+        seed_session.commit()
         ensure_project_types_and_templates(seed_session)
         validate_project_template_health(seed_session)
     except Exception:
+        seed_session.rollback()
         failures.append("project_template_seed")
         logger.exception("Project template seed/validation failed")
     finally:

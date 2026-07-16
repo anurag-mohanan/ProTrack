@@ -40,6 +40,7 @@ from app.models.finance import (
 )
 from app.models.models import Activity, Customer, Team, TeamMember, User, WorkingModel
 from app.schemas.finance import (
+    BudgetCockpitRead,
     BudgetCreate,
     BudgetRead,
     BudgetStatusUpdate,
@@ -819,6 +820,21 @@ def list_budgets(
     return db.scalars(stmt.order_by(Budget.name)).all()
 
 
+@router.get("/budgets/cockpit", response_model=BudgetCockpitRead)
+def budgets_cockpit(
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Portfolio KPIs, quarterly rollups, and risk insights for Budgets & reports."""
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    from app.services.finance.budget_cockpit_service import build_budget_cockpit
+
+    return BudgetCockpitRead.model_validate(build_budget_cockpit(db, team_id=team_id))
+
+
 @router.post("/budgets", response_model=BudgetRead, status_code=status.HTTP_201_CREATED)
 def create_budget(
     payload: BudgetCreate,
@@ -1044,6 +1060,27 @@ def update_budget_status(
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.post("/budgets/{budget_id}/sync-spent", response_model=BudgetRead)
+def sync_budget_spent(
+    budget_id: UUID,
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Opt-in: set budget spent from live YTD operating cost run-rate."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    from app.services.finance.budget_cockpit_service import sync_budget_spent_from_operating
+
+    try:
+        row = sync_budget_spent_from_operating(db, budget_id, team_id=team_id)
+        db.commit()
+        db.refresh(row)
+        return row
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/quotes", response_model=list[QuoteRead])

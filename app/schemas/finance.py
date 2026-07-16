@@ -327,6 +327,64 @@ class BudgetStatusUpdate(BaseModel):
     approval_status: BudgetApprovalStatus
 
 
+class BudgetCockpitInsight(BaseModel):
+    id: str
+    severity: str
+    title: str
+    detail: str
+
+
+class BudgetCockpitTotals(BaseModel):
+    budget_count: int
+    allocated: Decimal
+    spent: Decimal
+    forecast: Decimal
+    remaining: Decimal
+    utilization_percent: Decimal
+    draft_count: int
+    approved_count: int
+    at_risk_count: int
+
+
+class BudgetCockpitItem(BaseModel):
+    id: UUID
+    name: str
+    scope_type: BudgetScopeType
+    scope_id: UUID | None = None
+    currency_code: str
+    allocated: Decimal
+    spent: Decimal
+    forecast: Decimal
+    remaining: Decimal
+    variance: Decimal
+    approval_status: BudgetApprovalStatus
+    fiscal_year: int | None = None
+    q1_allocated: Decimal = Decimal("0")
+    q2_allocated: Decimal = Decimal("0")
+    q3_allocated: Decimal = Decimal("0")
+    q4_allocated: Decimal = Decimal("0")
+    q1_forecast: Decimal = Decimal("0")
+    q2_forecast: Decimal = Decimal("0")
+    q3_forecast: Decimal = Decimal("0")
+    q4_forecast: Decimal = Decimal("0")
+    utilization_percent: Decimal = Decimal("0")
+    at_risk: bool = False
+    is_active: bool = True
+
+
+class BudgetCockpitRead(BaseModel):
+    team_id: UUID | None = None
+    currency_code: str
+    planning_fy_start: str
+    months_elapsed: int
+    operating_monthly_inr: Decimal
+    operating_ytd_inr: Decimal
+    totals: BudgetCockpitTotals
+    quarters: dict[str, Decimal]
+    insights: list[BudgetCockpitInsight]
+    budgets: list[BudgetCockpitItem]
+
+
 class QuoteRevisionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

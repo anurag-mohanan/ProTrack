@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   FormControl,
   Grid,
   InputLabel,
@@ -26,14 +27,23 @@ import { FinancePeopleCostsPanel } from '../components/finance/FinancePeopleCost
 import { FinanceQuotesPanel } from '../components/finance/FinanceQuotesPanel';
 import { FinanceTeamCommercialPanel } from '../components/finance/FinanceTeamCommercialPanel';
 import {
+  FinanceHeroBanner,
+  FinanceSection,
+  FinanceUtilizationMeter,
+  financeMoney,
+} from '../components/finance/FinanceCockpitPrimitives';
+import {
   FinanceTeamFilter,
   readStoredFinanceTeamId,
   teamQueryParam,
 } from '../components/finance/FinanceTeamFilter';
+import { AnalyticsBarChart } from '../components/analytics/AnalyticsCharts';
 import { useToast } from '../context/ToastContext';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { designTokens } from '../theme/designTokens';
+import { toFiniteNumber } from '../utils/format';
 
 type FinanceDashboard = {
   base_currency: string;
@@ -150,14 +160,23 @@ export function FinanceDashboardPage() {
     <Box>
       <PageHeader
         title="Financial Planning"
-        subtitle={`FP&A cockpit — plan vs actual, budgets, overheads (base ${
+        subtitle={`Modern FP&A cockpit (base ${
           dashboardQuery.data?.base_currency ?? 'INR'
-        }). Inspired by Adaptive / Abacum / QBO patterns; grant Financial Planning in Admin → Users.`}
+        }) — chart-led Overview, Annual Plan variance, budgets. Grant Financial Planning in Admin → Users.`}
       />
 
       <FinanceTeamFilter value={teamId} onChange={setTeamId} />
 
-      <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 2 }} variant="scrollable">
+      <Tabs
+        value={tab}
+        onChange={(_, value) => setTab(value)}
+        sx={{
+          mb: 2.5,
+          minHeight: 44,
+          '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, minHeight: 44 },
+        }}
+        variant="scrollable"
+      >
         <Tab label="Overview" />
         <Tab label="People costs" />
         <Tab label="Expenses & subscriptions" />
@@ -177,17 +196,17 @@ export function FinanceDashboardPage() {
       {tab === 6 && <FinanceQuotesPanel teamId={teamId} />}
 
       {tab === 7 && (
-        <Stack spacing={3}>
+        <Stack spacing={2.5}>
+          <FinanceHeroBanner
+            title="Budgets & reports"
+            subtitle="QBO/Xero-style remaining meters, P&L signals, and cost centres — renewals auto-feed quarterly forecasts."
+          />
           <FinanceFxRatesPanel />
 
-          <Box>
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              Budgets
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Enter FY total or Q1–Q4 amounts (Apr–Mar). Forecast auto-adds known software renewals in each
-              quarter.
-            </Typography>
+          <FinanceSection
+            title="Budgets"
+            subtitle="Enter FY total or Q1–Q4 amounts (Apr–Mar). Forecast auto-adds known software renewals."
+          >
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap' }}>
               <TextField
                 size="small"
@@ -246,7 +265,7 @@ export function FinanceDashboardPage() {
                 Create
               </Button>
             </Stack>
-            <Stack spacing={1}>
+            <Stack spacing={1.5}>
               {(budgetsQuery.data ?? []).map(
                 (budget: {
                   id: string;
@@ -268,150 +287,146 @@ export function FinanceDashboardPage() {
                 }) => {
                   const allocated = Number(budget.allocated || 0);
                   const spent = Number(budget.spent ?? 0);
-                  const variance = Number(
-                    budget.variance ?? allocated - spent,
-                  );
-                  const variancePct =
-                    allocated > 0 ? ((variance / allocated) * 100).toFixed(1) : '0.0';
-                  const utilizationPct =
-                    allocated > 0 ? Math.min(100, (spent / allocated) * 100) : 0;
+                  const variance = Number(budget.variance ?? allocated - spent);
+                  const currency = dashboardQuery.data?.base_currency ?? 'INR';
                   return (
-                  <Card key={budget.id} variant="outlined">
-                    <CardContent
-                      sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}
+                    <Card
+                      key={budget.id}
+                      elevation={0}
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        boxShadow: designTokens.elevation.card,
+                      }}
                     >
-                      <Box sx={{ flex: 1, minWidth: 220 }}>
-                        <Typography sx={{ fontWeight: 600 }}>{budget.name}</Typography>
-                        <Typography variant="body2">
-                          Allocated {budget.allocated} · Spent {spent} · Forecast{' '}
-                          {budget.forecast ?? '—'} · Remaining {budget.remaining} ·{' '}
-                          {budget.approval_status}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Variance {variance} ({variancePct}% under/over) · Utilization{' '}
-                          {utilizationPct.toFixed(0)}%
-                        </Typography>
-                        <Box
-                          sx={{
-                            mt: 1,
-                            height: 6,
-                            borderRadius: 1,
-                            bgcolor: 'action.hover',
-                            overflow: 'hidden',
-                            maxWidth: 320,
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              height: '100%',
-                              width: `${utilizationPct}%`,
-                              bgcolor:
-                                utilizationPct > 100
-                                  ? 'error.main'
-                                  : utilizationPct > 85
-                                    ? 'warning.main'
-                                    : 'success.main',
-                            }}
+                      <CardContent
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 2,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <Box sx={{ flex: 1, minWidth: 240 }}>
+                          <Stack direction="row" spacing={1} sx={{ mb: 0.5, alignItems: 'center' }}>
+                            <Typography sx={{ fontWeight: 700 }}>{budget.name}</Typography>
+                            <Chip
+                              size="small"
+                              label={budget.approval_status}
+                              color={budget.approval_status === 'approved' ? 'success' : 'default'}
+                            />
+                          </Stack>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            Forecast {budget.forecast ?? '—'} · Remaining {budget.remaining} ·
+                            Variance {variance}
+                          </Typography>
+                          <FinanceUtilizationMeter
+                            spent={spent}
+                            allocated={allocated}
+                            currency={currency}
                           />
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                            Q1–Q4 alloc {budget.q1_allocated ?? 0}/{budget.q2_allocated ?? 0}/
+                            {budget.q3_allocated ?? 0}/{budget.q4_allocated ?? 0} · forecast{' '}
+                            {budget.q1_forecast ?? 0}/{budget.q2_forecast ?? 0}/
+                            {budget.q3_forecast ?? 0}/{budget.q4_forecast ?? 0}
+                          </Typography>
                         </Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Q1–Q4 alloc {budget.q1_allocated ?? 0}/{budget.q2_allocated ?? 0}/
-                          {budget.q3_allocated ?? 0}/{budget.q4_allocated ?? 0} · forecast{' '}
-                          {budget.q1_forecast ?? 0}/{budget.q2_forecast ?? 0}/{budget.q3_forecast ?? 0}/
-                          {budget.q4_forecast ?? 0}
-                        </Typography>
-                      </Box>
-                      {budget.approval_status !== 'approved' ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          disabled={approveMutation.isPending}
-                          onClick={() => approveMutation.mutate(budget.id)}
-                        >
-                          Approve
-                        </Button>
-                      ) : null}
-                    </CardContent>
-                  </Card>
+                        {budget.approval_status !== 'approved' ? (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            disabled={approveMutation.isPending}
+                            onClick={() => approveMutation.mutate(budget.id)}
+                          >
+                            Approve
+                          </Button>
+                        ) : null}
+                      </CardContent>
+                    </Card>
                   );
                 },
               )}
             </Stack>
-          </Box>
+          </FinanceSection>
 
-          <Box>
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              Profit &amp; Loss
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Live operating signals (Overview basis). For plan vs actual + rolling forecast, open the
-              Annual Plan tab.
-            </Typography>
-            <Stack spacing={1}>
-              {(plQuery.data ?? []).map((row: { label: string; amount_inr: number }) => (
-                <Card key={row.label} variant="outlined">
-                  <CardContent>
-                    <Typography sx={{ fontWeight: 600 }}>{row.label}</Typography>
-                    <Typography>
-                      {Number(row.amount_inr).toLocaleString()}{' '}
-                      {dashboardQuery.data?.base_currency ?? 'INR'}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              ))}
-            </Stack>
+          <FinanceSection
+            title="Profit & Loss signals"
+            subtitle="Live operating signals (Overview basis). Open Annual Plan for Plan vs Actual charts."
+          >
+            {(plQuery.data ?? []).length ? (
+              <AnalyticsBarChart
+                categories={(plQuery.data ?? []).map((row: { label: string }) => row.label)}
+                height={280}
+                series={[
+                  {
+                    label: dashboardQuery.data?.base_currency ?? 'INR',
+                    data: (plQuery.data ?? []).map((row: { amount_inr: number }) =>
+                      toFiniteNumber(row.amount_inr),
+                    ),
+                    color: designTokens.semantic.primary,
+                  },
+                ]}
+              />
+            ) : (
+              <Typography color="text.secondary">No P&L rows yet.</Typography>
+            )}
             {dashboardQuery.data ? (
-              <Card variant="outlined" sx={{ mt: 1.5 }}>
-                <CardContent>
-                  <Typography sx={{ fontWeight: 600, mb: 1 }}>
-                    Budget vs Actual (company signals)
+              <Grid container spacing={1.5} sx={{ mt: 1 }}>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Budget allocated
                   </Typography>
-                  <Grid container spacing={1.5}>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Budget allocated
-                      </Typography>
-                      <Typography>
-                        {Number(dashboardQuery.data.budget?.budget_allocated ?? 0).toLocaleString()}
-                      </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Budget spent
-                      </Typography>
-                      <Typography>
-                        {Number(dashboardQuery.data.budget?.budget_consumed ?? 0).toLocaleString()}
-                      </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Variance / monthly opex
-                      </Typography>
-                      <Typography>
-                        {Number(dashboardQuery.data.budget?.budget_variance ?? 0).toLocaleString()}{' '}
-                        /{' '}
-                        {Number(
-                          dashboardQuery.data.cost?.monthly_operating_cost ?? 0,
-                        ).toLocaleString()}
-                      </Typography>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
+                  <Typography sx={{ fontWeight: 700 }}>
+                    {financeMoney(
+                      dashboardQuery.data.budget?.budget_allocated ?? 0,
+                      dashboardQuery.data.base_currency,
+                    )}
+                  </Typography>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Budget spent
+                  </Typography>
+                  <Typography sx={{ fontWeight: 700 }}>
+                    {financeMoney(
+                      dashboardQuery.data.budget?.budget_consumed ?? 0,
+                      dashboardQuery.data.base_currency,
+                    )}
+                  </Typography>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Variance / monthly opex
+                  </Typography>
+                  <Typography sx={{ fontWeight: 700 }}>
+                    {financeMoney(
+                      dashboardQuery.data.budget?.budget_variance ?? 0,
+                      dashboardQuery.data.base_currency,
+                    )}{' '}
+                    /{' '}
+                    {financeMoney(
+                      dashboardQuery.data.cost?.monthly_operating_cost ?? 0,
+                      dashboardQuery.data.base_currency,
+                    )}
+                  </Typography>
+                </Grid>
+              </Grid>
             ) : null}
-          </Box>
+          </FinanceSection>
 
-          <Box>
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              Cost centres
-            </Typography>
+          <FinanceSection title="Cost centres" subtitle="Chart of accounts style centres for expense posting">
             <Grid container spacing={1.5}>
               {(costCentresQuery.data ?? []).map(
                 (centre: { id: string; code: string; name: string; nature: string }) => (
                   <Grid key={centre.id} size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Card variant="outlined">
+                    <Card
+                      elevation={0}
+                      sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}
+                    >
                       <CardContent>
-                        <Typography sx={{ fontWeight: 600 }}>{centre.name}</Typography>
+                        <Typography sx={{ fontWeight: 700 }}>{centre.name}</Typography>
                         <Typography variant="body2" color="text.secondary">
                           {centre.code} · {centre.nature}
                         </Typography>
@@ -421,18 +436,18 @@ export function FinanceDashboardPage() {
                 ),
               )}
             </Grid>
-          </Box>
+          </FinanceSection>
 
-          <Box>
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              Future AI forecasts (placeholders)
-            </Typography>
+          <FinanceSection title="Future AI forecasts" subtitle="Placeholders only — no live AI this release">
             <Grid container spacing={1.5}>
               {(dashboardQuery.data?.ai_placeholders ?? []).map((item) => (
                 <Grid key={item.id} size={{ xs: 12, sm: 6, md: 4 }}>
-                  <Card variant="outlined">
+                  <Card
+                    elevation={0}
+                    sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}
+                  >
                     <CardContent>
-                      <Typography sx={{ fontWeight: 600 }}>{item.title}</Typography>
+                      <Typography sx={{ fontWeight: 700 }}>{item.title}</Typography>
                       <Typography variant="body2" color="text.secondary">
                         {item.description}
                       </Typography>
@@ -441,7 +456,7 @@ export function FinanceDashboardPage() {
                 </Grid>
               ))}
             </Grid>
-          </Box>
+          </FinanceSection>
         </Stack>
       )}
     </Box>

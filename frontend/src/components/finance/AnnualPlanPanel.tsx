@@ -22,11 +22,22 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import CompareArrowsOutlinedIcon from '@mui/icons-material/CompareArrowsOutlined';
+import SavingsOutlinedIcon from '@mui/icons-material/SavingsOutlined';
+import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
-import { formatIndianNumber } from '../../utils/format';
+import { formatIndianNumber, toFiniteNumber } from '../../utils/format';
 import { LoadingState } from '../common/LoadingState';
+import { AnalyticsBarChart } from '../analytics/AnalyticsCharts';
+import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
+import { designTokens } from '../../theme/designTokens';
+import {
+  FinanceHeroBanner,
+  FinanceSection,
+  financeMoney,
+} from './FinanceCockpitPrimitives';
 
 const QUARTER_KEYS = ['q1', 'q2', 'q3', 'q4'] as const;
 const QUARTER_LABELS = ['Q1 Apr–Jun', 'Q2 Jul–Sep', 'Q3 Oct–Dec', 'Q4 Jan–Mar'];
@@ -106,18 +117,14 @@ function PlanSectionGrid({
   onCellBlur: (lineId: string, field: (typeof QUARTER_KEYS)[number], value: string) => void;
 }) {
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Typography variant="h6" sx={{ mb: 1.5 }}>
-          {title}
-        </Typography>
+    <FinanceSection title={title} subtitle="Edit quarterly amounts — stored as even monthly split">
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ minWidth: 140 }}>Line</TableCell>
+                <TableCell sx={{ minWidth: 140, fontWeight: 700 }}>Line</TableCell>
                 {QUARTER_LABELS.map((label) => (
-                  <TableCell key={label} align="right" sx={{ minWidth: 120 }}>
+                  <TableCell key={label} align="right" sx={{ minWidth: 120, fontWeight: 700 }}>
                     {label}
                   </TableCell>
                 ))}
@@ -128,8 +135,8 @@ function PlanSectionGrid({
             </TableHead>
             <TableBody>
               {lines.map((line) => (
-                <TableRow key={line.id}>
-                  <TableCell>{line.label}</TableCell>
+                <TableRow key={line.id} hover>
+                  <TableCell sx={{ fontWeight: 600 }}>{line.label}</TableCell>
                   {QUARTER_KEYS.map((key) => (
                     <TableCell key={key} align="right" sx={{ p: 0.5 }}>
                       <TextField
@@ -143,7 +150,7 @@ function PlanSectionGrid({
                       />
                     </TableCell>
                   ))}
-                  <TableCell align="right" sx={{ fontWeight: 600 }}>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>
                     {formatIndianNumber(lineTotal(line))}
                   </TableCell>
                 </TableRow>
@@ -151,8 +158,7 @@ function PlanSectionGrid({
             </TableBody>
           </Table>
         </TableContainer>
-      </CardContent>
-    </Card>
+    </FinanceSection>
   );
 }
 
@@ -316,13 +322,15 @@ export function AnnualPlanPanel() {
 
   if (plansQuery.isLoading) return <LoadingState message="Loading annual plans…" />;
 
+  const currency = detailQuery.data?.currency_code ?? 'INR';
+  const pva = varianceQuery.data;
+
   return (
-    <Stack spacing={2}>
-      <Typography variant="body2" color="text.secondary">
-        Enter Sales and Expenses by fiscal quarter (Apr–Mar FY). Use Plan vs Actual for YTD variance
-        and rolling forecast (Adaptive/QBO style). Seed wages & overhead from live costs, or clone a
-        Base / Stretch / Downside scenario under the same FY.
-      </Typography>
+    <Stack spacing={2.5}>
+      <FinanceHeroBanner
+        title="Annual plan workbook"
+        subtitle="Quarterly Sales & Expenses (Apr–Mar). Charts show Adaptive-style Plan vs Actual; grids stay the source of truth for edits."
+      />
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={1.5}
@@ -462,48 +470,79 @@ export function AnnualPlanPanel() {
           />
 
           {varianceQuery.data ? (
-            <Card variant="outlined">
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 0.5 }}>
-                  Plan vs Actual (YTD)
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
-                  {varianceQuery.data.months_elapsed} months elapsed ·{' '}
-                  {varianceQuery.data.months_remaining} remaining ·{' '}
-                  {varianceQuery.data.methodology}
-                </Typography>
-                <Grid container spacing={1.5}>
-                  {[
-                    ['Plan sales YTD', varianceQuery.data.plan_sales_ytd],
-                    ['Actual sales YTD', varianceQuery.data.actual_sales_ytd],
-                    ['Sales variance', varianceQuery.data.sales_variance_ytd],
-                    ['Plan expenses YTD', varianceQuery.data.plan_expenses_ytd],
-                    ['Actual expenses YTD', varianceQuery.data.actual_expenses_ytd],
-                    ['Expense variance (under = +)', varianceQuery.data.expenses_variance_ytd],
-                    ['Plan GAIN/LOSS YTD', varianceQuery.data.plan_gain_loss_ytd],
-                    ['Actual GAIN/LOSS YTD', varianceQuery.data.actual_gain_loss_ytd],
-                    ['GAIN/LOSS variance', varianceQuery.data.gain_loss_variance_ytd],
-                    ['Rolling forecast sales FY', varianceQuery.data.rolling_forecast_sales_fy],
-                    ['Rolling forecast expenses FY', varianceQuery.data.rolling_forecast_expenses_fy],
-                    ['Rolling forecast GAIN/LOSS FY', varianceQuery.data.rolling_forecast_gain_loss_fy],
-                  ].map(([label, value]) => (
-                    <Grid key={label} size={{ xs: 12, sm: 6, md: 4 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        {label}
-                      </Typography>
-                      <Typography variant="h6">{formatIndianNumber(value)}</Typography>
-                    </Grid>
-                  ))}
+            <FinanceSection
+              title="Plan vs Actual (YTD)"
+              subtitle={`${pva?.months_elapsed ?? 0} months elapsed · ${pva?.months_remaining ?? 0} remaining · rolling forecast = actual YTD + remaining plan`}
+            >
+              <Grid container spacing={1.5} sx={{ mb: 2 }}>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <KpiMetricCard
+                    title="Sales variance YTD"
+                    value={financeMoney(pva?.sales_variance_ytd, currency)}
+                    subtitle={`Plan ${financeMoney(pva?.plan_sales_ytd, currency)}`}
+                    icon={TrendingUpOutlinedIcon}
+                    accent="success"
+                    compact
+                  />
                 </Grid>
-              </CardContent>
-            </Card>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <KpiMetricCard
+                    title="Expense variance YTD"
+                    value={financeMoney(pva?.expenses_variance_ytd, currency)}
+                    subtitle="Positive = under plan"
+                    icon={SavingsOutlinedIcon}
+                    accent="warning"
+                    compact
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <KpiMetricCard
+                    title="Rolling GAIN/LOSS FY"
+                    value={financeMoney(pva?.rolling_forecast_gain_loss_fy, currency)}
+                    subtitle={`Actual YTD ${financeMoney(pva?.actual_gain_loss_ytd, currency)}`}
+                    icon={CompareArrowsOutlinedIcon}
+                    accent="primary"
+                    compact
+                  />
+                </Grid>
+              </Grid>
+              <AnalyticsBarChart
+                categories={['Sales', 'Expenses', 'GAIN/LOSS']}
+                height={280}
+                series={[
+                  {
+                    label: 'Plan YTD',
+                    data: [
+                      toFiniteNumber(pva?.plan_sales_ytd),
+                      toFiniteNumber(pva?.plan_expenses_ytd),
+                      toFiniteNumber(pva?.plan_gain_loss_ytd),
+                    ],
+                    color: designTokens.semantic.primary,
+                  },
+                  {
+                    label: 'Actual YTD',
+                    data: [
+                      toFiniteNumber(pva?.actual_sales_ytd),
+                      toFiniteNumber(pva?.actual_expenses_ytd),
+                      toFiniteNumber(pva?.actual_gain_loss_ytd),
+                    ],
+                    color: designTokens.semantic.success,
+                  },
+                  {
+                    label: 'Rolling FY forecast',
+                    data: [
+                      toFiniteNumber(pva?.rolling_forecast_sales_fy),
+                      toFiniteNumber(pva?.rolling_forecast_expenses_fy),
+                      toFiniteNumber(pva?.rolling_forecast_gain_loss_fy),
+                    ],
+                    color: '#0ea5e9',
+                  },
+                ]}
+              />
+            </FinanceSection>
           ) : null}
 
-          <Card variant="outlined">
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 1.5 }}>
-                Summary (computed)
-              </Typography>
+          <FinanceSection title="Summary (computed)" subtitle="Tax and provision applied to FY gain/loss">
               <Grid container spacing={1.5}>
                 {[
                   ['Sales (FY)', detailQuery.data.summary.sales_fy],
@@ -520,12 +559,13 @@ export function AnnualPlanPanel() {
                     <Typography variant="body2" color="text.secondary">
                       {label}
                     </Typography>
-                    <Typography variant="h6">{formatIndianNumber(value)}</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+                      {formatIndianNumber(value)}
+                    </Typography>
                   </Grid>
                 ))}
               </Grid>
-            </CardContent>
-          </Card>
+          </FinanceSection>
         </>
       ) : null}
 

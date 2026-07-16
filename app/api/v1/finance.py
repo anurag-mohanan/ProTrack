@@ -54,6 +54,7 @@ from app.schemas.finance import (
     ExpenseRead,
     ExpenseUpdate,
     FinanceDashboardRead,
+    FinancePlanCloneRequest,
     FinancePlanCreate,
     FinancePlanDetail,
     FinancePlanLineCreate,
@@ -66,6 +67,7 @@ from app.schemas.finance import (
     FxRateCreate,
     FxRateRead,
     PaidByDefaultRead,
+    PlanVsActualRead,
     QuoteImportItemResult,
     QuoteImportResult,
     QuoteManualCreate,
@@ -82,6 +84,10 @@ from app.services.finance import annual_plan_service
 from app.services.finance.dashboard_service import get_finance_dashboard
 from app.services.finance.fx_service import to_base_amount
 from app.services.finance.annual_plan_service import current_fy_start
+from app.services.finance.plan_vs_actual_service import (
+    compute_plan_vs_actual,
+    seed_plan_from_live,
+)
 from app.services.finance.paid_by_defaults import default_paid_by
 from app.services.finance.commercial_fee_rules import (
     billing_mode_for_strategy,
@@ -908,6 +914,64 @@ def sync_plan_renewals(
 
     try:
         plan = sync_renewals_into_plan(db, plan_id, team_id=team_id)
+        db.commit()
+        plan = annual_plan_service.get_plan(db, plan.id)
+        return _plan_detail_response(plan)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/plans/{plan_id}/plan-vs-actual", response_model=PlanVsActualRead)
+def get_plan_vs_actual(
+    plan_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """YTD plan vs live run-rate actuals + rolling FY forecast (FP&A Phase A)."""
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    try:
+        plan = annual_plan_service.get_plan(db, plan_id)
+        return PlanVsActualRead.model_validate(compute_plan_vs_actual(db, plan))
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/plans/{plan_id}/seed-from-live", response_model=FinancePlanDetail)
+def seed_plan_from_live_endpoint(
+    plan_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fill Wages + Overhead lines from live salary roster and overhead pool."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        plan = seed_plan_from_live(db, plan_id)
+        db.commit()
+        plan = annual_plan_service.get_plan(db, plan.id)
+        return _plan_detail_response(plan)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/plans/{plan_id}/clone",
+    response_model=FinancePlanDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+def clone_finance_plan(
+    plan_id: UUID,
+    payload: FinancePlanCloneRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Clone a plan as a named scenario under the same fiscal year."""
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        plan = annual_plan_service.clone_plan(
+            db, plan_id, scenario_name=payload.scenario_name
+        )
         db.commit()
         plan = annual_plan_service.get_plan(db, plan.id)
         return _plan_detail_response(plan)

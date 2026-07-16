@@ -183,6 +183,7 @@ export function AnnualPlanPanel() {
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['finance-plans'] });
     void queryClient.invalidateQueries({ queryKey: ['finance-plan', activePlanId] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-plan-vs-actual', activePlanId] });
   };
 
   const createMutation = useMutation({
@@ -251,6 +252,59 @@ export function AnnualPlanPanel() {
     },
   });
 
+  const seedLiveMutation = useMutation({
+    mutationFn: async () =>
+      (await apiClient.post(`/finance/plans/${activePlanId}/seed-from-live`)).data,
+    onSuccess: () => {
+      showSuccess('Wages and Overhead seeded from live costs');
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['finance-plan-vs-actual', activePlanId] });
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) => {
+      showError(error.response?.data?.detail ?? 'Could not seed from live costs');
+    },
+  });
+
+  const cloneMutation = useMutation({
+    mutationFn: async (scenarioName: string) =>
+      (
+        await apiClient.post(`/finance/plans/${activePlanId}/clone`, {
+          scenario_name: scenarioName,
+        })
+      ).data,
+    onSuccess: (plan: PlanDetail) => {
+      showSuccess(`Scenario created: ${plan.name}`);
+      setSelectedPlanId(plan.id);
+      invalidate();
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) => {
+      showError(error.response?.data?.detail ?? 'Could not clone plan');
+    },
+  });
+
+  const varianceQuery = useQuery({
+    queryKey: ['finance-plan-vs-actual', activePlanId],
+    enabled: Boolean(activePlanId),
+    queryFn: async () =>
+      (await apiClient.get(`/finance/plans/${activePlanId}/plan-vs-actual`)).data as {
+        months_elapsed: number;
+        months_remaining: number;
+        plan_sales_ytd: string;
+        actual_sales_ytd: string;
+        sales_variance_ytd: string;
+        plan_expenses_ytd: string;
+        actual_expenses_ytd: string;
+        expenses_variance_ytd: string;
+        plan_gain_loss_ytd: string;
+        actual_gain_loss_ytd: string;
+        gain_loss_variance_ytd: string;
+        rolling_forecast_sales_fy: string;
+        rolling_forecast_expenses_fy: string;
+        rolling_forecast_gain_loss_fy: string;
+        methodology: string;
+      },
+  });
+
   const salesLines = useMemo(
     () => (detailQuery.data?.lines ?? []).filter((line: PlanLine) => line.section === 'sales'),
     [detailQuery.data],
@@ -265,14 +319,14 @@ export function AnnualPlanPanel() {
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Enter Sales and Expenses by fiscal quarter (Apr–Mar FY). Quarter totals are stored as an even
-        split across the three months underneath for compatibility. Known software renewals can be
-        synced into expense lines from Budgets.
+        Enter Sales and Expenses by fiscal quarter (Apr–Mar FY). Use Plan vs Actual for YTD variance
+        and rolling forecast (Adaptive/QBO style). Seed wages & overhead from live costs, or clone a
+        Base / Stretch / Downside scenario under the same FY.
       </Typography>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={1.5}
-        sx={{ alignItems: { sm: 'center' } }}
+        sx={{ alignItems: { sm: 'center' }, flexWrap: 'wrap' }}
       >
         <FormControl size="small" sx={{ minWidth: 220 }}>
           <InputLabel id="plan-select">Fiscal year plan</InputLabel>
@@ -308,13 +362,32 @@ export function AnnualPlanPanel() {
           Create Plan
         </Button>
         {activePlanId ? (
-          <Button
-            variant="outlined"
-            disabled={syncRenewalsMutation.isPending}
-            onClick={() => syncRenewalsMutation.mutate()}
-          >
-            Sync software renewals
-          </Button>
+          <>
+            <Button
+              variant="outlined"
+              disabled={syncRenewalsMutation.isPending}
+              onClick={() => syncRenewalsMutation.mutate()}
+            >
+              Sync software renewals
+            </Button>
+            <Button
+              variant="outlined"
+              disabled={seedLiveMutation.isPending}
+              onClick={() => seedLiveMutation.mutate()}
+            >
+              Seed wages & overhead
+            </Button>
+            <Button
+              variant="outlined"
+              disabled={cloneMutation.isPending}
+              onClick={() => {
+                const name = window.prompt('Scenario name (e.g. Stretch, Downside)', 'Stretch');
+                if (name?.trim()) cloneMutation.mutate(name.trim());
+              }}
+            >
+              Clone scenario
+            </Button>
+          </>
         ) : null}
       </Stack>
 
@@ -387,6 +460,44 @@ export function AnnualPlanPanel() {
               cellMutation.mutate({ lineId, field, value: numeric });
             }}
           />
+
+          {varianceQuery.data ? (
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 0.5 }}>
+                  Plan vs Actual (YTD)
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
+                  {varianceQuery.data.months_elapsed} months elapsed ·{' '}
+                  {varianceQuery.data.months_remaining} remaining ·{' '}
+                  {varianceQuery.data.methodology}
+                </Typography>
+                <Grid container spacing={1.5}>
+                  {[
+                    ['Plan sales YTD', varianceQuery.data.plan_sales_ytd],
+                    ['Actual sales YTD', varianceQuery.data.actual_sales_ytd],
+                    ['Sales variance', varianceQuery.data.sales_variance_ytd],
+                    ['Plan expenses YTD', varianceQuery.data.plan_expenses_ytd],
+                    ['Actual expenses YTD', varianceQuery.data.actual_expenses_ytd],
+                    ['Expense variance (under = +)', varianceQuery.data.expenses_variance_ytd],
+                    ['Plan GAIN/LOSS YTD', varianceQuery.data.plan_gain_loss_ytd],
+                    ['Actual GAIN/LOSS YTD', varianceQuery.data.actual_gain_loss_ytd],
+                    ['GAIN/LOSS variance', varianceQuery.data.gain_loss_variance_ytd],
+                    ['Rolling forecast sales FY', varianceQuery.data.rolling_forecast_sales_fy],
+                    ['Rolling forecast expenses FY', varianceQuery.data.rolling_forecast_expenses_fy],
+                    ['Rolling forecast GAIN/LOSS FY', varianceQuery.data.rolling_forecast_gain_loss_fy],
+                  ].map(([label, value]) => (
+                    <Grid key={label} size={{ xs: 12, sm: 6, md: 4 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {label}
+                      </Typography>
+                      <Typography variant="h6">{formatIndianNumber(value)}</Typography>
+                    </Grid>
+                  ))}
+                </Grid>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card variant="outlined">
             <CardContent>

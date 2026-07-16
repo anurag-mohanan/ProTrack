@@ -575,3 +575,38 @@ class FinancePlanDetail(FinancePlanListItem):
     lines: list[FinancePlanLineRead]
     summary: FinancePlanSummary
     line_totals: dict[str, str] = Field(default_factory=dict)
+
+
+class FinancePlanCloneRequest(BaseModel):
+    scenario_name: str = Field(..., min_length=1, max_length=80)
+
+
+class PlanVsActualRead(BaseModel):
+    plan_id: UUID
+    fiscal_year_label: str
+    as_of: str
+    months_elapsed: int
+    months_remaining: int
+    currency_code: str
+    sales_monthly_run_rate: str
+    expenses_monthly_run_rate: str
+    plan_sales_ytd: str
+    actual_sales_ytd: str
+    sales_variance_ytd: str
+    sales_variance_pct: str
+    plan_expenses_ytd: str
+    actual_expenses_ytd: str
+    expenses_variance_ytd: str
+    expenses_variance_pct: str
+    plan_gain_loss_ytd: str
+    actual_gain_loss_ytd: str
+    gain_loss_variance_ytd: str
+    plan_sales_fy: str
+    plan_expenses_fy: str
+    plan_gain_loss_fy: str
+    rolling_forecast_sales_fy: str
+    rolling_forecast_expenses_fy: str
+    rolling_forecast_gain_loss_fy: str
+    remaining_plan_sales: str
+    remaining_plan_expenses: str
+    methodology: str

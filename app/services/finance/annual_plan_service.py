@@ -233,13 +233,19 @@ def create_plan(
         fiscal_year_start_year, fy_start_month=fy_start_month
     )
     currency = currency_code or get_base_currency(db)
+    plan_name = name.strip() or f"FY {label}"
     existing = db.scalar(
-        select(FinancePlan).where(FinancePlan.fiscal_year_label == label)
+        select(FinancePlan).where(
+            FinancePlan.fiscal_year_label == label,
+            FinancePlan.name == plan_name,
+        )
     )
     if existing is not None:
-        raise ProTrackValidationError(f"A plan for FY {label} already exists")
+        raise ProTrackValidationError(
+            f"A plan named '{plan_name}' for FY {label} already exists"
+        )
     plan = FinancePlan(
-        name=name.strip() or f"FY {label}",
+        name=plan_name,
         fiscal_year_label=label,
         fy_start_date=fy_start,
         fy_end_date=fy_end,
@@ -249,6 +255,52 @@ def create_plan(
         status=FinancePlanStatus.draft,
     )
     _seed_lines(plan)
+    db.add(plan)
+    db.flush()
+    return plan
+
+
+def clone_plan(
+    db: Session,
+    plan_id: UUID,
+    *,
+    scenario_name: str,
+) -> FinancePlan:
+    """Clone a plan under the same FY as a named scenario (Base / Stretch / Downside)."""
+    source = get_plan(db, plan_id)
+    label = (scenario_name or "").strip() or "Scenario"
+    new_name = f"{source.name} — {label}"
+    dup = db.scalar(
+        select(FinancePlan).where(
+            FinancePlan.fiscal_year_label == source.fiscal_year_label,
+            FinancePlan.name == new_name,
+        )
+    )
+    if dup is not None:
+        raise ProTrackValidationError(f"Scenario already exists: {new_name}")
+    plan = FinancePlan(
+        name=new_name,
+        fiscal_year_label=source.fiscal_year_label,
+        fy_start_date=source.fy_start_date,
+        fy_end_date=source.fy_end_date,
+        currency_code=source.currency_code,
+        tax_percent=source.tax_percent,
+        provision_percent=source.provision_percent,
+        status=FinancePlanStatus.draft,
+    )
+    for row in sorted(source.lines, key=lambda item: (item.section.value, item.sort_order)):
+        months = {field: getattr(row, field) or Decimal("0") for field in MONTH_FIELDS}
+        plan.lines.append(
+            FinancePlanLine(
+                section=row.section,
+                code=row.code,
+                label=row.label,
+                sort_order=row.sort_order,
+                is_total_row=row.is_total_row,
+                notes=row.notes,
+                **months,
+            )
+        )
     db.add(plan)
     db.flush()
     return plan

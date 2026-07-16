@@ -1130,8 +1130,8 @@ export default function UsersPage() {
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               Off for System Admin, Planning Board, and other non-headcount accounts. When off, the
               user is excluded from Financial Planning People costs and salary rollups. Managers paid
-              from overhead (not customer retainer) should be on <strong>Management</strong> (or
-              Corporate / Shared Services) with Billable headcount off on customer teams.
+              from overhead (not customer retainer) should be on{' '}
+              <strong>Corporate / Management</strong> with Billable headcount off on customer teams.
             </Typography>
           </FormSection>
 

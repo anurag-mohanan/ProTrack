@@ -18,7 +18,10 @@ from app.core.permissions import (
     get_role_name,
     normalize_role_name,
 )
-from app.db.phase23_finance_team_scope_schema_sync import CORPORATE_TEAM_NAME
+from app.db.phase23_finance_team_scope_schema_sync import (
+    CORPORATE_TEAM_NAME,
+    LEGACY_CORPORATE_TEAM_NAMES,
+)
 from app.models.models import Team, User
 
 # Delivery engineering roles billed to customers under retainer / fixed resource math.
@@ -45,9 +48,8 @@ MANAGEMENT_OVERHEAD_ROLE_DEFAULTS = frozenset(
     }
 )
 
-# Keep name literal to avoid circular import with phase33.
-_MANAGEMENT_TEAM_NAME = "Management"
-_OVERHEAD_TEAM_NAMES = frozenset({CORPORATE_TEAM_NAME, _MANAGEMENT_TEAM_NAME})
+# Canonical + legacy overhead home names (Phase L merge).
+_OVERHEAD_TEAM_NAMES = frozenset(LEGACY_CORPORATE_TEAM_NAMES | {"Management"})
 
 
 def role_is_fixed_resource_default(role_name: str) -> bool:

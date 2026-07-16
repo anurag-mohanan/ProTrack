@@ -11,12 +11,12 @@ from app.core.fixed_resource_eligibility import (
     role_is_fixed_resource_default,
 )
 from app.core.permissions import get_role_name
-from app.db.phase23_finance_team_scope_schema_sync import CORPORATE_TEAM_NAME
+from app.db.phase23_finance_team_scope_schema_sync import LEGACY_CORPORATE_TEAM_NAMES
 from app.models.models import Team, TeamMember, User
 
 
 def ensure_phase31_overhead_role_billable_backfill(engine: Engine) -> None:
-    """Demote non-delivery roles (and Corporate) from retainer/fixed resource count.
+    """Demote non-delivery roles (and overhead home) from retainer/fixed resource count.
 
     Designer/Surfacer memberships on delivery teams are left unchanged so an admin
     can still exclude a named engineer without the next restart flipping them on.
@@ -26,11 +26,12 @@ def ensure_phase31_overhead_role_billable_backfill(engine: Engine) -> None:
     try:
         teams = {team.id: team for team in session.scalars(select(Team)).all()}
         changed = False
+        overhead_names = LEGACY_CORPORATE_TEAM_NAMES | {"Management"}
         for member in session.scalars(select(TeamMember)).all():
             team = teams.get(member.team_id)
             user = session.get(User, member.user_id)
             role_name = get_role_name(session, user) if user else ""
-            if team is not None and team.name == CORPORATE_TEAM_NAME:
+            if team is not None and team.name in overhead_names:
                 if bool(getattr(member, "is_billable_headcount", True)):
                     member.is_billable_headcount = False
                     changed = True

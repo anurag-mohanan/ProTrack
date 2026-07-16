@@ -221,12 +221,12 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
   });
 
   const overhead = dashboardQuery.data?.overhead;
-  const corporateId = overhead?.corporate_team_id;
-  const managementId = overhead?.management_team_id;
+  const overheadHomeId = overhead?.corporate_team_id || overhead?.management_team_id;
+  const overheadHomeName = overhead?.corporate_team_name ?? 'Corporate / Management';
 
   const teamIds = useMemo(
-    () => [managementId, corporateId].filter(Boolean) as string[],
-    [managementId, corporateId],
+    () => (overheadHomeId ? [overheadHomeId] : []),
+    [overheadHomeId],
   );
 
   const expensesQuery = useQuery({
@@ -295,7 +295,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
   };
 
-  const defaultTeamId = corporateId || managementId || '';
+  const defaultTeamId = overheadHomeId || '';
 
   const createLineMutation = useMutation({
     mutationFn: async (payload: {
@@ -307,7 +307,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     }) => {
       const centre = centreByCode.get(payload.code);
       if (!centre) throw new Error(`Cost centre ${payload.code} is not seeded.`);
-      if (!defaultTeamId) throw new Error('Management / Corporate team not ready.');
+      if (!defaultTeamId) throw new Error('Corporate / Management team not ready.');
       const purchase = new Date().toISOString().slice(0, 10);
       return (
         await apiClient.post('/finance/expenses', {
@@ -384,8 +384,8 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
 
   const createCustomMutation = useMutation({
     mutationFn: async () => {
-      const team = form.team_id || managementId || corporateId;
-      if (!team) throw new Error('Select Management or Corporate team.');
+      const team = overheadHomeId;
+      if (!team) throw new Error('Corporate / Management team not ready.');
       if (!form.cost_centre_id) throw new Error('Select a cost centre.');
       if (!form.name.trim()) throw new Error('Name is required.');
       return (
@@ -454,7 +454,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Overheads cockpit"
-        subtitle="Each category holds many named lines (licenses, rents, utilities…). Click a KPI card to see what accumulates into that number. Pool = Management + Corporate salaries + Prosohm OpEx ÷ delivery billable FTE."
+        subtitle="Each category holds many named lines (licenses, rents, utilities…). Click a KPI card to see what accumulates into that number. Pool = Corporate / Management salaries + Prosohm OpEx ÷ delivery billable FTE."
         chips={
           <>
             {dashboardQuery.data?.planning_fy_label ? (
@@ -473,7 +473,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
             <Chip
               size="small"
               variant="outlined"
-              label={`${overhead?.management_team_name ?? 'Management'} + ${overhead?.corporate_team_name ?? 'Corporate'}`}
+              label={overhead?.corporate_team_name ?? 'Corporate / Management'}
             />
           </>
         }
@@ -485,7 +485,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
             compact
             accent="info"
             icon={GroupsOutlinedIcon}
-            title="Management salaries"
+            title="Overhead salaries"
             value={financeMoney(salaryInr, currency)}
             subtitle="Click for people breakdown"
             onClick={() => setBreakdownMetric('overhead_salaries')}
@@ -535,7 +535,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                 data={[
                   {
                     id: 'salary',
-                    label: 'Management salaries',
+                    label: 'Overhead salaries',
                     value: salaryInr,
                     color: designTokens.semantic.primary,
                   },
@@ -798,7 +798,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       {otherExpenses.length > 0 ? (
         <FinanceSection
           title="Other overhead OpEx"
-          subtitle="Lines on Management / Corporate whose cost centre is outside the catalogue above"
+          subtitle="Lines on Corporate / Management whose cost centre is outside the catalogue above"
         >
           <Stack spacing={1}>
             {otherExpenses.map((row) => (
@@ -842,26 +842,8 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
         }
       >
         <Collapse in={showCustom}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
-            <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel>Team</InputLabel>
-              <Select
-                label="Team"
-                value={form.team_id || managementId || ''}
-                onChange={(e) => setForm({ ...form, team_id: e.target.value })}
-              >
-                {managementId ? (
-                  <MenuItem value={managementId}>
-                    {overhead?.management_team_name ?? 'Management'}
-                  </MenuItem>
-                ) : null}
-                {corporateId ? (
-                  <MenuItem value={corporateId}>
-                    {overhead?.corporate_team_name ?? 'Corporate'}
-                  </MenuItem>
-                ) : null}
-              </Select>
-            </FormControl>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+            <Chip size="small" label={overheadHomeName} sx={{ fontWeight: 700 }} />
             <FormControl size="small" sx={{ minWidth: 200 }}>
               <InputLabel>Cost centre</InputLabel>
               <Select
@@ -951,7 +933,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Remove overhead line?"
-        message="This soft-deletes the expense from Management / Corporate OpEx and refreshes the overhead pool."
+        message="This soft-deletes the expense from Corporate / Management OpEx and refreshes the overhead pool."
         recordName={
           deleteTarget
             ? `${deleteTarget.name} · ${deleteTarget.currency_code} ${deleteTarget.amount}`

@@ -30,7 +30,7 @@ def test_role_fixed_resource_defaults():
     team = Team(name="Sybridge-Sale", is_active=True)
     assert default_is_billable_headcount(team=team, role_name="Designer") is True
     assert default_is_billable_headcount(team=team, role_name="Design Leader") is False
-    corp = Team(name="Corporate / Shared Services", is_active=True)
+    corp = Team(name="Corporate / Management", is_active=True)
     assert default_is_billable_headcount(team=corp, role_name="Designer") is False
 
 

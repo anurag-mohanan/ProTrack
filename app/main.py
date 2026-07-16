@@ -68,6 +68,9 @@ from app.db.phase33_management_team_schema_sync import (
 from app.db.phase34_quote_quoted_date_schema_sync import (
     ensure_phase34_quote_quoted_date_foundation,
 )
+from app.db.phase35_overhead_team_merge_schema_sync import (
+    ensure_phase35_overhead_team_merge_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -157,6 +160,7 @@ async def lifespan(app: FastAPI):
         ("phase32_finance_quarterly_fee_bands", ensure_phase32_finance_quarterly_fee_bands_foundation),
         ("phase33_management_team", ensure_phase33_management_team_foundation),
         ("phase34_quote_quoted_date", ensure_phase34_quote_quoted_date_foundation),
+        ("phase35_overhead_team_merge", ensure_phase35_overhead_team_merge_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

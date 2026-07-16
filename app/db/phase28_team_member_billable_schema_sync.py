@@ -118,4 +118,9 @@ def ensure_phase28_team_member_billable_foundation(engine: Engine) -> None:
 
 
 def is_corporate_team(team: Team | None) -> bool:
-    return bool(team and team.name == CORPORATE_TEAM_NAME)
+    from app.db.phase23_finance_team_scope_schema_sync import LEGACY_CORPORATE_TEAM_NAMES
+
+    return bool(
+        team
+        and team.name in LEGACY_CORPORATE_TEAM_NAMES | {"Management"}
+    )

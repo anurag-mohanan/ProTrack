@@ -1,4 +1,4 @@
-"""Phase 33 — Management team for overhead salaries + role backfill."""
+"""Phase 33 — Overhead role backfill onto Corporate / Management (legacy Management alias)."""
 
 from __future__ import annotations
 
@@ -11,44 +11,40 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.fixed_resource_eligibility import role_is_management_overhead_default
 from app.core.permissions import get_role_name
-from app.db.phase23_finance_team_scope_schema_sync import CORPORATE_TEAM_NAME
+from app.db.phase23_finance_team_scope_schema_sync import (
+    CORPORATE_TEAM_NAME,
+    LEGACY_CORPORATE_TEAM_NAMES,
+    ensure_corporate_shared_services_team,
+)
 from app.models.enums import TeamBillingPeriod, WorkingModelCode
 from app.models.finance import TeamCommercialTerms
 from app.models.models import Team, TeamMember, User, WorkingModel
 from app.services.finance.commercial_fee_rules import billing_mode_for_strategy
 
-MANAGEMENT_TEAM_NAME = "Management"
+# Kept for imports/tests — now aliases the unified overhead home.
+MANAGEMENT_TEAM_NAME = CORPORATE_TEAM_NAME
+LEGACY_MANAGEMENT_TEAM_NAME = "Management"
+_OVERHEAD_HOME_NAMES = frozenset(LEGACY_CORPORATE_TEAM_NAMES | {LEGACY_MANAGEMENT_TEAM_NAME})
 
 
 def ensure_management_team(session: Session) -> Team:
-    team = session.scalar(select(Team).where(Team.name == MANAGEMENT_TEAM_NAME))
-    if team is None:
-        team = Team(
-            name=MANAGEMENT_TEAM_NAME,
-            description=(
-                "Engineering / design leadership and office administration — "
-                "overhead salaries (not customer billable headcount)."
-            ),
-            is_active=True,
-        )
-        session.add(team)
-        session.flush()
-    return team
+    """Alias: overhead people home is Corporate / Management (no separate Management team)."""
+    return ensure_corporate_shared_services_team(session)
 
 
 def is_management_team(team: Team | None) -> bool:
-    return bool(team and team.name == MANAGEMENT_TEAM_NAME)
+    return is_overhead_home_team(team)
 
 
 def is_overhead_home_team(team: Team | None) -> bool:
-    return bool(team and team.name in {CORPORATE_TEAM_NAME, MANAGEMENT_TEAM_NAME})
+    return bool(team and team.name in _OVERHEAD_HOME_NAMES)
 
 
 def ensure_phase33_management_team_foundation(engine: Engine) -> None:
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     session = SessionLocal()
     try:
-        management = ensure_management_team(session)
+        home = ensure_corporate_shared_services_team(session)
 
         overheads = session.scalar(
             select(WorkingModel).where(
@@ -67,7 +63,7 @@ def ensure_phase33_management_team_foundation(engine: Engine) -> None:
         active_terms = list(
             session.scalars(
                 select(TeamCommercialTerms).where(
-                    TeamCommercialTerms.team_id == management.id,
+                    TeamCommercialTerms.team_id == home.id,
                     TeamCommercialTerms.is_active.is_(True),
                 )
             ).all()
@@ -75,7 +71,7 @@ def ensure_phase33_management_team_foundation(engine: Engine) -> None:
         if not active_terms and overheads is not None:
             session.add(
                 TeamCommercialTerms(
-                    team_id=management.id,
+                    team_id=home.id,
                     working_model_id=overheads.id,
                     billing_mode=billing_mode_for_strategy(WorkingModelCode.overheads),
                     customer_fee_amount=Decimal("0"),
@@ -84,7 +80,7 @@ def ensure_phase33_management_team_foundation(engine: Engine) -> None:
                     fx_rate=Decimal("1"),
                     billing_period=TeamBillingPeriod.monthly,
                     effective_from=date(2020, 4, 1),
-                    notes="Seeded: Management overheads — no customer fee",
+                    notes="Seeded: Corporate / Management overheads — no customer fee",
                     customer_pays_software=False,
                     customer_pays_hardware=False,
                     is_active=True,
@@ -108,14 +104,14 @@ def ensure_phase33_management_team_foundation(engine: Engine) -> None:
                     select(TeamMember).where(TeamMember.user_id == user.id)
                 ).all()
             )
-            already = next((m for m in memberships if m.team_id == management.id), None)
+            already = next((m for m in memberships if m.team_id == home.id), None)
             if already is None:
                 for m in memberships:
                     if m.is_primary:
                         m.is_primary = False
                 session.add(
                     TeamMember(
-                        team_id=management.id,
+                        team_id=home.id,
                         user_id=user.id,
                         is_primary=True,
                         is_billable_headcount=False,
@@ -127,7 +123,7 @@ def ensure_phase33_management_team_foundation(engine: Engine) -> None:
                 for m in memberships:
                     if m.id != already.id and m.is_primary:
                         m.is_primary = False
-            user.team_id = management.id
+            user.team_id = home.id
 
         session.commit()
     except Exception:

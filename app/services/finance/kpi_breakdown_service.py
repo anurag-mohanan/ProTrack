@@ -230,30 +230,23 @@ def get_kpi_breakdown(
         from app.db.phase23_finance_team_scope_schema_sync import (
             ensure_corporate_shared_services_team,
         )
-        from app.db.phase33_management_team_schema_sync import ensure_management_team
 
-        management = ensure_management_team(db)
-        corporate = ensure_corporate_shared_services_team(db)
+        home = ensure_corporate_shared_services_team(db)
         lines = _salary_lines(
             db,
-            _user_ids_for_team(db, management.id),
+            _user_ids_for_team(db, home.id),
             as_of=today,
-            team_label=management.name,
-        ) + _salary_lines(
-            db,
-            _user_ids_for_team(db, corporate.id),
-            as_of=today,
-            team_label=corporate.name,
+            team_label=home.name,
         )
         lines.sort(key=lambda r: r["amount_inr"], reverse=True)
         total = _q(overhead["overhead_salary_inr"])
         return {
             "metric": key,
-            "title": "Management / Corporate salaries",
-            "subtitle": "People contributing to the overhead salary pool (monthly INR, employment-prorated).",
+            "title": "Corporate / Management salaries",
+            "subtitle": "People on the overhead home team (monthly INR, employment-prorated).",
             "total_inr": total,
             "currency_code": base,
-            "formula": "Sum of active salary profiles on Management + Corporate teams",
+            "formula": "Sum of active salary profiles on Corporate / Management",
             "insights": _insights_from_lines(lines, total, subject="salary lines"),
             "groups": [
                 {
@@ -269,13 +262,11 @@ def get_kpi_breakdown(
         from app.db.phase23_finance_team_scope_schema_sync import (
             ensure_corporate_shared_services_team,
         )
-        from app.db.phase33_management_team_schema_sync import ensure_management_team
 
-        management = ensure_management_team(db)
-        corporate = ensure_corporate_shared_services_team(db)
+        home = ensure_corporate_shared_services_team(db)
         lines = _expense_lines(
             db,
-            team_ids=[management.id, corporate.id],
+            team_ids=[home.id],
             paid_by=ExpensePaidBy.prosohm,
             nature=CostNature.opex,
             fy_start=fy_start,
@@ -287,10 +278,10 @@ def get_kpi_breakdown(
         return {
             "metric": key,
             "title": "Overhead OpEx (Prosohm)",
-            "subtitle": "Recurring HQ costs on Management + Corporate this FY — ranked high → low.",
+            "subtitle": "Recurring HQ costs on Corporate / Management this FY — ranked high → low.",
             "total_inr": total,
             "currency_code": base,
-            "formula": "FY-gated Prosohm OpEx × month factor on Management + Corporate",
+            "formula": "FY-gated Prosohm OpEx × month factor on Corporate / Management",
             "insights": _insights_from_lines(lines, total, subject="OpEx lines")
             + (
                 [f"{len(empty)} catalogue categories have no spend yet"]
@@ -311,18 +302,16 @@ def get_kpi_breakdown(
         from app.db.phase23_finance_team_scope_schema_sync import (
             ensure_corporate_shared_services_team,
         )
-        from app.db.phase33_management_team_schema_sync import ensure_management_team
 
-        management = ensure_management_team(db)
-        corporate = ensure_corporate_shared_services_team(db)
+        home = ensure_corporate_shared_services_team(db)
         salary_lines = _salary_lines(
             db,
-            _user_ids_for_team(db, management.id) | _user_ids_for_team(db, corporate.id),
+            _user_ids_for_team(db, home.id),
             as_of=today,
         )
         opex_lines = _expense_lines(
             db,
-            team_ids=[management.id, corporate.id],
+            team_ids=[home.id],
             paid_by=ExpensePaidBy.prosohm,
             nature=CostNature.opex,
             fy_start=fy_start,

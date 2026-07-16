@@ -45,7 +45,7 @@ export function FinanceTeamFilter({ value, onChange }: FinanceTeamFilterProps) {
     >
       <Typography variant="body2" color="text.secondary">
         Team lens: costs, salaries, renewals, and commercial terms are scoped to the selected team
-        (shared HQ costs use Corporate / Shared Services).
+        (shared HQ costs use Corporate / Management).
       </Typography>
       <FormControl size="small" sx={{ minWidth: 260 }}>
         <InputLabel>Team</InputLabel>

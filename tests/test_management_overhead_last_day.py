@@ -1,13 +1,11 @@
-"""Last working day proration + Management team overhead."""
+"""Last working day proration + Corporate / Management overhead home."""
 
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-from app.db.phase33_management_team_schema_sync import (
-    MANAGEMENT_TEAM_NAME,
-    ensure_management_team,
-)
+from app.db.phase23_finance_team_scope_schema_sync import CORPORATE_TEAM_NAME
+from app.db.phase33_management_team_schema_sync import ensure_management_team
 from app.services.finance.employment_cost import (
     employment_salary_factor,
     expense_month_factor,
@@ -38,19 +36,21 @@ def test_expense_ends_before_as_of():
     assert expense_month_factor(expense, as_of=date(2026, 7, 1)) == Decimal("0")
 
 
-def test_management_team_seeded(client, auth_headers, session):
+def test_overhead_home_team_seeded(client, auth_headers, session):
     team = ensure_management_team(session)
     session.commit()
-    assert team.name == MANAGEMENT_TEAM_NAME
+    assert team.name == CORPORATE_TEAM_NAME
     teams = client.get("/api/v1/lookups/teams", headers=auth_headers)
     assert teams.status_code == 200
     names = {row["name"] for row in teams.json()}
-    assert MANAGEMENT_TEAM_NAME in names
+    assert CORPORATE_TEAM_NAME in names
 
 
-def test_dashboard_overhead_includes_management(client, auth_headers):
+def test_dashboard_overhead_includes_unified_home(client, auth_headers):
     response = client.get("/api/v1/finance/dashboard", headers=auth_headers)
     assert response.status_code == 200
     overhead = response.json()["overhead"]
-    assert overhead.get("management_team_name") == MANAGEMENT_TEAM_NAME
+    assert overhead.get("management_team_name") == CORPORATE_TEAM_NAME
+    assert overhead.get("corporate_team_name") == CORPORATE_TEAM_NAME
+    assert overhead.get("corporate_team_id") == overhead.get("management_team_id")
     assert "overhead_management_salary_inr" in overhead

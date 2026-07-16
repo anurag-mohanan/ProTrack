@@ -49,9 +49,9 @@ def _user_ids_for_team(db: Session, team_id: UUID) -> set[UUID]:
     - Delivery teams: only **billable** membership (fixed-resource engineers).
       Managers / Planning Board / Design Leaders with ``is_billable_headcount=False``
       are Prosohm overhead and must not inflate delivery-team salary even if listed.
-    - Corporate / Shared Services: all primary members (overhead pool).
+    - Corporate / Management: all primary members (overhead pool).
     - Legacy ``User.team_id`` without a membership row: include only when the user's
-      role is a fixed-resource default (or team is Corporate).
+      role is a fixed-resource default (or team is the overhead home).
     """
     from app.core.fixed_resource_eligibility import (
         default_is_billable_headcount_for_user,
@@ -59,10 +59,9 @@ def _user_ids_for_team(db: Session, team_id: UUID) -> set[UUID]:
     )
     from app.core.permissions import get_role_name
     from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
-    from app.db.phase33_management_team_schema_sync import is_management_team
 
     team = db.get(Team, team_id)
-    corporate = is_corporate_team(team) or is_management_team(team)
+    corporate = is_corporate_team(team)
     ids: set[UUID] = set()
     members = db.scalars(
         select(TeamMember).where(
@@ -268,44 +267,26 @@ def _team_rollups(db: Session, team: Team, *, today: date, quote_revenue_share: 
 def _overhead_metrics(
     db: Session, *, fy_start: date, team_id: UUID | None = None
 ) -> dict:
-    """Management + Corporate overhead pool ÷ delivery billable FTE (analytical CPR)."""
+    """Corporate / Management overhead pool ÷ delivery billable FTE (analytical CPR)."""
     from app.db.phase23_finance_team_scope_schema_sync import (
         ensure_corporate_shared_services_team,
     )
     from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
-    from app.db.phase33_management_team_schema_sync import (
-        ensure_management_team,
-        is_management_team,
-    )
 
     as_of = date.today()
-    corporate = ensure_corporate_shared_services_team(db)
-    management = ensure_management_team(db)
+    home = ensure_corporate_shared_services_team(db)
 
-    mgmt_salary = _salary_for_users(
-        db, _user_ids_for_team(db, management.id), as_of=as_of
-    )
-    corp_salary = _salary_for_users(
-        db, _user_ids_for_team(db, corporate.id), as_of=as_of
-    )
-    mgmt_opex = _expense_sum(
+    overhead_salary = _salary_for_users(
+        db, _user_ids_for_team(db, home.id), as_of=as_of
+    ).quantize(Decimal("0.01"))
+    overhead_opex = _expense_sum(
         db,
-        team_id=management.id,
+        team_id=home.id,
         paid_by=ExpensePaidBy.prosohm,
         nature=CostNature.opex,
         fy_start=fy_start,
         as_of=as_of,
-    )
-    corp_opex = _expense_sum(
-        db,
-        team_id=corporate.id,
-        paid_by=ExpensePaidBy.prosohm,
-        nature=CostNature.opex,
-        fy_start=fy_start,
-        as_of=as_of,
-    )
-    overhead_salary = (mgmt_salary + corp_salary).quantize(Decimal("0.01"))
-    overhead_opex = (mgmt_opex + corp_opex).quantize(Decimal("0.01"))
+    ).quantize(Decimal("0.01"))
     pool = (overhead_salary + overhead_opex).quantize(Decimal("0.01"))
     n = company_delivery_billable_salary_headcount(db, as_of=as_of)
     cpr = (pool / Decimal(n)).quantize(Decimal("0.01")) if n else Decimal("0.00")
@@ -314,18 +295,19 @@ def _overhead_metrics(
     allocated = Decimal("0.00")
     if team_id is not None:
         team = db.get(Team, team_id)
-        if team is not None and not is_corporate_team(team) and not is_management_team(team):
+        if team is not None and not is_corporate_team(team):
             team_n = billable_salary_headcount(db, team_id, as_of=as_of)
             allocated = (cpr * Decimal(team_n)).quantize(Decimal("0.01"))
 
     return {
-        "corporate_team_id": str(corporate.id),
-        "corporate_team_name": corporate.name,
-        "management_team_id": str(management.id),
-        "management_team_name": management.name,
+        # Compat: management_* mirrors corporate_* (single overhead home).
+        "corporate_team_id": str(home.id),
+        "corporate_team_name": home.name,
+        "management_team_id": str(home.id),
+        "management_team_name": home.name,
         "overhead_salary_inr": overhead_salary,
-        "overhead_management_salary_inr": mgmt_salary,
-        "overhead_corporate_salary_inr": corp_salary,
+        "overhead_management_salary_inr": overhead_salary,
+        "overhead_corporate_salary_inr": Decimal("0.00"),
         "overhead_opex_inr": overhead_opex,
         "overhead_pool_monthly_inr": pool,
         "billable_resource_count": n,

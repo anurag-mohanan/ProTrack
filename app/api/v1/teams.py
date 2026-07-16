@@ -3,10 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.services.organization_chart_service import (
-    OrganizationChartRead,
-    build_organization_chart,
-)
+from app.core.team_access import user_can_view_organization_chart
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db, get_object_or_404
 from app.core.exceptions import ProTrackValidationError
@@ -22,6 +19,10 @@ from app.schemas.team import (
     TeamMemberUpdate,
     TeamRead,
     TeamUpdate,
+)
+from app.services.organization_chart_service import (
+    OrganizationChartRead,
+    build_organization_chart,
 )
 
 from app.services.master_data_delete_service import (
@@ -82,6 +83,11 @@ def get_organization_chart(
     current_user: User = org_chart_access,
 ):
     """Scoped org chart: EM division / team lead's teams (Admin = full)."""
+    if not user_can_view_organization_chart(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization chart is not available for your role or team scope.",
+        )
     return build_organization_chart(db, viewer=current_user)
 
 

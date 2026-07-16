@@ -16,6 +16,7 @@ from app.core.timesheet_eligibility import (
     user_can_enter_own_timesheet,
     user_requires_timesheet,
 )
+from app.core.team_access import user_can_view_organization_chart
 from app.core.access_control import (
     resolve_user_modules,
     resolve_user_special_permissions,
@@ -204,6 +205,7 @@ def _build_current_user_read(
         special_permissions=resolve_user_special_permissions(user, role_name),
         requires_timesheet=user_requires_timesheet(user),
         can_enter_own_timesheet=user_can_enter_own_timesheet(db, user),
+        can_view_organization_chart=user_can_view_organization_chart(db, user),
     )
 
 

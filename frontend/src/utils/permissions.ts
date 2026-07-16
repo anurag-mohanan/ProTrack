@@ -79,6 +79,7 @@ export interface AccessContext {
   resolved_special_permissions?: string[];
   requires_timesheet?: boolean;
   can_enter_own_timesheet?: boolean;
+  can_view_organization_chart?: boolean;
 }
 
 const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
@@ -272,6 +273,7 @@ export function accessContextFromUser(user: CurrentUser | null | undefined): Acc
     resolved_special_permissions: user?.resolved_special_permissions ?? user?.special_permissions,
     requires_timesheet: user?.requires_timesheet,
     can_enter_own_timesheet: user?.can_enter_own_timesheet,
+    can_view_organization_chart: user?.can_view_organization_chart,
   };
 }
 
@@ -338,14 +340,14 @@ export function isDesignLeaderRole(roleName: string): boolean {
   return hasRole(roleName, ROLES.DESIGN_LEADER);
 }
 
-/** Org chart: Admin (full), Engineering Managers (division), Design Leaders (led teams). */
+/** Org chart module: only when /me says so (Admin, EM, or team leaders). */
 export function canViewOrganizationChart(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
-  return (
-    isAdminRole(ctx.role_name) ||
-    isEngineeringManagerRole(ctx.role_name) ||
-    isDesignLeaderRole(ctx.role_name)
-  );
+  if (typeof ctx.can_view_organization_chart === 'boolean') {
+    return ctx.can_view_organization_chart;
+  }
+  // Fallback before /me loads — never expose to Design Leader without the flag.
+  return isAdminRole(ctx.role_name) || isEngineeringManagerRole(ctx.role_name);
 }
 
 export function isProjectStaffRole(roleName: string): boolean {

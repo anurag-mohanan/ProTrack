@@ -43,4 +43,5 @@ export interface CurrentUser {
   team_names?: string[];
   requires_timesheet?: boolean;
   can_enter_own_timesheet?: boolean;
+  can_view_organization_chart?: boolean;
 }

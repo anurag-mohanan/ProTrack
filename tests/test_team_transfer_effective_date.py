@@ -188,6 +188,10 @@ def test_organization_chart_team_lead_sees_only_led_team(client, session):
     session.commit()
 
     headers = login(client, "anurag@prosohm.com")
+    me = client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json().get("can_view_organization_chart") is True
+
     response = client.get("/api/v1/teams/organization-chart", headers=headers)
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -202,6 +206,18 @@ def test_organization_chart_denied_for_designer(client, session):
     from tests.conftest import login
 
     headers = login(client, "binil@prosohm.com")
+    response = client.get("/api/v1/teams/organization-chart", headers=headers)
+    assert response.status_code == 403
+
+
+def test_organization_chart_hidden_for_design_leader_without_led_team(client, session):
+    from tests.conftest import login
+
+    headers = login(client, "anurag@prosohm.com")
+    me = client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json().get("can_view_organization_chart") is False
+
     response = client.get("/api/v1/teams/organization-chart", headers=headers)
     assert response.status_code == 403
 

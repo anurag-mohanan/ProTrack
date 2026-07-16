@@ -52,6 +52,7 @@ class CurrentUserRead(BaseModel):
     special_permissions: list[str] = Field(default_factory=list)
     requires_timesheet: bool = False
     can_enter_own_timesheet: bool = False
+    can_view_organization_chart: bool = False
 
     @property
     def password_changed(self) -> bool:

@@ -33,6 +33,7 @@ import {
   canAccessAdministration,
   canImportHistoricalProjects,
   canImportHistoricalTimesheets,
+  canViewOrganizationChart,
   isAdminRole,
   type AccessContext,
 } from '../utils/permissions';
@@ -174,7 +175,9 @@ export const getAdminCreateActions = (ctx: AccessContext): AdminCreateAction[] =
   filterAdminHubItems(ctx, ADMIN_CREATE_ACTIONS);
 
 export const getAdminManageItems = (ctx: AccessContext): AdminHubItem[] =>
-  filterAdminHubItems(ctx, ADMIN_MANAGE_ITEMS);
+  filterAdminHubItems(ctx, ADMIN_MANAGE_ITEMS).filter(
+    (item) => item.id !== 'organization-chart' || canViewOrganizationChart(ctx),
+  );
 
 export const getAdminSettingsItems = (ctx: AccessContext): AdminHubItem[] =>
   filterAdminHubItems(ctx, ALL_SETTINGS_ITEMS);

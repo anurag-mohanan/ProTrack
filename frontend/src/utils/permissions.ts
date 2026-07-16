@@ -7,6 +7,7 @@ import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded';
 import AccountBalanceRoundedIcon from '@mui/icons-material/AccountBalanceRounded';
 import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded';
+import AccountTreeRoundedIcon from '@mui/icons-material/AccountTreeRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import type { CurrentUser } from '../types';
 import {
@@ -200,6 +201,12 @@ const NAV_MODULE_CONFIG: Array<{
     label: 'Performance',
     path: '/performance',
     icon: BadgeRoundedIcon,
+  },
+  {
+    module: MODULE_DASHBOARD,
+    label: 'Organization',
+    path: '/organization',
+    icon: AccountTreeRoundedIcon,
   },
 ];
 

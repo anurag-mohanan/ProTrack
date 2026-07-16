@@ -120,3 +120,70 @@ def test_future_dated_transfer_keeps_live_home_until_effective(client, session):
         session, user_id=user.id, team_id=target.id, as_of=date.today()
     )
     assert factor_target == Decimal("0")
+
+
+def test_organization_chart_lists_primary_members(client, session):
+    team = Team(id=uuid.uuid4(), name="Org Chart Team", colour="#004d40", is_active=True)
+    session.add(team)
+    session.commit()
+
+    user = session.get(User, IDS["user_binil"])
+    assert user is not None
+    user.team_id = team.id
+    session.add(
+        TeamMember(
+            team_id=team.id,
+            user_id=user.id,
+            role_within_team="Designer",
+            is_primary=True,
+            is_billable_headcount=True,
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/teams/organization-chart",
+        headers=client.auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert "teams" in payload
+    column = next((row for row in payload["teams"] if row["team_id"] == str(team.id)), None)
+    assert column is not None
+    assert any(person["user_id"] == str(user.id) for person in column["people"])
+
+
+def test_assign_primary_from_organization_chart(client, session):
+    team = Team(id=uuid.uuid4(), name="Assign Home Team", colour="#1b5e20", is_active=True)
+    session.add(team)
+    session.commit()
+
+    user = session.get(User, IDS["user_senior_designer"])
+    assert user is not None
+    # Clear existing memberships for a clean assign
+    for row in session.scalars(select(TeamMember).where(TeamMember.user_id == user.id)).all():
+        session.delete(row)
+    user.team_id = None
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/teams/{team.id}/members/assign-primary",
+        json={
+            "user_id": str(user.id),
+            "effective_from": "2026-07-01",
+            "update_reporting_manager": False,
+        },
+        headers=client.auth_headers,
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["team_id"] == str(team.id)
+    assert body["is_primary"] is True
+
+    session.refresh(user)
+    assert user.team_id == team.id
+
+    factor = primary_team_salary_factor(
+        session, user_id=user.id, team_id=team.id, as_of=date(2026, 7, 15)
+    )
+    assert factor == Decimal("1")

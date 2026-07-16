@@ -11,12 +11,17 @@ from app.models.models import Team, User
 from app.schemas.delete_check import DeleteCheckResponse
 from app.schemas.team import (
     TeamCreate,
+    TeamMemberAssignPrimary,
     TeamMemberCreate,
     TeamMemberRead,
     TeamMemberTransfer,
     TeamMemberUpdate,
     TeamRead,
     TeamUpdate,
+)
+from app.services.organization_chart_service import (
+    OrganizationChartRead,
+    build_organization_chart,
 )
 
 from app.services.master_data_delete_service import (
@@ -60,6 +65,15 @@ def list_teams(
     _user: User = read_access,
 ):
     return team.list_read(db, skip=skip, limit=limit, is_active=is_active)
+
+
+@router.get("/organization-chart", response_model=OrganizationChartRead)
+def get_organization_chart(
+    db: Session = Depends(get_db),
+    _user: User = read_access,
+):
+    """Card layout of primary-team homes for drag-and-drop resource moves."""
+    return build_organization_chart(db)
 
 
 @router.post("", response_model=TeamRead, status_code=status.HTTP_201_CREATED)
@@ -194,6 +208,31 @@ def remove_team_member(
         raise _handle_validation(exc) from exc
 
 
+@router.post(
+    "/{record_id}/members/assign-primary",
+    response_model=TeamMemberRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def assign_primary_team_member(
+    record_id: UUID,
+    payload: TeamMemberAssignPrimary,
+    db: Session = Depends(get_db),
+    _user: User = write_access,
+):
+    """Assign an unassigned user as primary home on this team (dated for P&L)."""
+    get_object_or_404(db, Team, record_id)
+    try:
+        return team.assign_primary_member(
+            db,
+            team_id=record_id,
+            user_id=payload.user_id,
+            effective_from=payload.effective_from,
+            update_reporting_manager=payload.update_reporting_manager,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
 @router.post("/{record_id}/members/{member_id}/transfer", response_model=TeamMemberRead)
 def transfer_team_member(
     record_id: UUID,
@@ -209,6 +248,7 @@ def transfer_team_member(
             member_id=member_id,
             target_team_id=payload.target_team_id,
             effective_from=payload.effective_from,
+            update_reporting_manager=payload.update_reporting_manager,
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc

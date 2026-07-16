@@ -28,6 +28,49 @@ export interface TeamMember extends Timestamped {
 export interface TeamMemberTransfer {
   target_team_id: string;
   effective_from?: string | null;
+  update_reporting_manager?: boolean;
+}
+
+export interface TeamMemberAssignPrimary {
+  user_id: string;
+  effective_from?: string | null;
+  update_reporting_manager?: boolean;
+}
+
+export interface OrgChartPerson {
+  user_id: string;
+  member_id: string | null;
+  source_team_id: string | null;
+  name: string;
+  email: string;
+  designation: string | null;
+  role_name: string | null;
+  relationship_type: string;
+  is_primary: boolean;
+  can_move: boolean;
+  is_billable_headcount: boolean;
+  manager_id: string | null;
+  manager_name: string | null;
+  stream_name: string | null;
+  company_experience: string | null;
+  joining_date: string | null;
+  membership_effective_from: string | null;
+}
+
+export interface OrgChartTeamColumn {
+  team_id: string;
+  team_name: string;
+  colour: string;
+  team_lead_id: string | null;
+  team_lead_name: string | null;
+  member_count: number;
+  people: OrgChartPerson[];
+}
+
+export interface OrganizationChart {
+  teams: OrgChartTeamColumn[];
+  unassigned: OrgChartPerson[];
+  note: string;
 }
 
 export interface TeamCreate {

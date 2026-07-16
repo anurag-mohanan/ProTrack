@@ -69,3 +69,19 @@ class TeamMemberTransfer(BaseModel):
         default=None,
         description="First day on the target team (YYYY-MM-DD). Defaults to today.",
     )
+    update_reporting_manager: bool = Field(
+        default=True,
+        description="When true, set the user's manager to the target team's lead.",
+    )
+
+
+class TeamMemberAssignPrimary(BaseModel):
+    user_id: UUID
+    effective_from: date | None = Field(
+        default=None,
+        description="First day on this team (YYYY-MM-DD). Defaults to today.",
+    )
+    update_reporting_manager: bool = Field(
+        default=True,
+        description="When true, set the user's manager to this team's lead.",
+    )

@@ -17,6 +17,8 @@ const ROUTE_LABELS: Record<string, string> = {
   '/timesheets/month': 'Timesheet Entry',
   '/workload': 'Workload',
   '/resource-planning': 'Resource Planning',
+  '/performance': 'Performance',
+  '/organization': 'Organization Chart',
   '/reports': 'Reports',
   '/profile': 'My Profile',
   '/admin/dashboard': 'Admin Dashboard',

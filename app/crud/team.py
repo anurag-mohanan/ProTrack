@@ -270,6 +270,7 @@ class CRUDTeam(CRUDBase[Team, TeamCreate, TeamUpdate]):
         member_id: UUID,
         target_team_id: UUID,
         effective_from: date | None = None,
+        update_reporting_manager: bool = True,
     ) -> TeamMemberRead:
         from app.services.team_transfer_service import transfer_primary_membership
 
@@ -299,10 +300,37 @@ class CRUDTeam(CRUDBase[Team, TeamCreate, TeamUpdate]):
             target_team_id=target_team_id,
             effective_from=transfer_date,
             member=member,
+            update_reporting_manager=update_reporting_manager,
         )
         db.commit()
         db.refresh(moved)
         return build_team_member_read(db, moved)
+
+    def assign_primary_member(
+        self,
+        db: Session,
+        *,
+        team_id: UUID,
+        user_id: UUID,
+        effective_from: date | None = None,
+        update_reporting_manager: bool = True,
+    ) -> TeamMemberRead:
+        from app.services.team_transfer_service import assign_primary_membership
+
+        user = db.get(User, user_id)
+        if user is None or not user.is_active:
+            raise ProTrackValidationError("User not found or inactive")
+        assign_date = effective_from or date.today()
+        member = assign_primary_membership(
+            db,
+            user=user,
+            target_team_id=team_id,
+            effective_from=assign_date,
+            update_reporting_manager=update_reporting_manager,
+        )
+        db.commit()
+        db.refresh(member)
+        return build_team_member_read(db, member)
 
 
 team = CRUDTeam(Team)

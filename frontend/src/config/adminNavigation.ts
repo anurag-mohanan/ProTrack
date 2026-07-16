@@ -98,6 +98,13 @@ export const ADMIN_MANAGE_ITEMS: AdminHubItem[] = [
   { id: 'customers', title: 'Customers', description: 'Customer organisations.', icon: BusinessIcon, path: '/admin/customers' },
   { id: 'contacts', title: 'Contacts', description: 'Customer contact people.', icon: ContactPhoneIcon, path: '/admin/contacts' },
   { id: 'teams', title: 'Teams', description: 'Engineering teams and leads.', icon: GroupsIcon, path: '/admin/teams' },
+  {
+    id: 'organization-chart',
+    title: 'Organization Chart',
+    description: 'Drag cards to move resources with P&L effective dates.',
+    icon: AccountTreeIcon,
+    path: '/organization',
+  },
   { id: 'roles', title: 'Roles', description: 'Security roles and permissions.', icon: SecurityIcon, path: '/admin/roles' },
   { id: 'task-types', title: 'Task Types', description: 'Productive task categories.', icon: CategoryIcon, path: '/admin/task-types' },
   { id: 'streams', title: 'Streams', description: 'Design streams and disciplines.', icon: AccountTreeIcon, path: '/admin/streams' },

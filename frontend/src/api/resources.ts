@@ -64,6 +64,12 @@ export const teamsApi = {
     import('../types/Team').TeamCreate,
     import('../types/Team').TeamUpdate
   >('teams'),
+  organizationChart: async (): Promise<import('../types/Team').OrganizationChart> => {
+    const { data } = await apiClient.get<import('../types/Team').OrganizationChart>(
+      '/teams/organization-chart',
+    );
+    return data;
+  },
   transferMember: async (
     teamId: string,
     memberId: string,
@@ -71,6 +77,16 @@ export const teamsApi = {
   ): Promise<import('../types/Team').TeamMember> => {
     const { data } = await apiClient.post<import('../types/Team').TeamMember>(
       `/teams/${teamId}/members/${memberId}/transfer`,
+      payload,
+    );
+    return data;
+  },
+  assignPrimary: async (
+    teamId: string,
+    payload: import('../types/Team').TeamMemberAssignPrimary,
+  ): Promise<import('../types/Team').TeamMember> => {
+    const { data } = await apiClient.post<import('../types/Team').TeamMember>(
+      `/teams/${teamId}/members/assign-primary`,
       payload,
     );
     return data;

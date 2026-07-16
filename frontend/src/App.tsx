@@ -60,6 +60,7 @@ const HrDashboardPage = lazy(() =>
   })),
 );
 const PerformancePage = lazy(() => import('./pages/PerformancePage'));
+const OrganizationChartPage = lazy(() => import('./pages/OrganizationChartPage'));
 const AnalyticsHubPage = lazy(() =>
   import('./pages/AnalyticsHubPage').then((module) => ({
     default: module.AnalyticsHubPage,
@@ -267,6 +268,15 @@ export default function App() {
                       }
                     />
                     <Route path="/performance-reviews" element={<Navigate to="/performance?tab=reviews" replace />} />
+                    <Route
+                      path="/organization"
+                      element={
+                        <Suspense fallback={<LoadingState message="Loading organization chart…" />}>
+                          <OrganizationChartPage />
+                        </Suspense>
+                      }
+                    />
+                    <Route path="/admin/organization-chart" element={<Navigate to="/organization" replace />} />
                     <Route element={<ModuleRoute module={MODULE_FINANCIAL_PLANNING} />}>
                       <Route
                         path="/finance"

@@ -60,6 +60,68 @@ def get_accessible_team_ids(db: Session, user: User) -> set[UUID] | None:
     return assigned
 
 
+def get_led_team_ids(db: Session, user: User) -> set[UUID]:
+    """Teams where the user is team lead or has a leadership membership row."""
+    led = set(
+        db.scalars(
+            select(Team.id).where(
+                Team.team_lead_id == user.id,
+                Team.is_active.is_(True),
+            )
+        ).all()
+    )
+    led.update(
+        db.scalars(
+            select(TeamMember.team_id).where(
+                TeamMember.user_id == user.id,
+                TeamMember.relationship_type.in_(
+                    (
+                        TeamRelationshipType.team_leader,
+                        TeamRelationshipType.engineering_manager,
+                    )
+                ),
+            )
+        ).all()
+    )
+    return led
+
+
+def get_organization_chart_team_ids(db: Session, user: User) -> set[UUID] | None:
+    """Teams visible on the organization chart.
+
+    Returns:
+      None — full org chart (Admin, or unscoped Engineering Manager)
+      set — division / led teams only (empty = no columns for this viewer)
+    """
+    if is_admin(db, user):
+        return None
+
+    role_name = get_role_name(db, user)
+    if role_name == ENGINEERING_MANAGER:
+        # Division portfolio (membership ∪ leadership). Unscoped EM → org-wide.
+        return get_accessible_team_ids(db, user)
+
+    # Team leaders only see teams they manage — not mere membership.
+    return get_led_team_ids(db, user)
+
+
+def user_can_view_organization_chart(db: Session, user: User) -> bool:
+    """Admin, Engineering Manager, or a team leader for at least one team."""
+    from app.core.permissions import DESIGN_LEADER
+
+    if is_admin(db, user):
+        return True
+    role_name = get_role_name(db, user)
+    if role_name == ENGINEERING_MANAGER:
+        return True
+    if role_name == DESIGN_LEADER and get_led_team_ids(db, user):
+        return True
+    # Non-DL users who are still designated team leads
+    if get_led_team_ids(db, user):
+        return True
+    return False
+
+
 def resolve_team_scope(
     db: Session,
     user: User,

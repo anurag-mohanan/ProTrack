@@ -70,6 +70,7 @@ export interface OrgChartTeamColumn {
 export interface OrganizationChart {
   teams: OrgChartTeamColumn[];
   unassigned: OrgChartPerson[];
+  scope?: 'full' | 'division' | 'team' | 'none' | string;
   note: string;
 }
 

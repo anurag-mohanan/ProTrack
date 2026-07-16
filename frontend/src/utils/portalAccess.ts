@@ -4,6 +4,7 @@ import {
   canEnterOwnTimesheet,
   canViewAiInsights,
   canViewArchivedProjects,
+  canViewOrganizationChart,
   canViewReports,
   canViewResourcePlanning,
   canViewWorkload,
@@ -56,6 +57,9 @@ export function canAccessPortalPath(ctx: AccessContext, path: string): boolean {
     normalized.startsWith('/executive-wall')
   ) {
     return canViewReports(ctx);
+  }
+  if (normalized.startsWith('/organization')) {
+    return canViewOrganizationChart(ctx);
   }
   if (normalized.startsWith('/finance')) {
     return userHasModule(ctx, MODULE_FINANCIAL_PLANNING);

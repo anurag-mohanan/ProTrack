@@ -171,6 +171,7 @@ const NAV_MODULE_CONFIG: Array<{
   label: string | ((ctx: AccessContext) => string);
   path: string;
   icon: SvgIconComponent;
+  visible?: (ctx: AccessContext) => boolean;
 }> = [
   { module: MODULE_DASHBOARD, label: 'Dashboard', path: '/dashboard', icon: DashboardRoundedIcon },
   {
@@ -207,6 +208,7 @@ const NAV_MODULE_CONFIG: Array<{
     label: 'Organization',
     path: '/organization',
     icon: AccountTreeRoundedIcon,
+    visible: (ctx: AccessContext) => canViewOrganizationChart(ctx),
   },
 ];
 
@@ -334,6 +336,16 @@ export function isEngineeringManagerRole(roleName: string): boolean {
 
 export function isDesignLeaderRole(roleName: string): boolean {
   return hasRole(roleName, ROLES.DESIGN_LEADER);
+}
+
+/** Org chart: Admin (full), Engineering Managers (division), Design Leaders (led teams). */
+export function canViewOrganizationChart(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return (
+    isAdminRole(ctx.role_name) ||
+    isEngineeringManagerRole(ctx.role_name) ||
+    isDesignLeaderRole(ctx.role_name)
+  );
 }
 
 export function isProjectStaffRole(roleName: string): boolean {
@@ -554,7 +566,9 @@ export function getMainNavItems(roleNameOrContext: string | AccessContext): Main
   }
   const modules = new Set(resolveModules(ctx));
 
-  return NAV_MODULE_CONFIG.filter((item) => modules.has(item.module)).map((item) => ({
+  return NAV_MODULE_CONFIG.filter((item) => modules.has(item.module))
+    .filter((item) => !item.visible || item.visible(ctx))
+    .map((item) => ({
     module: item.module,
     path: item.path,
     icon: item.icon,

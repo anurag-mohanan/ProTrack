@@ -34,6 +34,7 @@ import {
   canViewReports,
   canViewResourcePlanning,
   canViewWorkload,
+  canViewOrganizationChart,
   ROLES,
 } from './utils/permissions';
 import { ModuleRoute } from './routes/ModuleRoute';
@@ -268,14 +269,16 @@ export default function App() {
                       }
                     />
                     <Route path="/performance-reviews" element={<Navigate to="/performance?tab=reviews" replace />} />
-                    <Route
-                      path="/organization"
-                      element={
-                        <Suspense fallback={<LoadingState message="Loading organization chart…" />}>
-                          <OrganizationChartPage />
-                        </Suspense>
-                      }
-                    />
+                    <Route element={<RoleRoute allowed={canViewOrganizationChart} />}>
+                      <Route
+                        path="/organization"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading organization chart…" />}>
+                            <OrganizationChartPage />
+                          </Suspense>
+                        }
+                      />
+                    </Route>
                     <Route path="/admin/organization-chart" element={<Navigate to="/organization" replace />} />
                     <Route element={<ModuleRoute module={MODULE_FINANCIAL_PLANNING} />}>
                       <Route

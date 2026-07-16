@@ -354,9 +354,10 @@ export function OrganizationChartPage() {
         Organization Chart
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {canEdit
-          ? 'Admin: drop a card on a team column, confirm the effective date, then save.'
-          : 'View only — ask an Admin to move resources with an effective date.'}
+        {chartQuery.data?.note ??
+          (canEdit
+            ? 'Admin: drop a card on a team column, confirm the effective date, then save.'
+            : 'View limited to your division or teams you lead. Ask an Admin to move resources.')}
       </Typography>
 
       {chartQuery.isLoading ? (
@@ -365,6 +366,12 @@ export function OrganizationChartPage() {
         </Box>
       ) : chartQuery.isError ? (
         <Alert severity="error">{getErrorMessage(chartQuery.error)}</Alert>
+      ) : (chartQuery.data?.teams.length ?? 0) === 0 &&
+        (chartQuery.data?.unassigned.length ?? 0) === 0 ? (
+        <Alert severity="info">
+          {chartQuery.data?.note ||
+            'No teams are in your organization-chart scope. Engineering Managers see their division; team leaders see only teams they lead.'}
+        </Alert>
       ) : (
         <Box
           sx={{

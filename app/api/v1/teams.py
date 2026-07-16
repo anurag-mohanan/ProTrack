@@ -3,6 +3,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.services.organization_chart_service import (
+    OrganizationChartRead,
+    build_organization_chart,
+)
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db, get_object_or_404
 from app.core.exceptions import ProTrackValidationError
@@ -18,10 +22,6 @@ from app.schemas.team import (
     TeamMemberUpdate,
     TeamRead,
     TeamUpdate,
-)
-from app.services.organization_chart_service import (
-    OrganizationChartRead,
-    build_organization_chart,
 )
 
 from app.services.master_data_delete_service import (
@@ -49,6 +49,15 @@ read_access = Depends(
 )
 
 
+org_chart_access = Depends(
+    require_roles(
+        "Admin",
+        "Engineering Manager",
+        "Design Leader",
+    )
+)
+
+
 def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
     return HTTPException(
         status_code=exc.status_code,
@@ -70,10 +79,10 @@ def list_teams(
 @router.get("/organization-chart", response_model=OrganizationChartRead)
 def get_organization_chart(
     db: Session = Depends(get_db),
-    _user: User = read_access,
+    current_user: User = org_chart_access,
 ):
-    """Card layout of primary-team homes for drag-and-drop resource moves."""
-    return build_organization_chart(db)
+    """Scoped org chart: EM division / team lead's teams (Admin = full)."""
+    return build_organization_chart(db, viewer=current_user)
 
 
 @router.post("", response_model=TeamRead, status_code=status.HTTP_201_CREATED)

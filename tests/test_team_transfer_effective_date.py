@@ -148,9 +148,62 @@ def test_organization_chart_lists_primary_members(client, session):
     assert response.status_code == 200, response.text
     payload = response.json()
     assert "teams" in payload
+    assert payload.get("scope") == "full"
     column = next((row for row in payload["teams"] if row["team_id"] == str(team.id)), None)
     assert column is not None
     assert any(person["user_id"] == str(user.id) for person in column["people"])
+
+
+def test_organization_chart_team_lead_sees_only_led_team(client, session):
+    from tests.conftest import login
+    from app.models.enums import TeamRelationshipType
+
+    led = Team(id=uuid.uuid4(), name="Led Org Team", colour="#0d47a1", is_active=True)
+    other = Team(id=uuid.uuid4(), name="Other Org Team", colour="#b71c1c", is_active=True)
+    session.add_all([led, other])
+    session.commit()
+
+    leader = session.get(User, IDS["user_anurag"])
+    assert leader is not None
+    led.team_lead_id = leader.id
+    session.add(led)
+    session.add(
+        TeamMember(
+            team_id=led.id,
+            user_id=leader.id,
+            role_within_team="Team Leader",
+            relationship_type=TeamRelationshipType.team_leader,
+            is_primary=True,
+            is_billable_headcount=False,
+        )
+    )
+    session.add(
+        TeamMember(
+            team_id=other.id,
+            user_id=IDS["user_binil"],
+            is_primary=True,
+            is_billable_headcount=True,
+        )
+    )
+    session.commit()
+
+    headers = login(client, "anurag@prosohm.com")
+    response = client.get("/api/v1/teams/organization-chart", headers=headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    team_ids = {row["team_id"] for row in payload["teams"]}
+    assert str(led.id) in team_ids
+    assert str(other.id) not in team_ids
+    assert payload.get("unassigned") == []
+    assert payload.get("scope") == "team"
+
+
+def test_organization_chart_denied_for_designer(client, session):
+    from tests.conftest import login
+
+    headers = login(client, "binil@prosohm.com")
+    response = client.get("/api/v1/teams/organization-chart", headers=headers)
+    assert response.status_code == 403
 
 
 def test_assign_primary_from_organization_chart(client, session):

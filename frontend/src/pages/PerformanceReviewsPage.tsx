@@ -43,6 +43,7 @@ import {
   PerformanceReviewHero,
   PerformanceReviewScoreBadge,
 } from '../components/performanceReview/PerformanceReviewPrimitives';
+import { DeleteDialog } from '../components/ui/design-system/DeleteDialog';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -182,6 +183,7 @@ export function PerformanceReviewsPage() {
   const [periodLabel, setPeriodLabel] = useState(new Date().getFullYear().toString());
   const [dueDate, setDueDate] = useState('');
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Review | null>(null);
 
   const templateQuery = useQuery({
     queryKey: ['performance-reviews', 'template'],
@@ -241,6 +243,20 @@ export function PerformanceReviewsPage() {
       showSuccess('Performance review updated');
       setSelectedReviewId(review.id);
       setEditor(reviewToEditor(review));
+      void queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
+    },
+    onError: (error: unknown) => showError(getErrorMessage(error)),
+  });
+
+  const deleteReviewMutation = useMutation({
+    mutationFn: async (reviewId: string) => {
+      await apiClient.delete(`/hr/reviews/${reviewId}`);
+    },
+    onSuccess: () => {
+      showSuccess('Performance review deleted');
+      setDeleteTarget(null);
+      setSelectedReviewId('');
+      setEditor(null);
       void queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
@@ -503,10 +519,27 @@ export function PerformanceReviewsPage() {
                 });
               }}
               saving={updateReviewMutation.isPending}
+              onDeleteRequest={setDeleteTarget}
             />
           </Grid>
         </Grid>
       ) : null}
+
+      <DeleteDialog
+        open={Boolean(deleteTarget)}
+        objectLabel="performance review"
+        objectName={
+          deleteTarget
+            ? `${deleteTarget.employee_name} · ${deleteTarget.period_label}`
+            : ''
+        }
+        extraMessage="All ratings and comments on this sheet will be removed from active review lists."
+        loading={deleteReviewMutation.isPending}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteReviewMutation.mutate(deleteTarget.id);
+        }}
+      />
     </Stack>
   );
 }
@@ -594,6 +627,7 @@ function ReviewDetailCard({
   onSave,
   onEmployeeSave,
   onAcknowledge,
+  onDeleteRequest,
   saving,
 }: {
   review: Review | null;
@@ -604,6 +638,7 @@ function ReviewDetailCard({
   onSave?: (status: string) => void;
   onEmployeeSave?: () => void;
   onAcknowledge?: () => void;
+  onDeleteRequest?: (review: Review) => void;
   saving: boolean;
 }) {
   if (!review || !editor) {
@@ -882,6 +917,17 @@ function ReviewDetailCard({
         </Stack>
 
         <Stack direction="row" spacing={1} sx={{ mt: 2, justifyContent: 'flex-end' }}>
+          {canManage && onDeleteRequest ? (
+            <Button
+              color="error"
+              variant="outlined"
+              disabled={saving}
+              onClick={() => onDeleteRequest(review)}
+              sx={{ mr: 'auto' }}
+            >
+              Delete Review
+            </Button>
+          ) : null}
           {canManage && onSave ? (
             <>
               <Button variant="outlined" disabled={saving} onClick={() => onSave('draft')}>

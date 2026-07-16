@@ -93,6 +93,48 @@ def test_team_leader_can_create_review_and_employee_can_see_it(client, session):
     assert ack.json()["status"] == "acknowledged"
 
 
+def test_non_manager_cannot_delete_review(client, session):
+    team = Team(
+        id=uuid.uuid4(),
+        name="Delete Guard Team",
+        is_active=True,
+        team_lead_id=IDS["user_anurag"],
+    )
+    session.add(team)
+    session.add(
+        TeamMember(
+            team_id=team.id,
+            user_id=IDS["user_binil"],
+            is_primary=True,
+            relationship_type=TeamRelationshipType.member,
+        )
+    )
+    session.commit()
+
+    leader_headers = login(client, "anurag@prosohm.com")
+    created = client.post(
+        "/api/v1/hr/reviews",
+        headers=leader_headers,
+        json={
+            "employee_id": str(IDS["user_binil"]),
+            "team_id": str(team.id),
+            "period_label": "Delete test",
+        },
+    )
+    assert created.status_code == 200, created.text
+    review_id = created.json()["id"]
+
+    employee_headers = login(client, "binil@prosohm.com")
+    denied = client.delete(f"/api/v1/hr/reviews/{review_id}", headers=employee_headers)
+    assert denied.status_code == 403
+
+    deleted = client.delete(f"/api/v1/hr/reviews/{review_id}", headers=leader_headers)
+    assert deleted.status_code == 204, deleted.text
+
+    missing = client.get(f"/api/v1/hr/reviews/{review_id}", headers=leader_headers)
+    assert missing.status_code == 404
+
+
 def test_non_manager_cannot_create_review_for_other_user(client, session):
     team = Team(id=uuid.uuid4(), name="Protected Review Team", is_active=True)
     session.add(team)

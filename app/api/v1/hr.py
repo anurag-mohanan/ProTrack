@@ -747,3 +747,29 @@ def update_performance_review(
     )
     assert sheet is not None
     return _review_to_read(db, sheet, current_user)
+
+
+@router.delete("/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_performance_review(
+    review_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sheet = db.scalar(
+        select(PerformanceReviewSheet).where(
+            PerformanceReviewSheet.id == review_id,
+            PerformanceReviewSheet.is_active.is_(True),
+        )
+    )
+    if sheet is None:
+        raise HTTPException(status_code=404, detail="Performance review not found")
+    can_manage = sheet.team_id is not None and user_can_manage_team_reviews(
+        db, current_user, sheet.team_id
+    )
+    is_reviewer = sheet.reviewer_id == current_user.id
+    if not (can_manage or is_reviewer):
+        raise HTTPException(status_code=403, detail="Performance review delete access denied")
+    sheet.is_active = False
+    db.add(sheet)
+    db.commit()
+    return None

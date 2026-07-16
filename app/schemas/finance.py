@@ -521,6 +521,36 @@ class FinanceReportRow(BaseModel):
     currency_code: str = "INR"
 
 
+class KpiBreakdownLine(BaseModel):
+    id: str
+    label: str
+    detail: str | None = None
+    amount_inr: Decimal
+    share_pct: Decimal = Decimal("0")
+    band: str = "normal"
+    kind: str = "expense"
+    category_code: str | None = None
+
+
+class KpiBreakdownGroup(BaseModel):
+    label: str
+    total_inr: Decimal
+    lines: list[KpiBreakdownLine] = Field(default_factory=list)
+
+
+class KpiBreakdownRead(BaseModel):
+    metric: str
+    title: str
+    subtitle: str
+    total_inr: Decimal
+    currency_code: str = "INR"
+    formula: str | None = None
+    insights: list[str] = Field(default_factory=list)
+    groups: list[KpiBreakdownGroup] = Field(default_factory=list)
+    empty_hints: list[KpiBreakdownLine] = Field(default_factory=list)
+    meta: dict = Field(default_factory=dict)
+
+
 class CompanyFinanceSettingsRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

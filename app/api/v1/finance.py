@@ -69,6 +69,7 @@ from app.schemas.finance import (
     FinanceReportRow,
     FxRateCreate,
     FxRateRead,
+    KpiBreakdownRead,
     PaidByDefaultRead,
     PlanVsActualRead,
     QuoteImportItemResult,
@@ -159,6 +160,27 @@ def finance_dashboard(
     if team_id is not None and db.get(Team, team_id) is None:
         raise HTTPException(status_code=400, detail="Team not found")
     return get_finance_dashboard(db, team_id=team_id)
+
+
+@router.get("/kpi-breakdown", response_model=KpiBreakdownRead)
+def finance_kpi_breakdown(
+    metric: str = Query(..., description="KPI metric key, e.g. overhead_opex"),
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Ranked composition of a finance KPI total (click-through from cockpit cards)."""
+    from app.services.finance.kpi_breakdown_service import get_kpi_breakdown
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    try:
+        return KpiBreakdownRead.model_validate(
+            get_kpi_breakdown(db, metric=metric, team_id=team_id)
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/expenses/paid-by-default", response_model=PaidByDefaultRead)

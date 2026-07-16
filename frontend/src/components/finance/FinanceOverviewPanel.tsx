@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Box, Chip, Grid, Stack, Typography } from '@mui/material';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
@@ -22,6 +22,10 @@ import {
   FinanceSection,
   financeMoney,
 } from './FinanceCockpitPrimitives';
+import {
+  FinanceKpiBreakdownDrawer,
+  type KpiBreakdownMetric,
+} from './FinanceKpiBreakdownDrawer';
 
 type FinanceDashboard = {
   base_currency: string;
@@ -65,6 +69,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
   const { showSuccess } = useToast();
   const queryClient = useQueryClient();
   const q = teamQueryParam(teamId);
+  const [breakdownMetric, setBreakdownMetric] = useState<KpiBreakdownMetric | null>(null);
 
   const dashboardQuery = useQuery({
     queryKey: ['finance-dashboard', teamId || 'all'],
@@ -132,7 +137,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
         title="Financial planning cockpit"
         subtitle={`Live cost, revenue, and overhead signals for ${scopeLabel}${
           data.planning_fy_label ? ` · ${data.planning_fy_label}` : ''
-        }. Scan KPIs and charts first — detail tabs handle entry.`}
+        }. Click any KPI card to see what accumulates into that number.`}
         chips={
           <>
             <Chip size="small" label={currency} sx={{ fontWeight: 700 }} />
@@ -153,20 +158,22 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
           <KpiMetricCard
             title="Operating cost / mo"
             value={financeMoney(operating, currency)}
-            subtitle="Prosohm salaries + OpEx"
+            subtitle="Click for salary + OpEx drivers"
             icon={AccountBalanceWalletOutlinedIcon}
             accent="warning"
             compact
+            onClick={() => setBreakdownMetric('operating_cost')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KpiMetricCard
             title="Revenue / quarter"
             value={financeMoney(revenueQ, currency)}
-            subtitle="Quotes + commercial fees"
+            subtitle="Click for quotes + fees mix"
             icon={TrendingUpOutlinedIcon}
             accent="success"
             compact
+            onClick={() => setBreakdownMetric('revenue_quarter')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4 }}>
@@ -187,20 +194,22 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
           <KpiMetricCard
             title="Team fees / mo"
             value={financeMoney(fees, currency)}
-            subtitle="Retainer / subscription"
+            subtitle="Click for fee composition"
             icon={PaymentsOutlinedIcon}
             accent="primary"
             compact
+            onClick={() => setBreakdownMetric('team_fees')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KpiMetricCard
             title="Overhead / resource"
             value={financeMoney(cpr, currency)}
-            subtitle={`Pool ${financeMoney(overheadPool, currency)}`}
+            subtitle="Click for pool ÷ FTE detail"
             icon={GroupsOutlinedIcon}
             accent="info"
             compact
+            onClick={() => setBreakdownMetric('overhead_cpr')}
           />
         </Grid>
       </Grid>
@@ -301,6 +310,13 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
           </Stack>
         )}
       </FinanceSection>
+
+      <FinanceKpiBreakdownDrawer
+        open={Boolean(breakdownMetric)}
+        metric={breakdownMetric}
+        teamId={teamId}
+        onClose={() => setBreakdownMetric(null)}
+      />
     </Stack>
   );
 }

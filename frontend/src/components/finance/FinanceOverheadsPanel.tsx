@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Chip,
@@ -13,7 +16,9 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import AddOutlinedIcon from '@mui/icons-material/AddOutlined';
 import ApartmentOutlinedIcon from '@mui/icons-material/ApartmentOutlined';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
@@ -33,24 +38,96 @@ import {
   FinanceSection,
   financeMoney,
 } from './FinanceCockpitPrimitives';
+import {
+  FinanceKpiBreakdownDrawer,
+  type KpiBreakdownMetric,
+} from './FinanceKpiBreakdownDrawer';
 
-/** HQ OpEx lines Finance wants pre-shown for amount entry (maps to seeded cost centres). */
-const DEFAULT_OVERHEAD_PLACEHOLDERS: Array<{
+/** Catalogue categories — each holds many named expense lines. */
+const OVERHEAD_CATEGORIES: Array<{
   code: string;
   label: string;
   frequency: 'monthly' | 'quarterly' | 'yearly';
   hint: string;
+  namePlaceholder: string;
 }> = [
-  { code: 'RENT', label: 'Rent', frequency: 'monthly', hint: 'Office / facility rent' },
-  { code: 'UTILITIES', label: 'Utilities', frequency: 'monthly', hint: 'Power, water, shared utilities' },
-  { code: 'INTERNET', label: 'Internet', frequency: 'monthly', hint: 'Connectivity & WAN' },
-  { code: 'OFFICE', label: 'Office expenses', frequency: 'monthly', hint: 'Supplies & admin OpEx' },
-  { code: 'MAINTENANCE', label: 'Maintenance', frequency: 'monthly', hint: 'Facility & equipment upkeep' },
-  { code: 'CLOUD', label: 'Cloud', frequency: 'monthly', hint: 'Hosting & SaaS infra' },
-  { code: 'SW_LICENSES', label: 'Software licenses', frequency: 'yearly', hint: 'CAD / tools licenses' },
-  { code: 'INSURANCE', label: 'Insurance', frequency: 'yearly', hint: 'Corporate policies' },
-  { code: 'TRAINING', label: 'Training', frequency: 'yearly', hint: 'Learning & certifications' },
-  { code: 'TRAVEL', label: 'Travel', frequency: 'yearly', hint: 'Business travel OpEx' },
+  {
+    code: 'RENT',
+    label: 'Rent',
+    frequency: 'monthly',
+    hint: 'Facilities & leases',
+    namePlaceholder: 'e.g. HQ lease, annex, parking',
+  },
+  {
+    code: 'UTILITIES',
+    label: 'Utilities',
+    frequency: 'monthly',
+    hint: 'Power, water, genset',
+    namePlaceholder: 'e.g. Electricity, water, diesel',
+  },
+  {
+    code: 'INTERNET',
+    label: 'Internet',
+    frequency: 'monthly',
+    hint: 'Connectivity',
+    namePlaceholder: 'e.g. Primary ISP, backup link',
+  },
+  {
+    code: 'OFFICE',
+    label: 'Office expenses',
+    frequency: 'monthly',
+    hint: 'Supplies & admin',
+    namePlaceholder: 'e.g. Stationery, pantry',
+  },
+  {
+    code: 'MAINTENANCE',
+    label: 'Maintenance',
+    frequency: 'monthly',
+    hint: 'Facility & equipment',
+    namePlaceholder: 'e.g. AMC, HVAC service',
+  },
+  {
+    code: 'CLOUD',
+    label: 'Cloud',
+    frequency: 'monthly',
+    hint: 'Hosting & SaaS infra',
+    namePlaceholder: 'e.g. AWS, Azure, Google Workspace',
+  },
+  {
+    code: 'SW_LICENSES',
+    label: 'Software licenses',
+    frequency: 'yearly',
+    hint: 'CAD / engineering tools',
+    namePlaceholder: 'e.g. NX Mach 3, AutoCAD, SolidWorks',
+  },
+  {
+    code: 'SW_RENEWALS',
+    label: 'Software renewals',
+    frequency: 'yearly',
+    hint: 'Renewal cycles',
+    namePlaceholder: 'e.g. NX renewal FY26',
+  },
+  {
+    code: 'INSURANCE',
+    label: 'Insurance',
+    frequency: 'yearly',
+    hint: 'Corporate policies',
+    namePlaceholder: 'e.g. Property, liability',
+  },
+  {
+    code: 'TRAINING',
+    label: 'Training',
+    frequency: 'yearly',
+    hint: 'Learning',
+    namePlaceholder: 'e.g. Certification cohort',
+  },
+  {
+    code: 'TRAVEL',
+    label: 'Travel',
+    frequency: 'yearly',
+    hint: 'Business travel',
+    namePlaceholder: 'e.g. Client visit Q2',
+  },
 ];
 
 type OverheadExpense = {
@@ -88,15 +165,40 @@ type OverheadDash = {
   };
 };
 
-type DraftMap = Record<string, string>;
+type LineDraft = {
+  name: string;
+  amount: string;
+  frequency: string;
+  vendor_name: string;
+};
+
+type AddDraft = {
+  name: string;
+  amount: string;
+  vendor_name: string;
+};
+
+const emptyAdd = (): AddDraft => ({ name: '', amount: '', vendor_name: '' });
+
+function lineDraftFromExpense(row: OverheadExpense): LineDraft {
+  return {
+    name: row.name ?? '',
+    amount: row.amount === null || row.amount === undefined ? '' : String(row.amount),
+    frequency: row.frequency || 'monthly',
+    vendor_name: row.vendor_name ?? '',
+  };
+}
 
 export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const dashQ = teamQueryParam(teamId);
-  const [drafts, setDrafts] = useState<DraftMap>({});
+  const [expanded, setExpanded] = useState<string | false>('SW_LICENSES');
+  const [lineDrafts, setLineDrafts] = useState<Record<string, LineDraft>>({});
+  const [addDrafts, setAddDrafts] = useState<Record<string, AddDraft>>({});
   const [showCustom, setShowCustom] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<OverheadExpense | null>(null);
+  const [breakdownMetric, setBreakdownMetric] = useState<KpiBreakdownMetric | null>(null);
   const [form, setForm] = useState({
     team_id: '',
     cost_centre_id: '',
@@ -163,39 +265,29 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
   );
 
   const expensesByCentreId = useMemo(() => {
-    const map = new Map<string, OverheadExpense>();
+    const map = new Map<string, OverheadExpense[]>();
     for (const row of expenses) {
-      const prev = map.get(row.cost_centre_id);
-      if (!prev || toFiniteNumber(row.amount) >= toFiniteNumber(prev.amount)) {
-        map.set(row.cost_centre_id, row);
-      }
+      const list = map.get(row.cost_centre_id) ?? [];
+      list.push(row);
+      map.set(row.cost_centre_id, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.name.localeCompare(b.name));
     }
     return map;
   }, [expenses]);
 
-  useEffect(() => {
-    const next: DraftMap = {};
-    for (const ph of DEFAULT_OVERHEAD_PLACEHOLDERS) {
-      const centre = centreByCode.get(ph.code);
-      if (!centre) continue;
-      const existing = expensesByCentreId.get(centre.id);
-      next[ph.code] = existing
-        ? String(existing.amount ?? '')
-        : (drafts[ph.code] ?? '');
-    }
-    setDrafts((prev) => {
-      const merged = { ...next };
-      for (const ph of DEFAULT_OVERHEAD_PLACEHOLDERS) {
-        if (prev[ph.code] !== undefined && !expensesByCentreId.get(centreByCode.get(ph.code)?.id ?? '')) {
-          // keep in-progress typing for empty placeholders
-          if (prev[ph.code] !== '' && next[ph.code] === '') merged[ph.code] = prev[ph.code];
-        }
-      }
-      return merged;
-    });
-    // Intentionally sync when expenses / centres change — not on every drafts keystroke.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [centreByCode, expensesByCentreId]);
+  const categoryCodes = new Set(OVERHEAD_CATEGORIES.map((c) => c.code));
+  const otherExpenses = expenses.filter((row) => {
+    const centre = centres.find((c) => c.id === row.cost_centre_id);
+    const code = (centre?.code || '').toUpperCase();
+    return !code || !categoryCodes.has(code);
+  });
+
+  const draftFor = (row: OverheadExpense): LineDraft =>
+    lineDrafts[row.id] ?? lineDraftFromExpense(row);
+
+  const addFor = (code: string): AddDraft => addDrafts[code] ?? emptyAdd();
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['finance-overhead-expenses'] });
@@ -203,42 +295,31 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
   };
 
-  const savePlaceholderMutation = useMutation({
-    mutationFn: async (code: string) => {
-      const ph = DEFAULT_OVERHEAD_PLACEHOLDERS.find((row) => row.code === code);
-      const centre = centreByCode.get(code);
-      if (!ph || !centre) throw new Error(`Cost centre ${code} is not seeded.`);
-      const team = corporateId || managementId;
-      if (!team) throw new Error('Management / Corporate team not ready.');
-      const amountRaw = (drafts[code] ?? '').trim().replace(/,/g, '');
-      if (!amountRaw) throw new Error('Enter an amount for this overhead line.');
-      const amount = Number(amountRaw);
-      if (!Number.isFinite(amount) || amount < 0) throw new Error('Amount must be a valid number.');
+  const defaultTeamId = corporateId || managementId || '';
 
-      const existing = expensesByCentreId.get(centre.id);
+  const createLineMutation = useMutation({
+    mutationFn: async (payload: {
+      code: string;
+      name: string;
+      amount: number;
+      vendor_name?: string;
+      frequency: string;
+    }) => {
+      const centre = centreByCode.get(payload.code);
+      if (!centre) throw new Error(`Cost centre ${payload.code} is not seeded.`);
+      if (!defaultTeamId) throw new Error('Management / Corporate team not ready.');
       const purchase = new Date().toISOString().slice(0, 10);
-      if (existing) {
-        return (
-          await apiClient.patch(`/finance/expenses/${existing.id}`, {
-            amount,
-            name: existing.name || ph.label,
-            frequency: existing.frequency || ph.frequency,
-            is_recurring: true,
-            paid_by: 'prosohm',
-            nature: 'opex',
-          })
-        ).data;
-      }
       return (
         await apiClient.post('/finance/expenses', {
-          team_id: team,
+          team_id: defaultTeamId,
           cost_centre_id: centre.id,
-          name: ph.label,
-          amount,
+          name: payload.name,
+          amount: payload.amount,
           currency_code: 'INR',
           nature: 'opex',
-          frequency: ph.frequency,
+          frequency: payload.frequency,
           paid_by: 'prosohm',
+          vendor_name: payload.vendor_name || null,
           purchase_date: purchase,
           start_date: purchase,
           is_recurring: true,
@@ -246,12 +327,58 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
         })
       ).data;
     },
-    onSuccess: () => {
-      showSuccess('Overhead line saved');
+    onSuccess: (_data, vars) => {
+      showSuccess(`Added line under ${vars.code}`);
+      setAddDrafts((prev) => ({ ...prev, [vars.code]: emptyAdd() }));
       invalidate();
     },
     onError: (error: unknown) => {
-      showError(apiErrorMessage(error, 'Could not save overhead line'));
+      showError(apiErrorMessage(error, 'Could not add overhead line'));
+    },
+  });
+
+  const updateLineMutation = useMutation({
+    mutationFn: async (payload: { id: string; draft: LineDraft }) => {
+      const amount = Number(String(payload.draft.amount).replace(/,/g, ''));
+      if (!payload.draft.name.trim()) throw new Error('Name is required.');
+      if (!Number.isFinite(amount) || amount < 0) throw new Error('Amount must be a valid number.');
+      return (
+        await apiClient.patch(`/finance/expenses/${payload.id}`, {
+          name: payload.draft.name.trim(),
+          amount,
+          frequency: payload.draft.frequency,
+          vendor_name: payload.draft.vendor_name.trim() || null,
+          is_recurring: true,
+          paid_by: 'prosohm',
+          nature: 'opex',
+        })
+      ).data;
+    },
+    onSuccess: (_data, vars) => {
+      showSuccess('Overhead line updated');
+      setLineDrafts((prev) => {
+        const next = { ...prev };
+        delete next[vars.id];
+        return next;
+      });
+      invalidate();
+    },
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not update overhead line'));
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/finance/expenses/${id}`);
+    },
+    onSuccess: () => {
+      showSuccess('Overhead line removed');
+      setDeleteTarget(null);
+      invalidate();
+    },
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not delete overhead line'));
     },
   });
 
@@ -289,28 +416,28 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiClient.delete(`/finance/expenses/${id}`);
-    },
-    onSuccess: () => {
-      showSuccess('Overhead line removed');
-      setDeleteTarget(null);
-      invalidate();
-    },
-    onError: (error: unknown) => {
-      showError(apiErrorMessage(error, 'Could not delete overhead line'));
-    },
-  });
+  const submitAdd = (code: string, defaultFrequency: string) => {
+    const draft = addFor(code);
+    const name = draft.name.trim();
+    const amount = Number(String(draft.amount).replace(/,/g, ''));
+    if (!name) {
+      showError('Enter a line name (e.g. NX Mach 3).');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount < 0) {
+      showError('Enter a valid amount.');
+      return;
+    }
+    createLineMutation.mutate({
+      code,
+      name,
+      amount,
+      vendor_name: draft.vendor_name.trim() || undefined,
+      frequency: defaultFrequency,
+    });
+  };
 
   const currency = dashboardQuery.data?.base_currency ?? 'INR';
-  const placeholderCodes = new Set(DEFAULT_OVERHEAD_PLACEHOLDERS.map((p) => p.code));
-  const otherExpenses = expenses.filter((row) => {
-    const centre = centres.find((c) => c.id === row.cost_centre_id);
-    const code = (centre?.code || '').toUpperCase();
-    return !code || !placeholderCodes.has(code);
-  });
-
   const salaryInr =
     toFiniteNumber(overhead?.overhead_management_salary_inr) ||
     toFiniteNumber(overhead?.overhead_salary_inr);
@@ -327,11 +454,15 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Overheads cockpit"
-        subtitle="HQ burden rate: Management + Corporate salaries and Prosohm OpEx ÷ delivery billable FTE. Enter default lines below — CPR updates live for bids and P&L."
+        subtitle="Each category holds many named lines (licenses, rents, utilities…). Click a KPI card to see what accumulates into that number. Pool = Management + Corporate salaries + Prosohm OpEx ÷ delivery billable FTE."
         chips={
           <>
             {dashboardQuery.data?.planning_fy_label ? (
-              <Chip size="small" label={`FY ${dashboardQuery.data.planning_fy_label}`} sx={{ fontWeight: 700 }} />
+              <Chip
+                size="small"
+                label={`FY ${dashboardQuery.data.planning_fy_label}`}
+                sx={{ fontWeight: 700 }}
+              />
             ) : null}
             <Chip
               size="small"
@@ -356,7 +487,8 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
             icon={GroupsOutlinedIcon}
             title="Management salaries"
             value={financeMoney(salaryInr, currency)}
-            subtitle="Leaders on Management team"
+            subtitle="Click for people breakdown"
+            onClick={() => setBreakdownMetric('overhead_salaries')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -366,7 +498,8 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
             icon={ApartmentOutlinedIcon}
             title="Overhead OpEx"
             value={financeMoney(opexInr, currency)}
-            subtitle="Prosohm · current FY"
+            subtitle="Click for ranked spend"
+            onClick={() => setBreakdownMetric('overhead_opex')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -376,7 +509,8 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
             icon={PaymentsOutlinedIcon}
             title="Pool / month"
             value={financeMoney(poolInr, currency)}
-            subtitle="Salaries + OpEx"
+            subtitle="Click for pool mix"
+            onClick={() => setBreakdownMetric('overhead_pool')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -386,17 +520,15 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
             icon={PersonOutlineOutlinedIcon}
             title="Cost per resource"
             value={financeMoney(cprInr, currency)}
-            subtitle={`÷ ${billableN} billable FTE`}
+            subtitle="Click for CPR build-up"
+            onClick={() => setBreakdownMetric('overhead_cpr')}
           />
         </Grid>
       </Grid>
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 4 }}>
-          <FinanceSection
-            title="Pool mix"
-            subtitle="What drives the monthly overhead pool"
-          >
+          <FinanceSection title="Pool mix" subtitle="What drives the monthly overhead pool">
             {salaryInr > 0 || opexInr > 0 ? (
               <AnalyticsDonutChart
                 height={220}
@@ -417,98 +549,248 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               />
             ) : (
               <Typography variant="body2" color="text.secondary">
-                No pool yet — add salaries on People costs or amounts on default lines.
+                No pool yet — add category lines below or salaries on People costs.
               </Typography>
             )}
           </FinanceSection>
         </Grid>
+
         <Grid size={{ xs: 12, md: 8 }}>
           <FinanceSection
-            title="Default overhead lines"
-            subtitle="Placeholders from the cost-centre catalogue — enter amounts to book Prosohm OpEx on Corporate (or Management if Corporate is missing)."
+            title="Overhead categories"
+            subtitle="Expand a category to manage multiple lines — e.g. several software licenses under one centre."
           >
-            <Grid container spacing={1.5}>
-              {DEFAULT_OVERHEAD_PLACEHOLDERS.map((ph) => {
-                const centre = centreByCode.get(ph.code);
-                const existing = centre ? expensesByCentreId.get(centre.id) : undefined;
+            <Stack spacing={1}>
+              {OVERHEAD_CATEGORIES.map((cat) => {
+                const centre = centreByCode.get(cat.code);
+                const lines = centre ? (expensesByCentreId.get(centre.id) ?? []) : [];
+                const total = lines.reduce((sum, row) => sum + toFiniteNumber(row.amount), 0);
                 const missingCentre = !centre;
                 return (
-                  <Grid key={ph.code} size={{ xs: 12, sm: 6 }}>
-                    <Box
-                      sx={{
-                        p: 1.5,
-                        borderRadius: `${designTokens.radius.md}px`,
-                        border: '1px solid',
-                        borderColor: existing ? 'primary.light' : 'divider',
-                        bgcolor: existing ? 'action.hover' : 'background.paper',
-                        height: '100%',
-                      }}
-                    >
-                      <Stack spacing={1}>
+                  <Accordion
+                    key={cat.code}
+                    disableGutters
+                    elevation={0}
+                    expanded={expanded === cat.code}
+                    onChange={(_e, isExpanded) => setExpanded(isExpanded ? cat.code : false)}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: `${designTokens.radius.md}px !important`,
+                      '&:before': { display: 'none' },
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          width: '100%',
+                          pr: 1,
+                          gap: 1,
+                        }}
+                      >
+                        <Typography sx={{ fontWeight: 700, flex: 1, minWidth: 140 }}>
+                          {cat.label}
+                        </Typography>
+                        <Chip size="small" label={cat.code} variant="outlined" />
+                        <Chip
+                          size="small"
+                          color={lines.length ? 'primary' : 'default'}
+                          label={`${lines.length} line${lines.length === 1 ? '' : 's'}`}
+                        />
+                        <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 100 }}>
+                          {financeMoney(total, currency)}
+                        </Typography>
+                      </Stack>
+                    </AccordionSummary>
+                    <AccordionDetails sx={{ pt: 0 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                        {cat.hint} · default {cat.frequency}
+                        {missingCentre ? ' · cost centre not seeded' : ''}
+                      </Typography>
+
+                      <Stack spacing={1.25} sx={{ mb: 2 }}>
+                        {lines.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary">
+                            No lines yet — add the first one below.
+                          </Typography>
+                        ) : (
+                          lines.map((row) => {
+                            const draft = draftFor(row);
+                            return (
+                              <Box
+                                key={row.id}
+                                sx={{
+                                  p: 1.25,
+                                  borderRadius: `${designTokens.radius.md}px`,
+                                  border: '1px solid',
+                                  borderColor: 'divider',
+                                  bgcolor: 'background.paper',
+                                }}
+                              >
+                                <Stack
+                                  direction={{ xs: 'column', sm: 'row' }}
+                                  spacing={1}
+                                  sx={{ flexWrap: 'wrap', alignItems: { sm: 'center' } }}
+                                >
+                                  <TextField
+                                    size="small"
+                                    label="Line name"
+                                    value={draft.name}
+                                    onChange={(e) =>
+                                      setLineDrafts((prev) => ({
+                                        ...prev,
+                                        [row.id]: { ...draft, name: e.target.value },
+                                      }))
+                                    }
+                                    sx={{ flex: 2, minWidth: 160 }}
+                                  />
+                                  <TextField
+                                    size="small"
+                                    label="Amount"
+                                    value={draft.amount}
+                                    onChange={(e) =>
+                                      setLineDrafts((prev) => ({
+                                        ...prev,
+                                        [row.id]: { ...draft, amount: e.target.value },
+                                      }))
+                                    }
+                                    sx={{ width: 120 }}
+                                  />
+                                  <FormControl size="small" sx={{ minWidth: 110 }}>
+                                    <InputLabel>Freq</InputLabel>
+                                    <Select
+                                      label="Freq"
+                                      value={draft.frequency}
+                                      onChange={(e) =>
+                                        setLineDrafts((prev) => ({
+                                          ...prev,
+                                          [row.id]: { ...draft, frequency: e.target.value },
+                                        }))
+                                      }
+                                    >
+                                      <MenuItem value="monthly">Monthly</MenuItem>
+                                      <MenuItem value="quarterly">Quarterly</MenuItem>
+                                      <MenuItem value="yearly">Yearly</MenuItem>
+                                    </Select>
+                                  </FormControl>
+                                  <TextField
+                                    size="small"
+                                    label="Vendor"
+                                    value={draft.vendor_name}
+                                    onChange={(e) =>
+                                      setLineDrafts((prev) => ({
+                                        ...prev,
+                                        [row.id]: { ...draft, vendor_name: e.target.value },
+                                      }))
+                                    }
+                                    sx={{ flex: 1, minWidth: 120 }}
+                                  />
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    disabled={updateLineMutation.isPending}
+                                    onClick={() =>
+                                      updateLineMutation.mutate({ id: row.id, draft })
+                                    }
+                                  >
+                                    Update
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    color="error"
+                                    variant="outlined"
+                                    onClick={() => setDeleteTarget(row)}
+                                  >
+                                    Delete
+                                  </Button>
+                                </Stack>
+                              </Box>
+                            );
+                          })
+                        )}
+                      </Stack>
+
+                      <Box
+                        sx={{
+                          p: 1.5,
+                          borderRadius: `${designTokens.radius.md}px`,
+                          border: '1px dashed',
+                          borderColor: 'primary.light',
+                          bgcolor: 'action.hover',
+                        }}
+                      >
+                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
+                          Add line
+                        </Typography>
                         <Stack
-                          direction="row"
-                          sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}
+                          direction={{ xs: 'column', sm: 'row' }}
+                          spacing={1}
+                          sx={{ flexWrap: 'wrap', alignItems: { sm: 'center' } }}
                         >
-                          <Box>
-                            <Typography sx={{ fontWeight: 700 }}>{ph.label}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {ph.hint} · {ph.frequency}
-                            </Typography>
-                          </Box>
-                          <Chip size="small" label={ph.code} variant="outlined" />
-                        </Stack>
-                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                          <TextField
+                            size="small"
+                            label="Name"
+                            placeholder={cat.namePlaceholder}
+                            value={addFor(cat.code).name}
+                            disabled={missingCentre || createLineMutation.isPending}
+                            onChange={(e) =>
+                              setAddDrafts((prev) => ({
+                                ...prev,
+                                [cat.code]: { ...addFor(cat.code), name: e.target.value },
+                              }))
+                            }
+                            sx={{ flex: 2, minWidth: 180 }}
+                          />
                           <TextField
                             size="small"
                             label="Amount"
-                            placeholder="0"
-                            value={drafts[ph.code] ?? ''}
-                            disabled={missingCentre || savePlaceholderMutation.isPending}
+                            value={addFor(cat.code).amount}
+                            disabled={missingCentre || createLineMutation.isPending}
                             onChange={(e) =>
-                              setDrafts((prev) => ({ ...prev, [ph.code]: e.target.value }))
+                              setAddDrafts((prev) => ({
+                                ...prev,
+                                [cat.code]: { ...addFor(cat.code), amount: e.target.value },
+                              }))
                             }
-                            sx={{ flex: 1 }}
+                            sx={{ width: 120 }}
+                          />
+                          <TextField
+                            size="small"
+                            label="Vendor (optional)"
+                            value={addFor(cat.code).vendor_name}
+                            disabled={missingCentre || createLineMutation.isPending}
+                            onChange={(e) =>
+                              setAddDrafts((prev) => ({
+                                ...prev,
+                                [cat.code]: {
+                                  ...addFor(cat.code),
+                                  vendor_name: e.target.value,
+                                },
+                              }))
+                            }
+                            sx={{ flex: 1, minWidth: 140 }}
                           />
                           <Button
                             size="small"
                             variant="contained"
-                            disabled={missingCentre || savePlaceholderMutation.isPending}
-                            onClick={() => savePlaceholderMutation.mutate(ph.code)}
+                            startIcon={<AddOutlinedIcon />}
+                            disabled={missingCentre || createLineMutation.isPending}
+                            onClick={() => submitAdd(cat.code, cat.frequency)}
                           >
-                            {existing ? 'Update' : 'Save'}
+                            Add
                           </Button>
-                          {existing ? (
-                            <Button
-                              size="small"
-                              color="error"
-                              variant="outlined"
-                              onClick={() => setDeleteTarget(existing)}
-                            >
-                              Delete
-                            </Button>
-                          ) : null}
                         </Stack>
-                        {existing ? (
-                          <Typography variant="caption" color="text.secondary">
-                            Booked {existing.currency_code} ·{' '}
-                            {existing.is_recurring ? 'Recurring' : 'One-time'}
-                            {existing.purchase_date ? ` · from ${existing.purchase_date}` : ''}
-                          </Typography>
-                        ) : missingCentre ? (
-                          <Typography variant="caption" color="warning.main">
-                            Cost centre {ph.code} not seeded
-                          </Typography>
-                        ) : (
-                          <Typography variant="caption" color="text.secondary">
-                            Not booked yet — enter amount and Save
-                          </Typography>
-                        )}
-                      </Stack>
-                    </Box>
-                  </Grid>
+                      </Box>
+                    </AccordionDetails>
+                  </Accordion>
                 );
               })}
-            </Grid>
+            </Stack>
           </FinanceSection>
         </Grid>
       </Grid>
@@ -516,7 +798,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       {otherExpenses.length > 0 ? (
         <FinanceSection
           title="Other overhead OpEx"
-          subtitle="Custom or non-catalogue lines on Management / Corporate this FY"
+          subtitle="Lines on Management / Corporate whose cost centre is outside the catalogue above"
         >
           <Stack spacing={1}>
             {otherExpenses.map((row) => (
@@ -538,8 +820,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                   <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     {financeMoney(row.amount, row.currency_code)} · {row.frequency ?? '—'}
-                    {row.purchase_date ? ` · from ${row.purchase_date}` : ''}
-                    {row.end_date ? ` · until ${row.end_date}` : ''}
+                    {row.vendor_name ? ` · ${row.vendor_name}` : ''}
                   </Typography>
                 </Box>
                 <Button size="small" color="error" variant="outlined" onClick={() => setDeleteTarget(row)}>
@@ -553,7 +834,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
 
       <FinanceSection
         title="Custom recurring overhead"
-        subtitle="Escape hatch for lines outside the default catalogue"
+        subtitle="Escape hatch for centres not listed above"
         action={
           <Button size="small" onClick={() => setShowCustom((v) => !v)}>
             {showCustom ? 'Hide' : 'Show form'}
@@ -643,7 +924,6 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               value={form.end_date}
               onChange={(e) => setForm({ ...form, end_date: e.target.value })}
               slotProps={{ inputLabel: { shrink: true } }}
-              helperText="Stops OpEx after this date"
             />
             <Button
               variant="contained"
@@ -656,10 +936,17 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
         </Collapse>
         {!showCustom ? (
           <Typography variant="body2" color="text.secondary">
-            Prefer the default lines above. Open this form only for one-off or non-catalogue OpEx.
+            Prefer category accordions above for multi-line OpEx (licenses, rents, utilities).
           </Typography>
         ) : null}
       </FinanceSection>
+
+      <FinanceKpiBreakdownDrawer
+        open={Boolean(breakdownMetric)}
+        metric={breakdownMetric}
+        teamId={teamId}
+        onClose={() => setBreakdownMetric(null)}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

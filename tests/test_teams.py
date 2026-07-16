@@ -48,7 +48,8 @@ def test_team_crud_and_members(client, session):
         headers=client.auth_headers,
     )
     target_id = transfer_team.json()["id"]
-    member_id = members.json()[0]["id"]
+    primary_member = next(m for m in members.json() if m.get("is_primary"))
+    member_id = primary_member["id"]
 
     transfer = client.post(
         f"/api/v1/teams/{team_id}/members/{member_id}/transfer",
@@ -58,11 +59,16 @@ def test_team_crud_and_members(client, session):
     assert transfer.status_code == 200
     assert transfer.json()["team_id"] == target_id
 
+    from app.models.models import User
+
     db_team = session.get(Team, UUID(team_id))
     assert db_team is not None
     db_member = session.get(TeamMember, UUID(member_id))
     assert db_member is not None
-    assert db_member.team_id == UUID(target_id)
+    assert db_member.team_id == UUID(team_id)
+    user = session.get(User, UUID(primary_member["user_id"]))
+    assert user is not None
+    assert user.team_id == UUID(target_id)
 
 
 def test_project_team_assignment_and_filters(client):

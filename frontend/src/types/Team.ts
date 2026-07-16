@@ -20,7 +20,14 @@ export interface TeamMember extends Timestamped {
   user_email: string;
   role_within_team: string | null;
   joined_at: string;
+  is_primary?: boolean;
   is_billable_headcount?: boolean;
+  effective_from?: string | null;
+}
+
+export interface TeamMemberTransfer {
+  target_team_id: string;
+  effective_from?: string | null;
 }
 
 export interface TeamCreate {

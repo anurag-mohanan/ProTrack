@@ -164,6 +164,45 @@ def _salary_for_users(
     return total.quantize(Decimal("0.01"))
 
 
+def _salary_for_team(db: Session, team_id: UUID, *, as_of: date | None = None) -> Decimal:
+    """Team-scoped salary using primary-home period proration."""
+    from app.services.finance.employment_cost import primary_team_salary_factor
+
+    ref = as_of or date.today()
+    stmt = (
+        select(EmployeeCostProfile, User)
+        .join(User, User.id == EmployeeCostProfile.user_id)
+        .where(
+            EmployeeCostProfile.is_active.is_(True),
+            User.requires_salary.is_(True),
+            User.is_active.is_(True),
+        )
+    )
+    total = Decimal("0.00")
+    for profile, user in db.execute(stmt).all():
+        factor = primary_team_salary_factor(
+            db, user_id=user.id, team_id=team_id, as_of=ref
+        )
+        if factor <= 0:
+            continue
+        total += _d(profile.base_monthly_salary_inr) * factor
+    return total.quantize(Decimal("0.01"))
+
+
+def _user_ids_with_team_salary(
+    db: Session, team_id: UUID, *, as_of: date | None = None
+) -> set[UUID]:
+    from app.services.finance.employment_cost import primary_team_salary_factor
+
+    ref = as_of or date.today()
+    ids: set[UUID] = set()
+    users = db.scalars(select(User).where(User.is_active.is_(True))).all()
+    for user in users:
+        if primary_team_salary_factor(db, user_id=user.id, team_id=team_id, as_of=ref) > 0:
+            ids.add(user.id)
+    return ids
+
+
 def _expense_sum(
     db: Session,
     *,
@@ -222,7 +261,7 @@ def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Deci
         )
         bands = list(getattr(term, "fee_bands", None) or [])
         if is_retainer and bands:
-            counts = billable_salary_counts_by_skill(db, term.team_id)
+            counts = billable_salary_counts_by_skill(db, term.team_id, as_of=today)
             band_map = {
                 (band.skill_level or ""): _d(band.base_fee_inr)
                 for band in bands
@@ -233,7 +272,7 @@ def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Deci
                 rate = band_map.get(skill, default_rate)
                 period_amount += rate * Decimal(count)
         elif is_retainer:
-            count = billable_salary_headcount(db, term.team_id)
+            count = billable_salary_headcount(db, term.team_id, as_of=today)
             period_amount = _d(term.base_fee_inr) * Decimal(count)
         else:
             period_amount = _d(term.base_fee_inr)
@@ -241,9 +280,17 @@ def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Deci
     return total
 
 
-def _team_rollups(db: Session, team: Team, *, today: date, quote_revenue_share: Decimal) -> dict:
-    user_ids = _user_ids_for_team(db, team.id)
-    salary = _salary_for_users(db, user_ids)
+def _team_rollups(
+    db: Session,
+    team: Team,
+    *,
+    today: date,
+    quote_revenue: Decimal,
+    quote_estimated_cost: Decimal,
+) -> dict:
+    from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
+
+    salary = _salary_for_team(db, team.id, as_of=today)
     prosohm_opex = _expense_sum(
         db, team_id=team.id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.opex
     )
@@ -252,15 +299,36 @@ def _team_rollups(db: Session, team: Team, *, today: date, quote_revenue_share: 
     )
     fee = _team_fee_monthly(db, team_id=team.id, today=today)
     operating = prosohm_opex + salary
+    revenue = quote_revenue + fee
+    gross_profit = revenue - quote_estimated_cost
+    net_profit = gross_profit - operating
+    gross_margin = (
+        (gross_profit / revenue * Decimal("100")).quantize(Decimal("0.01"))
+        if revenue > 0
+        else Decimal("0.00")
+    )
+    net_margin = (
+        (net_profit / revenue * Decimal("100")).quantize(Decimal("0.01"))
+        if revenue > 0
+        else Decimal("0.00")
+    )
     return {
         "team_id": str(team.id),
         "team_name": team.name,
+        "is_overhead_home": is_corporate_team(team),
         "salary_cost_inr": salary,
         "prosohm_opex_inr": prosohm_opex,
         "pass_through_opex_inr": pass_through,
         "monthly_operating_cost_inr": operating,
         "team_commercial_fee_monthly_inr": fee,
-        "planning_revenue_signal_inr": quote_revenue_share + fee,
+        "quote_revenue_inr": quote_revenue,
+        "estimated_cost_inr": quote_estimated_cost,
+        "planning_revenue_signal_inr": revenue,
+        "gross_profit_inr": gross_profit.quantize(Decimal("0.01")),
+        "net_profit_inr": net_profit.quantize(Decimal("0.01")),
+        "gross_margin_percent": gross_margin,
+        "net_margin_percent": net_margin,
+        "quarterly_revenue_signal_inr": (revenue * Decimal("3")).quantize(Decimal("0.01")),
     }
 
 
@@ -276,9 +344,7 @@ def _overhead_metrics(
     as_of = date.today()
     home = ensure_corporate_shared_services_team(db)
 
-    overhead_salary = _salary_for_users(
-        db, _user_ids_for_team(db, home.id), as_of=as_of
-    ).quantize(Decimal("0.01"))
+    overhead_salary = _salary_for_team(db, home.id, as_of=as_of).quantize(Decimal("0.01"))
     overhead_opex = _expense_sum(
         db,
         team_id=home.id,
@@ -327,8 +393,10 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     revenue, estimated_cost = _quote_revenue_cost(db, team_id=team_id)
 
     as_of = today
-    user_ids = _user_ids_for_team(db, team_id) if team_id else None
-    salary_cost = _salary_for_users(db, user_ids, as_of=as_of)
+    if team_id is not None:
+        salary_cost = _salary_for_team(db, team_id, as_of=as_of)
+    else:
+        salary_cost = _salary_for_users(db, None, as_of=as_of)
     prosohm_opex = _expense_sum(
         db, team_id=team_id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.opex, as_of=as_of
     )
@@ -426,9 +494,15 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     if team_id is None:
         teams = db.scalars(select(Team).where(Team.is_active.is_(True)).order_by(Team.name)).all()
         for team in teams:
-            team_quote, _ = _quote_revenue_cost(db, team_id=team.id)
+            team_quote, team_est = _quote_revenue_cost(db, team_id=team.id)
             by_team.append(
-                _team_rollups(db, team, today=today, quote_revenue_share=team_quote)
+                _team_rollups(
+                    db,
+                    team,
+                    today=today,
+                    quote_revenue=team_quote,
+                    quote_estimated_cost=team_est,
+                )
             )
 
     selected_team_name = None

@@ -261,12 +261,20 @@ class TeamCommercialTermsRead(BaseModel):
 class TeamFinanceBreakdown(BaseModel):
     team_id: str
     team_name: str
+    is_overhead_home: bool = False
     salary_cost_inr: Decimal
     prosohm_opex_inr: Decimal
     pass_through_opex_inr: Decimal
     monthly_operating_cost_inr: Decimal
     team_commercial_fee_monthly_inr: Decimal
+    quote_revenue_inr: Decimal = Decimal("0")
+    estimated_cost_inr: Decimal = Decimal("0")
     planning_revenue_signal_inr: Decimal
+    gross_profit_inr: Decimal = Decimal("0")
+    net_profit_inr: Decimal = Decimal("0")
+    gross_margin_percent: Decimal = Decimal("0")
+    net_margin_percent: Decimal = Decimal("0")
+    quarterly_revenue_signal_inr: Decimal = Decimal("0")
 
 
 class UpcomingRenewalRead(BaseModel):

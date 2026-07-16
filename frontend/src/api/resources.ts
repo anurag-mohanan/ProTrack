@@ -58,11 +58,24 @@ export const workingModelsApi = createResourceApi<
   Partial<WorkingModel>,
   Partial<WorkingModel>
 >('working-models');
-export const teamsApi = createResourceApi<
-  import('../types/Team').Team,
-  import('../types/Team').TeamCreate,
-  import('../types/Team').TeamUpdate
->('teams');
+export const teamsApi = {
+  ...createResourceApi<
+    import('../types/Team').Team,
+    import('../types/Team').TeamCreate,
+    import('../types/Team').TeamUpdate
+  >('teams'),
+  transferMember: async (
+    teamId: string,
+    memberId: string,
+    payload: import('../types/Team').TeamMemberTransfer,
+  ): Promise<import('../types/Team').TeamMember> => {
+    const { data } = await apiClient.post<import('../types/Team').TeamMember>(
+      `/teams/${teamId}/members/${memberId}/transfer`,
+      payload,
+    );
+    return data;
+  },
+};
 export const customersApi = createResourceApi<Customer>('customers');
 export const contactsApi = createResourceApi<Contact>('contacts');
 export const taskTypesApi = createResourceApi<TaskType>('task-types');

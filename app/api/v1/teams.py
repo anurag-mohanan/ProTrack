@@ -208,6 +208,7 @@ def transfer_team_member(
             team_id=record_id,
             member_id=member_id,
             target_team_id=payload.target_team_id,
+            effective_from=payload.effective_from,
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc

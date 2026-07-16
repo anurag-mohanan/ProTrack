@@ -26,6 +26,7 @@ import {
   FinanceKpiBreakdownDrawer,
   type KpiBreakdownMetric,
 } from './FinanceKpiBreakdownDrawer';
+import { FinanceTeamPnlTable } from './FinanceTeamPnlTable';
 
 type FinanceDashboard = {
   base_currency: string;
@@ -52,9 +53,18 @@ type FinanceDashboard = {
   by_team?: Array<{
     team_id: string;
     team_name: string;
+    is_overhead_home?: boolean;
     monthly_operating_cost_inr: number;
     pass_through_opex_inr: number;
     team_commercial_fee_monthly_inr: number;
+    planning_revenue_signal_inr: number;
+    quote_revenue_inr?: number;
+    estimated_cost_inr?: number;
+    gross_profit_inr?: number;
+    net_profit_inr?: number;
+    gross_margin_percent?: number;
+    net_margin_percent?: number;
+    quarterly_revenue_signal_inr?: number;
   }>;
   overhead?: {
     overhead_pool_monthly_inr?: number | string;
@@ -275,6 +285,15 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
           </FinanceSection>
         </Grid>
       </Grid>
+
+      {!teamId && (data.by_team ?? []).length > 0 ? (
+        <FinanceSection
+          title="Team P&L performance"
+          subtitle="Monthly planning signals per delivery team — revenue (quotes + fees) vs operating cost. Sort by net margin to compare performance."
+        >
+          <FinanceTeamPnlTable rows={data.by_team ?? []} currency={currency} />
+        </FinanceSection>
+      ) : null}
 
       <FinanceSection
         title="Renewals radar"

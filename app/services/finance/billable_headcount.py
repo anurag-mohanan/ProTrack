@@ -14,13 +14,18 @@ from app.models.models import Team, TeamMember, User
 from app.services.finance.employment_cost import user_counts_for_headcount
 
 
-def _billable_user_ids(db: Session, team_id: UUID) -> set[UUID]:
+def _billable_user_ids(db: Session, team_id: UUID, *, as_of: date | None = None) -> set[UUID]:
+    from app.services.finance.employment_cost import user_billable_on_team_at
+
+    ref = as_of or date.today()
     members = db.scalars(select(TeamMember).where(TeamMember.team_id == team_id)).all()
     billable_ids: set[UUID] = set()
     member_user_ids: set[UUID] = set()
     for member in members:
         member_user_ids.add(member.user_id)
-        if bool(getattr(member, "is_billable_headcount", True)):
+        if user_billable_on_team_at(
+            db, user_id=member.user_id, team_id=team_id, as_of=ref
+        ):
             billable_ids.add(member.user_id)
 
     legacy = db.scalars(
@@ -36,7 +41,7 @@ def billable_salary_users(
     db: Session, team_id: UUID, *, as_of: date | None = None
 ) -> list[User]:
     ref = as_of or date.today()
-    billable_ids = _billable_user_ids(db, team_id)
+    billable_ids = _billable_user_ids(db, team_id, as_of=ref)
     if not billable_ids:
         return []
     users = db.scalars(

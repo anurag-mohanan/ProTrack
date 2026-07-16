@@ -18,9 +18,10 @@ from app.services.finance.billable_headcount import company_delivery_billable_sa
 from app.services.finance.dashboard_service import (
     _expense_sum,
     _overhead_metrics,
+    _salary_for_team,
     _salary_for_users,
     _team_fee_monthly,
-    _user_ids_for_team,
+    _user_ids_with_team_salary,
     _quote_revenue_cost,
 )
 from app.services.finance.employment_cost import employment_salary_factor, expense_month_factor
@@ -64,8 +65,16 @@ def _pct(part: Decimal, whole: Decimal) -> Decimal:
     return (part / whole * Decimal("100")).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
 
 
-def _band(share_pct: Decimal, *, rank: int, total_lines: int) -> str:
-    """high = concentrated spend; thin = low share; empty handled separately."""
+def _band(
+    share_pct: Decimal, *, rank: int, total_lines: int, mode: str = "cost"
+) -> str:
+    """cost: concentrated spend; revenue: top contributors (never framed as spend)."""
+    if mode == "revenue":
+        if rank == 1 and share_pct > 0:
+            return "leading"
+        if share_pct <= Decimal("5"):
+            return "thin"
+        return "normal"
     if share_pct >= Decimal("20") or (total_lines > 0 and rank <= max(1, total_lines // 4)):
         return "high"
     if share_pct <= Decimal("5"):
@@ -74,8 +83,18 @@ def _band(share_pct: Decimal, *, rank: int, total_lines: int) -> str:
 
 
 def _salary_lines(
-    db: Session, user_ids: set[UUID], *, as_of: date, team_label: str | None = None
+    db: Session,
+    user_ids: set[UUID],
+    *,
+    as_of: date,
+    team_label: str | None = None,
+    team_id: UUID | None = None,
 ) -> list[dict]:
+    from app.services.finance.employment_cost import (
+        employment_salary_factor,
+        primary_team_salary_factor,
+    )
+
     if not user_ids:
         return []
     stmt = (
@@ -90,7 +109,12 @@ def _salary_lines(
     )
     rows: list[dict] = []
     for profile, user in db.execute(stmt).all():
-        factor = employment_salary_factor(user, as_of=as_of)
+        if team_id is not None:
+            factor = primary_team_salary_factor(
+                db, user_id=user.id, team_id=team_id, as_of=as_of
+            )
+        else:
+            factor = employment_salary_factor(user, as_of=as_of)
         if factor <= 0:
             continue
         amount = _q(_q(profile.base_monthly_salary_inr) * factor)
@@ -170,7 +194,9 @@ def _expense_lines(
     return rows
 
 
-def _annotate(lines: list[dict], total: Decimal) -> list[dict]:
+def _annotate(
+    lines: list[dict], total: Decimal, *, band_mode: str = "cost"
+) -> list[dict]:
     out: list[dict] = []
     n = len(lines)
     for index, row in enumerate(lines):
@@ -179,7 +205,9 @@ def _annotate(lines: list[dict], total: Decimal) -> list[dict]:
             {
                 **row,
                 "share_pct": share,
-                "band": _band(share, rank=index + 1, total_lines=n),
+                "band": _band(
+                    share, rank=index + 1, total_lines=n, mode=band_mode
+                ),
                 "amount_inr": _q(row["amount_inr"]),
             }
         )
@@ -234,9 +262,10 @@ def get_kpi_breakdown(
         home = ensure_corporate_shared_services_team(db)
         lines = _salary_lines(
             db,
-            _user_ids_for_team(db, home.id),
+            _user_ids_with_team_salary(db, home.id, as_of=today),
             as_of=today,
             team_label=home.name,
+            team_id=home.id,
         )
         lines.sort(key=lambda r: r["amount_inr"], reverse=True)
         total = _q(overhead["overhead_salary_inr"])
@@ -306,8 +335,9 @@ def get_kpi_breakdown(
         home = ensure_corporate_shared_services_team(db)
         salary_lines = _salary_lines(
             db,
-            _user_ids_for_team(db, home.id),
+            _user_ids_with_team_salary(db, home.id, as_of=today),
             as_of=today,
+            team_id=home.id,
         )
         opex_lines = _expense_lines(
             db,
@@ -364,7 +394,7 @@ def get_kpi_breakdown(
         }
 
     if key == "operating_cost":
-        user_ids = _user_ids_for_team(db, team_id) if team_id else None
+        user_ids = _user_ids_with_team_salary(db, team_id, as_of=today) if team_id else None
         # Company-wide: all salary users (user_ids None)
         if user_ids is None:
             salary_lines = _salary_lines(
@@ -380,7 +410,9 @@ def get_kpi_breakdown(
                 as_of=today,
             )
         else:
-            salary_lines = _salary_lines(db, user_ids, as_of=today)
+            salary_lines = _salary_lines(
+                db, user_ids, as_of=today, team_id=team_id
+            )
         team_ids = [team_id] if team_id else [
             t.id for t in db.scalars(select(Team).where(Team.is_active.is_(True))).all()
         ]
@@ -392,7 +424,11 @@ def get_kpi_breakdown(
             fy_start=fy_start,
             as_of=today,
         )
-        salary_total = _salary_for_users(db, user_ids, as_of=today)
+        salary_total = (
+            _salary_for_team(db, team_id, as_of=today)
+            if team_id
+            else _salary_for_users(db, None, as_of=today)
+        )
         opex_total = _expense_sum(
             db,
             team_id=team_id,
@@ -496,7 +532,7 @@ def get_kpi_breakdown(
                 {
                     "label": "Commercial fees",
                     "total_inr": _q(total),
-                    "lines": _annotate(lines, _q(total) or Decimal("1")),
+                    "lines": _annotate(lines, _q(total) or Decimal("1"), band_mode="revenue"),
                 }
             ],
             "empty_hints": [],
@@ -538,7 +574,7 @@ def get_kpi_breakdown(
             {
                 "label": "Monthly building blocks",
                 "total_inr": monthly,
-                "lines": _annotate(lines, monthly or Decimal("1")),
+                "lines": _annotate(lines, monthly or Decimal("1"), band_mode="revenue"),
             }
         ],
         "empty_hints": [],

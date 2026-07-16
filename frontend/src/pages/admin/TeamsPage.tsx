@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import GroupsIcon from '@mui/icons-material/Groups';
 import type { GridColDef } from '@mui/x-data-grid';
 import { apiClient } from '../../api/client';
@@ -36,7 +37,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
-import type { Team, TeamCreate, TeamMember, TeamMemberCreate } from '../../types/Team';
+import type { Team, TeamCreate, TeamMember, TeamMemberCreate, TeamMemberTransfer } from '../../types/Team';
 import { getErrorMessage } from '../../api/client';
 import { formatCellValue, userDisplayName } from '../../utils/format';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
@@ -80,6 +81,12 @@ export default function TeamsPage() {
     is_billable_headcount: true,
   });
   const [removeMemberTarget, setRemoveMemberTarget] = useState<TeamMember | null>(null);
+  const [moveMemberTarget, setMoveMemberTarget] = useState<TeamMember | null>(null);
+  const [moveForm, setMoveForm] = useState<TeamMemberTransfer>({
+    target_team_id: '',
+    effective_from: new Date().toISOString().slice(0, 10),
+  });
+  const [moving, setMoving] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -229,6 +236,46 @@ export default function TeamsPage() {
       await loadData();
     } catch (error) {
       showError(getErrorMessage(error));
+    }
+  };
+
+  const transferableTeams = useMemo(() => {
+    if (!memberTeam) return [];
+    return teams.filter((team) => team.is_active && team.id !== memberTeam.id);
+  }, [memberTeam, teams]);
+
+  const openMoveMember = (member: TeamMember) => {
+    setMoveMemberTarget(member);
+    setMoveForm({
+      target_team_id: '',
+      effective_from: new Date().toISOString().slice(0, 10),
+    });
+  };
+
+  const handleMoveMember = async () => {
+    if (!memberTeam || !moveMemberTarget) return;
+    if (!moveForm.target_team_id) {
+      showError('Select a target team');
+      return;
+    }
+    setMoving(true);
+    try {
+      await teamsApi.transferMember(memberTeam.id, moveMemberTarget.id, {
+        target_team_id: moveForm.target_team_id,
+        effective_from: moveForm.effective_from || undefined,
+      });
+      const targetName =
+        teams.find((team) => team.id === moveForm.target_team_id)?.name ?? 'target team';
+      showSuccess(
+        `${moveMemberTarget.user_name} → ${targetName} from ${moveForm.effective_from}. Salary is prorated by calendar days in each month.`,
+      );
+      setMoveMemberTarget(null);
+      await openMembers(memberTeam);
+      await loadData();
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setMoving(false);
     }
   };
 
@@ -517,9 +564,24 @@ export default function TeamsPage() {
                     <Box sx={{ fontWeight: 600 }}>{member.user_name}</Box>
                     <Box sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
                       {member.role_within_team || 'Member'} · {member.user_email}
+                      {member.effective_from
+                        ? ` · from ${member.effective_from}`
+                        : ''}
+                      {member.is_primary ? ' · Primary home' : ''}
                     </Box>
                   </Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {member.is_primary ? (
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        aria-label={`Move ${member.user_name} to another team`}
+                        title="Move to another team (effective date)"
+                        onClick={() => openMoveMember(member)}
+                      >
+                        <DriveFileMoveIcon fontSize="small" />
+                      </IconButton>
+                    ) : null}
                     <FormControlLabel
                       control={
                         <Switch
@@ -631,6 +693,64 @@ export default function TeamsPage() {
           </FormSection>
         ) : null}
       </RecordDetailDrawer>
+
+      <FormDrawer
+        open={Boolean(moveMemberTarget)}
+        onClose={() => setMoveMemberTarget(null)}
+        title="Move resource"
+        subtitle={moveMemberTarget ? `${moveMemberTarget.user_name} · ${memberTeam?.name}` : undefined}
+        icon={DriveFileMoveIcon}
+        formId="move-member-form"
+        submitLabel="Move"
+        loading={moving}
+      >
+        <Box
+          component="form"
+          id="move-member-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleMoveMember();
+          }}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+        >
+          <FormSection title="Transfer details" icon={DriveFileMoveIcon}>
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ color: 'text.secondary', fontSize: '0.875rem', mb: 1 }}>
+                The resource is counted on the current team up to the day before the effective
+                date, then on the target team. July example: effective 20 Jul → 19 days on source,
+                12 days on target.
+              </Box>
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormSelect
+                label="Target team"
+                searchable
+                required
+                value={moveForm.target_team_id}
+                options={transferableTeams.map((team) => ({
+                  value: team.id,
+                  label: team.name,
+                }))}
+                onChange={(event) =>
+                  setMoveForm({ ...moveForm, target_team_id: String(event.target.value) })
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Effective from"
+                type="date"
+                required
+                value={moveForm.effective_from ?? ''}
+                onChange={(event) =>
+                  setMoveForm({ ...moveForm, effective_from: event.target.value })
+                }
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Grid>
+          </FormSection>
+        </Box>
+      </FormDrawer>
 
       <ConfirmDialog
         open={Boolean(removeMemberTarget)}

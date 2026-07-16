@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from app.models.enums import TeamRelationshipType
@@ -60,7 +60,12 @@ class TeamMemberRead(TeamMemberBase, TimestampSchema):
     user_email: str
     joined_at: datetime
     is_billable_headcount: bool = True
+    effective_from: date | None = None
 
 
 class TeamMemberTransfer(BaseModel):
     target_team_id: UUID
+    effective_from: date | None = Field(
+        default=None,
+        description="First day on the target team (YYYY-MM-DD). Defaults to today.",
+    )

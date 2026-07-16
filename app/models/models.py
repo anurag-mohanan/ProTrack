@@ -342,9 +342,40 @@ class TeamMember(Base, TimestampMixin):
     joined_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
+    effective_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     team: Mapped[Team] = relationship(back_populates="members")
     user: Mapped[User] = relationship(foreign_keys=[user_id])
+
+
+class TeamMembershipPeriod(Base, TimestampMixin):
+    """Primary-home history for finance — day-prorated salary by team."""
+
+    __tablename__ = "team_membership_periods"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_billable_headcount: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    role_within_team: Mapped[Optional[str]] = mapped_column(String(100))
+    relationship_type: Mapped[TeamRelationshipType] = mapped_column(
+        Enum(TeamRelationshipType, name="team_relationship_type", native_enum=False),
+        nullable=False,
+        default=TeamRelationshipType.member,
+    )
+    notes: Mapped[Optional[str]] = mapped_column(String(255))
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    team: Mapped[Team] = relationship(foreign_keys=[team_id])
 
 
 class Customer(Base, TimestampMixin):

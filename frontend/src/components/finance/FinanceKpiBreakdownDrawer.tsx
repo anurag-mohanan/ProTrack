@@ -53,14 +53,28 @@ type BreakdownPayload = {
   meta?: Record<string, number | string>;
 };
 
-function bandColor(band: string): string {
+function isRevenueMetric(metric: KpiBreakdownMetric | null | undefined): boolean {
+  return metric === 'revenue_quarter' || metric === 'team_fees';
+}
+
+function bandColor(band: string, metric?: KpiBreakdownMetric | null): string {
+  if (isRevenueMetric(metric)) {
+    if (band === 'leading') return designTokens.semantic.success;
+    if (band === 'thin') return designTokens.semantic.neutral;
+    return designTokens.semantic.primary;
+  }
   if (band === 'high') return designTokens.semantic.danger;
   if (band === 'thin') return designTokens.semantic.warning;
   if (band === 'empty') return designTokens.semantic.neutral;
   return designTokens.semantic.primary;
 }
 
-function bandLabel(band: string): string {
+function bandLabel(band: string, metric?: KpiBreakdownMetric | null): string {
+  if (isRevenueMetric(metric)) {
+    if (band === 'leading' || band === 'high') return 'Top driver';
+    if (band === 'thin') return 'Low share';
+    return 'Contributor';
+  }
   if (band === 'high') return 'High spend';
   if (band === 'thin') return 'Low share';
   if (band === 'empty') return 'Not spent';
@@ -70,13 +84,15 @@ function bandLabel(band: string): string {
 function LineRow({
   line,
   currency,
+  metric,
 }: {
   line: BreakdownLine;
   currency: string;
+  metric?: KpiBreakdownMetric | null;
 }) {
   const share = toFiniteNumber(line.share_pct);
   const amount = toFiniteNumber(line.amount_inr);
-  const color = bandColor(line.band);
+  const color = bandColor(line.band, metric);
   return (
     <Box
       sx={{
@@ -102,7 +118,7 @@ function LineRow({
           </Typography>
           <Chip
             size="small"
-            label={bandLabel(line.band)}
+            label={bandLabel(line.band, metric)}
             sx={{
               height: 20,
               fontSize: '0.65rem',
@@ -250,7 +266,7 @@ export function FinanceKpiBreakdownDrawer({
                     </Typography>
                   ) : (
                     group.lines.map((line) => (
-                      <LineRow key={line.id} line={line} currency={currency} />
+                      <LineRow key={line.id} line={line} currency={currency} metric={metric} />
                     ))
                   )}
                 </Box>
@@ -263,7 +279,7 @@ export function FinanceKpiBreakdownDrawer({
                     Catalogue categories with no Prosohm OpEx booked this FY.
                   </Typography>
                   {data.empty_hints.map((line) => (
-                    <LineRow key={line.id} line={line} currency={currency} />
+                    <LineRow key={line.id} line={line} currency={currency} metric={metric} />
                   ))}
                 </Box>
               ) : null}

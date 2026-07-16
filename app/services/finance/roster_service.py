@@ -12,7 +12,14 @@ from app.models.finance import EmployeeCostProfile
 from app.models.models import TeamMember, User
 
 
-def _user_matches_team(user: User, team_id: UUID) -> bool:
+def _user_matches_team(db: Session, user: User, team_id: UUID) -> bool:
+    from datetime import date
+
+    from app.services.finance.employment_cost import primary_team_salary_factor
+
+    as_of = date.today()
+    if primary_team_salary_factor(db, user_id=user.id, team_id=team_id, as_of=as_of) > 0:
+        return True
     if user.team_id == team_id:
         return True
     memberships = user.team_memberships or []
@@ -20,7 +27,6 @@ def _user_matches_team(user: User, team_id: UUID) -> bool:
     if primary is not None:
         return True
     if any(m.team_id == team_id for m in memberships):
-        # Prefer primary team for filter: if user has a primary elsewhere, only include if this team is primary.
         has_primary = any(m.is_primary for m in memberships)
         if has_primary:
             return any(m.is_primary and m.team_id == team_id for m in memberships)
@@ -61,7 +67,7 @@ def get_employee_cost_roster(
         requires = user_requires_salary(user)
         if not include_exempt and not requires:
             continue
-        if team_id is not None and not _user_matches_team(user, team_id):
+        if team_id is not None and not _user_matches_team(db, user, team_id):
             continue
         profile = profiles.get(user.id)
         team_names = sorted(

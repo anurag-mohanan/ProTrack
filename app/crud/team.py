@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import override
 from uuid import UUID
 
@@ -78,6 +78,7 @@ def build_team_member_read(db: Session, member: TeamMember) -> TeamMemberRead:
         is_primary=member.is_primary,
         is_billable_headcount=bool(getattr(member, "is_billable_headcount", True)),
         joined_at=member.joined_at,
+        effective_from=getattr(member, "effective_from", None),
         created_at=member.created_at,
         updated_at=member.updated_at,
         user_name=_user_display(user),
@@ -268,7 +269,10 @@ class CRUDTeam(CRUDBase[Team, TeamCreate, TeamUpdate]):
         team_id: UUID,
         member_id: UUID,
         target_team_id: UUID,
+        effective_from: date | None = None,
     ) -> TeamMemberRead:
+        from app.services.team_transfer_service import transfer_primary_membership
+
         if team_id == target_team_id:
             raise ProTrackValidationError("Target team must differ from source team")
         member = db.scalar(
@@ -279,22 +283,26 @@ class CRUDTeam(CRUDBase[Team, TeamCreate, TeamUpdate]):
         )
         if member is None:
             raise ProTrackValidationError("Team member not found")
-        target = self.get(db, target_team_id)
-        if target is None:
-            raise ProTrackValidationError("Target team not found")
-        duplicate = db.scalar(
-            select(TeamMember).where(
-                TeamMember.team_id == target_team_id,
-                TeamMember.user_id == member.user_id,
+        if not member.is_primary:
+            raise ProTrackValidationError(
+                "Only the primary team home can be transferred with an effective date. "
+                "Set primary on Users or transfer the primary membership row."
             )
+        user = db.get(User, member.user_id)
+        if user is None or not user.is_active:
+            raise ProTrackValidationError("User not found or inactive")
+        transfer_date = effective_from or date.today()
+        moved = transfer_primary_membership(
+            db,
+            user=user,
+            source_team_id=team_id,
+            target_team_id=target_team_id,
+            effective_from=transfer_date,
+            member=member,
         )
-        if duplicate is not None:
-            raise ProTrackValidationError("User is already a member of the target team")
-        member.team_id = target_team_id
-        db.add(member)
         db.commit()
-        db.refresh(member)
-        return build_team_member_read(db, member)
+        db.refresh(moved)
+        return build_team_member_read(db, moved)
 
 
 team = CRUDTeam(Team)

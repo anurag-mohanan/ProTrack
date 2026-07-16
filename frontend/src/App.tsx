@@ -59,6 +59,7 @@ const HrDashboardPage = lazy(() =>
     default: module.HrDashboardPage,
   })),
 );
+const PerformanceReviewsPage = lazy(() => import('./pages/PerformanceReviewsPage'));
 const AnalyticsHubPage = lazy(() =>
   import('./pages/AnalyticsHubPage').then((module) => ({
     default: module.AnalyticsHubPage,
@@ -257,6 +258,14 @@ export default function App() {
                     <Route element={<RoleRoute allowed={canViewWorkload} />}>
                       <Route path="/workload" element={<WorkloadPage />} />
                     </Route>
+                    <Route
+                      path="/performance-reviews"
+                      element={
+                        <Suspense fallback={<LoadingState message="Loading performance reviews…" />}>
+                          <PerformanceReviewsPage />
+                        </Suspense>
+                      }
+                    />
                     <Route element={<ModuleRoute module={MODULE_FINANCIAL_PLANNING} />}>
                       <Route
                         path="/finance"

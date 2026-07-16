@@ -237,6 +237,18 @@ class User(Base, TimestampMixin):
     team_memberships: Mapped[list[TeamMember]] = relationship(
         back_populates="user", foreign_keys="TeamMember.user_id"
     )
+    performance_reviews: Mapped[list["PerformanceReviewSheet"]] = relationship(
+        back_populates="employee",
+        foreign_keys="PerformanceReviewSheet.employee_id",
+    )
+    performance_reviews_authored: Mapped[list["PerformanceReviewSheet"]] = relationship(
+        back_populates="reviewer",
+        foreign_keys="PerformanceReviewSheet.reviewer_id",
+    )
+    performance_review_cycles_created: Mapped[list["PerformanceReviewCycle"]] = relationship(
+        back_populates="created_by",
+        foreign_keys="PerformanceReviewCycle.created_by_id",
+    )
     user_skills: Mapped[list["UserSkill"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
@@ -376,6 +388,122 @@ class TeamMembershipPeriod(Base, TimestampMixin):
 
     user: Mapped[User] = relationship(foreign_keys=[user_id])
     team: Mapped[Team] = relationship(foreign_keys=[team_id])
+
+
+class PerformanceReviewCycle(Base, TimestampMixin):
+    __tablename__ = "performance_review_cycles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    review_year: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_by: Mapped[Optional[User]] = relationship(
+        back_populates="performance_review_cycles_created",
+        foreign_keys=[created_by_id],
+    )
+    sheets: Mapped[list["PerformanceReviewSheet"]] = relationship(
+        back_populates="cycle", cascade="all, delete-orphan"
+    )
+
+
+class PerformanceReviewSheet(Base, TimestampMixin):
+    __tablename__ = "performance_review_sheets"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    cycle_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("performance_review_cycles.id"), nullable=True
+    )
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=True, index=True
+    )
+    period_label: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    review_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    overall_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    employee_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    manager_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    strengths_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    improvement_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    career_goals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    cycle: Mapped[Optional[PerformanceReviewCycle]] = relationship(back_populates="sheets")
+    employee: Mapped[User] = relationship(
+        back_populates="performance_reviews",
+        foreign_keys=[employee_id],
+    )
+    reviewer: Mapped[User] = relationship(
+        back_populates="performance_reviews_authored",
+        foreign_keys=[reviewer_id],
+    )
+    team: Mapped[Optional[Team]] = relationship(foreign_keys=[team_id])
+    sections: Mapped[list["PerformanceReviewSection"]] = relationship(
+        back_populates="sheet", cascade="all, delete-orphan"
+    )
+
+
+class PerformanceReviewSection(Base, TimestampMixin):
+    __tablename__ = "performance_review_sections"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    sheet_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("performance_review_sheets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    sheet: Mapped[PerformanceReviewSheet] = relationship(back_populates="sections")
+    items: Mapped[list["PerformanceReviewItem"]] = relationship(
+        back_populates="section", cascade="all, delete-orphan"
+    )
+
+
+class PerformanceReviewItem(Base, TimestampMixin):
+    __tablename__ = "performance_review_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    section_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("performance_review_sections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    rating: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    employee_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    manager_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    section: Mapped[PerformanceReviewSection] = relationship(back_populates="items")
 
 
 class Customer(Base, TimestampMixin):

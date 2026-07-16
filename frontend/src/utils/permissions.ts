@@ -195,6 +195,12 @@ const NAV_MODULE_CONFIG: Array<{
     path: '/planning-board',
     icon: CalendarMonthRoundedIcon,
   },
+  {
+    module: MODULE_DASHBOARD,
+    label: 'Performance Reviews',
+    path: '/performance-reviews',
+    icon: BadgeRoundedIcon,
+  },
 ];
 
 const EBMP_SECTION_NAV: Array<{

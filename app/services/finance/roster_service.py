@@ -39,6 +39,7 @@ def get_employee_cost_roster(
     *,
     team_id: UUID | None = None,
     include_exempt: bool = False,
+    include_inactive: bool = False,
 ) -> list[dict]:
     from datetime import date
 
@@ -62,7 +63,7 @@ def get_employee_cost_roster(
     for user in users:
         leaving = getattr(user, "leaving_date", None)
         # Active, or left this month (still prorated in P&L).
-        if not user.is_active and (leaving is None or leaving < month_start):
+        if not include_inactive and not user.is_active and (leaving is None or leaving < month_start):
             continue
         requires = user_requires_salary(user)
         if not include_exempt and not requires:
@@ -88,6 +89,7 @@ def get_employee_cost_roster(
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "email": user.email,
+                "is_active": bool(user.is_active),
                 "team_names": team_names,
                 "requires_salary": requires,
                 "has_profile": profile is not None,

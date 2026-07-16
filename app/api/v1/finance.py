@@ -435,11 +435,17 @@ def trigger_renewal_notifications(
 def employee_cost_roster(
     team_id: UUID | None = Query(default=None),
     include_exempt: bool = Query(default=False),
+    include_inactive: bool = Query(default=False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    return get_employee_cost_roster(db, team_id=team_id, include_exempt=include_exempt)
+    return get_employee_cost_roster(
+        db,
+        team_id=team_id,
+        include_exempt=include_exempt,
+        include_inactive=include_inactive,
+    )
 
 
 @router.patch(

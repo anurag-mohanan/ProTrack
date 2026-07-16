@@ -1,12 +1,13 @@
-"""Human Resources module — team visibility and timesheet completion monitoring."""
+"""Human Resources module — team visibility, timesheets, and performance reviews."""
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
@@ -14,12 +15,39 @@ from app.core.access_control import MODULE_HUMAN_RESOURCES
 from app.core.module_actions import MODULE_ACTION_VIEW, user_has_module_action
 from app.core.permissions import get_role_name
 from app.core.team_access import get_accessible_team_ids, team_member_user_ids
-from app.models.enums import TimesheetStatus
-from app.models.models import Team, Timesheet, TimesheetEntry, User
+from app.models.enums import TeamRelationshipType, TimesheetStatus
+from app.models.models import (
+    PerformanceReviewCycle,
+    PerformanceReviewItem,
+    PerformanceReviewSection,
+    PerformanceReviewSheet,
+    Team,
+    TeamMember,
+    Timesheet,
+    TimesheetEntry,
+    User,
+)
+from app.schemas.performance_review import (
+    PerformanceReviewCreate,
+    PerformanceReviewCycleCreate,
+    PerformanceReviewCycleRead,
+    PerformanceReviewRead,
+    PerformanceReviewTeamMemberRead,
+    PerformanceReviewUpdate,
+)
+from app.services.performance_review_service import (
+    DEFAULT_REVIEW_TEMPLATE,
+    user_can_manage_team_reviews,
+    user_can_view_review,
+)
 from app.services.timesheet_compliance_service import get_missing_timesheet_rows
 from app.services.user_team_service import get_user_team_ids
 
 router = APIRouter(prefix="/hr", tags=["human-resources"])
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _require_hr_view(db: Session, user: User) -> None:
@@ -40,6 +68,92 @@ def _scoped_member_ids(db: Session, current_user: User) -> tuple[list, set]:
     member_ids = team_member_user_ids(db, team_ids) if team_ids else set()
     member_ids.add(current_user.id)
     return team_ids, member_ids
+
+
+def _managed_team_ids(db: Session, current_user: User) -> list:
+    if user_has_module_action(
+        current_user,
+        get_role_name(db, current_user),
+        MODULE_HUMAN_RESOURCES,
+        MODULE_ACTION_VIEW,
+    ):
+        accessible = get_accessible_team_ids(db, current_user)
+        if accessible is None:
+            return list(db.scalars(select(Team.id).where(Team.is_active.is_(True))).all())
+        return list(accessible)
+    team_ids = set(
+        db.scalars(
+            select(Team.id).where(Team.team_lead_id == current_user.id, Team.is_active.is_(True))
+        ).all()
+    )
+    team_ids.update(
+        db.scalars(
+            select(TeamMember.team_id).where(
+                TeamMember.user_id == current_user.id,
+                TeamMember.relationship_type.in_(
+                    (
+                        TeamRelationshipType.team_leader,
+                        TeamRelationshipType.engineering_manager,
+                        TeamRelationshipType.reviewer,
+                    )
+                ),
+            )
+        ).all()
+    )
+    return list(team_ids)
+
+
+def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: User) -> PerformanceReviewRead:
+    employee_name = f"{sheet.employee.first_name} {sheet.employee.last_name}".strip()
+    reviewer_name = f"{sheet.reviewer.first_name} {sheet.reviewer.last_name}".strip()
+    can_manage = sheet.team_id is not None and user_can_manage_team_reviews(
+        db, current_user, sheet.team_id
+    )
+    is_self = sheet.employee_id == current_user.id
+    return PerformanceReviewRead(
+        id=sheet.id,
+        cycle_id=sheet.cycle_id,
+        cycle_title=sheet.cycle.title if sheet.cycle is not None else None,
+        employee_id=sheet.employee_id,
+        employee_name=employee_name,
+        reviewer_id=sheet.reviewer_id,
+        reviewer_name=reviewer_name,
+        team_id=sheet.team_id,
+        team_name=sheet.team.name if sheet.team is not None else None,
+        period_label=sheet.period_label,
+        status=sheet.status,
+        review_date=sheet.review_date,
+        due_date=sheet.due_date,
+        overall_score=sheet.overall_score,
+        employee_summary=sheet.employee_summary,
+        manager_summary=sheet.manager_summary,
+        strengths_summary=sheet.strengths_summary,
+        improvement_summary=sheet.improvement_summary,
+        career_goals=sheet.career_goals,
+        submitted_at=sheet.submitted_at,
+        acknowledged_at=sheet.acknowledged_at,
+        sections=sheet.sections,
+        is_editable=bool(can_manage or sheet.reviewer_id == current_user.id),
+        can_acknowledge=bool(is_self and sheet.status == "submitted"),
+    )
+
+
+def _seed_sections(sheet: PerformanceReviewSheet) -> None:
+    for section_index, section_row in enumerate(DEFAULT_REVIEW_TEMPLATE):
+        section = PerformanceReviewSection(
+            sheet=sheet,
+            title=str(section_row["title"]),
+            description=section_row.get("description"),
+            sort_order=section_index,
+        )
+        for item_index, prompt in enumerate(section_row.get("items", [])):
+            section.items.append(
+                PerformanceReviewItem(
+                    prompt=str(prompt),
+                    sort_order=item_index,
+                )
+            )
+        sheet.sections.append(section)
 
 
 @router.get("/dashboard")
@@ -176,3 +290,372 @@ def hr_teams(
         {"id": str(team.id), "name": team.name, "colour": team.colour}
         for team in db.scalars(query).all()
     ]
+
+
+@router.get("/review-cycles", response_model=list[PerformanceReviewCycleRead])
+def list_review_cycles(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    managed = _managed_team_ids(db, current_user)
+    if not managed and not user_has_module_action(
+        current_user,
+        get_role_name(db, current_user),
+        MODULE_HUMAN_RESOURCES,
+        MODULE_ACTION_VIEW,
+    ):
+        return []
+    return db.scalars(
+        select(PerformanceReviewCycle)
+        .where(PerformanceReviewCycle.is_active.is_(True))
+        .order_by(PerformanceReviewCycle.review_year.desc(), PerformanceReviewCycle.title)
+    ).all()
+
+
+@router.post("/review-cycles", response_model=PerformanceReviewCycleRead)
+def create_review_cycle(
+    payload: PerformanceReviewCycleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not user_has_module_action(
+        current_user,
+        get_role_name(db, current_user),
+        MODULE_HUMAN_RESOURCES,
+        MODULE_ACTION_EDIT,
+    ):
+        raise HTTPException(status_code=403, detail="HR edit access required")
+    cycle = PerformanceReviewCycle(
+        title=payload.title,
+        review_year=payload.review_year,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        due_date=payload.due_date,
+        status=payload.status,
+        created_by_id=current_user.id,
+        is_active=True,
+    )
+    db.add(cycle)
+    db.commit()
+    db.refresh(cycle)
+    return cycle
+
+
+@router.get("/reviews/me", response_model=list[PerformanceReviewRead])
+def my_performance_reviews(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = db.scalars(
+        select(PerformanceReviewSheet)
+        .options(
+            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.reviewer),
+            selectinload(PerformanceReviewSheet.team),
+            selectinload(PerformanceReviewSheet.cycle),
+            selectinload(PerformanceReviewSheet.sections).selectinload(
+                PerformanceReviewSection.items
+            ),
+        )
+        .where(
+            PerformanceReviewSheet.employee_id == current_user.id,
+            PerformanceReviewSheet.is_active.is_(True),
+        )
+        .order_by(PerformanceReviewSheet.created_at.desc())
+    ).all()
+    return [_review_to_read(db, row, current_user) for row in rows]
+
+
+@router.get("/reviews/team-members", response_model=list[PerformanceReviewTeamMemberRead])
+def review_team_members(
+    team_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    managed_ids = _managed_team_ids(db, current_user)
+    if team_id is not None:
+        if team_id not in managed_ids and not user_can_manage_team_reviews(db, current_user, team_id):
+            raise HTTPException(status_code=403, detail="Team review access denied")
+        team_ids = [team_id]
+    else:
+        team_ids = managed_ids
+    if not team_ids:
+        return []
+
+    teams = {team.id: team for team in db.scalars(select(Team).where(Team.id.in_(team_ids))).all()}
+    user_ids = team_member_user_ids(db, team_ids)
+    if not user_ids:
+        return []
+    review_counts = {
+        row[0]: int(row[1] or 0)
+        for row in db.execute(
+            select(
+                PerformanceReviewSheet.employee_id,
+                func.count(PerformanceReviewSheet.id),
+            )
+            .where(
+                PerformanceReviewSheet.employee_id.in_(user_ids),
+                PerformanceReviewSheet.is_active.is_(True),
+            )
+            .group_by(PerformanceReviewSheet.employee_id)
+        ).all()
+    }
+    members = db.scalars(
+        select(User)
+        .where(User.id.in_(user_ids), User.is_deleted.is_(False))
+        .order_by(User.last_name, User.first_name)
+    ).all()
+    rows: list[PerformanceReviewTeamMemberRead] = []
+    for member in members:
+        member_team_id = next((tid for tid in team_ids if tid in get_user_team_ids(db, member.id)), None)
+        if member_team_id is None:
+            continue
+        team = teams.get(member_team_id)
+        rows.append(
+            PerformanceReviewTeamMemberRead(
+                user_id=member.id,
+                name=f"{member.first_name} {member.last_name}".strip(),
+                email=member.email,
+                team_id=member_team_id,
+                team_name=team.name if team is not None else "Team",
+                review_count=review_counts.get(member.id, 0),
+            )
+        )
+    return rows
+
+
+@router.get("/reviews/team", response_model=list[PerformanceReviewRead])
+def team_performance_reviews(
+    team_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    managed_ids = _managed_team_ids(db, current_user)
+    if team_id is not None:
+        if team_id not in managed_ids and not user_can_manage_team_reviews(db, current_user, team_id):
+            raise HTTPException(status_code=403, detail="Team review access denied")
+        allowed = [team_id]
+    else:
+        allowed = managed_ids
+    if not allowed:
+        return []
+    rows = db.scalars(
+        select(PerformanceReviewSheet)
+        .options(
+            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.reviewer),
+            selectinload(PerformanceReviewSheet.team),
+            selectinload(PerformanceReviewSheet.cycle),
+            selectinload(PerformanceReviewSheet.sections).selectinload(
+                PerformanceReviewSection.items
+            ),
+        )
+        .where(
+            PerformanceReviewSheet.team_id.in_(allowed),
+            PerformanceReviewSheet.is_active.is_(True),
+        )
+        .order_by(PerformanceReviewSheet.created_at.desc())
+    ).all()
+    return [_review_to_read(db, row, current_user) for row in rows]
+
+
+@router.get("/reviews/{review_id}", response_model=PerformanceReviewRead)
+def get_performance_review(
+    review_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sheet = db.scalar(
+        select(PerformanceReviewSheet)
+        .options(
+            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.reviewer),
+            selectinload(PerformanceReviewSheet.team),
+            selectinload(PerformanceReviewSheet.cycle),
+            selectinload(PerformanceReviewSheet.sections).selectinload(
+                PerformanceReviewSection.items
+            ),
+        )
+        .where(PerformanceReviewSheet.id == review_id, PerformanceReviewSheet.is_active.is_(True))
+    )
+    if sheet is None:
+        raise HTTPException(status_code=404, detail="Performance review not found")
+    if not user_can_view_review(db, current_user, sheet):
+        raise HTTPException(status_code=403, detail="Performance review access denied")
+    return _review_to_read(db, sheet, current_user)
+
+
+@router.post("/reviews", response_model=PerformanceReviewRead)
+def create_performance_review(
+    payload: PerformanceReviewCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not user_can_manage_team_reviews(db, current_user, payload.team_id):
+        raise HTTPException(status_code=403, detail="Team review access denied")
+    employee = db.get(User, payload.employee_id)
+    if employee is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    reviewer = db.get(User, payload.reviewer_id or current_user.id)
+    if reviewer is None:
+        raise HTTPException(status_code=404, detail="Reviewer not found")
+
+    sheet = PerformanceReviewSheet(
+        cycle_id=payload.cycle_id,
+        employee_id=payload.employee_id,
+        reviewer_id=reviewer.id,
+        team_id=payload.team_id,
+        period_label=payload.period_label,
+        status=payload.status,
+        review_date=payload.review_date,
+        due_date=payload.due_date,
+        overall_score=payload.overall_score,
+        employee_summary=payload.employee_summary,
+        manager_summary=payload.manager_summary,
+        strengths_summary=payload.strengths_summary,
+        improvement_summary=payload.improvement_summary,
+        career_goals=payload.career_goals,
+        is_active=True,
+    )
+    if payload.sections:
+        for section_row in payload.sections:
+            section = PerformanceReviewSection(
+                title=section_row.title,
+                description=section_row.description,
+                sort_order=section_row.sort_order,
+            )
+            for item_row in section_row.items:
+                section.items.append(
+                    PerformanceReviewItem(
+                        prompt=item_row.prompt,
+                        rating=item_row.rating,
+                        employee_comment=item_row.employee_comment,
+                        manager_comment=item_row.manager_comment,
+                        sort_order=item_row.sort_order,
+                    )
+                )
+            sheet.sections.append(section)
+    else:
+        _seed_sections(sheet)
+    if sheet.status == "submitted":
+        sheet.submitted_at = _utcnow()
+    db.add(sheet)
+    db.commit()
+    db.refresh(sheet)
+    sheet = db.scalar(
+        select(PerformanceReviewSheet)
+        .options(
+            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.reviewer),
+            selectinload(PerformanceReviewSheet.team),
+            selectinload(PerformanceReviewSheet.cycle),
+            selectinload(PerformanceReviewSheet.sections).selectinload(
+                PerformanceReviewSection.items
+            ),
+        )
+        .where(PerformanceReviewSheet.id == sheet.id)
+    )
+    assert sheet is not None
+    return _review_to_read(db, sheet, current_user)
+
+
+@router.patch("/reviews/{review_id}", response_model=PerformanceReviewRead)
+def update_performance_review(
+    review_id: UUID,
+    payload: PerformanceReviewUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sheet = db.scalar(
+        select(PerformanceReviewSheet)
+        .options(
+            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.reviewer),
+            selectinload(PerformanceReviewSheet.team),
+            selectinload(PerformanceReviewSheet.cycle),
+            selectinload(PerformanceReviewSheet.sections).selectinload(
+                PerformanceReviewSection.items
+            ),
+        )
+        .where(PerformanceReviewSheet.id == review_id, PerformanceReviewSheet.is_active.is_(True))
+    )
+    if sheet is None:
+        raise HTTPException(status_code=404, detail="Performance review not found")
+    can_manage = sheet.team_id is not None and user_can_manage_team_reviews(
+        db, current_user, sheet.team_id
+    )
+    is_reviewer = sheet.reviewer_id == current_user.id
+    is_self = sheet.employee_id == current_user.id
+    if not (can_manage or is_reviewer or is_self):
+        raise HTTPException(status_code=403, detail="Performance review access denied")
+
+    if can_manage or is_reviewer:
+        for field in (
+            "review_date",
+            "due_date",
+            "overall_score",
+            "employee_summary",
+            "manager_summary",
+            "strengths_summary",
+            "improvement_summary",
+            "career_goals",
+            "period_label",
+            "status",
+        ):
+            value = getattr(payload, field)
+            if value is not None:
+                setattr(sheet, field, value)
+        if payload.reviewer_id is not None:
+            sheet.reviewer_id = payload.reviewer_id
+        if payload.team_id is not None:
+            if not user_can_manage_team_reviews(db, current_user, payload.team_id):
+                raise HTTPException(status_code=403, detail="Target team review access denied")
+            sheet.team_id = payload.team_id
+        if payload.sections is not None:
+            sheet.sections.clear()
+            for section_row in payload.sections:
+                section = PerformanceReviewSection(
+                    title=section_row.title,
+                    description=section_row.description,
+                    sort_order=section_row.sort_order,
+                )
+                for item_row in section_row.items:
+                    section.items.append(
+                        PerformanceReviewItem(
+                            prompt=item_row.prompt,
+                            rating=item_row.rating,
+                            employee_comment=item_row.employee_comment,
+                            manager_comment=item_row.manager_comment,
+                            sort_order=item_row.sort_order,
+                        )
+                    )
+                sheet.sections.append(section)
+        if payload.status == "submitted":
+            sheet.submitted_at = _utcnow()
+    else:
+        if payload.employee_summary is not None:
+            sheet.employee_summary = payload.employee_summary
+        if payload.career_goals is not None:
+            sheet.career_goals = payload.career_goals
+        if payload.acknowledged:
+            sheet.status = "acknowledged"
+            sheet.acknowledged_at = _utcnow()
+
+    db.add(sheet)
+    db.commit()
+    db.refresh(sheet)
+    sheet = db.scalar(
+        select(PerformanceReviewSheet)
+        .options(
+            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.reviewer),
+            selectinload(PerformanceReviewSheet.team),
+            selectinload(PerformanceReviewSheet.cycle),
+            selectinload(PerformanceReviewSheet.sections).selectinload(
+                PerformanceReviewSection.items
+            ),
+        )
+        .where(PerformanceReviewSheet.id == review_id)
+    )
+    assert sheet is not None
+    return _review_to_read(db, sheet, current_user)

@@ -19,7 +19,7 @@ from app.models.finance import (
     QuoteRevision,
     TeamCommercialTerms,
 )
-from app.models.models import Project, Team, TeamMember, User
+from app.models.models import Customer, Project, Stream, Team, TeamMember, User
 from app.services.finance.billable_headcount import (
     billable_salary_headcount,
     company_delivery_billable_salary_headcount,
@@ -134,6 +134,135 @@ def _quote_revenue_cost(
         revenue += _d(rev.base_quoted_revenue_inr)
         cost += _d(rev.base_estimated_cost_inr)
     return revenue, cost
+
+
+def _revenue_by_customer(
+    db: Session, *, team_id: UUID | None
+) -> list[dict]:
+    from app.models.finance import Quote
+
+    quote_stmt = select(Quote).where(Quote.is_active.is_(True))
+    if team_id is not None:
+        quote_stmt = quote_stmt.where(Quote.team_id == team_id)
+    quotes = db.scalars(quote_stmt.order_by(Quote.tool_number)).all()
+
+    grouped: dict[UUID, dict] = {}
+    for quote in quotes:
+        current = db.scalar(
+            select(QuoteRevision)
+            .where(
+                QuoteRevision.quote_id == quote.id,
+                QuoteRevision.version == quote.current_version,
+                QuoteRevision.revision == quote.current_revision,
+            )
+            .limit(1)
+        )
+        if current is None:
+            current = db.scalar(
+                select(QuoteRevision)
+                .where(QuoteRevision.quote_id == quote.id)
+                .order_by(QuoteRevision.version.desc())
+                .limit(1)
+            )
+        if current is None:
+            continue
+        customer = db.get(Customer, quote.customer_id)
+        row = grouped.setdefault(
+            quote.customer_id,
+            {
+                "key": str(quote.customer_id),
+                "label": customer.name if customer is not None else str(quote.customer_id),
+                "monthly_revenue_inr": Decimal("0.00"),
+                "quote_count": 0,
+                "project_ids": set(),
+            },
+        )
+        row["monthly_revenue_inr"] += _d(current.base_quoted_revenue_inr)
+        row["quote_count"] += 1
+        if quote.project_id is not None:
+            row["project_ids"].add(str(quote.project_id))
+
+    rows: list[dict] = []
+    for row in grouped.values():
+        monthly = _d(row["monthly_revenue_inr"])
+        rows.append(
+            {
+                "key": row["key"],
+                "label": row["label"],
+                "monthly_revenue_inr": monthly,
+                "quarterly_revenue_inr": _d(monthly * Decimal("3")),
+                "quote_count": int(row["quote_count"]),
+                "project_count": len(row["project_ids"]),
+            }
+        )
+    rows.sort(key=lambda item: item["monthly_revenue_inr"], reverse=True)
+    return rows
+
+
+def _revenue_by_stream(
+    db: Session, *, team_id: UUID | None
+) -> list[dict]:
+    from app.models.finance import Quote
+
+    quote_stmt = select(Quote).where(Quote.is_active.is_(True))
+    if team_id is not None:
+        quote_stmt = quote_stmt.where(Quote.team_id == team_id)
+    quotes = db.scalars(quote_stmt.order_by(Quote.tool_number)).all()
+
+    grouped: dict[str, dict] = {}
+    for quote in quotes:
+        current = db.scalar(
+            select(QuoteRevision)
+            .where(
+                QuoteRevision.quote_id == quote.id,
+                QuoteRevision.version == quote.current_version,
+                QuoteRevision.revision == quote.current_revision,
+            )
+            .limit(1)
+        )
+        if current is None:
+            current = db.scalar(
+                select(QuoteRevision)
+                .where(QuoteRevision.quote_id == quote.id)
+                .order_by(QuoteRevision.version.desc())
+                .limit(1)
+            )
+        if current is None:
+            continue
+        project = db.get(Project, quote.project_id) if quote.project_id is not None else None
+        stream = db.get(Stream, project.stream_id) if project and project.stream_id is not None else None
+        key = str(stream.id) if stream is not None else "unassigned"
+        label = stream.name if stream is not None else "Unassigned stream"
+        row = grouped.setdefault(
+            key,
+            {
+                "key": key,
+                "label": label,
+                "monthly_revenue_inr": Decimal("0.00"),
+                "quote_count": 0,
+                "project_ids": set(),
+            },
+        )
+        row["monthly_revenue_inr"] += _d(current.base_quoted_revenue_inr)
+        row["quote_count"] += 1
+        if quote.project_id is not None:
+            row["project_ids"].add(str(quote.project_id))
+
+    rows: list[dict] = []
+    for row in grouped.values():
+        monthly = _d(row["monthly_revenue_inr"])
+        rows.append(
+            {
+                "key": row["key"],
+                "label": row["label"],
+                "monthly_revenue_inr": monthly,
+                "quarterly_revenue_inr": _d(monthly * Decimal("3")),
+                "quote_count": int(row["quote_count"]),
+                "project_count": len(row["project_ids"]),
+            }
+        )
+    rows.sort(key=lambda item: item["monthly_revenue_inr"], reverse=True)
+    return rows
 
 
 def _salary_for_users(
@@ -491,6 +620,8 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         )
 
     by_team: list[dict] = []
+    revenue_by_customer = _revenue_by_customer(db, team_id=team_id)
+    revenue_by_stream = _revenue_by_stream(db, team_id=team_id)
     if team_id is None:
         teams = db.scalars(select(Team).where(Team.is_active.is_(True)).order_by(Team.name)).all()
         for team in teams:
@@ -618,4 +749,6 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         "pass_through_opex_inr": pass_through_opex,
         "salary_cost_inr": salary_cost,
         "by_team": by_team,
+        "revenue_by_customer": revenue_by_customer,
+        "revenue_by_stream": revenue_by_stream,
     }

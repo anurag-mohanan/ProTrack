@@ -26,7 +26,17 @@ import {
   FinanceKpiBreakdownDrawer,
   type KpiBreakdownMetric,
 } from './FinanceKpiBreakdownDrawer';
+import { FinanceRevenueBreakdownTable } from './FinanceRevenueBreakdownTable';
 import { FinanceTeamPnlTable } from './FinanceTeamPnlTable';
+
+type RevenueBreakdownRow = {
+  key: string;
+  label: string;
+  monthly_revenue_inr: number;
+  quarterly_revenue_inr: number;
+  quote_count: number;
+  project_count: number;
+};
 
 type FinanceDashboard = {
   base_currency: string;
@@ -50,6 +60,8 @@ type FinanceDashboard = {
   pass_through_opex_inr?: number;
   salary_cost_inr?: number;
   team_commercial_fee_monthly_inr?: number;
+  revenue_by_customer?: RevenueBreakdownRow[];
+  revenue_by_stream?: RevenueBreakdownRow[];
   by_team?: Array<{
     team_id: string;
     team_name: string;
@@ -294,6 +306,31 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
           <FinanceTeamPnlTable rows={data.by_team ?? []} currency={currency} />
         </FinanceSection>
       ) : null}
+
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <FinanceSection
+            title="Revenue by customer"
+            subtitle="Awarded quote revenue signal grouped by customer for the current scope."
+          >
+            <FinanceRevenueBreakdownTable
+              rows={data.revenue_by_customer ?? []}
+              currency={currency}
+            />
+          </FinanceSection>
+        </Grid>
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <FinanceSection
+            title="Revenue by stream"
+            subtitle="Awarded quote revenue signal grouped by project stream."
+          >
+            <FinanceRevenueBreakdownTable
+              rows={data.revenue_by_stream ?? []}
+              currency={currency}
+            />
+          </FinanceSection>
+        </Grid>
+      </Grid>
 
       <FinanceSection
         title="Renewals radar"

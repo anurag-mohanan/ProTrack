@@ -162,6 +162,7 @@ class EmployeeCostRosterItem(BaseModel):
     first_name: str
     last_name: str
     email: str
+    is_active: bool = True
     team_names: list[str] = Field(default_factory=list)
     requires_salary: bool = True
     has_profile: bool
@@ -275,6 +276,15 @@ class TeamFinanceBreakdown(BaseModel):
     gross_margin_percent: Decimal = Decimal("0")
     net_margin_percent: Decimal = Decimal("0")
     quarterly_revenue_signal_inr: Decimal = Decimal("0")
+
+
+class RevenueBreakdownRow(BaseModel):
+    key: str
+    label: str
+    monthly_revenue_inr: Decimal = Decimal("0")
+    quarterly_revenue_inr: Decimal = Decimal("0")
+    quote_count: int = 0
+    project_count: int = 0
 
 
 class UpcomingRenewalRead(BaseModel):
@@ -512,6 +522,8 @@ class FinanceDashboardRead(BaseModel):
     planning_fy_start: date | None = None
     planning_fy_label: str | None = None
     by_team: list[TeamFinanceBreakdown] = Field(default_factory=list)
+    revenue_by_customer: list[RevenueBreakdownRow] = Field(default_factory=list)
+    revenue_by_stream: list[RevenueBreakdownRow] = Field(default_factory=list)
     overhead: dict = Field(default_factory=dict)
 
 

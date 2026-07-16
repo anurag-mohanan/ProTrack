@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   Divider,
   FormControl,
@@ -22,17 +20,38 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
+import StarOutlineOutlinedIcon from '@mui/icons-material/StarOutlineOutlined';
+import TaskAltOutlinedIcon from '@mui/icons-material/TaskAltOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getErrorMessage } from '../api/client';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
+import { FinanceSection } from '../components/finance/FinanceCockpitPrimitives';
+import { KpiMetricCard } from '../components/ui/design-system/KpiMetricCard';
+import {
+  FALLBACK_RATING_SCALE,
+  formatScore,
+  ratingLabelForValue,
+  statusChipColor,
+  type RatingScaleItem,
+} from '../components/performanceReview/performanceReviewConstants';
+import { PerformanceReviewRatingPicker } from '../components/performanceReview/PerformanceReviewRatingPicker';
+import {
+  PerformanceReviewCompletionMeter,
+  PerformanceReviewHero,
+  PerformanceReviewScoreBadge,
+} from '../components/performanceReview/PerformanceReviewPrimitives';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
 type ReviewItem = {
   id?: string;
   prompt: string;
+  guidance?: string | null;
   rating?: number | string | null;
+  rating_label?: string | null;
   employee_comment?: string | null;
   manager_comment?: string | null;
   sort_order: number;
@@ -42,6 +61,12 @@ type ReviewSection = {
   id?: string;
   title: string;
   description?: string | null;
+  employee_notes?: string | null;
+  reviewer_notes?: string | null;
+  employee_notes_label?: string | null;
+  average_score?: number | string | null;
+  rated_count?: number;
+  total_count?: number;
   sort_order: number;
   items: ReviewItem[];
 };
@@ -50,6 +75,8 @@ type Review = {
   id: string;
   employee_id: string;
   employee_name: string;
+  employee_department?: string | null;
+  employee_joining_date?: string | null;
   reviewer_id: string;
   reviewer_name: string;
   team_id?: string | null;
@@ -60,7 +87,10 @@ type Review = {
   status: string;
   review_date?: string | null;
   due_date?: string | null;
+  total_experience?: string | null;
   overall_score?: number | string | null;
+  overall_score_label?: string | null;
+  completion_percent?: number;
   employee_summary?: string | null;
   manager_summary?: string | null;
   strengths_summary?: string | null;
@@ -90,10 +120,17 @@ type ReviewCycle = {
   status: string;
 };
 
+type ReviewTemplate = {
+  form_code: string;
+  form_title: string;
+  rating_scale: RatingScaleItem[];
+};
+
 type EditorState = {
   period_label: string;
   review_date: string;
   due_date: string;
+  total_experience: string;
   overall_score: string;
   employee_summary: string;
   manager_summary: string;
@@ -115,6 +152,7 @@ function reviewToEditor(review: Review): EditorState {
     period_label: review.period_label ?? '',
     review_date: review.review_date ?? '',
     due_date: review.due_date ?? '',
+    total_experience: review.total_experience ?? '',
     overall_score:
       review.overall_score === null || review.overall_score === undefined
         ? ''
@@ -126,6 +164,10 @@ function reviewToEditor(review: Review): EditorState {
     career_goals: review.career_goals ?? '',
     sections: cloneSections(review.sections ?? []),
   };
+}
+
+function sectionRatedCount(section: ReviewSection): number {
+  return section.items.filter((item) => item.rating !== null && item.rating !== undefined && item.rating !== '').length;
 }
 
 export function PerformanceReviewsPage() {
@@ -140,6 +182,13 @@ export function PerformanceReviewsPage() {
   const [periodLabel, setPeriodLabel] = useState(new Date().getFullYear().toString());
   const [dueDate, setDueDate] = useState('');
   const [editor, setEditor] = useState<EditorState | null>(null);
+
+  const templateQuery = useQuery({
+    queryKey: ['performance-reviews', 'template'],
+    queryFn: async () => (await apiClient.get<ReviewTemplate>('/hr/reviews/template')).data,
+  });
+
+  const ratingScale = templateQuery.data?.rating_scale ?? FALLBACK_RATING_SCALE;
 
   const myReviewsQuery = useQuery({
     queryKey: ['performance-reviews', 'me'],
@@ -191,6 +240,7 @@ export function PerformanceReviewsPage() {
     onSuccess: (review) => {
       showSuccess('Performance review updated');
       setSelectedReviewId(review.id);
+      setEditor(reviewToEditor(review));
       void queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
@@ -229,43 +279,63 @@ export function PerformanceReviewsPage() {
     }
   }, [selectedReview?.id]);
 
-  if (myReviewsQuery.isLoading || teamMembersQuery.isLoading) {
+  if (myReviewsQuery.isLoading || teamMembersQuery.isLoading || templateQuery.isLoading) {
     return <LoadingState message="Loading performance reviews…" />;
   }
 
   const canManageTeamReviews = teamMembers.length > 0;
+  const submittedCount = (teamReviewsQuery.data ?? []).filter((row) => row.status !== 'draft').length;
 
   return (
     <Stack spacing={2.5}>
       <PageHeader
         title="Performance Reviews"
-        subtitle="Track historical reviews, prepare new review sheets, and keep annual feedback in one structured workspace."
+        subtitle="PP-HRD-FO-20 aligned review workspace with competency ratings, achievements, and annual goals."
+      />
+
+      <PerformanceReviewHero
+        formCode={templateQuery.data?.form_code ?? 'PP-HRD-FO-20'}
+        formTitle={templateQuery.data?.form_title ?? 'Employee Performance Review'}
+        periodLabel={selectedReview?.period_label}
+        status={selectedReview?.status}
       />
 
       <Grid container spacing={1.5}>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <Card variant="outlined">
-            <CardContent>
-              <Typography variant="caption">My Reviews</Typography>
-              <Typography variant="h5">{myReviewsQuery.data?.length ?? 0}</Typography>
-            </CardContent>
-          </Card>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            title="My Reviews"
+            value={String(myReviewsQuery.data?.length ?? 0)}
+            subtitle="Historical review sheets"
+            icon={AssessmentOutlinedIcon}
+            accent="primary"
+          />
         </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <Card variant="outlined">
-            <CardContent>
-              <Typography variant="caption">Team Members</Typography>
-              <Typography variant="h5">{teamMembers.length}</Typography>
-            </CardContent>
-          </Card>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            title="Team Members"
+            value={String(teamMembers.length)}
+            subtitle="Eligible for team reviews"
+            icon={GroupsOutlinedIcon}
+            accent="info"
+          />
         </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <Card variant="outlined">
-            <CardContent>
-              <Typography variant="caption">Review Cycles</Typography>
-              <Typography variant="h5">{cyclesQuery.data?.length ?? 0}</Typography>
-            </CardContent>
-          </Card>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            title="Submitted"
+            value={String(submittedCount)}
+            subtitle="Team reviews in progress"
+            icon={TaskAltOutlinedIcon}
+            accent="success"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            title="Overall Score"
+            value={formatScore(selectedReview?.overall_score)}
+            subtitle={selectedReview?.overall_score_label ?? 'Select a review'}
+            icon={StarOutlineOutlinedIcon}
+            accent="warning"
+          />
         </Grid>
       </Grid>
 
@@ -277,56 +347,38 @@ export function PerformanceReviewsPage() {
       {tab === 0 ? (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 4 }}>
-            <Card variant="outlined">
-              <CardContent>
-                <Typography sx={{ fontWeight: 700, mb: 1.5 }}>My review history</Typography>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Period</TableCell>
-                      <TableCell>Status</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {(myReviewsQuery.data ?? []).map((review) => (
-                      <TableRow
-                        key={review.id}
-                        hover
-                        selected={selectedReviewId === review.id}
-                        onClick={() => setSelectedReviewId(review.id)}
-                        sx={{ cursor: 'pointer' }}
-                      >
-                        <TableCell>
-                          <Typography sx={{ fontWeight: 600 }}>{review.period_label}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {review.team_name ?? 'Team'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip size="small" label={review.status} variant="outlined" />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {(myReviewsQuery.data ?? []).length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={2}>
-                          <Typography color="text.secondary">
-                            No reviews available yet.
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            <ReviewListCard
+              title="My review history"
+              rows={(myReviewsQuery.data ?? []).map((review) => ({
+                id: review.id,
+                primary: review.period_label,
+                secondary: review.team_name ?? 'Team',
+                status: review.status,
+                score: review.overall_score,
+              }))}
+              selectedId={selectedReviewId}
+              onSelect={setSelectedReviewId}
+              emptyLabel="No reviews available yet."
+            />
           </Grid>
           <Grid size={{ xs: 12, md: 8 }}>
             <ReviewDetailCard
               review={selectedReview}
               editor={editor}
+              ratingScale={ratingScale}
               canManage={false}
               onChange={setEditor}
+              onEmployeeSave={() => {
+                if (!selectedReview || !editor) return;
+                updateReviewMutation.mutate({
+                  id: selectedReview.id,
+                  body: {
+                    employee_summary: editor.employee_summary || null,
+                    career_goals: editor.career_goals || null,
+                    sections: editor.sections,
+                  },
+                });
+              }}
               onAcknowledge={() =>
                 selectedReview &&
                 updateReviewMutation.mutate({ id: selectedReview.id, body: { acknowledged: true } })
@@ -340,113 +392,95 @@ export function PerformanceReviewsPage() {
       {tab === 1 && canManageTeamReviews ? (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 4 }}>
-            <Card variant="outlined">
-              <CardContent>
-                <Typography sx={{ fontWeight: 700, mb: 1.5 }}>Create team review</Typography>
-                <Stack spacing={1.5}>
-                  <FormControl size="small">
-                    <InputLabel>Team</InputLabel>
-                    <Select
-                      label="Team"
-                      value={selectedTeamId}
-                      onChange={(e) => setSelectedTeamId(String(e.target.value))}
-                    >
-                      {teamOptions.map((team) => (
-                        <MenuItem key={team.id} value={team.id}>
-                          {team.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <FormControl size="small">
-                    <InputLabel>Team member</InputLabel>
-                    <Select
-                      label="Team member"
-                      value={selectedMemberId}
-                      onChange={(e) => setSelectedMemberId(String(e.target.value))}
-                    >
-                      {filteredMembers.map((member) => (
-                        <MenuItem key={member.user_id} value={member.user_id}>
-                          {member.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <FormControl size="small">
-                    <InputLabel>Cycle</InputLabel>
-                    <Select
-                      label="Cycle"
-                      value={selectedCycleId}
-                      onChange={(e) => setSelectedCycleId(String(e.target.value))}
-                    >
-                      <MenuItem value="">No cycle</MenuItem>
-                      {(cyclesQuery.data ?? []).map((cycle) => (
-                        <MenuItem key={cycle.id} value={cycle.id}>
-                          {cycle.title}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <TextField
-                    size="small"
-                    label="Period label"
-                    value={periodLabel}
-                    onChange={(e) => setPeriodLabel(e.target.value)}
-                  />
-                  <TextField
-                    size="small"
-                    type="date"
-                    label="Due date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                  />
-                  <Button
-                    variant="contained"
-                    disabled={!selectedTeamId || !selectedMemberId || createReviewMutation.isPending}
-                    onClick={() => createReviewMutation.mutate()}
+            <FinanceSection title="Create team review" subtitle="Launch a new PP-HRD-FO-20 sheet">
+              <Stack spacing={1.5}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Team</InputLabel>
+                  <Select
+                    label="Team"
+                    value={selectedTeamId}
+                    onChange={(e) => setSelectedTeamId(String(e.target.value))}
                   >
-                    Create Review Sheet
-                  </Button>
-                </Stack>
-                <Divider sx={{ my: 2 }} />
-                <Typography sx={{ fontWeight: 700, mb: 1 }}>Existing team reviews</Typography>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Employee</TableCell>
-                      <TableCell>Status</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {(teamReviewsQuery.data ?? []).map((review) => (
-                      <TableRow
-                        key={review.id}
-                        hover
-                        selected={selectedReviewId === review.id}
-                        onClick={() => setSelectedReviewId(review.id)}
-                        sx={{ cursor: 'pointer' }}
-                      >
-                        <TableCell>
-                          <Typography sx={{ fontWeight: 600 }}>{review.employee_name}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {review.period_label}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip size="small" label={review.status} variant="outlined" />
-                        </TableCell>
-                      </TableRow>
+                    {teamOptions.map((team) => (
+                      <MenuItem key={team.id} value={team.id}>
+                        {team.name}
+                      </MenuItem>
                     ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                  </Select>
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Team member</InputLabel>
+                  <Select
+                    label="Team member"
+                    value={selectedMemberId}
+                    onChange={(e) => setSelectedMemberId(String(e.target.value))}
+                  >
+                    {filteredMembers.map((member) => (
+                      <MenuItem key={member.user_id} value={member.user_id}>
+                        {member.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Cycle</InputLabel>
+                  <Select
+                    label="Cycle"
+                    value={selectedCycleId}
+                    onChange={(e) => setSelectedCycleId(String(e.target.value))}
+                  >
+                    <MenuItem value="">No cycle</MenuItem>
+                    {(cyclesQuery.data ?? []).map((cycle) => (
+                      <MenuItem key={cycle.id} value={cycle.id}>
+                        {cycle.title}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  size="small"
+                  label="Period label"
+                  value={periodLabel}
+                  onChange={(e) => setPeriodLabel(e.target.value)}
+                />
+                <TextField
+                  size="small"
+                  type="date"
+                  label="Due date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                />
+                <Button
+                  variant="contained"
+                  disabled={!selectedTeamId || !selectedMemberId || createReviewMutation.isPending}
+                  onClick={() => createReviewMutation.mutate()}
+                >
+                  Create Review Sheet
+                </Button>
+              </Stack>
+              <Divider sx={{ my: 2 }} />
+              <ReviewListCard
+                title="Existing team reviews"
+                rows={(teamReviewsQuery.data ?? []).map((review) => ({
+                  id: review.id,
+                  primary: review.employee_name,
+                  secondary: review.period_label,
+                  status: review.status,
+                  score: review.overall_score,
+                }))}
+                selectedId={selectedReviewId}
+                onSelect={setSelectedReviewId}
+                emptyLabel="No team reviews yet."
+                embedded
+              />
+            </FinanceSection>
           </Grid>
           <Grid size={{ xs: 12, md: 8 }}>
             <ReviewDetailCard
               review={selectedReview}
               editor={editor}
+              ratingScale={ratingScale}
               canManage
               onChange={setEditor}
               onSave={(status) => {
@@ -457,7 +491,7 @@ export function PerformanceReviewsPage() {
                     period_label: editor.period_label,
                     review_date: editor.review_date || null,
                     due_date: editor.due_date || null,
-                    overall_score: editor.overall_score ? Number(editor.overall_score) : null,
+                    total_experience: editor.total_experience || null,
                     employee_summary: editor.employee_summary || null,
                     manager_summary: editor.manager_summary || null,
                     strengths_summary: editor.strengths_summary || null,
@@ -477,66 +511,152 @@ export function PerformanceReviewsPage() {
   );
 }
 
+function ReviewListCard({
+  title,
+  rows,
+  selectedId,
+  onSelect,
+  emptyLabel,
+  embedded = false,
+}: {
+  title: string;
+  rows: Array<{
+    id: string;
+    primary: string;
+    secondary: string;
+    status: string;
+    score?: number | string | null;
+  }>;
+  selectedId: string;
+  onSelect: (id: string) => void;
+  emptyLabel: string;
+  embedded?: boolean;
+}) {
+  const content = (
+    <>
+      {!embedded ? <Typography sx={{ fontWeight: 700, mb: 1.5 }}>{title}</Typography> : null}
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>{embedded ? 'Employee' : 'Period'}</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell align="right">Score</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow
+              key={row.id}
+              hover
+              selected={selectedId === row.id}
+              onClick={() => onSelect(row.id)}
+              sx={{ cursor: 'pointer' }}
+            >
+              <TableCell>
+                <Typography sx={{ fontWeight: 600 }}>{row.primary}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {row.secondary}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Chip size="small" label={row.status} color={statusChipColor(row.status)} variant="outlined" />
+              </TableCell>
+              <TableCell align="right">{formatScore(row.score)}</TableCell>
+            </TableRow>
+          ))}
+          {rows.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={3}>
+                <Typography color="text.secondary">{emptyLabel}</Typography>
+              </TableCell>
+            </TableRow>
+          ) : null}
+        </TableBody>
+      </Table>
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <FinanceSection title={title}>
+      {content}
+    </FinanceSection>
+  );
+}
+
 function ReviewDetailCard({
   review,
   editor,
+  ratingScale,
   canManage,
   onChange,
   onSave,
+  onEmployeeSave,
   onAcknowledge,
   saving,
 }: {
   review: Review | null;
   editor: EditorState | null;
+  ratingScale: RatingScaleItem[];
   canManage: boolean;
   onChange: (next: EditorState | null) => void;
   onSave?: (status: string) => void;
+  onEmployeeSave?: () => void;
   onAcknowledge?: () => void;
   saving: boolean;
 }) {
   if (!review || !editor) {
     return (
-      <Card variant="outlined">
-        <CardContent>
-          <Typography color="text.secondary">
-            Select a review to inspect or edit.
-          </Typography>
-        </CardContent>
-      </Card>
+      <FinanceSection title="Review workspace" subtitle="Select a review to inspect or edit.">
+        <Typography color="text.secondary">No review selected.</Typography>
+      </FinanceSection>
     );
   }
 
   const setField = (field: keyof EditorState, value: string) =>
     onChange({ ...editor, [field]: value });
 
+  const ratedCount = editor.sections.reduce((sum, section) => sum + sectionRatedCount(section), 0);
+  const totalCount = editor.sections.reduce((sum, section) => sum + section.items.length, 0);
+  const completionPercent =
+    review.completion_percent ?? (totalCount ? Math.round((ratedCount / totalCount) * 100) : 0);
+
+  const coreSection = editor.sections.find((section) => section.title.includes('Core'));
+  const technicalSection = editor.sections.find((section) => section.title.includes('Technical'));
+
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 2, gap: 1 }}>
-          <Box>
-            <Typography sx={{ fontWeight: 800 }}>{review.employee_name}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {review.team_name ?? 'Team'} · Reviewer {review.reviewer_name}
-            </Typography>
-          </Box>
+    <Stack spacing={2}>
+      <FinanceSection
+        title={review.employee_name}
+        subtitle={`${review.team_name ?? 'Team'} · Reviewer ${review.reviewer_name}`}
+        action={
           <Stack direction="row" spacing={1}>
-            <Chip size="small" label={review.status} />
+            <Chip size="small" label={review.status} color={statusChipColor(review.status)} />
             {review.cycle_title ? <Chip size="small" variant="outlined" label={review.cycle_title} /> : null}
           </Stack>
-        </Stack>
-
+        }
+      >
         <Grid container spacing={1.5} sx={{ mb: 2 }}>
-          <Grid size={{ xs: 12, sm: 4 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Typography variant="caption" color="text.secondary">Department</Typography>
+            <Typography sx={{ fontWeight: 600 }}>{review.employee_department ?? '—'}</Typography>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Typography variant="caption" color="text.secondary">Date joined</Typography>
+            <Typography sx={{ fontWeight: 600 }}>{review.employee_joining_date ?? '—'}</Typography>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               fullWidth
               size="small"
-              label="Period"
-              value={editor.period_label}
-              onChange={(e) => setField('period_label', e.target.value)}
+              label="Total experience"
+              value={editor.total_experience}
+              onChange={(e) => setField('total_experience', e.target.value)}
               disabled={!canManage}
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 4 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               fullWidth
               size="small"
@@ -548,171 +668,234 @@ function ReviewDetailCard({
               slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 4 }}>
-            <TextField
-              fullWidth
-              size="small"
-              type="date"
-              label="Due date"
-              value={editor.due_date}
-              onChange={(e) => setField('due_date', e.target.value)}
-              disabled={!canManage}
-              slotProps={{ inputLabel: { shrink: true } }}
+        </Grid>
+
+        <Grid container spacing={1.5} sx={{ mb: 2 }}>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <PerformanceReviewScoreBadge
+              label="Overall score"
+              score={review.overall_score}
+              scoreLabel={review.overall_score_label}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <PerformanceReviewScoreBadge
+              label="Core competencies"
+              score={coreSection?.average_score}
+              scoreLabel={ratingLabelForValue(coreSection?.average_score, ratingScale)}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <PerformanceReviewScoreBadge
+              label="Technical competencies"
+              score={technicalSection?.average_score}
+              scoreLabel={ratingLabelForValue(technicalSection?.average_score, ratingScale)}
             />
           </Grid>
         </Grid>
 
+        <PerformanceReviewCompletionMeter
+          percent={completionPercent}
+          rated={ratedCount}
+          total={totalCount}
+        />
+      </FinanceSection>
+
+      <FinanceSection title="Rating scale" subtitle="Aligned to PP-HRD-FO-20 guidance">
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+          {ratingScale.map((row) => (
+            <Chip
+              key={row.value}
+              label={`${row.short_label} · ${row.label}`}
+              variant="outlined"
+              title={row.guidance}
+            />
+          ))}
+        </Stack>
+      </FinanceSection>
+
+      {editor.sections.map((section, sectionIndex) => (
+        <FinanceSection
+          key={section.id ?? `${section.title}-${sectionIndex}`}
+          title={section.title}
+          subtitle={section.description ?? undefined}
+          action={
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`Avg ${formatScore(section.average_score)}`}
+            />
+          }
+        >
+          <Stack spacing={1.5}>
+            {section.items.map((item, itemIndex) => (
+              <Box
+                key={item.id ?? `${item.prompt}-${itemIndex}`}
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.paper',
+                }}
+              >
+                <Typography sx={{ fontWeight: 700, mb: 0.5 }}>{item.prompt}</Typography>
+                {item.guidance ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
+                    {item.guidance}
+                  </Typography>
+                ) : null}
+                <PerformanceReviewRatingPicker
+                  value={item.rating}
+                  disabled={!canManage}
+                  scale={ratingScale}
+                  onChange={(next) => {
+                    const sections = cloneSections(editor.sections);
+                    sections[sectionIndex].items[itemIndex].rating = next;
+                    onChange({ ...editor, sections });
+                  }}
+                />
+                <Grid container spacing={1.5} sx={{ mt: 1.25 }}>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      multiline
+                      minRows={2}
+                      label="Manager comment"
+                      value={item.manager_comment ?? ''}
+                      onChange={(e) => {
+                        const sections = cloneSections(editor.sections);
+                        sections[sectionIndex].items[itemIndex].manager_comment = e.target.value;
+                        onChange({ ...editor, sections });
+                      }}
+                      disabled={!canManage}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      multiline
+                      minRows={2}
+                      label="Employee comment"
+                      value={item.employee_comment ?? ''}
+                      onChange={(e) => {
+                        const sections = cloneSections(editor.sections);
+                        sections[sectionIndex].items[itemIndex].employee_comment = e.target.value;
+                        onChange({ ...editor, sections });
+                      }}
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
+            ))}
+
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              size="small"
+              label={section.employee_notes_label ?? 'Section notes'}
+              value={section.employee_notes ?? ''}
+              onChange={(e) => {
+                const sections = cloneSections(editor.sections);
+                sections[sectionIndex].employee_notes = e.target.value;
+                onChange({ ...editor, sections });
+              }}
+            />
+            {canManage ? (
+              <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                size="small"
+                label="Reviewer section notes"
+                value={section.reviewer_notes ?? ''}
+                onChange={(e) => {
+                  const sections = cloneSections(editor.sections);
+                  sections[sectionIndex].reviewer_notes = e.target.value;
+                  onChange({ ...editor, sections });
+                }}
+              />
+            ) : null}
+          </Stack>
+        </FinanceSection>
+      ))}
+
+      <FinanceSection title="Summary & development" subtitle="Employee and reviewer closing comments">
         <Stack spacing={1.5}>
           <TextField
             fullWidth
-            size="small"
-            label="Overall score (0-5)"
-            value={editor.overall_score}
-            onChange={(e) => setField('overall_score', e.target.value)}
-            disabled={!canManage}
-          />
-          <TextField
-            fullWidth
             multiline
-            minRows={2}
+            minRows={3}
             size="small"
-            label="Employee summary"
+            label="Employee comments"
             value={editor.employee_summary}
             onChange={(e) => setField('employee_summary', e.target.value)}
-            disabled={canManage ? false : false}
           />
           <TextField
             fullWidth
             multiline
-            minRows={2}
+            minRows={3}
             size="small"
-            label="Manager summary"
+            label="Reviewer comments"
             value={editor.manager_summary}
             onChange={(e) => setField('manager_summary', e.target.value)}
             disabled={!canManage}
           />
+          <Grid container spacing={1.5}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                size="small"
+                label="Strengths"
+                value={editor.strengths_summary}
+                onChange={(e) => setField('strengths_summary', e.target.value)}
+                disabled={!canManage}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                size="small"
+                label="Improvement areas"
+                value={editor.improvement_summary}
+                onChange={(e) => setField('improvement_summary', e.target.value)}
+                disabled={!canManage}
+              />
+            </Grid>
+          </Grid>
           <TextField
             fullWidth
             multiline
             minRows={2}
             size="small"
-            label="Strengths"
-            value={editor.strengths_summary}
-            onChange={(e) => setField('strengths_summary', e.target.value)}
-            disabled={!canManage}
-          />
-          <TextField
-            fullWidth
-            multiline
-            minRows={2}
-            size="small"
-            label="Improvement areas"
-            value={editor.improvement_summary}
-            onChange={(e) => setField('improvement_summary', e.target.value)}
-            disabled={!canManage}
-          />
-          <TextField
-            fullWidth
-            multiline
-            minRows={2}
-            size="small"
-            label="Career goals"
+            label="Career goals / development focus"
             value={editor.career_goals}
             onChange={(e) => setField('career_goals', e.target.value)}
           />
         </Stack>
 
-        <Divider sx={{ my: 2 }} />
-
-        <Stack spacing={2}>
-          {editor.sections.map((section, sectionIndex) => (
-            <Box key={section.id ?? `${section.title}-${sectionIndex}`}>
-              <Typography sx={{ fontWeight: 700 }}>{section.title}</Typography>
-              {section.description ? (
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {section.description}
-                </Typography>
-              ) : null}
-              <Stack spacing={1}>
-                {section.items.map((item, itemIndex) => (
-                  <Card key={item.id ?? `${item.prompt}-${itemIndex}`} variant="outlined">
-                    <CardContent>
-                      <Typography sx={{ fontWeight: 600, mb: 1 }}>{item.prompt}</Typography>
-                      <Grid container spacing={1.5}>
-                        <Grid size={{ xs: 12, sm: 3 }}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Rating"
-                            value={item.rating ?? ''}
-                            onChange={(e) => {
-                              const sections = cloneSections(editor.sections);
-                              sections[sectionIndex].items[itemIndex].rating = e.target.value;
-                              onChange({ ...editor, sections });
-                            }}
-                            disabled={!canManage}
-                          />
-                        </Grid>
-                        <Grid size={{ xs: 12, sm: 9 }}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            multiline
-                            minRows={2}
-                            label="Manager comment"
-                            value={item.manager_comment ?? ''}
-                            onChange={(e) => {
-                              const sections = cloneSections(editor.sections);
-                              sections[sectionIndex].items[itemIndex].manager_comment =
-                                e.target.value;
-                              onChange({ ...editor, sections });
-                            }}
-                            disabled={!canManage}
-                          />
-                        </Grid>
-                        <Grid size={{ xs: 12 }}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            multiline
-                            minRows={2}
-                            label="Employee comment"
-                            value={item.employee_comment ?? ''}
-                            onChange={(e) => {
-                              const sections = cloneSections(editor.sections);
-                              sections[sectionIndex].items[itemIndex].employee_comment =
-                                e.target.value;
-                              onChange({ ...editor, sections });
-                            }}
-                          />
-                        </Grid>
-                      </Grid>
-                    </CardContent>
-                  </Card>
-                ))}
-              </Stack>
-            </Box>
-          ))}
-        </Stack>
-
         <Stack direction="row" spacing={1} sx={{ mt: 2, justifyContent: 'flex-end' }}>
           {canManage && onSave ? (
             <>
-              <Button
-                variant="outlined"
-                disabled={saving}
-                onClick={() => onSave('draft')}
-              >
+              <Button variant="outlined" disabled={saving} onClick={() => onSave('draft')}>
                 Save Draft
               </Button>
-              <Button
-                variant="contained"
-                disabled={saving}
-                onClick={() => onSave('submitted')}
-              >
+              <Button variant="contained" disabled={saving} onClick={() => onSave('submitted')}>
                 Submit Review
               </Button>
             </>
+          ) : null}
+          {!canManage && review.status !== 'acknowledged' && onEmployeeSave ? (
+            <Button variant="outlined" disabled={saving} onClick={onEmployeeSave}>
+              Save My Comments
+            </Button>
           ) : null}
           {!canManage && review.can_acknowledge && onAcknowledge ? (
             <Button variant="contained" disabled={saving} onClick={onAcknowledge}>
@@ -720,8 +903,8 @@ function ReviewDetailCard({
             </Button>
           ) : null}
         </Stack>
-      </CardContent>
-    </Card>
+      </FinanceSection>
+    </Stack>
   );
 }
 

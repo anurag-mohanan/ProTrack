@@ -31,12 +31,21 @@ from app.schemas.performance_review import (
     PerformanceReviewCreate,
     PerformanceReviewCycleCreate,
     PerformanceReviewCycleRead,
+    PerformanceReviewItemRead,
     PerformanceReviewRead,
+    PerformanceReviewSectionRead,
     PerformanceReviewTeamMemberRead,
+    PerformanceReviewTemplateRead,
     PerformanceReviewUpdate,
 )
 from app.services.performance_review_service import (
     DEFAULT_REVIEW_TEMPLATE,
+    PP_HRD_FO_20_TEMPLATE,
+    RATING_SCALE,
+    rating_label,
+    section_average_score,
+    sheet_completion_ratio,
+    sheet_overall_score,
     user_can_manage_team_reviews,
     user_can_view_review,
 )
@@ -103,6 +112,42 @@ def _managed_team_ids(db: Session, current_user: User) -> list:
     return list(team_ids)
 
 
+def _section_notes_label(title: str) -> str | None:
+    for section_row in PP_HRD_FO_20_TEMPLATE:
+        if section_row["title"] == title:
+            return section_row.get("employee_notes_label")
+    return None
+
+
+def _build_section_read(section: PerformanceReviewSection) -> PerformanceReviewSectionRead:
+    rated_count = sum(1 for item in section.items if item.rating is not None)
+    return PerformanceReviewSectionRead(
+        id=section.id,
+        title=section.title,
+        description=section.description,
+        employee_notes=section.employee_notes,
+        reviewer_notes=section.reviewer_notes,
+        employee_notes_label=_section_notes_label(section.title),
+        average_score=section_average_score(section),
+        rated_count=rated_count,
+        total_count=len(section.items),
+        sort_order=section.sort_order,
+        items=[
+            PerformanceReviewItemRead(
+                id=item.id,
+                prompt=item.prompt,
+                guidance=item.guidance,
+                rating=item.rating,
+                rating_label=rating_label(item.rating),
+                employee_comment=item.employee_comment,
+                manager_comment=item.manager_comment,
+                sort_order=item.sort_order,
+            )
+            for item in sorted(section.items, key=lambda row: row.sort_order)
+        ],
+    )
+
+
 def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: User) -> PerformanceReviewRead:
     employee_name = f"{sheet.employee.first_name} {sheet.employee.last_name}".strip()
     reviewer_name = f"{sheet.reviewer.first_name} {sheet.reviewer.last_name}".strip()
@@ -110,12 +155,19 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         db, current_user, sheet.team_id
     )
     is_self = sheet.employee_id == current_user.id
+    rated_count, total_count = sheet_completion_ratio(sheet)
+    completion_percent = int(round((rated_count / total_count) * 100)) if total_count else 0
+    department_name = None
+    if sheet.employee.department is not None:
+        department_name = sheet.employee.department.name
     return PerformanceReviewRead(
         id=sheet.id,
         cycle_id=sheet.cycle_id,
         cycle_title=sheet.cycle.title if sheet.cycle is not None else None,
         employee_id=sheet.employee_id,
         employee_name=employee_name,
+        employee_department=department_name,
+        employee_joining_date=sheet.employee.joining_date,
         reviewer_id=sheet.reviewer_id,
         reviewer_name=reviewer_name,
         team_id=sheet.team_id,
@@ -124,7 +176,10 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         status=sheet.status,
         review_date=sheet.review_date,
         due_date=sheet.due_date,
+        total_experience=sheet.total_experience,
         overall_score=sheet.overall_score,
+        overall_score_label=rating_label(sheet.overall_score),
+        completion_percent=completion_percent,
         employee_summary=sheet.employee_summary,
         manager_summary=sheet.manager_summary,
         strengths_summary=sheet.strengths_summary,
@@ -132,7 +187,7 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         career_goals=sheet.career_goals,
         submitted_at=sheet.submitted_at,
         acknowledged_at=sheet.acknowledged_at,
-        sections=sheet.sections,
+        sections=[_build_section_read(section) for section in sorted(sheet.sections, key=lambda row: row.sort_order)],
         is_editable=bool(can_manage or sheet.reviewer_id == current_user.id),
         can_acknowledge=bool(is_self and sheet.status == "submitted"),
     )
@@ -146,14 +201,75 @@ def _seed_sections(sheet: PerformanceReviewSheet) -> None:
             description=section_row.get("description"),
             sort_order=section_index,
         )
-        for item_index, prompt in enumerate(section_row.get("items", [])):
+        for item_index, item_row in enumerate(section_row.get("items", [])):
+            if isinstance(item_row, dict):
+                section.items.append(
+                    PerformanceReviewItem(
+                        prompt=str(item_row["prompt"]),
+                        guidance=item_row.get("guidance"),
+                        sort_order=item_index,
+                    )
+                )
+            else:
+                section.items.append(
+                    PerformanceReviewItem(
+                        prompt=str(item_row),
+                        sort_order=item_index,
+                    )
+                )
+        sheet.sections.append(section)
+
+
+def _apply_manager_sections(sheet: PerformanceReviewSheet, sections: list) -> None:
+    sheet.sections.clear()
+    for section_row in sections:
+        section = PerformanceReviewSection(
+            title=section_row.title,
+            description=section_row.description,
+            employee_notes=section_row.employee_notes,
+            reviewer_notes=section_row.reviewer_notes,
+            sort_order=section_row.sort_order,
+        )
+        for item_row in section_row.items:
             section.items.append(
                 PerformanceReviewItem(
-                    prompt=str(prompt),
-                    sort_order=item_index,
+                    prompt=item_row.prompt,
+                    guidance=item_row.guidance,
+                    rating=item_row.rating,
+                    employee_comment=item_row.employee_comment,
+                    manager_comment=item_row.manager_comment,
+                    sort_order=item_row.sort_order,
                 )
             )
         sheet.sections.append(section)
+    sheet.overall_score = sheet_overall_score(sheet)
+
+
+def _apply_employee_section_updates(sheet: PerformanceReviewSheet, sections: list) -> None:
+    section_by_id = {section.id: section for section in sheet.sections}
+    for section_row in sections:
+        section = section_by_id.get(section_row.id) if section_row.id is not None else None
+        if section is None:
+            continue
+        if section_row.employee_notes is not None:
+            section.employee_notes = section_row.employee_notes
+        item_by_id = {item.id: item for item in section.items}
+        for item_row in section_row.items:
+            item = item_by_id.get(item_row.id) if item_row.id is not None else None
+            if item is None:
+                continue
+            if item_row.employee_comment is not None:
+                item.employee_comment = item_row.employee_comment
+
+
+@router.get("/reviews/template", response_model=PerformanceReviewTemplateRead)
+def performance_review_template(
+    current_user: User = Depends(get_current_user),
+):
+    return PerformanceReviewTemplateRead(
+        rating_scale=RATING_SCALE,
+        sections=PP_HRD_FO_20_TEMPLATE,
+    )
 
 
 @router.get("/dashboard")
@@ -349,7 +465,7 @@ def my_performance_reviews(
     rows = db.scalars(
         select(PerformanceReviewSheet)
         .options(
-            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
             selectinload(PerformanceReviewSheet.reviewer),
             selectinload(PerformanceReviewSheet.team),
             selectinload(PerformanceReviewSheet.cycle),
@@ -442,7 +558,7 @@ def team_performance_reviews(
     rows = db.scalars(
         select(PerformanceReviewSheet)
         .options(
-            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
             selectinload(PerformanceReviewSheet.reviewer),
             selectinload(PerformanceReviewSheet.team),
             selectinload(PerformanceReviewSheet.cycle),
@@ -468,7 +584,7 @@ def get_performance_review(
     sheet = db.scalar(
         select(PerformanceReviewSheet)
         .options(
-            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
             selectinload(PerformanceReviewSheet.reviewer),
             selectinload(PerformanceReviewSheet.team),
             selectinload(PerformanceReviewSheet.cycle),
@@ -509,6 +625,7 @@ def create_performance_review(
         status=payload.status,
         review_date=payload.review_date,
         due_date=payload.due_date,
+        total_experience=payload.total_experience,
         overall_score=payload.overall_score,
         employee_summary=payload.employee_summary,
         manager_summary=payload.manager_summary,
@@ -518,25 +635,10 @@ def create_performance_review(
         is_active=True,
     )
     if payload.sections:
-        for section_row in payload.sections:
-            section = PerformanceReviewSection(
-                title=section_row.title,
-                description=section_row.description,
-                sort_order=section_row.sort_order,
-            )
-            for item_row in section_row.items:
-                section.items.append(
-                    PerformanceReviewItem(
-                        prompt=item_row.prompt,
-                        rating=item_row.rating,
-                        employee_comment=item_row.employee_comment,
-                        manager_comment=item_row.manager_comment,
-                        sort_order=item_row.sort_order,
-                    )
-                )
-            sheet.sections.append(section)
+        _apply_manager_sections(sheet, payload.sections)
     else:
         _seed_sections(sheet)
+        sheet.overall_score = sheet_overall_score(sheet)
     if sheet.status == "submitted":
         sheet.submitted_at = _utcnow()
     db.add(sheet)
@@ -545,7 +647,7 @@ def create_performance_review(
     sheet = db.scalar(
         select(PerformanceReviewSheet)
         .options(
-            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
             selectinload(PerformanceReviewSheet.reviewer),
             selectinload(PerformanceReviewSheet.team),
             selectinload(PerformanceReviewSheet.cycle),
@@ -569,7 +671,7 @@ def update_performance_review(
     sheet = db.scalar(
         select(PerformanceReviewSheet)
         .options(
-            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
             selectinload(PerformanceReviewSheet.reviewer),
             selectinload(PerformanceReviewSheet.team),
             selectinload(PerformanceReviewSheet.cycle),
@@ -594,6 +696,7 @@ def update_performance_review(
             "review_date",
             "due_date",
             "overall_score",
+            "total_experience",
             "employee_summary",
             "manager_summary",
             "strengths_summary",
@@ -612,24 +715,7 @@ def update_performance_review(
                 raise HTTPException(status_code=403, detail="Target team review access denied")
             sheet.team_id = payload.team_id
         if payload.sections is not None:
-            sheet.sections.clear()
-            for section_row in payload.sections:
-                section = PerformanceReviewSection(
-                    title=section_row.title,
-                    description=section_row.description,
-                    sort_order=section_row.sort_order,
-                )
-                for item_row in section_row.items:
-                    section.items.append(
-                        PerformanceReviewItem(
-                            prompt=item_row.prompt,
-                            rating=item_row.rating,
-                            employee_comment=item_row.employee_comment,
-                            manager_comment=item_row.manager_comment,
-                            sort_order=item_row.sort_order,
-                        )
-                    )
-                sheet.sections.append(section)
+            _apply_manager_sections(sheet, payload.sections)
         if payload.status == "submitted":
             sheet.submitted_at = _utcnow()
     else:
@@ -637,6 +723,8 @@ def update_performance_review(
             sheet.employee_summary = payload.employee_summary
         if payload.career_goals is not None:
             sheet.career_goals = payload.career_goals
+        if payload.sections is not None:
+            _apply_employee_section_updates(sheet, payload.sections)
         if payload.acknowledged:
             sheet.status = "acknowledged"
             sheet.acknowledged_at = _utcnow()
@@ -647,7 +735,7 @@ def update_performance_review(
     sheet = db.scalar(
         select(PerformanceReviewSheet)
         .options(
-            selectinload(PerformanceReviewSheet.employee),
+            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
             selectinload(PerformanceReviewSheet.reviewer),
             selectinload(PerformanceReviewSheet.team),
             selectinload(PerformanceReviewSheet.cycle),

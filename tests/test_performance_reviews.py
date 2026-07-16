@@ -39,11 +39,38 @@ def test_team_leader_can_create_review_and_employee_can_see_it(client, session):
     body = created.json()
     assert body["employee_id"] == str(IDS["user_binil"])
     assert body["team_name"] == "Review Team"
-    assert len(body["sections"]) >= 1
+    assert len(body["sections"]) == 2
+    assert body["sections"][0]["title"] == "Core Competencies"
+    assert body["sections"][1]["title"] == "Technical Competencies"
+    assert len(body["sections"][0]["items"]) == 9
+    assert len(body["sections"][1]["items"]) == 7
+    assert body["sections"][0]["items"][0]["guidance"]
 
-    team_members = client.get("/api/v1/hr/reviews/team-members", headers=leader_headers)
-    assert team_members.status_code == 200, team_members.text
-    assert any(row["user_id"] == str(IDS["user_binil"]) for row in team_members.json())
+    template = client.get("/api/v1/hr/reviews/template", headers=leader_headers)
+    assert template.status_code == 200, template.text
+    template_body = template.json()
+    assert template_body["form_code"] == "PP-HRD-FO-20"
+    assert len(template_body["rating_scale"]) == 6
+
+    rated = client.patch(
+        f"/api/v1/hr/reviews/{body['id']}",
+        headers=leader_headers,
+        json={
+            "sections": [
+                {
+                    **body["sections"][0],
+                    "items": [
+                        {**item, "rating": 5 if index == 0 else 4}
+                        for index, item in enumerate(body["sections"][0]["items"])
+                    ],
+                },
+                body["sections"][1],
+            ]
+        },
+    )
+    assert rated.status_code == 200, rated.text
+    assert rated.json()["overall_score"] is not None
+    assert rated.json()["completion_percent"] > 0
 
     submitted = client.patch(
         f"/api/v1/hr/reviews/{body['id']}",

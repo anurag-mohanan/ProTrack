@@ -444,6 +444,7 @@ class PerformanceReviewSheet(Base, TimestampMixin):
     strengths_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     improvement_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     career_goals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    total_experience: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -477,6 +478,8 @@ class PerformanceReviewSection(Base, TimestampMixin):
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    employee_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewer_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     sheet: Mapped[PerformanceReviewSheet] = relationship(back_populates="sections")
@@ -498,6 +501,7 @@ class PerformanceReviewItem(Base, TimestampMixin):
         index=True,
     )
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    guidance: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     rating: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
     employee_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     manager_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

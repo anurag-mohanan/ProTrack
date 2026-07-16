@@ -7,9 +7,37 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class PerformanceReviewRatingScaleItem(BaseModel):
+    value: int
+    label: str
+    short_label: str
+    guidance: str
+    tone: str
+
+
+class PerformanceReviewTemplateItem(BaseModel):
+    prompt: str
+    guidance: str | None = None
+
+
+class PerformanceReviewTemplateSection(BaseModel):
+    title: str
+    description: str | None = None
+    employee_notes_label: str | None = None
+    items: list[PerformanceReviewTemplateItem] = Field(default_factory=list)
+
+
+class PerformanceReviewTemplateRead(BaseModel):
+    form_code: str = "PP-HRD-FO-20"
+    form_title: str = "Employee Performance Review"
+    rating_scale: list[PerformanceReviewRatingScaleItem] = Field(default_factory=list)
+    sections: list[PerformanceReviewTemplateSection] = Field(default_factory=list)
+
+
 class PerformanceReviewItemUpdate(BaseModel):
     id: UUID | None = None
     prompt: str
+    guidance: str | None = None
     rating: Decimal | None = Field(default=None, ge=0, le=5)
     employee_comment: str | None = None
     manager_comment: str | None = None
@@ -20,6 +48,8 @@ class PerformanceReviewSectionUpdate(BaseModel):
     id: UUID | None = None
     title: str
     description: str | None = None
+    employee_notes: str | None = None
+    reviewer_notes: str | None = None
     sort_order: int = 0
     items: list[PerformanceReviewItemUpdate] = Field(default_factory=list)
 
@@ -49,6 +79,7 @@ class PerformanceReviewCreate(BaseModel):
     period_label: str
     review_date: date | None = None
     due_date: date | None = None
+    total_experience: str | None = None
     overall_score: Decimal | None = Field(default=None, ge=0, le=5)
     employee_summary: str | None = None
     manager_summary: str | None = None
@@ -65,6 +96,7 @@ class PerformanceReviewUpdate(BaseModel):
     period_label: str | None = None
     review_date: date | None = None
     due_date: date | None = None
+    total_experience: str | None = None
     overall_score: Decimal | None = Field(default=None, ge=0, le=5)
     employee_summary: str | None = None
     manager_summary: str | None = None
@@ -81,7 +113,9 @@ class PerformanceReviewItemRead(BaseModel):
 
     id: UUID
     prompt: str
+    guidance: str | None = None
     rating: Decimal | None = None
+    rating_label: str | None = None
     employee_comment: str | None = None
     manager_comment: str | None = None
     sort_order: int
@@ -93,6 +127,12 @@ class PerformanceReviewSectionRead(BaseModel):
     id: UUID
     title: str
     description: str | None = None
+    employee_notes: str | None = None
+    reviewer_notes: str | None = None
+    employee_notes_label: str | None = None
+    average_score: Decimal | None = None
+    rated_count: int = 0
+    total_count: int = 0
     sort_order: int
     items: list[PerformanceReviewItemRead] = Field(default_factory=list)
 
@@ -103,6 +143,8 @@ class PerformanceReviewRead(BaseModel):
     cycle_title: str | None = None
     employee_id: UUID
     employee_name: str
+    employee_department: str | None = None
+    employee_joining_date: date | None = None
     reviewer_id: UUID
     reviewer_name: str
     team_id: UUID | None = None
@@ -111,7 +153,10 @@ class PerformanceReviewRead(BaseModel):
     status: str
     review_date: date | None = None
     due_date: date | None = None
+    total_experience: str | None = None
     overall_score: Decimal | None = None
+    overall_score_label: str | None = None
+    completion_percent: int = 0
     employee_summary: str | None = None
     manager_summary: str | None = None
     strengths_summary: str | None = None
@@ -131,4 +176,3 @@ class PerformanceReviewTeamMemberRead(BaseModel):
     team_id: UUID
     team_name: str
     review_count: int = 0
-

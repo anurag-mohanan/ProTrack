@@ -29,12 +29,12 @@ export function FinanceRevenueBreakdownTable({
   rows: RevenueBreakdownRow[];
   currency: string;
 }) {
-  const total = rows.reduce((sum, row) => sum + toFiniteNumber(row.monthly_revenue_inr), 0);
+  const total = rows.reduce((sum, row) => sum + toFiniteNumber(row.quarterly_revenue_inr), 0);
 
   if (!rows.length) {
     return (
       <Typography variant="body2" color="text.secondary">
-        No revenue signals available yet for this scope.
+        No awarded quotes with a quoted date in this month or FY quarter for this scope.
       </Typography>
     );
   }
@@ -53,8 +53,8 @@ export function FinanceRevenueBreakdownTable({
         </TableHead>
         <TableBody>
           {rows.map((row) => {
-            const monthly = toFiniteNumber(row.monthly_revenue_inr);
-            const share = total > 0 ? (monthly / total) * 100 : 0;
+            const quarterly = toFiniteNumber(row.quarterly_revenue_inr);
+            const share = total > 0 ? (quarterly / total) * 100 : 0;
             return (
               <TableRow key={row.key} hover>
                 <TableCell sx={{ minWidth: 220 }}>
@@ -67,7 +67,7 @@ export function FinanceRevenueBreakdownTable({
                       sx={{ height: 6, borderRadius: 99 }}
                     />
                     <Typography variant="caption" color="text.secondary">
-                      {share.toFixed(1)}% of scoped quote revenue
+                      {share.toFixed(1)}% of quarter-to-date quote revenue
                     </Typography>
                   </Stack>
                 </TableCell>

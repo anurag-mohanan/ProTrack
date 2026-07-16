@@ -40,6 +40,7 @@ def test_dashboard_revenue_by_customer_and_stream(client, auth_headers, session)
         currency_code="INR",
         current_version=1,
         current_revision="A",
+        quoted_date=date.today(),
         is_active=True,
     )
     quote_b = Quote(
@@ -51,6 +52,7 @@ def test_dashboard_revenue_by_customer_and_stream(client, auth_headers, session)
         currency_code="INR",
         current_version=1,
         current_revision="A",
+        quoted_date=date.today(),
         is_active=True,
     )
     session.add_all(
@@ -100,6 +102,72 @@ def test_dashboard_revenue_by_customer_and_stream(client, auth_headers, session)
     assert customers["Customer Beta"] == Decimal("250000")
     assert streams["BIW"] == Decimal("100000")
     assert streams["Plastic"] == Decimal("250000")
+
+    # Quarter actual equals awards this FY quarter (not monthly × 3)
+    q_customers = {
+        row["label"]: Decimal(str(row["quarterly_revenue_inr"]))
+        for row in body["revenue_by_customer"]
+    }
+    assert q_customers["Customer Alpha"] == Decimal("100000")
+    assert q_customers["Customer Beta"] == Decimal("250000")
+    assert q_customers["Customer Alpha"] != Decimal("300000")
+
+
+def test_dashboard_quarter_excludes_prior_quarter_quote_awards(client, auth_headers, session):
+    """Project/quote model: prior-quarter awards must not inflate current quarter."""
+    team = Team(id=uuid.uuid4(), name="Prior Q Team", is_active=True)
+    customer = Customer(id=uuid.uuid4(), name="Prior Customer", is_active=True)
+    stream = Stream(id=uuid.uuid4(), name="Prior Stream", is_active=True)
+    project = Project(
+        id=uuid.uuid4(),
+        tool_number="PRIOR-001",
+        part_description="Old award",
+        customer_id=customer.id,
+        stream_id=stream.id,
+        team_id=team.id,
+    )
+    quote = Quote(
+        id=uuid.uuid4(),
+        customer_id=customer.id,
+        team_id=team.id,
+        project_id=project.id,
+        tool_number="PRIOR-001",
+        currency_code="INR",
+        current_version=1,
+        current_revision="A",
+        quoted_date=date(2026, 4, 15),  # FY Q1; today in tests is mid-2026 → Q2
+        is_active=True,
+    )
+    session.add_all(
+        [
+            team,
+            customer,
+            stream,
+            project,
+            quote,
+            QuoteRevision(
+                quote_id=quote.id,
+                version=1,
+                revision="A",
+                quoted_revenue=Decimal("900000"),
+                estimated_cost=Decimal("100000"),
+                base_quoted_revenue_inr=Decimal("900000"),
+                base_estimated_cost_inr=Decimal("100000"),
+                fx_rate=Decimal("1"),
+                fx_date=date(2026, 4, 15),
+                start_date=date(2026, 4, 15),
+            ),
+        ]
+    )
+    session.commit()
+
+    dash = client.get(f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers)
+    assert dash.status_code == 200, dash.text
+    body = dash.json()
+    labels = {row["label"] for row in body["revenue_by_customer"]}
+    assert "Prior Customer" not in labels
+    # Header quarter must not be 3× of the stale award backlog
+    assert Decimal(str(body["revenue"]["quarterly_revenue"])) != Decimal("2700000")
 
 
 def test_employee_cost_roster_can_include_inactive_history(client, auth_headers, session):

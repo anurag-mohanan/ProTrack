@@ -136,10 +136,95 @@ def _quote_revenue_cost(
     return revenue, cost
 
 
-def _revenue_by_customer(
-    db: Session, *, team_id: UUID | None
-) -> list[dict]:
+def _current_quote_revision(db: Session, quote) -> QuoteRevision | None:
+    current = db.scalar(
+        select(QuoteRevision)
+        .where(
+            QuoteRevision.quote_id == quote.id,
+            QuoteRevision.version == quote.current_version,
+            QuoteRevision.revision == quote.current_revision,
+        )
+        .limit(1)
+    )
+    if current is not None:
+        return current
+    return db.scalar(
+        select(QuoteRevision)
+        .where(QuoteRevision.quote_id == quote.id)
+        .order_by(QuoteRevision.version.desc())
+        .limit(1)
+    )
+
+
+def _quote_period_amounts(
+    db: Session,
+    *,
+    team_id: UUID | None,
+    today: date,
+    fy_start: date,
+) -> tuple[Decimal, Decimal]:
+    """Actual quote awards: this calendar month + current FY quarter (by quoted_date)."""
     from app.models.finance import Quote
+    from app.services.finance.plan_sales_from_quotes_service import effective_quoted_date
+    from app.services.finance.renewal_budget_service import fy_quarter_date_bounds
+
+    bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
+    q_start, q_end = bounds if bounds is not None else (None, None)
+
+    quote_stmt = select(Quote).where(Quote.is_active.is_(True))
+    if team_id is not None:
+        quote_stmt = quote_stmt.where(Quote.team_id == team_id)
+
+    monthly = Decimal("0.00")
+    quarterly = Decimal("0.00")
+    for quote in db.scalars(quote_stmt).all():
+        revision = _current_quote_revision(db, quote)
+        when = effective_quoted_date(quote, revision)
+        if when is None or revision is None:
+            continue
+        amount = _d(revision.base_quoted_revenue_inr)
+        if when.year == today.year and when.month == today.month:
+            monthly += amount
+        if q_start is not None and q_end is not None and q_start <= when <= q_end:
+            quarterly += amount
+    return monthly.quantize(Decimal("0.01")), quarterly.quantize(Decimal("0.01"))
+
+
+def _retainer_fee_for_period(
+    db: Session,
+    *,
+    team_id: UUID | None,
+    today: date,
+    fy_start: date,
+) -> tuple[Decimal, Decimal]:
+    """Fixed/retainer fees: monthly rate, and actual accrued for months elapsed in quarter."""
+    from app.services.finance.renewal_budget_service import (
+        fy_quarter_date_bounds,
+        months_elapsed_in_period,
+    )
+
+    monthly = _team_fee_monthly(db, team_id=team_id, today=today)
+    bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
+    if bounds is None or monthly <= 0:
+        return monthly, Decimal("0.00")
+    q_start, q_end = bounds
+    months = months_elapsed_in_period(today, q_start, q_end)
+    return monthly, (monthly * Decimal(months)).quantize(Decimal("0.01"))
+
+
+def _revenue_by_customer(
+    db: Session, *, team_id: UUID | None, today: date | None = None, fy_start: date | None = None
+) -> list[dict]:
+    """Group actual awarded quote revenue by customer (month + FY quarter by quoted_date)."""
+    from app.models.finance import Quote
+    from app.services.finance.annual_plan_service import current_fy_start
+    from app.services.finance.plan_sales_from_quotes_service import effective_quoted_date
+    from app.services.finance.renewal_budget_service import fy_quarter_date_bounds
+
+    today = today or date.today()
+    fy_start = fy_start or current_fy_start(today)
+    bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
+    q_start, q_end = bounds if bounds is not None else (None, None)
 
     quote_stmt = select(Quote).where(Quote.is_active.is_(True))
     if team_id is not None:
@@ -148,24 +233,17 @@ def _revenue_by_customer(
 
     grouped: dict[UUID, dict] = {}
     for quote in quotes:
-        current = db.scalar(
-            select(QuoteRevision)
-            .where(
-                QuoteRevision.quote_id == quote.id,
-                QuoteRevision.version == quote.current_version,
-                QuoteRevision.revision == quote.current_revision,
-            )
-            .limit(1)
-        )
-        if current is None:
-            current = db.scalar(
-                select(QuoteRevision)
-                .where(QuoteRevision.quote_id == quote.id)
-                .order_by(QuoteRevision.version.desc())
-                .limit(1)
-            )
+        current = _current_quote_revision(db, quote)
         if current is None:
             continue
+        when = effective_quoted_date(quote, current)
+        if when is None:
+            continue
+        in_month = when.year == today.year and when.month == today.month
+        in_quarter = q_start is not None and q_end is not None and q_start <= when <= q_end
+        if not in_month and not in_quarter:
+            continue
+
         customer = db.get(Customer, quote.customer_id)
         row = grouped.setdefault(
             quote.customer_id,
@@ -173,36 +251,49 @@ def _revenue_by_customer(
                 "key": str(quote.customer_id),
                 "label": customer.name if customer is not None else str(quote.customer_id),
                 "monthly_revenue_inr": Decimal("0.00"),
+                "quarterly_revenue_inr": Decimal("0.00"),
                 "quote_count": 0,
                 "project_ids": set(),
             },
         )
-        row["monthly_revenue_inr"] += _d(current.base_quoted_revenue_inr)
-        row["quote_count"] += 1
-        if quote.project_id is not None:
-            row["project_ids"].add(str(quote.project_id))
+        amount = _d(current.base_quoted_revenue_inr)
+        if in_month:
+            row["monthly_revenue_inr"] += amount
+        if in_quarter:
+            row["quarterly_revenue_inr"] += amount
+            row["quote_count"] += 1
+            if quote.project_id is not None:
+                row["project_ids"].add(str(quote.project_id))
 
     rows: list[dict] = []
     for row in grouped.values():
-        monthly = _d(row["monthly_revenue_inr"])
         rows.append(
             {
                 "key": row["key"],
                 "label": row["label"],
-                "monthly_revenue_inr": monthly,
-                "quarterly_revenue_inr": _d(monthly * Decimal("3")),
+                "monthly_revenue_inr": _d(row["monthly_revenue_inr"]),
+                "quarterly_revenue_inr": _d(row["quarterly_revenue_inr"]),
                 "quote_count": int(row["quote_count"]),
                 "project_count": len(row["project_ids"]),
             }
         )
-    rows.sort(key=lambda item: item["monthly_revenue_inr"], reverse=True)
+    rows.sort(key=lambda item: item["quarterly_revenue_inr"], reverse=True)
     return rows
 
 
 def _revenue_by_stream(
-    db: Session, *, team_id: UUID | None
+    db: Session, *, team_id: UUID | None, today: date | None = None, fy_start: date | None = None
 ) -> list[dict]:
+    """Group actual awarded quote revenue by stream (month + FY quarter by quoted_date)."""
     from app.models.finance import Quote
+    from app.services.finance.annual_plan_service import current_fy_start
+    from app.services.finance.plan_sales_from_quotes_service import effective_quoted_date
+    from app.services.finance.renewal_budget_service import fy_quarter_date_bounds
+
+    today = today or date.today()
+    fy_start = fy_start or current_fy_start(today)
+    bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
+    q_start, q_end = bounds if bounds is not None else (None, None)
 
     quote_stmt = select(Quote).where(Quote.is_active.is_(True))
     if team_id is not None:
@@ -211,26 +302,23 @@ def _revenue_by_stream(
 
     grouped: dict[str, dict] = {}
     for quote in quotes:
-        current = db.scalar(
-            select(QuoteRevision)
-            .where(
-                QuoteRevision.quote_id == quote.id,
-                QuoteRevision.version == quote.current_version,
-                QuoteRevision.revision == quote.current_revision,
-            )
-            .limit(1)
-        )
-        if current is None:
-            current = db.scalar(
-                select(QuoteRevision)
-                .where(QuoteRevision.quote_id == quote.id)
-                .order_by(QuoteRevision.version.desc())
-                .limit(1)
-            )
+        current = _current_quote_revision(db, quote)
         if current is None:
             continue
+        when = effective_quoted_date(quote, current)
+        if when is None:
+            continue
+        in_month = when.year == today.year and when.month == today.month
+        in_quarter = q_start is not None and q_end is not None and q_start <= when <= q_end
+        if not in_month and not in_quarter:
+            continue
+
         project = db.get(Project, quote.project_id) if quote.project_id is not None else None
-        stream = db.get(Stream, project.stream_id) if project and project.stream_id is not None else None
+        stream = (
+            db.get(Stream, project.stream_id)
+            if project and project.stream_id is not None
+            else None
+        )
         key = str(stream.id) if stream is not None else "unassigned"
         label = stream.name if stream is not None else "Unassigned stream"
         row = grouped.setdefault(
@@ -239,29 +327,33 @@ def _revenue_by_stream(
                 "key": key,
                 "label": label,
                 "monthly_revenue_inr": Decimal("0.00"),
+                "quarterly_revenue_inr": Decimal("0.00"),
                 "quote_count": 0,
                 "project_ids": set(),
             },
         )
-        row["monthly_revenue_inr"] += _d(current.base_quoted_revenue_inr)
-        row["quote_count"] += 1
-        if quote.project_id is not None:
-            row["project_ids"].add(str(quote.project_id))
+        amount = _d(current.base_quoted_revenue_inr)
+        if in_month:
+            row["monthly_revenue_inr"] += amount
+        if in_quarter:
+            row["quarterly_revenue_inr"] += amount
+            row["quote_count"] += 1
+            if quote.project_id is not None:
+                row["project_ids"].add(str(quote.project_id))
 
     rows: list[dict] = []
     for row in grouped.values():
-        monthly = _d(row["monthly_revenue_inr"])
         rows.append(
             {
                 "key": row["key"],
                 "label": row["label"],
-                "monthly_revenue_inr": monthly,
-                "quarterly_revenue_inr": _d(monthly * Decimal("3")),
+                "monthly_revenue_inr": _d(row["monthly_revenue_inr"]),
+                "quarterly_revenue_inr": _d(row["quarterly_revenue_inr"]),
                 "quote_count": int(row["quote_count"]),
                 "project_count": len(row["project_ids"]),
             }
         )
-    rows.sort(key=lambda item: item["monthly_revenue_inr"], reverse=True)
+    rows.sort(key=lambda item: item["quarterly_revenue_inr"], reverse=True)
     return rows
 
 
@@ -427,8 +519,24 @@ def _team_rollups(
         db, team_id=team.id, paid_by=ExpensePaidBy.customer, nature=CostNature.opex
     )
     fee = _team_fee_monthly(db, team_id=team.id, today=today)
+    from app.services.finance.annual_plan_service import current_fy_start
+    from app.services.finance.renewal_budget_service import (
+        fy_quarter_date_bounds,
+        months_elapsed_in_period,
+    )
+
+    fy_start = current_fy_start(today)
+    quote_month, quote_quarter = _quote_period_amounts(
+        db, team_id=team.id, today=today, fy_start=fy_start
+    )
+    bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
+    fee_months = (
+        months_elapsed_in_period(today, bounds[0], bounds[1]) if bounds is not None else 0
+    )
+    fee_quarter = (fee * Decimal(fee_months)).quantize(Decimal("0.01"))
     operating = prosohm_opex + salary
     revenue = quote_revenue + fee
+    period_quarter_revenue = (quote_quarter + fee_quarter).quantize(Decimal("0.01"))
     gross_profit = revenue - quote_estimated_cost
     net_profit = gross_profit - operating
     gross_margin = (
@@ -457,7 +565,10 @@ def _team_rollups(
         "net_profit_inr": net_profit.quantize(Decimal("0.01")),
         "gross_margin_percent": gross_margin,
         "net_margin_percent": net_margin,
-        "quarterly_revenue_signal_inr": (revenue * Decimal("3")).quantize(Decimal("0.01")),
+        "quarterly_revenue_signal_inr": period_quarter_revenue,
+        "quarter_quote_awards_inr": quote_quarter,
+        "quarter_retainer_accrued_inr": fee_quarter,
+        "month_quote_awards_inr": quote_month,
     }
 
 
@@ -536,11 +647,19 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         db, team_id=team_id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.capex, as_of=as_of
     )
     team_fee_monthly = _team_fee_monthly(db, team_id=team_id, today=today)
+    quote_month, quote_quarter = _quote_period_amounts(
+        db, team_id=team_id, today=today, fy_start=fy_start
+    )
+    _, fee_quarter = _retainer_fee_for_period(
+        db, team_id=team_id, today=today, fy_start=fy_start
+    )
 
     planning_revenue = revenue + team_fee_monthly
     operating_cost = prosohm_opex + salary_cost
     display_revenue = revenue + team_fee_monthly
-    quarterly_revenue = (display_revenue * Decimal("3")).quantize(Decimal("0.01"))
+    # Actual period revenue: quote awards in period + retainer accrued (not ×3 projection)
+    period_monthly_revenue = (quote_month + team_fee_monthly).quantize(Decimal("0.01"))
+    quarterly_revenue = (quote_quarter + fee_quarter).quantize(Decimal("0.01"))
     yearly_revenue = (display_revenue * Decimal("12")).quantize(Decimal("0.01"))
     quarterly_operating = (operating_cost * Decimal("3")).quantize(Decimal("0.01"))
     yearly_operating = (operating_cost * Decimal("12")).quantize(Decimal("0.01"))
@@ -620,8 +739,12 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         )
 
     by_team: list[dict] = []
-    revenue_by_customer = _revenue_by_customer(db, team_id=team_id)
-    revenue_by_stream = _revenue_by_stream(db, team_id=team_id)
+    revenue_by_customer = _revenue_by_customer(
+        db, team_id=team_id, today=today, fy_start=fy_start
+    )
+    revenue_by_stream = _revenue_by_stream(
+        db, team_id=team_id, today=today, fy_start=fy_start
+    )
     if team_id is None:
         teams = db.scalars(select(Team).where(Team.is_active.is_(True)).order_by(Team.name)).all()
         for team in teams:
@@ -651,10 +774,11 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         "planning_fy_label": fy_label,
         "overhead": overhead,
         "revenue": {
-            "monthly_revenue": display_revenue,
+            "monthly_revenue": period_monthly_revenue,
             "quarterly_revenue": quarterly_revenue,
             "yearly_revenue": yearly_revenue,
-            "revenue_forecast": quarterly_revenue,
+            "quote_pipeline_revenue": display_revenue,
+            "revenue_forecast": yearly_revenue,
             "customer_revenue": revenue,
             "business_model_revenue": team_fee_monthly,
             "quote_revenue": revenue,

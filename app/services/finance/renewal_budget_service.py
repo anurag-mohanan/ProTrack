@@ -41,6 +41,29 @@ def fy_quarter_index(renewal: date, *, fy_start: date) -> int | None:
     return None
 
 
+def fy_quarter_date_bounds(today: date, *, fy_start: date) -> tuple[date, date] | None:
+    """Inclusive start/end dates for the FY quarter containing today."""
+    idx = fy_quarter_index(today, fy_start=fy_start)
+    if idx is None:
+        return None
+    y = fy_start.year
+    if idx == 1:
+        return date(y, 4, 1), date(y, 6, 30)
+    if idx == 2:
+        return date(y, 7, 1), date(y, 9, 30)
+    if idx == 3:
+        return date(y, 10, 1), date(y, 12, 31)
+    return date(y + 1, 1, 1), date(y + 1, 3, 31)
+
+
+def months_elapsed_in_period(today: date, start: date, end: date) -> int:
+    """Calendar months from start through min(today, end), inclusive (0 if before start)."""
+    if today < start:
+        return 0
+    last = min(today, end)
+    return (last.year - start.year) * 12 + (last.month - start.month) + 1
+
+
 def list_renewals_in_fy(
     db: Session,
     *,

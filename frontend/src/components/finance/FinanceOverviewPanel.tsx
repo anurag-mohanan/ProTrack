@@ -191,7 +191,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
           <KpiMetricCard
             title="Revenue / quarter"
             value={financeMoney(revenueQ, currency)}
-            subtitle="Click for quotes + fees mix"
+            subtitle="Actual awards this FY quarter (not ×3)"
             icon={TrendingUpOutlinedIcon}
             accent="success"
             compact
@@ -311,7 +311,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
         <Grid size={{ xs: 12, lg: 6 }}>
           <FinanceSection
             title="Revenue by customer"
-            subtitle="Awarded quote revenue signal grouped by customer for the current scope."
+            subtitle="Actual awarded quotes by quoted date — this month and this FY quarter (project/quote model). Not a 3× monthly projection."
           >
             <FinanceRevenueBreakdownTable
               rows={data.revenue_by_customer ?? []}
@@ -322,7 +322,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
         <Grid size={{ xs: 12, lg: 6 }}>
           <FinanceSection
             title="Revenue by stream"
-            subtitle="Awarded quote revenue signal grouped by project stream."
+            subtitle="Actual awarded quotes by quoted date — this month and this FY quarter. Retainer fees are on the Revenue / quarter KPI, not in this stream split."
           >
             <FinanceRevenueBreakdownTable
               rows={data.revenue_by_stream ?? []}

@@ -18,11 +18,13 @@ from app.services.finance.billable_headcount import company_delivery_billable_sa
 from app.services.finance.dashboard_service import (
     _expense_sum,
     _overhead_metrics,
+    _quote_period_amounts,
+    _quote_revenue_cost,
+    _retainer_fee_for_period,
     _salary_for_team,
     _salary_for_users,
     _team_fee_monthly,
     _user_ids_with_team_salary,
-    _quote_revenue_cost,
 )
 from app.services.finance.employment_cost import employment_salary_factor, expense_month_factor
 from app.services.finance.fx_service import get_base_currency
@@ -538,43 +540,71 @@ def get_kpi_breakdown(
             "empty_hints": [],
         }
 
-    # revenue_quarter
-    quote_rev, _est = _quote_revenue_cost(db, team_id=team_id)
-    fees = _team_fee_monthly(db, team_id=team_id, today=today)
-    monthly = _q(quote_rev + fees)
-    quarterly = _q(monthly * Decimal("3"))
+    # revenue_quarter — actual awards in FY quarter + retainer accrued (not monthly × 3)
+    fy_start = current_fy_start(today)
+    quote_month, quote_quarter = _quote_period_amounts(
+        db, team_id=team_id, today=today, fy_start=fy_start
+    )
+    fee_month, fee_quarter = _retainer_fee_for_period(
+        db, team_id=team_id, today=today, fy_start=fy_start
+    )
+    quarterly = _q(quote_quarter + fee_quarter)
     lines = [
         {
-            "id": "quotes",
-            "label": "Awarded quote revenue (monthly signal)",
-            "detail": "Current revision INR",
-            "amount_inr": _q(quote_rev),
+            "id": "quotes_quarter",
+            "label": "Awarded quotes this FY quarter",
+            "detail": "Sum by quoted date (project / quote model — actual, not projected)",
+            "amount_inr": _q(quote_quarter),
             "kind": "revenue",
         },
         {
-            "id": "fees",
-            "label": "Team commercial fees (monthly)",
-            "detail": "Retainer / subscription",
-            "amount_inr": _q(fees),
+            "id": "fees_quarter",
+            "label": "Retainer / fixed fees accrued this quarter",
+            "detail": "Monthly commercial fee × months elapsed in quarter",
+            "amount_inr": _q(fee_quarter),
+            "kind": "revenue",
+        },
+        {
+            "id": "quotes_month",
+            "label": "Awarded quotes this month (reference)",
+            "detail": "Quoted date in current calendar month",
+            "amount_inr": _q(quote_month),
+            "kind": "revenue",
+        },
+        {
+            "id": "fees_month",
+            "label": "Retainer fee this month (reference)",
+            "detail": "Active flat customer fee terms",
+            "amount_inr": _q(fee_month),
             "kind": "revenue",
         },
     ]
     return {
         "metric": key,
-        "title": "Revenue / quarter (signal)",
-        "subtitle": "Monthly quote + fee signal × 3 — planning view, not cash ledger.",
+        "title": "Revenue / quarter (actual)",
+        "subtitle": (
+            "Quote awards dated in the current FY quarter plus retainer fees accrued "
+            "for months elapsed — not a 3× monthly projection."
+        ),
         "total_inr": quarterly,
         "currency_code": base,
-        "formula": "(Quote revenue monthly + fees monthly) × 3",
+        "formula": (
+            "Σ quotes with quoted_date in current FY quarter "
+            "+ (retainer monthly × months elapsed in quarter)"
+        ),
         "insights": [
-            f"Monthly run-rate {monthly} {base}",
-            f"Quarterly signal {quarterly} {base}",
+            f"Quarter-to-date actual {quarterly} {base}",
+            f"This month awards {quote_month} {base} + retainer {fee_month} {base}",
         ],
         "groups": [
             {
-                "label": "Monthly building blocks",
-                "total_inr": monthly,
-                "lines": _annotate(lines, monthly or Decimal("1"), band_mode="revenue"),
+                "label": "Quarter-to-date building blocks",
+                "total_inr": quarterly,
+                "lines": _annotate(
+                    [lines[0], lines[1]],
+                    quarterly or Decimal("1"),
+                    band_mode="revenue",
+                ),
             }
         ],
         "empty_hints": [],

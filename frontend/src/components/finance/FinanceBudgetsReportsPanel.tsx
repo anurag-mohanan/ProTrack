@@ -93,7 +93,6 @@ type Cockpit = {
 };
 
 type PlRow = { label: string; amount_inr: number };
-type CostCentre = { id: string; code: string; name: string; nature: string };
 
 const severityColor: Record<string, string> = {
   high: designTokens.health.red.main,
@@ -130,10 +129,6 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
   const plQuery = useQuery({
     queryKey: ['finance-pl', teamId || 'all'],
     queryFn: async () => (await apiClient.get<PlRow[]>('/finance/reports/profit-loss')).data,
-  });
-  const costCentresQuery = useQuery({
-    queryKey: ['finance-cost-centres'],
-    queryFn: async () => (await apiClient.get<CostCentre[]>('/finance/cost-centres')).data,
   });
 
   const invalidate = () => {
@@ -222,7 +217,7 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Budgets & reports cockpit"
-        subtitle={`Portfolio envelopes, utilization, and P&L signals · ${data.months_elapsed} FY months elapsed · live OpEx YTD ${financeMoney(data.operating_ytd_inr, currency)}`}
+        subtitle={`Portfolio envelopes, utilization, and P&L signals · ${data.months_elapsed} FY months elapsed · live OpEx YTD ${financeMoney(data.operating_ytd_inr, currency)}. Cost centres stay on expense forms only — not listed here.`}
         chips={
           <>
             <Chip size="small" label={`${totals.budget_count} budgets`} sx={{ fontWeight: 700 }} />
@@ -465,29 +460,9 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
               )}
             </FinanceSection>
 
-            <FinanceSection title="Cost centres" subtitle="Posting centres for expenses">
-              <Grid container spacing={1.5}>
-                {(costCentresQuery.data ?? []).map((centre) => (
-                  <Grid key={centre.id} size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Card
-                      elevation={0}
-                      sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}
-                    >
-                      <CardContent>
-                        <Typography sx={{ fontWeight: 700 }}>{centre.name}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {centre.code} · {centre.nature}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </FinanceSection>
-
             <Box>
-              <Button size="small" onClick={() => setFxOpen((v) => !v)}>
-                {fxOpen ? 'Hide FX rates' : 'Show FX rates'}
+              <Button size="small" variant="text" onClick={() => setFxOpen((v) => !v)}>
+                {fxOpen ? 'Hide advanced FX rates' : 'Advanced: FX rates (optional)'}
               </Button>
               <Collapse in={fxOpen}>
                 <Box sx={{ mt: 1.5 }}>

@@ -322,67 +322,94 @@ export default function UsersPage() {
 
   useOpenCreateFromQuery(openCreate);
 
-  const openEdit = (user: User) => {
+  const openEdit = async (user: User) => {
     setEditingUser(user);
-    setForm({
-      first_name: user.first_name,
-      last_name: user.last_name,
-      email: user.email,
-      phone: user.phone ?? '',
-      designation: user.designation ?? '',
-      manager_id: user.manager_id ?? '',
-      role_id: user.role_id,
-      team_id: user.team_id ?? '',
-      team_assignments:
-        user.team_assignments?.map((row) => ({
-          team_id: row.team_id,
-          team_name: row.team_name ?? teams.find((team) => team.id === row.team_id)?.name ?? '',
-          relationship_type: row.relationship_type,
-          is_primary: row.is_primary,
-          include_in_timesheet_reports: row.include_in_timesheet_reports ?? true,
-        })) ??
-        (user.team_id
-          ? [
-              {
-                team_id: user.team_id,
-                team_name: user.team_name ?? '',
-                relationship_type: 'member' as const,
-                is_primary: true,
-                include_in_timesheet_reports: true,
-              },
-            ]
-          : []),
-      department_id: user.department_id ?? '',
-      working_hours_per_day: user.working_hours_per_day ?? 8,
-      working_days: user.working_days ?? 'Mon,Tue,Wed,Thu,Fri',
-      employment_type: user.employment_type ?? '',
-      skill_level: user.skill_level ?? '',
-      stream_id: user.stream_id ?? '',
-      primary_tool: user.primary_tool ?? '',
-      work_function: user.work_function ?? '',
-      joining_date: user.joining_date ?? '',
-      first_job_date: user.first_job_date ?? '',
-      leaving_date: user.leaving_date ?? '',
-      availability_status: user.availability_status ?? 'available',
-      max_allocation_percent: user.max_allocation_percent ?? 100,
-      password: '',
-      confirm_password: '',
-      generate_temporary_password: false,
-      is_active: user.is_active,
-      module_access: (user.resolved_modules ?? user.module_access ?? defaultModulesForRole(roleMap.get(user.role_id) ?? '')) as ModuleKey[],
-      special_permissions: (user.resolved_special_permissions ?? user.special_permissions ?? defaultSpecialPermissionsForRole(roleMap.get(user.role_id) ?? '')) as SpecialPermissionKey[],
-      operational_role_type_id: user.kpi_configuration?.operational_role_type_id ?? user.operational_role_type_id ?? '',
-      kpi_engineering_productivity: user.kpi_configuration?.kpi_engineering_productivity ?? user.kpi_engineering_productivity ?? true,
-      kpi_capacity_planning: user.kpi_configuration?.kpi_capacity_planning ?? user.kpi_capacity_planning ?? true,
-      kpi_utilization: user.kpi_configuration?.kpi_utilization ?? user.kpi_utilization ?? true,
-      kpi_workload_planning: user.kpi_configuration?.kpi_workload_planning ?? user.kpi_workload_planning ?? true,
-      kpi_dashboard_productivity: user.kpi_configuration?.kpi_dashboard_productivity ?? user.kpi_dashboard_productivity ?? true,
-      reset_kpi_defaults: false,
-      default_working_model_id: user.default_working_model_id ?? '',
-      requires_timesheet: user.requires_timesheet ?? false,
-      requires_salary: user.requires_salary ?? true,
-    });
     setFormOpen(true);
+    setSaving(true);
+    try {
+      const latest = await usersApi.get(user.id);
+      setEditingUser(latest);
+      setForm({
+        first_name: latest.first_name,
+        last_name: latest.last_name,
+        email: latest.email,
+        phone: latest.phone ?? '',
+        designation: latest.designation ?? '',
+        manager_id: latest.manager_id ?? '',
+        role_id: latest.role_id,
+        team_id: latest.team_id ?? '',
+        team_assignments:
+          latest.team_assignments?.map((row) => ({
+            team_id: row.team_id,
+            team_name: row.team_name ?? teams.find((team) => team.id === row.team_id)?.name ?? '',
+            relationship_type: row.relationship_type,
+            is_primary: row.is_primary,
+            include_in_timesheet_reports: row.include_in_timesheet_reports ?? true,
+          })) ??
+          (latest.team_id
+            ? [
+                {
+                  team_id: latest.team_id,
+                  team_name: latest.team_name ?? '',
+                  relationship_type: 'member' as const,
+                  is_primary: true,
+                  include_in_timesheet_reports: true,
+                },
+              ]
+            : []),
+        department_id: latest.department_id ?? '',
+        working_hours_per_day: Number(latest.working_hours_per_day ?? 8),
+        working_days: latest.working_days ?? 'Mon,Tue,Wed,Thu,Fri',
+        employment_type: latest.employment_type ?? '',
+        skill_level: latest.skill_level ?? '',
+        stream_id: latest.stream_id ?? '',
+        primary_tool: latest.primary_tool ?? '',
+        work_function: latest.work_function ?? '',
+        joining_date: latest.joining_date ?? '',
+        first_job_date: latest.first_job_date ?? '',
+        leaving_date: latest.leaving_date ?? '',
+        availability_status: latest.availability_status ?? 'available',
+        max_allocation_percent: latest.max_allocation_percent ?? 100,
+        password: '',
+        confirm_password: '',
+        generate_temporary_password: false,
+        is_active: latest.is_active,
+        module_access: (latest.resolved_modules ??
+          latest.module_access ??
+          defaultModulesForRole(roleMap.get(latest.role_id) ?? '')) as ModuleKey[],
+        special_permissions: (latest.resolved_special_permissions ??
+          latest.special_permissions ??
+          defaultSpecialPermissionsForRole(roleMap.get(latest.role_id) ?? '')) as SpecialPermissionKey[],
+        operational_role_type_id:
+          latest.kpi_configuration?.operational_role_type_id ??
+          latest.operational_role_type_id ??
+          '',
+        kpi_engineering_productivity:
+          latest.kpi_configuration?.kpi_engineering_productivity ??
+          latest.kpi_engineering_productivity ??
+          true,
+        kpi_capacity_planning:
+          latest.kpi_configuration?.kpi_capacity_planning ?? latest.kpi_capacity_planning ?? true,
+        kpi_utilization:
+          latest.kpi_configuration?.kpi_utilization ?? latest.kpi_utilization ?? true,
+        kpi_workload_planning:
+          latest.kpi_configuration?.kpi_workload_planning ?? latest.kpi_workload_planning ?? true,
+        kpi_dashboard_productivity:
+          latest.kpi_configuration?.kpi_dashboard_productivity ??
+          latest.kpi_dashboard_productivity ??
+          true,
+        reset_kpi_defaults: false,
+        default_working_model_id: latest.default_working_model_id ?? '',
+        requires_timesheet: latest.requires_timesheet ?? false,
+        requires_salary: latest.requires_salary ?? true,
+      });
+    } catch (error) {
+      showError(getErrorMessage(error));
+      setFormOpen(false);
+      setEditingUser(null);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const buildKpiPayload = () => ({
@@ -1267,6 +1294,11 @@ export default function UsersPage() {
                   <FormSelect
                     label="Stream"
                     value={form.stream_id}
+                    selectedLabel={
+                      streams.find((stream) => stream.id === form.stream_id)?.name ??
+                      editingUser?.stream_name ??
+                      undefined
+                    }
                     options={[
                       { value: '', label: 'Not set' },
                       ...streams.map((stream) => ({ value: stream.id, label: stream.name })),
@@ -1327,7 +1359,7 @@ export default function UsersPage() {
                     onChange={(event) =>
                       setForm((current) => ({ ...current, joining_date: event.target.value }))
                     }
-                    helperText="Company experience on Performance."
+                    helper="Company experience on Performance."
                   />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
@@ -1339,7 +1371,7 @@ export default function UsersPage() {
                     onChange={(event) =>
                       setForm((current) => ({ ...current, first_job_date: event.target.value }))
                     }
-                    helperText="Industry experience on Performance."
+                    helper="Industry experience on Performance."
                   />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
@@ -1351,7 +1383,7 @@ export default function UsersPage() {
                     onChange={(event) =>
                       setForm((current) => ({ ...current, leaving_date: event.target.value }))
                     }
-                    helperText="Salaries and overhead headcount count only through this date."
+                    helper="Salaries and overhead headcount count only through this date."
                   />
                 </Grid>
               </FormSection>

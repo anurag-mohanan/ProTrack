@@ -45,12 +45,22 @@ def test_team_leader_can_create_review_and_employee_can_see_it(client, session):
     assert len(body["sections"][0]["items"]) == 9
     assert len(body["sections"][1]["items"]) == 7
     assert body["sections"][0]["items"][0]["guidance"]
+    assert "projects" in body
+    assert body["review_period_start"] is not None
+    assert body["review_period_end"] is not None
 
     template = client.get("/api/v1/hr/reviews/template", headers=leader_headers)
     assert template.status_code == 200, template.text
     template_body = template.json()
     assert template_body["form_code"] == "PP-HRD-FO-20"
     assert len(template_body["rating_scale"]) == 6
+    assert template_body["review_cycle_month"] == 7
+
+    suggestions = client.get(
+        f"/api/v1/hr/reviews/suggested-projects?employee_id={IDS['user_binil']}",
+        headers=leader_headers,
+    )
+    assert suggestions.status_code == 200, suggestions.text
 
     rated = client.patch(
         f"/api/v1/hr/reviews/{body['id']}",

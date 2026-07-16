@@ -80,6 +80,9 @@ from app.db.phase37_performance_reviews_schema_sync import (
 from app.db.phase38_performance_review_enhancements_schema_sync import (
     ensure_phase38_performance_review_enhancements,
 )
+from app.db.phase39_performance_review_projects_schema_sync import (
+    ensure_phase39_performance_review_projects_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -173,6 +176,7 @@ async def lifespan(app: FastAPI):
         ("phase36_team_membership_periods", ensure_phase36_team_membership_periods_foundation),
         ("phase37_performance_reviews", ensure_phase37_performance_reviews_foundation),
         ("phase38_performance_review_enhancements", ensure_phase38_performance_review_enhancements),
+        ("phase39_performance_review_projects", ensure_phase39_performance_review_projects_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

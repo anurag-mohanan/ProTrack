@@ -19,6 +19,7 @@ from app.models.enums import TeamRelationshipType, TimesheetStatus
 from app.models.models import (
     PerformanceReviewCycle,
     PerformanceReviewItem,
+    PerformanceReviewProject,
     PerformanceReviewSection,
     PerformanceReviewSheet,
     Team,
@@ -32,6 +33,8 @@ from app.schemas.performance_review import (
     PerformanceReviewCycleCreate,
     PerformanceReviewCycleRead,
     PerformanceReviewItemRead,
+    PerformanceReviewProjectRead,
+    PerformanceReviewProjectSuggestionRead,
     PerformanceReviewRead,
     PerformanceReviewSectionRead,
     PerformanceReviewTeamMemberRead,
@@ -40,9 +43,18 @@ from app.schemas.performance_review import (
 )
 from app.services.performance_review_service import (
     DEFAULT_REVIEW_TEMPLATE,
+    FORM_CODE,
+    FORM_REVISION,
+    FORM_TITLE,
     PP_HRD_FO_20_TEMPLATE,
     RATING_SCALE,
+    REVIEW_CYCLE_MONTH,
+    current_review_year,
+    default_period_label,
+    discover_employee_projects,
     rating_label,
+    review_period_bounds,
+    seed_review_projects,
     section_average_score,
     sheet_completion_ratio,
     sheet_overall_score,
@@ -112,6 +124,19 @@ def _managed_team_ids(db: Session, current_user: User) -> list:
     return list(team_ids)
 
 
+def _review_load_options():
+    return (
+        selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
+        selectinload(PerformanceReviewSheet.reviewer),
+        selectinload(PerformanceReviewSheet.team),
+        selectinload(PerformanceReviewSheet.cycle),
+        selectinload(PerformanceReviewSheet.sections).selectinload(
+            PerformanceReviewSection.items
+        ),
+        selectinload(PerformanceReviewSheet.projects),
+    )
+
+
 def _section_notes_label(title: str) -> str | None:
     for section_row in PP_HRD_FO_20_TEMPLATE:
         if section_row["title"] == title:
@@ -176,6 +201,8 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         status=sheet.status,
         review_date=sheet.review_date,
         due_date=sheet.due_date,
+        review_period_start=sheet.review_period_start,
+        review_period_end=sheet.review_period_end,
         total_experience=sheet.total_experience,
         overall_score=sheet.overall_score,
         overall_score_label=rating_label(sheet.overall_score),
@@ -188,9 +215,47 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         submitted_at=sheet.submitted_at,
         acknowledged_at=sheet.acknowledged_at,
         sections=[_build_section_read(section) for section in sorted(sheet.sections, key=lambda row: row.sort_order)],
+        projects=[
+            PerformanceReviewProjectRead.model_validate(project)
+            for project in sorted(sheet.projects, key=lambda row: row.sort_order)
+        ],
         is_editable=bool(can_manage or sheet.reviewer_id == current_user.id),
         can_acknowledge=bool(is_self and sheet.status == "submitted"),
     )
+
+
+def _apply_projects(sheet: PerformanceReviewSheet, projects: list) -> None:
+    sheet.projects.clear()
+    for index, project_row in enumerate(projects):
+        sheet.projects.append(
+            PerformanceReviewProject(
+                project_id=project_row.project_id,
+                tool_number=project_row.tool_number,
+                part_description=project_row.part_description,
+                customer_name=project_row.customer_name,
+                assignment_role=project_row.assignment_role,
+                hours_logged=project_row.hours_logged,
+                execution_status=project_row.execution_status,
+                project_stage=project_row.project_stage,
+                completed_at=project_row.completed_at,
+                contribution_summary=project_row.contribution_summary,
+                achievement_notes=project_row.achievement_notes,
+                is_auto_imported=project_row.is_auto_imported,
+                sort_order=project_row.sort_order if project_row.sort_order else index,
+            )
+        )
+
+
+def _apply_employee_project_updates(sheet: PerformanceReviewSheet, projects: list) -> None:
+    project_by_id = {project.id: project for project in sheet.projects}
+    for project_row in projects:
+        project = project_by_id.get(project_row.id) if project_row.id is not None else None
+        if project is None:
+            continue
+        if project_row.achievement_notes is not None:
+            project.achievement_notes = project_row.achievement_notes
+        if project_row.contribution_summary is not None:
+            project.contribution_summary = project_row.contribution_summary
 
 
 def _seed_sections(sheet: PerformanceReviewSheet) -> None:
@@ -267,9 +332,44 @@ def performance_review_template(
     current_user: User = Depends(get_current_user),
 ):
     return PerformanceReviewTemplateRead(
+        form_code=FORM_CODE,
+        form_title=FORM_TITLE,
+        form_revision=FORM_REVISION,
+        review_cycle_month=REVIEW_CYCLE_MONTH,
         rating_scale=RATING_SCALE,
         sections=PP_HRD_FO_20_TEMPLATE,
     )
+
+
+@router.get("/reviews/suggested-projects", response_model=list[PerformanceReviewProjectSuggestionRead])
+def suggested_review_projects(
+    employee_id: UUID,
+    review_year: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    employee = db.get(User, employee_id)
+    if employee is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    can_view = employee_id == current_user.id
+    if not can_view:
+        team_ids = list(
+            db.scalars(
+                select(TeamMember.team_id).where(TeamMember.user_id == employee_id)
+            ).all()
+        )
+        can_view = any(user_can_manage_team_reviews(db, current_user, team_id) for team_id in team_ids)
+    if not can_view:
+        raise HTTPException(status_code=403, detail="Performance review access denied")
+    year = review_year or current_review_year()
+    period_start, period_end = review_period_bounds(year)
+    rows = discover_employee_projects(
+        db,
+        employee_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    return [PerformanceReviewProjectSuggestionRead.model_validate(row) for row in rows]
 
 
 @router.get("/dashboard")
@@ -464,15 +564,7 @@ def my_performance_reviews(
 ):
     rows = db.scalars(
         select(PerformanceReviewSheet)
-        .options(
-            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
-            selectinload(PerformanceReviewSheet.reviewer),
-            selectinload(PerformanceReviewSheet.team),
-            selectinload(PerformanceReviewSheet.cycle),
-            selectinload(PerformanceReviewSheet.sections).selectinload(
-                PerformanceReviewSection.items
-            ),
-        )
+        .options(*_review_load_options())
         .where(
             PerformanceReviewSheet.employee_id == current_user.id,
             PerformanceReviewSheet.is_active.is_(True),
@@ -557,15 +649,7 @@ def team_performance_reviews(
         return []
     rows = db.scalars(
         select(PerformanceReviewSheet)
-        .options(
-            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
-            selectinload(PerformanceReviewSheet.reviewer),
-            selectinload(PerformanceReviewSheet.team),
-            selectinload(PerformanceReviewSheet.cycle),
-            selectinload(PerformanceReviewSheet.sections).selectinload(
-                PerformanceReviewSection.items
-            ),
-        )
+        .options(*_review_load_options())
         .where(
             PerformanceReviewSheet.team_id.in_(allowed),
             PerformanceReviewSheet.is_active.is_(True),
@@ -583,15 +667,7 @@ def get_performance_review(
 ):
     sheet = db.scalar(
         select(PerformanceReviewSheet)
-        .options(
-            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
-            selectinload(PerformanceReviewSheet.reviewer),
-            selectinload(PerformanceReviewSheet.team),
-            selectinload(PerformanceReviewSheet.cycle),
-            selectinload(PerformanceReviewSheet.sections).selectinload(
-                PerformanceReviewSection.items
-            ),
-        )
+        .options(*_review_load_options())
         .where(PerformanceReviewSheet.id == review_id, PerformanceReviewSheet.is_active.is_(True))
     )
     if sheet is None:
@@ -616,15 +692,21 @@ def create_performance_review(
     if reviewer is None:
         raise HTTPException(status_code=404, detail="Reviewer not found")
 
+    review_year = payload.review_year or current_review_year()
+    period_start, period_end = review_period_bounds(review_year)
+    period_label = payload.period_label or default_period_label(review_year)
+
     sheet = PerformanceReviewSheet(
         cycle_id=payload.cycle_id,
         employee_id=payload.employee_id,
         reviewer_id=reviewer.id,
         team_id=payload.team_id,
-        period_label=payload.period_label,
+        period_label=period_label,
         status=payload.status,
         review_date=payload.review_date,
         due_date=payload.due_date,
+        review_period_start=period_start,
+        review_period_end=period_end,
         total_experience=payload.total_experience,
         overall_score=payload.overall_score,
         employee_summary=payload.employee_summary,
@@ -639,6 +721,15 @@ def create_performance_review(
     else:
         _seed_sections(sheet)
         sheet.overall_score = sheet_overall_score(sheet)
+    if payload.projects:
+        _apply_projects(sheet, payload.projects)
+    else:
+        seed_review_projects(
+            sheet,
+            db,
+            period_start=period_start,
+            period_end=period_end,
+        )
     if sheet.status == "submitted":
         sheet.submitted_at = _utcnow()
     db.add(sheet)
@@ -646,15 +737,7 @@ def create_performance_review(
     db.refresh(sheet)
     sheet = db.scalar(
         select(PerformanceReviewSheet)
-        .options(
-            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
-            selectinload(PerformanceReviewSheet.reviewer),
-            selectinload(PerformanceReviewSheet.team),
-            selectinload(PerformanceReviewSheet.cycle),
-            selectinload(PerformanceReviewSheet.sections).selectinload(
-                PerformanceReviewSection.items
-            ),
-        )
+        .options(*_review_load_options())
         .where(PerformanceReviewSheet.id == sheet.id)
     )
     assert sheet is not None
@@ -670,15 +753,7 @@ def update_performance_review(
 ):
     sheet = db.scalar(
         select(PerformanceReviewSheet)
-        .options(
-            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
-            selectinload(PerformanceReviewSheet.reviewer),
-            selectinload(PerformanceReviewSheet.team),
-            selectinload(PerformanceReviewSheet.cycle),
-            selectinload(PerformanceReviewSheet.sections).selectinload(
-                PerformanceReviewSection.items
-            ),
-        )
+        .options(*_review_load_options())
         .where(PerformanceReviewSheet.id == review_id, PerformanceReviewSheet.is_active.is_(True))
     )
     if sheet is None:
@@ -716,6 +791,45 @@ def update_performance_review(
             sheet.team_id = payload.team_id
         if payload.sections is not None:
             _apply_manager_sections(sheet, payload.sections)
+        if payload.projects is not None:
+            _apply_projects(sheet, payload.projects)
+        elif payload.import_suggested_projects:
+            period_start = sheet.review_period_start
+            period_end = sheet.review_period_end
+            if period_start is None or period_end is None:
+                year = current_review_year()
+                period_start, period_end = review_period_bounds(year)
+                sheet.review_period_start = period_start
+                sheet.review_period_end = period_end
+            existing_ids = {row.project_id for row in sheet.projects if row.project_id is not None}
+            suggestions = discover_employee_projects(
+                db,
+                sheet.employee_id,
+                period_start=period_start,
+                period_end=period_end,
+            )
+            next_order = len(sheet.projects)
+            for row in suggestions:
+                if row.get("project_id") in existing_ids:
+                    continue
+                sheet.projects.append(
+                    PerformanceReviewProject(
+                        project_id=row.get("project_id"),
+                        tool_number=str(row.get("tool_number") or ""),
+                        part_description=row.get("part_description"),
+                        customer_name=row.get("customer_name"),
+                        assignment_role=row.get("assignment_role"),
+                        hours_logged=row.get("hours_logged"),
+                        execution_status=row.get("execution_status"),
+                        project_stage=row.get("project_stage"),
+                        completed_at=row.get("completed_at"),
+                        contribution_summary=row.get("contribution_summary"),
+                        achievement_notes=row.get("achievement_notes"),
+                        is_auto_imported=True,
+                        sort_order=next_order,
+                    )
+                )
+                next_order += 1
         if payload.status == "submitted":
             sheet.submitted_at = _utcnow()
     else:
@@ -725,6 +839,8 @@ def update_performance_review(
             sheet.career_goals = payload.career_goals
         if payload.sections is not None:
             _apply_employee_section_updates(sheet, payload.sections)
+        if payload.projects is not None:
+            _apply_employee_project_updates(sheet, payload.projects)
         if payload.acknowledged:
             sheet.status = "acknowledged"
             sheet.acknowledged_at = _utcnow()
@@ -734,15 +850,7 @@ def update_performance_review(
     db.refresh(sheet)
     sheet = db.scalar(
         select(PerformanceReviewSheet)
-        .options(
-            selectinload(PerformanceReviewSheet.employee).selectinload(User.department),
-            selectinload(PerformanceReviewSheet.reviewer),
-            selectinload(PerformanceReviewSheet.team),
-            selectinload(PerformanceReviewSheet.cycle),
-            selectinload(PerformanceReviewSheet.sections).selectinload(
-                PerformanceReviewSection.items
-            ),
-        )
+        .options(*_review_load_options())
         .where(PerformanceReviewSheet.id == review_id)
     )
     assert sheet is not None

@@ -30,8 +30,66 @@ class PerformanceReviewTemplateSection(BaseModel):
 class PerformanceReviewTemplateRead(BaseModel):
     form_code: str = "PP-HRD-FO-20"
     form_title: str = "Employee Performance Review"
+    form_revision: str = "Rev 3 · 01/19/2023"
+    review_cycle_month: int = 7
+    review_cycle_note: str = (
+        "Annual performance reviews are conducted every July for the preceding "
+        "financial year (July–June)."
+    )
     rating_scale: list[PerformanceReviewRatingScaleItem] = Field(default_factory=list)
     sections: list[PerformanceReviewTemplateSection] = Field(default_factory=list)
+
+
+class PerformanceReviewProjectUpdate(BaseModel):
+    id: UUID | None = None
+    project_id: UUID | None = None
+    tool_number: str = ""
+    part_description: str | None = None
+    customer_name: str | None = None
+    assignment_role: str | None = None
+    hours_logged: Decimal | None = None
+    execution_status: str | None = None
+    project_stage: str | None = None
+    completed_at: date | None = None
+    contribution_summary: str | None = None
+    achievement_notes: str | None = None
+    is_auto_imported: bool = False
+    sort_order: int = 0
+
+
+class PerformanceReviewProjectRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    project_id: UUID | None = None
+    tool_number: str
+    part_description: str | None = None
+    customer_name: str | None = None
+    assignment_role: str | None = None
+    hours_logged: Decimal | None = None
+    execution_status: str | None = None
+    project_stage: str | None = None
+    completed_at: date | None = None
+    contribution_summary: str | None = None
+    achievement_notes: str | None = None
+    is_auto_imported: bool = False
+    sort_order: int
+
+
+class PerformanceReviewProjectSuggestionRead(BaseModel):
+    project_id: UUID | None = None
+    tool_number: str
+    part_description: str | None = None
+    customer_name: str | None = None
+    assignment_role: str | None = None
+    hours_logged: Decimal | None = None
+    execution_status: str | None = None
+    project_stage: str | None = None
+    completed_at: date | None = None
+    contribution_summary: str | None = None
+    achievement_notes: str | None = None
+    is_auto_imported: bool = True
+    sort_order: int = 0
 
 
 class PerformanceReviewItemUpdate(BaseModel):
@@ -76,9 +134,10 @@ class PerformanceReviewCreate(BaseModel):
     reviewer_id: UUID | None = None
     team_id: UUID
     cycle_id: UUID | None = None
-    period_label: str
+    period_label: str = ""
     review_date: date | None = None
     due_date: date | None = None
+    review_year: int | None = None
     total_experience: str | None = None
     overall_score: Decimal | None = Field(default=None, ge=0, le=5)
     employee_summary: str | None = None
@@ -88,6 +147,7 @@ class PerformanceReviewCreate(BaseModel):
     career_goals: str | None = None
     status: str = "draft"
     sections: list[PerformanceReviewSectionUpdate] = Field(default_factory=list)
+    projects: list[PerformanceReviewProjectUpdate] = Field(default_factory=list)
 
 
 class PerformanceReviewUpdate(BaseModel):
@@ -106,6 +166,8 @@ class PerformanceReviewUpdate(BaseModel):
     status: str | None = None
     acknowledged: bool | None = None
     sections: list[PerformanceReviewSectionUpdate] | None = None
+    projects: list[PerformanceReviewProjectUpdate] | None = None
+    import_suggested_projects: bool | None = None
 
 
 class PerformanceReviewItemRead(BaseModel):
@@ -153,6 +215,8 @@ class PerformanceReviewRead(BaseModel):
     status: str
     review_date: date | None = None
     due_date: date | None = None
+    review_period_start: date | None = None
+    review_period_end: date | None = None
     total_experience: str | None = None
     overall_score: Decimal | None = None
     overall_score_label: str | None = None
@@ -165,6 +229,7 @@ class PerformanceReviewRead(BaseModel):
     submitted_at: datetime | None = None
     acknowledged_at: datetime | None = None
     sections: list[PerformanceReviewSectionRead] = Field(default_factory=list)
+    projects: list[PerformanceReviewProjectRead] = Field(default_factory=list)
     is_editable: bool = False
     can_acknowledge: bool = False
 

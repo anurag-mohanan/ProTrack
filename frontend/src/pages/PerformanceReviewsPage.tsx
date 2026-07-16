@@ -43,6 +43,15 @@ import {
   PerformanceReviewHero,
   PerformanceReviewScoreBadge,
 } from '../components/performanceReview/PerformanceReviewPrimitives';
+import {
+  PerformanceReviewProjectsPanel,
+  type ReviewProjectRow,
+} from '../components/performanceReview/PerformanceReviewProjectsPanel';
+import {
+  currentReviewYear,
+  defaultPeriodLabel,
+  reviewPeriodBounds,
+} from '../components/performanceReview/performanceReviewPeriod';
 import { DeleteDialog } from '../components/ui/design-system/DeleteDialog';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -100,6 +109,9 @@ type Review = {
   submitted_at?: string | null;
   acknowledged_at?: string | null;
   sections: ReviewSection[];
+  projects?: ReviewProjectRow[];
+  review_period_start?: string | null;
+  review_period_end?: string | null;
   is_editable: boolean;
   can_acknowledge: boolean;
 };
@@ -124,6 +136,9 @@ type ReviewCycle = {
 type ReviewTemplate = {
   form_code: string;
   form_title: string;
+  form_revision?: string;
+  review_cycle_month?: number;
+  review_cycle_note?: string;
   rating_scale: RatingScaleItem[];
 };
 
@@ -139,6 +154,7 @@ type EditorState = {
   improvement_summary: string;
   career_goals: string;
   sections: ReviewSection[];
+  projects: ReviewProjectRow[];
 };
 
 function cloneSections(sections: ReviewSection[]): ReviewSection[] {
@@ -164,6 +180,7 @@ function reviewToEditor(review: Review): EditorState {
     improvement_summary: review.improvement_summary ?? '',
     career_goals: review.career_goals ?? '',
     sections: cloneSections(review.sections ?? []),
+    projects: (review.projects ?? []).map((row) => ({ ...row })),
   };
 }
 
@@ -180,7 +197,8 @@ export function PerformanceReviewsPage() {
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [selectedCycleId, setSelectedCycleId] = useState('');
-  const [periodLabel, setPeriodLabel] = useState(new Date().getFullYear().toString());
+  const [periodLabel, setPeriodLabel] = useState(defaultPeriodLabel());
+  const [reviewYear, setReviewYear] = useState(currentReviewYear());
   const [dueDate, setDueDate] = useState('');
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Review | null>(null);
@@ -224,7 +242,8 @@ export function PerformanceReviewsPage() {
           reviewer_id: user?.id,
           team_id: selectedTeamId,
           cycle_id: selectedCycleId || null,
-          period_label: periodLabel,
+          period_label: periodLabel || defaultPeriodLabel(reviewYear),
+          review_year: reviewYear,
           due_date: dueDate || null,
         })
       ).data,
@@ -257,6 +276,21 @@ export function PerformanceReviewsPage() {
       setDeleteTarget(null);
       setSelectedReviewId('');
       setEditor(null);
+      void queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
+    },
+    onError: (error: unknown) => showError(getErrorMessage(error)),
+  });
+
+  const importProjectsMutation = useMutation({
+    mutationFn: async (reviewId: string) =>
+      (
+        await apiClient.patch<Review>(`/hr/reviews/${reviewId}`, {
+          import_suggested_projects: true,
+        })
+      ).data,
+    onSuccess: (review) => {
+      showSuccess('Assigned projects imported from ProTrack');
+      setEditor(reviewToEditor(review));
       void queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
@@ -312,9 +346,16 @@ export function PerformanceReviewsPage() {
       <PerformanceReviewHero
         formCode={templateQuery.data?.form_code ?? 'PP-HRD-FO-20'}
         formTitle={templateQuery.data?.form_title ?? 'Employee Performance Review'}
-        periodLabel={selectedReview?.period_label}
+        periodLabel={selectedReview?.period_label ?? periodLabel}
         status={selectedReview?.status}
       />
+
+      {templateQuery.data?.review_cycle_note ? (
+        <Typography variant="body2" color="text.secondary">
+          {templateQuery.data.review_cycle_note}
+          {templateQuery.data.form_revision ? ` · ${templateQuery.data.form_revision}` : ''}
+        </Typography>
+      ) : null}
 
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -392,9 +433,16 @@ export function PerformanceReviewsPage() {
                     employee_summary: editor.employee_summary || null,
                     career_goals: editor.career_goals || null,
                     sections: editor.sections,
+                    projects: editor.projects,
                   },
                 });
               }}
+              onImportProjects={
+                selectedReview
+                  ? () => importProjectsMutation.mutate(selectedReview.id)
+                  : undefined
+              }
+              importingProjects={importProjectsMutation.isPending}
               onAcknowledge={() =>
                 selectedReview &&
                 updateReviewMutation.mutate({ id: selectedReview.id, body: { acknowledged: true } })
@@ -453,12 +501,24 @@ export function PerformanceReviewsPage() {
                     ))}
                   </Select>
                 </FormControl>
-                <TextField
-                  size="small"
-                  label="Period label"
-                  value={periodLabel}
-                  onChange={(e) => setPeriodLabel(e.target.value)}
-                />
+                  <TextField
+                    size="small"
+                    label="Period label"
+                    value={periodLabel}
+                    onChange={(e) => setPeriodLabel(e.target.value)}
+                    helperText={`${reviewPeriodBounds(reviewYear).start} → ${reviewPeriodBounds(reviewYear).end}`}
+                  />
+                  <TextField
+                    size="small"
+                    type="number"
+                    label="Review year (July cycle)"
+                    value={reviewYear}
+                    onChange={(e) => {
+                      const nextYear = Number(e.target.value) || currentReviewYear();
+                      setReviewYear(nextYear);
+                      setPeriodLabel(defaultPeriodLabel(nextYear));
+                    }}
+                  />
                 <TextField
                   size="small"
                   type="date"
@@ -515,11 +575,18 @@ export function PerformanceReviewsPage() {
                     career_goals: editor.career_goals || null,
                     status,
                     sections: editor.sections,
+                    projects: editor.projects,
                   },
                 });
               }}
               saving={updateReviewMutation.isPending}
               onDeleteRequest={setDeleteTarget}
+              onImportProjects={
+                selectedReview
+                  ? () => importProjectsMutation.mutate(selectedReview.id)
+                  : undefined
+              }
+              importingProjects={importProjectsMutation.isPending}
             />
           </Grid>
         </Grid>
@@ -628,6 +695,8 @@ function ReviewDetailCard({
   onEmployeeSave,
   onAcknowledge,
   onDeleteRequest,
+  onImportProjects,
+  importingProjects = false,
   saving,
 }: {
   review: Review | null;
@@ -639,6 +708,8 @@ function ReviewDetailCard({
   onEmployeeSave?: () => void;
   onAcknowledge?: () => void;
   onDeleteRequest?: (review: Review) => void;
+  onImportProjects?: () => void;
+  importingProjects?: boolean;
   saving: boolean;
 }) {
   if (!review || !editor) {
@@ -748,6 +819,16 @@ function ReviewDetailCard({
           ))}
         </Stack>
       </FinanceSection>
+
+      <PerformanceReviewProjectsPanel
+        projects={editor.projects}
+        periodStart={review.review_period_start}
+        periodEnd={review.review_period_end}
+        canManage={canManage}
+        importing={importingProjects}
+        onChange={(projects) => onChange({ ...editor, projects })}
+        onImportSuggested={canManage ? onImportProjects : undefined}
+      />
 
       {editor.sections.map((section, sectionIndex) => (
         <FinanceSection

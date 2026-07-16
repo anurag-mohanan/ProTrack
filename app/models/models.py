@@ -445,6 +445,8 @@ class PerformanceReviewSheet(Base, TimestampMixin):
     improvement_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     career_goals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     total_experience: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    review_period_start: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    review_period_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -462,6 +464,41 @@ class PerformanceReviewSheet(Base, TimestampMixin):
     sections: Mapped[list["PerformanceReviewSection"]] = relationship(
         back_populates="sheet", cascade="all, delete-orphan"
     )
+    projects: Mapped[list["PerformanceReviewProject"]] = relationship(
+        back_populates="sheet", cascade="all, delete-orphan"
+    )
+
+
+class PerformanceReviewProject(Base, TimestampMixin):
+    __tablename__ = "performance_review_projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    sheet_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("performance_review_sheets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("projects.id"), nullable=True, index=True
+    )
+    tool_number: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    part_description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    customer_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    assignment_role: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    hours_logged: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    execution_status: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    project_stage: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    completed_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    contribution_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    achievement_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_auto_imported: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    sheet: Mapped[PerformanceReviewSheet] = relationship(back_populates="projects")
+    project: Mapped[Optional["Project"]] = relationship(foreign_keys=[project_id])
 
 
 class PerformanceReviewSection(Base, TimestampMixin):

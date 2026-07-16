@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
+  Chip,
   Checkbox,
   FormControl,
   FormControlLabel,
+  Grid,
   InputLabel,
   MenuItem,
   Select,
@@ -14,6 +14,10 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
+import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
+import RequestQuoteOutlinedIcon from '@mui/icons-material/RequestQuoteOutlined';
+import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { fetchCustomers, fetchTeams } from '../../api/lookups';
@@ -24,8 +28,15 @@ import {
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { toFiniteNumber } from '../../utils/format';
+import { designTokens } from '../../theme/designTokens';
+import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
 import { teamQueryParam } from './FinanceTeamFilter';
-import { FinanceHeroBanner } from './FinanceCockpitPrimitives';
+import {
+  FinanceHeroBanner,
+  FinanceSection,
+  financeMoney,
+} from './FinanceCockpitPrimitives';
 
 type QuoteRow = {
   id: string;
@@ -78,6 +89,19 @@ const emptyManual: ManualQuoteForm = {
   cost: '',
   currencyCode: '',
   quotedDate: new Date().toISOString().slice(0, 10),
+};
+
+const listRowSx = {
+  p: 1.5,
+  borderRadius: `${designTokens.radius.md}px`,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 2,
+  flexWrap: 'wrap' as const,
+  alignItems: 'flex-start',
 };
 
 export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
@@ -245,6 +269,14 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     () => (customersQuery.data ?? []).filter((c) => c.is_active),
     [customersQuery.data],
   );
+  const quotes = quotesQuery.data ?? [];
+  const quoteStats = useMemo(() => {
+    const revenue = quotes.reduce((s, q) => s + toFiniteNumber(q.quoted_revenue), 0);
+    const linked = quotes.filter((q) => q.project_linked).length;
+    const missingDate = quotes.filter((q) => !q.quoted_date).length;
+    return { count: quotes.length, revenue, linked, missingDate };
+  }, [quotes]);
+
   const canSaveManual =
     Boolean(importTeamId) &&
     Boolean(manual.customerId) &&
@@ -254,31 +286,73 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const canUpload = Boolean(importTeamId) && !importMutation.isPending && !editingId;
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Revenue / awarded quotes"
         subtitle="Booked quote revenue for planning — set Quoted date so Annual Plan can place revenue in the correct FY quarter."
+        chips={
+          <>
+            <Chip size="small" label={teamId ? 'Team scope' : 'All teams'} sx={{ fontWeight: 700 }} />
+            <Chip size="small" variant="outlined" label={`${quoteStats.count} quotes`} />
+            {quoteStats.missingDate > 0 ? (
+              <Chip size="small" color="warning" label={`${quoteStats.missingDate} missing date`} />
+            ) : null}
+          </>
+        }
       />
-      <Box>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Awarded project quotes
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          {editingId ? (
-            <>
-              <strong>Edit quote</strong> — update Quote #, Project #, Cost, Customer, and Team,
-              then Save changes.
-            </>
-          ) : (
-            <>
-              <strong>This phase:</strong> type <strong>Quote #</strong>, <strong>Project #</strong>{' '}
-              (Customer Project #), and <strong>Cost</strong> (quoted amount). Select Customer +
-              Team. Use Edit / Delete on listed quotes (same as Expenses).
-            </>
-          )}
-        </Typography>
 
-        <Stack spacing={1.5} sx={{ mb: 2, maxWidth: 720 }}>
+      <Grid container spacing={1.5}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="primary"
+            icon={RequestQuoteOutlinedIcon}
+            title="Awarded quotes"
+            value={String(quoteStats.count)}
+            subtitle="Listed in scope"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="success"
+            icon={TrendingUpOutlinedIcon}
+            title="Booked revenue Σ"
+            value={financeMoney(quoteStats.revenue, 'INR')}
+            subtitle="Quoted amounts"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="info"
+            icon={LinkOutlinedIcon}
+            title="Project-linked"
+            value={String(quoteStats.linked)}
+            subtitle="Of listed quotes"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="warning"
+            icon={CalendarMonthOutlinedIcon}
+            title="Missing quoted date"
+            value={String(quoteStats.missingDate)}
+            subtitle="Needed for Annual Plan FY"
+          />
+        </Grid>
+      </Grid>
+
+      <FinanceSection
+        title={editingId ? 'Edit awarded quote' : 'Add awarded quote'}
+        subtitle={
+          editingId
+            ? 'Update Quote #, Project #, Cost, Customer, Team, and Quoted date, then Save changes.'
+            : 'Enter Quote #, Project # (Customer Project #), Cost, Customer, Team, and Quoted date for Annual Plan sales sync.'
+        }
+      >
+        <Stack spacing={1.5} sx={{ maxWidth: 900 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
             <FormControl size="small" sx={{ minWidth: 220 }} required>
               <InputLabel>Team</InputLabel>
@@ -409,42 +483,35 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             </Typography>
           ) : null}
         </Stack>
+      </FinanceSection>
 
-        {!editingId ? (
-          <>
-            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-              Optional file upload
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Batch Excel/PDF/CSV still available ({IMPORT_FORMAT_LABEL_WITH_CSV}). Prefer manual
-              entry above when smart parse fails.
-            </Typography>
-            <Button variant="outlined" component="label" disabled={!canUpload}>
-              Upload Quote File
-              <input
-                hidden
-                type="file"
-                accept={IMPORT_ACCEPT_WITH_CSV}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) importMutation.mutate(file);
-                  event.target.value = '';
-                }}
-              />
-            </Button>
-          </>
-        ) : null}
-      </Box>
+      {!editingId ? (
+        <FinanceSection
+          title="Optional file upload"
+          subtitle={`Batch Excel/PDF/CSV (${IMPORT_FORMAT_LABEL_WITH_CSV}). Prefer manual entry above when smart parse fails.`}
+        >
+          <Button variant="outlined" component="label" disabled={!canUpload}>
+            Upload Quote File
+            <input
+              hidden
+              type="file"
+              accept={IMPORT_ACCEPT_WITH_CSV}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) importMutation.mutate(file);
+                event.target.value = '';
+              }}
+            />
+          </Button>
+        </FinanceSection>
+      ) : null}
 
       {lastImport.length > 0 && !editingId ? (
-        <Box>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Last save / import
-          </Typography>
-          <Stack spacing={1}>
+        <FinanceSection title="Last save / import" subtitle="Result of the most recent manual save or file upload.">
+          <Stack spacing={1.25}>
             {lastImport.map((item) => (
-              <Card key={item.quote_id} variant="outlined">
-                <CardContent>
+              <Box key={item.quote_id} sx={listRowSx}>
+                <Box>
                   <Typography sx={{ fontWeight: 600 }}>
                     {item.external_quote_number
                       ? `${item.external_quote_number} · ${item.tool_number}`
@@ -452,8 +519,8 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {item.customer_name ?? 'Customer'} · {item.team_name ?? 'No team'} ·{' '}
-                    {item.quoted_hours ?? '—'} hrs · {item.currency_code ?? ''}{' '}
-                    {item.quoted_revenue ?? '—'}
+                    {item.quoted_hours ?? '—'} hrs ·{' '}
+                    {financeMoney(item.quoted_revenue, item.currency_code || 'INR')}
                     {item.project_created
                       ? ' · Created project'
                       : item.project_linked
@@ -470,52 +537,66 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                       {warning}
                     </Typography>
                   ))}
-                </CardContent>
-              </Card>
+                </Box>
+              </Box>
             ))}
           </Stack>
-        </Box>
+        </FinanceSection>
       ) : null}
 
-      <Typography variant="subtitle2">Imported quotes</Typography>
-      <Stack spacing={1}>
-        {(quotesQuery.data ?? []).map((quote) => (
-          <Card key={quote.id} variant="outlined">
-            <CardContent
-              sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}
-            >
-              <Box>
-                <Typography sx={{ fontWeight: 600 }}>
-                  {quote.external_quote_number
-                    ? `${quote.external_quote_number} · ${quote.tool_number}`
-                    : quote.tool_number}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {quote.customer_name ?? 'Customer'} · {quote.team_name ?? 'No team'} ·{' '}
-                  {quote.currency_code}
-                  {quote.quoted_revenue != null ? ` ${quote.quoted_revenue}` : ''} · rev{' '}
-                  {quote.current_revision}
-                  {quote.quoted_date ? ` · quoted ${quote.quoted_date}` : ' · no quoted date'}
-                  {quote.project_linked ? ' · Linked project' : ' · Unlinked'}
-                </Typography>
+      <FinanceSection
+        title="Awarded quotes"
+        subtitle="Edit or delete booked quotes. Quoted date drives Annual Plan sales-from-quotes placement."
+      >
+        <Stack spacing={1.25}>
+          {quotes.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No awarded quotes yet — save or import the first one above.
+            </Typography>
+          ) : (
+            quotes.map((quote) => (
+              <Box key={quote.id} sx={listRowSx}>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.5 }}>
+                    <Typography sx={{ fontWeight: 600 }}>
+                      {quote.external_quote_number
+                        ? `${quote.external_quote_number} · ${quote.tool_number}`
+                        : quote.tool_number}
+                    </Typography>
+                    {quote.project_linked ? (
+                      <Chip size="small" color="success" variant="outlined" label="Linked" />
+                    ) : (
+                      <Chip size="small" variant="outlined" label="Unlinked" />
+                    )}
+                    {!quote.quoted_date ? (
+                      <Chip size="small" color="warning" label="No quoted date" />
+                    ) : null}
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    {quote.customer_name ?? 'Customer'} · {quote.team_name ?? 'No team'} ·{' '}
+                    {financeMoney(quote.quoted_revenue, quote.currency_code || 'INR')} · rev{' '}
+                    {quote.current_revision}
+                    {quote.quoted_date ? ` · quoted ${quote.quoted_date}` : ''}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                  <Button size="small" variant="contained" onClick={() => startEdit(quote)}>
+                    Edit
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    onClick={() => setDeleteTarget(quote)}
+                  >
+                    Delete
+                  </Button>
+                </Stack>
               </Box>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                <Button size="small" variant="contained" onClick={() => startEdit(quote)}>
-                  Edit
-                </Button>
-                <Button
-                  size="small"
-                  color="error"
-                  variant="outlined"
-                  onClick={() => setDeleteTarget(quote)}
-                >
-                  Delete
-                </Button>
-              </Stack>
-            </CardContent>
-          </Card>
-        ))}
-      </Stack>
+            ))
+          )}
+        </Stack>
+      </FinanceSection>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

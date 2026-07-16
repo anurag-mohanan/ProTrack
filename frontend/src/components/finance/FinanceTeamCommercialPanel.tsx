@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
+  Chip,
   Checkbox,
   FormControl,
   FormControlLabel,
+  Grid,
   InputLabel,
   MenuItem,
   Select,
@@ -14,6 +14,9 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import BusinessCenterOutlinedIcon from '@mui/icons-material/BusinessCenterOutlined';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
+import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { fetchTeams, fetchWorkingModels } from '../../api/lookups';
@@ -21,7 +24,14 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import { teamQueryParam } from './FinanceTeamFilter';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
-import { FinanceHeroBanner } from './FinanceCockpitPrimitives';
+import { toFiniteNumber } from '../../utils/format';
+import { designTokens } from '../../theme/designTokens';
+import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
+import {
+  FinanceHeroBanner,
+  FinanceSection,
+  financeMoney,
+} from './FinanceCockpitPrimitives';
 
 type WorkingModel = {
   id: string;
@@ -61,6 +71,19 @@ function isRetainer(strategy?: string | null) {
 function showsCustomerFee(strategy?: string | null) {
   return isRetainer(strategy);
 }
+
+const listRowSx = {
+  p: 1.5,
+  borderRadius: `${designTokens.radius.md}px`,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 2,
+  flexWrap: 'wrap' as const,
+  alignItems: 'flex-start',
+};
 
 export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
@@ -205,26 +228,79 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
   };
 
   const teams = teamsQuery.data ?? [];
+  const terms = termsQuery.data ?? [];
+  const stats = useMemo(() => {
+    const feeSignal = terms.reduce((s, t) => s + toFiniteNumber(t.monthly_fee_signal_inr), 0);
+    const billable = terms.reduce((s, t) => s + toFiniteNumber(t.resource_count), 0);
+    const retainers = terms.filter((t) => isRetainer(t.working_model_strategy)).length;
+    return { count: terms.length, feeSignal, billable, retainers };
+  }, [terms]);
+
   const canSave =
     Boolean(form.team_id && form.working_model_id) &&
     (!needsFee || Boolean(form.customer_fee_amount)) &&
     !saveMutation.isPending;
 
   return (
-    <Stack spacing={3}>
+    <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Team commercial"
         subtitle="Retainer and subscription fee models that drive Overview revenue signals and Annual Plan sales context."
+        chips={
+          <>
+            <Chip size="small" label={teamId ? 'Team scope' : 'All teams'} sx={{ fontWeight: 700 }} />
+            <Chip size="small" variant="outlined" label={`${stats.count} active terms`} />
+          </>
+        }
       />
-      <Box>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          {editingId ? 'Edit team commercial terms' : 'Team cost / commercial model'}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Working model drives commercial rules. Retainer uses skill-based rates × billable
-          headcount (default rate applies when skill is blank). Project-based / T&amp;M planning
-          revenue comes from quotes — no team flat fee.
-        </Typography>
+
+      <Grid container spacing={1.5}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="primary"
+            icon={BusinessCenterOutlinedIcon}
+            title="Active terms"
+            value={String(stats.count)}
+            subtitle={`${stats.retainers} retainer`}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="success"
+            icon={PaymentsOutlinedIcon}
+            title="Fee signal Σ / mo"
+            value={financeMoney(stats.feeSignal, 'INR')}
+            subtitle="Overview retainer signal"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="info"
+            icon={GroupsOutlinedIcon}
+            title="Billable headcount"
+            value={String(stats.billable)}
+            subtitle="Across listed terms"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="warning"
+            icon={BusinessCenterOutlinedIcon}
+            title="Retainer terms"
+            value={String(stats.retainers)}
+            subtitle="Skill-band fee models"
+          />
+        </Grid>
+      </Grid>
+
+      <FinanceSection
+        title={editingId ? 'Edit team commercial terms' : 'Team cost / commercial model'}
+        subtitle="Working model drives commercial rules. Retainer uses skill-based rates × billable headcount. Project-based / T&M planning revenue comes from quotes — no team flat fee."
+      >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 180 }}>
             <InputLabel>Team</InputLabel>
@@ -396,48 +472,63 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
             ))}
           </Stack>
         ) : null}
-      </Box>
+      </FinanceSection>
 
-      <Stack spacing={1}>
-        {(termsQuery.data ?? []).map((row) => (
-          <Card key={row.id} variant="outlined">
-            <CardContent
-              sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}
-            >
-              <Box>
-                <Typography sx={{ fontWeight: 600 }}>
-                  {row.team_name ?? row.team_id} · {row.working_model_name ?? 'Model'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {isRetainer(row.working_model_strategy)
-                    ? `Fee signal ≈ ${row.monthly_fee_signal_inr ?? 0} INR/mo · ${row.resource_count ?? 0} billable · ${
-                        (row.fee_bands?.length ?? 0) > 0
-                          ? `${row.fee_bands!.length} skill bands`
-                          : `flat ${row.customer_fee_amount} ${row.currency_code}`
-                      }`
-                    : `No team flat fee (quotes drive revenue) · ${row.billing_period}`}
-                  {` · from ${row.effective_from}`}
-                  {row.customer_pays_software ? ' · customer SW' : ''}
-                  {row.customer_pays_hardware ? ' · customer HW' : ''}
-                </Typography>
-                {isRetainer(row.working_model_strategy) ? (
-                  <Typography variant="caption" color="text.secondary">
-                    Billable resources exclude management / overhead (Billable headcount off).
+      <FinanceSection
+        title="Active terms"
+        subtitle="Retainer terms contribute to Overview fee signals. Project-based terms keep SW/HW paid-by defaults without a flat team fee."
+      >
+        <Stack spacing={1.25}>
+          {terms.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No commercial terms yet — save the first set above.
+            </Typography>
+          ) : (
+            terms.map((row) => (
+              <Box key={row.id} sx={listRowSx}>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.5 }}>
+                    <Typography sx={{ fontWeight: 600 }}>
+                      {row.team_name ?? row.team_id} · {row.working_model_name ?? 'Model'}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={isRetainer(row.working_model_strategy) ? 'Retainer' : 'Quotes-driven'}
+                      color={isRetainer(row.working_model_strategy) ? 'success' : 'default'}
+                      variant="outlined"
+                    />
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    {isRetainer(row.working_model_strategy)
+                      ? `Fee signal ≈ ${financeMoney(row.monthly_fee_signal_inr, 'INR')}/mo · ${row.resource_count ?? 0} billable · ${
+                          (row.fee_bands?.length ?? 0) > 0
+                            ? `${row.fee_bands!.length} skill bands`
+                            : `flat ${financeMoney(row.customer_fee_amount, row.currency_code)}`
+                        }`
+                      : `No team flat fee (quotes drive revenue) · ${row.billing_period}`}
+                    {` · from ${row.effective_from}`}
+                    {row.customer_pays_software ? ' · customer SW' : ''}
+                    {row.customer_pays_hardware ? ' · customer HW' : ''}
                   </Typography>
-                ) : null}
+                  {isRetainer(row.working_model_strategy) ? (
+                    <Typography variant="caption" color="text.secondary">
+                      Billable resources exclude management / overhead (Billable headcount off).
+                    </Typography>
+                  ) : null}
+                </Box>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                  <Button size="small" variant="contained" onClick={() => startEdit(row)}>
+                    Edit
+                  </Button>
+                  <Button size="small" color="error" variant="outlined" onClick={() => setDeleteTarget(row)}>
+                    Delete
+                  </Button>
+                </Stack>
               </Box>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                <Button size="small" variant="contained" onClick={() => startEdit(row)}>
-                  Edit
-                </Button>
-                <Button size="small" color="error" variant="outlined" onClick={() => setDeleteTarget(row)}>
-                  Delete
-                </Button>
-              </Stack>
-            </CardContent>
-          </Card>
-        ))}
-      </Stack>
+            ))
+          )}
+        </Stack>
+      </FinanceSection>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

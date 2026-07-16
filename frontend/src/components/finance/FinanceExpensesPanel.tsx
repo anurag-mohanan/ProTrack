@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
+  Chip,
   Checkbox,
   FormControl,
   FormControlLabel,
+  Grid,
   InputLabel,
   MenuItem,
   Select,
@@ -14,13 +14,24 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
+import EventRepeatOutlinedIcon from '@mui/icons-material/EventRepeatOutlined';
+import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
+import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { fetchTeams } from '../../api/lookups';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
-import { FinanceHeroBanner } from './FinanceCockpitPrimitives';
+import { toFiniteNumber } from '../../utils/format';
+import { designTokens } from '../../theme/designTokens';
+import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
+import {
+  FinanceHeroBanner,
+  FinanceSection,
+  financeMoney,
+} from './FinanceCockpitPrimitives';
 
 type CostCentre = { id: string; name: string; code?: string };
 type Expense = {
@@ -57,6 +68,19 @@ const emptyForm = {
   next_renewal_date: '',
   notify_before_days: '7',
   notify_enabled: true,
+};
+
+const listRowSx = {
+  p: 1.5,
+  borderRadius: `${designTokens.radius.md}px`,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 2,
+  flexWrap: 'wrap' as const,
+  alignItems: 'flex-start',
 };
 
 export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
@@ -195,21 +219,79 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
   };
 
   const teams = teamsQuery.data ?? [];
+  const expenses = expensesQuery.data ?? [];
+  const expenseStats = useMemo(() => {
+    const prosohm = expenses.filter((e) => e.paid_by === 'prosohm');
+    const customer = expenses.filter((e) => e.paid_by === 'customer');
+    const renewals = expenses.filter((e) => Boolean(e.next_renewal_date)).length;
+    return {
+      count: expenses.length,
+      prosohmSum: prosohm.reduce((s, e) => s + toFiniteNumber(e.amount), 0),
+      customerSum: customer.reduce((s, e) => s + toFiniteNumber(e.amount), 0),
+      renewals,
+    };
+  }, [expenses]);
 
   return (
-    <Stack spacing={3}>
+    <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Expenses & subscriptions"
         subtitle="Capture Prosohm vs customer-paid spend with purchase dates and renewal radar — feeds Overview and Annual Plan renewals sync."
+        chips={
+          <>
+            <Chip size="small" label={currentFyOnly ? 'Current FY' : 'All years'} sx={{ fontWeight: 700 }} />
+            <Chip size="small" variant="outlined" label={`${expenseStats.count} lines`} />
+          </>
+        }
       />
-      <Box>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          {editingId ? 'Edit expense / subscription' : 'Add expense / subscription'}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Team and date of purchase are required. Overview only counts purchases in the current
-          Indian FY (Apr–Mar). Paid by defaults from Team commercial for SW/HW — you can override.
-        </Typography>
+
+      <Grid container spacing={1.5}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="primary"
+            icon={AccountBalanceWalletOutlinedIcon}
+            title="Expense lines"
+            value={String(expenseStats.count)}
+            subtitle={currentFyOnly ? 'Current FY filter' : 'All listed'}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="warning"
+            icon={PaymentsOutlinedIcon}
+            title="Prosohm paid Σ"
+            value={financeMoney(expenseStats.prosohmSum, 'INR')}
+            subtitle="Listed amounts"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="info"
+            icon={StorefrontOutlinedIcon}
+            title="Customer paid Σ"
+            value={financeMoney(expenseStats.customerSum, 'INR')}
+            subtitle="Pass-through"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="success"
+            icon={EventRepeatOutlinedIcon}
+            title="With renewals"
+            value={String(expenseStats.renewals)}
+            subtitle="Renewal date set"
+          />
+        </Grid>
+      </Grid>
+
+      <FinanceSection
+        title={editingId ? 'Edit expense / subscription' : 'Add expense / subscription'}
+        subtitle="Team and date of purchase are required. Overview only counts purchases in the current Indian FY (Apr–Mar). Paid by defaults from Team commercial for SW/HW — you can override."
+      >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', mb: 1 }}>
           <FormControl size="small" sx={{ minWidth: 200 }} required>
             <InputLabel>Team</InputLabel>
@@ -394,15 +476,12 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             {paidByHint}
           </Typography>
         ) : null}
-      </Box>
+      </FinanceSection>
 
-      <Box>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={1}
-          sx={{ mb: 1, alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
-        >
-          <Typography variant="subtitle2">Expenses</Typography>
+      <FinanceSection
+        title="Expense lines"
+        subtitle="Edit or delete rows. Prior-FY purchases stay listed but do not hit Overview until in the current FY."
+        action={
           <FormControlLabel
             control={
               <Checkbox
@@ -412,26 +491,35 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             }
             label="Current FY only"
           />
-        </Stack>
-        <Stack spacing={1}>
-          {(expensesQuery.data ?? []).map((row) => (
-            <Card key={row.id} variant="outlined">
-              <CardContent
-                sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}
-              >
-                <Box>
-                  <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
+        }
+      >
+        <Stack spacing={1.25}>
+          {expenses.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No expenses yet — add the first line above.
+            </Typography>
+          ) : (
+            expenses.map((row) => (
+              <Box key={row.id} sx={listRowSx}>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.5 }}>
+                    <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
+                    <Chip
+                      size="small"
+                      label={row.paid_by === 'customer' ? 'Customer' : 'Prosohm'}
+                      color={row.paid_by === 'customer' ? 'info' : 'default'}
+                      variant="outlined"
+                    />
+                    {row.next_renewal_date ? (
+                      <Chip size="small" color="success" variant="outlined" label={`Renews ${row.next_renewal_date}`} />
+                    ) : null}
+                  </Stack>
                   <Typography variant="body2" color="text.secondary">
-                    {row.amount} {row.currency_code} · {row.nature} · {row.frequency} · Paid by{' '}
-                    {row.paid_by}
+                    {financeMoney(row.amount, row.currency_code)} · {row.nature} · {row.frequency}
                     {row.purchase_date ? ` · Purchased ${row.purchase_date}` : ''}
                     {row.vendor_name ? ` · ${row.vendor_name}` : ''}
-                    {row.next_renewal_date
-                      ? ` · Renews ${row.next_renewal_date}${
-                          row.notify_enabled
-                            ? ` (notify ${row.notify_before_days ?? 7}d before)`
-                            : ''
-                        }`
+                    {row.next_renewal_date && row.notify_enabled
+                      ? ` · notify ${row.notify_before_days ?? 7}d before`
                       : ''}
                   </Typography>
                   {row.prior_fy_excluded_from_overview ? (
@@ -448,11 +536,11 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
                     Delete
                   </Button>
                 </Stack>
-              </CardContent>
-            </Card>
-          ))}
+              </Box>
+            ))
+          )}
         </Stack>
-      </Box>
+      </FinanceSection>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

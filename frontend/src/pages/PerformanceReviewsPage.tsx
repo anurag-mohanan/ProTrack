@@ -142,8 +142,6 @@ type EditorState = {
   period_label: string;
   review_date: string;
   due_date: string;
-  employee_joining_date: string;
-  employee_first_job_date: string;
   total_experience: string;
   industry_experience: string;
   overall_score: string;
@@ -168,8 +166,6 @@ function reviewToEditor(review: Review): EditorState {
     period_label: review.period_label ?? '',
     review_date: review.review_date ?? '',
     due_date: review.due_date ?? '',
-    employee_joining_date: review.employee_joining_date ?? '',
-    employee_first_job_date: review.employee_first_job_date ?? '',
     total_experience: review.total_experience ?? review.company_experience ?? '',
     industry_experience: review.industry_experience ?? '',
     overall_score:
@@ -186,7 +182,7 @@ function reviewToEditor(review: Review): EditorState {
   };
 }
 
-export function PerformanceReviewsPage() {
+export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
@@ -336,10 +332,12 @@ export function PerformanceReviewsPage() {
 
   return (
     <Stack spacing={2.5}>
-      <PageHeader
-        title="Performance Reviews"
-        subtitle="PP-HRD-FO-20 aligned review workspace with competency ratings, achievements, and annual goals."
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Performance Reviews"
+          subtitle="PP-HRD-FO-20 aligned review workspace with competency ratings, achievements, and annual goals."
+        />
+      ) : null}
 
       <PerformanceReviewHero
         formCode={templateQuery.data?.form_code ?? 'PP-HRD-FO-20'}
@@ -565,8 +563,6 @@ export function PerformanceReviewsPage() {
                     period_label: editor.period_label,
                     review_date: editor.review_date || null,
                     due_date: editor.due_date || null,
-                    employee_joining_date: editor.employee_joining_date || null,
-                    employee_first_job_date: editor.employee_first_job_date || null,
                     total_experience: editor.total_experience || null,
                     industry_experience: editor.industry_experience || null,
                     employee_summary: editor.employee_summary || null,

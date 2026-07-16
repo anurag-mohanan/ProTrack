@@ -197,8 +197,8 @@ const NAV_MODULE_CONFIG: Array<{
   },
   {
     module: MODULE_DASHBOARD,
-    label: 'Performance Reviews',
-    path: '/performance-reviews',
+    label: 'Performance',
+    path: '/performance',
     icon: BadgeRoundedIcon,
   },
 ];

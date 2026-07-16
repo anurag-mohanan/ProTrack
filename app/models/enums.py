@@ -84,6 +84,15 @@ class ProjectComplexity(enum.Enum):
     expert = "expert"
 
 
+class SkillProficiency(enum.Enum):
+    """Industry-style skill matrix levels (learning → expert)."""
+
+    learning = "learning"
+    developing = "developing"
+    proficient = "proficient"
+    expert = "expert"
+
+
 class EmploymentType(enum.Enum):
     full_time = "full_time"
     part_time = "part_time"

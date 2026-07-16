@@ -29,7 +29,7 @@ import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
 import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser, setUserTemporaryPassword, setUserMustChangePassword, unlockUser } from '../../api/resources';
 import { fetchDepartments } from '../../api/settings';
-import { fetchOperationalRoles, fetchTeams, fetchUsers, fetchWorkingModels } from '../../api/lookups';
+import { fetchOperationalRoles, fetchStreams, fetchTeams, fetchUsers, fetchWorkingModels } from '../../api/lookups';
 import { PaginatedDataGrid } from '../../components/common/PaginatedDataGrid';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { usePaginatedQuery } from '../../hooks/usePaginatedQuery';
@@ -77,6 +77,9 @@ interface UserFormState {
   working_days: string;
   employment_type: string;
   skill_level: string;
+  stream_id: string;
+  primary_tool: string;
+  work_function: string;
   joining_date: string;
   first_job_date: string;
   leaving_date: string;
@@ -115,6 +118,9 @@ const emptyForm: UserFormState = {
   working_days: 'Mon,Tue,Wed,Thu,Fri',
   employment_type: '',
   skill_level: '',
+  stream_id: '',
+  primary_tool: '',
+  work_function: '',
   joining_date: '',
   first_job_date: '',
   leaving_date: '',
@@ -146,6 +152,7 @@ export default function UsersPage() {
   const [lookupUsers, setLookupUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [streams, setStreams] = useState<Array<{ id: string; name: string }>>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [operationalRoles, setOperationalRoles] = useState<Array<{ id: string; name: string; code: string; dashboard_profile: string }>>([]);
   const [workingModels, setWorkingModels] = useState<WorkingModel[]>([]);
@@ -246,10 +253,11 @@ export default function UsersPage() {
   const loadMetadata = useCallback(async () => {
     setMetadataLoading(true);
     try {
-      const [rolesData, teamsData, departmentsData, operationalRolesData, lookupUsersData, workingModelsData] =
+      const [rolesData, teamsData, streamsData, departmentsData, operationalRolesData, lookupUsersData, workingModelsData] =
         await Promise.all([
           rolesApi.list(),
           fetchTeams(),
+          fetchStreams(),
           fetchDepartments(),
           fetchOperationalRoles(),
           fetchUsers(),
@@ -257,6 +265,7 @@ export default function UsersPage() {
         ]);
       setRoles(rolesData);
       setTeams(teamsData);
+      setStreams(streamsData);
       setDepartments(departmentsData.filter((row) => row.is_active));
       setOperationalRoles(operationalRolesData);
       setLookupUsers(lookupUsersData);
@@ -348,6 +357,9 @@ export default function UsersPage() {
       working_days: user.working_days ?? 'Mon,Tue,Wed,Thu,Fri',
       employment_type: user.employment_type ?? '',
       skill_level: user.skill_level ?? '',
+      stream_id: user.stream_id ?? '',
+      primary_tool: user.primary_tool ?? '',
+      work_function: user.work_function ?? '',
       joining_date: user.joining_date ?? '',
       first_job_date: user.first_job_date ?? '',
       leaving_date: user.leaving_date ?? '',
@@ -389,6 +401,9 @@ export default function UsersPage() {
     working_days: form.working_days,
     employment_type: (optionalString(form.employment_type) || null) as User['employment_type'],
     skill_level: (optionalString(form.skill_level) || null) as User['skill_level'],
+    stream_id: optionalUuid(form.stream_id),
+    primary_tool: optionalString(form.primary_tool),
+    work_function: optionalString(form.work_function),
     joining_date: optionalString(form.joining_date),
     first_job_date: optionalString(form.first_job_date),
     leaving_date: optionalString(form.leaving_date),
@@ -1250,6 +1265,43 @@ export default function UsersPage() {
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
                   <FormSelect
+                    label="Stream"
+                    value={form.stream_id}
+                    options={[
+                      { value: '', label: 'Not set' },
+                      ...streams.map((stream) => ({ value: stream.id, label: stream.name })),
+                    ]}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        stream_id: String(event.target.value),
+                      }))
+                    }
+                    helper="Drives Performance skillset chart columns (e.g. Mold Design)."
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormField
+                    label="Primary CAD / tool"
+                    value={form.primary_tool}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, primary_tool: event.target.value }))
+                    }
+                    placeholder="e.g. NX Local"
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormField
+                    label="Work function"
+                    value={form.work_function}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, work_function: event.target.value }))
+                    }
+                    placeholder="e.g. Design/Surfacing"
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FormSelect
                     label="Availability"
                     value={form.availability_status}
                     options={[
@@ -1275,6 +1327,7 @@ export default function UsersPage() {
                     onChange={(event) =>
                       setForm((current) => ({ ...current, joining_date: event.target.value }))
                     }
+                    helperText="Company experience on Performance."
                   />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
@@ -1286,7 +1339,7 @@ export default function UsersPage() {
                     onChange={(event) =>
                       setForm((current) => ({ ...current, first_job_date: event.target.value }))
                     }
-                    helperText="Used to calculate industry experience on performance reviews."
+                    helperText="Industry experience on Performance."
                   />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>

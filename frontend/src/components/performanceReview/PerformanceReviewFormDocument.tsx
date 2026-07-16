@@ -16,7 +16,6 @@ import { PerformanceReviewRatingPicker } from './PerformanceReviewRatingPicker';
 import { PerformanceReviewProjectsPanel, type ReviewProjectRow } from './PerformanceReviewProjectsPanel';
 import type { RatingScaleItem } from './performanceReviewConstants';
 import { formatScore, ratingLabelForValue } from './performanceReviewConstants';
-import { formatTenureFromDate } from './performanceReviewPeriod';
 
 export type ReviewFormSection = {
   id?: string;
@@ -71,8 +70,6 @@ type EditorState = {
   period_label: string;
   review_date: string;
   due_date: string;
-  employee_joining_date: string;
-  employee_first_job_date: string;
   total_experience: string;
   industry_experience: string;
   overall_score: string;
@@ -116,22 +113,6 @@ export function PerformanceReviewFormDocument({
 
   const setField = (field: keyof EditorState, value: string) =>
     onChange({ ...editor, [field]: value });
-
-  const setJoiningDate = (value: string) => {
-    onChange({
-      ...editor,
-      employee_joining_date: value,
-      total_experience: formatTenureFromDate(value) || editor.total_experience,
-    });
-  };
-
-  const setFirstJobDate = (value: string) => {
-    onChange({
-      ...editor,
-      employee_first_job_date: value,
-      industry_experience: formatTenureFromDate(value) || editor.industry_experience,
-    });
-  };
 
   const handleExport = () => {
     window.print();
@@ -238,59 +219,26 @@ export function PerformanceReviewFormDocument({
             </Typography>
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <TextField
-              fullWidth
-              size="small"
-              type="date"
-              label="Company joining date"
-              value={editor.employee_joining_date}
-              onChange={(e) => setJoiningDate(e.target.value)}
-              disabled={!canManage}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
+            <Typography variant="caption" color="text.secondary">
+              Exp. in company
+            </Typography>
+            <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
+              {editor.total_experience || review.company_experience || '—'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              From user joining date
+            </Typography>
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <TextField
-              fullWidth
-              size="small"
-              type="date"
-              label="First job date"
-              value={editor.employee_first_job_date}
-              onChange={(e) => setFirstJobDate(e.target.value)}
-              disabled={!canManage}
-              slotProps={{ inputLabel: { shrink: true } }}
-              helperText="Used to auto-calculate industry experience"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Exp. in company"
-              value={editor.total_experience}
-              onChange={(e) => setField('total_experience', e.target.value)}
-              disabled={!canManage}
-              helperText={
-                editor.employee_joining_date
-                  ? `Auto: ${formatTenureFromDate(editor.employee_joining_date) || '—'}`
-                  : undefined
-              }
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Exp. in industry"
-              value={editor.industry_experience}
-              onChange={(e) => setField('industry_experience', e.target.value)}
-              disabled={!canManage}
-              helperText={
-                editor.employee_first_job_date
-                  ? `Auto: ${formatTenureFromDate(editor.employee_first_job_date) || '—'}`
-                  : undefined
-              }
-            />
+            <Typography variant="caption" color="text.secondary">
+              Exp. in industry
+            </Typography>
+            <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
+              {editor.industry_experience || '—'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              From first job date
+            </Typography>
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <Typography variant="caption" color="text.secondary">

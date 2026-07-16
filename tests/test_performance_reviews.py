@@ -147,24 +147,61 @@ def test_review_joining_dates_auto_calculate_experience(client, session):
     assert body["industry_experience"]
     assert body["company_experience"]
 
-    patched = client.patch(
-        f"/api/v1/hr/reviews/{body['id']}",
+
+def test_team_skill_matrix_seeds_mold_design_skills(client, session):
+    from app.models.models import User
+
+    team = Team(
+        id=uuid.uuid4(),
+        name="Skill Matrix Team",
+        is_active=True,
+        team_lead_id=IDS["user_anurag"],
+    )
+    session.add(team)
+    session.add(
+        TeamMember(
+            team_id=team.id,
+            user_id=IDS["user_binil"],
+            is_primary=True,
+            relationship_type=TeamRelationshipType.member,
+        )
+    )
+    employee = session.get(User, IDS["user_binil"])
+    assert employee is not None
+    employee.stream_id = IDS["stream"]
+    session.commit()
+
+    leader_headers = login(client, "anurag@prosohm.com")
+    response = client.get(
+        f"/api/v1/hr/performance/skill-matrix?team_id={team.id}&stream_id={IDS['stream']}",
+        headers=leader_headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["stream_name"] == "Mold Design"
+    assert len(body["skills"]) >= 6
+    assert any(row["name"] == "Complex Design" for row in body["skills"])
+    assert any(row["user_id"] == str(IDS["user_binil"]) for row in body["people"])
+
+    skill_id = body["skills"][0]["id"]
+    saved = client.put(
+        f"/api/v1/hr/performance/skill-matrix?team_id={team.id}&stream_id={IDS['stream']}",
         headers=leader_headers,
         json={
-            "employee_joining_date": "2023-07-01",
-            "employee_first_job_date": "2018-01-01",
+            "ratings": [
+                {
+                    "user_id": str(IDS["user_binil"]),
+                    "stream_skill_id": skill_id,
+                    "proficiency": "proficient",
+                }
+            ]
         },
     )
-    assert patched.status_code == 200, patched.text
-    updated = patched.json()
-    assert updated["employee_joining_date"] == "2023-07-01"
-    assert updated["employee_first_job_date"] == "2018-01-01"
-    assert updated["total_experience"]
-    assert updated["industry_experience"]
-
-    session.refresh(employee)
-    assert employee.joining_date == date(2023, 7, 1)
-    assert employee.first_job_date == date(2018, 1, 1)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["updated_count"] >= 1
+    matrix = saved.json()["matrix"]
+    person = next(row for row in matrix["people"] if row["user_id"] == str(IDS["user_binil"]))
+    assert person["ratings"][skill_id] == "proficient"
 
 
 def test_non_manager_cannot_delete_review(client, session):

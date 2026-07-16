@@ -59,7 +59,7 @@ const HrDashboardPage = lazy(() =>
     default: module.HrDashboardPage,
   })),
 );
-const PerformanceReviewsPage = lazy(() => import('./pages/PerformanceReviewsPage'));
+const PerformancePage = lazy(() => import('./pages/PerformancePage'));
 const AnalyticsHubPage = lazy(() =>
   import('./pages/AnalyticsHubPage').then((module) => ({
     default: module.AnalyticsHubPage,
@@ -259,13 +259,14 @@ export default function App() {
                       <Route path="/workload" element={<WorkloadPage />} />
                     </Route>
                     <Route
-                      path="/performance-reviews"
+                      path="/performance"
                       element={
-                        <Suspense fallback={<LoadingState message="Loading performance reviews…" />}>
-                          <PerformanceReviewsPage />
+                        <Suspense fallback={<LoadingState message="Loading performance…" />}>
+                          <PerformancePage />
                         </Suspense>
                       }
                     />
+                    <Route path="/performance-reviews" element={<Navigate to="/performance?tab=reviews" replace />} />
                     <Route element={<ModuleRoute module={MODULE_FINANCIAL_PLANNING} />}>
                       <Route
                         path="/finance"

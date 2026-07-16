@@ -38,6 +38,7 @@ from app.models.enums import (
     ProjectPriority,
     ProjectStage,
     SkillLevel,
+    SkillProficiency,
     TaskTypeFunctionCategory,
     TeamRelationshipType,
     TimesheetStatus,
@@ -155,6 +156,11 @@ class User(Base, TimestampMixin):
     joining_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     first_job_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     leaving_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    stream_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("streams.id"), nullable=True, index=True
+    )
+    primary_tool: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    work_function: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     availability_status: Mapped[UserAvailabilityStatus] = mapped_column(
         Enum(UserAvailabilityStatus, name="user_availability_status", native_enum=False),
         nullable=False,
@@ -253,6 +259,14 @@ class User(Base, TimestampMixin):
     user_skills: Mapped[list["UserSkill"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    stream: Mapped[Optional["Stream"]] = relationship(
+        foreign_keys="User.stream_id",
+    )
+    skill_ratings: Mapped[list["UserSkillRating"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="UserSkillRating.user_id",
+    )
 
 
 class WorkingModel(Base, TimestampMixin):
@@ -295,6 +309,70 @@ class Stream(Base, TimestampMixin):
 
     task_types: Mapped[list[TaskType]] = relationship(back_populates="stream")
     projects: Mapped[list[Project]] = relationship(back_populates="stream")
+    stream_skills: Mapped[list["StreamSkill"]] = relationship(
+        back_populates="stream", cascade="all, delete-orphan"
+    )
+
+
+class StreamSkill(Base, TimestampMixin):
+    """Technical skill column for a stream skill matrix (e.g. Mold Design)."""
+
+    __tablename__ = "stream_skills"
+    __table_args__ = (UniqueConstraint("stream_id", "name", name="uq_stream_skill_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    stream_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("streams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    stream: Mapped[Stream] = relationship(back_populates="stream_skills")
+    ratings: Mapped[list["UserSkillRating"]] = relationship(
+        back_populates="stream_skill", cascade="all, delete-orphan"
+    )
+
+
+class UserSkillRating(Base, TimestampMixin):
+    """Per-person proficiency on a stream skill (team skillset chart cell)."""
+
+    __tablename__ = "user_skill_ratings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "stream_skill_id", name="uq_user_stream_skill_rating"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    stream_skill_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("stream_skills.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    proficiency: Mapped[SkillProficiency] = mapped_column(
+        Enum(SkillProficiency, name="skill_proficiency", native_enum=False),
+        nullable=False,
+        default=SkillProficiency.learning,
+    )
+    assessed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    assessed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    user: Mapped[User] = relationship(
+        back_populates="skill_ratings",
+        foreign_keys=[user_id],
+    )
+    stream_skill: Mapped[StreamSkill] = relationship(back_populates="ratings")
+    assessed_by: Mapped[Optional[User]] = relationship(foreign_keys=[assessed_by_id])
 
 
 class Team(Base, TimestampMixin):

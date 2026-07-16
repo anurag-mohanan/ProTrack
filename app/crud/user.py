@@ -62,6 +62,12 @@ def build_user_read(db: Session, user: User) -> UserRead:
     if user.team_id is not None:
         team = db.get(Team, user.team_id)
         team_name = team.name if team else None
+    stream_name = None
+    if user.stream_id is not None:
+        from app.models.models import Stream
+
+        stream = db.get(Stream, user.stream_id)
+        stream_name = stream.name if stream else None
     team_assignments: list[UserTeamAssignmentRead] = []
     team_names: list[str] = []
     for membership in list_user_team_assignments(db, user.id):
@@ -94,6 +100,7 @@ def build_user_read(db: Session, user: User) -> UserRead:
     return UserRead.model_validate(user, from_attributes=True).model_copy(
         update={
             "team_name": team_name,
+            "stream_name": stream_name,
             "team_names": team_names,
             "team_assignments": team_assignments,
             "department_name": department_name,

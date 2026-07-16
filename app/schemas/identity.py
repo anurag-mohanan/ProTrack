@@ -95,6 +95,9 @@ class UserBase(BaseModel):
     joining_date: date | None = None
     first_job_date: date | None = None
     leaving_date: date | None = None
+    stream_id: UUID | None = None
+    primary_tool: str | None = Field(default=None, max_length=80)
+    work_function: str | None = Field(default=None, max_length=120)
     availability_status: UserAvailabilityStatus = UserAvailabilityStatus.available
     max_allocation_percent: int = 100
     operational_role_type_id: UUID | None = None
@@ -134,6 +137,9 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     joining_date: date | None = None
     first_job_date: date | None = None
     leaving_date: date | None = None
+    stream_id: UUID | None = None
+    primary_tool: str | None = Field(default=None, max_length=80)
+    work_function: str | None = Field(default=None, max_length=120)
     availability_status: UserAvailabilityStatus | None = None
     max_allocation_percent: int | None = Field(default=None, ge=0, le=100)
     operational_role_type_id: UUID | None = None
@@ -177,6 +183,7 @@ class UserRead(UserBase, TimestampSchema):
     requires_timesheet: bool = False
     requires_salary: bool = True
     team_name: str | None = None
+    stream_name: str | None = None
     team_assignments: list[UserTeamAssignmentRead] = Field(default_factory=list)
     team_names: list[str] = Field(default_factory=list)
     department_name: str | None = None

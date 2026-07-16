@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from app.schemas.skill_matrix import (
+    SkillMatrixRead,
+    SkillMatrixUpsertRequest,
+    SkillMatrixUpsertResponse,
+)
+from app.services.skill_matrix_service import build_team_skill_matrix, upsert_skill_ratings
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -541,6 +547,46 @@ def hr_teams(
     ]
 
 
+@router.get("/performance/skill-matrix", response_model=SkillMatrixRead)
+def get_team_skill_matrix(
+    team_id: UUID = Query(...),
+    stream_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    accessible = get_accessible_team_ids(db, current_user)
+    can_manage = user_can_manage_team_reviews(db, current_user, team_id)
+    if accessible is not None and team_id not in accessible and not can_manage:
+        raise HTTPException(status_code=403, detail="Team skill matrix access denied")
+    matrix = build_team_skill_matrix(db, team_id=team_id, stream_id=stream_id)
+    db.commit()
+    return SkillMatrixRead.model_validate(matrix)
+
+
+@router.put("/performance/skill-matrix", response_model=SkillMatrixUpsertResponse)
+def save_team_skill_matrix(
+    payload: SkillMatrixUpsertRequest,
+    team_id: UUID = Query(...),
+    stream_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not user_can_manage_team_reviews(db, current_user, team_id):
+        raise HTTPException(status_code=403, detail="Team skill matrix edit denied")
+    updated = upsert_skill_ratings(
+        db,
+        ratings=[row.model_dump() for row in payload.ratings],
+        assessed_by_id=current_user.id,
+    )
+    db.commit()
+    matrix = build_team_skill_matrix(db, team_id=team_id, stream_id=stream_id)
+    db.commit()
+    return SkillMatrixUpsertResponse(
+        updated_count=updated,
+        matrix=SkillMatrixRead.model_validate(matrix),
+    )
+
+
 @router.get("/review-cycles", response_model=list[PerformanceReviewCycleRead])
 def list_review_cycles(
     db: Session = Depends(get_db),
@@ -729,11 +775,6 @@ def create_performance_review(
     period_start, period_end = review_period_bounds(review_year)
     period_label = payload.period_label or default_period_label(review_year)
 
-    if "employee_joining_date" in payload.model_fields_set:
-        employee.joining_date = payload.employee_joining_date
-    if "employee_first_job_date" in payload.model_fields_set:
-        employee.first_job_date = payload.employee_first_job_date
-
     company_auto = format_tenure(employee.joining_date)
     industry_auto = format_tenure(employee.first_job_date)
     total_experience = payload.total_experience or company_auto
@@ -828,14 +869,6 @@ def update_performance_review(
             value = getattr(payload, field)
             if value is not None:
                 setattr(sheet, field, value)
-        if "employee_joining_date" in payload.model_fields_set:
-            sheet.employee.joining_date = payload.employee_joining_date
-            if payload.total_experience is None:
-                sheet.total_experience = format_tenure(payload.employee_joining_date)
-        if "employee_first_job_date" in payload.model_fields_set:
-            sheet.employee.first_job_date = payload.employee_first_job_date
-            if payload.industry_experience is None:
-                sheet.industry_experience = format_tenure(payload.employee_first_job_date)
         if payload.reviewer_id is not None:
             sheet.reviewer_id = payload.reviewer_id
         if payload.team_id is not None:

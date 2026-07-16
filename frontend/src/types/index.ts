@@ -46,6 +46,10 @@ export interface User {
   working_days?: string;
   employment_type?: 'full_time' | 'part_time' | 'contract' | 'intern' | null;
   skill_level?: 'beginner' | 'intermediate' | 'advanced' | 'expert' | null;
+  stream_id?: string | null;
+  stream_name?: string | null;
+  primary_tool?: string | null;
+  work_function?: string | null;
   joining_date?: string | null;
   first_job_date?: string | null;
   leaving_date?: string | null;

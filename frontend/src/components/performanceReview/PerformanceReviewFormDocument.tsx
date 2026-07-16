@@ -357,47 +357,77 @@ export function PerformanceReviewFormDocument({
           onChange={(projects) => onChange({ ...editor, projects })}
         />
 
-        <Grid container spacing={1.25} sx={{ mt: 1.5 }}>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              fullWidth
-              size="small"
-              multiline
-              minRows={2}
-              label="Employee comments"
-              value={editor.employee_summary}
-              onChange={(e) => setField('employee_summary', e.target.value)}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              fullWidth
-              size="small"
-              multiline
-              minRows={2}
-              label="Reviewer comments"
-              value={editor.manager_summary}
-              onChange={(e) => setField('manager_summary', e.target.value)}
-              disabled={!canManage}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              fullWidth
-              size="small"
-              multiline
-              minRows={2}
-              label="Targets / Goals for upcoming year"
-              value={editor.career_goals}
-              onChange={(e) => setField('career_goals', e.target.value)}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Box sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+        <Grid container spacing={1.25} sx={{ mt: 1.5, alignItems: 'stretch' }}>
+          {(
+            [
+              {
+                key: 'employee',
+                label: 'Employee comments',
+                value: editor.employee_summary,
+                field: 'employee_summary' as const,
+                disabled: false,
+              },
+              {
+                key: 'reviewer',
+                label: 'Reviewer comments',
+                value: editor.manager_summary,
+                field: 'manager_summary' as const,
+                disabled: !canManage,
+              },
+              {
+                key: 'goals',
+                label: 'Targets / Goals for upcoming year',
+                value: editor.career_goals,
+                field: 'career_goals' as const,
+                disabled: false,
+              },
+            ] as const
+          ).map((box) => (
+            <Grid key={box.key} size={{ xs: 12, md: 6 }} sx={{ display: 'flex' }}>
+              <TextField
+                fullWidth
+                size="small"
+                multiline
+                label={box.label}
+                value={box.value}
+                disabled={box.disabled}
+                onChange={(e) => setField(box.field, e.target.value)}
+                sx={{
+                  flex: 1,
+                  height: 108,
+                  '& .MuiInputBase-root': {
+                    height: '100%',
+                    alignItems: 'flex-start',
+                    overflow: 'hidden',
+                  },
+                  '& textarea': {
+                    height: '72px !important',
+                    overflowY: 'auto !important',
+                    resize: 'none',
+                  },
+                }}
+              />
+            </Grid>
+          ))}
+          <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex' }}>
+            <Box
+              sx={{
+                flex: 1,
+                height: 108,
+                boxSizing: 'border-box',
+                p: 1.25,
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+              }}
+            >
               <Typography variant="caption" color="text.secondary">
                 Overall score
               </Typography>
-              <Typography sx={{ fontWeight: 900, fontSize: 22 }}>
+              <Typography sx={{ fontWeight: 900, fontSize: 22, lineHeight: 1.2 }}>
                 {formatScore(review.overall_score)}
               </Typography>
               <Typography variant="caption" color="text.secondary">

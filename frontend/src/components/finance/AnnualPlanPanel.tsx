@@ -111,13 +111,15 @@ function PlanSectionGrid({
   title,
   lines,
   onCellBlur,
+  subtitle = 'Edit quarterly amounts — stored as even monthly split',
 }: {
   title: string;
   lines: PlanLine[];
   onCellBlur: (lineId: string, field: (typeof QUARTER_KEYS)[number], value: string) => void;
+  subtitle?: string;
 }) {
   return (
-    <FinanceSection title={title} subtitle="Edit quarterly amounts — stored as even monthly split">
+    <FinanceSection title={title} subtitle={subtitle}>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -259,6 +261,19 @@ export function AnnualPlanPanel() {
     },
   });
 
+  const syncSalesQuotesMutation = useMutation({
+    mutationFn: async () =>
+      (await apiClient.post(`/finance/plans/${activePlanId}/sync-sales-from-quotes`)).data,
+    onSuccess: () => {
+      showSuccess('Awarded quote revenue synced into sales quarters');
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['finance-plan-vs-actual', activePlanId] });
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) => {
+      showError(error.response?.data?.detail ?? 'Could not sync sales from quotes');
+    },
+  });
+
   const seedLiveMutation = useMutation({
     mutationFn: async () =>
       (await apiClient.post(`/finance/plans/${activePlanId}/seed-from-live`)).data,
@@ -330,7 +345,7 @@ export function AnnualPlanPanel() {
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Annual plan studio"
-        subtitle="Workbook + Plan vs Actual + AI Assist. Seed costs, fill quarters, and project remaining periods from live run-rates — opt-in actions only."
+        subtitle="Workbook + Plan vs Actual + AI Assist. Sync awarded quotes into Sales by quoted date; seed costs and project remaining periods from live run-rates — opt-in actions only."
         chips={
           detailQuery.data ? (
             <Chip
@@ -382,6 +397,13 @@ export function AnnualPlanPanel() {
         </Button>
         {activePlanId ? (
           <>
+            <Button
+              variant="outlined"
+              disabled={syncSalesQuotesMutation.isPending}
+              onClick={() => syncSalesQuotesMutation.mutate()}
+            >
+              Sync sales from awarded quotes
+            </Button>
             <Button
               variant="outlined"
               disabled={syncRenewalsMutation.isPending}
@@ -486,6 +508,7 @@ export function AnnualPlanPanel() {
 
           <PlanSectionGrid
             title="Sales"
+            subtitle="Sync from awarded quotes (by quoted date) or edit quarters — stored as even monthly split"
             lines={salesLines}
             onCellBlur={(lineId, field, value) => {
               const numeric = Number(String(value).replace(/,/g, ''));

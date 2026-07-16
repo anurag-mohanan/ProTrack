@@ -40,6 +40,7 @@ type QuoteRow = {
   project_linked?: boolean;
   quoted_hours?: number | string | null;
   quoted_revenue?: number | string | null;
+  quoted_date?: string | null;
 };
 
 type QuoteImportItem = {
@@ -67,6 +68,7 @@ type ManualQuoteForm = {
   projectNumber: string;
   cost: string;
   currencyCode: string;
+  quotedDate: string;
 };
 
 const emptyManual: ManualQuoteForm = {
@@ -75,6 +77,7 @@ const emptyManual: ManualQuoteForm = {
   projectNumber: '',
   cost: '',
   currencyCode: '',
+  quotedDate: new Date().toISOString().slice(0, 10),
 };
 
 export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
@@ -145,6 +148,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       quoted_revenue: cost,
       external_quote_number: manual.quoteNumber.trim() || null,
       currency_code: currency || null,
+      quoted_date: manual.quotedDate.trim() || null,
       create_project: createProject,
     };
   };
@@ -167,6 +171,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           ? ''
           : String(quote.quoted_revenue),
       currencyCode: (quote.currency_code || '').toUpperCase(),
+      quotedDate: quote.quoted_date ?? new Date().toISOString().slice(0, 10),
     });
   };
 
@@ -252,7 +257,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     <Stack spacing={2}>
       <FinanceHeroBanner
         title="Revenue / awarded quotes"
-        subtitle="Booked quote revenue signals for planning — manual entry, edit/delete, and optional file import."
+        subtitle="Booked quote revenue for planning — set Quoted date so Annual Plan can place revenue in the correct FY quarter."
       />
       <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>
@@ -343,6 +348,16 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
               onChange={(e) => setManual({ ...manual, cost: e.target.value })}
               sx={{ minWidth: 140, flex: 1 }}
               helperText="Quoted revenue / Total"
+            />
+            <TextField
+              size="small"
+              type="date"
+              label="Quoted date"
+              value={manual.quotedDate}
+              onChange={(e) => setManual({ ...manual, quotedDate: e.target.value })}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ minWidth: 160 }}
+              helperText="FY quarter for Annual Plan sales"
             />
             <TextField
               size="small"
@@ -480,6 +495,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                   {quote.currency_code}
                   {quote.quoted_revenue != null ? ` ${quote.quoted_revenue}` : ''} · rev{' '}
                   {quote.current_revision}
+                  {quote.quoted_date ? ` · quoted ${quote.quoted_date}` : ' · no quoted date'}
                   {quote.project_linked ? ' · Linked project' : ' · Unlinked'}
                 </Typography>
               </Box>

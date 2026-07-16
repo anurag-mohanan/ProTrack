@@ -187,6 +187,7 @@ def import_manual_quote(
     external_quote_number: str | None = None,
     currency_code: str | None = None,
     quoted_hours: Decimal = Decimal("0"),
+    quoted_date: date | None = None,
     create_project: bool = True,
 ) -> QuoteImportOutcome:
     """Create/update an awarded quote from typed fields (no file / AI parse)."""
@@ -216,6 +217,10 @@ def import_manual_quote(
     if currency:
         row["currency"] = currency
         row["Currency"] = currency
+    if quoted_date is not None:
+        row["quoted_date"] = quoted_date
+        row["start_date"] = quoted_date
+        row["Start Date"] = quoted_date
     return import_quote_row(
         db,
         row=row,
@@ -248,6 +253,7 @@ def update_quote(
     external_quote_number: str | None = None,
     currency_code: str | None = None,
     quoted_hours: Decimal | None = None,
+    quoted_date: date | None = None,
     create_project: bool = False,
 ) -> QuoteImportOutcome:
     """In-place edit of quote header + current revision (expenses-style)."""
@@ -274,6 +280,9 @@ def update_quote(
         if currency:
             quote.currency_code = currency
 
+    if quoted_date is not None:
+        quote.quoted_date = quoted_date
+
     customer = db.get(Customer, quote.customer_id)
     if customer is None:
         raise ProTrackValidationError("Customer not found or inactive.")
@@ -286,6 +295,8 @@ def update_quote(
         revision.quoted_hours = quoted_hours
     if quoted_revenue is not None:
         revision.quoted_revenue = quoted_revenue
+    if quoted_date is not None:
+        revision.start_date = quoted_date
 
     revision.margin = revision.quoted_revenue - revision.estimated_cost
     revision.margin_percent = (
@@ -294,7 +305,7 @@ def update_quote(
         else Decimal("0")
     )
 
-    fx_date = revision.start_date or revision.fx_date or date.today()
+    fx_date = quote.quoted_date or revision.start_date or revision.fx_date or date.today()
     base_cost, fx_rate, fx_date = to_base_amount(
         db,
         amount=revision.estimated_cost,
@@ -379,7 +390,10 @@ def import_quote_row(
     revision = str(row.get("revision") or row.get("Revision") or "A").strip() or "A"
     start_date = _parse_date(row.get("start_date") or row.get("Start Date"))
     end_date = _parse_date(row.get("end_date") or row.get("End Date"))
-    fx_date = start_date or date.today()
+    quoted_date = _parse_date(
+        row.get("quoted_date") or row.get("Quoted Date") or row.get("Quote Date")
+    ) or start_date
+    fx_date = quoted_date or start_date or date.today()
 
     base_cost, fx_rate, fx_date = to_base_amount(
         db, amount=estimated_cost, currency_code=currency, on_date=fx_date
@@ -447,6 +461,7 @@ def import_quote_row(
             business_model_id=working_model.id if working_model else None,
             estimator_id=actor.id,
             currency_code=currency,
+            quoted_date=quoted_date,
             current_version=version,
             current_revision=revision,
         )
@@ -467,6 +482,8 @@ def import_quote_row(
         quote.current_version = version
         quote.current_revision = revision
         quote.currency_code = currency
+        if quoted_date is not None:
+            quote.quoted_date = quoted_date
         if team_id is not None:
             quote.team_id = team_id
         if working_model is not None:
@@ -489,7 +506,7 @@ def import_quote_row(
         base_quoted_revenue_inr=base_revenue,
         fx_rate=fx_rate,
         fx_date=fx_date,
-        start_date=start_date,
+        start_date=start_date or quoted_date,
         end_date=end_date,
         notes=notes_text,
         imported_from=source,

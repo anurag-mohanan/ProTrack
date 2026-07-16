@@ -418,6 +418,7 @@ class QuoteRead(BaseModel):
     business_model_id: UUID | None = None
     estimator_id: UUID | None = None
     currency_code: str
+    quoted_date: date | None = None
     current_version: int
     current_revision: str
     is_active: bool
@@ -461,6 +462,10 @@ class QuoteManualCreate(BaseModel):
     )
     currency_code: str | None = None
     quoted_hours: Decimal = Field(default=Decimal("0"), ge=0)
+    quoted_date: date | None = Field(
+        default=None,
+        description="Award / quote document date — drives Annual Plan sales quarter",
+    )
     create_project: bool = True
 
 
@@ -474,6 +479,7 @@ class QuoteUpdate(BaseModel):
     external_quote_number: str | None = None
     currency_code: str | None = None
     quoted_hours: Decimal | None = Field(default=None, ge=0)
+    quoted_date: date | None = None
     create_project: bool = False
 
 

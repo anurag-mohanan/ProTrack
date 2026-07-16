@@ -941,6 +941,29 @@ def sync_plan_renewals(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.post("/plans/{plan_id}/sync-sales-from-quotes", response_model=FinancePlanDetail)
+def sync_plan_sales_from_quotes(
+    plan_id: UUID,
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upsert Annual Plan sales lines from awarded quotes by quoted_date FY quarter."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    from app.services.finance.plan_sales_from_quotes_service import (
+        sync_sales_from_awarded_quotes,
+    )
+
+    try:
+        plan, _counts = sync_sales_from_awarded_quotes(db, plan_id, team_id=team_id)
+        db.commit()
+        plan = annual_plan_service.get_plan(db, plan.id)
+        return _plan_detail_response(plan)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/plans/{plan_id}/plan-vs-actual", response_model=PlanVsActualRead)
 def get_plan_vs_actual(
     plan_id: UUID,
@@ -1234,6 +1257,7 @@ def create_manual_quote(
             external_quote_number=payload.external_quote_number,
             currency_code=payload.currency_code,
             quoted_hours=payload.quoted_hours,
+            quoted_date=payload.quoted_date,
             create_project=payload.create_project,
         )
     except ProTrackValidationError as exc:

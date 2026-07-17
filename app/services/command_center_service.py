@@ -59,7 +59,9 @@ def _user_name(user: User | None) -> str | None:
     return name or None
 
 
-def _days_remaining(due_date: date, today: date) -> int:
+def _days_remaining(due_date: date | None, today: date) -> int | None:
+    if due_date is None:
+        return None
     return (due_date - today).days
 
 
@@ -197,14 +199,16 @@ def _build_team_summary(db: Session, project: Project) -> ProjectTeamSummary:
     engineering_manager = (
         db.get(User, team.team_lead_id) if team and team.team_lead_id else None
     )
-    design_leader = db.get(User, project.design_leader_id)
+    design_leader = (
+        db.get(User, project.design_leader_id) if project.design_leader_id else None
+    )
     designer = db.get(User, project.designer_id) if project.designer_id else None
     surfacer = db.get(User, project.surfacer_id) if project.surfacer_id else None
 
     members: list[TeamMemberCapacity] = []
     if design_leader:
         members.append(_member_capacity(db, design_leader, "Design Leader"))
-    if designer and designer.id != design_leader.id:
+    if designer and (design_leader is None or designer.id != design_leader.id):
         members.append(_member_capacity(db, designer, "Designer"))
     if surfacer:
         members.append(_member_capacity(db, surfacer, "Surfacer"))
@@ -292,9 +296,15 @@ def _detect_risks(db: Session, project: Project, milestones: list[Milestone], ho
     engine = WorkingModelEngine(db)
     allowed_risks = engine.applicable_risk_types(project)
 
-    if ProjectRiskType.overdue in allowed_risks and project.due_date < today and project.execution_status not in (
-        ExecutionStatus.completed,
-        ExecutionStatus.cancelled,
+    if (
+        ProjectRiskType.overdue in allowed_risks
+        and project.due_date is not None
+        and project.due_date < today
+        and project.execution_status
+        not in (
+            ExecutionStatus.completed,
+            ExecutionStatus.cancelled,
+        )
     ):
         risks.append(
             ProjectRiskItem(

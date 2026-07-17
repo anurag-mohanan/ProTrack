@@ -222,7 +222,9 @@ def test_quote_import_prosohm_qt_creates_and_links_project(
         .one()
     )
     assert project.customer_id == customer.id
-    assert project.notes == "created_from_quote_import"
+    assert project.part_description == ""
+    assert Decimal(str(project.quoted_hours or 0)) == Decimal("0")
+    assert project.notes is None
 
     # Second import with revision B should link the same project (no duplicate).
     def _parse_rev_b(text: str, *, filename: str | None = None, **kwargs):

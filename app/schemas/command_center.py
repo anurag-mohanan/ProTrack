@@ -51,7 +51,7 @@ class ProjectKpis(BaseModel):
     variance: Decimal | None = None
     variance_percent: Decimal | None = None
     budget_consumption_percent: Decimal | None = None
-    days_remaining: int
+    days_remaining: int | None = None
     current_milestone: str | None = None
     working_model_id: UUID | None = None
     working_model_code: str | None = None
@@ -165,7 +165,7 @@ class CommandCenterHeader(BaseModel):
     completion_percent: Decimal
     health: ProjectHealth
     priority: ProjectPriority
-    days_remaining: int
+    days_remaining: int | None = None
 
 
 class ProjectCommandCenter(BaseModel):

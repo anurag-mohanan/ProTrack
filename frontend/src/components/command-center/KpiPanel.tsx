@@ -30,7 +30,10 @@ export function KpiPanel({ kpis }: { kpis: ProjectKpis }) {
           />
         </Grid>
         <Grid size={{ xs: 6, sm: 4, md: 2 }}>
-          <StatisticCard title="Days Left" value={String(kpis.days_remaining)} />
+          <StatisticCard
+            title="Days Left"
+            value={kpis.days_remaining == null ? '—' : String(kpis.days_remaining)}
+          />
         </Grid>
       </Grid>
       <Box>

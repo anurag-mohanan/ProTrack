@@ -334,7 +334,7 @@ export function ProjectDetailPage() {
           { label: 'Designer', value: formatCellValue(header.designer_name) },
           { label: 'Current Milestone', value: formatCellValue(header.current_milestone) },
           { label: 'Completion', value: `${formatNumber(header.completion_percent)}%` },
-          { label: 'Days Remaining', value: String(header.days_remaining) },
+          { label: 'Days Remaining', value: header.days_remaining == null ? '—' : String(header.days_remaining) },
         ].map((item) => (
           <Grid size={{ xs: 6, sm: 4, md: 2 }} key={item.label}>
             <AppCard title={item.label}>

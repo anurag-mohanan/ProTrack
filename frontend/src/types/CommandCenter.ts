@@ -30,7 +30,7 @@ export interface CommandCenterHeader {
   completion_percent: number;
   health: ProjectHealth;
   priority: 'critical' | 'high' | 'medium' | 'low';
-  days_remaining: number;
+  days_remaining: number | null;
 }
 
 export interface TimelineStep {
@@ -50,7 +50,7 @@ export interface ProjectKpis {
   variance: number | null;
   variance_percent: number | null;
   budget_consumption_percent: number | null;
-  days_remaining: number;
+  days_remaining: number | null;
   current_milestone: string | null;
   working_model_id?: string | null;
   working_model_code?: string | null;

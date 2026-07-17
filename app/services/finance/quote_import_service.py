@@ -160,16 +160,15 @@ def ensure_project_for_quote_import(
     if not create_if_missing:
         return None, False
 
-    description = (name_hint or f"{tool_number} — Quote import").strip()
-    if len(description) > 255:
-        description = description[:255]
+    # Shell project only: tool #, customer, optional team. Remaining fields stay blank
+    # so Engineering fills them from Projects (due date, description, hours, etc.).
     project = Project(
         tool_number=tool_number.strip(),
-        part_description=description,
+        part_description="",
         customer_id=customer_id,
         team_id=team_id,
-        quoted_hours=quoted_hours,
-        notes="created_from_quote_import",
+        quoted_hours=Decimal("0"),
+        notes=None,
     )
     db.add(project)
     db.flush()

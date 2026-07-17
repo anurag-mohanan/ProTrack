@@ -895,6 +895,7 @@ def get_workflow_dashboard(db: Session, user: User) -> WorkflowDashboard:
         1
         for project in visible_projects
         if project.execution_status != ExecutionStatus.completed
+        and project.due_date is not None
         and today <= project.due_date <= week_end
     )
 

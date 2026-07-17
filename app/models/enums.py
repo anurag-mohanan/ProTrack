@@ -196,6 +196,7 @@ class NotificationType(enum.Enum):
     import_completed = "import_completed"
     pending_approval = "pending_approval"
     expense_renewal = "expense_renewal"
+    quote_not_invoiced = "quote_not_invoiced"
 
 
 class WorkingModelCode(enum.Enum):

@@ -288,6 +288,9 @@ class Quote(Base, TimestampMixin):
         String(3), ForeignKey("currencies.code"), nullable=False
     )
     quoted_date: Mapped[Optional[date]] = mapped_column(Date)
+    invoiced_date: Mapped[Optional[date]] = mapped_column(Date)
+    is_invoiced: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_invoicing_reminder_at: Mapped[Optional[date]] = mapped_column(Date)
     current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     current_revision: Mapped[str] = mapped_column(String(20), nullable=False, default="A")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

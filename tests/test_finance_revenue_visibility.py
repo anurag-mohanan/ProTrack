@@ -41,6 +41,8 @@ def test_dashboard_revenue_by_customer_and_stream(client, auth_headers, session)
         current_version=1,
         current_revision="A",
         quoted_date=date.today(),
+        is_invoiced=True,
+        invoiced_date=date.today(),
         is_active=True,
     )
     quote_b = Quote(
@@ -53,6 +55,8 @@ def test_dashboard_revenue_by_customer_and_stream(client, auth_headers, session)
         current_version=1,
         current_revision="A",
         quoted_date=date.today(),
+        is_invoiced=True,
+        invoiced_date=date.today(),
         is_active=True,
     )
     session.add_all(

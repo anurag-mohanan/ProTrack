@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 from dataclasses import dataclass, field
+from typing import Any
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
@@ -240,6 +241,9 @@ def _current_revision(db: Session, quote: Quote) -> QuoteRevision | None:
     )
 
 
+_MISSING = object()
+
+
 def update_quote(
     db: Session,
     *,
@@ -253,6 +257,8 @@ def update_quote(
     currency_code: str | None = None,
     quoted_hours: Decimal | None = None,
     quoted_date: date | None = None,
+    invoiced_date: object = _MISSING,
+    is_invoiced: object = _MISSING,
     create_project: bool = False,
 ) -> QuoteImportOutcome:
     """In-place edit of quote header + current revision (expenses-style)."""
@@ -281,6 +287,21 @@ def update_quote(
 
     if quoted_date is not None:
         quote.quoted_date = quoted_date
+
+    if is_invoiced is not _MISSING:
+        quote.is_invoiced = bool(is_invoiced)
+    if invoiced_date is not _MISSING:
+        quote.invoiced_date = invoiced_date
+        if invoiced_date is not None and is_invoiced is _MISSING:
+            quote.is_invoiced = True
+        elif invoiced_date is None and is_invoiced is _MISSING:
+            quote.is_invoiced = False
+
+    if quote.is_invoiced:
+        if quote.invoiced_date is None:
+            quote.invoiced_date = date.today()
+    else:
+        quote.invoiced_date = None
 
     customer = db.get(Customer, quote.customer_id)
     if customer is None:

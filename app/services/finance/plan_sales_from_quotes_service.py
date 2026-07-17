@@ -47,6 +47,13 @@ def effective_quoted_date(quote: Quote, revision: QuoteRevision | None) -> date 
     return None
 
 
+def effective_revenue_date(quote: Quote) -> date | None:
+    """Revenue is recognized on invoiced_date once the quote is marked invoiced."""
+    if not quote.is_invoiced:
+        return None
+    return quote.invoiced_date
+
+
 def sync_sales_from_awarded_quotes(
     db: Session,
     plan_id: UUID,
@@ -54,8 +61,8 @@ def sync_sales_from_awarded_quotes(
     team_id: UUID | None = None,
 ) -> tuple[FinancePlan, dict[str, int]]:
     """
-    Upsert sales lines from active awarded quotes into the plan FY quarter
-    matching each quote's quoted_date. Returns plan + sync counts.
+    Upsert sales lines from active invoiced quotes into the plan FY quarter
+    matching each quote's invoiced_date. Returns plan + sync counts.
     """
     plan = get_plan(db, plan_id)
     fy_start = plan.fy_start_date
@@ -73,7 +80,7 @@ def sync_sales_from_awarded_quotes(
 
     for quote in quotes:
         revision = _current_revision(db, quote)
-        when = effective_quoted_date(quote, revision)
+        when = effective_revenue_date(quote)
         if when is None:
             skipped_no_date += 1
             continue
@@ -136,7 +143,7 @@ def sync_sales_from_awarded_quotes(
             apply_quarter_amount(line, q, Decimal("0"))
         apply_quarter_amount(line, f"q{idx}", revenue)
         line.notes = (
-            f"Auto from awarded quote {quote_no} · quoted {when.isoformat()} · "
+            f"Auto from invoiced quote {quote_no} · invoiced {when.isoformat()} · "
             f"{quote.currency_code}"
         )
         synced += 1

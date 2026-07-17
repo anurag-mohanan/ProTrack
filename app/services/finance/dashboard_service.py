@@ -163,9 +163,9 @@ def _quote_period_amounts(
     today: date,
     fy_start: date,
 ) -> tuple[Decimal, Decimal]:
-    """Actual quote awards: this calendar month + current FY quarter (by quoted_date)."""
+    """Actual quote awards: this calendar month + current FY quarter (by invoiced_date)."""
     from app.models.finance import Quote
-    from app.services.finance.plan_sales_from_quotes_service import effective_quoted_date
+    from app.services.finance.plan_sales_from_quotes_service import effective_revenue_date
     from app.services.finance.renewal_budget_service import fy_quarter_date_bounds
 
     bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
@@ -179,7 +179,7 @@ def _quote_period_amounts(
     quarterly = Decimal("0.00")
     for quote in db.scalars(quote_stmt).all():
         revision = _current_quote_revision(db, quote)
-        when = effective_quoted_date(quote, revision)
+        when = effective_revenue_date(quote)
         if when is None or revision is None:
             continue
         amount = _d(revision.base_quoted_revenue_inr)
@@ -215,10 +215,10 @@ def _retainer_fee_for_period(
 def _revenue_by_customer(
     db: Session, *, team_id: UUID | None, today: date | None = None, fy_start: date | None = None
 ) -> list[dict]:
-    """Group actual awarded quote revenue by customer (month + FY quarter by quoted_date)."""
+    """Group actual awarded quote revenue by customer (month + FY quarter by invoiced_date)."""
     from app.models.finance import Quote
     from app.services.finance.annual_plan_service import current_fy_start
-    from app.services.finance.plan_sales_from_quotes_service import effective_quoted_date
+    from app.services.finance.plan_sales_from_quotes_service import effective_revenue_date
     from app.services.finance.renewal_budget_service import fy_quarter_date_bounds
 
     today = today or date.today()
@@ -236,7 +236,7 @@ def _revenue_by_customer(
         current = _current_quote_revision(db, quote)
         if current is None:
             continue
-        when = effective_quoted_date(quote, current)
+        when = effective_revenue_date(quote)
         if when is None:
             continue
         in_month = when.year == today.year and when.month == today.month
@@ -284,10 +284,10 @@ def _revenue_by_customer(
 def _revenue_by_stream(
     db: Session, *, team_id: UUID | None, today: date | None = None, fy_start: date | None = None
 ) -> list[dict]:
-    """Group actual awarded quote revenue by stream (month + FY quarter by quoted_date)."""
+    """Group actual awarded quote revenue by stream (month + FY quarter by invoiced_date)."""
     from app.models.finance import Quote
     from app.services.finance.annual_plan_service import current_fy_start
-    from app.services.finance.plan_sales_from_quotes_service import effective_quoted_date
+    from app.services.finance.plan_sales_from_quotes_service import effective_revenue_date
     from app.services.finance.renewal_budget_service import fy_quarter_date_bounds
 
     today = today or date.today()
@@ -305,7 +305,7 @@ def _revenue_by_stream(
         current = _current_quote_revision(db, quote)
         if current is None:
             continue
-        when = effective_quoted_date(quote, current)
+        when = effective_revenue_date(quote)
         if when is None:
             continue
         in_month = when.year == today.year and when.month == today.month

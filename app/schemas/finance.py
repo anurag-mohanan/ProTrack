@@ -307,6 +307,11 @@ class RenewalNotifyResult(BaseModel):
     expense_ids: list[UUID] = Field(default_factory=list)
 
 
+class QuoteInvoicingNotifyResult(BaseModel):
+    notified_count: int
+    quote_ids: list[UUID] = Field(default_factory=list)
+
+
 class BudgetCreate(BaseModel):
     name: str
     scope_type: BudgetScopeType
@@ -437,6 +442,8 @@ class QuoteRead(BaseModel):
     estimator_id: UUID | None = None
     currency_code: str
     quoted_date: date | None = None
+    invoiced_date: date | None = None
+    is_invoiced: bool = False
     current_version: int
     current_revision: str
     is_active: bool
@@ -501,6 +508,14 @@ class QuoteUpdate(BaseModel):
     currency_code: str | None = None
     quoted_hours: Decimal | None = Field(default=None, ge=0)
     quoted_date: date | None = None
+    invoiced_date: date | None = Field(
+        default=None,
+        description="Date revenue is recognized (required when invoiced)",
+    )
+    is_invoiced: bool | None = Field(
+        default=None,
+        description="Whether the quote has been invoiced",
+    )
     create_project: bool = False
 
 

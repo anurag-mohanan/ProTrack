@@ -55,6 +55,8 @@ type QuoteRow = {
   fx_rate?: number | string | null;
   fx_date?: string | null;
   quoted_date?: string | null;
+  invoiced_date?: string | null;
+  is_invoiced?: boolean;
 };
 
 type QuoteImportItem = {
@@ -83,6 +85,8 @@ type ManualQuoteForm = {
   cost: string;
   currencyCode: string;
   quotedDate: string;
+  isInvoiced: 'yes' | 'no';
+  invoicedDate: string;
 };
 
 const emptyManual: ManualQuoteForm = {
@@ -92,6 +96,8 @@ const emptyManual: ManualQuoteForm = {
   cost: '',
   currencyCode: '',
   quotedDate: new Date().toISOString().slice(0, 10),
+  isInvoiced: 'no',
+  invoicedDate: '',
 };
 
 const listRowSx = {
@@ -176,6 +182,14 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       external_quote_number: manual.quoteNumber.trim() || null,
       currency_code: currency || null,
       quoted_date: manual.quotedDate.trim() || null,
+      ...(editingId
+        ? {
+            is_invoiced: manual.isInvoiced === 'yes',
+            ...(manual.isInvoiced === 'yes'
+              ? { invoiced_date: manual.invoicedDate.trim() || null }
+              : {}),
+          }
+        : {}),
       create_project: createProject,
     };
   };
@@ -199,6 +213,8 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           : String(quote.quoted_revenue),
       currencyCode: (quote.currency_code || '').toUpperCase(),
       quotedDate: quote.quoted_date ?? new Date().toISOString().slice(0, 10),
+      isInvoiced: quote.is_invoiced ? 'yes' : 'no',
+      invoicedDate: quote.invoiced_date ?? '',
     });
   };
 
@@ -454,6 +470,42 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
               sx={{ minWidth: 160 }}
               helperText="FY quarter for Annual Plan sales"
             />
+            {editingId ? (
+              <>
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <InputLabel>Invoiced</InputLabel>
+                  <Select
+                    label="Invoiced"
+                    value={manual.isInvoiced}
+                    onChange={(e) =>
+                      setManual({
+                        ...manual,
+                        isInvoiced: e.target.value as 'yes' | 'no',
+                        invoicedDate:
+                          e.target.value === 'yes' && !manual.invoicedDate
+                            ? new Date().toISOString().slice(0, 10)
+                            : manual.invoicedDate,
+                      })
+                    }
+                  >
+                    <MenuItem value="no">No</MenuItem>
+                    <MenuItem value="yes">Yes</MenuItem>
+                  </Select>
+                </FormControl>
+                {manual.isInvoiced === 'yes' ? (
+                  <TextField
+                    size="small"
+                    type="date"
+                    label="Invoiced date"
+                    value={manual.invoicedDate}
+                    onChange={(e) => setManual({ ...manual, invoicedDate: e.target.value })}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    sx={{ minWidth: 160 }}
+                    helperText="Revenue is recognized on this date"
+                  />
+                ) : null}
+              </>
+            ) : null}
             <TextField
               size="small"
               label="Currency"
@@ -567,7 +619,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
 
       <FinanceSection
         title="Awarded quotes"
-        subtitle="Edit or delete booked quotes. Quoted date drives Annual Plan sales-from-quotes placement."
+        subtitle="Edit or delete booked quotes. Quoted date drives Annual Plan; mark Invoiced Yes with invoiced date when revenue is recognized."
       >
         <Stack spacing={1.25}>
           {quotes.length === 0 ? (
@@ -592,6 +644,11 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                     {!quote.quoted_date ? (
                       <Chip size="small" color="warning" label="No quoted date" />
                     ) : null}
+                    {quote.is_invoiced ? (
+                      <Chip size="small" color="success" variant="outlined" label="Invoiced" />
+                    ) : (
+                      <Chip size="small" color="warning" variant="outlined" label="Not invoiced" />
+                    )}
                   </Stack>
                   <Typography variant="body2" color="text.secondary">
                     {quote.customer_name ?? 'Customer'} · {quote.team_name ?? 'No team'} ·{' '}
@@ -602,6 +659,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                       : ''}{' '}
                     · rev {quote.current_revision}
                     {quote.quoted_date ? ` · quoted ${quote.quoted_date}` : ''}
+                    {quote.is_invoiced && quote.invoiced_date
+                      ? ` · invoiced ${quote.invoiced_date}`
+                      : ''}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>

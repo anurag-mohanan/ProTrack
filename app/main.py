@@ -93,6 +93,12 @@ from app.db.phase41_performance_review_experience_schema_sync import (
 from app.db.phase42_performance_skill_matrix_schema_sync import (
     ensure_phase42_performance_skill_matrix_foundation,
 )
+from app.db.phase43_quote_invoiced_date_schema_sync import (
+    ensure_phase43_quote_invoiced_date_foundation,
+)
+from app.db.phase44_quote_invoicing_schema_sync import (
+    ensure_phase44_quote_invoicing_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -190,6 +196,8 @@ async def lifespan(app: FastAPI):
         ("phase40_performance_review_form", ensure_phase40_performance_review_form_foundation),
         ("phase41_performance_review_experience", ensure_phase41_performance_review_experience_foundation),
         ("phase42_performance_skill_matrix", ensure_phase42_performance_skill_matrix_foundation),
+        ("phase43_quote_invoiced_date", ensure_phase43_quote_invoiced_date_foundation),
+        ("phase44_quote_invoicing", ensure_phase44_quote_invoicing_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 
@@ -229,6 +237,18 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.info("ProTrack API startup schema sync completed successfully")
+
+    reminder_session = sessionmaker(bind=engine)()
+    try:
+        from app.services.finance.quote_invoicing_notifier import notify_uninvoiced_quotes
+
+        notify_uninvoiced_quotes(reminder_session)
+        reminder_session.commit()
+    except Exception:
+        reminder_session.rollback()
+        logger.exception("Quote invoicing reminder step failed")
+    finally:
+        reminder_session.close()
 
     yield
 

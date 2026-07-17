@@ -77,6 +77,7 @@ from app.schemas.finance import (
     QuoteManualCreate,
     QuoteRead,
     QuoteUpdate,
+    QuoteInvoicingNotifyResult,
     RenewalNotifyResult,
     TeamCommercialFeeBandInput,
     TeamCommercialFeeBandRead,
@@ -101,6 +102,7 @@ from app.services.finance.commercial_fee_rules import (
 from app.services.finance.quote_import_service import (
     import_quotes_from_upload,
 )
+from app.services.finance.quote_invoicing_notifier import notify_uninvoiced_quotes
 from app.services.finance.renewal_notifier import notify_upcoming_renewals
 from app.services.finance.roster_service import get_employee_cost_roster
 from app.core.salary_eligibility import user_requires_salary
@@ -429,6 +431,19 @@ def trigger_renewal_notifications(
     count, expense_ids = notify_upcoming_renewals(db, team_id=team_id)
     db.commit()
     return RenewalNotifyResult(notified_count=count, expense_ids=expense_ids)
+
+
+@router.post("/quotes/invoicing-reminders/notify", response_model=QuoteInvoicingNotifyResult)
+def trigger_quote_invoicing_reminders(
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create in-app notifications for awarded quotes still not invoiced."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    count, quote_ids = notify_uninvoiced_quotes(db, team_id=team_id)
+    db.commit()
+    return QuoteInvoicingNotifyResult(notified_count=count, quote_ids=quote_ids)
 
 
 @router.get("/employee-costs/roster", response_model=list[EmployeeCostRosterItem])

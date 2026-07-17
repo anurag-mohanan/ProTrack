@@ -1,4 +1,4 @@
-"""Annual Plan sales sync from awarded quotes (quoted_date → FY quarter)."""
+"""Annual Plan sales sync from invoiced quotes (invoiced_date → FY quarter)."""
 
 from decimal import Decimal
 
@@ -31,6 +31,13 @@ def test_sync_sales_from_awarded_quotes_places_q2(client, auth_headers, session)
     )
     assert created.status_code == 200, created.text
     quote_id = created.json()["items"][0]["quote_id"]
+
+    invoiced = client.patch(
+        f"/api/v1/finance/quotes/{quote_id}",
+        headers=auth_headers,
+        json={"is_invoiced": True, "invoiced_date": "2032-08-15"},
+    )
+    assert invoiced.status_code == 200, invoiced.text
 
     listed = client.get(
         f"/api/v1/finance/quotes?team_id={team.id}", headers=auth_headers

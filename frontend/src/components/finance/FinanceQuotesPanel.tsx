@@ -40,6 +40,7 @@ import {
   financeListRowSx,
   financeMoney,
 } from './FinanceCockpitPrimitives';
+import { FinanceQuotesTable } from './FinanceQuotesTable';
 
 type QuoteRow = {
   id: string;
@@ -709,7 +710,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
         title="Awarded quotes"
         subtitle={
           listFilter === 'all' && !search.trim()
-            ? 'Edit or delete booked quotes. Quoted date drives Annual Plan; Invoiced date recognizes revenue.'
+            ? 'Scan booked quotes by amount, invoice status, and project link. Edit opens the form above.'
             : `Showing ${filteredQuotes.length} of ${quotes.length} quotes`
         }
         action={
@@ -723,7 +724,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
               placeholder="Search quote, project, customer…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              sx={{ minWidth: { xs: '100%', sm: 220 } }}
+              sx={{ minWidth: { xs: '100%', sm: 240 } }}
               slotProps={{
                 input: {
                   startAdornment: (
@@ -735,13 +736,23 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
               }}
             />
             <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>
-              <Chip
-                size="small"
-                label="Unlinked"
-                variant={listFilter === 'unlinked' ? 'filled' : 'outlined'}
-                color={listFilter === 'unlinked' ? 'primary' : 'default'}
-                onClick={() => toggleFilter('unlinked')}
-              />
+              {(
+                [
+                  { key: 'not_invoiced' as const, label: 'Not invoiced' },
+                  { key: 'invoiced' as const, label: 'Invoiced' },
+                  { key: 'unlinked' as const, label: 'Unlinked' },
+                  { key: 'missing_date' as const, label: 'No date' },
+                ] as const
+              ).map((chip) => (
+                <Chip
+                  key={chip.key}
+                  size="small"
+                  label={chip.label}
+                  variant={listFilter === chip.key ? 'filled' : 'outlined'}
+                  color={listFilter === chip.key ? 'primary' : 'default'}
+                  onClick={() => toggleFilter(chip.key)}
+                />
+              ))}
               {(listFilter !== 'all' || search.trim()) && (
                 <Chip
                   size="small"
@@ -756,85 +767,16 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           </Stack>
         }
       >
-        <Stack spacing={1.25}>
-          {quotes.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              No awarded quotes yet — save or import the first one above.
-            </Typography>
-          ) : filteredQuotes.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              No quotes match this filter. Clear search or filters to see all.
-            </Typography>
-          ) : (
-            filteredQuotes.map((quote) => (
-              <Box key={quote.id} sx={financeListRowSx}>
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    useFlexGap
-                    sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.75 }}
-                  >
-                    <Typography sx={{ fontWeight: 600 }}>
-                      {quote.external_quote_number
-                        ? `${quote.external_quote_number} · ${quote.tool_number}`
-                        : quote.tool_number}
-                    </Typography>
-                    {quote.project_linked ? (
-                      <Chip size="small" color="success" variant="outlined" label="Linked" />
-                    ) : (
-                      <Chip size="small" variant="outlined" label="Unlinked" />
-                    )}
-                    {!quote.quoted_date ? (
-                      <Chip size="small" color="warning" label="No quoted date" />
-                    ) : null}
-                    {quote.is_invoiced ? (
-                      <Chip size="small" color="success" variant="outlined" label="Invoiced" />
-                    ) : (
-                      <Chip size="small" color="warning" variant="outlined" label="Not invoiced" />
-                    )}
-                  </Stack>
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={{ xs: 0.25, sm: 2 }}
-                    sx={{ flexWrap: 'wrap' }}
-                  >
-                    <Typography variant="body2" color="text.secondary">
-                      {quote.customer_name ?? 'Customer'} · {quote.team_name ?? 'No team'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {financeMoney(quote.quoted_revenue, quote.currency_code || 'INR')}
-                      {quote.base_quoted_revenue_inr != null &&
-                      (quote.currency_code || 'INR').toUpperCase() !== 'INR'
-                        ? ` ≈ ${financeMoney(quote.base_quoted_revenue_inr, 'INR')}`
-                        : ''}
-                      {' · '}rev {quote.current_revision}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {quote.quoted_date ? `Quoted ${quote.quoted_date}` : 'Quoted —'}
-                      {quote.is_invoiced && quote.invoiced_date
-                        ? ` · Invoiced ${quote.invoiced_date}`
-                        : ' · Not invoiced'}
-                    </Typography>
-                  </Stack>
-                </Box>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                  <Button size="small" variant="contained" onClick={() => startEdit(quote)}>
-                    Edit
-                  </Button>
-                  <Button
-                    size="small"
-                    color="error"
-                    variant="outlined"
-                    onClick={() => setDeleteTarget(quote)}
-                  >
-                    Delete
-                  </Button>
-                </Stack>
-              </Box>
-            ))
-          )}
-        </Stack>
+        <FinanceQuotesTable
+          rows={filteredQuotes}
+          emptyMessage={
+            quotes.length === 0
+              ? 'No awarded quotes yet — save or import the first one above.'
+              : 'No quotes match this filter. Clear search or filters to see all.'
+          }
+          onEdit={startEdit}
+          onDelete={setDeleteTarget}
+        />
       </FinanceSection>
 
       <ConfirmDialog

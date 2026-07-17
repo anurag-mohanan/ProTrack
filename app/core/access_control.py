@@ -253,9 +253,19 @@ def default_special_permissions_for_role(role_name: str) -> list[str]:
 
 
 def resolve_user_modules(user: User, role_name: str) -> list[str]:
+    normalized = normalize_role_name(role_name)
+    # Admins always receive the full module catalog so new modules (e.g. Performance)
+    # appear without requiring a manual Users-page re-save.
+    if normalized == ADMIN:
+        return sorted(ALL_MODULES)
     stored = _parse_json_list(user.module_access)
     if stored is not None:
-        return sorted({module for module in stored if module in ALL_MODULES})
+        modules = {module for module in stored if module in ALL_MODULES}
+        # Performance previously sat under the Dashboard nav gate — keep parity for
+        # accounts whose saved module_access pre-dates MODULE_PERFORMANCE.
+        if MODULE_DASHBOARD in modules:
+            modules.add(MODULE_PERFORMANCE)
+        return sorted(modules)
     return default_modules_for_role(role_name)
 
 

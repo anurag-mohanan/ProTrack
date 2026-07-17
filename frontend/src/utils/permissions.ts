@@ -96,6 +96,7 @@ const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
     MODULE_FINANCIAL_PLANNING,
     MODULE_REPORTS_ANALYTICS,
     MODULE_CALENDAR,
+    MODULE_PERFORMANCE,
   ],
   [ROLES.DESIGN_LEADER]: [
     MODULE_DASHBOARD,
@@ -105,24 +106,27 @@ const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
     MODULE_WORKLOAD,
     MODULE_REPORTS_ANALYTICS,
     MODULE_CALENDAR,
+    MODULE_PERFORMANCE,
   ],
-  [ROLES.DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
-  [ROLES.SENIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
-  [ROLES.JUNIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
-  [ROLES.SURFACER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS],
-  [ROLES.READ_ONLY]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_REPORTS_ANALYTICS],
+  [ROLES.DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS, MODULE_PERFORMANCE],
+  [ROLES.SENIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS, MODULE_PERFORMANCE],
+  [ROLES.JUNIOR_DESIGNER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS, MODULE_PERFORMANCE],
+  [ROLES.SURFACER]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_TIMESHEETS, MODULE_PERFORMANCE],
+  [ROLES.READ_ONLY]: [MODULE_DASHBOARD, MODULE_PROJECTS, MODULE_REPORTS_ANALYTICS, MODULE_PERFORMANCE],
   [ROLES.PLANNING_BOARD]: [MODULE_PLANNING_BOARD],
   [ROLES.HR]: [
     MODULE_DASHBOARD,
     MODULE_HUMAN_RESOURCES,
     MODULE_TIMESHEETS,
     MODULE_REPORTS_ANALYTICS,
+    MODULE_PERFORMANCE,
   ],
   [ROLES.OFFICE_ADMINISTRATOR]: [
     MODULE_DASHBOARD,
     MODULE_HUMAN_RESOURCES,
     MODULE_TIMESHEETS,
     MODULE_REPORTS_ANALYTICS,
+    MODULE_PERFORMANCE,
   ],
 };
 
@@ -296,12 +300,22 @@ export function defaultSpecialPermissionsForRole(roleName: string): SpecialPermi
 }
 
 export function resolveModules(ctx: AccessContext): ModuleKey[] {
+  if (normalizeRoleName(ctx.role_name) === ROLES.ADMIN) {
+    return [...ALL_MODULES];
+  }
+  let modules: ModuleKey[];
   if (ctx.resolved_modules?.length) {
-    return ctx.resolved_modules.filter((module): module is ModuleKey =>
+    modules = ctx.resolved_modules.filter((module): module is ModuleKey =>
       ALL_MODULES.includes(module as ModuleKey),
     );
+  } else {
+    modules = defaultModulesForRole(ctx.role_name);
   }
-  return defaultModulesForRole(ctx.role_name);
+  // Performance previously gated by Dashboard — keep nav parity for stale tokens.
+  if (modules.includes(MODULE_DASHBOARD) && !modules.includes(MODULE_PERFORMANCE)) {
+    return [...modules, MODULE_PERFORMANCE];
+  }
+  return modules;
 }
 
 export function resolveSpecialPermissions(ctx: AccessContext): SpecialPermissionKey[] {

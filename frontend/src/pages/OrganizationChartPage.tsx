@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import {
   Alert,
   Avatar,
@@ -18,7 +18,6 @@ import {
   alpha,
   useTheme,
 } from '@mui/material';
-import AccountTreeRoundedIcon from '@mui/icons-material/AccountTreeRounded';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,7 +52,95 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Build a reporting forest so manager → report lines are easy to follow. */
+/** Vertical stem + optional horizontal span for org-tree branches. */
+function BranchChildren({
+  accent,
+  children,
+}: {
+  accent: string;
+  children: ReactNode;
+}) {
+  const childArray = (Array.isArray(children) ? children : [children]).filter(Boolean);
+  const count = childArray.length;
+  if (count === 0) return null;
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        width: '100%',
+      }}
+    >
+      <Box sx={{ width: 2, height: 18, bgcolor: accent, opacity: 0.45 }} />
+      {count > 1 ? (
+        <Box
+          sx={{
+            position: 'relative',
+            width: '100%',
+            height: 2,
+            mb: 0,
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              left: '12.5%',
+              right: '12.5%',
+              top: 0,
+              height: 2,
+              bgcolor: accent,
+              opacity: 0.35,
+            },
+          }}
+        />
+      ) : null}
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          flexWrap: 'nowrap',
+          gap: 0,
+          width: '100%',
+          overflowX: 'auto',
+          pb: 0.5,
+        }}
+      >
+        {childArray.map((child, index) => (
+          <Box
+            key={index}
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              position: 'relative',
+              px: 1.25,
+              pt: count > 1 ? 2 : 0,
+              '&::before':
+                count > 1
+                  ? {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      left: '50%',
+                      width: 0,
+                      height: 16,
+                      borderLeft: '2px solid',
+                      borderColor: accent,
+                      opacity: 0.45,
+                      transform: 'translateX(-50%)',
+                    }
+                  : undefined,
+            }}
+          >
+            {child}
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
 function buildReportingTree(team: OrgChartTeamColumn): TreeNode[] {
   const people = team.people;
   if (people.length === 0) return [];
@@ -122,14 +209,17 @@ function PersonCard({
   canEdit,
   onDragStart,
   isLead,
+  compact,
 }: {
   person: OrgChartPerson;
   accent: string;
   canEdit: boolean;
   onDragStart: (person: OrgChartPerson) => void;
   isLead?: boolean;
+  compact?: boolean;
 }) {
   const draggable = canEdit && person.can_move;
+  const emphasized = Boolean(isLead || person.is_department_head);
 
   return (
     <Box
@@ -144,13 +234,13 @@ function PersonCard({
         onDragStart(person);
       }}
       sx={{
-        width: 220,
-        p: 1.25,
+        width: compact ? 168 : 200,
+        p: compact ? 1 : 1.15,
         borderRadius: 2.5,
         border: '1px solid',
-        borderColor: isLead || person.is_department_head ? accent : 'divider',
+        borderColor: emphasized ? accent : 'divider',
         bgcolor: 'background.paper',
-        boxShadow: isLead || person.is_department_head ? `0 0 0 1px ${accent}55` : 1,
+        boxShadow: emphasized ? `0 8px 20px ${alpha(accent, 0.18)}` : 1,
         cursor: draggable ? 'grab' : 'default',
         transition: 'box-shadow 0.15s ease, transform 0.15s ease',
         '&:active': draggable ? { cursor: 'grabbing' } : undefined,
@@ -163,42 +253,54 @@ function PersonCard({
           left: 0,
           top: 0,
           bottom: 0,
-          width: 4,
+          width: 3,
           bgcolor: accent,
         },
       }}
     >
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+      <Stack direction="row" spacing={0.85} sx={{ alignItems: 'flex-start' }}>
         {draggable ? (
-          <DragIndicatorIcon sx={{ mt: 0.35, color: 'text.disabled', fontSize: 16 }} />
+          <DragIndicatorIcon sx={{ mt: 0.25, color: 'text.disabled', fontSize: 15 }} />
         ) : null}
-        <Avatar sx={{ width: 34, height: 34, fontSize: 12, fontWeight: 700, bgcolor: accent }}>
+        <Avatar
+          sx={{
+            width: compact ? 28 : 32,
+            height: compact ? 28 : 32,
+            fontSize: 11,
+            fontWeight: 700,
+            bgcolor: accent,
+          }}
+        >
           {initials(person.name)}
         </Avatar>
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.2 }} noWrap>
+          <Typography
+            variant="subtitle2"
+            sx={{ fontWeight: 800, lineHeight: 1.15, fontSize: compact ? 12.5 : 13.5 }}
+            noWrap
+          >
             {person.name}
           </Typography>
           <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
             {person.designation || person.role_name || 'Team member'}
           </Typography>
-          <Stack direction="row" spacing={0.5} useFlexGap sx={{ mt: 0.5, flexWrap: 'wrap' }}>
+          <Stack direction="row" spacing={0.4} useFlexGap sx={{ mt: 0.4, flexWrap: 'wrap' }}>
             {person.is_department_head ? (
-              <Chip label="Dept head" size="small" sx={{ height: 20, bgcolor: `${accent}22` }} />
+              <Chip label="Head" size="small" sx={{ height: 18, fontSize: 10, bgcolor: `${accent}22` }} />
             ) : isLead ? (
-              <Chip label="Lead" size="small" sx={{ height: 20, bgcolor: `${accent}22` }} />
+              <Chip label="Lead" size="small" sx={{ height: 18, fontSize: 10, bgcolor: `${accent}22` }} />
             ) : person.is_leadership ? (
-              <Chip label="Leadership" size="small" variant="outlined" sx={{ height: 20 }} />
+              <Chip label="Leader" size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
             ) : null}
             {person.stream_name ? (
-              <Chip label={person.stream_name} size="small" variant="outlined" sx={{ height: 20 }} />
+              <Chip
+                label={person.stream_name}
+                size="small"
+                variant="outlined"
+                sx={{ height: 18, fontSize: 10 }}
+              />
             ) : null}
           </Stack>
-          {person.manager_name ? (
-            <Typography variant="caption" color="text.secondary" noWrap sx={{ mt: 0.4, display: 'block' }}>
-              → {person.manager_name}
-            </Typography>
-          ) : null}
         </Box>
       </Stack>
     </Box>
@@ -218,109 +320,42 @@ function TreeBranch({
   canEdit: boolean;
   onDragStart: (person: OrgChartPerson) => void;
 }) {
-  const hasChildren = node.children.length > 0;
-
   return (
-    <Box
-      component="li"
-      sx={{
-        listStyle: 'none',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        position: 'relative',
-        px: 1.25,
-        pt: 2,
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: '50%',
-          width: 0,
-          height: 16,
-          borderLeft: '2px solid',
-          borderColor: accent,
-          opacity: 0.55,
-          transform: 'translateX(-50%)',
-        },
-      }}
-    >
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <PersonCard
         person={node.person}
         accent={accent}
         canEdit={canEdit}
         onDragStart={onDragStart}
         isLead={teamLeadId === node.person.user_id}
+        compact
       />
-      {hasChildren ? (
-        <Box
-          component="ul"
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'flex-start',
-            flexWrap: 'wrap',
-            p: 0,
-            m: 0,
-            pt: 2,
-            position: 'relative',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: 0,
-              left: '50%',
-              width: 0,
-              height: 16,
-              borderLeft: '2px solid',
-              borderColor: accent,
-              opacity: 0.55,
-              transform: 'translateX(-50%)',
-            },
-          }}
-        >
-          {node.children.map((child, index) => (
-            <Box
+      {node.children.length > 0 ? (
+        <BranchChildren accent={accent}>
+          {node.children.map((child) => (
+            <TreeBranch
               key={child.person.user_id}
-              sx={{
-                position: 'relative',
-                '&::before':
-                  node.children.length > 1
-                    ? {
-                        content: '""',
-                        position: 'absolute',
-                        top: 0,
-                        left: index === 0 ? '50%' : 0,
-                        right: index === node.children.length - 1 ? '50%' : 0,
-                        height: 0,
-                        borderTop: '2px solid',
-                        borderColor: accent,
-                        opacity: 0.45,
-                      }
-                    : undefined,
-              }}
-            >
-              <TreeBranch
-                node={child}
-                accent={accent}
-                teamLeadId={teamLeadId}
-                canEdit={canEdit}
-                onDragStart={onDragStart}
-              />
-            </Box>
+              node={child}
+              accent={accent}
+              teamLeadId={teamLeadId}
+              canEdit={canEdit}
+              onDragStart={onDragStart}
+            />
           ))}
-        </Box>
+        </BranchChildren>
       ) : null}
     </Box>
   );
 }
 
-function TeamTree({
+function TeamBranch({
   team,
   canEdit,
   dropTargetId,
   setDropTargetId,
   onPersonDragStart,
   onDropPerson,
+  accent,
 }: {
   team: OrgChartTeamColumn;
   canEdit: boolean;
@@ -328,9 +363,11 @@ function TeamTree({
   setDropTargetId: (id: string | null) => void;
   onPersonDragStart: (person: OrgChartPerson) => void;
   onDropPerson: (target: OrgChartTeamColumn) => void;
+  accent: string;
 }) {
   const isOver = dropTargetId === team.team_id;
   const forest = useMemo(() => buildReportingTree(team), [team]);
+  const line = team.colour || accent;
 
   return (
     <Box
@@ -350,150 +387,85 @@ function TeamTree({
         onDropPerson(team);
       }}
       sx={{
-        minWidth: 280,
-        flex: '1 1 320px',
-        maxWidth: 720,
-        borderRadius: 3,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        minWidth: 200,
+        px: 0.5,
+        py: 1,
+        borderRadius: 2.5,
         border: '1px solid',
-        borderColor: isOver ? team.colour : 'divider',
-        bgcolor: isOver ? `${team.colour}10` : alpha('#fff', 0.55),
-        boxShadow: isOver ? 4 : 0,
-        overflow: 'hidden',
+        borderColor: isOver ? line : alpha(line, 0.28),
+        bgcolor: isOver ? alpha(line, 0.08) : alpha(line, 0.03),
+        boxShadow: isOver ? 3 : 0,
         transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
       }}
     >
       <Box
         sx={{
-          px: 2,
-          py: 1.5,
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          background: `linear-gradient(120deg, ${team.colour}28 0%, transparent 65%)`,
+          px: 1.5,
+          py: 0.7,
+          mb: 1,
+          borderRadius: 999,
+          bgcolor: alpha(line, 0.14),
+          border: '1px solid',
+          borderColor: alpha(line, 0.35),
+          textAlign: 'center',
+          maxWidth: 220,
         }}
       >
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: team.colour, flexShrink: 0 }} />
-          <Typography variant="subtitle1" sx={{ fontWeight: 800, flex: 1 }} noWrap>
-            {team.team_name}
-          </Typography>
-          <Chip label={team.member_count} size="small" sx={{ height: 22, fontWeight: 700 }} />
-        </Stack>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.35 }}>
+        <Typography variant="caption" sx={{ fontWeight: 800, display: 'block', lineHeight: 1.2 }} noWrap>
+          {team.team_name}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }} noWrap>
           {team.team_lead_name ? `Lead · ${team.team_lead_name}` : 'No team lead'}
-          {canEdit ? ' · drop a card here to move' : ''}
+          {` · ${team.member_count}`}
         </Typography>
       </Box>
 
-      <Box sx={{ px: 1, py: 2, overflowX: 'auto' }}>
-        {forest.length === 0 ? (
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{
-              py: 4,
-              textAlign: 'center',
-              border: '1px dashed',
-              borderColor: 'divider',
-              borderRadius: 2,
-              mx: 1,
-            }}
-          >
-            {canEdit ? 'Drop a person card onto this team' : 'No primary members'}
-          </Typography>
-        ) : (
-          <Box
-            component="ul"
-            sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              flexWrap: 'wrap',
-              p: 0,
-              m: 0,
-              listStyle: 'none',
-            }}
-          >
-            {forest.map((root) => (
-              <Box key={root.person.user_id} component="li" sx={{ listStyle: 'none' }}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <PersonCard
-                    person={root.person}
-                    accent={team.colour}
-                    canEdit={canEdit}
-                    onDragStart={onPersonDragStart}
-                    isLead={team.team_lead_id === root.person.user_id}
-                  />
-                  {root.children.length > 0 ? (
-                    <Box
-                      component="ul"
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'center',
-                        flexWrap: 'wrap',
-                        p: 0,
-                        m: 0,
-                        pt: 2,
-                        position: 'relative',
-                        '&::before': {
-                          content: '""',
-                          position: 'absolute',
-                          top: 0,
-                          left: '50%',
-                          height: 16,
-                          borderLeft: '2px solid',
-                          borderColor: team.colour,
-                          opacity: 0.55,
-                          transform: 'translateX(-50%)',
-                        },
-                      }}
-                    >
-                      {root.children.map((child, index) => (
-                        <Box
-                          key={child.person.user_id}
-                          sx={{
-                            position: 'relative',
-                            '&::before':
-                              root.children.length > 1
-                                ? {
-                                    content: '""',
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: index === 0 ? '50%' : 0,
-                                    right: index === root.children.length - 1 ? '50%' : 0,
-                                    borderTop: '2px solid',
-                                    borderColor: team.colour,
-                                    opacity: 0.45,
-                                  }
-                                : undefined,
-                          }}
-                        >
-                          <TreeBranch
-                            node={child}
-                            accent={team.colour}
-                            teamLeadId={team.team_lead_id}
-                            canEdit={canEdit}
-                            onDragStart={onPersonDragStart}
-                          />
-                        </Box>
-                      ))}
-                    </Box>
-                  ) : null}
-                </Box>
-              </Box>
-            ))}
-          </Box>
-        )}
-      </Box>
+      {forest.length === 0 ? (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{
+            py: 2,
+            px: 1.5,
+            border: '1px dashed',
+            borderColor: 'divider',
+            borderRadius: 2,
+            textAlign: 'center',
+          }}
+        >
+          {canEdit ? 'Drop here' : 'Empty'}
+        </Typography>
+      ) : (
+        <BranchChildren accent={line}>
+          {forest.map((root) => (
+            <TreeBranch
+              key={root.person.user_id}
+              node={root}
+              accent={line}
+              teamLeadId={team.team_lead_id}
+              canEdit={canEdit}
+              onDragStart={onPersonDragStart}
+            />
+          ))}
+        </BranchChildren>
+      )}
     </Box>
   );
 }
 
-function DepartmentPanel({
+function DepartmentBranch({
   department,
   canEdit,
   dropTargetId,
   setDropTargetId,
   onPersonDragStart,
   onDropPerson,
+  isFirst,
+  isLast,
+  siblingCount,
 }: {
   department: OrgChartDepartment;
   canEdit: boolean;
@@ -501,145 +473,149 @@ function DepartmentPanel({
   setDropTargetId: (id: string | null) => void;
   onPersonDragStart: (person: OrgChartPerson) => void;
   onDropPerson: (target: OrgChartTeamColumn) => void;
+  isFirst: boolean;
+  isLast: boolean;
+  siblingCount: number;
 }) {
-  const theme = useTheme();
+  const accent = department.colour;
+  const head =
+    department.leaders.find((row) => row.is_department_head) ??
+    (department.head_user_id
+      ? department.leaders.find((row) => row.user_id === department.head_user_id)
+      : undefined);
+  const otherLeaders = department.leaders.filter((row) => row.user_id !== head?.user_id);
+  const hqPeople = [...otherLeaders, ...department.staff];
   const isEmpty =
     department.member_count === 0 &&
     department.leaders.length === 0 &&
     department.staff.length === 0 &&
     department.teams.length === 0;
 
+  const midChildren: ReactNode[] = [];
+  if (hqPeople.length > 0) {
+    midChildren.push(
+      <Box key="hq" sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Chip
+          label={department.code === 'engineering' ? 'Leadership & HQ' : 'Staff'}
+          size="small"
+          sx={{ mb: 1, height: 22, fontWeight: 700, bgcolor: alpha(accent, 0.12) }}
+        />
+        <BranchChildren accent={accent}>
+          {hqPeople.map((person) => (
+            <PersonCard
+              key={person.user_id}
+              person={person}
+              accent={accent}
+              canEdit={canEdit}
+              onDragStart={onPersonDragStart}
+              isLead={person.is_leadership}
+              compact
+            />
+          ))}
+        </BranchChildren>
+      </Box>,
+    );
+  }
+  for (const team of department.teams) {
+    midChildren.push(
+      <TeamBranch
+        key={team.team_id}
+        team={team}
+        canEdit={canEdit}
+        dropTargetId={dropTargetId}
+        setDropTargetId={setDropTargetId}
+        onPersonDragStart={onPersonDragStart}
+        onDropPerson={onDropPerson}
+        accent={accent}
+      />,
+    );
+  }
+
   return (
     <Box
       sx={{
-        borderRadius: 3,
-        border: '1px solid',
-        borderColor: alpha(department.colour, 0.35),
-        overflow: 'hidden',
-        background: `linear-gradient(160deg, ${alpha(department.colour, 0.1)} 0%, ${alpha(
-          theme.palette.background.paper,
-          0.96,
-        )} 42%, ${theme.palette.background.default} 100%)`,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        position: 'relative',
+        px: 1.5,
+        pt: 2.25,
+        minWidth: isEmpty ? 160 : 240,
+        '&::before':
+          siblingCount > 1
+            ? {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: isFirst ? '50%' : 0,
+                right: isLast ? '50%' : 0,
+                height: 2,
+                bgcolor: alpha('#546e7a', 0.35),
+              }
+            : undefined,
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: '50%',
+          width: 0,
+          height: 18,
+          borderLeft: '2px solid',
+          borderColor: alpha('#546e7a', 0.45),
+          transform: 'translateX(-50%)',
+        },
       }}
     >
-      <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={1.5}
-          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
-        >
-          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
-            <Box
-              sx={{
-                width: 42,
-                height: 42,
-                borderRadius: 2,
-                display: 'grid',
-                placeItems: 'center',
-                bgcolor: alpha(department.colour, 0.18),
-                color: department.colour,
-                flexShrink: 0,
-              }}
-            >
-              <AccountTreeRoundedIcon fontSize="small" />
-            </Box>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }} noWrap>
-                {department.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" noWrap>
-                {department.head_name
-                  ? `Head · ${department.head_name}${department.head_title ? ` · ${department.head_title}` : ''}`
-                  : department.description || 'Ready for future expansion'}
-              </Typography>
-            </Box>
-          </Stack>
-          <Chip
-            label={`${department.member_count} people`}
-            size="small"
-            sx={{ fontWeight: 700, bgcolor: alpha(department.colour, 0.14) }}
-          />
-        </Stack>
+      {/* Department node */}
+      <Box
+        sx={{
+          px: 2,
+          py: 1.1,
+          borderRadius: 2.5,
+          minWidth: 150,
+          textAlign: 'center',
+          bgcolor: alpha(accent, 0.12),
+          border: '1px solid',
+          borderColor: alpha(accent, 0.45),
+          boxShadow: `0 10px 24px ${alpha(accent, 0.12)}`,
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ fontWeight: 900, letterSpacing: 0.2, color: accent }}>
+          {department.name}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          {isEmpty
+            ? 'Future expansion'
+            : department.head_name
+              ? `Head · ${department.head_name}`
+              : `${department.member_count} people`}
+        </Typography>
       </Box>
 
-      <Box sx={{ px: { xs: 2, md: 2.5 }, pb: 2.5 }}>
-        {isEmpty ? (
-          <Box
-            sx={{
-              py: 3.5,
-              px: 2,
-              borderRadius: 2.5,
-              border: '1px dashed',
-              borderColor: alpha(department.colour, 0.35),
-              textAlign: 'center',
-              color: 'text.secondary',
-            }}
-          >
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              No people assigned yet
+      {isEmpty ? null : (
+        <BranchChildren accent={accent}>
+          {head ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <PersonCard
+                person={head}
+                accent={accent}
+                canEdit={canEdit}
+                onDragStart={onPersonDragStart}
+                isLead
+              />
+              {midChildren.length > 0 ? (
+                <BranchChildren accent={accent}>{midChildren}</BranchChildren>
+              ) : null}
+            </Box>
+          ) : midChildren.length > 0 ? (
+            midChildren
+          ) : (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+              No people yet
             </Typography>
-            <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}>
-              This department is reserved for future org growth.
-            </Typography>
-          </Box>
-        ) : (
-          <Stack spacing={2.25}>
-            {(department.leaders.length > 0 || department.staff.length > 0) && (
-              <Box>
-                <Typography
-                  variant="overline"
-                  sx={{ letterSpacing: 1.1, color: 'text.secondary', fontWeight: 700 }}
-                >
-                  {department.code === 'engineering' ? 'Leadership & HQ' : 'Department staff'}
-                </Typography>
-                <Stack direction="row" spacing={1.25} useFlexGap sx={{ flexWrap: 'wrap', mt: 1 }}>
-                  {[...department.leaders, ...department.staff].map((person) => (
-                    <PersonCard
-                      key={person.user_id}
-                      person={person}
-                      accent={department.colour}
-                      canEdit={canEdit}
-                      onDragStart={onPersonDragStart}
-                      isLead={person.is_department_head}
-                    />
-                  ))}
-                </Stack>
-              </Box>
-            )}
-
-            {department.teams.length > 0 ? (
-              <Box>
-                <Typography
-                  variant="overline"
-                  sx={{ letterSpacing: 1.1, color: 'text.secondary', fontWeight: 700 }}
-                >
-                  Delivery teams
-                </Typography>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 2,
-                    mt: 1,
-                  }}
-                >
-                  {department.teams.map((team) => (
-                    <TeamTree
-                      key={team.team_id}
-                      team={team}
-                      canEdit={canEdit}
-                      dropTargetId={dropTargetId}
-                      setDropTargetId={setDropTargetId}
-                      onPersonDragStart={onPersonDragStart}
-                      onDropPerson={onDropPerson}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            ) : null}
-          </Stack>
-        )}
-      </Box>
+          )}
+        </BranchChildren>
+      )}
     </Box>
   );
 }
@@ -713,11 +689,12 @@ export function OrganizationChartPage() {
   const unassigned = chartQuery.data?.unassigned ?? [];
   const legacyTeams = chartQuery.data?.teams ?? [];
   const hasDepartmentView = departments.length > 0;
+  const totalPeople = departments.reduce((sum, row) => sum + row.member_count, 0);
 
   return (
     <Box>
       <PageHeader
-        subtitle="Company departments → leadership → delivery teams. Finance primary homes stay dated for P&L."
+        subtitle="Top-down hierarchy: company → departments → heads → leadership → delivery teams."
         action={
           <Button
             startIcon={<RefreshIcon />}
@@ -742,15 +719,29 @@ export function OrganizationChartPage() {
           borderColor: alpha(theme.palette.primary.main, 0.12),
         }}
       >
-        <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.2 }}>
-          Organization Chart
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 820 }}>
-          {chartQuery.data?.note ??
-            (canEdit
-              ? 'Drop a card on a delivery team, confirm the effective date, then save.'
-              : 'View limited to your division or teams you lead.')}
-        </Typography>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
+        >
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.2 }}>
+              Organization Chart
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 820 }}>
+              {chartQuery.data?.note ??
+                (canEdit
+                  ? 'Drop a card on a delivery team, confirm the effective date, then save.'
+                  : 'View limited to your division or teams you lead.')}
+            </Typography>
+          </Box>
+          {hasDepartmentView ? (
+            <Chip
+              label={`${departments.length} depts · ${totalPeople} people`}
+              sx={{ fontWeight: 700, alignSelf: { xs: 'flex-start', sm: 'center' } }}
+            />
+          ) : null}
+        </Stack>
       </Box>
 
       {chartQuery.isLoading ? (
@@ -767,21 +758,79 @@ export function OrganizationChartPage() {
       ) : (
         <Stack spacing={2.5}>
           {hasDepartmentView ? (
-            departments.map((department) => (
-              <DepartmentPanel
-                key={department.department_id}
-                department={department}
-                canEdit={canEdit}
-                dropTargetId={dropTargetId}
-                setDropTargetId={setDropTargetId}
-                onPersonDragStart={setDragPerson}
-                onDropPerson={handleDropOnTeam}
-              />
-            ))
+            <Box
+              sx={{
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: alpha(theme.palette.background.paper, 0.7),
+                backgroundImage: `radial-gradient(${alpha(theme.palette.primary.main, 0.05)} 1px, transparent 1px)`,
+                backgroundSize: '18px 18px',
+                p: { xs: 2, md: 3 },
+                overflowX: 'auto',
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  minWidth: 'max-content',
+                  mx: 'auto',
+                }}
+              >
+                {/* Company root */}
+                <Box
+                  sx={{
+                    px: 3,
+                    py: 1.35,
+                    borderRadius: 3,
+                    bgcolor: theme.palette.primary.main,
+                    color: theme.palette.primary.contrastText,
+                    boxShadow: `0 12px 28px ${alpha(theme.palette.primary.main, 0.28)}`,
+                    textAlign: 'center',
+                    minWidth: 200,
+                  }}
+                >
+                  <Typography variant="subtitle1" sx={{ fontWeight: 900, letterSpacing: 0.3 }}>
+                    Organization
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                    Departments · Leadership · Teams
+                  </Typography>
+                </Box>
+
+                <Box sx={{ width: 2, height: 22, bgcolor: alpha('#546e7a', 0.45) }} />
+
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'flex-start',
+                    position: 'relative',
+                  }}
+                >
+                  {departments.map((department, index) => (
+                    <DepartmentBranch
+                      key={department.department_id}
+                      department={department}
+                      canEdit={canEdit}
+                      dropTargetId={dropTargetId}
+                      setDropTargetId={setDropTargetId}
+                      onPersonDragStart={setDragPerson}
+                      onDropPerson={handleDropOnTeam}
+                      isFirst={index === 0}
+                      isLast={index === departments.length - 1}
+                      siblingCount={departments.length}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            </Box>
           ) : (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5, justifyContent: 'center' }}>
               {legacyTeams.map((team) => (
-                <TeamTree
+                <TeamBranch
                   key={team.team_id}
                   team={team}
                   canEdit={canEdit}
@@ -789,6 +838,7 @@ export function OrganizationChartPage() {
                   setDropTargetId={setDropTargetId}
                   onPersonDragStart={setDragPerson}
                   onDropPerson={handleDropOnTeam}
+                  accent={team.colour}
                 />
               ))}
             </Box>
@@ -818,6 +868,7 @@ export function OrganizationChartPage() {
                     accent="#78909c"
                     canEdit={canEdit}
                     onDragStart={setDragPerson}
+                    compact
                   />
                 ))}
               </Stack>

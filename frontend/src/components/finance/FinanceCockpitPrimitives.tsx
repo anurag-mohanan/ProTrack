@@ -14,6 +14,25 @@ export function financeMoney(value: unknown, currency = 'INR'): string {
   return `${formatIndianNumber(n)} ${currency}`;
 }
 
+/** Shared list-row chrome for Quotes / Expenses / Commercial panels. */
+export const financeListRowSx = {
+  p: 1.5,
+  borderRadius: `${designTokens.radius.md}px`,
+  border: '1px solid',
+  borderColor: 'divider',
+  bgcolor: 'background.paper',
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 2,
+  flexWrap: 'wrap' as const,
+  alignItems: 'flex-start',
+  transition: 'border-color 120ms ease, background-color 120ms ease',
+  '&:hover': {
+    borderColor: 'primary.light',
+    bgcolor: alpha('#0f766e', 0.02),
+  },
+};
+
 export function FinanceSection({
   title,
   subtitle,

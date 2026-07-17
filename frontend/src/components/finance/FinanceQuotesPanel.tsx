@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -7,6 +7,7 @@ import {
   FormControl,
   FormControlLabel,
   Grid,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
@@ -15,8 +16,9 @@ import {
   Typography,
 } from '@mui/material';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
-import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import RequestQuoteOutlinedIcon from '@mui/icons-material/RequestQuoteOutlined';
+import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
@@ -26,15 +28,16 @@ import {
   IMPORT_FORMAT_LABEL_WITH_CSV,
 } from '../../config/importFormats';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { LoadingState } from '../common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { toFiniteNumber } from '../../utils/format';
-import { designTokens } from '../../theme/designTokens';
 import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
 import { teamQueryParam } from './FinanceTeamFilter';
 import {
   FinanceHeroBanner,
   FinanceSection,
+  financeListRowSx,
   financeMoney,
 } from './FinanceCockpitPrimitives';
 
@@ -89,6 +92,8 @@ type ManualQuoteForm = {
   invoicedDate: string;
 };
 
+type ListFilter = 'all' | 'not_invoiced' | 'missing_date' | 'unlinked' | 'invoiced';
+
 const emptyManual: ManualQuoteForm = {
   customerId: '',
   quoteNumber: '',
@@ -100,28 +105,31 @@ const emptyManual: ManualQuoteForm = {
   invoicedDate: '',
 };
 
-const listRowSx = {
-  p: 1.5,
-  borderRadius: `${designTokens.radius.md}px`,
-  border: '1px solid',
-  borderColor: 'divider',
-  bgcolor: 'background.paper',
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 2,
-  flexWrap: 'wrap' as const,
-  alignItems: 'flex-start',
-};
+function quoteSearchBlob(quote: QuoteRow): string {
+  return [
+    quote.external_quote_number,
+    quote.tool_number,
+    quote.customer_name,
+    quote.team_name,
+    quote.currency_code,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
 
 export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
+  const formRef = useRef<HTMLDivElement | null>(null);
   const [importTeamId, setImportTeamId] = useState(teamId);
   const [createProject, setCreateProject] = useState(true);
   const [manual, setManual] = useState<ManualQuoteForm>(emptyManual);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<QuoteRow | null>(null);
   const [lastImport, setLastImport] = useState<QuoteImportItem[]>([]);
+  const [listFilter, setListFilter] = useState<ListFilter>('all');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (teamId && !editingId) setImportTeamId(teamId);
@@ -134,6 +142,11 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const customersQuery = useQuery({
     queryKey: ['lookup-customers'],
     queryFn: fetchCustomers,
+  });
+  const currenciesQuery = useQuery({
+    queryKey: ['finance-currencies'],
+    queryFn: async () =>
+      (await apiClient.get<Array<{ code: string; name: string }>>('/finance/currencies')).data,
   });
   const listQ = teamQueryParam(teamId);
   const quotesQuery = useQuery({
@@ -216,6 +229,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       isInvoiced: quote.is_invoiced ? 'yes' : 'no',
       invoicedDate: quote.invoiced_date ?? '',
     });
+    window.requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const saveMutation = useMutation({
@@ -288,24 +304,47 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     () => (customersQuery.data ?? []).filter((c) => c.is_active),
     [customersQuery.data],
   );
+  const currencyOptions = useMemo(() => {
+    const rows = currenciesQuery.data ?? [];
+    if (rows.length > 0) return rows;
+    return [
+      { code: 'INR', name: 'Indian Rupee' },
+      { code: 'USD', name: 'US Dollar' },
+      { code: 'EUR', name: 'Euro' },
+    ];
+  }, [currenciesQuery.data]);
+
   const quotes = quotesQuery.data ?? [];
   const quoteStats = useMemo(() => {
-    // Always sum FX-snapshotted base INR — never mix USD/EUR source amounts as "INR".
-    const revenue = quotes.reduce((s, q) => s + toFiniteNumber(q.base_quoted_revenue_inr), 0);
-    const linked = quotes.filter((q) => q.project_linked).length;
+    const invoicedRevenue = quotes
+      .filter((q) => q.is_invoiced)
+      .reduce((s, q) => s + toFiniteNumber(q.base_quoted_revenue_inr), 0);
     const missingDate = quotes.filter((q) => !q.quoted_date).length;
+    const notInvoiced = quotes.filter((q) => !q.is_invoiced).length;
     const currencies = new Set(
       quotes.map((q) => (q.currency_code || 'INR').toUpperCase()).filter(Boolean),
     );
     return {
       count: quotes.length,
-      revenue,
-      linked,
+      invoicedRevenue,
       missingDate,
+      notInvoiced,
       mixedFx: currencies.size > 1,
       currencyCount: currencies.size,
     };
   }, [quotes]);
+
+  const filteredQuotes = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return quotes.filter((quote) => {
+      if (listFilter === 'not_invoiced' && quote.is_invoiced) return false;
+      if (listFilter === 'invoiced' && !quote.is_invoiced) return false;
+      if (listFilter === 'missing_date' && quote.quoted_date) return false;
+      if (listFilter === 'unlinked' && quote.project_linked) return false;
+      if (q && !quoteSearchBlob(quote).includes(q)) return false;
+      return true;
+    });
+  }, [quotes, listFilter, search]);
 
   const canSaveManual =
     Boolean(importTeamId) &&
@@ -315,20 +354,50 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     !saveMutation.isPending;
   const canUpload = Boolean(importTeamId) && !importMutation.isPending && !editingId;
 
+  const toggleFilter = (next: ListFilter) => {
+    setListFilter((prev) => (prev === next ? 'all' : next));
+  };
+
+  if (quotesQuery.isLoading) {
+    return <LoadingState message="Loading awarded quotes…" />;
+  }
+
+  if (quotesQuery.isError) {
+    return (
+      <Typography color="error" variant="body2">
+        {apiErrorMessage(quotesQuery.error, 'Unable to load awarded quotes.')}
+      </Typography>
+    );
+  }
+
   return (
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Revenue / awarded quotes"
-        subtitle="Booked quote revenue for planning — set Quoted date so Annual Plan can place revenue in the correct FY quarter."
+        subtitle="Book awarded quotes for planning. Quoted date places Annual Plan sales; mark Invoiced with invoiced date when revenue is recognized."
         chips={
           <>
             <Chip size="small" label={teamId ? 'Team scope' : 'All teams'} sx={{ fontWeight: 700 }} />
             <Chip size="small" variant="outlined" label={`${quoteStats.count} quotes`} />
+            {quoteStats.notInvoiced > 0 ? (
+              <Chip
+                size="small"
+                color="warning"
+                label={`${quoteStats.notInvoiced} not invoiced`}
+                onClick={() => setListFilter('not_invoiced')}
+              />
+            ) : null}
             {quoteStats.mixedFx ? (
               <Chip size="small" color="info" label="Mixed FX → base INR" />
             ) : null}
             {quoteStats.missingDate > 0 ? (
-              <Chip size="small" color="warning" label={`${quoteStats.missingDate} missing date`} />
+              <Chip
+                size="small"
+                color="warning"
+                variant="outlined"
+                label={`${quoteStats.missingDate} missing date`}
+                onClick={() => setListFilter('missing_date')}
+              />
             ) : null}
           </>
         }
@@ -342,7 +411,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             icon={RequestQuoteOutlinedIcon}
             title="Awarded quotes"
             value={String(quoteStats.count)}
-            subtitle="Listed in scope"
+            subtitle="Click to show all"
+            selected={listFilter === 'all'}
+            onClick={() => setListFilter('all')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -350,213 +421,227 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             compact
             accent="success"
             icon={TrendingUpOutlinedIcon}
-            title="Booked revenue Σ"
-            value={financeMoney(quoteStats.revenue, 'INR')}
+            title="Invoiced revenue Σ"
+            value={financeMoney(quoteStats.invoicedRevenue, 'INR')}
             subtitle={
               quoteStats.mixedFx
-                ? `Base INR · ${quoteStats.currencyCount} currencies FX-converted`
-                : 'Base INR · FX at quote date'
+                ? `Recognized · ${quoteStats.currencyCount} FX currencies`
+                : 'Recognized on invoiced date'
             }
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KpiMetricCard
-            compact
-            accent="info"
-            icon={LinkOutlinedIcon}
-            title="Project-linked"
-            value={String(quoteStats.linked)}
-            subtitle="Of listed quotes"
+            selected={listFilter === 'invoiced'}
+            onClick={() => toggleFilter('invoiced')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KpiMetricCard
             compact
             accent="warning"
+            icon={ReceiptLongOutlinedIcon}
+            title="Not invoiced"
+            value={String(quoteStats.notInvoiced)}
+            subtitle="Awaiting billing"
+            selected={listFilter === 'not_invoiced'}
+            onClick={() => toggleFilter('not_invoiced')}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="info"
             icon={CalendarMonthOutlinedIcon}
             title="Missing quoted date"
             value={String(quoteStats.missingDate)}
             subtitle="Needed for Annual Plan FY"
+            selected={listFilter === 'missing_date'}
+            onClick={() => toggleFilter('missing_date')}
           />
         </Grid>
       </Grid>
 
-      <FinanceSection
-        title={editingId ? 'Edit awarded quote' : 'Add awarded quote'}
-        subtitle={
-          editingId
-            ? 'Update Quote #, Project #, Cost, Customer, Team, and Quoted date, then Save changes.'
-            : 'Enter Quote #, Project # (Customer Project #), Cost, Customer, Team, and Quoted date for Annual Plan sales sync.'
-        }
-      >
-        <Stack spacing={1.5} sx={{ maxWidth: 900 }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
-            <FormControl size="small" sx={{ minWidth: 220 }} required>
-              <InputLabel>Team</InputLabel>
-              <Select
-                label="Team"
-                value={importTeamId}
-                onChange={(e) => setImportTeamId(e.target.value)}
-              >
-                {teams.map((team) => (
-                  <MenuItem key={team.id} value={team.id}>
-                    {team.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 260 }} required>
-              <InputLabel>Customer</InputLabel>
-              <Select
-                label="Customer"
-                value={manual.customerId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  const customer = customers.find((c) => c.id === id);
-                  setManual((prev) => ({
-                    ...prev,
-                    customerId: id,
-                    currencyCode:
-                      prev.currencyCode ||
-                      customer?.default_currency_code?.toUpperCase() ||
-                      '',
-                  }));
-                }}
-              >
-                {customers.map((customer) => (
-                  <MenuItem key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Stack>
+      <Box ref={formRef}>
+        <FinanceSection
+          title={editingId ? 'Edit awarded quote' : 'Add awarded quote'}
+          subtitle={
+            editingId
+              ? 'Update Quote #, Project #, Cost, Customer, Team, Quoted date, and Invoiced status, then Save changes.'
+              : 'Enter Quote #, Project # (Customer Project #), Cost, Customer, Team, and Quoted date for Annual Plan sales sync.'
+          }
+        >
+          <Stack spacing={1.5} sx={{ maxWidth: 960 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: 220 }} required>
+                <InputLabel>Team</InputLabel>
+                <Select
+                  label="Team"
+                  value={importTeamId}
+                  onChange={(e) => setImportTeamId(e.target.value)}
+                >
+                  {teams.map((team) => (
+                    <MenuItem key={team.id} value={team.id}>
+                      {team.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 260 }} required>
+                <InputLabel>Customer</InputLabel>
+                <Select
+                  label="Customer"
+                  value={manual.customerId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    const customer = customers.find((c) => c.id === id);
+                    setManual((prev) => ({
+                      ...prev,
+                      customerId: id,
+                      currencyCode:
+                        prev.currencyCode ||
+                        customer?.default_currency_code?.toUpperCase() ||
+                        '',
+                    }));
+                  }}
+                >
+                  {customers.map((customer) => (
+                    <MenuItem key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
-            <TextField
-              size="small"
-              label="Quote #"
-              placeholder="e.g. QT-2026-27-005"
-              value={manual.quoteNumber}
-              onChange={(e) => setManual({ ...manual, quoteNumber: e.target.value })}
-              sx={{ minWidth: 200, flex: 1 }}
-            />
-            <TextField
-              size="small"
-              required
-              label="Project #"
-              placeholder="Customer Project #"
-              value={manual.projectNumber}
-              onChange={(e) => setManual({ ...manual, projectNumber: e.target.value })}
-              sx={{ minWidth: 160, flex: 1 }}
-            />
-            <TextField
-              size="small"
-              required
-              label="Cost"
-              placeholder="Quoted amount"
-              value={manual.cost}
-              onChange={(e) => setManual({ ...manual, cost: e.target.value })}
-              sx={{ minWidth: 140, flex: 1 }}
-              helperText="Quoted revenue / Total"
-            />
-            <TextField
-              size="small"
-              type="date"
-              label="Quoted date"
-              value={manual.quotedDate}
-              onChange={(e) => setManual({ ...manual, quotedDate: e.target.value })}
-              slotProps={{ inputLabel: { shrink: true } }}
-              sx={{ minWidth: 160 }}
-              helperText="FY quarter for Annual Plan sales"
-            />
-            {editingId ? (
-              <>
-                <FormControl size="small" sx={{ minWidth: 140 }}>
-                  <InputLabel>Invoiced</InputLabel>
-                  <Select
-                    label="Invoiced"
-                    value={manual.isInvoiced}
-                    onChange={(e) =>
-                      setManual({
-                        ...manual,
-                        isInvoiced: e.target.value as 'yes' | 'no',
-                        invoicedDate:
-                          e.target.value === 'yes' && !manual.invoicedDate
-                            ? new Date().toISOString().slice(0, 10)
-                            : manual.invoicedDate,
-                      })
-                    }
-                  >
-                    <MenuItem value="no">No</MenuItem>
-                    <MenuItem value="yes">Yes</MenuItem>
-                  </Select>
-                </FormControl>
-                {manual.isInvoiced === 'yes' ? (
-                  <TextField
-                    size="small"
-                    type="date"
-                    label="Invoiced date"
-                    value={manual.invoicedDate}
-                    onChange={(e) => setManual({ ...manual, invoicedDate: e.target.value })}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ minWidth: 160 }}
-                    helperText="Revenue is recognized on this date"
-                  />
-                ) : null}
-              </>
-            ) : null}
-            <TextField
-              size="small"
-              label="Currency"
-              placeholder="USD / INR"
-              value={manual.currencyCode}
-              onChange={(e) =>
-                setManual({ ...manual, currencyCode: e.target.value.toUpperCase() })
-              }
-              sx={{ minWidth: 110, maxWidth: 140 }}
-            />
-          </Stack>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+              <TextField
+                size="small"
+                label="Quote #"
+                placeholder="e.g. QT-2026-27-005"
+                value={manual.quoteNumber}
+                onChange={(e) => setManual({ ...manual, quoteNumber: e.target.value })}
+                sx={{ minWidth: 200, flex: 1 }}
+              />
+              <TextField
+                size="small"
+                required
+                label="Project #"
+                placeholder="Customer Project #"
+                value={manual.projectNumber}
+                onChange={(e) => setManual({ ...manual, projectNumber: e.target.value })}
+                sx={{ minWidth: 160, flex: 1 }}
+              />
+              <TextField
+                size="small"
+                required
+                label="Cost"
+                placeholder="Quoted amount"
+                value={manual.cost}
+                onChange={(e) => setManual({ ...manual, cost: e.target.value })}
+                sx={{ minWidth: 140, flex: 1 }}
+                helperText="Quoted revenue / Total"
+              />
+              <TextField
+                size="small"
+                type="date"
+                label="Quoted date"
+                value={manual.quotedDate}
+                onChange={(e) => setManual({ ...manual, quotedDate: e.target.value })}
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ minWidth: 160 }}
+                helperText="FY quarter for Annual Plan sales"
+              />
+              {editingId ? (
+                <>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Invoiced</InputLabel>
+                    <Select
+                      label="Invoiced"
+                      value={manual.isInvoiced}
+                      onChange={(e) =>
+                        setManual({
+                          ...manual,
+                          isInvoiced: e.target.value as 'yes' | 'no',
+                          invoicedDate:
+                            e.target.value === 'yes' && !manual.invoicedDate
+                              ? new Date().toISOString().slice(0, 10)
+                              : manual.invoicedDate,
+                        })
+                      }
+                    >
+                      <MenuItem value="no">No</MenuItem>
+                      <MenuItem value="yes">Yes</MenuItem>
+                    </Select>
+                  </FormControl>
+                  {manual.isInvoiced === 'yes' ? (
+                    <TextField
+                      size="small"
+                      type="date"
+                      label="Invoiced date"
+                      value={manual.invoicedDate}
+                      onChange={(e) => setManual({ ...manual, invoicedDate: e.target.value })}
+                      slotProps={{ inputLabel: { shrink: true } }}
+                      sx={{ minWidth: 160 }}
+                      helperText="Revenue is recognized on this date"
+                    />
+                  ) : null}
+                </>
+              ) : null}
+              <FormControl size="small" sx={{ minWidth: 130 }}>
+                <InputLabel>Currency</InputLabel>
+                <Select
+                  label="Currency"
+                  value={manual.currencyCode || ''}
+                  onChange={(e) =>
+                    setManual({ ...manual, currencyCode: String(e.target.value).toUpperCase() })
+                  }
+                >
+                  {currencyOptions.map((currency) => (
+                    <MenuItem key={currency.code} value={currency.code.toUpperCase()}>
+                      {currency.code.toUpperCase()}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
 
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1.5}
-            sx={{ alignItems: 'center' }}
-          >
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={createProject}
-                  onChange={(e) => setCreateProject(e.target.checked)}
-                  size="small"
-                />
-              }
-              label="Create project if missing"
-            />
-            <Button
-              variant="contained"
-              disabled={!canSaveManual}
-              onClick={() => saveMutation.mutate()}
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1.5}
+              sx={{ alignItems: 'center' }}
             >
-              {saveMutation.isPending
-                ? 'Saving…'
-                : editingId
-                  ? 'Save changes'
-                  : 'Save quote'}
-            </Button>
-            {editingId ? (
-              <Button variant="outlined" onClick={cancelEdit}>
-                Cancel
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={createProject}
+                    onChange={(e) => setCreateProject(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label="Create project if missing"
+              />
+              <Button
+                variant="contained"
+                disabled={!canSaveManual}
+                onClick={() => saveMutation.mutate()}
+              >
+                {saveMutation.isPending
+                  ? 'Saving…'
+                  : editingId
+                    ? 'Save changes'
+                    : 'Save quote'}
               </Button>
+              {editingId ? (
+                <Button variant="outlined" onClick={cancelEdit}>
+                  Cancel
+                </Button>
+              ) : null}
+            </Stack>
+            {!importTeamId ? (
+              <Typography variant="caption" color="warning.main">
+                Select a team. All teams is not valid for save/import.
+              </Typography>
             ) : null}
           </Stack>
-          {!importTeamId ? (
-            <Typography variant="caption" color="warning.main">
-              Select a team. All teams is not valid for save/import.
-            </Typography>
-          ) : null}
-        </Stack>
-      </FinanceSection>
+        </FinanceSection>
+      </Box>
 
       {!editingId ? (
         <FinanceSection
@@ -580,10 +665,13 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       ) : null}
 
       {lastImport.length > 0 && !editingId ? (
-        <FinanceSection title="Last save / import" subtitle="Result of the most recent manual save or file upload.">
+        <FinanceSection
+          title="Last save / import"
+          subtitle="Result of the most recent manual save or file upload."
+        >
           <Stack spacing={1.25}>
             {lastImport.map((item) => (
-              <Box key={item.quote_id} sx={listRowSx}>
+              <Box key={item.quote_id} sx={financeListRowSx}>
                 <Box>
                   <Typography sx={{ fontWeight: 600 }}>
                     {item.external_quote_number
@@ -619,18 +707,74 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
 
       <FinanceSection
         title="Awarded quotes"
-        subtitle="Edit or delete booked quotes. Quoted date drives Annual Plan; mark Invoiced Yes with invoiced date when revenue is recognized."
+        subtitle={
+          listFilter === 'all' && !search.trim()
+            ? 'Edit or delete booked quotes. Quoted date drives Annual Plan; Invoiced date recognizes revenue.'
+            : `Showing ${filteredQuotes.length} of ${quotes.length} quotes`
+        }
+        action={
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: 'wrap' }}
+          >
+            <TextField
+              size="small"
+              placeholder="Search quote, project, customer…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ minWidth: { xs: '100%', sm: 220 } }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchOutlinedIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+            <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>
+              <Chip
+                size="small"
+                label="Unlinked"
+                variant={listFilter === 'unlinked' ? 'filled' : 'outlined'}
+                color={listFilter === 'unlinked' ? 'primary' : 'default'}
+                onClick={() => toggleFilter('unlinked')}
+              />
+              {(listFilter !== 'all' || search.trim()) && (
+                <Chip
+                  size="small"
+                  label="Clear"
+                  onClick={() => {
+                    setListFilter('all');
+                    setSearch('');
+                  }}
+                />
+              )}
+            </Stack>
+          </Stack>
+        }
       >
         <Stack spacing={1.25}>
           {quotes.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               No awarded quotes yet — save or import the first one above.
             </Typography>
+          ) : filteredQuotes.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No quotes match this filter. Clear search or filters to see all.
+            </Typography>
           ) : (
-            quotes.map((quote) => (
-              <Box key={quote.id} sx={listRowSx}>
+            filteredQuotes.map((quote) => (
+              <Box key={quote.id} sx={financeListRowSx}>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.5 }}>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    useFlexGap
+                    sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.75 }}
+                  >
                     <Typography sx={{ fontWeight: 600 }}>
                       {quote.external_quote_number
                         ? `${quote.external_quote_number} · ${quote.tool_number}`
@@ -650,19 +794,29 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                       <Chip size="small" color="warning" variant="outlined" label="Not invoiced" />
                     )}
                   </Stack>
-                  <Typography variant="body2" color="text.secondary">
-                    {quote.customer_name ?? 'Customer'} · {quote.team_name ?? 'No team'} ·{' '}
-                    {financeMoney(quote.quoted_revenue, quote.currency_code || 'INR')}
-                    {quote.base_quoted_revenue_inr != null &&
-                    (quote.currency_code || 'INR').toUpperCase() !== 'INR'
-                      ? ` ≈ ${financeMoney(quote.base_quoted_revenue_inr, 'INR')}`
-                      : ''}{' '}
-                    · rev {quote.current_revision}
-                    {quote.quoted_date ? ` · quoted ${quote.quoted_date}` : ''}
-                    {quote.is_invoiced && quote.invoiced_date
-                      ? ` · invoiced ${quote.invoiced_date}`
-                      : ''}
-                  </Typography>
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={{ xs: 0.25, sm: 2 }}
+                    sx={{ flexWrap: 'wrap' }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      {quote.customer_name ?? 'Customer'} · {quote.team_name ?? 'No team'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {financeMoney(quote.quoted_revenue, quote.currency_code || 'INR')}
+                      {quote.base_quoted_revenue_inr != null &&
+                      (quote.currency_code || 'INR').toUpperCase() !== 'INR'
+                        ? ` ≈ ${financeMoney(quote.base_quoted_revenue_inr, 'INR')}`
+                        : ''}
+                      {' · '}rev {quote.current_revision}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {quote.quoted_date ? `Quoted ${quote.quoted_date}` : 'Quoted —'}
+                      {quote.is_invoiced && quote.invoiced_date
+                        ? ` · Invoiced ${quote.invoiced_date}`
+                        : ' · Not invoiced'}
+                    </Typography>
+                  </Stack>
                 </Box>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                   <Button size="small" variant="contained" onClick={() => startEdit(quote)}>

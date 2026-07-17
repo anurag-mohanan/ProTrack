@@ -86,6 +86,8 @@ logger = logging.getLogger(__name__)
 
 class ApplyProjectTemplateRequest(BaseModel):
     project_template_id: UUID | None = None
+    # Quote/shell projects may have no type yet; allow setting it when applying.
+    project_type_id: UUID | None = None
 
 
 def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
@@ -633,10 +635,14 @@ def apply_project_template_endpoint(
             detail="Insufficient permissions",
         )
     if db_project.project_type_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Project type is required before applying a template",
-        )
+        if payload.project_type_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Project type is required before applying a template",
+            )
+        db_project.project_type_id = payload.project_type_id
+        db.add(db_project)
+        db.flush()
     try:
         template = resolve_template(
             db,

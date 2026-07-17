@@ -156,9 +156,11 @@ export async function permanentDeleteProject(projectId: string): Promise<void> {
 export async function applyProjectTemplate(
   projectId: string,
   projectTemplateId?: string,
+  projectTypeId?: string,
 ): Promise<Project> {
   const { data } = await apiClient.post<Project>(`/projects/${projectId}/apply-template`, {
     project_template_id: projectTemplateId ?? null,
+    project_type_id: projectTypeId ?? null,
   });
   return data;
 }

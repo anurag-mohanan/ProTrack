@@ -72,7 +72,7 @@ export function ChangeProjectTemplateDialog({
     }
     setApplying(true);
     try {
-      await applyProjectTemplate(projectId, selectedTemplateId);
+      await applyProjectTemplate(projectId, selectedTemplateId, projectTypeId);
       onApplied();
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Unable to change project template');

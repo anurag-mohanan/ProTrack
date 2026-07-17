@@ -205,7 +205,7 @@ export function ProjectFormDialog({
   const projectTypesQuery = useQuery({
     queryKey: ['project-types'],
     queryFn: fetchProjectTypes,
-    enabled: open && !isEdit,
+    enabled: open,
   });
 
   const workingModelsQuery = useQuery({
@@ -225,7 +225,7 @@ export function ProjectFormDialog({
       open &&
       Boolean(form.customer_id) &&
       Boolean(form.project_type_id) &&
-      (!isEdit || Boolean(project?.can_change_template)),
+      (!isEdit || Boolean(project?.can_change_template !== false)),
   });
 
   useEffect(() => {
@@ -307,6 +307,7 @@ export function ProjectFormDialog({
           surfacer_id: optionalUuid(form.surfacer_id),
           stream_id: optionalUuid(form.stream_id),
           team_id: optionalUuid(form.team_id),
+          project_type_id: optionalUuid(form.project_type_id),
           quoted_hours: form.quoted_hours === '' ? null : Number(form.quoted_hours),
           due_date: optionalString(form.due_date),
           notes: optionalString(form.notes),
@@ -974,6 +975,27 @@ export function ProjectFormDialog({
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormSelect
+                label="Project Type"
+                value={form.project_type_id}
+                helper="Required to choose a project template and generate milestones."
+                options={[
+                  { value: '', label: 'None' },
+                  ...(projectTypesQuery.data ?? []).map((projectType) => ({
+                    value: projectType.id,
+                    label: projectType.name,
+                  })),
+                ]}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    project_type_id: String(event.target.value),
+                    project_template_id: '',
+                  })
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
                 label="Working Model"
                 value={form.working_model_id}
                 options={[
@@ -1073,12 +1095,12 @@ export function ProjectFormDialog({
           </CollapsibleFormSection>
         )}
 
-        {isEdit && project?.project_type_id ? (
+        {isEdit && project ? (
           <CollapsibleFormSection
             sectionId="template-change"
             storageKey={PROJECT_SECTION_STORAGE_KEY}
             title="Project Template"
-            subtitle="Change workflow before milestones are completed"
+            subtitle="Apply or change workflow before milestones are completed"
             icon={TimelineOutlinedIcon}
           >
             <Grid size={{ xs: 12 }}>
@@ -1086,6 +1108,11 @@ export function ProjectFormDialog({
                 Current template:{' '}
                 <strong>{currentTemplateName ?? 'Not set'}</strong>
               </Typography>
+              {!form.project_type_id ? (
+                <Alert severity="info" sx={{ mb: 1.5 }}>
+                  Select a Project Type above, then apply a template to generate milestones.
+                </Alert>
+              ) : null}
               {project.can_change_template === false ? (
                 <Alert severity="info" sx={{ mb: 1.5 }}>
                   {project.template_change_blocked_reason ??
@@ -1094,9 +1121,10 @@ export function ProjectFormDialog({
               ) : null}
               <ProsohmButton
                 buttonVariant="outlined"
+                disabled={!form.project_type_id || project.can_change_template === false}
                 onClick={() => setChangeTemplateOpen(true)}
               >
-                Change Template
+                {project.project_template_id ? 'Change Template' : 'Apply Template'}
               </ProsohmButton>
             </Grid>
           </CollapsibleFormSection>
@@ -1207,12 +1235,12 @@ export function ProjectFormDialog({
       </Box>
     </FormDrawer>
 
-    {isEdit && project?.project_type_id ? (
+    {isEdit && project && form.project_type_id ? (
       <ChangeProjectTemplateDialog
         open={changeTemplateOpen}
         projectId={project.id}
-        customerId={project.customer_id}
-        projectTypeId={project.project_type_id}
+        customerId={form.customer_id || project.customer_id}
+        projectTypeId={form.project_type_id}
         currentTemplateId={project.project_template_id}
         currentTemplateName={currentTemplateName}
         canChangeTemplate={project.can_change_template ?? true}

@@ -113,7 +113,7 @@ export interface ProjectUpdate {
   surfacer_id?: string | null;
   stream_id?: string | null;
   team_id?: string | null;
-  project_type_id?: string;
+  project_type_id?: string | null;
   working_model_id?: string | null;
   code?: string | null;
   quoted_hours?: number | null;

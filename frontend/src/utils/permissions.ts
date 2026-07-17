@@ -16,6 +16,7 @@ import {
   MODULE_DASHBOARD,
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
+  MODULE_PERFORMANCE,
   MODULE_PROJECTS,
   MODULE_REPORTS,
   MODULE_REPORTS_ANALYTICS,
@@ -199,7 +200,7 @@ const NAV_MODULE_CONFIG: Array<{
     icon: CalendarMonthRoundedIcon,
   },
   {
-    module: MODULE_DASHBOARD,
+    module: MODULE_PERFORMANCE,
     label: 'Performance',
     path: '/performance',
     icon: BadgeRoundedIcon,

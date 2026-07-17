@@ -38,6 +38,7 @@ import {
 import { PerformanceReviewHero } from '../components/performanceReview/PerformanceReviewPrimitives';
 import { type ReviewProjectRow } from '../components/performanceReview/PerformanceReviewProjectsPanel';
 import { PerformanceReviewFormDocument } from '../components/performanceReview/PerformanceReviewFormDocument';
+import { PerformanceReviewStageStepper } from '../components/performanceReview/PerformanceReviewStageStepper';
 import {
   currentReviewYear,
   defaultPeriodLabel,
@@ -104,12 +105,20 @@ type Review = {
   career_goals?: string | null;
   submitted_at?: string | null;
   acknowledged_at?: string | null;
+  stage?: string;
+  cycle_kind?: string | null;
+  calibration_required?: boolean;
+  calibration_notes?: string | null;
+  acknowledgement_signature?: string | null;
   sections: ReviewSection[];
   projects?: ReviewProjectRow[];
   review_period_start?: string | null;
   review_period_end?: string | null;
   is_editable: boolean;
   can_acknowledge: boolean;
+  can_submit_self?: boolean;
+  can_submit_manager?: boolean;
+  can_calibrate?: boolean;
 };
 
 type TeamMember = {
@@ -125,6 +134,9 @@ type ReviewCycle = {
   id: string;
   title: string;
   review_year: number;
+  kind?: string;
+  template_id?: string | null;
+  calibration_required?: boolean;
   due_date?: string | null;
   status: string;
 };
@@ -136,6 +148,8 @@ type ReviewTemplate = {
   review_cycle_month?: number;
   review_cycle_note?: string;
   rating_scale: RatingScaleItem[];
+  kind?: string;
+  template_id?: string;
 };
 
 type EditorState = {
@@ -182,7 +196,13 @@ function reviewToEditor(review: Review): EditorState {
   };
 }
 
-export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolean }) {
+export function PerformanceReviewsPage({
+  embedded = false,
+  kind = null,
+}: {
+  embedded?: boolean;
+  kind?: 'annual' | 'quarterly' | null;
+}) {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
@@ -198,8 +218,11 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
   const [deleteTarget, setDeleteTarget] = useState<Review | null>(null);
 
   const templateQuery = useQuery({
-    queryKey: ['performance-reviews', 'template'],
-    queryFn: async () => (await apiClient.get<ReviewTemplate>('/hr/reviews/template')).data,
+    queryKey: ['performance-reviews', 'template', kind || 'annual'],
+    queryFn: async () => {
+      const query = kind ? `?kind=${kind}` : '?kind=annual';
+      return (await apiClient.get<ReviewTemplate>(`/hr/reviews/template${query}`)).data;
+    },
   });
 
   const ratingScale = templateQuery.data?.rating_scale ?? FALLBACK_RATING_SCALE;
@@ -220,9 +243,12 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
   });
 
   const teamReviewsQuery = useQuery({
-    queryKey: ['performance-reviews', 'team', selectedTeamId || 'all'],
+    queryKey: ['performance-reviews', 'team', selectedTeamId || 'all', kind || 'all'],
     queryFn: async () => {
-      const query = selectedTeamId ? `?team_id=${selectedTeamId}` : '';
+      const params = new URLSearchParams();
+      if (selectedTeamId) params.set('team_id', selectedTeamId);
+      if (kind) params.set('kind', kind);
+      const query = params.toString() ? `?${params.toString()}` : '';
       return (await apiClient.get<Review[]>(`/hr/reviews/team${query}`)).data;
     },
     enabled: (teamMembersQuery.data?.length ?? 0) > 0,
@@ -241,6 +267,7 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
           reviewer_id: user?.id,
           team_id: teamIdForCreate,
           cycle_id: selectedCycleId || null,
+          template_id: templateQuery.data?.template_id || null,
           period_label: periodLabel || defaultPeriodLabel(reviewYear),
           review_year: reviewYear,
           due_date: dueDate || null,
@@ -263,6 +290,30 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
       setSelectedReviewId(review.id);
       setEditor(reviewToEditor(review));
       void queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
+    },
+    onError: (error: unknown) => showError(getErrorMessage(error)),
+  });
+
+  const workflowMutation = useMutation({
+    mutationFn: async (payload: {
+      id: string;
+      action: string;
+      acknowledgement_signature?: string;
+      calibration_notes?: string;
+    }) =>
+      (
+        await apiClient.post<Review>(`/hr/reviews/${payload.id}/workflow`, {
+          action: payload.action,
+          acknowledgement_signature: payload.acknowledgement_signature,
+          calibration_notes: payload.calibration_notes,
+        })
+      ).data,
+    onSuccess: (review) => {
+      showSuccess('Review workflow updated');
+      setSelectedReviewId(review.id);
+      setEditor(reviewToEditor(review));
+      void queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
+      void queryClient.invalidateQueries({ queryKey: ['performance', 'dashboard'] });
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
   });
@@ -305,6 +356,12 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
   }, [teamMembers]);
 
+  const filteredCycles = useMemo(() => {
+    const rows = cyclesQuery.data ?? [];
+    if (!kind) return rows;
+    return rows.filter((row) => (row.kind || 'annual') === kind);
+  }, [cyclesQuery.data, kind]);
+
   useEffect(() => {
     // Keep selection only when it still exists in options; default stays All teams ('').
     if (selectedTeamId && !teamOptions.some((team) => team.id === selectedTeamId)) {
@@ -324,8 +381,13 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
 
   const createTeamId = selectedTeamId || selectedMember?.team_id || '';
 
+  const myReviews = useMemo(() => {
+    const rows = myReviewsQuery.data ?? [];
+    if (!kind) return rows;
+    return rows.filter((row) => (row.cycle_kind || 'annual') === kind);
+  }, [myReviewsQuery.data, kind]);
 
-  const currentReviews = tab === 0 ? myReviewsQuery.data ?? [] : teamReviewsQuery.data ?? [];
+  const currentReviews = tab === 0 ? myReviews : teamReviewsQuery.data ?? [];
   const selectedReview =
     currentReviews.find((row) => row.id === selectedReviewId) ?? currentReviews[0] ?? null;
 
@@ -344,13 +406,22 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
 
   const canManageTeamReviews = teamMembers.length > 0;
   const submittedCount = (teamReviewsQuery.data ?? []).filter((row) => row.status !== 'draft').length;
+  const kindLabel = kind === 'quarterly' ? 'Quarterly' : kind === 'annual' ? 'Annual' : 'Performance';
+
+  const runWorkflow = (
+    action: string,
+    extras?: { acknowledgement_signature?: string; calibration_notes?: string },
+  ) => {
+    if (!selectedReview) return;
+    workflowMutation.mutate({ id: selectedReview.id, action, ...extras });
+  };
 
   return (
     <Stack spacing={2.5}>
       {!embedded ? (
         <PageHeader
-          title="Performance Reviews"
-          subtitle="PP-HRD-FO-20 aligned review workspace with competency ratings, achievements, and annual goals."
+          title={`${kindLabel} Reviews`}
+          subtitle="Template-driven review workspace with competency ratings, achievements, and stage workflow."
         />
       ) : null}
 
@@ -360,6 +431,14 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
         periodLabel={selectedReview?.period_label ?? periodLabel}
         status={selectedReview?.status}
       />
+
+      {selectedReview ? (
+        <PerformanceReviewStageStepper
+          review={selectedReview}
+          busy={workflowMutation.isPending}
+          onAction={runWorkflow}
+        />
+      ) : null}
 
       {templateQuery.data?.review_cycle_note ? (
         <Typography variant="body2" color="text.secondary">
@@ -372,7 +451,7 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KpiMetricCard
             title="My Reviews"
-            value={String(myReviewsQuery.data?.length ?? 0)}
+            value={String(myReviews.length)}
             subtitle="Historical review sheets"
             icon={AssessmentOutlinedIcon}
             accent="primary"
@@ -417,11 +496,11 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
           <Grid size={{ xs: 12, md: 4 }}>
             <ReviewListCard
               title="My review history"
-              rows={(myReviewsQuery.data ?? []).map((review) => ({
+              rows={myReviews.map((review) => ({
                 id: review.id,
                 primary: review.period_label,
                 secondary: review.team_name ?? 'Team',
-                status: review.status,
+                status: review.stage || review.status,
                 score: review.overall_score,
               }))}
               selectedId={selectedReviewId}
@@ -456,8 +535,15 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
               importingProjects={importProjectsMutation.isPending}
               onAcknowledge={() =>
                 selectedReview &&
-                updateReviewMutation.mutate({ id: selectedReview.id, body: { acknowledged: true } })
+                runWorkflow('acknowledge', {
+                  acknowledgement_signature:
+                    [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
+                    user?.email ||
+                    'Acknowledged',
+                })
               }
+              onWorkflowAction={runWorkflow}
+              workflowBusy={workflowMutation.isPending}
               saving={updateReviewMutation.isPending}
             />
           </Grid>
@@ -467,7 +553,10 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
       {tab === 1 && canManageTeamReviews ? (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 4 }}>
-            <FinanceSection title="Create team review" subtitle="Launch a new PP-HRD-FO-20 sheet">
+            <FinanceSection
+              title={`Create ${kind === 'quarterly' ? 'quarterly' : 'annual'} review`}
+              subtitle="Launch a sheet from the active template / cycle"
+            >
               <Stack spacing={1.5}>
                 <FormControl size="small" fullWidth>
                   <InputLabel>Team</InputLabel>
@@ -516,7 +605,7 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
                     onChange={(e) => setSelectedCycleId(String(e.target.value))}
                   >
                     <MenuItem value="">No cycle</MenuItem>
-                    {(cyclesQuery.data ?? []).map((cycle) => (
+                    {filteredCycles.map((cycle) => (
                       <MenuItem key={cycle.id} value={cycle.id}>
                         {cycle.title}
                       </MenuItem>
@@ -610,6 +699,8 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
                   : undefined
               }
               importingProjects={importProjectsMutation.isPending}
+              onWorkflowAction={runWorkflow}
+              workflowBusy={workflowMutation.isPending}
             />
           </Grid>
         </Grid>
@@ -720,6 +811,8 @@ function ReviewDetailCard({
   onDeleteRequest,
   onImportProjects,
   importingProjects = false,
+  onWorkflowAction,
+  workflowBusy = false,
   saving,
 }: {
   review: Review | null;
@@ -733,6 +826,11 @@ function ReviewDetailCard({
   onDeleteRequest?: (review: Review) => void;
   onImportProjects?: () => void;
   importingProjects?: boolean;
+  onWorkflowAction?: (
+    action: string,
+    extras?: { acknowledgement_signature?: string; calibration_notes?: string },
+  ) => void;
+  workflowBusy?: boolean;
   saving: boolean;
 }) {
   const formRef = useRef<HTMLDivElement | null>(null);
@@ -769,7 +867,7 @@ function ReviewDetailCard({
             Save Draft
           </Button>
           <Button size="small" variant="contained" disabled={saving} onClick={() => onSave('submitted')}>
-            Submit
+            Submit ratings
           </Button>
         </>
       ) : null}
@@ -778,8 +876,28 @@ function ReviewDetailCard({
           Save My Comments
         </Button>
       ) : null}
+      {review.can_submit_self && onWorkflowAction ? (
+        <Button
+          size="small"
+          variant="contained"
+          disabled={workflowBusy}
+          onClick={() => onWorkflowAction('submit-self')}
+        >
+          Submit self-review
+        </Button>
+      ) : null}
+      {review.can_submit_manager && onWorkflowAction ? (
+        <Button
+          size="small"
+          variant="contained"
+          disabled={workflowBusy}
+          onClick={() => onWorkflowAction('submit-manager')}
+        >
+          Submit manager review
+        </Button>
+      ) : null}
       {!canManage && review.can_acknowledge && onAcknowledge ? (
-        <Button size="small" variant="contained" disabled={saving} onClick={onAcknowledge}>
+        <Button size="small" variant="contained" color="success" disabled={saving || workflowBusy} onClick={onAcknowledge}>
           Acknowledge
         </Button>
       ) : null}

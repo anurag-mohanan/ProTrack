@@ -27,6 +27,33 @@ class PerformanceReviewTemplateSection(BaseModel):
     items: list[PerformanceReviewTemplateItem] = Field(default_factory=list)
 
 
+class PerformanceReviewTemplateCatalogRead(BaseModel):
+    """Stored review template (engine)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    code: str
+    name: str
+    version: int
+    kind: str
+    is_active: bool = True
+    rating_scale: list[PerformanceReviewRatingScaleItem] = Field(default_factory=list)
+    structure: list[PerformanceReviewTemplateSection] = Field(default_factory=list)
+    form_code: str | None = None
+    form_title: str | None = None
+    form_revision: str | None = None
+
+
+class PerformanceReviewTemplateCreate(BaseModel):
+    code: str
+    name: str
+    kind: str = "annual"
+    rating_scale: list[PerformanceReviewRatingScaleItem] = Field(default_factory=list)
+    structure: list[PerformanceReviewTemplateSection] = Field(default_factory=list)
+    version: int = 1
+
+
 class PerformanceReviewTemplateRead(BaseModel):
     form_code: str = "PP-HRD-FO-20"
     form_title: str = "Employee Performance Review"
@@ -38,6 +65,9 @@ class PerformanceReviewTemplateRead(BaseModel):
     )
     rating_scale: list[PerformanceReviewRatingScaleItem] = Field(default_factory=list)
     sections: list[PerformanceReviewTemplateSection] = Field(default_factory=list)
+    template_id: UUID | None = None
+    kind: str = "annual"
+    version: int = 1
 
 
 class PerformanceReviewProjectUpdate(BaseModel):
@@ -124,6 +154,9 @@ class PerformanceReviewSectionUpdate(BaseModel):
 class PerformanceReviewCycleCreate(BaseModel):
     title: str
     review_year: int
+    kind: str = "annual"
+    template_id: UUID | None = None
+    calibration_required: bool = False
     start_date: date | None = None
     end_date: date | None = None
     due_date: date | None = None
@@ -138,11 +171,21 @@ class PerformanceReviewCycleRead(PerformanceReviewCycleCreate):
     is_active: bool = True
 
 
+class PerformanceReviewWorkflowAction(BaseModel):
+    action: str = Field(
+        description="submit-self | submit-manager | calibrate | finalize | acknowledge | reopen"
+    )
+    calibration_notes: str | None = None
+    acknowledgement_signature: str | None = None
+    skip_calibration: bool = False
+
+
 class PerformanceReviewCreate(BaseModel):
     employee_id: UUID
     reviewer_id: UUID | None = None
     team_id: UUID
     cycle_id: UUID | None = None
+    template_id: UUID | None = None
     period_label: str = ""
     review_date: date | None = None
     due_date: date | None = None
@@ -180,6 +223,7 @@ class PerformanceReviewUpdate(BaseModel):
     career_goals: str | None = None
     status: str | None = None
     acknowledged: bool | None = None
+    acknowledgement_signature: str | None = None
     sections: list[PerformanceReviewSectionUpdate] | None = None
     projects: list[PerformanceReviewProjectUpdate] | None = None
     import_suggested_projects: bool | None = None
@@ -248,10 +292,24 @@ class PerformanceReviewRead(BaseModel):
     career_goals: str | None = None
     submitted_at: datetime | None = None
     acknowledged_at: datetime | None = None
+    stage: str = "self"
+    template_id: UUID | None = None
+    template_version: int | None = None
+    cycle_kind: str | None = None
+    calibration_required: bool = False
+    calibration_notes: str | None = None
+    acknowledgement_signature: str | None = None
+    self_submitted_at: datetime | None = None
+    manager_submitted_at: datetime | None = None
+    calibrated_at: datetime | None = None
+    finalized_at: datetime | None = None
     sections: list[PerformanceReviewSectionRead] = Field(default_factory=list)
     projects: list[PerformanceReviewProjectRead] = Field(default_factory=list)
     is_editable: bool = False
     can_acknowledge: bool = False
+    can_submit_self: bool = False
+    can_submit_manager: bool = False
+    can_calibrate: bool = False
 
 
 class PerformanceReviewTeamMemberRead(BaseModel):

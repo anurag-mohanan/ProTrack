@@ -469,6 +469,25 @@ class TeamMembershipPeriod(Base, TimestampMixin):
     team: Mapped[Team] = relationship(foreign_keys=[team_id])
 
 
+class PerformanceReviewTemplate(Base, TimestampMixin):
+    __tablename__ = "performance_review_templates"
+    __table_args__ = (UniqueConstraint("code", "version", name="uq_review_template_code_version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, default="annual")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    rating_scale_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    structure_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+
+
 class PerformanceReviewCycle(Base, TimestampMixin):
     __tablename__ = "performance_review_cycles"
 
@@ -477,6 +496,11 @@ class PerformanceReviewCycle(Base, TimestampMixin):
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     review_year: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, default="annual")
+    template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("performance_review_templates.id"), nullable=True
+    )
+    calibration_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
@@ -489,6 +513,9 @@ class PerformanceReviewCycle(Base, TimestampMixin):
     created_by: Mapped[Optional[User]] = relationship(
         back_populates="performance_review_cycles_created",
         foreign_keys=[created_by_id],
+    )
+    template: Mapped[Optional[PerformanceReviewTemplate]] = relationship(
+        foreign_keys=[template_id]
     )
     sheets: Mapped[list["PerformanceReviewSheet"]] = relationship(
         back_populates="cycle", cascade="all, delete-orphan"
@@ -504,6 +531,10 @@ class PerformanceReviewSheet(Base, TimestampMixin):
     cycle_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("performance_review_cycles.id"), nullable=True
     )
+    template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("performance_review_templates.id"), nullable=True
+    )
+    template_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     employee_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
@@ -515,6 +546,7 @@ class PerformanceReviewSheet(Base, TimestampMixin):
     )
     period_label: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    stage: Mapped[str] = mapped_column(String(32), nullable=False, default="self")
     review_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     overall_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
@@ -529,9 +561,21 @@ class PerformanceReviewSheet(Base, TimestampMixin):
     review_period_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    self_submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    manager_submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    calibrated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    calibrator_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    calibration_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    acknowledgement_signature: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     cycle: Mapped[Optional[PerformanceReviewCycle]] = relationship(back_populates="sheets")
+    template: Mapped[Optional[PerformanceReviewTemplate]] = relationship(
+        foreign_keys=[template_id]
+    )
     employee: Mapped[User] = relationship(
         back_populates="performance_reviews",
         foreign_keys=[employee_id],
@@ -540,6 +584,7 @@ class PerformanceReviewSheet(Base, TimestampMixin):
         back_populates="performance_reviews_authored",
         foreign_keys=[reviewer_id],
     )
+    calibrator: Mapped[Optional[User]] = relationship(foreign_keys=[calibrator_id])
     team: Mapped[Optional[Team]] = relationship(foreign_keys=[team_id])
     sections: Mapped[list["PerformanceReviewSection"]] = relationship(
         back_populates="sheet", cascade="all, delete-orphan"

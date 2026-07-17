@@ -17,8 +17,15 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
-from app.core.access_control import MODULE_HUMAN_RESOURCES
-from app.core.module_actions import MODULE_ACTION_VIEW, user_has_module_action
+from app.core.access_control import MODULE_HUMAN_RESOURCES, MODULE_PERFORMANCE
+from app.core.module_actions import (
+    MODULE_ACTION_EDIT,
+    MODULE_ACTION_EDIT_REVIEWS,
+    MODULE_ACTION_MANAGE_TEMPLATES,
+    MODULE_ACTION_OPEN_CYCLES,
+    MODULE_ACTION_VIEW,
+    user_has_module_action,
+)
 from app.core.permissions import get_role_name
 from app.core.team_access import get_accessible_team_ids, team_member_user_ids
 from app.models.enums import ProjectComplexity, TeamRelationshipType, TimesheetStatus
@@ -28,6 +35,7 @@ from app.models.models import (
     PerformanceReviewProject,
     PerformanceReviewSection,
     PerformanceReviewSheet,
+    PerformanceReviewTemplate,
     Project,
     Team,
     TeamMember,
@@ -45,8 +53,11 @@ from app.schemas.performance_review import (
     PerformanceReviewRead,
     PerformanceReviewSectionRead,
     PerformanceReviewTeamMemberRead,
+    PerformanceReviewTemplateCatalogRead,
+    PerformanceReviewTemplateCreate,
     PerformanceReviewTemplateRead,
     PerformanceReviewUpdate,
+    PerformanceReviewWorkflowAction,
 )
 from app.services.performance_review_service import (
     DEFAULT_REVIEW_TEMPLATE,
@@ -69,6 +80,21 @@ from app.services.performance_review_service import (
     user_can_manage_team_reviews,
     user_can_view_review,
 )
+from app.services.review_engine_service import (
+    STAGE_ACKNOWLEDGED,
+    STAGE_CALIBRATION,
+    STAGE_FINAL,
+    STAGE_MANAGER,
+    STAGE_SELF,
+    advance_sheet_stage,
+    build_performance_dashboard,
+    ensure_default_annual_template,
+    ensure_default_quarterly_template,
+    get_active_template,
+    list_templates,
+    parse_json_list,
+    template_to_dict,
+)
 from app.services.timesheet_compliance_service import get_missing_timesheet_rows
 from app.services.user_team_service import get_user_team_ids
 
@@ -77,6 +103,17 @@ router = APIRouter(prefix="/hr", tags=["human-resources"])
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _require_performance_view(db: Session, user: User) -> None:
+    if not user_has_module_action(
+        user, get_role_name(db, user), MODULE_PERFORMANCE, MODULE_ACTION_VIEW
+    ):
+        raise HTTPException(status_code=403, detail="Performance module access required")
+
+
+def _has_performance_action(db: Session, user: User, action: str) -> bool:
+    return user_has_module_action(user, get_role_name(db, user), MODULE_PERFORMANCE, action)
 
 
 def _require_hr_view(db: Session, user: User) -> None:
@@ -139,6 +176,7 @@ def _review_load_options():
         selectinload(PerformanceReviewSheet.reviewer),
         selectinload(PerformanceReviewSheet.team),
         selectinload(PerformanceReviewSheet.cycle),
+        selectinload(PerformanceReviewSheet.template),
         selectinload(PerformanceReviewSheet.sections).selectinload(
             PerformanceReviewSection.items
         ),
@@ -201,6 +239,8 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
     industry_auto = format_tenure(sheet.employee.first_job_date)
     company_experience = sheet.total_experience or company_auto
     industry_experience = sheet.industry_experience or industry_auto
+    can_manage = bool(can_manage or sheet.reviewer_id == current_user.id)
+    stage = sheet.stage or STAGE_SELF
     return PerformanceReviewRead(
         id=sheet.id,
         cycle_id=sheet.cycle_id,
@@ -235,13 +275,30 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         career_goals=sheet.career_goals,
         submitted_at=sheet.submitted_at,
         acknowledged_at=sheet.acknowledged_at,
+        stage=stage,
+        template_id=sheet.template_id,
+        template_version=sheet.template_version,
+        cycle_kind=sheet.cycle.kind if sheet.cycle is not None else None,
+        calibration_required=bool(sheet.cycle.calibration_required) if sheet.cycle else False,
+        calibration_notes=sheet.calibration_notes,
+        acknowledgement_signature=sheet.acknowledgement_signature,
+        self_submitted_at=sheet.self_submitted_at,
+        manager_submitted_at=sheet.manager_submitted_at,
+        calibrated_at=sheet.calibrated_at,
+        finalized_at=sheet.finalized_at,
         sections=[_build_section_read(section) for section in sorted(sheet.sections, key=lambda row: row.sort_order)],
         projects=[
             PerformanceReviewProjectRead.model_validate(project)
             for project in sorted(sheet.projects, key=lambda row: row.sort_order)
         ],
-        is_editable=bool(can_manage or sheet.reviewer_id == current_user.id),
-        can_acknowledge=bool(is_self and sheet.status == "submitted"),
+        is_editable=bool(
+            (can_manage and stage in (STAGE_MANAGER, STAGE_CALIBRATION, STAGE_FINAL))
+            or (is_self and stage == STAGE_SELF)
+        ),
+        can_acknowledge=bool(is_self and stage == STAGE_FINAL and sheet.status == "submitted"),
+        can_submit_self=bool(is_self and stage == STAGE_SELF),
+        can_submit_manager=bool(can_manage and stage == STAGE_MANAGER),
+        can_calibrate=bool(can_manage and stage == STAGE_CALIBRATION),
     )
 
 
@@ -297,8 +354,9 @@ def _apply_employee_project_updates(sheet: PerformanceReviewSheet, projects: lis
             project.contribution_summary = project_row.contribution_summary
 
 
-def _seed_sections(sheet: PerformanceReviewSheet) -> None:
-    for section_index, section_row in enumerate(DEFAULT_REVIEW_TEMPLATE):
+def _seed_sections(sheet: PerformanceReviewSheet, structure: list | None = None) -> None:
+    template_rows = structure if structure is not None else DEFAULT_REVIEW_TEMPLATE
+    for section_index, section_row in enumerate(template_rows):
         section = PerformanceReviewSection(
             sheet=sheet,
             title=str(section_row["title"]),
@@ -368,16 +426,145 @@ def _apply_employee_section_updates(sheet: PerformanceReviewSheet, sections: lis
 
 @router.get("/reviews/template", response_model=PerformanceReviewTemplateRead)
 def performance_review_template(
+    kind: str | None = Query(default="annual"),
+    template_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_default_annual_template(db)
+    ensure_default_quarterly_template(db)
+    db.commit()
+    tmpl = None
+    if template_id is not None:
+        tmpl = db.get(PerformanceReviewTemplate, template_id)
+    elif kind:
+        tmpl = get_active_template(db, kind=kind)
+    if tmpl is None:
+        return PerformanceReviewTemplateRead(
+            form_code=FORM_CODE,
+            form_title=FORM_TITLE,
+            form_revision=FORM_REVISION,
+            review_cycle_month=REVIEW_CYCLE_MONTH,
+            rating_scale=RATING_SCALE,
+            sections=PP_HRD_FO_20_TEMPLATE,
+            kind="annual",
+            version=1,
+        )
+    data = template_to_dict(tmpl)
     return PerformanceReviewTemplateRead(
-        form_code=FORM_CODE,
-        form_title=FORM_TITLE,
-        form_revision=FORM_REVISION,
+        form_code=data["code"],
+        form_title=data["name"],
+        form_revision=data["form_revision"],
         review_cycle_month=REVIEW_CYCLE_MONTH,
-        rating_scale=RATING_SCALE,
-        sections=PP_HRD_FO_20_TEMPLATE,
+        rating_scale=data["rating_scale"],
+        sections=data["structure"],
+        template_id=tmpl.id,
+        kind=tmpl.kind,
+        version=tmpl.version,
     )
+
+
+@router.get("/performance/templates", response_model=list[PerformanceReviewTemplateCatalogRead])
+def list_performance_templates(
+    kind: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_performance_view(db, current_user)
+    rows = list_templates(db, kind=kind)
+    out: list[PerformanceReviewTemplateCatalogRead] = []
+    for row in rows:
+        data = template_to_dict(row)
+        out.append(
+            PerformanceReviewTemplateCatalogRead(
+                id=row.id,
+                code=row.code,
+                name=row.name,
+                version=row.version,
+                kind=row.kind,
+                is_active=row.is_active,
+                rating_scale=data["rating_scale"],
+                structure=data["structure"],
+                form_code=row.code,
+                form_title=row.name,
+                form_revision=f"v{row.version}",
+            )
+        )
+    db.commit()
+    return out
+
+
+@router.post("/performance/templates", response_model=PerformanceReviewTemplateCatalogRead)
+def create_performance_template(
+    payload: PerformanceReviewTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not _has_performance_action(db, current_user, MODULE_ACTION_MANAGE_TEMPLATES):
+        raise HTTPException(status_code=403, detail="Template management access required")
+    import json
+
+    row = PerformanceReviewTemplate(
+        code=payload.code.strip(),
+        name=payload.name.strip(),
+        version=payload.version,
+        kind=payload.kind,
+        is_active=True,
+        rating_scale_json=json.dumps([item.model_dump() for item in payload.rating_scale] or RATING_SCALE),
+        structure_json=json.dumps([section.model_dump() for section in payload.structure]),
+        created_by_id=current_user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    data = template_to_dict(row)
+    return PerformanceReviewTemplateCatalogRead(
+        id=row.id,
+        code=row.code,
+        name=row.name,
+        version=row.version,
+        kind=row.kind,
+        is_active=row.is_active,
+        rating_scale=data["rating_scale"],
+        structure=data["structure"],
+        form_code=row.code,
+        form_title=row.name,
+        form_revision=f"v{row.version}",
+    )
+
+
+@router.get("/performance/dashboard")
+def performance_dashboard(
+    user_id: UUID | None = Query(default=None),
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_performance_view(db, current_user)
+    subject_id = user_id or current_user.id
+    subject = db.get(User, subject_id)
+    if subject is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if subject.id != current_user.id:
+        # Managers/HR can view team members
+        managed = _managed_team_ids(db, current_user)
+        member_ids = team_member_user_ids(db, managed) if managed else set()
+        if subject.id not in member_ids and not (
+            _has_performance_action(db, current_user, MODULE_ACTION_EDIT_REVIEWS)
+            or user_has_module_action(
+                current_user,
+                get_role_name(db, current_user),
+                MODULE_HUMAN_RESOURCES,
+                MODULE_ACTION_VIEW,
+            )
+        ):
+            raise HTTPException(status_code=403, detail="Performance dashboard access denied")
+    ensure_default_annual_template(db)
+    payload = build_performance_dashboard(
+        db, subject=subject, viewer=current_user, team_id=team_id
+    )
+    db.commit()
+    return payload
 
 
 @router.get("/reviews/suggested-projects", response_model=list[PerformanceReviewProjectSuggestionRead])
@@ -642,23 +829,110 @@ def create_review_cycle(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not user_has_module_action(
-        current_user,
-        get_role_name(db, current_user),
-        MODULE_HUMAN_RESOURCES,
-        MODULE_ACTION_EDIT,
-    ):
-        raise HTTPException(status_code=403, detail="HR edit access required")
+    _require_cycle_admin(db, current_user)
+    kind = (payload.kind or "annual").strip().lower()
+    if kind not in ("annual", "quarterly"):
+        raise HTTPException(status_code=400, detail="kind must be annual or quarterly")
+    ensure_default_annual_template(db)
+    ensure_default_quarterly_template(db)
+    template_id = payload.template_id
+    if template_id is None:
+        default_tmpl = (
+            ensure_default_annual_template(db)
+            if kind == "annual"
+            else ensure_default_quarterly_template(db)
+        )
+        template_id = default_tmpl.id
+    else:
+        tmpl = db.get(PerformanceReviewTemplate, template_id)
+        if tmpl is None:
+            raise HTTPException(status_code=404, detail="Review template not found")
     cycle = PerformanceReviewCycle(
         title=payload.title,
         review_year=payload.review_year,
+        kind=kind,
+        template_id=template_id,
+        calibration_required=bool(payload.calibration_required),
         start_date=payload.start_date,
         end_date=payload.end_date,
         due_date=payload.due_date,
-        status=payload.status,
+        status=payload.status or "draft",
         created_by_id=current_user.id,
         is_active=True,
     )
+    db.add(cycle)
+    db.commit()
+    db.refresh(cycle)
+    return cycle
+
+
+def _get_cycle_or_404(db: Session, cycle_id: UUID) -> PerformanceReviewCycle:
+    cycle = db.get(PerformanceReviewCycle, cycle_id)
+    if cycle is None or not cycle.is_active:
+        raise HTTPException(status_code=404, detail="Review cycle not found")
+    return cycle
+
+
+def _require_cycle_admin(db: Session, user: User) -> None:
+    if not (
+        _has_performance_action(db, user, MODULE_ACTION_OPEN_CYCLES)
+        or user_has_module_action(
+            user,
+            get_role_name(db, user),
+            MODULE_HUMAN_RESOURCES,
+            MODULE_ACTION_EDIT,
+        )
+    ):
+        raise HTTPException(status_code=403, detail="Cycle administration access required")
+
+
+@router.post("/review-cycles/{cycle_id}/open", response_model=PerformanceReviewCycleRead)
+def open_review_cycle(
+    cycle_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_cycle_admin(db, current_user)
+    cycle = _get_cycle_or_404(db, cycle_id)
+    if cycle.status not in ("draft", "open"):
+        raise HTTPException(status_code=400, detail="Only draft cycles can be opened")
+    cycle.status = "open"
+    db.add(cycle)
+    db.commit()
+    db.refresh(cycle)
+    return cycle
+
+
+@router.post("/review-cycles/{cycle_id}/start-calibration", response_model=PerformanceReviewCycleRead)
+def start_cycle_calibration(
+    cycle_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_cycle_admin(db, current_user)
+    cycle = _get_cycle_or_404(db, cycle_id)
+    if not cycle.calibration_required:
+        raise HTTPException(status_code=400, detail="Calibration is not required for this cycle")
+    if cycle.status not in ("open", "in_calibration"):
+        raise HTTPException(status_code=400, detail="Cycle must be open before calibration")
+    cycle.status = "in_calibration"
+    db.add(cycle)
+    db.commit()
+    db.refresh(cycle)
+    return cycle
+
+
+@router.post("/review-cycles/{cycle_id}/close", response_model=PerformanceReviewCycleRead)
+def close_review_cycle(
+    cycle_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_cycle_admin(db, current_user)
+    cycle = _get_cycle_or_404(db, cycle_id)
+    if cycle.status == "closed":
+        return cycle
+    cycle.status = "closed"
     db.add(cycle)
     db.commit()
     db.refresh(cycle)
@@ -743,6 +1017,7 @@ def review_team_members(
 @router.get("/reviews/team", response_model=list[PerformanceReviewRead])
 def team_performance_reviews(
     team_id: UUID | None = None,
+    kind: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -755,7 +1030,7 @@ def team_performance_reviews(
         allowed = managed_ids
     if not allowed:
         return []
-    rows = db.scalars(
+    stmt = (
         select(PerformanceReviewSheet)
         .options(*_review_load_options())
         .where(
@@ -763,7 +1038,16 @@ def team_performance_reviews(
             PerformanceReviewSheet.is_active.is_(True),
         )
         .order_by(PerformanceReviewSheet.created_at.desc())
-    ).all()
+    )
+    rows = list(db.scalars(stmt).all())
+    if kind:
+        kind_norm = kind.strip().lower()
+        rows = [
+            row
+            for row in rows
+            if (row.cycle.kind if row.cycle is not None else "annual") == kind_norm
+            or (row.template is not None and row.template.kind == kind_norm)
+        ]
     return [_review_to_read(db, row, current_user) for row in rows]
 
 
@@ -800,6 +1084,19 @@ def create_performance_review(
     if reviewer is None:
         raise HTTPException(status_code=404, detail="Reviewer not found")
 
+    ensure_default_annual_template(db)
+    ensure_default_quarterly_template(db)
+
+    cycle = db.get(PerformanceReviewCycle, payload.cycle_id) if payload.cycle_id else None
+    tmpl = None
+    if payload.template_id is not None:
+        tmpl = db.get(PerformanceReviewTemplate, payload.template_id)
+    elif cycle is not None and cycle.template_id is not None:
+        tmpl = db.get(PerformanceReviewTemplate, cycle.template_id)
+    if tmpl is None:
+        kind = cycle.kind if cycle is not None else "annual"
+        tmpl = get_active_template(db, kind=kind) or ensure_default_annual_template(db)
+
     review_year = payload.review_year or current_review_year()
     period_start, period_end = review_period_bounds(review_year)
     period_label = payload.period_label or default_period_label(review_year)
@@ -809,11 +1106,18 @@ def create_performance_review(
     total_experience = payload.total_experience or company_auto
     industry_experience = payload.industry_experience or industry_auto
 
+    initial_stage = STAGE_SELF
+    if payload.status == "submitted":
+        initial_stage = STAGE_MANAGER
+
     sheet = PerformanceReviewSheet(
         cycle_id=payload.cycle_id,
         employee_id=payload.employee_id,
         reviewer_id=reviewer.id,
         team_id=payload.team_id,
+        template_id=tmpl.id if tmpl is not None else None,
+        template_version=tmpl.version if tmpl is not None else None,
+        stage=initial_stage,
         period_label=period_label,
         status=payload.status,
         review_date=payload.review_date,
@@ -830,10 +1134,11 @@ def create_performance_review(
         career_goals=payload.career_goals,
         is_active=True,
     )
+    structure = parse_json_list(tmpl.structure_json) if tmpl is not None else None
     if payload.sections:
         _apply_manager_sections(sheet, payload.sections)
     else:
-        _seed_sections(sheet)
+        _seed_sections(sheet, structure)
         sheet.overall_score = sheet_overall_score(sheet)
     if payload.projects:
         _apply_projects(sheet, payload.projects, db)
@@ -846,6 +1151,7 @@ def create_performance_review(
         )
     if sheet.status == "submitted":
         sheet.submitted_at = _utcnow()
+        sheet.manager_submitted_at = sheet.submitted_at
     db.add(sheet)
     db.commit()
     db.refresh(sheet)
@@ -950,6 +1256,11 @@ def update_performance_review(
                 next_order += 1
         if payload.status == "submitted":
             sheet.submitted_at = _utcnow()
+            if (sheet.stage or STAGE_SELF) in (STAGE_SELF, STAGE_MANAGER, STAGE_CALIBRATION):
+                sheet.stage = STAGE_FINAL
+                sheet.finalized_at = sheet.submitted_at
+                if sheet.manager_submitted_at is None:
+                    sheet.manager_submitted_at = sheet.submitted_at
     else:
         if payload.employee_summary is not None:
             sheet.employee_summary = payload.employee_summary
@@ -960,12 +1271,87 @@ def update_performance_review(
         if payload.projects is not None:
             _apply_employee_project_updates(sheet, payload.projects)
         if payload.acknowledged:
-            sheet.status = "acknowledged"
-            sheet.acknowledged_at = _utcnow()
+            # Legacy path: allow acknowledge when manager already submitted
+            if (sheet.stage or STAGE_SELF) not in (STAGE_FINAL, STAGE_ACKNOWLEDGED) and sheet.status == "submitted":
+                sheet.stage = STAGE_FINAL
+                sheet.finalized_at = sheet.finalized_at or _utcnow()
+            try:
+                advance_sheet_stage(
+                    sheet,
+                    action="acknowledge",
+                    actor=current_user,
+                    acknowledgement_signature=payload.acknowledgement_signature,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     db.add(sheet)
     db.commit()
     db.refresh(sheet)
+    sheet = db.scalar(
+        select(PerformanceReviewSheet)
+        .options(*_review_load_options())
+        .where(PerformanceReviewSheet.id == review_id)
+    )
+    assert sheet is not None
+    return _review_to_read(db, sheet, current_user)
+
+
+@router.post("/reviews/{review_id}/workflow", response_model=PerformanceReviewRead)
+def performance_review_workflow(
+    review_id: UUID,
+    payload: PerformanceReviewWorkflowAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sheet = db.scalar(
+        select(PerformanceReviewSheet)
+        .options(*_review_load_options())
+        .where(PerformanceReviewSheet.id == review_id, PerformanceReviewSheet.is_active.is_(True))
+    )
+    if sheet is None:
+        raise HTTPException(status_code=404, detail="Performance review not found")
+
+    can_manage = sheet.team_id is not None and user_can_manage_team_reviews(
+        db, current_user, sheet.team_id
+    )
+    can_manage = bool(can_manage or sheet.reviewer_id == current_user.id)
+    is_self = sheet.employee_id == current_user.id
+    action = payload.action.strip().lower()
+
+    if action == "submit-self" and not is_self:
+        raise HTTPException(status_code=403, detail="Only the employee can submit self-review")
+    if action in ("submit-manager", "calibrate", "finalize", "reopen") and not can_manage:
+        if action == "reopen":
+            if not user_has_module_action(
+                current_user,
+                get_role_name(db, current_user),
+                MODULE_HUMAN_RESOURCES,
+                MODULE_ACTION_EDIT,
+            ):
+                raise HTTPException(status_code=403, detail="Reopen requires manager or HR access")
+        else:
+            raise HTTPException(status_code=403, detail="Manager access required for this action")
+    if action == "acknowledge" and not is_self:
+        raise HTTPException(status_code=403, detail="Only the employee can acknowledge")
+
+    try:
+        advance_sheet_stage(
+            sheet,
+            action=action,
+            actor=current_user,
+            calibration_notes=payload.calibration_notes,
+            acknowledgement_signature=payload.acknowledgement_signature,
+            skip_calibration=payload.skip_calibration,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if action in ("submit-manager", "calibrate", "finalize"):
+        sheet.overall_score = sheet_overall_score(sheet)
+
+    db.add(sheet)
+    db.commit()
     sheet = db.scalar(
         select(PerformanceReviewSheet)
         .options(*_review_load_options())

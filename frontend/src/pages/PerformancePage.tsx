@@ -3,19 +3,37 @@ import { Box, Tab, Tabs, Typography } from '@mui/material';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamSkillMatrixPanel } from '../components/performance/TeamSkillMatrixPanel';
+import { PerformanceDashboardPanel } from '../components/performance/PerformanceDashboardPanel';
+import { PerformanceTemplatesCyclesPanel } from '../components/performance/PerformanceTemplatesCyclesPanel';
+import { PerformanceAnalyticsPanel } from '../components/performance/PerformanceAnalyticsPanel';
 import { PerformanceReviewsPage } from './PerformanceReviewsPage';
 import { useAuth } from '../context/AuthContext';
 import { hasRole, ROLES } from '../utils/permissions';
 
-function tabFromSearch(value: string | null): number {
-  if (value === 'reviews' || value === 'history') return 1;
-  return 0;
+const SECTIONS = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'quarterly', label: 'Quarterly Reviews' },
+  { id: 'annual', label: 'Annual Reviews' },
+  { id: 'skills', label: 'Skills Matrix' },
+  { id: 'templates', label: 'Templates & Cycles' },
+  { id: 'analytics', label: 'Analytics' },
+] as const;
+
+type SectionId = (typeof SECTIONS)[number]['id'];
+
+function sectionFromSearch(value: string | null): SectionId {
+  if (value === 'reviews' || value === 'history') return 'annual';
+  if (value === 'skills') return 'skills';
+  if (SECTIONS.some((row) => row.id === value)) return value as SectionId;
+  return 'dashboard';
 }
 
 export function PerformancePage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState(() => tabFromSearch(searchParams.get('tab')));
+  const [section, setSection] = useState<SectionId>(() =>
+    sectionFromSearch(searchParams.get('section') || searchParams.get('tab')),
+  );
 
   const canManage = useMemo(() => {
     const role = user?.role_name ?? '';
@@ -29,27 +47,44 @@ export function PerformancePage() {
     );
   }, [user?.role_name]);
 
+  const setSectionAndUrl = (next: SectionId) => {
+    setSection(next);
+    setSearchParams({ section: next });
+  };
+
   return (
     <Box>
-      <PageHeader subtitle="Team skillset charts, annual reviews, and individual performance history — one place for capability and growth." />
+      <PageHeader subtitle="Review engine, skills matrix, and employee performance insights — one hub for capability and growth." />
 
       <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
         Performance
       </Typography>
 
       <Tabs
-        value={tab}
-        onChange={(_, next) => {
-          setTab(next);
-          setSearchParams(next === 1 ? { tab: 'reviews' } : { tab: 'skills' });
-        }}
+        value={SECTIONS.findIndex((row) => row.id === section)}
+        onChange={(_, index) => setSectionAndUrl(SECTIONS[index].id)}
+        variant="scrollable"
+        scrollButtons="auto"
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
-        <Tab label="Skillset chart" />
-        <Tab label="Reviews & history" />
+        {SECTIONS.map((row) => (
+          <Tab key={row.id} label={row.label} />
+        ))}
       </Tabs>
 
-      {tab === 0 ? (
+      {section === 'dashboard' ? (
+        <PerformanceDashboardPanel
+          onOpenReview={() => setSectionAndUrl('annual')}
+        />
+      ) : null}
+
+      {section === 'quarterly' ? (
+        <PerformanceReviewsPage embedded kind="quarterly" />
+      ) : null}
+
+      {section === 'annual' ? <PerformanceReviewsPage embedded kind="annual" /> : null}
+
+      {section === 'skills' ? (
         <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: { xs: 1.5, md: 2 } }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
             Proficiency uses a four-level industry scale (Learning / Developing / Proficient /
@@ -58,9 +93,13 @@ export function PerformancePage() {
           </Typography>
           <TeamSkillMatrixPanel canManage={canManage} />
         </Box>
-      ) : (
-        <PerformanceReviewsPage embedded />
-      )}
+      ) : null}
+
+      {section === 'templates' ? (
+        <PerformanceTemplatesCyclesPanel canManage={canManage} />
+      ) : null}
+
+      {section === 'analytics' ? <PerformanceAnalyticsPanel /> : null}
     </Box>
   );
 }

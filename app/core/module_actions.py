@@ -13,6 +13,10 @@ MODULE_ACTION_DELETE = "delete"
 MODULE_ACTION_APPROVE = "approve"
 MODULE_ACTION_EXPORT = "export"
 MODULE_ACTION_CONFIGURE = "configure"
+MODULE_ACTION_EDIT_REVIEWS = "edit_reviews"
+MODULE_ACTION_MANAGE_TEMPLATES = "manage_templates"
+MODULE_ACTION_CALIBRATE = "calibrate"
+MODULE_ACTION_OPEN_CYCLES = "open_cycles"
 
 ALL_MODULE_ACTIONS: tuple[str, ...] = (
     MODULE_ACTION_VIEW,
@@ -22,6 +26,10 @@ ALL_MODULE_ACTIONS: tuple[str, ...] = (
     MODULE_ACTION_APPROVE,
     MODULE_ACTION_EXPORT,
     MODULE_ACTION_CONFIGURE,
+    MODULE_ACTION_EDIT_REVIEWS,
+    MODULE_ACTION_MANAGE_TEMPLATES,
+    MODULE_ACTION_CALIBRATE,
+    MODULE_ACTION_OPEN_CYCLES,
 )
 
 
@@ -63,26 +71,48 @@ def default_module_actions_for_role(role_name: str, modules: list[str]) -> dict[
     """Full action set for Admin; CRUD+approve+export for EM finance; view elsewhere."""
     from app.core.access_control import (
         ADMIN,
+        DESIGN_LEADER,
         ENGINEERING_MANAGER,
+        HR,
         MODULE_FINANCIAL_PLANNING,
         MODULE_HUMAN_RESOURCES,
+        MODULE_PERFORMANCE,
         MODULE_REPORTS_ANALYTICS,
         MODULE_SYSTEM_ADMINISTRATION,
+        OFFICE_ADMINISTRATOR,
         normalize_role_name,
     )
 
     normalized = normalize_role_name(role_name)
     full = list(ALL_MODULE_ACTIONS)
+    performance_manager = [
+        MODULE_ACTION_VIEW,
+        MODULE_ACTION_EDIT_REVIEWS,
+        MODULE_ACTION_CALIBRATE,
+        MODULE_ACTION_OPEN_CYCLES,
+    ]
+    performance_hr = [
+        *performance_manager,
+        MODULE_ACTION_MANAGE_TEMPLATES,
+        MODULE_ACTION_CONFIGURE,
+    ]
     result: dict[str, list[str]] = {}
     for module in modules:
         if normalized == ADMIN:
             result[module] = full
+        elif module == MODULE_PERFORMANCE:
+            if normalized in {ADMIN, HR, OFFICE_ADMINISTRATOR}:
+                result[module] = performance_hr
+            elif normalized in {ENGINEERING_MANAGER, DESIGN_LEADER}:
+                result[module] = performance_manager
+            else:
+                result[module] = [MODULE_ACTION_VIEW]
         elif normalized == ENGINEERING_MANAGER and module == MODULE_FINANCIAL_PLANNING:
             result[module] = full
         elif module == MODULE_SYSTEM_ADMINISTRATION and normalized == ADMIN:
             result[module] = full
         elif module in {MODULE_HUMAN_RESOURCES, MODULE_REPORTS_ANALYTICS}:
-            if normalized in {ADMIN, "HR", "Office Administrator", ENGINEERING_MANAGER}:
+            if normalized in {ADMIN, HR, OFFICE_ADMINISTRATOR, ENGINEERING_MANAGER}:
                 result[module] = [MODULE_ACTION_VIEW, MODULE_ACTION_EXPORT]
             else:
                 result[module] = [MODULE_ACTION_VIEW]

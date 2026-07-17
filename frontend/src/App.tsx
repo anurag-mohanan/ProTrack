@@ -42,6 +42,7 @@ import {
   MODULE_ARCHIVED_PROJECTS,
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
+  MODULE_PERFORMANCE,
   MODULE_PLANNING_BOARD,
   MODULE_CALENDAR,
   MODULE_PROJECTS,
@@ -260,15 +261,17 @@ export default function App() {
                     <Route element={<RoleRoute allowed={canViewWorkload} />}>
                       <Route path="/workload" element={<WorkloadPage />} />
                     </Route>
-                    <Route
-                      path="/performance"
-                      element={
-                        <Suspense fallback={<LoadingState message="Loading performance…" />}>
-                          <PerformancePage />
-                        </Suspense>
-                      }
-                    />
-                    <Route path="/performance-reviews" element={<Navigate to="/performance?tab=reviews" replace />} />
+                    <Route element={<ModuleRoute module={MODULE_PERFORMANCE} />}>
+                      <Route
+                        path="/performance"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading performance…" />}>
+                            <PerformancePage />
+                          </Suspense>
+                        }
+                      />
+                    </Route>
+                    <Route path="/performance-reviews" element={<Navigate to="/performance?section=annual" replace />} />
                     <Route element={<RoleRoute allowed={canViewOrganizationChart} />}>
                       <Route
                         path="/organization"

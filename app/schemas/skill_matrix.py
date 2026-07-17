@@ -26,6 +26,8 @@ class SkillMatrixPersonRead(BaseModel):
     role: str | None = None
     primary_tool: str | None = None
     work_function: str | None = None
+    team_id: UUID | None = None
+    team_name: str | None = None
     stream_id: UUID | None = None
     stream_name: str | None = None
     company_experience: str | None = None
@@ -36,7 +38,7 @@ class SkillMatrixPersonRead(BaseModel):
 
 
 class SkillMatrixRead(BaseModel):
-    team_id: UUID
+    team_id: UUID | None = None
     stream_id: UUID | None = None
     stream_name: str | None = None
     title: str

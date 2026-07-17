@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.enums import SkillProficiency
-from app.models.models import Stream, StreamSkill, TeamMember, User, UserSkillRating
+from app.models.models import Stream, StreamSkill, Team, TeamMember, User, UserSkillRating
 from app.services.performance_review_service import format_tenure
 
 # Excel PP skill chart for mold design (industry-aligned 4-level scale).
@@ -107,20 +107,68 @@ def ensure_stream_skills(db: Session, stream: Stream) -> list[StreamSkill]:
 def build_team_skill_matrix(
     db: Session,
     *,
-    team_id: UUID,
+    team_id: UUID | None = None,
+    team_ids: list[UUID] | None = None,
     stream_id: UUID | None = None,
 ) -> dict[str, Any]:
+    scope_ids: list[UUID]
+    if team_id is not None:
+        scope_ids = [team_id]
+    elif team_ids:
+        scope_ids = list(team_ids)
+    else:
+        scope_ids = []
+
+    if not scope_ids:
+        return {
+            "team_id": None,
+            "stream_id": stream_id,
+            "stream_name": None,
+            "title": "Team skill matrix",
+            "proficiency_scale": PROFICIENCY_META,
+            "skills": [],
+            "people": [],
+        }
+
     members = db.scalars(
         select(User)
         .join(TeamMember, TeamMember.user_id == User.id)
         .options(selectinload(User.stream), selectinload(User.role))
         .where(
-            TeamMember.team_id == team_id,
+            TeamMember.team_id.in_(scope_ids),
             User.is_active.is_(True),
             User.is_deleted.is_(False),
         )
         .order_by(User.first_name, User.last_name)
     ).all()
+
+    # De-dupe users who belong to multiple teams in the All-teams scope.
+    unique_members: list[User] = []
+    seen_users: set[UUID] = set()
+    for member in members:
+        if member.id in seen_users:
+            continue
+        seen_users.add(member.id)
+        unique_members.append(member)
+    members = unique_members
+
+    # Prefer primary membership team name when a user sits on multiple teams in scope.
+    team_name_by_id = {
+        row.id: row.name
+        for row in db.scalars(select(Team).where(Team.id.in_(scope_ids))).all()
+    }
+    preferred_team_by_user: dict[UUID, UUID] = {}
+    if members:
+        memberships = db.scalars(
+            select(TeamMember).where(
+                TeamMember.team_id.in_(scope_ids),
+                TeamMember.user_id.in_([row.id for row in members]),
+            )
+        ).all()
+        for membership in memberships:
+            current = preferred_team_by_user.get(membership.user_id)
+            if current is None or membership.is_primary:
+                preferred_team_by_user[membership.user_id] = membership.team_id
 
     if stream_id is not None:
         members = [row for row in members if row.stream_id == stream_id]
@@ -159,6 +207,7 @@ def build_team_skill_matrix(
     people: list[dict[str, Any]] = []
     for member in members:
         member_ratings = ratings_by_user.get(member.id, {})
+        member_team_id = preferred_team_by_user.get(member.id)
         people.append(
             {
                 "user_id": member.id,
@@ -167,6 +216,8 @@ def build_team_skill_matrix(
                 or (member.role.name if member.role is not None else None),
                 "primary_tool": member.primary_tool or "NX Local",
                 "work_function": member.work_function or "Design/Surfacing",
+                "team_id": member_team_id,
+                "team_name": team_name_by_id.get(member_team_id) if member_team_id else None,
                 "stream_id": member.stream_id,
                 "stream_name": member.stream.name if member.stream is not None else None,
                 "company_experience": format_tenure(member.joining_date),
@@ -184,12 +235,19 @@ def build_team_skill_matrix(
             }
         )
 
+    scope_label = (
+        team_name_by_id.get(team_id, "Team")
+        if team_id is not None
+        else "All teams"
+    )
     return {
         "team_id": team_id,
         "stream_id": stream.id if stream is not None else None,
         "stream_name": stream.name if stream is not None else None,
         "title": (
-            f"{stream.name} team skill matrix" if stream is not None else "Team skill matrix"
+            f"{stream.name} skill matrix · {scope_label}"
+            if stream is not None
+            else f"Skill matrix · {scope_label}"
         ),
         "proficiency_scale": PROFICIENCY_META,
         "skills": [

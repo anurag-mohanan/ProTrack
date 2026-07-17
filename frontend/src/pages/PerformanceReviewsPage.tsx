@@ -229,18 +229,24 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
   });
 
   const createReviewMutation = useMutation({
-    mutationFn: async () =>
-      (
+    mutationFn: async () => {
+      const member = (teamMembersQuery.data ?? []).find((row) => row.user_id === selectedMemberId);
+      const teamIdForCreate = selectedTeamId || member?.team_id || '';
+      if (!selectedMemberId || !teamIdForCreate) {
+        throw new Error('Select a team member to create a review.');
+      }
+      return (
         await apiClient.post<Review>('/hr/reviews', {
           employee_id: selectedMemberId,
           reviewer_id: user?.id,
-          team_id: selectedTeamId,
+          team_id: teamIdForCreate,
           cycle_id: selectedCycleId || null,
           period_label: periodLabel || defaultPeriodLabel(reviewYear),
           review_year: reviewYear,
           due_date: dueDate || null,
         })
-      ).data,
+      ).data;
+    },
     onSuccess: (review) => {
       showSuccess('Performance review sheet created');
       setSelectedReviewId(review.id);
@@ -300,8 +306,9 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
   }, [teamMembers]);
 
   useEffect(() => {
-    if (!selectedTeamId && teamOptions.length) {
-      setSelectedTeamId(teamOptions[0].id);
+    // Keep selection only when it still exists in options; default stays All teams ('').
+    if (selectedTeamId && !teamOptions.some((team) => team.id === selectedTeamId)) {
+      setSelectedTeamId('');
     }
   }, [selectedTeamId, teamOptions]);
 
@@ -309,6 +316,14 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
     () => teamMembers.filter((row) => !selectedTeamId || row.team_id === selectedTeamId),
     [selectedTeamId, teamMembers],
   );
+
+  const selectedMember = useMemo(
+    () => filteredMembers.find((row) => row.user_id === selectedMemberId) ?? null,
+    [filteredMembers, selectedMemberId],
+  );
+
+  const createTeamId = selectedTeamId || selectedMember?.team_id || '';
+
 
   const currentReviews = tab === 0 ? myReviewsQuery.data ?? [] : teamReviewsQuery.data ?? [];
   const selectedReview =
@@ -459,8 +474,13 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
                   <Select
                     label="Team"
                     value={selectedTeamId}
-                    onChange={(e) => setSelectedTeamId(String(e.target.value))}
+                    displayEmpty
+                    onChange={(e) => {
+                      setSelectedTeamId(String(e.target.value));
+                      setSelectedMemberId('');
+                    }}
                   >
+                    <MenuItem value="">All teams</MenuItem>
                     {teamOptions.map((team) => (
                       <MenuItem key={team.id} value={team.id}>
                         {team.name}
@@ -473,11 +493,17 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
                   <Select
                     label="Team member"
                     value={selectedMemberId}
+                    displayEmpty
                     onChange={(e) => setSelectedMemberId(String(e.target.value))}
                   >
+                    <MenuItem value="">
+                      <em>Select member</em>
+                    </MenuItem>
                     {filteredMembers.map((member) => (
-                      <MenuItem key={member.user_id} value={member.user_id}>
-                        {member.name}
+                      <MenuItem key={`${member.team_id}-${member.user_id}`} value={member.user_id}>
+                        {selectedTeamId
+                          ? member.name
+                          : `${member.name} · ${member.team_name}`}
                       </MenuItem>
                     ))}
                   </Select>
@@ -525,7 +551,7 @@ export function PerformanceReviewsPage({ embedded = false }: { embedded?: boolea
                 />
                 <Button
                   variant="contained"
-                  disabled={!selectedTeamId || !selectedMemberId || createReviewMutation.isPending}
+                  disabled={!createTeamId || !selectedMemberId || createReviewMutation.isPending}
                   onClick={() => createReviewMutation.mutate()}
                 >
                   Create Review Sheet

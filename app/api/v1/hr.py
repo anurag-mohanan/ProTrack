@@ -549,16 +549,25 @@ def hr_teams(
 
 @router.get("/performance/skill-matrix", response_model=SkillMatrixRead)
 def get_team_skill_matrix(
-    team_id: UUID = Query(...),
+    team_id: UUID | None = Query(default=None),
     stream_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     accessible = get_accessible_team_ids(db, current_user)
-    can_manage = user_can_manage_team_reviews(db, current_user, team_id)
-    if accessible is not None and team_id not in accessible and not can_manage:
-        raise HTTPException(status_code=403, detail="Team skill matrix access denied")
-    matrix = build_team_skill_matrix(db, team_id=team_id, stream_id=stream_id)
+    if team_id is not None:
+        can_manage = user_can_manage_team_reviews(db, current_user, team_id)
+        if accessible is not None and team_id not in accessible and not can_manage:
+            raise HTTPException(status_code=403, detail="Team skill matrix access denied")
+        matrix = build_team_skill_matrix(db, team_id=team_id, stream_id=stream_id)
+    else:
+        if accessible is None:
+            scope_ids = list(db.scalars(select(Team.id).where(Team.is_active.is_(True))).all())
+        else:
+            scope_ids = list(accessible)
+        if not scope_ids:
+            raise HTTPException(status_code=403, detail="Team skill matrix access denied")
+        matrix = build_team_skill_matrix(db, team_ids=scope_ids, stream_id=stream_id)
     db.commit()
     return SkillMatrixRead.model_validate(matrix)
 
@@ -566,20 +575,40 @@ def get_team_skill_matrix(
 @router.put("/performance/skill-matrix", response_model=SkillMatrixUpsertResponse)
 def save_team_skill_matrix(
     payload: SkillMatrixUpsertRequest,
-    team_id: UUID = Query(...),
+    team_id: UUID | None = Query(default=None),
     stream_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not user_can_manage_team_reviews(db, current_user, team_id):
-        raise HTTPException(status_code=403, detail="Team skill matrix edit denied")
+    accessible = get_accessible_team_ids(db, current_user)
+    if team_id is not None:
+        if not user_can_manage_team_reviews(db, current_user, team_id):
+            raise HTTPException(status_code=403, detail="Team skill matrix edit denied")
+        scope_team_id = team_id
+        scope_team_ids = None
+    else:
+        managed = _managed_team_ids(db, current_user)
+        if not managed:
+            raise HTTPException(status_code=403, detail="Team skill matrix edit denied")
+        if accessible is not None:
+            managed = [row for row in managed if row in accessible]
+        if not managed:
+            raise HTTPException(status_code=403, detail="Team skill matrix edit denied")
+        scope_team_id = None
+        scope_team_ids = managed
+
     updated = upsert_skill_ratings(
         db,
         ratings=[row.model_dump() for row in payload.ratings],
         assessed_by_id=current_user.id,
     )
     db.commit()
-    matrix = build_team_skill_matrix(db, team_id=team_id, stream_id=stream_id)
+    matrix = build_team_skill_matrix(
+        db,
+        team_id=scope_team_id,
+        team_ids=scope_team_ids,
+        stream_id=stream_id,
+    )
     db.commit()
     return SkillMatrixUpsertResponse(
         updated_count=updated,

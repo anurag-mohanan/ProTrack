@@ -37,6 +37,8 @@ type SkillMatrixPerson = {
   role?: string | null;
   primary_tool?: string | null;
   work_function?: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
   stream_name?: string | null;
   company_experience?: string | null;
   industry_experience?: string | null;
@@ -44,7 +46,7 @@ type SkillMatrixPerson = {
 };
 
 type SkillMatrix = {
-  team_id: string;
+  team_id?: string | null;
   stream_id?: string | null;
   stream_name?: string | null;
   title: string;
@@ -80,6 +82,7 @@ export function TeamSkillMatrixPanel({ canManage, defaultTeamId = '' }: TeamSkil
   const [teamId, setTeamId] = useState(defaultTeamId);
   const [streamId, setStreamId] = useState('');
   const [draft, setDraft] = useState<Record<string, Record<string, string | null>>>({});
+  const showAllTeams = !teamId;
 
   const teamsQuery = useQuery({
     queryKey: ['performance', 'teams'],
@@ -92,19 +95,24 @@ export function TeamSkillMatrixPanel({ canManage, defaultTeamId = '' }: TeamSkil
   });
 
   useEffect(() => {
-    if (!teamId && teamsQuery.data?.length) {
-      setTeamId(defaultTeamId || teamsQuery.data[0].id);
+    if (defaultTeamId && !teamId) {
+      setTeamId(defaultTeamId);
     }
-  }, [teamsQuery.data, teamId, defaultTeamId]);
+  }, [defaultTeamId, teamId]);
 
   const matrixQuery = useQuery({
-    queryKey: ['performance', 'skill-matrix', teamId, streamId || 'auto'],
+    queryKey: ['performance', 'skill-matrix', teamId || 'all', streamId || 'auto'],
     queryFn: async () => {
-      const params = new URLSearchParams({ team_id: teamId });
+      const params = new URLSearchParams();
+      if (teamId) params.set('team_id', teamId);
       if (streamId) params.set('stream_id', streamId);
-      return (await apiClient.get<SkillMatrix>(`/hr/performance/skill-matrix?${params}`)).data;
+      const query = params.toString();
+      return (
+        await apiClient.get<SkillMatrix>(
+          `/hr/performance/skill-matrix${query ? `?${query}` : ''}`,
+        )
+      ).data;
     },
-    enabled: Boolean(teamId),
   });
 
   useEffect(() => {
@@ -140,10 +148,12 @@ export function TeamSkillMatrixPanel({ canManage, defaultTeamId = '' }: TeamSkil
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const params = new URLSearchParams({ team_id: teamId });
+      const params = new URLSearchParams();
+      if (teamId) params.set('team_id', teamId);
       if (streamId) params.set('stream_id', streamId);
+      const query = params.toString();
       return (
-        await apiClient.put(`/hr/performance/skill-matrix?${params}`, {
+        await apiClient.put(`/hr/performance/skill-matrix${query ? `?${query}` : ''}`, {
           ratings: dirtyRatings,
         })
       ).data;
@@ -172,21 +182,23 @@ export function TeamSkillMatrixPanel({ canManage, defaultTeamId = '' }: TeamSkil
             {matrix?.title || 'Team skillset chart'}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Industry-style proficiency grid (Learning → Expert). Skills follow the selected stream
-            (Mold Design pack matches your Excel chart).
+            Industry-style proficiency grid (Learning → Expert). Choose All teams for a cross-team
+            view, or one team to focus. Skills follow the selected stream.
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
-          <FormControl size="small" sx={{ minWidth: 180 }}>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Team</InputLabel>
             <Select
               label="Team"
               value={teamId}
+              displayEmpty
               onChange={(e) => {
                 setTeamId(e.target.value);
                 setStreamId('');
               }}
             >
+              <MenuItem value="">All teams</MenuItem>
               {(teamsQuery.data ?? []).map((team) => (
                 <MenuItem key={team.id} value={team.id}>
                   {team.name}
@@ -239,7 +251,7 @@ export function TeamSkillMatrixPanel({ canManage, defaultTeamId = '' }: TeamSkil
       {matrixQuery.isLoading ? (
         <LoadingState message="Loading skill matrix…" />
       ) : !matrix ? (
-        <Typography color="text.secondary">Select a team to view the skillset chart.</Typography>
+        <Typography color="text.secondary">Unable to load the skillset chart.</Typography>
       ) : matrix.people.length === 0 ? (
         <Typography color="text.secondary">
           No team members with this stream assigned. Set Stream on each user in Admin → Users.
@@ -250,6 +262,9 @@ export function TeamSkillMatrixPanel({ canManage, defaultTeamId = '' }: TeamSkil
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 800, minWidth: 140 }}>Designer</TableCell>
+                {showAllTeams ? (
+                  <TableCell sx={{ fontWeight: 800, minWidth: 120 }}>Team</TableCell>
+                ) : null}
                 <TableCell sx={{ fontWeight: 800, minWidth: 110 }}>Role</TableCell>
                 <TableCell sx={{ fontWeight: 800, minWidth: 90 }}>CAD</TableCell>
                 <TableCell sx={{ fontWeight: 800, minWidth: 110 }}>Function</TableCell>
@@ -277,6 +292,9 @@ export function TeamSkillMatrixPanel({ canManage, defaultTeamId = '' }: TeamSkil
               {matrix.people.map((person) => (
                 <TableRow key={person.user_id} hover>
                   <TableCell sx={{ fontWeight: 700, fontSize: 12 }}>{person.name}</TableCell>
+                  {showAllTeams ? (
+                    <TableCell sx={{ fontSize: 11 }}>{person.team_name || '—'}</TableCell>
+                  ) : null}
                   <TableCell sx={{ fontSize: 11 }}>{person.role || '—'}</TableCell>
                   <TableCell sx={{ fontSize: 11 }}>{person.primary_tool || '—'}</TableCell>
                   <TableCell sx={{ fontSize: 11 }}>{person.work_function || '—'}</TableCell>

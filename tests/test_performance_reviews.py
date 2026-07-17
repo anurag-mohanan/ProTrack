@@ -148,6 +148,58 @@ def test_review_joining_dates_auto_calculate_experience(client, session):
     assert body["company_experience"]
 
 
+def test_team_skill_matrix_all_teams_scope(client, session):
+    from app.models.models import User
+
+    team_a = Team(
+        id=uuid.uuid4(),
+        name="Skill All A",
+        is_active=True,
+        team_lead_id=IDS["user_anurag"],
+    )
+    team_b = Team(
+        id=uuid.uuid4(),
+        name="Skill All B",
+        is_active=True,
+        team_lead_id=IDS["user_anurag"],
+    )
+    session.add_all([team_a, team_b])
+    session.add(
+        TeamMember(
+            team_id=team_a.id,
+            user_id=IDS["user_binil"],
+            is_primary=True,
+            relationship_type=TeamRelationshipType.member,
+        )
+    )
+    session.add(
+        TeamMember(
+            team_id=team_b.id,
+            user_id=IDS["user_junior_designer"],
+            is_primary=True,
+            relationship_type=TeamRelationshipType.member,
+        )
+    )
+    for user_id in (IDS["user_binil"], IDS["user_junior_designer"]):
+        employee = session.get(User, user_id)
+        assert employee is not None
+        employee.stream_id = IDS["stream"]
+    session.commit()
+
+    leader_headers = login(client, "anurag@prosohm.com")
+    response = client.get(
+        f"/api/v1/hr/performance/skill-matrix?stream_id={IDS['stream']}",
+        headers=leader_headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body.get("team_id") in (None, "")
+    people_ids = {row["user_id"] for row in body["people"]}
+    assert str(IDS["user_binil"]) in people_ids
+    assert str(IDS["user_junior_designer"]) in people_ids
+    assert any(row.get("team_name") for row in body["people"])
+
+
 def test_team_skill_matrix_seeds_mold_design_skills(client, session):
     from app.models.models import User
 

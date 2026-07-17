@@ -32,7 +32,7 @@ import { isAdminRole, ROLES } from '../utils/permissions';
 import type { OrgChartDepartment, OrgChartPerson, OrgChartTeamColumn } from '../types/Team';
 
 const ORG_CHART_KEY = ['teams', 'organization-chart'] as const;
-const VIEW_PREFS_KEY = 'protrack.orgChart.viewPrefs';
+const VIEW_PREFS_KEY = 'protrack.orgChart.viewPrefs.v2';
 
 type PendingMove = {
   person: OrgChartPerson;
@@ -53,7 +53,7 @@ type ViewPrefs = {
 const DEFAULT_VIEW_PREFS: ViewPrefs = {
   hidePlanningBoard: true,
   hideSystemAdmin: true,
-  hideEmptyDepartments: true,
+  hideEmptyDepartments: false,
 };
 
 function loadViewPrefs(): ViewPrefs {
@@ -231,17 +231,18 @@ function PersonCard({
   canEdit,
   onDragStart,
   isLead,
-  compact,
+  featured,
 }: {
   person: OrgChartPerson;
   accent: string;
   canEdit: boolean;
   onDragStart: (person: OrgChartPerson) => void;
   isLead?: boolean;
-  compact?: boolean;
+  featured?: boolean;
 }) {
   const draggable = canEdit && person.can_move;
-  const emphasized = Boolean(isLead || person.is_department_head);
+  const emphasized = Boolean(isLead || person.is_department_head || featured);
+  const title = person.designation || person.role_name || 'Team member';
 
   return (
     <Box
@@ -256,70 +257,107 @@ function PersonCard({
         onDragStart(person);
       }}
       sx={{
-        width: compact ? 168 : 196,
-        p: compact ? 1 : 1.1,
+        width: featured ? 240 : '100%',
+        maxWidth: featured ? 280 : 280,
+        minWidth: featured ? 220 : 0,
+        minHeight: featured ? 112 : 100,
+        p: featured ? 1.5 : 1.35,
+        pl: featured ? 1.75 : 1.6,
         borderRadius: 2.5,
         border: '1px solid',
-        borderColor: emphasized ? accent : 'divider',
+        borderColor: emphasized ? alpha(accent, 0.55) : alpha('#90a4ae', 0.35),
         bgcolor: 'background.paper',
-        boxShadow: emphasized ? `0 8px 18px ${alpha(accent, 0.16)}` : 1,
+        boxShadow: emphasized
+          ? `0 10px 24px ${alpha(accent, 0.16)}`
+          : `0 2px 8px ${alpha('#000', 0.04)}`,
         cursor: draggable ? 'grab' : 'default',
-        transition: 'box-shadow 0.15s ease, transform 0.15s ease',
+        transition: 'box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease',
         '&:active': draggable ? { cursor: 'grabbing' } : undefined,
-        '&:hover': draggable ? { boxShadow: 4, transform: 'translateY(-1px)' } : undefined,
+        '&:hover': draggable
+          ? { boxShadow: `0 12px 28px ${alpha(accent, 0.2)}`, transform: 'translateY(-2px)' }
+          : { borderColor: alpha(accent, 0.4) },
         position: 'relative',
-        overflow: 'hidden',
+        overflow: 'visible',
+        boxSizing: 'border-box',
         '&::before': {
           content: '""',
           position: 'absolute',
           left: 0,
-          top: 0,
-          bottom: 0,
-          width: 3,
+          top: 10,
+          bottom: 10,
+          width: 4,
+          borderRadius: '0 4px 4px 0',
           bgcolor: accent,
         },
       }}
     >
-      <Stack direction="row" spacing={0.85} sx={{ alignItems: 'flex-start' }}>
+      <Stack direction="row" spacing={1.1} sx={{ alignItems: 'flex-start' }}>
         {draggable ? (
-          <DragIndicatorIcon sx={{ mt: 0.25, color: 'text.disabled', fontSize: 15 }} />
+          <DragIndicatorIcon sx={{ mt: 0.6, color: 'text.disabled', fontSize: 16, flexShrink: 0 }} />
         ) : null}
         <Avatar
           sx={{
-            width: compact ? 28 : 32,
-            height: compact ? 28 : 32,
-            fontSize: 11,
+            width: featured ? 42 : 36,
+            height: featured ? 42 : 36,
+            fontSize: featured ? 14 : 12,
             fontWeight: 700,
             bgcolor: accent,
+            flexShrink: 0,
+            mt: 0.15,
           }}
         >
           {initials(person.name)}
         </Avatar>
-        <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Box sx={{ minWidth: 0, flex: 1, overflow: 'visible' }}>
           <Typography
             variant="subtitle2"
-            sx={{ fontWeight: 800, lineHeight: 1.15, fontSize: compact ? 12.5 : 13.5 }}
-            noWrap
+            title={person.name}
+            sx={{
+              fontWeight: 800,
+              lineHeight: 1.25,
+              fontSize: featured ? 14.5 : 13.5,
+              wordBreak: 'break-word',
+            }}
           >
             {person.name}
           </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
-            {person.designation || person.role_name || 'Team member'}
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            title={title}
+            sx={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              lineHeight: 1.35,
+              mt: 0.2,
+            }}
+          >
+            {title}
           </Typography>
-          <Stack direction="row" spacing={0.4} useFlexGap sx={{ mt: 0.4, flexWrap: 'wrap' }}>
-            {person.is_department_head ? (
-              <Chip label="Head" size="small" sx={{ height: 18, fontSize: 10, bgcolor: `${accent}22` }} />
+          <Stack direction="row" spacing={0.5} useFlexGap sx={{ mt: 0.75, flexWrap: 'wrap' }}>
+            {person.is_department_head || featured ? (
+              <Chip
+                label="Dept head"
+                size="small"
+                sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: alpha(accent, 0.16) }}
+              />
             ) : isLead ? (
-              <Chip label="Lead" size="small" sx={{ height: 18, fontSize: 10, bgcolor: `${accent}22` }} />
+              <Chip
+                label="Lead"
+                size="small"
+                sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: alpha(accent, 0.14) }}
+              />
             ) : person.is_leadership ? (
-              <Chip label="Leader" size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+              <Chip label="Leader" size="small" variant="outlined" sx={{ height: 20, fontSize: 10.5 }} />
             ) : null}
             {person.stream_name ? (
               <Chip
                 label={person.stream_name}
                 size="small"
                 variant="outlined"
-                sx={{ height: 18, fontSize: 10 }}
+                sx={{ height: 20, fontSize: 10.5 }}
               />
             ) : null}
           </Stack>
@@ -350,7 +388,6 @@ function TreeBranch({
         canEdit={canEdit}
         onDragStart={onDragStart}
         isLead={teamLeadId === node.person.user_id}
-        compact
       />
       {node.children.length > 0 ? (
         <BranchChildren accent={accent}>
@@ -453,10 +490,9 @@ function TeamBranch({
       ) : (
         <Box
           sx={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'flex-start',
-            gap: 1.25,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(212px, 1fr))',
+            gap: 1.5,
           }}
         >
           {forest.map((root) => (
@@ -492,13 +528,13 @@ function DepartmentSection({
 }) {
   const theme = useTheme();
   const accent = department.colour;
+  const pool = [...department.leaders, ...department.staff];
   const head =
-    department.leaders.find((row) => row.is_department_head) ??
+    pool.find((row) => row.is_department_head) ??
     (department.head_user_id
-      ? department.leaders.find((row) => row.user_id === department.head_user_id)
+      ? pool.find((row) => row.user_id === department.head_user_id)
       : undefined);
-  const otherLeaders = department.leaders.filter((row) => row.user_id !== head?.user_id);
-  const hqPeople = [...otherLeaders, ...department.staff];
+  const hqPeople = pool.filter((row) => row.user_id !== head?.user_id);
   const isEmpty =
     department.member_count === 0 &&
     department.leaders.length === 0 &&
@@ -510,25 +546,34 @@ function DepartmentSection({
       sx={{
         borderRadius: 3,
         border: '1px solid',
-        borderColor: alpha(accent, 0.28),
-        overflow: 'hidden',
-        background: `linear-gradient(165deg, ${alpha(accent, 0.1)} 0%, ${alpha(
-          theme.palette.background.paper,
-          0.97,
-        )} 38%, ${theme.palette.background.default} 100%)`,
+        borderColor: alpha(accent, 0.22),
+        overflow: 'visible',
+        bgcolor: theme.palette.background.paper,
+        boxShadow: `0 1px 2px ${alpha('#000', 0.04)}`,
       }}
     >
-      <Box sx={{ px: { xs: 2, md: 2.25 }, py: 1.75 }}>
+      <Box
+        sx={{
+          px: { xs: 2, md: 2.5 },
+          py: 1.75,
+          borderBottom: '1px solid',
+          borderColor: alpha(accent, 0.14),
+          background: `linear-gradient(90deg, ${alpha(accent, 0.12)} 0%, ${alpha(
+            accent,
+            0.03,
+          )} 55%, transparent 100%)`,
+        }}
+      >
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
           spacing={1}
           sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
         >
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h6" sx={{ fontWeight: 850, color: accent, lineHeight: 1.2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, color: accent, lineHeight: 1.25 }}>
               {department.name}
             </Typography>
-            <Typography variant="body2" color="text.secondary" noWrap>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
               {isEmpty
                 ? department.description || 'Reserved for future expansion'
                 : department.head_name
@@ -537,41 +582,57 @@ function DepartmentSection({
             </Typography>
           </Box>
           <Chip
-            label={`${department.member_count} people`}
+            label={isEmpty ? 'Future' : `${department.member_count} people`}
             size="small"
-            sx={{ fontWeight: 700, bgcolor: alpha(accent, 0.14), alignSelf: { xs: 'flex-start', sm: 'center' } }}
+            sx={{
+              fontWeight: 700,
+              bgcolor: alpha(accent, 0.12),
+              alignSelf: { xs: 'flex-start', sm: 'center' },
+            }}
           />
         </Stack>
       </Box>
 
-      <Box sx={{ px: { xs: 2, md: 2.25 }, pb: 2.25 }}>
+      <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2.25 }}>
         {isEmpty ? (
           <Box
             sx={{
-              py: 2.5,
+              py: 2.75,
               px: 2,
               borderRadius: 2.5,
               border: '1px dashed',
               borderColor: alpha(accent, 0.35),
               textAlign: 'center',
               color: 'text.secondary',
+              bgcolor: alpha(accent, 0.03),
             }}
           >
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               No people assigned yet
             </Typography>
+            <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+              This department is ready for future org growth.
+            </Typography>
           </Box>
         ) : (
-          <Stack spacing={2}>
+          <Stack spacing={2.25}>
             {head ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <PersonCard
-                  person={head}
-                  accent={accent}
-                  canEdit={canEdit}
-                  onDragStart={onPersonDragStart}
-                  isLead
-                />
+              <Box>
+                <Typography
+                  variant="overline"
+                  sx={{ letterSpacing: 1, color: 'text.secondary', fontWeight: 700 }}
+                >
+                  Department head
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+                  <PersonCard
+                    person={head}
+                    accent={accent}
+                    canEdit={canEdit}
+                    onDragStart={onPersonDragStart}
+                    featured
+                  />
+                </Box>
               </Box>
             ) : null}
 
@@ -585,11 +646,10 @@ function DepartmentSection({
                 </Typography>
                 <Box
                   sx={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 1.25,
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(212px, 1fr))',
+                    gap: 1.5,
                     mt: 1,
-                    justifyContent: head ? 'center' : 'flex-start',
                   }}
                 >
                   {hqPeople.map((person) => (
@@ -600,7 +660,6 @@ function DepartmentSection({
                       canEdit={canEdit}
                       onDragStart={onPersonDragStart}
                       isLead={person.is_leadership}
-                      compact
                     />
                   ))}
                 </Box>
@@ -620,9 +679,9 @@ function DepartmentSection({
                     display: 'grid',
                     gridTemplateColumns: {
                       xs: '1fr',
-                      md: 'repeat(auto-fit, minmax(280px, 1fr))',
+                      lg: 'repeat(2, minmax(0, 1fr))',
                     },
-                    gap: 1.5,
+                    gap: 1.75,
                     mt: 1,
                   }}
                 >
@@ -937,7 +996,13 @@ export function OrganizationChartPage() {
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
                 Drag onto a delivery team to set primary home
               </Typography>
-              <Stack direction="row" spacing={1.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(212px, 1fr))',
+                  gap: 1.5,
+                }}
+              >
                 {unassigned.map((person) => (
                   <PersonCard
                     key={person.user_id}
@@ -945,10 +1010,9 @@ export function OrganizationChartPage() {
                     accent="#78909c"
                     canEdit={canEdit}
                     onDragStart={setDragPerson}
-                    compact
                   />
                 ))}
-              </Stack>
+              </Box>
             </Box>
           ) : null}
         </Stack>

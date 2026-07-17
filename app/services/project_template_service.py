@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import ProTrackValidationError
@@ -26,25 +26,37 @@ def list_matching_templates(
     project_type_id: UUID,
     customer_id: UUID,
 ) -> list[ProjectTemplate]:
-    return list(
+    """Return all active templates for the project type.
+
+    Customer-specific templates remain available for any project of that type so
+    quote-created and manually created projects see the same catalog. Templates
+    for the selected customer are sorted first, then global defaults, then others.
+    """
+    templates = list(
         db.scalars(
             select(ProjectTemplate)
-            .options(selectinload(ProjectTemplate.milestones))
+            .options(
+                selectinload(ProjectTemplate.milestones),
+                selectinload(ProjectTemplate.customer),
+            )
             .where(
                 ProjectTemplate.project_type_id == project_type_id,
                 ProjectTemplate.is_active.is_(True),
-                or_(
-                    ProjectTemplate.customer_id.is_(None),
-                    ProjectTemplate.customer_id == customer_id,
-                ),
-            )
-            .order_by(
-                ProjectTemplate.customer_id.is_(None),
-                ProjectTemplate.is_default.desc(),
-                ProjectTemplate.name,
             )
         ).all()
     )
+
+    def _sort_key(template: ProjectTemplate) -> tuple[int, int, str]:
+        if template.customer_id == customer_id:
+            group = 0
+        elif template.customer_id is None:
+            group = 1
+        else:
+            group = 2
+        return (group, 0 if template.is_default else 1, template.name.lower())
+
+    templates.sort(key=_sort_key)
+    return templates
 
 
 def resolve_template(
@@ -64,10 +76,6 @@ def resolve_template(
             raise ProTrackValidationError(
                 "Selected template does not match the chosen project type"
             )
-        if template.customer_id not in (None, customer_id):
-            raise ProTrackValidationError(
-                "Selected template does not apply to the chosen customer"
-            )
         return template
 
     customer = db.get(Customer, customer_id)
@@ -77,7 +85,6 @@ def resolve_template(
             default_template is not None
             and default_template.is_active
             and default_template.project_type_id == project_type_id
-            and default_template.customer_id in (None, customer_id)
         ):
             return default_template
 
@@ -105,7 +112,6 @@ def resolve_template(
     fallback = db.scalar(
         select(ProjectTemplate).where(
             ProjectTemplate.project_type_id == project_type_id,
-            ProjectTemplate.customer_id.is_(None),
             ProjectTemplate.is_active.is_(True),
         )
     )

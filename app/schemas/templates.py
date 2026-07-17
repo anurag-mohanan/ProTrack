@@ -105,5 +105,6 @@ class ProjectTemplateMatchRead(BaseModel):
     customer_id: UUID | None = None
     is_default: bool
     is_customer_specific: bool = False
+    customer_name: str | None = None
     default_team_id: UUID | None = None
     milestone_count: int = 0

@@ -747,7 +747,7 @@ export function ProjectFormDialog({
                     { value: '', label: 'None' },
                     ...matchingTemplates.map((template) => ({
                       value: template.id,
-                      label: `${template.name}${template.is_customer_specific ? ' (Customer)' : ''}${template.is_default ? ' (Default)' : ''}`,
+                      label: `${template.name}${template.is_default ? ' (Default)' : ''}${template.is_customer_specific ? ` (${template.customer_name ?? 'Customer'})` : ''}`,
                     })),
                   ]}
                   onChange={(event) => {

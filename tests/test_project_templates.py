@@ -308,7 +308,62 @@ def test_match_templates_prefers_customer_override(client, template_db):
     names = [item["name"] for item in response.json()]
     assert "Sybridge Mold Design" in names
     assert "General Mold Design" in names
+    # Full type catalog (same for every project/customer)
+    assert "Lamko Mold Design" in names
+    assert "TI Automotive Template" in names
+    assert names[0] == "Sybridge Mold Design"
 
+
+def test_match_templates_same_catalog_for_any_customer(client, template_db):
+    """Quote shells and manual projects must see the same Mold Design catalog."""
+    mold_type = _get_project_type(template_db, "Mold Design")
+    prosohm = template_db.scalar(
+        select(Customer).where(Customer.name == "Prosohm Test Customer")
+    )
+    assert prosohm is not None
+
+    response = client.get(
+        "/api/v1/project-templates/match",
+        params={
+            "project_type_id": str(mold_type.id),
+            "customer_id": str(prosohm.id),
+        },
+        headers=client.auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    names = [item["name"] for item in response.json()]
+    assert "General Mold Design" in names
+    assert "Sybridge Mold Design" in names
+    assert "Lamko Mold Design" in names
+    assert "TI Automotive Template" in names
+    assert "Crest Mold Technologies Template" in names
+    assert "B & B Tool & Mould Template" in names
+    assert len(names) >= 6
+
+
+def test_apply_other_customer_template_allowed(client, template_db):
+    """Any Mold Design template can be applied to any customer project."""
+    mold_type = _get_project_type(template_db, "Mold Design")
+    sybridge_template = _get_template(template_db, "Sybridge Mold Design")
+    payload = _create_project_payload(
+        template_db,
+        customer_id=IDS["customer"],
+        contact_id=IDS["contact"],
+        project_type_id=mold_type.id,
+        template_id=sybridge_template.id,
+    )
+    create_response = client.post(
+        "/api/v1/projects", json=payload, headers=client.auth_headers
+    )
+    assert create_response.status_code == 201, create_response.text
+    body = create_response.json()
+    assert body["project_template_id"] == str(sybridge_template.id)
+    milestones = template_db.scalars(
+        select(Milestone)
+        .where(Milestone.project_id == uuid.UUID(body["id"]))
+        .order_by(Milestone.sort_order)
+    ).all()
+    assert any(m.name == "Customer Intermediate Review" for m in milestones)
 
 def test_project_types_admin_crud(client, template_db):
     create_response = client.post(

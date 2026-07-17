@@ -117,8 +117,10 @@ export function ChangeProjectTemplateDialog({
               {templateOptions.map((template) => (
                 <MenuItem key={template.id} value={template.id}>
                   {template.name}
-                  {template.is_customer_specific ? ' (Customer)' : ''}
                   {template.is_default ? ' (Default)' : ''}
+                  {template.is_customer_specific
+                    ? ` (${template.customer_name ?? 'Customer'})`
+                    : ''}
                 </MenuItem>
               ))}
             </TextField>

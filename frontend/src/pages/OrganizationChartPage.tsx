@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Alert,
   Avatar,
@@ -13,6 +13,7 @@ import {
   DialogTitle,
   FormControlLabel,
   Stack,
+  Switch,
   TextField,
   Typography,
   alpha,
@@ -20,16 +21,18 @@ import {
 } from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '../components/common/PageHeader';
 import { teamsApi } from '../api/resources';
 import { getErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { isAdminRole } from '../utils/permissions';
+import { isAdminRole, ROLES } from '../utils/permissions';
 import type { OrgChartDepartment, OrgChartPerson, OrgChartTeamColumn } from '../types/Team';
 
 const ORG_CHART_KEY = ['teams', 'organization-chart'] as const;
+const VIEW_PREFS_KEY = 'protrack.orgChart.viewPrefs';
 
 type PendingMove = {
   person: OrgChartPerson;
@@ -40,6 +43,28 @@ type TreeNode = {
   person: OrgChartPerson;
   children: TreeNode[];
 };
+
+type ViewPrefs = {
+  hidePlanningBoard: boolean;
+  hideSystemAdmin: boolean;
+  hideEmptyDepartments: boolean;
+};
+
+const DEFAULT_VIEW_PREFS: ViewPrefs = {
+  hidePlanningBoard: true,
+  hideSystemAdmin: true,
+  hideEmptyDepartments: true,
+};
+
+function loadViewPrefs(): ViewPrefs {
+  try {
+    const raw = localStorage.getItem(VIEW_PREFS_KEY);
+    if (!raw) return DEFAULT_VIEW_PREFS;
+    return { ...DEFAULT_VIEW_PREFS, ...(JSON.parse(raw) as Partial<ViewPrefs>) };
+  } catch {
+    return DEFAULT_VIEW_PREFS;
+  }
+}
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -52,87 +77,84 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Vertical stem + optional horizontal span for org-tree branches. */
+function isPlanningBoardPerson(person: OrgChartPerson): boolean {
+  const role = (person.role_name || '').toLowerCase();
+  const name = person.name.toLowerCase();
+  const designation = (person.designation || '').toLowerCase();
+  return (
+    role === ROLES.PLANNING_BOARD.toLowerCase() ||
+    name.includes('planning board') ||
+    designation.includes('planning board')
+  );
+}
+
+function isSystemAdminPerson(person: OrgChartPerson): boolean {
+  const role = (person.role_name || '').toLowerCase();
+  const name = person.name.toLowerCase();
+  const email = person.email.toLowerCase();
+  return (
+    role === ROLES.ADMIN.toLowerCase() ||
+    name === 'system admin' ||
+    name.startsWith('system admin') ||
+    email.startsWith('admin@')
+  );
+}
+
+function shouldHidePerson(person: OrgChartPerson, prefs: ViewPrefs): boolean {
+  if (prefs.hidePlanningBoard && isPlanningBoardPerson(person)) return true;
+  if (prefs.hideSystemAdmin && isSystemAdminPerson(person)) return true;
+  return false;
+}
+
+function filterPeople(people: OrgChartPerson[], prefs: ViewPrefs): OrgChartPerson[] {
+  return people.filter((person) => !shouldHidePerson(person, prefs));
+}
+
+function filterTeam(team: OrgChartTeamColumn, prefs: ViewPrefs): OrgChartTeamColumn {
+  const people = filterPeople(team.people, prefs);
+  return { ...team, people, member_count: people.length };
+}
+
+function filterDepartment(department: OrgChartDepartment, prefs: ViewPrefs): OrgChartDepartment {
+  const leaders = filterPeople(department.leaders, prefs);
+  const staff = filterPeople(department.staff, prefs);
+  const teams = department.teams
+    .map((team) => filterTeam(team, prefs))
+    .filter((team) => team.people.length > 0 || !prefs.hideEmptyDepartments);
+  const member_count =
+    leaders.length + staff.length + teams.reduce((sum, team) => sum + team.member_count, 0);
+  return { ...department, leaders, staff, teams, member_count };
+}
+
 function BranchChildren({
   accent,
   children,
+  wrap = true,
 }: {
   accent: string;
   children: ReactNode;
+  wrap?: boolean;
 }) {
   const childArray = (Array.isArray(children) ? children : [children]).filter(Boolean);
   const count = childArray.length;
   if (count === 0) return null;
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        width: '100%',
-      }}
-    >
-      <Box sx={{ width: 2, height: 18, bgcolor: accent, opacity: 0.45 }} />
-      {count > 1 ? (
-        <Box
-          sx={{
-            position: 'relative',
-            width: '100%',
-            height: 2,
-            mb: 0,
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              left: '12.5%',
-              right: '12.5%',
-              top: 0,
-              height: 2,
-              bgcolor: accent,
-              opacity: 0.35,
-            },
-          }}
-        />
-      ) : null}
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+      <Box sx={{ width: 2, height: 14, bgcolor: accent, opacity: 0.4 }} />
       <Box
         sx={{
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'flex-start',
-          flexWrap: 'nowrap',
-          gap: 0,
+          flexWrap: wrap ? 'wrap' : 'nowrap',
+          gap: 1.5,
           width: '100%',
-          overflowX: 'auto',
-          pb: 0.5,
+          pt: 0.5,
         }}
       >
         {childArray.map((child, index) => (
-          <Box
-            key={index}
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              position: 'relative',
-              px: 1.25,
-              pt: count > 1 ? 2 : 0,
-              '&::before':
-                count > 1
-                  ? {
-                      content: '""',
-                      position: 'absolute',
-                      top: 0,
-                      left: '50%',
-                      width: 0,
-                      height: 16,
-                      borderLeft: '2px solid',
-                      borderColor: accent,
-                      opacity: 0.45,
-                      transform: 'translateX(-50%)',
-                    }
-                  : undefined,
-            }}
-          >
+          <Box key={index} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             {child}
           </Box>
         ))}
@@ -234,13 +256,13 @@ function PersonCard({
         onDragStart(person);
       }}
       sx={{
-        width: compact ? 168 : 200,
-        p: compact ? 1 : 1.15,
+        width: compact ? 168 : 196,
+        p: compact ? 1 : 1.1,
         borderRadius: 2.5,
         border: '1px solid',
         borderColor: emphasized ? accent : 'divider',
         bgcolor: 'background.paper',
-        boxShadow: emphasized ? `0 8px 20px ${alpha(accent, 0.18)}` : 1,
+        boxShadow: emphasized ? `0 8px 18px ${alpha(accent, 0.16)}` : 1,
         cursor: draggable ? 'grab' : 'default',
         transition: 'box-shadow 0.15s ease, transform 0.15s ease',
         '&:active': draggable ? { cursor: 'grabbing' } : undefined,
@@ -389,57 +411,54 @@ function TeamBranch({
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        minWidth: 200,
-        px: 0.5,
-        py: 1,
+        alignItems: 'stretch',
+        width: '100%',
+        p: 1.5,
         borderRadius: 2.5,
         border: '1px solid',
         borderColor: isOver ? line : alpha(line, 0.28),
-        bgcolor: isOver ? alpha(line, 0.08) : alpha(line, 0.03),
+        bgcolor: isOver ? alpha(line, 0.08) : alpha(line, 0.04),
         boxShadow: isOver ? 3 : 0,
         transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
       }}
     >
-      <Box
-        sx={{
-          px: 1.5,
-          py: 0.7,
-          mb: 1,
-          borderRadius: 999,
-          bgcolor: alpha(line, 0.14),
-          border: '1px solid',
-          borderColor: alpha(line, 0.35),
-          textAlign: 'center',
-          maxWidth: 220,
-        }}
-      >
-        <Typography variant="caption" sx={{ fontWeight: 800, display: 'block', lineHeight: 1.2 }} noWrap>
-          {team.team_name}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }} noWrap>
-          {team.team_lead_name ? `Lead · ${team.team_lead_name}` : 'No team lead'}
-          {` · ${team.member_count}`}
-        </Typography>
-      </Box>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.25 }}>
+        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: line, flexShrink: 0 }} />
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 800 }} noWrap>
+            {team.team_name}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" noWrap>
+            {team.team_lead_name ? `Lead · ${team.team_lead_name}` : 'No team lead'}
+            {canEdit ? ' · drop cards here' : ''}
+          </Typography>
+        </Box>
+        <Chip label={team.member_count} size="small" sx={{ height: 22, fontWeight: 700 }} />
+      </Stack>
 
       {forest.length === 0 ? (
         <Typography
           variant="caption"
           color="text.secondary"
           sx={{
-            py: 2,
-            px: 1.5,
+            py: 2.5,
             border: '1px dashed',
             borderColor: 'divider',
             borderRadius: 2,
             textAlign: 'center',
           }}
         >
-          {canEdit ? 'Drop here' : 'Empty'}
+          {canEdit ? 'Drop a person card onto this team' : 'No members'}
         </Typography>
       ) : (
-        <BranchChildren accent={line}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'flex-start',
+            gap: 1.25,
+          }}
+        >
           {forest.map((root) => (
             <TreeBranch
               key={root.person.user_id}
@@ -450,22 +469,19 @@ function TeamBranch({
               onDragStart={onPersonDragStart}
             />
           ))}
-        </BranchChildren>
+        </Box>
       )}
     </Box>
   );
 }
 
-function DepartmentBranch({
+function DepartmentSection({
   department,
   canEdit,
   dropTargetId,
   setDropTargetId,
   onPersonDragStart,
   onDropPerson,
-  isFirst,
-  isLast,
-  siblingCount,
 }: {
   department: OrgChartDepartment;
   canEdit: boolean;
@@ -473,10 +489,8 @@ function DepartmentBranch({
   setDropTargetId: (id: string | null) => void;
   onPersonDragStart: (person: OrgChartPerson) => void;
   onDropPerson: (target: OrgChartTeamColumn) => void;
-  isFirst: boolean;
-  isLast: boolean;
-  siblingCount: number;
 }) {
+  const theme = useTheme();
   const accent = department.colour;
   const head =
     department.leaders.find((row) => row.is_department_head) ??
@@ -491,131 +505,145 @@ function DepartmentBranch({
     department.staff.length === 0 &&
     department.teams.length === 0;
 
-  const midChildren: ReactNode[] = [];
-  if (hqPeople.length > 0) {
-    midChildren.push(
-      <Box key="hq" sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Chip
-          label={department.code === 'engineering' ? 'Leadership & HQ' : 'Staff'}
-          size="small"
-          sx={{ mb: 1, height: 22, fontWeight: 700, bgcolor: alpha(accent, 0.12) }}
-        />
-        <BranchChildren accent={accent}>
-          {hqPeople.map((person) => (
-            <PersonCard
-              key={person.user_id}
-              person={person}
-              accent={accent}
-              canEdit={canEdit}
-              onDragStart={onPersonDragStart}
-              isLead={person.is_leadership}
-              compact
-            />
-          ))}
-        </BranchChildren>
-      </Box>,
-    );
-  }
-  for (const team of department.teams) {
-    midChildren.push(
-      <TeamBranch
-        key={team.team_id}
-        team={team}
-        canEdit={canEdit}
-        dropTargetId={dropTargetId}
-        setDropTargetId={setDropTargetId}
-        onPersonDragStart={onPersonDragStart}
-        onDropPerson={onDropPerson}
-        accent={accent}
-      />,
-    );
-  }
-
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        position: 'relative',
-        px: 1.5,
-        pt: 2.25,
-        minWidth: isEmpty ? 160 : 240,
-        '&::before':
-          siblingCount > 1
-            ? {
-                content: '""',
-                position: 'absolute',
-                top: 0,
-                left: isFirst ? '50%' : 0,
-                right: isLast ? '50%' : 0,
-                height: 2,
-                bgcolor: alpha('#546e7a', 0.35),
-              }
-            : undefined,
-        '&::after': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: '50%',
-          width: 0,
-          height: 18,
-          borderLeft: '2px solid',
-          borderColor: alpha('#546e7a', 0.45),
-          transform: 'translateX(-50%)',
-        },
+        borderRadius: 3,
+        border: '1px solid',
+        borderColor: alpha(accent, 0.28),
+        overflow: 'hidden',
+        background: `linear-gradient(165deg, ${alpha(accent, 0.1)} 0%, ${alpha(
+          theme.palette.background.paper,
+          0.97,
+        )} 38%, ${theme.palette.background.default} 100%)`,
       }}
     >
-      {/* Department node */}
-      <Box
-        sx={{
-          px: 2,
-          py: 1.1,
-          borderRadius: 2.5,
-          minWidth: 150,
-          textAlign: 'center',
-          bgcolor: alpha(accent, 0.12),
-          border: '1px solid',
-          borderColor: alpha(accent, 0.45),
-          boxShadow: `0 10px 24px ${alpha(accent, 0.12)}`,
-        }}
-      >
-        <Typography variant="subtitle2" sx={{ fontWeight: 900, letterSpacing: 0.2, color: accent }}>
-          {department.name}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-          {isEmpty
-            ? 'Future expansion'
-            : department.head_name
-              ? `Head · ${department.head_name}`
-              : `${department.member_count} people`}
-        </Typography>
+      <Box sx={{ px: { xs: 2, md: 2.25 }, py: 1.75 }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1}
+          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
+        >
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 850, color: accent, lineHeight: 1.2 }}>
+              {department.name}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {isEmpty
+                ? department.description || 'Reserved for future expansion'
+                : department.head_name
+                  ? `Head · ${department.head_name}${department.head_title ? ` · ${department.head_title}` : ''}`
+                  : department.description || `${department.member_count} people`}
+            </Typography>
+          </Box>
+          <Chip
+            label={`${department.member_count} people`}
+            size="small"
+            sx={{ fontWeight: 700, bgcolor: alpha(accent, 0.14), alignSelf: { xs: 'flex-start', sm: 'center' } }}
+          />
+        </Stack>
       </Box>
 
-      {isEmpty ? null : (
-        <BranchChildren accent={accent}>
-          {head ? (
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <PersonCard
-                person={head}
-                accent={accent}
-                canEdit={canEdit}
-                onDragStart={onPersonDragStart}
-                isLead
-              />
-              {midChildren.length > 0 ? (
-                <BranchChildren accent={accent}>{midChildren}</BranchChildren>
-              ) : null}
-            </Box>
-          ) : midChildren.length > 0 ? (
-            midChildren
-          ) : (
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-              No people yet
+      <Box sx={{ px: { xs: 2, md: 2.25 }, pb: 2.25 }}>
+        {isEmpty ? (
+          <Box
+            sx={{
+              py: 2.5,
+              px: 2,
+              borderRadius: 2.5,
+              border: '1px dashed',
+              borderColor: alpha(accent, 0.35),
+              textAlign: 'center',
+              color: 'text.secondary',
+            }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              No people assigned yet
             </Typography>
-          )}
-        </BranchChildren>
-      )}
+          </Box>
+        ) : (
+          <Stack spacing={2}>
+            {head ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <PersonCard
+                  person={head}
+                  accent={accent}
+                  canEdit={canEdit}
+                  onDragStart={onPersonDragStart}
+                  isLead
+                />
+              </Box>
+            ) : null}
+
+            {hqPeople.length > 0 ? (
+              <Box>
+                <Typography
+                  variant="overline"
+                  sx={{ letterSpacing: 1, color: 'text.secondary', fontWeight: 700 }}
+                >
+                  {department.code === 'engineering' ? 'Leadership & HQ' : 'Department staff'}
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 1.25,
+                    mt: 1,
+                    justifyContent: head ? 'center' : 'flex-start',
+                  }}
+                >
+                  {hqPeople.map((person) => (
+                    <PersonCard
+                      key={person.user_id}
+                      person={person}
+                      accent={accent}
+                      canEdit={canEdit}
+                      onDragStart={onPersonDragStart}
+                      isLead={person.is_leadership}
+                      compact
+                    />
+                  ))}
+                </Box>
+              </Box>
+            ) : null}
+
+            {department.teams.length > 0 ? (
+              <Box>
+                <Typography
+                  variant="overline"
+                  sx={{ letterSpacing: 1, color: 'text.secondary', fontWeight: 700 }}
+                >
+                  Delivery teams
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      md: 'repeat(auto-fit, minmax(280px, 1fr))',
+                    },
+                    gap: 1.5,
+                    mt: 1,
+                  }}
+                >
+                  {department.teams.map((team) => (
+                    <TeamBranch
+                      key={team.team_id}
+                      team={team}
+                      canEdit={canEdit}
+                      dropTargetId={dropTargetId}
+                      setDropTargetId={setDropTargetId}
+                      onPersonDragStart={onPersonDragStart}
+                      onDropPerson={onDropPerson}
+                      accent={accent}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            ) : null}
+          </Stack>
+        )}
+      </Box>
     </Box>
   );
 }
@@ -632,6 +660,11 @@ export function OrganizationChartPage() {
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [effectiveFrom, setEffectiveFrom] = useState(todayIso());
   const [updateManager, setUpdateManager] = useState(true);
+  const [viewPrefs, setViewPrefs] = useState<ViewPrefs>(() => loadViewPrefs());
+
+  useEffect(() => {
+    localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify(viewPrefs));
+  }, [viewPrefs]);
 
   const chartQuery = useQuery({
     queryKey: ORG_CHART_KEY,
@@ -685,16 +718,43 @@ export function OrganizationChartPage() {
     [dragPerson],
   );
 
-  const departments = chartQuery.data?.departments ?? [];
-  const unassigned = chartQuery.data?.unassigned ?? [];
-  const legacyTeams = chartQuery.data?.teams ?? [];
-  const hasDepartmentView = departments.length > 0;
-  const totalPeople = departments.reduce((sum, row) => sum + row.member_count, 0);
+  const filteredDepartments = useMemo(() => {
+    const departments = (chartQuery.data?.departments ?? []).map((department) =>
+      filterDepartment(department, viewPrefs),
+    );
+    if (!viewPrefs.hideEmptyDepartments) return departments;
+    return departments.filter(
+      (department) =>
+        department.member_count > 0 ||
+        department.leaders.length > 0 ||
+        department.staff.length > 0 ||
+        department.teams.length > 0,
+    );
+  }, [chartQuery.data?.departments, viewPrefs]);
+
+  const unassigned = useMemo(
+    () => filterPeople(chartQuery.data?.unassigned ?? [], viewPrefs),
+    [chartQuery.data?.unassigned, viewPrefs],
+  );
+  const legacyTeams = useMemo(
+    () => (chartQuery.data?.teams ?? []).map((team) => filterTeam(team, viewPrefs)),
+    [chartQuery.data?.teams, viewPrefs],
+  );
+  const hasDepartmentView = (chartQuery.data?.departments?.length ?? 0) > 0;
+  const totalPeople = filteredDepartments.reduce((sum, row) => sum + row.member_count, 0);
+  const hiddenCount =
+    viewPrefs.hidePlanningBoard || viewPrefs.hideSystemAdmin
+      ? 'Service accounts can be shown via View options'
+      : null;
+
+  const setPref = (key: keyof ViewPrefs, value: boolean) => {
+    setViewPrefs((prev) => ({ ...prev, [key]: value }));
+  };
 
   return (
     <Box>
       <PageHeader
-        subtitle="Top-down hierarchy: company → departments → heads → leadership → delivery teams."
+        subtitle="Departments stacked for easy scanning — head, leadership, then delivery teams."
         action={
           <Button
             startIcon={<RefreshIcon />}
@@ -708,8 +768,8 @@ export function OrganizationChartPage() {
 
       <Box
         sx={{
-          mb: 2.5,
-          p: { xs: 2, md: 2.5 },
+          mb: 2,
+          p: { xs: 2, md: 2.25 },
           borderRadius: 3,
           background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(
             theme.palette.info.main,
@@ -720,15 +780,15 @@ export function OrganizationChartPage() {
         }}
       >
         <Stack
-          direction={{ xs: 'column', sm: 'row' }}
+          direction={{ xs: 'column', md: 'row' }}
           spacing={1.5}
-          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
+          sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between' }}
         >
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.2 }}>
               Organization Chart
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 820 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 720 }}>
               {chartQuery.data?.note ??
                 (canEdit
                   ? 'Drop a card on a delivery team, confirm the effective date, then save.'
@@ -737,10 +797,71 @@ export function OrganizationChartPage() {
           </Box>
           {hasDepartmentView ? (
             <Chip
-              label={`${departments.length} depts · ${totalPeople} people`}
-              sx={{ fontWeight: 700, alignSelf: { xs: 'flex-start', sm: 'center' } }}
+              label={`${filteredDepartments.length} depts · ${totalPeople} people`}
+              sx={{ fontWeight: 700, alignSelf: { xs: 'flex-start', md: 'center' } }}
             />
           ) : null}
+        </Stack>
+      </Box>
+
+      <Box
+        sx={{
+          mb: 2.5,
+          p: 1.5,
+          borderRadius: 2.5,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: alpha(theme.palette.background.paper, 0.8),
+        }}
+      >
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1}
+          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between', mb: 0.5 }}
+        >
+          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+            <VisibilityOffRoundedIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+              View options
+            </Typography>
+          </Stack>
+          {hiddenCount ? (
+            <Typography variant="caption" color="text.secondary">
+              {hiddenCount}
+            </Typography>
+          ) : null}
+        </Stack>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 0, md: 2 }} useFlexGap>
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={viewPrefs.hidePlanningBoard}
+                onChange={(event) => setPref('hidePlanningBoard', event.target.checked)}
+              />
+            }
+            label="Hide Planning Board"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={viewPrefs.hideSystemAdmin}
+                onChange={(event) => setPref('hideSystemAdmin', event.target.checked)}
+              />
+            }
+            label="Hide System Admin"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={viewPrefs.hideEmptyDepartments}
+                onChange={(event) => setPref('hideEmptyDepartments', event.target.checked)}
+              />
+            }
+            label="Hide empty departments"
+          />
         </Stack>
       </Box>
 
@@ -755,80 +876,36 @@ export function OrganizationChartPage() {
           {chartQuery.data?.note ||
             'No teams are in your organization-chart scope. Engineering Managers see their division; team leaders see only teams they lead.'}
         </Alert>
+      ) : hasDepartmentView && filteredDepartments.length === 0 && unassigned.length === 0 ? (
+        <Alert severity="info">
+          All departments are hidden by the current view options. Turn off “Hide empty departments”
+          or show service accounts to see more.
+        </Alert>
       ) : (
-        <Stack spacing={2.5}>
+        <Stack spacing={2}>
           {hasDepartmentView ? (
+            filteredDepartments.map((department) => (
+              <DepartmentSection
+                key={department.department_id}
+                department={department}
+                canEdit={canEdit}
+                dropTargetId={dropTargetId}
+                setDropTargetId={setDropTargetId}
+                onPersonDragStart={setDragPerson}
+                onDropPerson={handleDropOnTeam}
+              />
+            ))
+          ) : (
             <Box
               sx={{
-                borderRadius: 3,
-                border: '1px solid',
-                borderColor: 'divider',
-                bgcolor: alpha(theme.palette.background.paper, 0.7),
-                backgroundImage: `radial-gradient(${alpha(theme.palette.primary.main, 0.05)} 1px, transparent 1px)`,
-                backgroundSize: '18px 18px',
-                p: { xs: 2, md: 3 },
-                overflowX: 'auto',
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  md: 'repeat(auto-fit, minmax(280px, 1fr))',
+                },
+                gap: 1.5,
               }}
             >
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  minWidth: 'max-content',
-                  mx: 'auto',
-                }}
-              >
-                {/* Company root */}
-                <Box
-                  sx={{
-                    px: 3,
-                    py: 1.35,
-                    borderRadius: 3,
-                    bgcolor: theme.palette.primary.main,
-                    color: theme.palette.primary.contrastText,
-                    boxShadow: `0 12px 28px ${alpha(theme.palette.primary.main, 0.28)}`,
-                    textAlign: 'center',
-                    minWidth: 200,
-                  }}
-                >
-                  <Typography variant="subtitle1" sx={{ fontWeight: 900, letterSpacing: 0.3 }}>
-                    Organization
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.9 }}>
-                    Departments · Leadership · Teams
-                  </Typography>
-                </Box>
-
-                <Box sx={{ width: 2, height: 22, bgcolor: alpha('#546e7a', 0.45) }} />
-
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'flex-start',
-                    position: 'relative',
-                  }}
-                >
-                  {departments.map((department, index) => (
-                    <DepartmentBranch
-                      key={department.department_id}
-                      department={department}
-                      canEdit={canEdit}
-                      dropTargetId={dropTargetId}
-                      setDropTargetId={setDropTargetId}
-                      onPersonDragStart={setDragPerson}
-                      onDropPerson={handleDropOnTeam}
-                      isFirst={index === 0}
-                      isLast={index === departments.length - 1}
-                      siblingCount={departments.length}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            </Box>
-          ) : (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5, justifyContent: 'center' }}>
               {legacyTeams.map((team) => (
                 <TeamBranch
                   key={team.team_id}

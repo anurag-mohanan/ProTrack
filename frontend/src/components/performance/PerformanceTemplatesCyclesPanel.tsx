@@ -164,7 +164,6 @@ export function PerformanceTemplatesCyclesPanel({ canManage }: Props) {
                   }}
                 >
                   <MenuItem value="annual">Annual</MenuItem>
-                  <MenuItem value="quarterly">Quarterly</MenuItem>
                 </Select>
               </FormControl>
             </Grid>

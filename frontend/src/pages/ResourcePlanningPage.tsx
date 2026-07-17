@@ -29,6 +29,9 @@ import {
 import { KpiStrip } from '../components/analytics/KpiStrip';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
 import { useToast } from '../context/ToastContext';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { fetchAssignmentSkillFit } from '../api/assignmentSkillFit';
+import { getErrorMessage } from '../api/client';
 import type { ResourcePlanningGranularity } from '../types/ResourcePlanning';
 import { formatNumber, toFiniteNumber } from '../utils/format';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
@@ -80,14 +83,57 @@ export function ResourcePlanningPage() {
     staleTime: QUERY_STALE_TIMES.dashboard,
   });
 
+  const [pendingAssign, setPendingAssign] = useState<{
+    project_id: string;
+    designer_id: string;
+    message: string;
+  } | null>(null);
+
   const assignMutation = useMutation({
     mutationFn: assignProjectDesigner,
     onSuccess: () => {
       showSuccess('Project assignment updated');
+      setPendingAssign(null);
       void queryClient.invalidateQueries({ queryKey: ['resource-planning'] });
     },
     onError: (error: Error) => showError(error.message),
   });
+
+  const requestAssign = async (projectId: string, designerId: string) => {
+    const data = planningQuery.data;
+    const fromUnassigned = data?.unassigned_projects?.find((row) => row.project_id === projectId);
+    let complexity = fromUnassigned?.complexity ?? null;
+    if (!complexity && data?.designers) {
+      for (const designer of data.designers) {
+        for (const cell of designer.cells ?? []) {
+          const block = cell.blocks?.find((row) => row.project_id === projectId);
+          if (block?.complexity) {
+            complexity = block.complexity;
+            break;
+          }
+        }
+        if (complexity) break;
+      }
+    }
+    try {
+      const fit = await fetchAssignmentSkillFit({
+        complexity: complexity || 'medium',
+        user_id: designerId,
+        role: 'designer',
+      });
+      if (fit.requires_confirmation) {
+        setPendingAssign({
+          project_id: projectId,
+          designer_id: designerId,
+          message: fit.message,
+        });
+        return;
+      }
+      assignMutation.mutate({ project_id: projectId, designer_id: designerId });
+    } catch (error: unknown) {
+      showError(getErrorMessage(error));
+    }
+  };
 
   const teamNameMap = useMemo(
     () => new Map((teamsQuery.data ?? []).map((team) => [team.id, team.name])),
@@ -252,9 +298,10 @@ export function ResourcePlanningPage() {
             grid={filteredByTeam}
             selectedDesignerId={selectedDesignerId}
             selectedProjectId={selectedProjectId}
-            onAssign={(projectId, designerId) =>
-              assignMutation.mutate({ project_id: projectId, designer_id: designerId })
-            }
+            onAssign={(projectId, designerId) => {
+              if (!designerId) return;
+              void requestAssign(projectId, designerId);
+            }}
             onSelectProject={setSelectedProjectId}
           />
         </Box>
@@ -303,6 +350,23 @@ export function ResourcePlanningPage() {
           </Box>
         </FilterGroup>
       </FilterDrawer>
+
+      <ConfirmDialog
+        open={Boolean(pendingAssign)}
+        title="Skill fit warning"
+        message={pendingAssign?.message ?? ''}
+        confirmLabel="Assign anyway"
+        danger
+        loading={assignMutation.isPending}
+        onClose={() => setPendingAssign(null)}
+        onConfirm={() => {
+          if (!pendingAssign) return;
+          assignMutation.mutate({
+            project_id: pendingAssign.project_id,
+            designer_id: pendingAssign.designer_id,
+          });
+        }}
+      />
     </PageContainer>
   );
 }

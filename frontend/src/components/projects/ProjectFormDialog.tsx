@@ -34,8 +34,11 @@ import {
 import { userDisplayName } from '../../utils/format';
 import { optionalString, optionalUuid, optionalNumber, validateRequiredFields, isBlankDisplayValue } from '../../utils/formValues';
 import { ChangeProjectTemplateDialog } from './ChangeProjectTemplateDialog';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { useToast } from '../../context/ToastContext';
+import { fetchAssignmentSkillFit } from '../../api/assignmentSkillFit';
+import { getErrorMessage } from '../../api/client';
 
 interface ProjectFormValues {
   tool_number: string;
@@ -166,6 +169,8 @@ export function ProjectFormDialog({
   const queryClient = useQueryClient();
   const { showError, showSuccess } = useToast();
   const [form, setForm] = useState<ProjectFormValues>(emptyForm);
+  const [skillFitWarning, setSkillFitWarning] = useState<string | null>(null);
+  const [skillFitChecking, setSkillFitChecking] = useState(false);
   const [changeTemplateOpen, setChangeTemplateOpen] = useState(false);
   const baselineRef = useRef('');
   const hydratedForRef = useRef<string | null>(null);
@@ -465,7 +470,35 @@ export function ProjectFormDialog({
       return;
     }
 
-    saveMutation.mutate();
+    const runSave = () => {
+      setSkillFitWarning(null);
+      saveMutation.mutate();
+    };
+
+    const hasAssignees = Boolean(form.designer_id || form.surfacer_id || form.design_leader_id);
+    if (!hasAssignees) {
+      runSave();
+      return;
+    }
+
+    setSkillFitChecking(true);
+    void fetchAssignmentSkillFit({
+      complexity: form.complexity,
+      designer_id: form.designer_id || null,
+      surfacer_id: form.surfacer_id || null,
+      design_leader_id: form.design_leader_id || null,
+    })
+      .then((fit) => {
+        if (fit.requires_confirmation) {
+          setSkillFitWarning(fit.message);
+          return;
+        }
+        runSave();
+      })
+      .catch((error: unknown) => {
+        showError(getErrorMessage(error));
+      })
+      .finally(() => setSkillFitChecking(false));
   };
 
   const handleCustomerChange = (customerId: string) => {
@@ -569,7 +602,7 @@ export function ProjectFormDialog({
       formId="project-form"
       width={640}
       submitLabel={isEdit ? 'Save Changes' : 'Create Project'}
-      loading={saveMutation.isPending}
+      loading={saveMutation.isPending || skillFitChecking}
       submitDisabled={!canSubmit}
       dirty={isDirty}
       onDiscard={handleDiscard}
@@ -1255,6 +1288,20 @@ export function ProjectFormDialog({
         onError={(message) => showError(message)}
       />
     ) : null}
+
+    <ConfirmDialog
+      open={Boolean(skillFitWarning)}
+      title="Skill fit warning"
+      message={skillFitWarning ?? ''}
+      confirmLabel="Assign anyway"
+      danger
+      loading={saveMutation.isPending}
+      onClose={() => setSkillFitWarning(null)}
+      onConfirm={() => {
+        setSkillFitWarning(null);
+        saveMutation.mutate();
+      }}
+    />
     </>
   );
 }

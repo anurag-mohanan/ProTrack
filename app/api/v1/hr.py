@@ -80,6 +80,10 @@ from app.services.performance_review_service import (
     user_can_manage_team_reviews,
     user_can_view_review,
 )
+from app.services.assignment_skill_fit_service import (
+    evaluate_assignment_skill_fit,
+    evaluate_multi_role_fit,
+)
 from app.services.review_engine_service import (
     STAGE_ACKNOWLEDGED,
     STAGE_CALIBRATION,
@@ -565,6 +569,32 @@ def performance_dashboard(
     )
     db.commit()
     return payload
+
+
+@router.get("/performance/assignment-fit")
+def performance_assignment_fit(
+    complexity: str = Query(default="medium"),
+    designer_id: UUID | None = Query(default=None),
+    surfacer_id: UUID | None = Query(default=None),
+    design_leader_id: UUID | None = Query(default=None),
+    user_id: UUID | None = Query(default=None),
+    role: str = Query(default="designer"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Skill-matrix vs project-complexity fit check for assignment confirmations."""
+    _require_performance_view(db, current_user)
+    if user_id is not None:
+        return evaluate_assignment_skill_fit(
+            db, user_id=user_id, complexity=complexity, role=role
+        )
+    return evaluate_multi_role_fit(
+        db,
+        complexity=complexity,
+        designer_id=designer_id,
+        surfacer_id=surfacer_id,
+        design_leader_id=design_leader_id,
+    )
 
 
 @router.get("/reviews/suggested-projects", response_model=list[PerformanceReviewProjectSuggestionRead])

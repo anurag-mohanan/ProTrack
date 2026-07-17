@@ -87,7 +87,9 @@ export function ConfirmDialog({
             </Typography>
           </Box>
         ) : null}
-        <DialogContentText sx={{ color: 'text.secondary' }}>{message}</DialogContentText>
+        <DialogContentText sx={{ color: 'text.secondary', whiteSpace: 'pre-line' }}>
+          {message}
+        </DialogContentText>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
         <ProsohmButton buttonVariant="outlined" onClick={onClose} disabled={loading}>

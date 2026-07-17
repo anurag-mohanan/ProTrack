@@ -1,6 +1,7 @@
-import { FormControl, InputLabel, MenuItem, Select, Stack, Typography } from '@mui/material';
+import { MenuItem, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { fetchTeams } from '../../api/lookups';
+import { FilterSelect } from '../ui/design-system/FilterSelect';
 
 const STORAGE_KEY = 'finance.selectedTeamId';
 
@@ -47,25 +48,24 @@ export function FinanceTeamFilter({ value, onChange }: FinanceTeamFilterProps) {
         Team lens: costs, salaries, renewals, and commercial terms are scoped to the selected team
         (shared HQ costs use Corporate / Management).
       </Typography>
-      <FormControl size="small" sx={{ minWidth: 260 }}>
-        <InputLabel>Team</InputLabel>
-        <Select
-          label="Team"
-          value={value}
-          onChange={(event) => {
-            const next = String(event.target.value);
-            writeStoredFinanceTeamId(next);
-            onChange(next);
-          }}
-        >
-          <MenuItem value="">All teams</MenuItem>
-          {teams.map((team) => (
-            <MenuItem key={team.id} value={team.id}>
-              {team.name}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+      <FilterSelect
+        label="Team"
+        value={value}
+        fullWidth={false}
+        sx={{ minWidth: 260 }}
+        onChange={(event) => {
+          const next = String(event.target.value);
+          writeStoredFinanceTeamId(next);
+          onChange(next);
+        }}
+      >
+        <MenuItem value="">All teams</MenuItem>
+        {teams.map((team) => (
+          <MenuItem key={team.id} value={team.id}>
+            {team.name}
+          </MenuItem>
+        ))}
+      </FilterSelect>
     </Stack>
   );
 }

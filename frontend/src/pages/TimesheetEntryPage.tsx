@@ -18,6 +18,7 @@ import { createTimesheetEntry } from '../api/timesheets';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
+import { FilterSelect } from '../components/ui/design-system/FilterSelect';
 import { useAuth } from '../context/AuthContext';
 import type { WorkCategory } from '../types';
 import { projectLabel } from '../types/Project';
@@ -280,21 +281,20 @@ export function TimesheetEntryPage() {
                 </Select>
               </FormControl>
 
-              <FormControl fullWidth disabled={!projectId}>
-                <InputLabel>Milestone</InputLabel>
-                <Select
-                  label="Milestone"
-                  value={milestoneId}
-                  onChange={(event) => setMilestoneId(event.target.value)}
-                >
-                  <MenuItem value="">None</MenuItem>
-                  {(milestonesQuery.data ?? []).map((milestone) => (
-                    <MenuItem key={milestone.id} value={milestone.id}>
-                      {milestone.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <FilterSelect
+                label="Milestone"
+                size="medium"
+                value={milestoneId}
+                disabled={!projectId}
+                onChange={(event) => setMilestoneId(String(event.target.value))}
+              >
+                <MenuItem value="">None</MenuItem>
+                {(milestonesQuery.data ?? []).map((milestone) => (
+                  <MenuItem key={milestone.id} value={milestone.id}>
+                    {milestone.name}
+                  </MenuItem>
+                ))}
+              </FilterSelect>
 
               <FormControl fullWidth>
                 <InputLabel>Billable</InputLabel>
@@ -326,21 +326,19 @@ export function TimesheetEntryPage() {
                 </Select>
               </FormControl>
 
-              <FormControl fullWidth>
-                <InputLabel>Customer (optional)</InputLabel>
-                <Select
-                  label="Customer (optional)"
-                  value={customerId}
-                  onChange={(event) => setCustomerId(event.target.value)}
-                >
-                  <MenuItem value="">None</MenuItem>
-                  {(customersQuery.data ?? []).map((customer) => (
-                    <MenuItem key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <FilterSelect
+                label="Customer (optional)"
+                size="medium"
+                value={customerId}
+                onChange={(event) => setCustomerId(String(event.target.value))}
+              >
+                <MenuItem value="">None</MenuItem>
+                {(customersQuery.data ?? []).map((customer) => (
+                  <MenuItem key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </MenuItem>
+                ))}
+              </FilterSelect>
 
               <FormControl fullWidth>
                 <InputLabel>Billable</InputLabel>

@@ -27,6 +27,7 @@ import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { toFiniteNumber } from '../../utils/format';
 import { designTokens } from '../../theme/designTokens';
 import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
+import { FilterSelect } from '../ui/design-system/FilterSelect';
 import {
   FinanceHeroBanner,
   FinanceSection,
@@ -434,27 +435,26 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
             <Typography variant="subtitle2">Skill fee bands</Typography>
             {form.fee_bands.map((band, index) => (
               <Stack key={`${band.skill_level}-${index}`} direction="row" spacing={1} useFlexGap>
-                <FormControl size="small" sx={{ minWidth: 160 }}>
-                  <InputLabel>Skill</InputLabel>
-                  <Select
-                    label="Skill"
-                    value={band.skill_level}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setForm((prev) => {
-                        const next = [...prev.fee_bands];
-                        next[index] = { ...next[index], skill_level: value };
-                        return { ...prev, fee_bands: next };
-                      });
-                    }}
-                  >
-                    <MenuItem value="">Default (no skill)</MenuItem>
-                    <MenuItem value="beginner">Beginner</MenuItem>
-                    <MenuItem value="intermediate">Intermediate</MenuItem>
-                    <MenuItem value="advanced">Advanced</MenuItem>
-                    <MenuItem value="expert">Expert</MenuItem>
-                  </Select>
-                </FormControl>
+                <FilterSelect
+                  label="Skill"
+                  value={band.skill_level}
+                  fullWidth={false}
+                  sx={{ minWidth: 160 }}
+                  onChange={(e) => {
+                    const value = String(e.target.value);
+                    setForm((prev) => {
+                      const next = [...prev.fee_bands];
+                      next[index] = { ...next[index], skill_level: value };
+                      return { ...prev, fee_bands: next };
+                    });
+                  }}
+                >
+                  <MenuItem value="">Default (no skill)</MenuItem>
+                  <MenuItem value="beginner">Beginner</MenuItem>
+                  <MenuItem value="intermediate">Intermediate</MenuItem>
+                  <MenuItem value="advanced">Advanced</MenuItem>
+                  <MenuItem value="expert">Expert</MenuItem>
+                </FilterSelect>
                 <TextField
                   size="small"
                   label="Fee / resource"

@@ -125,6 +125,7 @@ export function CustomerTimesheetPackPanel({
         value={customerId}
         onChange={(event) => setCustomerId(event.target.value)}
         helperText="Required — pack is always for one customer"
+        slotProps={{ inputLabel: { shrink: true } }}
       >
         <MenuItem value="">Select customer</MenuItem>
         {(customers).map((customer) => (
@@ -159,6 +160,7 @@ export function CustomerTimesheetPackPanel({
             ? 'Leaders with multiple teams: pick one, or leave as all accessible'
             : 'Optional team filter'
         }
+        slotProps={{ inputLabel: { shrink: true } }}
       >
         <MenuItem value="">All accessible teams</MenuItem>
         {teams.map((team) => (

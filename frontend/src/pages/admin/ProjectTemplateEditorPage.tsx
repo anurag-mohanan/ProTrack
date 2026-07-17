@@ -34,6 +34,7 @@ import { StickyFormPageLayout } from '../../components/common/StickyFormPageLayo
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { StickyRecordHeader } from '../../components/ui/design-system';
+import { FilterSelect } from '../../components/ui/design-system/FilterSelect';
 import { APP_TOP_BAR_OFFSET } from '../../components/ui/design-system/StickyRecordHeader';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
@@ -499,23 +500,21 @@ export default function ProjectTemplateEditorPage() {
             />
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
-            <FormControl fullWidth>
-              <InputLabel>Customer (optional)</InputLabel>
-              <Select
-                label="Customer (optional)"
-                value={form.customer_id}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, customer_id: event.target.value }))
-                }
-              >
-                <MenuItem value="">General (all customers)</MenuItem>
-                {customers.map((customer) => (
-                  <MenuItem key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <FilterSelect
+              label="Customer (optional)"
+              size="medium"
+              value={form.customer_id}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, customer_id: String(event.target.value) }))
+              }
+            >
+              <MenuItem value="">General (all customers)</MenuItem>
+              {customers.map((customer) => (
+                <MenuItem key={customer.id} value={customer.id}>
+                  {customer.name}
+                </MenuItem>
+              ))}
+            </FilterSelect>
           </Grid>
           <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <FormControlLabel
@@ -697,26 +696,24 @@ export default function ProjectTemplateEditorPage() {
                 </FormControl>
               </Grid>
               <Grid size={{ xs: 12, md: 3 }}>
-                <FormControl fullWidth>
-                  <InputLabel>Default User (optional)</InputLabel>
-                  <Select
-                    label="Default User (optional)"
-                    value={milestoneDraft.default_assigned_user_id ?? ''}
-                    onChange={(event) =>
-                      setMilestoneDraft((current) => ({
-                        ...current,
-                        default_assigned_user_id: String(event.target.value) || null,
-                      }))
-                    }
-                  >
-                    <MenuItem value="">Auto from role</MenuItem>
-                    {users.map((user) => (
-                      <MenuItem key={user.id} value={user.id}>
-                        {user.first_name} {user.last_name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <FilterSelect
+                  label="Default User (optional)"
+                  size="medium"
+                  value={milestoneDraft.default_assigned_user_id ?? ''}
+                  onChange={(event) =>
+                    setMilestoneDraft((current) => ({
+                      ...current,
+                      default_assigned_user_id: String(event.target.value) || null,
+                    }))
+                  }
+                >
+                  <MenuItem value="">Auto from role</MenuItem>
+                  {users.map((user) => (
+                    <MenuItem key={user.id} value={user.id}>
+                      {user.first_name} {user.last_name}
+                    </MenuItem>
+                  ))}
+                </FilterSelect>
               </Grid>
               <Grid size={{ xs: 12, md: 2 }}>
                 <TextField

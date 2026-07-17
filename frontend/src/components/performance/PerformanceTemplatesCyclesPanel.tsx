@@ -22,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getErrorMessage } from '../../api/client';
 import { LoadingState } from '../common/LoadingState';
 import { useToast } from '../../context/ToastContext';
+import { FilterSelect } from '../ui/design-system/FilterSelect';
 import { currentReviewYear } from '../performanceReview/performanceReviewPeriod';
 
 type TemplateRow = {
@@ -168,21 +169,18 @@ export function PerformanceTemplatesCyclesPanel({ canManage }: Props) {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, md: 3 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Template</InputLabel>
-                <Select
-                  label="Template"
-                  value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}
-                >
-                  <MenuItem value="">Default for kind</MenuItem>
-                  {kindTemplates.map((row) => (
-                    <MenuItem key={row.id} value={row.id}>
-                      {row.name} (v{row.version})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <FilterSelect
+                label="Template"
+                value={templateId}
+                onChange={(e) => setTemplateId(String(e.target.value))}
+              >
+                <MenuItem value="">Default for kind</MenuItem>
+                {kindTemplates.map((row) => (
+                  <MenuItem key={row.id} value={row.id}>
+                    {row.name} (v{row.version})
+                  </MenuItem>
+                ))}
+              </FilterSelect>
             </Grid>
             <Grid size={{ xs: 12, md: 2 }}>
               <TextField

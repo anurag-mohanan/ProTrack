@@ -3,11 +3,8 @@ import {
   Button,
   Chip,
   Divider,
-  FormControl,
   Grid,
-  InputLabel,
   MenuItem,
-  Select,
   Stack,
   Tab,
   Table,
@@ -28,6 +25,7 @@ import { apiClient, getErrorMessage } from '../api/client';
 import { LoadingState } from '../components/common/LoadingState';
 import { PageHeader } from '../components/common/PageHeader';
 import { FinanceSection } from '../components/finance/FinanceCockpitPrimitives';
+import { FilterSelect } from '../components/ui/design-system/FilterSelect';
 import { KpiMetricCard } from '../components/ui/design-system/KpiMetricCard';
 import {
   FALLBACK_RATING_SCALE,
@@ -558,60 +556,49 @@ export function PerformanceReviewsPage({
               subtitle="Launch a sheet from the active template / cycle"
             >
               <Stack spacing={1.5}>
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Team</InputLabel>
-                  <Select
-                    label="Team"
-                    value={selectedTeamId}
-                    displayEmpty
-                    onChange={(e) => {
-                      setSelectedTeamId(String(e.target.value));
-                      setSelectedMemberId('');
-                    }}
-                  >
-                    <MenuItem value="">All teams</MenuItem>
-                    {teamOptions.map((team) => (
-                      <MenuItem key={team.id} value={team.id}>
-                        {team.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Team member</InputLabel>
-                  <Select
-                    label="Team member"
-                    value={selectedMemberId}
-                    displayEmpty
-                    onChange={(e) => setSelectedMemberId(String(e.target.value))}
-                  >
-                    <MenuItem value="">
-                      <em>Select member</em>
+                <FilterSelect
+                  label="Team"
+                  value={selectedTeamId}
+                  onChange={(e) => {
+                    setSelectedTeamId(String(e.target.value));
+                    setSelectedMemberId('');
+                  }}
+                >
+                  <MenuItem value="">All teams</MenuItem>
+                  {teamOptions.map((team) => (
+                    <MenuItem key={team.id} value={team.id}>
+                      {team.name}
                     </MenuItem>
-                    {filteredMembers.map((member) => (
-                      <MenuItem key={`${member.team_id}-${member.user_id}`} value={member.user_id}>
-                        {selectedTeamId
-                          ? member.name
-                          : `${member.name} · ${member.team_name}`}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Cycle</InputLabel>
-                  <Select
-                    label="Cycle"
-                    value={selectedCycleId}
-                    onChange={(e) => setSelectedCycleId(String(e.target.value))}
-                  >
-                    <MenuItem value="">No cycle</MenuItem>
-                    {filteredCycles.map((cycle) => (
-                      <MenuItem key={cycle.id} value={cycle.id}>
-                        {cycle.title}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label="Team member"
+                  value={selectedMemberId}
+                  onChange={(e) => setSelectedMemberId(String(e.target.value))}
+                >
+                  <MenuItem value="">
+                    <em>Select member</em>
+                  </MenuItem>
+                  {filteredMembers.map((member) => (
+                    <MenuItem key={`${member.team_id}-${member.user_id}`} value={member.user_id}>
+                      {selectedTeamId
+                        ? member.name
+                        : `${member.name} · ${member.team_name}`}
+                    </MenuItem>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label="Cycle"
+                  value={selectedCycleId}
+                  onChange={(e) => setSelectedCycleId(String(e.target.value))}
+                >
+                  <MenuItem value="">No cycle</MenuItem>
+                  {filteredCycles.map((cycle) => (
+                    <MenuItem key={cycle.id} value={cycle.id}>
+                      {cycle.title}
+                    </MenuItem>
+                  ))}
+                </FilterSelect>
                   <TextField
                     size="small"
                     label="Period label"

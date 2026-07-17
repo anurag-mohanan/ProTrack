@@ -340,6 +340,7 @@ export function TimesheetEntryForm({
               hoursRef.current?.focus();
             }
           }}
+          slotProps={{ inputLabel: { shrink: true } }}
           sx={{ width: 150, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
         >
           {selectedTool?.kind === 'np' ? (
@@ -368,6 +369,7 @@ export function TimesheetEntryForm({
             onChange={(event) =>
               setForm((current) => ({ ...current, contributionReason: event.target.value }))
             }
+            slotProps={{ inputLabel: { shrink: true } }}
             sx={{ width: 190, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           >
             <MenuItem value="">None</MenuItem>

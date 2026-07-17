@@ -189,6 +189,7 @@ export function DesignerTeamTimesheetPanel({
               value={customerId}
               onChange={(event) => setCustomerId(event.target.value)}
               helperText="Optional"
+              slotProps={{ inputLabel: { shrink: true } }}
             >
               <MenuItem value="">All customers</MenuItem>
               {customers.map((customer) => (
@@ -204,6 +205,7 @@ export function DesignerTeamTimesheetPanel({
               value={teamId}
               onChange={(event) => setTeamId(event.target.value)}
               helperText="Your accessible teams only"
+              slotProps={{ inputLabel: { shrink: true } }}
             >
               <MenuItem value="">All accessible teams</MenuItem>
               {teams.map((team) => (

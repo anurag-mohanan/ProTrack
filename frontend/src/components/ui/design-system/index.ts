@@ -19,6 +19,7 @@ export {
 export { FormField } from './FormField';
 export { PasswordField } from './PasswordField';
 export { FormSelect, type SelectOption } from './FormSelect';
+export { FilterSelect } from './FilterSelect';
 export { FormSection } from './FormSection';
 export { CollapsibleFormSection } from './CollapsibleFormSection';
 export { StickyRecordHeader, APP_TOP_BAR_OFFSET } from './StickyRecordHeader';

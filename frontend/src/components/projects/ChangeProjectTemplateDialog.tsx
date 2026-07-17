@@ -112,6 +112,7 @@ export function ChangeProjectTemplateDialog({
               value={selectedTemplateId}
               disabled={templatesQuery.isLoading || applying}
               onChange={(event) => setSelectedTemplateId(event.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
             >
               <MenuItem value="">Select template</MenuItem>
               {templateOptions.map((template) => (

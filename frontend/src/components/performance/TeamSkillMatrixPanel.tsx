@@ -3,10 +3,7 @@ import {
   Box,
   Button,
   Chip,
-  FormControl,
-  InputLabel,
   MenuItem,
-  Select,
   Stack,
   Table,
   TableBody,
@@ -14,11 +11,13 @@ import {
   TableHead,
   TableRow,
   Typography,
+  Select,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getErrorMessage } from '../../api/client';
 import { fetchStreams } from '../../api/lookups';
 import { LoadingState } from '../common/LoadingState';
+import { FilterSelect } from '../ui/design-system/FilterSelect';
 import { useToast } from '../../context/ToastContext';
 
 type ProficiencyScaleItem = {
@@ -187,40 +186,37 @@ export function TeamSkillMatrixPanel({ canManage, defaultTeamId = '' }: TeamSkil
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Team</InputLabel>
-            <Select
-              label="Team"
-              value={teamId}
-              displayEmpty
-              onChange={(e) => {
-                setTeamId(e.target.value);
-                setStreamId('');
-              }}
-            >
-              <MenuItem value="">All teams</MenuItem>
-              {(teamsQuery.data ?? []).map((team) => (
-                <MenuItem key={team.id} value={team.id}>
-                  {team.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel>Stream</InputLabel>
-            <Select
-              label="Stream"
-              value={streamId}
-              onChange={(e) => setStreamId(e.target.value)}
-            >
-              <MenuItem value="">Auto from team</MenuItem>
-              {(streamsQuery.data ?? []).map((stream) => (
-                <MenuItem key={stream.id} value={stream.id}>
-                  {stream.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <FilterSelect
+            label="Team"
+            value={teamId}
+            fullWidth={false}
+            sx={{ minWidth: 200 }}
+            onChange={(e) => {
+              setTeamId(String(e.target.value));
+              setStreamId('');
+            }}
+          >
+            <MenuItem value="">All teams</MenuItem>
+            {(teamsQuery.data ?? []).map((team) => (
+              <MenuItem key={team.id} value={team.id}>
+                {team.name}
+              </MenuItem>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="Stream"
+            value={streamId}
+            fullWidth={false}
+            sx={{ minWidth: 180 }}
+            onChange={(e) => setStreamId(String(e.target.value))}
+          >
+            <MenuItem value="">Auto from team</MenuItem>
+            {(streamsQuery.data ?? []).map((stream) => (
+              <MenuItem key={stream.id} value={stream.id}>
+                {stream.name}
+              </MenuItem>
+            ))}
+          </FilterSelect>
           {canManage ? (
             <Button
               variant="contained"

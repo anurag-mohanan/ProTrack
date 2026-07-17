@@ -272,6 +272,7 @@ export function EngineeringReportingSuite({
                   onChange={(event) => setCustomerId(event.target.value)}
                   sx={{ minWidth: 160 }}
                   helperText="Optional"
+                  slotProps={{ inputLabel: { shrink: true } }}
                 >
                   <MenuItem value="">All customers</MenuItem>
                   {customers.map((customer) => (
@@ -292,6 +293,7 @@ export function EngineeringReportingSuite({
                       ? 'Leaders: pick one or all accessible'
                       : 'Your accessible teams only'
                   }
+                  slotProps={{ inputLabel: { shrink: true } }}
                 >
                   <MenuItem value="">All accessible teams</MenuItem>
                   {teams.map((team) => (

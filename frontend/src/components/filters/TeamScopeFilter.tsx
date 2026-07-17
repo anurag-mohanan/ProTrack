@@ -53,13 +53,17 @@ export function TeamScopeFilter({
 
   return (
     <FormControl size="small" sx={{ minWidth: 220 }} disabled={disabled}>
-      <InputLabel id="team-scope-filter-label">{label}</InputLabel>
+      <InputLabel id="team-scope-filter-label" shrink>
+        {label}
+      </InputLabel>
       <Select
         labelId="team-scope-filter-label"
         multiple
         value={selectedTeamIds}
         onChange={handleChange}
-        input={<OutlinedInput label={label} />}
+        displayEmpty
+        notched
+        input={<OutlinedInput label={label} notched />}
         renderValue={() => displayValue}
       >
         <MenuItem value="__all__">

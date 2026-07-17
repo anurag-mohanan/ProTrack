@@ -102,6 +102,9 @@ from app.db.phase44_quote_invoicing_schema_sync import (
 from app.db.phase45_performance_review_engine_schema_sync import (
     ensure_phase45_performance_review_engine_foundation,
 )
+from app.db.phase46_org_department_schema_sync import (
+    ensure_phase46_org_department_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -202,6 +205,7 @@ async def lifespan(app: FastAPI):
         ("phase43_quote_invoiced_date", ensure_phase43_quote_invoiced_date_foundation),
         ("phase44_quote_invoicing", ensure_phase44_quote_invoicing_foundation),
         ("phase45_performance_review_engine", ensure_phase45_performance_review_engine_foundation),
+        ("phase46_org_department", ensure_phase46_org_department_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

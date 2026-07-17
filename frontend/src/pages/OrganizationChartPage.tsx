@@ -15,7 +15,10 @@ import {
   Stack,
   TextField,
   Typography,
+  alpha,
+  useTheme,
 } from '@mui/material';
+import AccountTreeRoundedIcon from '@mui/icons-material/AccountTreeRounded';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,7 +28,7 @@ import { getErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { isAdminRole } from '../utils/permissions';
-import type { OrgChartPerson, OrgChartTeamColumn } from '../types/Team';
+import type { OrgChartDepartment, OrgChartPerson, OrgChartTeamColumn } from '../types/Team';
 
 const ORG_CHART_KEY = ['teams', 'organization-chart'] as const;
 
@@ -74,7 +77,6 @@ function buildReportingTree(team: OrgChartTeamColumn): TreeNode[] {
     parentOf.set(person.user_id, parent);
   }
 
-  // Break cycles by walking ancestors; on loop, detach to root.
   for (const person of people) {
     const seen = new Set<string>();
     let current: string | null = person.user_id;
@@ -144,11 +146,11 @@ function PersonCard({
       sx={{
         width: 220,
         p: 1.25,
-        borderRadius: 2,
+        borderRadius: 2.5,
         border: '1px solid',
-        borderColor: isLead ? accent : 'divider',
+        borderColor: isLead || person.is_department_head ? accent : 'divider',
         bgcolor: 'background.paper',
-        boxShadow: isLead ? `0 0 0 1px ${accent}55` : 1,
+        boxShadow: isLead || person.is_department_head ? `0 0 0 1px ${accent}55` : 1,
         cursor: draggable ? 'grab' : 'default',
         transition: 'box-shadow 0.15s ease, transform 0.15s ease',
         '&:active': draggable ? { cursor: 'grabbing' } : undefined,
@@ -181,7 +183,13 @@ function PersonCard({
             {person.designation || person.role_name || 'Team member'}
           </Typography>
           <Stack direction="row" spacing={0.5} useFlexGap sx={{ mt: 0.5, flexWrap: 'wrap' }}>
-            {isLead ? <Chip label="Lead" size="small" sx={{ height: 20, bgcolor: `${accent}22` }} /> : null}
+            {person.is_department_head ? (
+              <Chip label="Dept head" size="small" sx={{ height: 20, bgcolor: `${accent}22` }} />
+            ) : isLead ? (
+              <Chip label="Lead" size="small" sx={{ height: 20, bgcolor: `${accent}22` }} />
+            ) : person.is_leadership ? (
+              <Chip label="Leadership" size="small" variant="outlined" sx={{ height: 20 }} />
+            ) : null}
             {person.stream_name ? (
               <Chip label={person.stream_name} size="small" variant="outlined" sx={{ height: 20 }} />
             ) : null}
@@ -197,7 +205,6 @@ function PersonCard({
   );
 }
 
-/** Top-down tree branch with visible connector lines. */
 function TreeBranch({
   node,
   accent,
@@ -349,7 +356,7 @@ function TeamTree({
         borderRadius: 3,
         border: '1px solid',
         borderColor: isOver ? team.colour : 'divider',
-        bgcolor: isOver ? `${team.colour}10` : 'background.default',
+        bgcolor: isOver ? `${team.colour}10` : alpha('#fff', 0.55),
         boxShadow: isOver ? 4 : 0,
         overflow: 'hidden',
         transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
@@ -480,7 +487,165 @@ function TeamTree({
   );
 }
 
+function DepartmentPanel({
+  department,
+  canEdit,
+  dropTargetId,
+  setDropTargetId,
+  onPersonDragStart,
+  onDropPerson,
+}: {
+  department: OrgChartDepartment;
+  canEdit: boolean;
+  dropTargetId: string | null;
+  setDropTargetId: (id: string | null) => void;
+  onPersonDragStart: (person: OrgChartPerson) => void;
+  onDropPerson: (target: OrgChartTeamColumn) => void;
+}) {
+  const theme = useTheme();
+  const isEmpty =
+    department.member_count === 0 &&
+    department.leaders.length === 0 &&
+    department.staff.length === 0 &&
+    department.teams.length === 0;
+
+  return (
+    <Box
+      sx={{
+        borderRadius: 3,
+        border: '1px solid',
+        borderColor: alpha(department.colour, 0.35),
+        overflow: 'hidden',
+        background: `linear-gradient(160deg, ${alpha(department.colour, 0.1)} 0%, ${alpha(
+          theme.palette.background.paper,
+          0.96,
+        )} 42%, ${theme.palette.background.default} 100%)`,
+      }}
+    >
+      <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2 }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
+        >
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 42,
+                height: 42,
+                borderRadius: 2,
+                display: 'grid',
+                placeItems: 'center',
+                bgcolor: alpha(department.colour, 0.18),
+                color: department.colour,
+                flexShrink: 0,
+              }}
+            >
+              <AccountTreeRoundedIcon fontSize="small" />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }} noWrap>
+                {department.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {department.head_name
+                  ? `Head · ${department.head_name}${department.head_title ? ` · ${department.head_title}` : ''}`
+                  : department.description || 'Ready for future expansion'}
+              </Typography>
+            </Box>
+          </Stack>
+          <Chip
+            label={`${department.member_count} people`}
+            size="small"
+            sx={{ fontWeight: 700, bgcolor: alpha(department.colour, 0.14) }}
+          />
+        </Stack>
+      </Box>
+
+      <Box sx={{ px: { xs: 2, md: 2.5 }, pb: 2.5 }}>
+        {isEmpty ? (
+          <Box
+            sx={{
+              py: 3.5,
+              px: 2,
+              borderRadius: 2.5,
+              border: '1px dashed',
+              borderColor: alpha(department.colour, 0.35),
+              textAlign: 'center',
+              color: 'text.secondary',
+            }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              No people assigned yet
+            </Typography>
+            <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}>
+              This department is reserved for future org growth.
+            </Typography>
+          </Box>
+        ) : (
+          <Stack spacing={2.25}>
+            {(department.leaders.length > 0 || department.staff.length > 0) && (
+              <Box>
+                <Typography
+                  variant="overline"
+                  sx={{ letterSpacing: 1.1, color: 'text.secondary', fontWeight: 700 }}
+                >
+                  {department.code === 'engineering' ? 'Leadership & HQ' : 'Department staff'}
+                </Typography>
+                <Stack direction="row" spacing={1.25} useFlexGap sx={{ flexWrap: 'wrap', mt: 1 }}>
+                  {[...department.leaders, ...department.staff].map((person) => (
+                    <PersonCard
+                      key={person.user_id}
+                      person={person}
+                      accent={department.colour}
+                      canEdit={canEdit}
+                      onDragStart={onPersonDragStart}
+                      isLead={person.is_department_head}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+            {department.teams.length > 0 ? (
+              <Box>
+                <Typography
+                  variant="overline"
+                  sx={{ letterSpacing: 1.1, color: 'text.secondary', fontWeight: 700 }}
+                >
+                  Delivery teams
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 2,
+                    mt: 1,
+                  }}
+                >
+                  {department.teams.map((team) => (
+                    <TeamTree
+                      key={team.team_id}
+                      team={team}
+                      canEdit={canEdit}
+                      dropTargetId={dropTargetId}
+                      setDropTargetId={setDropTargetId}
+                      onPersonDragStart={onPersonDragStart}
+                      onDropPerson={onDropPerson}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            ) : null}
+          </Stack>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
 export function OrganizationChartPage() {
+  const theme = useTheme();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
@@ -544,12 +709,15 @@ export function OrganizationChartPage() {
     [dragPerson],
   );
 
+  const departments = chartQuery.data?.departments ?? [];
   const unassigned = chartQuery.data?.unassigned ?? [];
+  const legacyTeams = chartQuery.data?.teams ?? [];
+  const hasDepartmentView = departments.length > 0;
 
   return (
     <Box>
       <PageHeader
-        subtitle="Reporting tree by team. Lines follow manager → report so relationships are easy to trace. Admins can drag cards between teams with an effective date for P&L."
+        subtitle="Company departments → leadership → delivery teams. Finance primary homes stay dated for P&L."
         action={
           <Button
             startIcon={<RefreshIcon />}
@@ -561,15 +729,29 @@ export function OrganizationChartPage() {
         }
       />
 
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>
-        Organization Chart
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {chartQuery.data?.note ??
-          (canEdit
-            ? 'Drop a card on a team branch, confirm the effective date, then save.'
-            : 'View limited to your division or teams you lead.')}
-      </Typography>
+      <Box
+        sx={{
+          mb: 2.5,
+          p: { xs: 2, md: 2.5 },
+          borderRadius: 3,
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(
+            theme.palette.info.main,
+            0.07,
+          )} 55%, ${alpha(theme.palette.background.paper, 0.92)} 100%)`,
+          border: '1px solid',
+          borderColor: alpha(theme.palette.primary.main, 0.12),
+        }}
+      >
+        <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.2 }}>
+          Organization Chart
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 820 }}>
+          {chartQuery.data?.note ??
+            (canEdit
+              ? 'Drop a card on a delivery team, confirm the effective date, then save.'
+              : 'View limited to your division or teams you lead.')}
+        </Typography>
+      </Box>
 
       {chartQuery.isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -577,57 +759,28 @@ export function OrganizationChartPage() {
         </Box>
       ) : chartQuery.isError ? (
         <Alert severity="error">{getErrorMessage(chartQuery.error)}</Alert>
-      ) : (chartQuery.data?.teams.length ?? 0) === 0 && unassigned.length === 0 ? (
+      ) : !hasDepartmentView && legacyTeams.length === 0 && unassigned.length === 0 ? (
         <Alert severity="info">
           {chartQuery.data?.note ||
             'No teams are in your organization-chart scope. Engineering Managers see their division; team leaders see only teams they lead.'}
         </Alert>
       ) : (
-        <Stack spacing={3}>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 0,
-            }}
-          >
-            <Box
-              sx={{
-                px: 2.5,
-                py: 1.25,
-                borderRadius: 2,
-                border: '1px solid',
-                borderColor: 'divider',
-                bgcolor: 'background.paper',
-                fontWeight: 800,
-                letterSpacing: 0.2,
-              }}
-            >
-              Organization
-            </Box>
-            {(chartQuery.data?.teams.length ?? 0) > 0 ? (
-              <Box
-                sx={{
-                  width: 2,
-                  height: 20,
-                  bgcolor: 'divider',
-                  opacity: 0.8,
-                }}
+        <Stack spacing={2.5}>
+          {hasDepartmentView ? (
+            departments.map((department) => (
+              <DepartmentPanel
+                key={department.department_id}
+                department={department}
+                canEdit={canEdit}
+                dropTargetId={dropTargetId}
+                setDropTargetId={setDropTargetId}
+                onPersonDragStart={setDragPerson}
+                onDropPerson={handleDropOnTeam}
               />
-            ) : null}
-            <Box
-              sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                justifyContent: 'center',
-                gap: 2.5,
-                width: '100%',
-                position: 'relative',
-                pt: 0.5,
-              }}
-            >
-              {(chartQuery.data?.teams ?? []).map((team) => (
+            ))
+          ) : (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5 }}>
+              {legacyTeams.map((team) => (
                 <TeamTree
                   key={team.team_id}
                   team={team}
@@ -639,7 +792,7 @@ export function OrganizationChartPage() {
                 />
               ))}
             </Box>
-          </Box>
+          )}
 
           {canEdit && unassigned.length > 0 ? (
             <Box
@@ -648,13 +801,14 @@ export function OrganizationChartPage() {
                 border: '1px dashed',
                 borderColor: 'divider',
                 p: 2,
+                bgcolor: alpha(theme.palette.warning.main, 0.04),
               }}
             >
               <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5 }}>
                 Unassigned
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                Drag onto a team branch to set primary home
+                Drag onto a delivery team to set primary home
               </Typography>
               <Stack direction="row" spacing={1.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
                 {unassigned.map((person) => (

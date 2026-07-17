@@ -55,6 +55,9 @@ export interface OrgChartPerson {
   company_experience: string | null;
   joining_date: string | null;
   membership_effective_from: string | null;
+  org_department_id?: string | null;
+  is_department_head?: boolean;
+  is_leadership?: boolean;
 }
 
 export interface OrgChartTeamColumn {
@@ -64,10 +67,29 @@ export interface OrgChartTeamColumn {
   team_lead_id: string | null;
   team_lead_name: string | null;
   member_count: number;
+  org_department_id?: string | null;
+  is_delivery_team?: boolean;
   people: OrgChartPerson[];
 }
 
+export interface OrgChartDepartment {
+  department_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  colour: string;
+  sort_order: number;
+  head_user_id: string | null;
+  head_name: string | null;
+  head_title: string | null;
+  member_count: number;
+  leaders: OrgChartPerson[];
+  staff: OrgChartPerson[];
+  teams: OrgChartTeamColumn[];
+}
+
 export interface OrganizationChart {
+  departments?: OrgChartDepartment[];
   teams: OrgChartTeamColumn[];
   unassigned: OrgChartPerson[];
   scope?: 'full' | 'division' | 'team' | 'none' | string;

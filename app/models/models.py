@@ -139,6 +139,9 @@ class User(Base, TimestampMixin):
     department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("departments.id"), nullable=True
     )
+    org_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("org_departments.id"), nullable=True, index=True
+    )
     working_hours_per_day: Mapped[Decimal] = mapped_column(
         Numeric(4, 2), nullable=False, default=Decimal("8")
     )
@@ -216,6 +219,10 @@ class User(Base, TimestampMixin):
     )
     department: Mapped[Optional["Department"]] = relationship(
         back_populates="users", foreign_keys=[department_id]
+    )
+    org_department: Mapped[Optional["OrgDepartment"]] = relationship(
+        back_populates="users",
+        foreign_keys=[org_department_id],
     )
     team: Mapped[Optional["Team"]] = relationship(
         foreign_keys=[team_id],
@@ -375,6 +382,35 @@ class UserSkillRating(Base, TimestampMixin):
     assessed_by: Mapped[Optional[User]] = relationship(foreign_keys=[assessed_by_id])
 
 
+class OrgDepartment(Base, TimestampMixin):
+    """Company org units for the organization chart (Management, Engineering, …).
+
+    Distinct from HR ``departments`` (Mold Design, Surfacing, …).
+    """
+
+    __tablename__ = "org_departments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    colour: Mapped[str] = mapped_column(String(20), nullable=False, default="#1976d2")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    head_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    head_user: Mapped[Optional[User]] = relationship(foreign_keys=[head_user_id])
+    teams: Mapped[list["Team"]] = relationship(back_populates="org_department")
+    users: Mapped[list[User]] = relationship(
+        back_populates="org_department",
+        foreign_keys="User.org_department_id",
+    )
+
+
 class Team(Base, TimestampMixin):
     __tablename__ = "teams"
 
@@ -392,9 +428,16 @@ class Team(Base, TimestampMixin):
     organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), nullable=True
     )
+    org_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("org_departments.id"), nullable=True, index=True
+    )
 
     team_lead: Mapped[Optional[User]] = relationship(
         foreign_keys=[team_lead_id]
+    )
+    org_department: Mapped[Optional[OrgDepartment]] = relationship(
+        back_populates="teams",
+        foreign_keys=[org_department_id],
     )
     assigned_users: Mapped[list[User]] = relationship(
         back_populates="team",

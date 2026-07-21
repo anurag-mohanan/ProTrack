@@ -93,9 +93,9 @@ export function PerformanceAnalyticsPanel() {
         </Grid>
         <Grid size={{ xs: 6, md: 3 }}>
           <KpiMetricCard
-            title="By kind"
-            value={`${stats.annual}/${stats.quarterly}`}
-            subtitle="Annual / Quarterly"
+            title="Annual reviews"
+            value={String(stats.annual)}
+            subtitle="In current scope"
             icon={AssessmentOutlinedIcon}
             compact
           />

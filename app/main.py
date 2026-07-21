@@ -105,6 +105,12 @@ from app.db.phase45_performance_review_engine_schema_sync import (
 from app.db.phase46_org_department_schema_sync import (
     ensure_phase46_org_department_foundation,
 )
+from app.db.phase47_user_lifecycle_schema_sync import (
+    ensure_phase47_user_lifecycle_foundation,
+)
+from app.db.phase48_compensation_change_schema_sync import (
+    ensure_phase48_compensation_change_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -206,6 +212,8 @@ async def lifespan(app: FastAPI):
         ("phase44_quote_invoicing", ensure_phase44_quote_invoicing_foundation),
         ("phase45_performance_review_engine", ensure_phase45_performance_review_engine_foundation),
         ("phase46_org_department", ensure_phase46_org_department_foundation),
+        ("phase47_user_lifecycle", ensure_phase47_user_lifecycle_foundation),
+        ("phase48_compensation_change", ensure_phase48_compensation_change_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 
@@ -245,6 +253,22 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.info("ProTrack API startup schema sync completed successfully")
+
+    lifecycle_session = sessionmaker(bind=engine)()
+    try:
+        from app.services.user_change_service import (
+            apply_due_compensation,
+            apply_due_lifecycle,
+        )
+
+        apply_due_lifecycle(lifecycle_session)
+        apply_due_compensation(lifecycle_session)
+        lifecycle_session.commit()
+    except Exception:
+        lifecycle_session.rollback()
+        logger.exception("Apply-due lifecycle / compensation sweep failed")
+    finally:
+        lifecycle_session.close()
 
     reminder_session = sessionmaker(bind=engine)()
     try:

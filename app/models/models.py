@@ -1318,6 +1318,117 @@ class Notification(Base, TimestampMixin):
     user: Mapped[User] = relationship(back_populates="notifications")
 
 
+class UserWorkingModelPeriod(Base, TimestampMixin):
+    """Dated person-level billing / working-model history (apply-forward)."""
+
+    __tablename__ = "user_working_model_periods"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    working_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("working_models.id"), nullable=True
+    )
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    source_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    working_model: Mapped[Optional["WorkingModel"]] = relationship(
+        foreign_keys=[working_model_id]
+    )
+
+
+class UserJobEvent(Base, TimestampMixin):
+    """Dated audit log of transfers / promotions / billing changes."""
+
+    __tablename__ = "user_job_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    from_value: Mapped[Optional[str]] = mapped_column(Text)
+    to_value: Mapped[Optional[str]] = mapped_column(Text)
+    source_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    created_by: Mapped[Optional[User]] = relationship(foreign_keys=[created_by_id])
+
+
+class CompensationChangeRequest(Base, TimestampMixin):
+    """Hike / promotion suggestion routed through a 2-level approval chain.
+
+    Stage flow: ``suggested`` -> ``l1_approved`` -> ``l2_approved`` -> ``applied``
+    (or ``rejected`` from any pending stage). Level 1 is the Engineering Manager
+    over the employee's team; level 2 is the Director.
+    """
+
+    __tablename__ = "compensation_change_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    request_type: Mapped[str] = mapped_column(String(32), nullable=False, default="hike")
+    stage: Mapped[str] = mapped_column(String(32), nullable=False, default="suggested")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    suggested_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    hike_pct: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 2))
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
+    current_monthly_salary: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    proposed_monthly_salary: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    new_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("roles.id"), nullable=True
+    )
+    new_designation: Mapped[Optional[str]] = mapped_column(String(120))
+    new_working_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("working_models.id"), nullable=True
+    )
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    justification: Mapped[Optional[str]] = mapped_column(Text)
+    l1_approver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    l1_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    l2_approver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    l2_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    suggested_by: Mapped[Optional[User]] = relationship(foreign_keys=[suggested_by_id])
+    new_role: Mapped[Optional[Role]] = relationship(foreign_keys=[new_role_id])
+    new_working_model: Mapped[Optional["WorkingModel"]] = relationship(
+        foreign_keys=[new_working_model_id]
+    )
+    l1_approver: Mapped[Optional[User]] = relationship(foreign_keys=[l1_approver_id])
+    l2_approver: Mapped[Optional[User]] = relationship(foreign_keys=[l2_approver_id])
+
+
 # Phase 7 foundation models (registers tables with metadata)
 from app.models.foundation import (  # noqa: E402, F401
     CompanySettings,

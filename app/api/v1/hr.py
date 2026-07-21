@@ -30,6 +30,7 @@ from app.core.permissions import get_role_name
 from app.core.team_access import get_accessible_team_ids, team_member_user_ids
 from app.models.enums import ProjectComplexity, TeamRelationshipType, TimesheetStatus
 from app.models.models import (
+    CompensationChangeRequest,
     PerformanceReviewCycle,
     PerformanceReviewItem,
     PerformanceReviewProject,
@@ -37,11 +38,13 @@ from app.models.models import (
     PerformanceReviewSheet,
     PerformanceReviewTemplate,
     Project,
+    Role,
     Team,
     TeamMember,
     Timesheet,
     TimesheetEntry,
     User,
+    WorkingModel,
 )
 from app.schemas.performance_review import (
     PerformanceReviewCreate,
@@ -101,6 +104,23 @@ from app.services.review_engine_service import (
 )
 from app.services.timesheet_compliance_service import get_missing_timesheet_rows
 from app.services.user_team_service import get_user_team_ids
+from app.services import compensation_change_service as comp_service
+from app.services import user_change_service
+from app.schemas.compensation_change import (
+    CompensationChangeCreate,
+    CompensationChangeRead,
+    CompensationChangeWorkflowAction,
+)
+from app.schemas.user_lifecycle import (
+    BillingChangeRequest,
+    PromoteRequest,
+    TransferRequest,
+    UserJobEventRead,
+    UserLifecycleHistoryRead,
+    WorkingModelPeriodRead,
+)
+from app.models.models import UserJobEvent, UserWorkingModelPeriod
+from app.core.exceptions import ProTrackValidationError
 
 router = APIRouter(prefix="/hr", tags=["human-resources"])
 
@@ -1415,3 +1435,346 @@ def delete_performance_review(
     db.add(sheet)
     db.commit()
     return None
+
+
+# ---------------------------------------------------------------------------
+# Compensation change requests (hike / promotion) — 2-level approval
+# ---------------------------------------------------------------------------
+def _person_name(user: User | None) -> str | None:
+    if user is None:
+        return None
+    return " ".join(part for part in (user.first_name, user.last_name) if part).strip() or None
+
+
+def _comp_to_read(
+    db: Session, request: CompensationChangeRequest, current_user: User
+) -> CompensationChangeRead:
+    employee = db.get(User, request.user_id)
+    suggested_by = (
+        db.get(User, request.suggested_by_id) if request.suggested_by_id else None
+    )
+    l1 = db.get(User, request.l1_approver_id) if request.l1_approver_id else None
+    l2 = db.get(User, request.l2_approver_id) if request.l2_approver_id else None
+    role = db.get(Role, request.new_role_id) if request.new_role_id else None
+    wm = (
+        db.get(WorkingModel, request.new_working_model_id)
+        if request.new_working_model_id
+        else None
+    )
+
+    can_l1 = (
+        request.stage == comp_service.STAGE_SUGGESTED
+        and current_user.id != request.suggested_by_id
+        and employee is not None
+        and comp_service.can_approve_l1(db, current_user, employee)
+    )
+    can_l2 = (
+        request.stage == comp_service.STAGE_L1_APPROVED
+        and current_user.id not in {request.suggested_by_id, request.l1_approver_id}
+        and employee is not None
+        and comp_service.can_approve_l2(db, current_user, employee)
+    )
+    can_withdraw = request.stage in (
+        comp_service.STAGE_SUGGESTED,
+        comp_service.STAGE_L1_APPROVED,
+    ) and (
+        current_user.id == request.suggested_by_id or _user_is_admin(db, current_user)
+    )
+
+    return CompensationChangeRead(
+        id=request.id,
+        user_id=request.user_id,
+        employee_name=_person_name(employee),
+        request_type=request.request_type,
+        stage=request.stage,
+        status=request.status,
+        suggested_by_id=request.suggested_by_id,
+        suggested_by_name=_person_name(suggested_by),
+        hike_pct=request.hike_pct,
+        currency_code=request.currency_code,
+        current_monthly_salary=request.current_monthly_salary,
+        proposed_monthly_salary=request.proposed_monthly_salary,
+        new_role_id=request.new_role_id,
+        new_role_name=role.name if role else None,
+        new_designation=request.new_designation,
+        new_working_model_id=request.new_working_model_id,
+        new_working_model_name=wm.name if wm else None,
+        effective_date=request.effective_date,
+        justification=request.justification,
+        l1_approver_id=request.l1_approver_id,
+        l1_approver_name=_person_name(l1),
+        l1_at=request.l1_at,
+        l2_approver_id=request.l2_approver_id,
+        l2_approver_name=_person_name(l2),
+        l2_at=request.l2_at,
+        applied_at=request.applied_at,
+        rejection_reason=request.rejection_reason,
+        created_at=request.created_at,
+        can_approve_l1=bool(can_l1),
+        can_approve_l2=bool(can_l2),
+        can_withdraw=bool(can_withdraw),
+    )
+
+
+def _user_is_admin(db: Session, user: User) -> bool:
+    from app.core.permissions import is_admin
+
+    return is_admin(db, user)
+
+
+@router.post(
+    "/performance/comp-requests",
+    response_model=CompensationChangeRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_compensation_request(
+    payload: CompensationChangeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_performance_view(db, current_user)
+    employee = db.get(User, payload.user_id)
+    if employee is None or not employee.is_active:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    try:
+        request = comp_service.create_request(
+            db,
+            employee=employee,
+            actor=current_user,
+            request_type=payload.request_type,
+            hike_pct=payload.hike_pct,
+            effective_date=payload.effective_date,
+            justification=payload.justification,
+            new_role_id=payload.new_role_id,
+            new_designation=payload.new_designation,
+            new_working_model_id=payload.new_working_model_id,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(request)
+    return _comp_to_read(db, request, current_user)
+
+
+@router.get(
+    "/performance/comp-requests",
+    response_model=list[CompensationChangeRead],
+)
+def list_compensation_requests(
+    stage: str | None = Query(default=None),
+    user_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_performance_view(db, current_user)
+    query = select(CompensationChangeRequest).order_by(
+        CompensationChangeRequest.created_at.desc()
+    )
+    if stage:
+        query = query.where(CompensationChangeRequest.stage == stage)
+    if user_id:
+        query = query.where(CompensationChangeRequest.user_id == user_id)
+    rows = db.scalars(query).all()
+
+    is_admin_user = _user_is_admin(db, current_user)
+    result: list[CompensationChangeRead] = []
+    for row in rows:
+        read = _comp_to_read(db, row, current_user)
+        visible = (
+            is_admin_user
+            or row.suggested_by_id == current_user.id
+            or read.can_approve_l1
+            or read.can_approve_l2
+            or (
+                row.l1_approver_id == current_user.id
+                or row.l2_approver_id == current_user.id
+            )
+        )
+        if visible:
+            result.append(read)
+    return result
+
+
+@router.post(
+    "/performance/comp-requests/{request_id}/workflow",
+    response_model=CompensationChangeRead,
+)
+def compensation_request_workflow(
+    request_id: UUID,
+    payload: CompensationChangeWorkflowAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_performance_view(db, current_user)
+    request = db.get(CompensationChangeRequest, request_id)
+    if request is None:
+        raise HTTPException(status_code=404, detail="Compensation request not found")
+    try:
+        comp_service.advance_request(
+            db,
+            request=request,
+            action=payload.action,
+            actor=current_user,
+            rejection_reason=payload.rejection_reason,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(request)
+    return _comp_to_read(db, request, current_user)
+
+
+# ---------------------------------------------------------------------------
+# Person-level lifecycle actions (promote / billing change / transfer)
+# ---------------------------------------------------------------------------
+def _require_lifecycle_manage(db: Session, user: User) -> None:
+    from app.core.permissions import has_role, is_admin, ENGINEERING_MANAGER
+
+    if is_admin(db, user):
+        return
+    if has_role(db, user, ENGINEERING_MANAGER):
+        return
+    if get_role_name(db, user) in comp_service.DIRECTOR_ROLES:
+        return
+    raise HTTPException(
+        status_code=403, detail="Lifecycle changes require manager or admin access"
+    )
+
+
+@router.get(
+    "/users/{user_id}/lifecycle",
+    response_model=UserLifecycleHistoryRead,
+)
+def get_user_lifecycle(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_performance_view(db, current_user)
+    if db.get(User, user_id) is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    events = db.scalars(
+        select(UserJobEvent)
+        .where(UserJobEvent.user_id == user_id)
+        .order_by(UserJobEvent.effective_date.desc())
+    ).all()
+    periods = db.scalars(
+        select(UserWorkingModelPeriod)
+        .where(UserWorkingModelPeriod.user_id == user_id)
+        .order_by(UserWorkingModelPeriod.effective_from.desc())
+    ).all()
+
+    event_reads = [
+        UserJobEventRead(
+            id=ev.id,
+            event_type=ev.event_type,
+            effective_date=ev.effective_date,
+            from_value=ev.from_value,
+            to_value=ev.to_value,
+            applied_at=ev.applied_at,
+            created_by_name=_person_name(
+                db.get(User, ev.created_by_id) if ev.created_by_id else None
+            ),
+            created_at=ev.created_at,
+        )
+        for ev in events
+    ]
+    period_reads = [
+        WorkingModelPeriodRead(
+            id=p.id,
+            working_model_id=p.working_model_id,
+            working_model_name=(
+                db.get(WorkingModel, p.working_model_id).name
+                if p.working_model_id
+                and db.get(WorkingModel, p.working_model_id) is not None
+                else None
+            ),
+            effective_from=p.effective_from,
+            effective_to=p.effective_to,
+            notes=p.notes,
+        )
+        for p in periods
+    ]
+    return UserLifecycleHistoryRead(
+        events=event_reads, working_model_periods=period_reads
+    )
+
+
+@router.post("/users/{user_id}/promote", status_code=status.HTTP_201_CREATED)
+def promote_user(
+    user_id: UUID,
+    payload: PromoteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_lifecycle_manage(db, current_user)
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        user_change_service.record_promotion(
+            db,
+            user=user,
+            new_role_id=payload.new_role_id,
+            new_designation=payload.new_designation,
+            effective_date=payload.effective_date,
+            created_by=current_user,
+            notes=payload.notes,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/users/{user_id}/billing-change", status_code=status.HTTP_201_CREATED)
+def change_user_billing(
+    user_id: UUID,
+    payload: BillingChangeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_lifecycle_manage(db, current_user)
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        user_change_service.record_billing_change(
+            db,
+            user=user,
+            new_working_model_id=payload.new_working_model_id,
+            effective_date=payload.effective_date,
+            created_by=current_user,
+            notes=payload.notes,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/users/{user_id}/transfer", status_code=status.HTTP_201_CREATED)
+def transfer_user(
+    user_id: UUID,
+    payload: TransferRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_lifecycle_manage(db, current_user)
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        user_change_service.record_transfer(
+            db,
+            user=user,
+            target_team_id=payload.target_team_id,
+            effective_date=payload.effective_date,
+            created_by=current_user,
+            update_reporting_manager=payload.update_reporting_manager,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    return {"status": "ok"}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Box,
+  Divider,
   Stack,
   Typography,
   alpha,
@@ -11,12 +12,15 @@ import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
 import HubRoundedIcon from '@mui/icons-material/HubRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import SettingsSuggestRoundedIcon from '@mui/icons-material/SettingsSuggestRounded';
+import PaymentsRoundedIcon from '@mui/icons-material/PaymentsRounded';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamSkillMatrixPanel } from '../components/performance/TeamSkillMatrixPanel';
 import { PerformanceDashboardPanel } from '../components/performance/PerformanceDashboardPanel';
 import { PerformanceTemplatesCyclesPanel } from '../components/performance/PerformanceTemplatesCyclesPanel';
 import { PerformanceAnalyticsPanel } from '../components/performance/PerformanceAnalyticsPanel';
+import { CompensationApprovalsPanel } from '../components/performance/CompensationApprovalsPanel';
+import { UserLifecyclePanel } from '../components/performance/UserLifecyclePanel';
 import { PerformanceReviewsPage } from './PerformanceReviewsPage';
 import { useAuth } from '../context/AuthContext';
 import { hasRole, ROLES } from '../utils/permissions';
@@ -25,6 +29,7 @@ const SECTIONS = [
   { id: 'dashboard', label: 'Dashboard', blurb: 'Ratings, open reviews, skills & utilization', icon: DashboardRoundedIcon },
   { id: 'annual', label: 'Annual Reviews', blurb: 'Template-driven annual review workspace', icon: AssessmentRoundedIcon },
   { id: 'skills', label: 'Skills Matrix', blurb: 'Stream proficiency for allocation decisions', icon: HubRoundedIcon },
+  { id: 'compensation', label: 'Compensation', blurb: 'Hike & promotion suggestions with 2-level approval', icon: PaymentsRoundedIcon },
   { id: 'templates', label: 'Templates & Cycles', blurb: 'Review templates and cycle orchestration', icon: SettingsSuggestRoundedIcon },
   { id: 'analytics', label: 'Analytics', blurb: 'Progress, overdue, and rating mix', icon: InsightsRoundedIcon },
 ] as const;
@@ -187,6 +192,14 @@ export function PerformancePage() {
               </Typography>
               <TeamSkillMatrixPanel canManage={canManage} />
             </Box>
+          ) : null}
+
+          {section === 'compensation' ? (
+            <Stack spacing={3}>
+              <CompensationApprovalsPanel canManage={canManage} />
+              <Divider />
+              <UserLifecyclePanel canManage={canManage} />
+            </Stack>
           ) : null}
 
           {section === 'templates' ? (

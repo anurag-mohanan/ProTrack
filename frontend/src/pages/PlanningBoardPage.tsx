@@ -55,14 +55,9 @@ function workersLabel(project: WallProjectCard) {
   for (const name of names) {
     if (!unique.includes(name)) unique.push(name);
   }
-  // Prefer explicit designer + surfacer (max 2) when both fields exist.
-  if (project.designer_name || project.surfacer_name) {
-    return [project.designer_name, project.surfacer_name]
-      .map((name) => (name || '').trim())
-      .filter(Boolean)
-      .join(' · ') || '—';
-  }
-  return unique.slice(0, 2).join(' · ') || '—';
+  if (unique.length === 0) return '—';
+  if (unique.length <= 2) return unique.join(' · ');
+  return `${unique.slice(0, 2).join(' · ')} +${unique.length - 2}`;
 }
 
 function useFitCount(
@@ -262,44 +257,33 @@ function formatHours(value: number | null | undefined) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
-function HoursVarianceLine({ project }: { project: WallProjectCard }) {
+function hoursSummary(project: WallProjectCard) {
   const quoted = Number(project.quoted_hours ?? 0);
   const actual = Number(project.actual_hours ?? 0);
   const variancePct = project.variance_percent;
   const over = typeof variancePct === 'number' && variancePct > 0;
   const under = typeof variancePct === 'number' && variancePct < 0;
-  const varianceColor = over ? '#fca5a5' : under ? '#86efac' : WALL.muted;
-  const varianceLabel =
-    typeof variancePct === 'number'
-      ? `${variancePct > 0 ? '+' : ''}${Math.round(variancePct)}%`
-      : 'n/a';
-
-  return (
-    <Typography sx={{ color: WALL.muted, fontSize: '0.68rem', fontWeight: 700 }} noWrap>
-      Q {formatHours(quoted)}h · A {formatHours(actual)}h ·{' '}
-      <Box component="span" sx={{ color: varianceColor, fontWeight: 800 }}>
-        {varianceLabel}
-      </Box>
-    </Typography>
-  );
+  const color = over ? '#fca5a5' : under ? '#86efac' : WALL.muted;
+  return { text: `${formatHours(actual)}/${formatHours(quoted)}h`, color };
 }
 
 function ProjectRow({ project }: { project: WallProjectCard }) {
   const health = healthTone(project.health);
   const stage = project.current_milestone || humanizeStage(project.project_stage);
   const percent = Math.max(0, Math.min(100, Number(project.progress_percent ?? 0)));
+  const hours = hoursSummary(project);
 
   return (
     <Box
       sx={{
         px: 1,
-        py: 0.45,
+        py: 0.5,
         borderRadius: 1.25,
         bgcolor: WALL.soft,
         borderLeft: `4px solid ${health.main}`,
-        minHeight: 52,
+        minHeight: 44,
         display: 'grid',
-        gridTemplateColumns: '72px minmax(0, 1.2fr) minmax(0, 0.95fr) 84px',
+        gridTemplateColumns: '54px minmax(0, 1fr) 116px 64px',
         gap: 0.75,
         alignItems: 'center',
       }}
@@ -308,34 +292,34 @@ function ProjectRow({ project }: { project: WallProjectCard }) {
         {project.tool_number}
       </Typography>
       <Box sx={{ minWidth: 0 }}>
-        <Typography sx={{ fontWeight: 700, color: WALL.text, fontSize: '0.78rem' }} noWrap>
+        <Typography sx={{ fontWeight: 700, color: WALL.text, fontSize: '0.8rem' }} noWrap>
           {formatDisplayValue(stage)}
-          {project.complexity
-            ? ` · ${String(project.complexity).replace(/^./, (c) => c.toUpperCase())}`
-            : ''}
         </Typography>
         <Typography sx={{ color: WALL.muted, fontSize: '0.7rem', fontWeight: 600 }} noWrap>
           {workersLabel(project)}
         </Typography>
-        <HoursVarianceLine project={project} />
       </Box>
       <Box sx={{ minWidth: 0 }}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.2 }}>
-          <Typography sx={{ color: WALL.muted, fontSize: '0.62rem', fontWeight: 700 }}>DONE</Typography>
-          <Typography sx={{ color: WALL.text, fontSize: '0.75rem', fontWeight: 800 }}>{Math.round(percent)}%</Typography>
+        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline', mb: 0.3 }}>
+          <Typography sx={{ color: WALL.text, fontSize: '0.78rem', fontWeight: 800 }}>
+            {Math.round(percent)}%
+          </Typography>
+          <Typography sx={{ color: hours.color, fontSize: '0.64rem', fontWeight: 700 }} noWrap>
+            {hours.text}
+          </Typography>
         </Stack>
         <LinearProgress
           variant="determinate"
           value={percent}
           sx={{
-            height: 7,
+            height: 6,
             borderRadius: 999,
             bgcolor: 'rgba(15, 23, 42, 0.55)',
             '& .MuiLinearProgress-bar': { borderRadius: 999, bgcolor: health.main },
           }}
         />
       </Box>
-      <Typography sx={{ color: WALL.muted, fontWeight: 700, fontSize: '0.7rem', textAlign: 'right' }} noWrap>
+      <Typography sx={{ color: WALL.muted, fontWeight: 700, fontSize: '0.68rem', textAlign: 'right' }} noWrap>
         {project.due_date ? formatDate(project.due_date) : '—'}
       </Typography>
     </Box>

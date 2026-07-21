@@ -89,6 +89,7 @@ export interface OrgChartDepartment {
 }
 
 export interface OrganizationChart {
+  company_root?: OrgChartPerson | null;
   departments?: OrgChartDepartment[];
   teams: OrgChartTeamColumn[];
   unassigned: OrgChartPerson[];

@@ -38,6 +38,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/admin/project-types': 'Project Types',
   '/admin/project-templates': 'Project Templates',
   '/admin/roles': 'Roles',
+  '/admin/role-hierarchy': 'Role Hierarchy',
   '/admin/settings': 'System Settings',
   '/admin/settings/company': 'Company Information',
   '/admin/settings/branding': 'Branding',

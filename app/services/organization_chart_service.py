@@ -21,7 +21,19 @@ from app.models.enums import TeamRelationshipType
 from app.models.models import OrgDepartment, Team, TeamMember, User
 from app.services.performance_review_service import format_tenure
 
-LEADERSHIP_ROLES = frozenset({ENGINEERING_MANAGER, DESIGN_LEADER, "Director of Engineering"})
+LEADERSHIP_ROLES = frozenset(
+    {
+        ENGINEERING_MANAGER,
+        DESIGN_LEADER,
+        "Managing Director",
+        "Director of Engineering",
+        "Director of Sales",
+        "Director of HR",
+        "Director of Accounts",
+        "Director of IT",
+        "Team Leader",
+    }
+)
 
 
 class OrgChartPerson(BaseModel):
@@ -76,6 +88,7 @@ class OrgChartDepartment(BaseModel):
 
 
 class OrganizationChartRead(BaseModel):
+    company_root: OrgChartPerson | None = None
     departments: list[OrgChartDepartment] = Field(default_factory=list)
     teams: list[OrgChartTeamColumn] = Field(default_factory=list)
     unassigned: list[OrgChartPerson] = Field(default_factory=list)
@@ -409,7 +422,22 @@ def build_organization_chart(db: Session, *, viewer: User) -> OrganizationChartR
             "Engineering Managers see their division; team leaders see teams they lead."
         )
 
+    company_root: OrgChartPerson | None = None
+    if scope is None:
+        management = next(
+            (row for row in org_departments if row.code == "management"), None
+        )
+        head_user = management.head_user if management is not None else None
+        if head_user is not None and head_user.is_active and not head_user.is_deleted:
+            company_root = _person_from_user(
+                head_user,
+                can_edit=can_edit,
+                org_department_id=management.id,
+                is_department_head=True,
+            )
+
     return OrganizationChartRead(
+        company_root=company_root,
         departments=departments_out,
         teams=flat_columns,
         unassigned=unassigned,

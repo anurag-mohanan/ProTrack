@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
 from app.core.exceptions import ProTrackValidationError
+from app.core.uploads import enforce_upload_size
 from app.models.models import TimesheetImportHistory, User
 from app.schemas.historical_timesheet_import import (
     TimesheetImportHistoryDetail,
@@ -103,6 +104,7 @@ async def upload_historical_timesheets(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
         )
+    enforce_upload_size(content)
 
     upload_id = str(uuid4())
     try:
@@ -414,6 +416,7 @@ async def upload_historical_timesheet_folder(
         content = await upload.read()
         if not content:
             continue
+        enforce_upload_size(content)
         payload.append((rel_path, content))
 
     if not payload:
@@ -678,6 +681,7 @@ async def upload_master_timesheet_workbook(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
         )
+    enforce_upload_size(content)
     upload_id = str(uuid4())
     try:
         save_master_upload(upload_id, file.filename, content)

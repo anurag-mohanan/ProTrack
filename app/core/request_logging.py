@@ -11,6 +11,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.core.request_context import set_request_context
+
 logger = logging.getLogger("protrack.api")
 
 
@@ -34,6 +36,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
+
+        # Populate per-request context for audit enrichment.
+        client_ip = request.headers.get("x-forwarded-for")
+        if client_ip:
+            client_ip = client_ip.split(",")[0].strip()
+        elif request.client is not None:
+            client_ip = request.client.host
+        set_request_context(client_ip, request.headers.get("user-agent"))
 
         started = time.perf_counter()
         params = dict(request.query_params)

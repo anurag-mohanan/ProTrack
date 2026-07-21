@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import require_roles
 from app.api.deps import get_db
 from app.core.config import COMPANY_LOGO_DIR
+from app.core.uploads import enforce_upload_size
 from app.crud.foundation import (
     department,
     get_or_create_branding_settings,
@@ -62,11 +63,12 @@ from app.schemas.settings import (
 router = APIRouter(prefix="/settings", tags=["settings"])
 admin_access = [Depends(require_roles("Admin"))]
 
+# SVG is intentionally excluded: SVGs can carry embedded scripts and would be a
+# stored-XSS vector when served inline.
 ALLOWED_LOGO_TYPES = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
     "image/jpg": ".jpg",
-    "image/svg+xml": ".svg",
 }
 
 
@@ -94,7 +96,6 @@ _LOGO_MEDIA_TYPES = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
-    ".svg": "image/svg+xml",
 }
 
 
@@ -137,18 +138,14 @@ async def upload_company_logo(
     if content_type not in ALLOWED_LOGO_TYPES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Logo must be PNG, JPG, or SVG.",
+            detail="Logo must be PNG or JPG.",
         )
     extension = ALLOWED_LOGO_TYPES[content_type]
     COMPANY_LOGO_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"company-logo{extension}"
     destination = COMPANY_LOGO_DIR / filename
     data = await file.read()
-    if len(data) > 2 * 1024 * 1024:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Logo must be smaller than 2 MB.",
-        )
+    enforce_upload_size(data, max_bytes=2 * 1024 * 1024)
     destination.write_bytes(data)
     return update_company_settings(
         db,

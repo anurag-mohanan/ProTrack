@@ -98,6 +98,13 @@ from app.db.phase47_user_lifecycle_schema_sync import (
 from app.db.phase48_compensation_change_schema_sync import (
     ensure_phase48_compensation_change_foundation,
 )
+from app.db.phase49_role_hierarchy_schema_sync import (
+    ensure_phase49_role_hierarchy_columns,
+    ensure_phase49_role_hierarchy_seed,
+)
+from app.db.phase50_security_foundation_schema_sync import (
+    ensure_phase50_security_foundation,
+)
 from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_user_auth_schema, ensure_user_access_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_timesheet_entry_leave_count, ensure_timesheet_entry_soft_delete, ensure_team_schema, ensure_user_team_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -416,6 +423,8 @@ def test_engine():
     ensure_phase46_org_department_foundation(engine)
     ensure_phase47_user_lifecycle_foundation(engine)
     ensure_phase48_compensation_change_foundation(engine)
+    ensure_phase49_role_hierarchy_columns(engine)
+    ensure_phase50_security_foundation(engine)
     ensure_project_complexity(engine)
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
@@ -465,6 +474,7 @@ def seeded_db(test_session_factory, test_engine):
     ensure_phase46_org_department_foundation(test_engine)
     ensure_phase47_user_lifecycle_foundation(test_engine)
     ensure_phase48_compensation_change_foundation(test_engine)
+    ensure_phase49_role_hierarchy_seed(test_engine)
     ensure_project_complexity(test_engine)
     ensure_standard_task_types(test_engine)
     return milestone

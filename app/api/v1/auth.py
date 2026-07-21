@@ -1,9 +1,9 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jwt.exceptions import InvalidTokenError
 from sqlalchemy.orm import Session
@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
 from app.core.auth import create_access_token, decode_access_token
+from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES
+from app.core.request_context import get_client_ip, get_user_agent
 from app.core.permissions import get_role_name, get_user_permission_keys
 from app.core.timesheet_eligibility import (
     user_can_enter_own_timesheet,
@@ -21,6 +23,7 @@ from app.core.access_control import (
     resolve_user_modules,
     resolve_user_special_permissions,
 )
+from app.core.module_actions import resolve_user_module_actions
 from app.core.security import hash_password, verify_password
 from app.crud.auth import (
     AuthFailureReason,
@@ -30,7 +33,7 @@ from app.crud.auth import (
 )
 from app.crud import user as user_crud
 from app.models.enums import ActivityAction, EntityType
-from app.models.models import Team, User
+from app.models.models import LoginSession, PasswordHistory, Team, User
 from app.schemas.auth import (
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -40,8 +43,9 @@ from app.schemas.auth import (
     TokenPayload,
     UserProfileRead,
 )
+from app.core.rate_limit import AUTH_LIMIT, limiter
 from app.core.release_mode import effective_must_change_password
-from app.services.activity_service import log_activity
+from app.services.activity_service import OUTCOME_FAILURE, OUTCOME_SUCCESS, log_activity
 from app.services.user_team_service import list_user_team_assignments
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -121,6 +125,7 @@ def _issue_token(
             team_ids=team_ids,
             team_names=team_names,
             impersonator_id=impersonator_id,
+            token_version=getattr(user, "token_version", 0) or 0,
         )
     except Exception:
         logger.exception("JWT generation failed for user_id=%s email=%s", user.id, user.email)
@@ -152,15 +157,70 @@ def _log_failed_login(
         entity_id=existing.id if existing is not None else FAILED_LOGIN_ENTITY_ID,
         action=ActivityAction.login_failed,
         new_value=f"{email}:{reason.value if reason else 'unknown'}",
+        outcome=OUTCOME_FAILURE,
+        module="auth",
     )
+
+
+def _record_login_session(db: Session, user: User) -> None:
+    """Record an active login session for device visibility (best-effort)."""
+    try:
+        session = LoginSession(
+            user_id=user.id,
+            token_version=int(getattr(user, "token_version", 0) or 0),
+            ip_address=get_client_ip(),
+            user_agent=get_user_agent(),
+            created_at=datetime.now(UTC),
+            last_seen_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+            revoked=False,
+        )
+        db.add(session)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to record login session for user_id=%s", user.id)
+
+
+def _password_reused(db: Session, user: User, new_password: str, history_count: int) -> bool:
+    """True if new_password matches the current or any recent historical hash."""
+    if verify_password(new_password, user.password_hash):
+        return True
+    if history_count <= 0:
+        return False
+    recent = (
+        db.query(PasswordHistory)
+        .filter(PasswordHistory.user_id == user.id)
+        .order_by(PasswordHistory.created_at.desc())
+        .limit(history_count)
+        .all()
+    )
+    return any(verify_password(new_password, row.password_hash) for row in recent)
+
+
+def _save_password_history(db: Session, user: User, previous_hash: str, history_count: int) -> None:
+    db.add(PasswordHistory(user_id=user.id, password_hash=previous_hash))
+    # Trim to the retained window.
+    if history_count > 0:
+        rows = (
+            db.query(PasswordHistory)
+            .filter(PasswordHistory.user_id == user.id)
+            .order_by(PasswordHistory.created_at.desc())
+            .offset(history_count)
+            .all()
+        )
+        for row in rows:
+            db.delete(row)
 
 
 def _complete_login(db: Session, user: User) -> Token:
     user.last_login = datetime.now(UTC)
     user.failed_login_count = 0
+    user.locked_until = None
     db.add(user)
     db.commit()
     db.refresh(user)
+    _record_login_session(db, user)
     log_activity(
         db,
         user=user,
@@ -168,6 +228,8 @@ def _complete_login(db: Session, user: User) -> Token:
         entity_id=user.id,
         action=ActivityAction.user_logged_in,
         new_value=user.email,
+        outcome=OUTCOME_SUCCESS,
+        module="auth",
     )
     return _issue_token(db, user)
 
@@ -203,6 +265,9 @@ def _build_current_user_read(
         impersonator_name=impersonator_name,
         module_access=resolve_user_modules(user, role_name),
         special_permissions=resolve_user_special_permissions(user, role_name),
+        module_actions=resolve_user_module_actions(
+            user, role_name, resolve_user_modules(user, role_name)
+        ),
         requires_timesheet=user_requires_timesheet(user),
         can_enter_own_timesheet=user_can_enter_own_timesheet(db, user),
         can_view_organization_chart=user_can_view_organization_chart(db, user),
@@ -231,12 +296,15 @@ def _handle_login(db: Session, email: str, password: str) -> Token:
 
 
 @router.post("/login", response_model=Token)
-def login_json(body: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit(AUTH_LIMIT)
+def login_json(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     return _handle_login(db, body.email, body.password)
 
 
 @router.post("/token", response_model=Token)
+@limiter.limit(AUTH_LIMIT)
 def login_form(
+    request: Request,
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
@@ -280,7 +348,9 @@ def read_current_user_profile(
 
 
 @router.post("/change-password", response_model=ChangePasswordResponse)
+@limiter.limit(AUTH_LIMIT)
 def change_password(
+    request: Request,
     body: ChangePasswordRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -295,13 +365,24 @@ def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect.",
         )
+    from app.services.security_policy_service import get_effective_policy
+
+    history_count = get_effective_policy(db).password_history_count
     if verify_password(body.new_password, current_user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="New password must be different from your current password.",
         )
+    if history_count > 0 and _password_reused(db, current_user, body.new_password, history_count):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"New password must not match your last {history_count} passwords.",
+        )
+    previous_hash = current_user.password_hash
     current_user.password_hash = hash_password(body.new_password)
     current_user.must_change_password = False
+    current_user.password_changed_at = datetime.now(UTC)
+    _save_password_history(db, current_user, previous_hash, history_count)
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
@@ -317,6 +398,50 @@ def change_password(
         message="Password updated successfully.",
         must_change_password=False,
     )
+
+
+@router.post("/refresh", response_model=Token)
+def refresh_token(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mint a fresh access token (new issued-at) for the active user.
+
+    Used by the client to keep an active session alive under idle-timeout
+    without forcing a re-login. Rejected automatically if the presented token
+    is already stale (wrong token_version) or idle-expired.
+    """
+    return _issue_token(db, current_user)
+
+
+@router.post("/logout-all-devices")
+def logout_all_devices(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Force-logout every session for the current user by bumping token_version.
+
+    All previously issued JWTs (including the one making this call) become
+    invalid immediately.
+    """
+    current_user.token_version = int(getattr(current_user, "token_version", 0) or 0) + 1
+    db.add(current_user)
+    db.query(LoginSession).filter(
+        LoginSession.user_id == current_user.id,
+        LoginSession.revoked.is_(False),
+    ).update({LoginSession.revoked: True}, synchronize_session=False)
+    db.commit()
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.user,
+        entity_id=current_user.id,
+        action=ActivityAction.user_logged_out,
+        new_value="all_devices",
+        outcome=OUTCOME_SUCCESS,
+        module="auth",
+    )
+    return {"message": "All sessions have been signed out."}
 
 
 @router.post("/impersonate/{user_id}", response_model=Token)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
@@ -61,8 +61,23 @@ class Role(Base, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
+    # Org hierarchy placement (standardized roles). Lower rank = more senior.
+    org_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("org_departments.id"), nullable=True, index=True
+    )
+    rank: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    parent_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("roles.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     users: Mapped[list[User]] = relationship(back_populates="role")
+    org_department: Mapped[Optional["OrgDepartment"]] = relationship(
+        foreign_keys=[org_department_id]
+    )
+    parent_role: Mapped[Optional["Role"]] = relationship(
+        remote_side=[id], foreign_keys=[parent_role_id]
+    )
 
 
 class OperationalRoleType(Base, TimestampMixin):
@@ -200,6 +215,16 @@ class User(Base, TimestampMixin):
     module_access: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     special_permissions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     module_actions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # --- Security / authentication hardening (phase 50) ---
+    password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Bumped to invalidate all previously-issued JWTs (force logout / revoke).
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # --- MFA / SSO (design-only, future-ready; unused this pass) ---
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    mfa_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    mfa_method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    sso_subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
 
     role: Mapped[Role] = relationship(back_populates="users")
     operational_role_type: Mapped[Optional[OperationalRoleType]] = relationship(
@@ -1285,8 +1310,82 @@ class Activity(Base, TimestampMixin):
     )
     old_value: Mapped[Optional[str]] = mapped_column(Text)
     new_value: Mapped[Optional[str]] = mapped_column(Text)
+    # --- Audit enrichment (phase 50) ---
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    outcome: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    module: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     user: Mapped[Optional[User]] = relationship(back_populates="activities")
+
+
+class PasswordHistory(Base):
+    """Historical password hashes, used to block password reuse."""
+
+    __tablename__ = "password_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class SecurityPolicySetting(Base):
+    """Singleton, admin-editable security policy overrides.
+
+    NULL columns fall back to the environment/config defaults, so an unset
+    policy behaves exactly like the shipped defaults.
+    """
+
+    __tablename__ = "security_policy_settings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    password_min_length: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    password_expiry_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    password_history_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    lockout_max_failed_attempts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    lockout_duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    session_idle_timeout_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    audit_retention_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+
+
+class LoginSession(Base):
+    """A record of an issued login session for active-device visibility.
+
+    ProTrack auth is stateless JWT; this table is an audit/visibility layer and
+    the basis for remote termination (revocation is enforced by bumping
+    ``User.token_version``, which this row records for comparison).
+    """
+
+    __tablename__ = "login_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(UTC)
+    )
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class Notification(Base, TimestampMixin):

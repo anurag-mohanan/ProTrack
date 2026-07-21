@@ -1,0 +1,34 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+!frontend/.env.production.example
+
+# Databases & backups (contain plaintext salary/finance data)
+*.db
+*.sqlite
+*.sqlite3
+Backups/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Uploads / generated
+uploads/
+import_sources/
+
+# Node / frontend build
+node_modules/
+frontend/dist/
+
+# Editor / OS
+.DS_Store
+Thumbs.db

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.access_control import (
     HR,
+    ROLE_ALIASES,
     MODULE_REPORTS,
     MODULE_RESOURCE_PLANNING,
     MODULE_SYSTEM_ADMINISTRATION,
@@ -71,9 +72,7 @@ def get_role_name(db: Session, user: User) -> str:
 
 
 def normalize_role_name(role_name: str) -> str:
-    if role_name == LEGACY_PROJECT_MANAGER:
-        return ENGINEERING_MANAGER
-    return role_name
+    return ROLE_ALIASES.get(role_name, role_name)
 
 
 def has_role(db: Session, user: User, *roles: str) -> bool:

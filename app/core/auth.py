@@ -20,8 +20,10 @@ def create_access_token(
     team_ids: list[UUID] | None = None,
     team_names: list[str] | None = None,
     impersonator_id: UUID | None = None,
+    token_version: int = 0,
 ) -> str:
-    expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    now = datetime.now(UTC)
+    expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload: dict[str, str | int | list[str]] = {
         "sub": str(user_id),
         "email": email,
@@ -29,6 +31,8 @@ def create_access_token(
         "role": role,
         "permissions": permissions,
         "exp": expire,
+        "iat": now,
+        "tv": int(token_version),
     }
     if team_id is not None:
         payload["team_id"] = str(team_id)
@@ -67,6 +71,14 @@ def decode_access_token(token: str) -> TokenPayload:
             if isinstance(team_names_raw, list)
             else []
         )
+        issued_at_raw = payload.get("iat")
+        issued_at = (
+            datetime.fromtimestamp(issued_at_raw, tz=UTC)
+            if isinstance(issued_at_raw, (int, float))
+            else None
+        )
+        token_version_raw = payload.get("tv", 0)
+        token_version = token_version_raw if isinstance(token_version_raw, int) else 0
         return TokenPayload(
             sub=user_id,
             email=email,
@@ -78,6 +90,8 @@ def decode_access_token(token: str) -> TokenPayload:
             team_ids=team_ids,
             team_names=team_names,
             impersonator_id=UUID(impersonator_id) if impersonator_id else None,
+            token_version=token_version,
+            issued_at=issued_at,
         )
     except (InvalidTokenError, ValueError, KeyError) as exc:
         raise InvalidTokenError("Could not validate credentials") from exc

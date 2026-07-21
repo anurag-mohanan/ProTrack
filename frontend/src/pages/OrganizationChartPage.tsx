@@ -791,6 +791,12 @@ export function OrganizationChartPage() {
     );
   }, [chartQuery.data?.departments, viewPrefs]);
 
+  const companyRoot = useMemo(() => {
+    const root = chartQuery.data?.company_root ?? null;
+    if (!root || shouldHidePerson(root, viewPrefs)) return null;
+    return root;
+  }, [chartQuery.data?.company_root, viewPrefs]);
+
   const unassigned = useMemo(
     () => filterPeople(chartQuery.data?.unassigned ?? [], viewPrefs),
     [chartQuery.data?.unassigned, viewPrefs],
@@ -942,6 +948,39 @@ export function OrganizationChartPage() {
         </Alert>
       ) : (
         <Stack spacing={2}>
+          {hasDepartmentView && companyRoot ? (
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                pt: 1,
+                pb: 0.5,
+              }}
+            >
+              <Typography
+                variant="overline"
+                sx={{ letterSpacing: 1.5, color: 'text.secondary', fontWeight: 700, mb: 1 }}
+              >
+                Organization Head
+              </Typography>
+              <PersonCard
+                person={companyRoot}
+                accent="#455a64"
+                canEdit={canEdit}
+                onDragStart={setDragPerson}
+                featured
+              />
+              <Box
+                sx={{
+                  width: 2,
+                  height: 20,
+                  bgcolor: 'divider',
+                  mt: 1,
+                }}
+              />
+            </Box>
+          ) : null}
           {hasDepartmentView ? (
             filteredDepartments.map((department) => (
               <DepartmentSection

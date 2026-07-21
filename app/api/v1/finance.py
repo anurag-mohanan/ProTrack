@@ -14,6 +14,8 @@ from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
 from app.core.access_control import MODULE_FINANCIAL_PLANNING
 from app.core.exceptions import ProTrackValidationError
+from app.core.field_security import can_view_cost, can_view_salary
+from app.core.uploads import enforce_upload_size
 from app.core.module_actions import (
     MODULE_ACTION_APPROVE,
     MODULE_ACTION_CONFIGURE,
@@ -121,6 +123,27 @@ def _expense_read(row: Expense, *, fy_start: date | None = None) -> ExpenseRead:
 
 def _role(db: Session, user: User) -> str:
     return get_role_name(db, user)
+
+
+def _redact_salary_fields(db: Session, user: User, rows: list[dict]) -> list[dict]:
+    """Null salary/cost fields per field-level security on roster dicts."""
+    role_name = _role(db, user)
+    hide_salary = not can_view_salary(user, role_name)
+    hide_cost = not can_view_cost(user, role_name)
+    if not (hide_salary or hide_cost):
+        return rows
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if hide_salary:
+            for key in ("monthly_salary", "base_monthly_salary_inr", "base_hourly_cost_inr"):
+                if key in row:
+                    row[key] = None
+        if hide_cost:
+            for key in ("hourly_cost", "contractor_cost"):
+                if key in row:
+                    row[key] = None
+    return rows
 
 
 def _require_finance_action(db: Session, user: User, action: str) -> None:
@@ -455,12 +478,13 @@ def employee_cost_roster(
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    return get_employee_cost_roster(
+    rows = get_employee_cost_roster(
         db,
         team_id=team_id,
         include_exempt=include_exempt,
         include_inactive=include_inactive,
     )
+    return _redact_salary_fields(db, current_user, list(rows))
 
 
 @router.patch(
@@ -513,9 +537,24 @@ def list_employee_costs(
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
-    return db.scalars(
+    profiles = db.scalars(
         select(EmployeeCostProfile).where(EmployeeCostProfile.is_active.is_(True))
     ).all()
+    role_name = _role(db, current_user)
+    hide_salary = not can_view_salary(current_user, role_name)
+    hide_cost = not can_view_cost(current_user, role_name)
+    out: list[EmployeeCostProfileRead] = []
+    for profile in profiles:
+        item = EmployeeCostProfileRead.model_validate(profile, from_attributes=True)
+        if hide_salary:
+            item.monthly_salary = None  # type: ignore[assignment]
+            item.base_monthly_salary_inr = None  # type: ignore[assignment]
+            item.base_hourly_cost_inr = None  # type: ignore[assignment]
+        if hide_cost:
+            item.hourly_cost = None  # type: ignore[assignment]
+            item.contractor_cost = None
+        out.append(item)
+    return out
 
 
 @router.post(
@@ -1330,6 +1369,7 @@ async def import_quotes(
     if db.get(Team, team_id) is None:
         raise HTTPException(status_code=400, detail="Team is required and must exist.")
     content = await file.read()
+    enforce_upload_size(content)
     filename = file.filename or "upload"
     try:
         if filename.lower().endswith(".xls") and not filename.lower().endswith(".xlsx"):

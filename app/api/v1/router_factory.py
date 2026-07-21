@@ -7,7 +7,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.auth_deps import get_current_user, require_roles
+from app.api.auth_deps import get_current_user, require_module_action, require_roles
+from app.core.module_actions import MODULE_ACTION_VIEW
 from app.api.deps import get_db, get_object_or_404
 from app.core.exceptions import ProTrackValidationError
 from app.core.pagination import PaginatedResponse, pagination_query, PaginationParams
@@ -92,14 +93,27 @@ def build_crud_router(
     write_roles: tuple[str, ...] = ("Admin", "Engineering Manager"),
     router_dependencies: Sequence[Any] | None = None,
     delete_entity: str | None = None,
+    read_module: str | None = None,
 ) -> APIRouter:
     dependencies = list(router_dependencies or [Depends(get_current_user)])
     write_dependency = Depends(require_roles(*write_roles))
     admin_delete_dependency = Depends(require_roles("Admin"))
+    # Optional module-view gate for read routes (enterprise action-based RBAC).
+    # When unset, reads remain authenticated-only (prior behaviour) so shared
+    # lookup data used across pages is not accidentally locked out.
+    read_dependencies = (
+        [Depends(require_module_action(read_module, MODULE_ACTION_VIEW))]
+        if read_module
+        else []
+    )
 
     router = APIRouter(prefix=prefix, tags=tags, dependencies=dependencies)  # type: ignore[arg-type]
 
-    @router.get("", response_model=PaginatedResponse[schema_read])
+    @router.get(
+        "",
+        response_model=PaginatedResponse[schema_read],
+        dependencies=read_dependencies,
+    )
     def list_records(
         pagination: PaginationParams = Depends(pagination_query),
         filters: filters_model = Depends(),  # type: ignore[valid-type]
@@ -120,7 +134,11 @@ def build_crud_router(
             sort=pagination.sort,
         )
 
-    @router.get("/{record_id}", response_model=schema_read)
+    @router.get(
+        "/{record_id}",
+        response_model=schema_read,
+        dependencies=read_dependencies,
+    )
     def get_record(record_id: UUID, db: Session = Depends(get_db)):
         return get_object_or_404(crud, db, record_id)
 

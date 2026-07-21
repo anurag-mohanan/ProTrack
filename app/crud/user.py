@@ -12,6 +12,7 @@ from app.core.access_control import (
     serialize_module_access,
     serialize_special_permissions,
 )
+from app.core.module_actions import resolve_user_module_actions, serialize_module_actions
 from app.core.permissions import get_role_name, project_assignment_filter
 from app.core.timesheet_eligibility import default_requires_timesheet_for_role
 from app.core.salary_eligibility import default_requires_salary_for_role
@@ -108,8 +109,12 @@ def build_user_read(db: Session, user: User) -> UserRead:
             "active_projects_count": count_user_active_projects(db, user),
             "module_access": parse_access_list(user.module_access),
             "special_permissions": parse_access_list(user.special_permissions),
+            "module_actions": user.module_actions,
             "resolved_modules": resolve_user_modules(user, role_name),
             "resolved_special_permissions": resolve_user_special_permissions(user, role_name),
+            "resolved_module_actions": resolve_user_module_actions(
+                user, role_name, resolve_user_modules(user, role_name)
+            ),
             "kpi_configuration": UserKpiConfiguration(
                 operational_role_type_id=user.operational_role_type_id,
                 operational_role_name=user.operational_role_type.name if user.operational_role_type else None,
@@ -132,6 +137,8 @@ def _apply_access_payload(data: dict[str, Any]) -> dict[str, Any]:
         payload["special_permissions"] = serialize_special_permissions(
             payload.pop("special_permissions")
         )
+    if "module_actions" in payload:
+        payload["module_actions"] = serialize_module_actions(payload.pop("module_actions"))
     return payload
 
 

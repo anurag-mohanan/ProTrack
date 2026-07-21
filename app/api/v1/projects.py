@@ -23,6 +23,7 @@ from app.api.deps import (
 from app.core.pagination import PaginatedResponse, pagination_query, PaginationParams
 from app.api.v1.router_factory import ProjectFilters
 from app.core.exceptions import ProTrackValidationError
+from app.core.uploads import enforce_upload_size
 from app.core.permissions import (
     can_archive_project,
     can_create_project,
@@ -604,6 +605,7 @@ async def extract_workorder_pdf(
             detail="Only PDF and Excel (.xlsx/.xlsm) workorder files are supported.",
         )
     content = await file.read()
+    enforce_upload_size(content)
     try:
         extracted = extract_workorder_fields_from_file(content, filename=file.filename)
     except ProTrackValidationError as exc:

@@ -27,6 +27,7 @@ from app.core.module_actions import (
     user_has_module_action,
 )
 from app.core.permissions import get_role_name
+from app.core.field_security import can_view_salary
 from app.core.team_access import get_accessible_team_ids, team_member_user_ids
 from app.models.enums import ProjectComplexity, TeamRelationshipType, TimesheetStatus
 from app.models.models import (
@@ -1481,6 +1482,13 @@ def _comp_to_read(
         current_user.id == request.suggested_by_id or _user_is_admin(db, current_user)
     )
 
+    # Field-level security: hide actual salary figures from viewers who may act
+    # on the request workflow but are not permitted to see compensation amounts.
+    show_salary = can_view_salary(current_user, get_role_name(db, current_user))
+    hike_pct = request.hike_pct if show_salary else None
+    current_salary = request.current_monthly_salary if show_salary else None
+    proposed_salary = request.proposed_monthly_salary if show_salary else None
+
     return CompensationChangeRead(
         id=request.id,
         user_id=request.user_id,
@@ -1490,10 +1498,10 @@ def _comp_to_read(
         status=request.status,
         suggested_by_id=request.suggested_by_id,
         suggested_by_name=_person_name(suggested_by),
-        hike_pct=request.hike_pct,
+        hike_pct=hike_pct,
         currency_code=request.currency_code,
-        current_monthly_salary=request.current_monthly_salary,
-        proposed_monthly_salary=request.proposed_monthly_salary,
+        current_monthly_salary=current_salary,
+        proposed_monthly_salary=proposed_salary,
         new_role_id=request.new_role_id,
         new_role_name=role.name if role else None,
         new_designation=request.new_designation,

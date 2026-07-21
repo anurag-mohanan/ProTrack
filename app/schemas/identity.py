@@ -20,6 +20,9 @@ from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 class RoleBase(BaseModel):
     name: str = Field(max_length=50)
     description: str | None = None
+    org_department_id: UUID | None = None
+    rank: int = 100
+    parent_role_id: UUID | None = None
 
 
 class RoleCreate(BlankOptionalFieldsMixin, RoleBase):
@@ -29,10 +32,39 @@ class RoleCreate(BlankOptionalFieldsMixin, RoleBase):
 class RoleUpdate(BlankOptionalFieldsMixin, BaseModel):
     name: str | None = Field(default=None, max_length=50)
     description: str | None = None
+    org_department_id: UUID | None = None
+    rank: int | None = None
+    parent_role_id: UUID | None = None
+    is_active: bool | None = None
 
 
 class RoleRead(RoleBase, TimestampSchema):
-    pass
+    is_active: bool = True
+
+
+class RoleHierarchyNode(BaseModel):
+    id: UUID
+    name: str
+    description: str | None = None
+    rank: int = 100
+    parent_role_id: UUID | None = None
+    parent_role_name: str | None = None
+    is_active: bool = True
+    is_system: bool = False
+    user_count: int = 0
+
+
+class RoleHierarchyDepartment(BaseModel):
+    department_id: UUID | None = None
+    department_code: str | None = None
+    department_name: str
+    colour: str | None = None
+    sort_order: int = 100
+    roles: list[RoleHierarchyNode] = Field(default_factory=list)
+
+
+class RoleHierarchyRead(BaseModel):
+    departments: list[RoleHierarchyDepartment] = Field(default_factory=list)
 
 
 class UserTeamAssignmentBase(BaseModel):
@@ -116,6 +148,7 @@ class UserCreate(BlankOptionalFieldsMixin, UserBase):
     requires_salary: bool | None = None
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None
+    module_actions: dict[str, list[str]] | None = None
     team_assignments: list[UserTeamAssignmentWrite] | None = None
 
 
@@ -154,6 +187,7 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     reset_kpi_defaults: bool = False
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None
+    module_actions: dict[str, list[str]] | None = None
     team_assignments: list[UserTeamAssignmentWrite] | None = None
 
 
@@ -199,9 +233,29 @@ class UserRead(UserBase, TimestampSchema):
     failed_login_count: int = 0
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None
+    module_actions: dict[str, list[str]] | None = None
     resolved_modules: list[str] = Field(default_factory=list)
     resolved_special_permissions: list[str] = Field(default_factory=list)
+    resolved_module_actions: dict[str, list[str]] = Field(default_factory=dict)
     kpi_configuration: UserKpiConfiguration | None = None
+
+    @field_validator("module_actions", mode="before")
+    @classmethod
+    def parse_module_actions_json(cls, value: object) -> dict[str, list[str]] | None:
+        if value is None or isinstance(value, dict):
+            return value  # type: ignore[return-value]
+        if isinstance(value, str) and value.strip():
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return None
+            if isinstance(parsed, dict):
+                return {
+                    str(k): [str(a) for a in v if isinstance(a, str)]
+                    for k, v in parsed.items()
+                    if isinstance(v, list)
+                }
+        return None
 
     @field_validator("module_access", "special_permissions", mode="before")
     @classmethod

@@ -15,8 +15,37 @@ export interface Role {
   id: string;
   name: string;
   description: string | null;
+  org_department_id: string | null;
+  rank: number;
+  parent_role_id: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface RoleHierarchyNode {
+  id: string;
+  name: string;
+  description: string | null;
+  rank: number;
+  parent_role_id: string | null;
+  parent_role_name: string | null;
+  is_active: boolean;
+  is_system: boolean;
+  user_count: number;
+}
+
+export interface RoleHierarchyDepartment {
+  department_id: string | null;
+  department_code: string | null;
+  department_name: string;
+  colour: string | null;
+  sort_order: number;
+  roles: RoleHierarchyNode[];
+}
+
+export interface RoleHierarchy {
+  departments: RoleHierarchyDepartment[];
 }
 
 export interface UserTeamAssignment {

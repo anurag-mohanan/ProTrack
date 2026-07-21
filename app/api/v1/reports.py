@@ -38,9 +38,10 @@ from app.crud.team_reports import (
     get_team_profitability_report,
     get_team_utilization_report,
 )
-from app.models.enums import ProjectStage
+from app.models.enums import ActivityAction, EntityType, ProjectStage
 from app.crud.dashboard import get_designer_workload
 from app.models.models import User
+from app.services.activity_service import log_activity
 from app.schemas.dashboard import DesignerWorkload
 from app.schemas.reports import (
     BillableUtilizationReportRow,
@@ -214,6 +215,16 @@ def customer_timesheet_pack_export(
         f"{safe_customer}_{period_type}_timesheet_"
         f"{payload.period.start_date.isoformat()}{week_bit}.xlsx"
     )
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.customer,
+        entity_id=customer_id,
+        action=ActivityAction.data_exported,
+        new_value={"report": "customer-timesheet-pack", "filename": filename},
+        outcome="success",
+        module="reports_analytics",
+    )
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -290,6 +301,16 @@ def engineering_report_export(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         raise
 
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.settings,
+        entity_id=current_user.id,
+        action=ActivityAction.data_exported,
+        new_value={"report": report_id, "filename": filename},
+        outcome="success",
+        module="reports_analytics",
+    )
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

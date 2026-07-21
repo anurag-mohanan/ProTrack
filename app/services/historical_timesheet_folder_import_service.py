@@ -20,8 +20,10 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy.orm import Session
 
 from app.models.enums import WorkCategory
+from app.core.config import IMPORT_SOURCE_ROOTS
 from app.core.hours_validation import validate_timesheet_hours
 from app.core.exceptions import ProTrackValidationError
+from app.core.path_safety import is_within, resolve_within
 from app.models.models import (
     Project,
     TimesheetEntry,
@@ -300,7 +302,11 @@ def save_folder_batch(batch_id: str, files: list[tuple[str, bytes]]) -> Path:
         safe_rel = rel_path.replace("\\", "/").lstrip("/")
         assert_supported_suffix(safe_rel, allowed=DEFAULT_IMPORT_EXTENSIONS)
         stored_rel, stored_content = normalize_import_bytes(safe_rel, content)
-        dest = batch_dir / stored_rel
+        dest = resolve_within(batch_dir, stored_rel)
+        if dest is None:
+            raise ProTrackValidationError(
+                f"Rejected unsafe upload path (path traversal): {rel_path}"
+            )
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(stored_content)
         manifest.append(stored_rel.replace("\\", "/"))
@@ -339,6 +345,12 @@ def resolve_source_files(
         return files, label
     if source_path:
         root = Path(source_path).expanduser().resolve()
+        if not is_within(root, IMPORT_SOURCE_ROOTS):
+            allowed = ", ".join(str(r) for r in IMPORT_SOURCE_ROOTS)
+            raise ProTrackValidationError(
+                "source_path is outside the allowed import roots. "
+                f"Allowed roots: {allowed or '(none configured)'}"
+            )
         paths = collect_xlsx_files(root)
         files = [(path, str(path.relative_to(root)).replace("\\", "/")) for path in paths]
         return files, str(root)

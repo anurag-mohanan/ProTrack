@@ -4,7 +4,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.request_logging import RequestLoggingMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401 — register all models with Base.metadata
 import app.models.finance  # noqa: F401 — register finance models
@@ -111,6 +110,12 @@ from app.db.phase47_user_lifecycle_schema_sync import (
 from app.db.phase48_compensation_change_schema_sync import (
     ensure_phase48_compensation_change_foundation,
 )
+from app.db.phase49_role_hierarchy_schema_sync import (
+    ensure_phase49_role_hierarchy_foundation,
+)
+from app.db.phase50_security_foundation_schema_sync import (
+    ensure_phase50_security_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -146,6 +151,12 @@ async def lifespan(app: FastAPI):
     import logging
 
     logger = logging.getLogger("protrack.startup")
+
+    from app.core.config import assert_production_security
+
+    for problem in assert_production_security():
+        logger.warning("SECURITY: %s", problem)
+
     Base.metadata.create_all(bind=engine)
 
     startup_steps = [
@@ -214,6 +225,8 @@ async def lifespan(app: FastAPI):
         ("phase46_org_department", ensure_phase46_org_department_foundation),
         ("phase47_user_lifecycle", ensure_phase47_user_lifecycle_foundation),
         ("phase48_compensation_change", ensure_phase48_compensation_change_foundation),
+        ("phase49_role_hierarchy", ensure_phase49_role_hierarchy_foundation),
+        ("phase50_security_foundation", ensure_phase50_security_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 
@@ -316,6 +329,24 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
+# --- Rate limiting ----------------------------------------------------------
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+
+from app.core.rate_limit import limiter
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# --- Middleware (outermost first) -------------------------------------------
+from app.core.config import TRUSTED_HOSTS
+from app.core.security_middleware import (
+    BodySizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -324,11 +355,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if TRUSTED_HOSTS:
+    from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=TRUSTED_HOSTS)
 
 app.include_router(api_router, prefix="/api/v1")
 
+# The uploads directory is intentionally NOT mounted as a public static route.
+# Serving it unauthenticated exposed every stored file (and enabled stored-XSS
+# via uploaded SVGs). The only public asset — the company logo — is served
+# through the permission-aware /api/v1/settings/company/logo endpoint instead.
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 
 @app.get("/health")

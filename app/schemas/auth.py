@@ -28,6 +28,8 @@ class TokenPayload(BaseModel):
     team_ids: list[UUID] = Field(default_factory=list)
     team_names: list[str] = Field(default_factory=list)
     impersonator_id: UUID | None = None
+    token_version: int = 0
+    issued_at: datetime | None = None
 
 
 class CurrentUserRead(BaseModel):
@@ -50,6 +52,7 @@ class CurrentUserRead(BaseModel):
     impersonator_name: str | None = None
     module_access: list[str] = Field(default_factory=list)
     special_permissions: list[str] = Field(default_factory=list)
+    module_actions: dict[str, list[str]] = Field(default_factory=dict)
     requires_timesheet: bool = False
     can_enter_own_timesheet: bool = False
     can_view_organization_chart: bool = False

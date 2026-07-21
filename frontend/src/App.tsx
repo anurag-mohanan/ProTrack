@@ -86,6 +86,7 @@ const EmailQueuePage = lazy(() => import('./pages/admin/EmailQueuePage'));
 const AuditLogsPage = lazy(() => import('./pages/admin/AuditLogsPage'));
 const BackupRestorePage = lazy(() => import('./pages/admin/BackupRestorePage'));
 const SecuritySettingsPage = lazy(() => import('./pages/admin/SecuritySettingsPage'));
+const SecurityCenterPage = lazy(() => import('./pages/admin/SecurityCenterPage'));
 const EngineeringCalendarPage = lazy(() => import('./pages/EngineeringCalendarPage'));
 const AdminAuditHubPage = lazy(() => import('./pages/admin/AdminAuditHubPage'));
 const AdminSystemPage = lazy(() => import('./pages/admin/AdminSystemPage'));
@@ -104,6 +105,7 @@ const ProjectTemplatesAdminPage = lazy(() => import('./pages/admin/ProjectTempla
 const ProjectTemplateEditorPage = lazy(() => import('./pages/admin/ProjectTemplateEditorPage'));
 const ProjectTypesAdminPage = lazy(() => import('./pages/admin/ProjectTypesPage'));
 const RolesAdminPage = lazy(() => import('./pages/admin/RolesPage'));
+const RoleHierarchyAdminPage = lazy(() => import('./pages/admin/RoleHierarchyPage'));
 const StreamsAdminPage = lazy(() => import('./pages/admin/StreamsPage'));
 const WorkingModelsAdminPage = lazy(() => import('./pages/admin/WorkingModelsPage'));
 const TeamsAdminPage = lazy(() => import('./pages/admin/TeamsPage'));
@@ -481,6 +483,14 @@ export default function App() {
                           </LazyAdminPage>
                         }
                       />
+                      <Route
+                        path="/admin/security"
+                        element={
+                          <LazyAdminPage>
+                            <SecurityCenterPage />
+                          </LazyAdminPage>
+                        }
+                      />
                       <Route path="/admin/system" element={<AdminSystemRoute />} />
                       <Route path="/admin/system/diagnostics" element={<AdminDiagnosticsRoute />} />
 
@@ -577,6 +587,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <RolesAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/role-hierarchy"
+                        element={
+                          <LazyAdminPage>
+                            <RoleHierarchyAdminPage />
                           </LazyAdminPage>
                         }
                       />

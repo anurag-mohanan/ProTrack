@@ -50,7 +50,13 @@ export function createResourceApi<
   };
 }
 
-export const rolesApi = createResourceApi<Role>('roles');
+export const rolesApi = {
+  ...createResourceApi<Role>('roles'),
+  hierarchy: async (): Promise<import('../types').RoleHierarchy> => {
+    const { data } = await apiClient.get<import('../types').RoleHierarchy>('/roles/hierarchy');
+    return data;
+  },
+};
 export const usersApi = createResourceApi<User>('users');
 export const streamsApi = createResourceApi<Stream>('streams');
 export const workingModelsApi = createResourceApi<

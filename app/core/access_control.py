@@ -19,11 +19,22 @@ LEGACY_PROJECT_MANAGER = "Project Manager"
 HR = "HR"
 OFFICE_ADMINISTRATOR = "Office Administrator"
 
+# Standardized Engineering roles (phase 49) map to their existing
+# permission-bearing equivalents so access control, timesheet/salary/fixed-
+# resource eligibility, and module defaults all behave correctly without
+# touching every call site. Display still uses the real (aliased) name.
+ROLE_ALIASES: dict[str, str] = {
+    LEGACY_PROJECT_MANAGER: ENGINEERING_MANAGER,
+    "Design Engineer": DESIGNER,
+    "Senior Design Engineer": SENIOR_DESIGNER,
+    "Junior Design Engineer": JUNIOR_DESIGNER,
+    "Trainee Design Engineer": JUNIOR_DESIGNER,
+    "Team Leader": SENIOR_DESIGNER,
+}
+
 
 def normalize_role_name(role_name: str) -> str:
-    if role_name == LEGACY_PROJECT_MANAGER:
-        return ENGINEERING_MANAGER
-    return role_name
+    return ROLE_ALIASES.get(role_name, role_name)
 
 
 MODULE_DASHBOARD = "dashboard"
@@ -80,6 +91,14 @@ SPECIAL_MANAGE_USERS = "manage_users"
 SPECIAL_MANAGE_COMPANY_SETTINGS = "manage_company_settings"
 SPECIAL_VIEW_REPORTS = "view_reports"
 SPECIAL_VIEW_RESOURCE_PLANNING = "view_resource_planning"
+# --- Field-level security & governance specials (security foundation) ---
+SPECIAL_VIEW_SALARY = "view_salary"
+SPECIAL_VIEW_FINANCIAL_COST = "view_financial_cost"
+SPECIAL_VIEW_BUDGET = "view_budget"
+SPECIAL_VIEW_PROFITABILITY = "view_profitability"
+SPECIAL_FINANCIAL_APPROVAL = "financial_approval"
+SPECIAL_BUDGET_APPROVAL = "budget_approval"
+SPECIAL_MANAGE_PERMISSIONS = "manage_permissions"
 
 ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_CREATE_PROJECTS,
@@ -97,6 +116,13 @@ ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_MANAGE_COMPANY_SETTINGS,
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
+    SPECIAL_VIEW_SALARY,
+    SPECIAL_VIEW_FINANCIAL_COST,
+    SPECIAL_VIEW_BUDGET,
+    SPECIAL_VIEW_PROFITABILITY,
+    SPECIAL_FINANCIAL_APPROVAL,
+    SPECIAL_BUDGET_APPROVAL,
+    SPECIAL_MANAGE_PERMISSIONS,
 )
 
 DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {

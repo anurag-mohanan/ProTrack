@@ -13,6 +13,8 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import ATTACHMENT_ROOTS
+from app.core.path_safety import is_within
 from app.crud.foundation import get_email_template_by_slug, get_or_create_email_settings
 from app.models.enums import ActivityAction, EmailMessageStatus, EntityType
 from app.models.foundation import EmailMessage, EmailSettings, EmailTemplate
@@ -270,13 +272,28 @@ class EmailService:
             },
         )
 
+    def _safe_attachment_path(self, raw_path: str) -> Path | None:
+        """Return a validated attachment path, or ``None`` if it is rejected.
+
+        Rejects files outside the configured attachment sandbox roots and any
+        extension not on the allowlist. This prevents a caller from exfiltrating
+        arbitrary server files via ``attachment_paths``.
+        """
+        path = Path(raw_path)
+        if not path.is_file():
+            return None
+        if path.suffix.lower() not in _ALLOWED_ATTACHMENT_EXTENSIONS:
+            return None
+        if not is_within(path, ATTACHMENT_ROOTS):
+            logger.warning("Rejected out-of-sandbox email attachment: %s", raw_path)
+            return None
+        return path
+
     def _build_attachment_metadata(self, attachment_paths: list[str]) -> list[dict[str, str]]:
         metadata: list[dict[str, str]] = []
         for raw_path in attachment_paths:
-            path = Path(raw_path)
-            if not path.is_file():
-                continue
-            if path.suffix.lower() not in _ALLOWED_ATTACHMENT_EXTENSIONS:
+            path = self._safe_attachment_path(raw_path)
+            if path is None:
                 continue
             metadata.append(
                 {
@@ -290,10 +307,8 @@ class EmailService:
     def _load_attachments(self, attachment_paths: list[str]) -> list[EmailAttachment]:
         attachments: list[EmailAttachment] = []
         for raw_path in attachment_paths:
-            path = Path(raw_path)
-            if not path.is_file():
-                continue
-            if path.suffix.lower() not in _ALLOWED_ATTACHMENT_EXTENSIONS:
+            path = self._safe_attachment_path(raw_path)
+            if path is None:
                 continue
             attachments.append(
                 EmailAttachment(

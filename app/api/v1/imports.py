@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import require_roles
 from app.api.deps import get_db
 from app.core.exceptions import ProTrackValidationError
+from app.core.uploads import enforce_upload_size
 from app.schemas.historical_import import (
     ImportJobProgress,
     ImportRunRequest,
@@ -52,6 +53,7 @@ async def upload_historical_projects(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
         )
+    enforce_upload_size(content)
 
     upload_id = str(uuid4())
     try:

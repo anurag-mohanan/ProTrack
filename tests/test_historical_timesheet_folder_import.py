@@ -60,11 +60,17 @@ def test_parse_prosohm_workbook(tmp_path, prosohm_productive_bytes):
     assert result.rows[0].hours == Decimal("8")
 
 
-def test_scan_folder_batch(tmp_path, prosohm_productive_bytes):
+def test_scan_folder_batch(tmp_path, prosohm_productive_bytes, monkeypatch):
     root = tmp_path / "Historical Timesheets"
     designer_dir = root / "Binil JR"
     designer_dir.mkdir(parents=True)
     (designer_dir / "Jun-26.xlsx").write_bytes(prosohm_productive_bytes)
+
+    # source_path scans are sandboxed to configured import roots; register the
+    # temp folder as an allowed root so the scan is permitted.
+    import app.services.historical_timesheet_folder_import_service as folder_service
+
+    monkeypatch.setattr(folder_service, "IMPORT_SOURCE_ROOTS", [root])
 
     scan = scan_folder_source(source_path=str(root))
     assert scan.file_count == 1

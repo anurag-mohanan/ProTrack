@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.auth_deps import require_roles
@@ -33,6 +34,14 @@ from app.services.system_health_service import get_system_health
 router = APIRouter(prefix="/system", tags=["system"])
 admin = Depends(require_roles("Admin"))
 ops_read = Depends(require_roles("Admin"))
+
+
+class MaintenanceActionRequest(BaseModel):
+    action: str = Field(min_length=1, max_length=100)
+
+
+class BackupRestoreRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
 
 
 @router.get("/operations", response_model=OperationsCenterSnapshot)
@@ -97,12 +106,12 @@ def run_db_optimize(
 
 @router.post("/operations/maintenance")
 def run_maintenance(
-    payload: dict[str, str],
+    payload: MaintenanceActionRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("Admin")),
     _admin=admin,
 ):
-    action = payload.get("action", "")
+    action = payload.action
     try:
         result = run_maintenance_action(action, db)
         log_activity(
@@ -194,20 +203,32 @@ def create_backup(
             entity_id=current_user.id,
             action=ActivityAction.settings_updated,
             new_value={"maintenance_action": "create_backup", "filename": result.get("filename")},
+            outcome="success",
+            module="system_administration",
         )
         return result
     except (ValueError, FileNotFoundError) as exc:
+        log_activity(
+            db=db,
+            user=current_user,
+            entity_type=EntityType.settings,
+            entity_id=current_user.id,
+            action=ActivityAction.settings_updated,
+            new_value={"maintenance_action": "create_backup", "error": str(exc)},
+            outcome="failure",
+            module="system_administration",
+        )
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.post("/backups/restore")
 def restore_backup(
-    payload: dict[str, str],
+    payload: BackupRestoreRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("Admin")),
     _admin=admin,
 ):
-    filename = payload.get("filename", "")
+    filename = payload.filename
     try:
         result = restore_database_backup(filename)
         log_activity(
@@ -217,7 +238,19 @@ def restore_backup(
             entity_id=current_user.id,
             action=ActivityAction.settings_updated,
             new_value={"maintenance_action": "restore_backup", "filename": filename},
+            outcome="success",
+            module="system_administration",
         )
         return result
     except (ValueError, FileNotFoundError) as exc:
+        log_activity(
+            db,
+            user=current_user,
+            entity_type=EntityType.settings,
+            entity_id=current_user.id,
+            action=ActivityAction.settings_updated,
+            new_value={"maintenance_action": "restore_backup", "filename": filename, "error": str(exc)},
+            outcome="failure",
+            module="system_administration",
+        )
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

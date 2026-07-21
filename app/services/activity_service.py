@@ -3,8 +3,12 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.request_context import get_client_ip, get_user_agent
 from app.models.enums import ActivityAction, EntityType
 from app.models.models import Activity, User
+
+OUTCOME_SUCCESS = "success"
+OUTCOME_FAILURE = "failure"
 
 
 def log_activity(
@@ -16,6 +20,11 @@ def log_activity(
     action: ActivityAction,
     old_value: object | None = None,
     new_value: object | None = None,
+    outcome: str | None = None,
+    module: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+    commit: bool = True,
 ) -> Activity:
     activity = Activity(
         user_id=user.id if user is not None else None,
@@ -24,10 +33,17 @@ def log_activity(
         action=action,
         old_value=_serialize_value(old_value),
         new_value=_serialize_value(new_value),
+        outcome=outcome,
+        module=(module or None),
+        ip_address=(ip_address if ip_address is not None else get_client_ip()),
+        user_agent=(user_agent if user_agent is not None else get_user_agent()),
     )
     db.add(activity)
-    db.commit()
-    db.refresh(activity)
+    if commit:
+        db.commit()
+        db.refresh(activity)
+    else:
+        db.flush()
     return activity
 
 

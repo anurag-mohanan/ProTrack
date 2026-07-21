@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.auth_deps import get_current_user, require_roles
@@ -8,9 +9,16 @@ from app.api.deps import get_db, get_object_or_404
 from app.core.exceptions import ProTrackValidationError
 from app.core.system_roles import SYSTEM_ROLE_NAMES
 from app.crud import role as role_crud
-from app.models.models import User
+from app.models.models import OrgDepartment, Role, User
 from app.schemas.delete_check import DeleteCheckResponse
-from app.schemas.identity import RoleCreate, RoleRead, RoleUpdate
+from app.schemas.identity import (
+    RoleCreate,
+    RoleHierarchyDepartment,
+    RoleHierarchyNode,
+    RoleHierarchyRead,
+    RoleRead,
+    RoleUpdate,
+)
 from app.services.master_data_delete_service import (
     ensure_can_delete,
     log_record_deleted,
@@ -20,10 +28,10 @@ from app.services.master_data_delete_service import (
 router = APIRouter(
     prefix="/roles",
     tags=["roles"],
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 
-write_access = Depends(require_roles("Admin", "Engineering Manager"))
+write_access = Depends(require_roles("Admin"))
 admin_access = Depends(require_roles("Admin"))
 
 
@@ -41,6 +49,76 @@ def list_roles(
     db: Session = Depends(get_db),
 ):
     return role_crud.get_multi(db, skip=skip, limit=limit)
+
+
+@router.get("/hierarchy", response_model=RoleHierarchyRead)
+def role_hierarchy(db: Session = Depends(get_db)):
+    """Roles grouped by org department, ordered top→bottom by rank."""
+    counts = dict(
+        db.execute(
+            select(User.role_id, func.count(User.id))
+            .where(User.is_deleted.is_(False))
+            .group_by(User.role_id)
+        ).all()
+    )
+    departments = db.scalars(
+        select(OrgDepartment)
+        .where(OrgDepartment.is_active.is_(True))
+        .order_by(OrgDepartment.sort_order, OrgDepartment.name)
+    ).all()
+    roles = db.scalars(select(Role)).all()
+    role_name_by_id = {role.id: role.name for role in roles}
+
+    grouped: dict[UUID | None, list[Role]] = {}
+    for role in roles:
+        grouped.setdefault(role.org_department_id, []).append(role)
+
+    def _node(role: Role) -> RoleHierarchyNode:
+        return RoleHierarchyNode(
+            id=role.id,
+            name=role.name,
+            description=role.description,
+            rank=role.rank if role.rank is not None else 100,
+            parent_role_id=role.parent_role_id,
+            parent_role_name=role_name_by_id.get(role.parent_role_id),
+            is_active=bool(role.is_active),
+            is_system=role.name in SYSTEM_ROLE_NAMES,
+            user_count=int(counts.get(role.id, 0)),
+        )
+
+    def _sorted(items: list[Role]) -> list[RoleHierarchyNode]:
+        return [
+            _node(role)
+            for role in sorted(
+                items, key=lambda r: (r.rank if r.rank is not None else 100, r.name.lower())
+            )
+        ]
+
+    out: list[RoleHierarchyDepartment] = [
+        RoleHierarchyDepartment(
+            department_id=dept.id,
+            department_code=dept.code,
+            department_name=dept.name,
+            colour=dept.colour,
+            sort_order=dept.sort_order,
+            roles=_sorted(grouped.get(dept.id, [])),
+        )
+        for dept in departments
+    ]
+
+    unassigned = grouped.get(None, [])
+    if unassigned:
+        out.append(
+            RoleHierarchyDepartment(
+                department_id=None,
+                department_code=None,
+                department_name="System / Unassigned",
+                colour="#607d8b",
+                sort_order=999,
+                roles=_sorted(unassigned),
+            )
+        )
+    return RoleHierarchyRead(departments=out)
 
 
 @router.get("/{record_id}", response_model=RoleRead)

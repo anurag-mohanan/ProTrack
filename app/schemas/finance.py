@@ -151,8 +151,12 @@ class EmployeeCostProfileRead(EmployeeCostProfileCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    base_monthly_salary_inr: Decimal
-    base_hourly_cost_inr: Decimal
+    # Nullable on read so field-level security can redact salary/cost for
+    # viewers who lack the corresponding permission.
+    monthly_salary: Decimal | None = None
+    hourly_cost: Decimal | None = None
+    base_monthly_salary_inr: Decimal | None = None
+    base_hourly_cost_inr: Decimal | None = None
     fx_rate: Decimal
     is_active: bool
 

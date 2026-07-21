@@ -25,6 +25,7 @@ from app.api.v1 import (
     projects,
     reports,
     roles,
+    security,
     settings,
     system,
     timesheet_entries,
@@ -148,5 +149,6 @@ api_router.include_router(finance.router)
 api_router.include_router(hr.router)
 api_router.include_router(analytics.router)
 api_router.include_router(system.router)
+api_router.include_router(security.router)
 api_router.include_router(imports.router)
 api_router.include_router(timesheet_imports.router)

@@ -110,6 +110,7 @@ export const ADMIN_MANAGE_ITEMS: AdminHubItem[] = [
   { id: 'roles', title: 'Roles', description: 'Security roles and permissions.', icon: SecurityIcon, path: '/admin/roles' },
   { id: 'role-hierarchy', title: 'Role Hierarchy', description: 'Standardized roles by department, placed in a reporting hierarchy.', icon: AccountTreeIcon, path: '/admin/role-hierarchy' },
   { id: 'org-departments', title: 'Org Departments', description: 'Standardized organization-chart departments and heads.', icon: ApartmentIcon, path: '/admin/org-departments' },
+  { id: 'ticket-routing', title: 'Help Desk Routing', description: 'Set the contact who receives each ticket category (IT, Facility, HR…).', icon: ContactPhoneIcon, path: '/admin/ticket-routing' },
   { id: 'task-types', title: 'Task Types', description: 'Productive task categories.', icon: CategoryIcon, path: '/admin/task-types' },
   { id: 'streams', title: 'Streams', description: 'Design streams and disciplines.', icon: AccountTreeIcon, path: '/admin/streams' },
   { id: 'project-templates', title: 'Project Templates', description: 'Milestone workflows by project type.', icon: ViewTimelineIcon, path: '/admin/project-templates' },

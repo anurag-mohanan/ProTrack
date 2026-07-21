@@ -270,6 +270,60 @@ def test_stats_reflect_visible_tickets(client, session):
     assert stats["open"] >= 1
 
 
+# ---------------------------------------------------------------------------
+# Per-category routing (admin-configured contact)
+# ---------------------------------------------------------------------------
+def test_admin_can_list_and_set_category_routes(client, session):
+    admin = login(client, "admin@prosohm.com")
+
+    listing = client.get("/api/v1/tickets/routes", headers=admin)
+    assert listing.status_code == 200, listing.text
+    categories = {row["category"] for row in listing.json()}
+    assert {"it", "facility", "admin", "hr", "other"} <= categories
+
+
+def test_non_admin_cannot_view_routes(client, session):
+    headers = login(client, "binil@prosohm.com")
+    response = client.get("/api/v1/tickets/routes", headers=headers)
+    assert response.status_code == 403
+
+
+def test_configured_contact_receives_and_manages_ticket(client, session):
+    # A non-IT-role user is nominated as the IT contact.
+    contact = _make_user(session, "Surfacer", "itcontact@prosohm.com", first="Ivy", last="Contact")
+
+    admin = login(client, "admin@prosohm.com")
+    set_route = client.put(
+        "/api/v1/tickets/routes/it",
+        headers=admin,
+        json={"assignee_user_id": str(contact.id)},
+    )
+    assert set_route.status_code == 200, set_route.text
+    assert set_route.json()["assignee_user_id"] == str(contact.id)
+
+    requester = login(client, "binil@prosohm.com")
+    ticket = _create_ticket(client, requester, category="it")
+    # Auto-assigned to the configured contact on creation.
+    assert ticket["assignee_id"] == str(contact.id)
+
+    # The contact can see and manage the ticket even without an IT agent role.
+    contact_headers = login(client, "itcontact@prosohm.com")
+    listing = client.get("/api/v1/tickets", headers=contact_headers)
+    rows = {r["ticket_number"]: r for r in listing.json()}
+    assert ticket["ticket_number"] in rows
+    assert rows[ticket["ticket_number"]]["can_manage"] is True
+
+
+def test_setting_unknown_category_is_rejected(client, session):
+    admin = login(client, "admin@prosohm.com")
+    response = client.put(
+        "/api/v1/tickets/routes/nonsense",
+        headers=admin,
+        json={"assignee_user_id": None},
+    )
+    assert response.status_code == 404
+
+
 def test_invalid_category_is_rejected(client, session):
     headers = login(client, "binil@prosohm.com")
     response = client.post(

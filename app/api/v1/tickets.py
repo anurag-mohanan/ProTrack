@@ -12,14 +12,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.auth_deps import get_current_user, require_module_action
+from app.api.auth_deps import get_current_user, require_module_action, require_roles
 from app.api.deps import get_db
 from app.core.access_control import MODULE_TICKETS
 from app.core.module_actions import MODULE_ACTION_VIEW
 from app.models.enums import ActivityAction, EntityType
-from app.models.models import Ticket, TicketComment, User
+from app.models.models import Ticket, TicketCategoryRoute, TicketComment, User
 from app.schemas.ticket import (
     TicketAssignRequest,
+    TicketCategoryRouteRead,
+    TicketCategoryRouteUpdate,
     TicketCommentCreate,
     TicketCommentRead,
     TicketCreate,
@@ -119,6 +121,89 @@ def ticket_stats(
     return TicketStats(**tickets.compute_stats(db, current_user))
 
 
+admin_only = Depends(require_roles("Admin"))
+
+
+def _route_read(db: Session, category: str, route: TicketCategoryRoute | None) -> TicketCategoryRouteRead:
+    assignee_name = None
+    assignee_id = None
+    org_department_id = None
+    if route is not None:
+        assignee_id = route.assignee_user_id
+        org_department_id = route.org_department_id
+        if route.assignee is not None:
+            assignee_name = _full_name(route.assignee)
+    return TicketCategoryRouteRead(
+        category=category,
+        category_label=tickets.CATEGORY_LABELS.get(category, category),
+        assignee_user_id=assignee_id,
+        assignee_name=assignee_name,
+        org_department_id=org_department_id,
+        fallback_roles=tickets.fallback_role_names(category),
+    )
+
+
+@router.get("/routes", response_model=list[TicketCategoryRouteRead], dependencies=[admin_only])
+def list_category_routes(db: Session = Depends(get_db)):
+    """List the configured contact per ticket category (Admin)."""
+    existing = tickets.category_route_map(db)
+    return [
+        _route_read(db, category, existing.get(category))
+        for category in tickets.CATEGORY_LABELS
+    ]
+
+
+@router.put(
+    "/routes/{category}",
+    response_model=TicketCategoryRouteRead,
+    dependencies=[admin_only],
+)
+def set_category_route(
+    category: str,
+    payload: TicketCategoryRouteUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set (or clear) the default contact / department for a category (Admin)."""
+    if category not in tickets.CATEGORY_LABELS:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Unknown ticket category."
+        )
+    if payload.assignee_user_id is not None:
+        assignee = db.get(User, payload.assignee_user_id)
+        if assignee is None or assignee.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found."
+            )
+
+    route = db.scalar(
+        select(TicketCategoryRoute).where(TicketCategoryRoute.category == category)
+    )
+    if route is None:
+        route = TicketCategoryRoute(category=category)
+        db.add(route)
+    route.assignee_user_id = payload.assignee_user_id
+    route.org_department_id = payload.org_department_id
+    db.flush()
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.ticket,
+        entity_id=route.id,
+        action=ActivityAction.ticket_updated,
+        new_value={
+            "category": category,
+            "assignee_user_id": str(payload.assignee_user_id) if payload.assignee_user_id else None,
+        },
+        outcome="success",
+        module=MODULE,
+        commit=False,
+    )
+    db.commit()
+    db.refresh(route)
+    return _route_read(db, category, route)
+
+
 @router.get("", response_model=list[TicketRead])
 def list_tickets(
     status_filter: str | None = Query(default=None, alias="status"),
@@ -175,6 +260,8 @@ def create_ticket(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Auto-assign to the admin-configured contact for this category, if any.
+    contact_id = tickets.category_contact_id(db, payload.category)
     ticket = Ticket(
         ticket_number=tickets.next_ticket_number(db),
         title=payload.title.strip(),
@@ -183,6 +270,7 @@ def create_ticket(
         priority=payload.priority,
         status="open",
         requester_id=current_user.id,
+        assignee_id=contact_id,
         location=payload.location,
         due_date=payload.due_date,
         org_department_id=(

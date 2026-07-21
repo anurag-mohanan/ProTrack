@@ -89,6 +89,20 @@ class TicketDetailRead(TicketRead):
     comments: list[TicketCommentRead] = Field(default_factory=list)
 
 
+class TicketCategoryRouteRead(BaseModel):
+    category: str
+    category_label: str
+    assignee_user_id: Optional[UUID] = None
+    assignee_name: Optional[str] = None
+    org_department_id: Optional[UUID] = None
+    fallback_roles: list[str] = Field(default_factory=list)
+
+
+class TicketCategoryRouteUpdate(BaseModel):
+    assignee_user_id: Optional[UUID] = None
+    org_department_id: Optional[UUID] = None
+
+
 class TicketStats(BaseModel):
     total: int = 0
     open: int = 0

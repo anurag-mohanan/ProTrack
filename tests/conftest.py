@@ -111,6 +111,9 @@ from app.db.phase51_department_standardization_schema_sync import (
 from app.db.phase52_ticketing_schema_sync import (
     ensure_phase52_ticketing_foundation,
 )
+from app.db.phase53_ticket_routing_schema_sync import (
+    ensure_phase53_ticket_routing_foundation,
+)
 from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_user_auth_schema, ensure_user_access_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_timesheet_entry_leave_count, ensure_timesheet_entry_soft_delete, ensure_team_schema, ensure_user_team_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -483,6 +486,7 @@ def seeded_db(test_session_factory, test_engine):
     ensure_phase49_role_hierarchy_seed(test_engine)
     ensure_phase51_department_standardization(test_engine)
     ensure_phase52_ticketing_foundation(test_engine)
+    ensure_phase53_ticket_routing_foundation(test_engine)
     ensure_project_complexity(test_engine)
     ensure_standard_task_types(test_engine)
     return milestone

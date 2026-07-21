@@ -122,6 +122,9 @@ from app.db.phase51_department_standardization_schema_sync import (
 from app.db.phase52_ticketing_schema_sync import (
     ensure_phase52_ticketing_foundation,
 )
+from app.db.phase53_ticket_routing_schema_sync import (
+    ensure_phase53_ticket_routing_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -235,6 +238,7 @@ async def lifespan(app: FastAPI):
         ("phase50_security_foundation", ensure_phase50_security_foundation),
         ("phase51_department_standardization", ensure_phase51_department_standardization),
         ("phase52_ticketing", ensure_phase52_ticketing_foundation),
+        ("phase53_ticket_routing", ensure_phase53_ticket_routing_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

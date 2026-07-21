@@ -148,6 +148,20 @@ export interface TicketUpdate {
   resolution?: string | null;
 }
 
+export interface TicketCategoryRoute {
+  category: TicketCategory;
+  category_label: string;
+  assignee_user_id: string | null;
+  assignee_name: string | null;
+  org_department_id: string | null;
+  fallback_roles: string[];
+}
+
+export interface TicketCategoryRouteUpdate {
+  assignee_user_id?: string | null;
+  org_department_id?: string | null;
+}
+
 export interface TicketStats {
   total: number;
   open: number;

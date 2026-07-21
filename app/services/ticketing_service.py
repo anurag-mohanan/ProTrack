@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.access_control import EXECUTIVE_ROLES
 from app.core.permissions import get_role_name, is_admin
-from app.models.models import Ticket, User
+from app.models.models import Ticket, TicketCategoryRoute, User
 
 # --- Display labels -------------------------------------------------------
 CATEGORY_LABELS: dict[str, str] = {
@@ -78,6 +78,31 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+# --- Configured routing (admin-set contact per category) ------------------
+def category_route_map(db: Session) -> dict[str, TicketCategoryRoute]:
+    """Return the admin-configured route rows keyed by category."""
+    rows = db.scalars(select(TicketCategoryRoute)).all()
+    return {row.category: row for row in rows}
+
+
+def category_contact_id(db: Session, category: str) -> UUID | None:
+    """The admin-configured default assignee for a category, if any."""
+    return db.scalar(
+        select(TicketCategoryRoute.assignee_user_id).where(
+            TicketCategoryRoute.category == category
+        )
+    )
+
+
+def _categories_where_user_is_contact(db: Session, user: User) -> set[str]:
+    rows = db.execute(
+        select(TicketCategoryRoute.category).where(
+            TicketCategoryRoute.assignee_user_id == user.id
+        )
+    ).all()
+    return {row[0] for row in rows}
+
+
 # --- Access ---------------------------------------------------------------
 def can_manage_all_tickets(db: Session, user: User) -> bool:
     """Admin and the executive tier oversee every category."""
@@ -87,15 +112,21 @@ def can_manage_all_tickets(db: Session, user: User) -> bool:
 
 
 def manageable_categories(db: Session, user: User) -> set[str]:
-    """Categories whose queue this user works. Empty for a plain requester."""
+    """Categories whose queue this user works. Empty for a plain requester.
+
+    Combines the role-based responder queues with any category this user is the
+    admin-configured contact for.
+    """
     if can_manage_all_tickets(db, user):
         return set(CATEGORY_LABELS.keys())
     role_name = get_role_name(db, user)
-    return {
+    categories = {
         category
         for category, roles in CATEGORY_RESPONDER_ROLES.items()
         if role_name in roles
     }
+    categories |= _categories_where_user_is_contact(db, user)
+    return categories
 
 
 def is_ticket_agent(db: Session, user: User) -> bool:
@@ -131,12 +162,25 @@ def next_ticket_number(db: Session) -> str:
 
 
 def default_department_id_for_category(db: Session, category: str) -> UUID | None:
+    # An explicit admin-configured department wins over the category default.
+    configured = db.scalar(
+        select(TicketCategoryRoute.org_department_id).where(
+            TicketCategoryRoute.category == category
+        )
+    )
+    if configured is not None:
+        return configured
     code = CATEGORY_DEPARTMENT_CODE.get(category)
     if code is None:
         return None
     from app.models.models import OrgDepartment
 
     return db.scalar(select(OrgDepartment.id).where(OrgDepartment.code == code))
+
+
+def fallback_role_names(category: str) -> list[str]:
+    """Role names that own a category when no explicit contact is configured."""
+    return sorted(CATEGORY_RESPONDER_ROLES.get(category, frozenset()))
 
 
 # --- Lifecycle ------------------------------------------------------------

@@ -30,6 +30,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/admin/roles': 'Roles',
   '/admin/role-hierarchy': 'Role Hierarchy',
   '/admin/org-departments': 'Org Departments',
+  '/admin/ticket-routing': 'Help Desk Routing',
   '/admin/settings/company': 'Company Information',
   '/admin/settings/branding': 'Theme & Colours',
   '/admin/settings/holidays': 'Holiday Calendar',

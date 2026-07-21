@@ -1595,6 +1595,31 @@ class TicketComment(Base, TimestampMixin):
     author: Mapped[User] = relationship(foreign_keys=[author_id])
 
 
+class TicketCategoryRoute(Base, TimestampMixin):
+    """Admin-configured default contact / owner for each ticket category.
+
+    When set, new tickets in that category are auto-assigned to the contact and
+    that person can manage the category's queue regardless of their role. When
+    unset, tickets fall back to the role-based responder queues.
+    """
+
+    __tablename__ = "ticket_category_routes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    category: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    assignee_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    org_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("org_departments.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    assignee: Mapped[Optional[User]] = relationship(foreign_keys=[assignee_user_id])
+
+
 # Phase 7 foundation models (registers tables with metadata)
 from app.models.foundation import (  # noqa: E402, F401
     CompanySettings,

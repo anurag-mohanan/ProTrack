@@ -143,6 +143,22 @@ export const ticketsApi = {
     );
     return data;
   },
+  listRoutes: async (): Promise<import('../types').TicketCategoryRoute[]> => {
+    const { data } = await apiClient.get<import('../types').TicketCategoryRoute[]>(
+      '/tickets/routes',
+    );
+    return data;
+  },
+  setRoute: async (
+    category: string,
+    payload: import('../types').TicketCategoryRouteUpdate,
+  ): Promise<import('../types').TicketCategoryRoute> => {
+    const { data } = await apiClient.put<import('../types').TicketCategoryRoute>(
+      `/tickets/routes/${category}`,
+      payload,
+    );
+    return data;
+  },
 };
 
 export const usersApi = createResourceApi<User>('users');

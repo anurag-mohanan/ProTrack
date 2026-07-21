@@ -278,44 +278,23 @@ const NAV_MODULE_CONFIG: Array<{
     path: '/planning-board',
     icon: CalendarMonthRoundedIcon,
   },
-  {
-    module: MODULE_PERFORMANCE,
-    label: 'Performance',
-    path: '/performance',
-    icon: BadgeRoundedIcon,
-  },
-  {
-    module: MODULE_TICKETS,
-    label: 'Help Desk',
-    path: '/help-desk',
-    icon: SupportAgentRoundedIcon,
-  },
-  {
-    module: MODULE_DASHBOARD,
-    label: 'Organization',
-    path: '/organization',
-    icon: AccountTreeRoundedIcon,
-    visible: (ctx: AccessContext) => canViewOrganizationChart(ctx),
-  },
 ];
 
-const EBMP_SECTION_NAV: Array<{
+type SectionNavConfigItem = {
   module: ModuleKey;
-  label: string;
+  label: string | ((ctx: AccessContext) => string);
   path: string;
   icon: SvgIconComponent;
-}> = [
+  visible?: (ctx: AccessContext) => boolean;
+};
+
+// Operations: cross-functional business planning, finance, and reporting.
+const OPERATIONS_SECTION_NAV: SectionNavConfigItem[] = [
   {
     module: MODULE_FINANCIAL_PLANNING,
     label: 'Financial Planning',
     path: '/finance',
     icon: AccountBalanceRoundedIcon,
-  },
-  {
-    module: MODULE_HUMAN_RESOURCES,
-    label: 'Human Resources',
-    path: '/hr',
-    icon: BadgeRoundedIcon,
   },
   {
     module: MODULE_REPORTS_ANALYTICS,
@@ -329,6 +308,35 @@ const EBMP_SECTION_NAV: Array<{
     label: 'Engineering Reports',
     path: '/reports',
     icon: AssessmentRoundedIcon,
+  },
+];
+
+// Human Resources: people operations — HR workspace, performance, org chart, help desk.
+const HR_SECTION_NAV: SectionNavConfigItem[] = [
+  {
+    module: MODULE_HUMAN_RESOURCES,
+    label: 'Human Resources',
+    path: '/hr',
+    icon: GroupsRoundedIcon,
+  },
+  {
+    module: MODULE_PERFORMANCE,
+    label: 'Performance',
+    path: '/performance',
+    icon: BadgeRoundedIcon,
+  },
+  {
+    module: MODULE_DASHBOARD,
+    label: 'Organization Chart',
+    path: '/organization',
+    icon: AccountTreeRoundedIcon,
+    visible: (ctx: AccessContext) => canViewOrganizationChart(ctx),
+  },
+  {
+    module: MODULE_TICKETS,
+    label: 'Help Desk',
+    path: '/help-desk',
+    icon: SupportAgentRoundedIcon,
   },
 ];
 
@@ -695,8 +703,10 @@ export function getMainNavItems(roleNameOrContext: string | AccessContext): Main
   }));
 }
 
-export function getEbmpSectionNavItems(roleNameOrContext: string | AccessContext): MainNavItem[] {
-  const ctx = toAccessContext(roleNameOrContext);
+function buildSectionNavItems(
+  ctx: AccessContext,
+  config: SectionNavConfigItem[],
+): MainNavItem[] {
   if (isPlanningBoardRole(ctx.role_name)) {
     return [];
   }
@@ -704,8 +714,9 @@ export function getEbmpSectionNavItems(roleNameOrContext: string | AccessContext
   const items: MainNavItem[] = [];
   const seenPaths = new Set<string>();
 
-  for (const item of EBMP_SECTION_NAV) {
+  for (const item of config) {
     if (!modules.has(item.module)) continue;
+    if (item.visible && !item.visible(ctx)) continue;
     // Prefer analytics hub over duplicate engineering reports when both exist
     if (item.path === '/reports' && modules.has(MODULE_REPORTS_ANALYTICS)) continue;
     if (seenPaths.has(item.path)) continue;
@@ -714,10 +725,22 @@ export function getEbmpSectionNavItems(roleNameOrContext: string | AccessContext
       module: item.module,
       path: item.path,
       icon: item.icon,
-      label: item.label,
+      label: typeof item.label === 'function' ? item.label(ctx) : item.label,
     });
   }
   return items;
+}
+
+export function getOperationsSectionNavItems(
+  roleNameOrContext: string | AccessContext,
+): MainNavItem[] {
+  return buildSectionNavItems(toAccessContext(roleNameOrContext), OPERATIONS_SECTION_NAV);
+}
+
+export function getHrSectionNavItems(
+  roleNameOrContext: string | AccessContext,
+): MainNavItem[] {
+  return buildSectionNavItems(toAccessContext(roleNameOrContext), HR_SECTION_NAV);
 }
 
 export function canOverrideBillable(roleName: string): boolean {

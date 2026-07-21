@@ -23,8 +23,9 @@ import {
   FUTURE_MODULE_PLACEHOLDERS,
   accessContextFromUser,
   canAccessAdministration,
-  getEbmpSectionNavItems,
+  getHrSectionNavItems,
   getMainNavItems,
+  getOperationsSectionNavItems,
 } from '../../utils/permissions';
 
 export const DRAWER_WIDTH = 272;
@@ -105,7 +106,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const [futureOpen, setFutureOpen] = useState(false);
   const ctx = accessContextFromUser(user);
   const visibleNavItems = getMainNavItems(ctx);
-  const ebmpItems = getEbmpSectionNavItems(ctx);
+  const operationsItems = getOperationsSectionNavItems(ctx);
+  const hrItems = getHrSectionNavItems(ctx);
   const showAdministratorEntry = canAccessAdministration(ctx);
 
   return (
@@ -136,12 +138,24 @@ export function AppSidebar({ user }: AppSidebarProps) {
           ))}
         </List>
 
-        {ebmpItems.length > 0 ? (
+        {operationsItems.length > 0 ? (
           <>
             <Divider sx={{ my: 2, mx: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
-            <SectionLabel>Business Modules</SectionLabel>
+            <SectionLabel>Operations</SectionLabel>
             <List disablePadding>
-              {ebmpItems.map((item) => (
+              {operationsItems.map((item) => (
+                <NavButton key={item.path} path={item.path} label={item.label} icon={item.icon} />
+              ))}
+            </List>
+          </>
+        ) : null}
+
+        {hrItems.length > 0 ? (
+          <>
+            <Divider sx={{ my: 2, mx: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
+            <SectionLabel>Human Resources</SectionLabel>
+            <List disablePadding>
+              {hrItems.map((item) => (
                 <NavButton key={item.path} path={item.path} label={item.label} icon={item.icon} />
               ))}
             </List>

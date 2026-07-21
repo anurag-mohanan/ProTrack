@@ -14,6 +14,7 @@ export const MODULE_REPORTS_ANALYTICS = 'reports_analytics';
 export const MODULE_PLANNING_BOARD = 'planning_board';
 export const MODULE_CALENDAR = 'calendar';
 export const MODULE_PERFORMANCE = 'performance';
+export const MODULE_TICKETS = 'tickets';
 
 export type ModuleKey =
   | typeof MODULE_DASHBOARD
@@ -29,7 +30,8 @@ export type ModuleKey =
   | typeof MODULE_REPORTS_ANALYTICS
   | typeof MODULE_PLANNING_BOARD
   | typeof MODULE_CALENDAR
-  | typeof MODULE_PERFORMANCE;
+  | typeof MODULE_PERFORMANCE
+  | typeof MODULE_TICKETS;
 
 export const ALL_MODULES: ModuleKey[] = [
   MODULE_DASHBOARD,
@@ -46,6 +48,7 @@ export const ALL_MODULES: ModuleKey[] = [
   MODULE_PLANNING_BOARD,
   MODULE_CALENDAR,
   MODULE_PERFORMANCE,
+  MODULE_TICKETS,
 ];
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
@@ -63,6 +66,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   [MODULE_PLANNING_BOARD]: 'Planning Board Monitor',
   [MODULE_CALENDAR]: 'Calendar',
   [MODULE_PERFORMANCE]: 'Performance',
+  [MODULE_TICKETS]: 'Help Desk',
 };
 
 export const SPECIAL_CREATE_PROJECTS = 'create_projects';
@@ -149,6 +153,7 @@ export const PATH_MODULE_MAP: Record<string, ModuleKey> = {
   '/analytics': MODULE_REPORTS_ANALYTICS,
   '/planning-board': MODULE_PLANNING_BOARD,
   '/performance': MODULE_PERFORMANCE,
+  '/help-desk': MODULE_TICKETS,
 };
 
 export function moduleForPath(pathname: string): ModuleKey | null {

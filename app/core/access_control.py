@@ -19,6 +19,32 @@ LEGACY_PROJECT_MANAGER = "Project Manager"
 HR = "HR"
 OFFICE_ADMINISTRATOR = "Office Administrator"
 
+# Executive / leadership tier (phase 52). Seeded by the role hierarchy
+# (phase 49) but previously unwired into access control, so an MD / Director
+# login fell back to Designer-level access. These roles form a company-wide
+# oversight tier: full visibility + top-level approvals, WITHOUT the destructive
+# / system-administration powers reserved for Admin (IT).
+MANAGING_DIRECTOR = "Managing Director"
+DIRECTOR_OF_ENGINEERING = "Director of Engineering"
+DIRECTOR_OF_SALES = "Director of Sales"
+DIRECTOR_OF_HR = "Director of HR"
+DIRECTOR_OF_ACCOUNTS = "Director of Accounts"
+DIRECTOR_OF_IT = "Director of IT"
+DIRECTOR_GENERIC = "Director"
+
+DIRECTOR_ROLES: frozenset[str] = frozenset(
+    {
+        DIRECTOR_OF_ENGINEERING,
+        DIRECTOR_OF_SALES,
+        DIRECTOR_OF_HR,
+        DIRECTOR_OF_ACCOUNTS,
+        DIRECTOR_OF_IT,
+        DIRECTOR_GENERIC,
+    }
+)
+# The full executive tier (MD + all Directors) shares one access profile.
+EXECUTIVE_ROLES: frozenset[str] = frozenset({MANAGING_DIRECTOR}) | DIRECTOR_ROLES
+
 # Standardized Engineering roles (phase 49) map to their existing
 # permission-bearing equivalents so access control, timesheet/salary/fixed-
 # resource eligibility, and module defaults all behave correctly without
@@ -51,6 +77,7 @@ MODULE_REPORTS_ANALYTICS = "reports_analytics"
 MODULE_PLANNING_BOARD = "planning_board"
 MODULE_CALENDAR = "calendar"
 MODULE_PERFORMANCE = "performance"
+MODULE_TICKETS = "tickets"
 
 ALL_MODULES: tuple[str, ...] = (
     MODULE_DASHBOARD,
@@ -67,6 +94,7 @@ ALL_MODULES: tuple[str, ...] = (
     MODULE_PLANNING_BOARD,
     MODULE_CALENDAR,
     MODULE_PERFORMANCE,
+    MODULE_TICKETS,
 )
 
 # EBMP top-level nav groups (ops modules remain granular under Engineering Operations).
@@ -125,8 +153,39 @@ ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_MANAGE_PERMISSIONS,
 )
 
+# Executive tier: every business module EXCEPT System Administration (which
+# stays an Admin/IT responsibility). Gives the MD / Directors a company-wide
+# cockpit: finance, HR, analytics, performance, planning, projects, timesheets.
+EXECUTIVE_MODULES: frozenset[str] = frozenset(ALL_MODULES) - {MODULE_SYSTEM_ADMINISTRATION}
+
+# Executive tier specials: top-level approvals + full financial-field visibility.
+# Deliberately excludes create/edit/archive/delete project ops and the
+# manage_users / company_settings / permissions system powers (Admin-only), so
+# the MD is an oversight-and-approval authority, not an operational editor.
+EXECUTIVE_SPECIALS: frozenset[str] = frozenset(
+    {
+        SPECIAL_APPROVE_PROJECTS,
+        SPECIAL_VIEW_REPORTS,
+        SPECIAL_EXPORT_REPORTS,
+        SPECIAL_VIEW_RESOURCE_PLANNING,
+        SPECIAL_VIEW_SALARY,
+        SPECIAL_VIEW_FINANCIAL_COST,
+        SPECIAL_VIEW_BUDGET,
+        SPECIAL_VIEW_PROFITABILITY,
+        SPECIAL_FINANCIAL_APPROVAL,
+        SPECIAL_BUDGET_APPROVAL,
+    }
+)
+
 DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {
     ADMIN: frozenset(ALL_MODULES),
+    MANAGING_DIRECTOR: EXECUTIVE_MODULES,
+    DIRECTOR_OF_ENGINEERING: EXECUTIVE_MODULES,
+    DIRECTOR_OF_SALES: EXECUTIVE_MODULES,
+    DIRECTOR_OF_HR: EXECUTIVE_MODULES,
+    DIRECTOR_OF_ACCOUNTS: EXECUTIVE_MODULES,
+    DIRECTOR_OF_IT: EXECUTIVE_MODULES,
+    DIRECTOR_GENERIC: EXECUTIVE_MODULES,
     ENGINEERING_MANAGER: frozenset(
         {
             MODULE_DASHBOARD,
@@ -188,6 +247,13 @@ DEFAULT_MODULES_BY_ROLE: dict[str, frozenset[str]] = {
 
 DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
     ADMIN: frozenset(ALL_SPECIAL_PERMISSIONS),
+    MANAGING_DIRECTOR: EXECUTIVE_SPECIALS,
+    DIRECTOR_OF_ENGINEERING: EXECUTIVE_SPECIALS,
+    DIRECTOR_OF_SALES: EXECUTIVE_SPECIALS,
+    DIRECTOR_OF_HR: EXECUTIVE_SPECIALS,
+    DIRECTOR_OF_ACCOUNTS: EXECUTIVE_SPECIALS,
+    DIRECTOR_OF_IT: EXECUTIVE_SPECIALS,
+    DIRECTOR_GENERIC: EXECUTIVE_SPECIALS,
     ENGINEERING_MANAGER: frozenset(
         {
             SPECIAL_CREATE_PROJECTS,
@@ -235,6 +301,7 @@ PATH_MODULE_MAP: dict[str, str] = {
     "/planning-board": MODULE_PLANNING_BOARD,
     "/calendar": MODULE_CALENDAR,
     "/performance": MODULE_PERFORMANCE,
+    "/help-desk": MODULE_TICKETS,
 }
 
 
@@ -270,7 +337,12 @@ def serialize_special_permissions(values: list[str] | None) -> str | None:
 
 def default_modules_for_role(role_name: str) -> list[str]:
     normalized = normalize_role_name(role_name)
-    return sorted(DEFAULT_MODULES_BY_ROLE.get(normalized, DEFAULT_MODULES_BY_ROLE[DESIGNER]))
+    modules = set(
+        DEFAULT_MODULES_BY_ROLE.get(normalized, DEFAULT_MODULES_BY_ROLE[DESIGNER])
+    )
+    # Help Desk is a company-wide capability — every user can raise a ticket.
+    modules.add(MODULE_TICKETS)
+    return sorted(modules)
 
 
 def default_special_permissions_for_role(role_name: str) -> list[str]:
@@ -291,6 +363,9 @@ def resolve_user_modules(user: User, role_name: str) -> list[str]:
         # accounts whose saved module_access pre-dates MODULE_PERFORMANCE.
         if MODULE_DASHBOARD in modules:
             modules.add(MODULE_PERFORMANCE)
+        # Help Desk is company-wide — surface it for every account, including
+        # those whose saved module_access pre-dates MODULE_TICKETS.
+        modules.add(MODULE_TICKETS)
         return sorted(modules)
     return default_modules_for_role(role_name)
 

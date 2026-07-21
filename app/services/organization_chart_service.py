@@ -18,7 +18,9 @@ from app.core.permissions import (
 from app.core.team_access import get_organization_chart_team_ids
 from app.db.phase23_finance_team_scope_schema_sync import CORPORATE_TEAM_NAME
 from app.models.enums import TeamRelationshipType
-from app.models.models import OrgDepartment, Team, TeamMember, User
+from app.models.models import OrgDepartment, Role, Team, TeamMember, User
+
+MANAGING_DIRECTOR_ROLE = "Managing Director"
 from app.services.performance_review_service import format_tenure
 
 LEADERSHIP_ROLES = frozenset(
@@ -155,6 +157,21 @@ def _person_from_user(
 
 def _is_delivery_team(team: Team) -> bool:
     return team.name != CORPORATE_TEAM_NAME
+
+
+def _resolve_managing_director(db: Session) -> User | None:
+    """Active user holding the Managing Director role (chart company root)."""
+    return db.scalars(
+        select(User)
+        .join(Role, Role.id == User.role_id)
+        .options(selectinload(User.role), selectinload(User.manager))
+        .where(
+            Role.name == MANAGING_DIRECTOR_ROLE,
+            User.is_active.is_(True),
+            User.is_deleted.is_(False),
+        )
+        .order_by(User.first_name, User.last_name)
+    ).first()
 
 
 def _resolve_person_department_id(
@@ -407,10 +424,11 @@ def build_organization_chart(db: Session, *, viewer: User) -> OrganizationChartR
     if scope is None:
         scope_label = "full"
         note = (
-            "Departments plan for growth (Management, Engineering, Sales, HR, IT). "
+            "Departments plan for growth (Management, Engineering, Sales, Accounts, Human Resource, IT). "
             "Engineering holds delivery teams under EM / Design Leadership. "
             + (
-                "Drag a person card onto a team to transfer primary home with an effective date."
+                "Drag a card onto a delivery team to transfer primary home (dated for P&L), "
+                "or onto a department header to reassign that person's department."
                 if can_edit
                 else "Resource moves require an Admin."
             )
@@ -428,11 +446,16 @@ def build_organization_chart(db: Session, *, viewer: User) -> OrganizationChartR
             (row for row in org_departments if row.code == "management"), None
         )
         head_user = management.head_user if management is not None else None
+        # Guarantee the Managing Director heads the chart: fall back to the
+        # active user holding the "Managing Director" role when no explicit
+        # Management head is set.
+        if head_user is None or head_user.is_deleted or not head_user.is_active:
+            head_user = _resolve_managing_director(db)
         if head_user is not None and head_user.is_active and not head_user.is_deleted:
             company_root = _person_from_user(
                 head_user,
                 can_edit=can_edit,
-                org_department_id=management.id,
+                org_department_id=management.id if management is not None else None,
                 is_department_head=True,
             )
 

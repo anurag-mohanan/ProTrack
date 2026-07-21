@@ -6,8 +6,21 @@ from app.crud.timesheet_entry import timesheet_entry
 from app.crud.user import user
 from app.crud.project_template import project_template
 from app.crud.task_type import task_type
-from app.models.models import Contact, Customer, ProjectType, Role, Stream, TaskType
-from app.schemas.identity import RoleCreate, RoleUpdate
+from app.models.models import (
+    Contact,
+    Customer,
+    OrgDepartment,
+    ProjectType,
+    Role,
+    Stream,
+    TaskType,
+)
+from app.schemas.identity import (
+    OrgDepartmentCreate,
+    OrgDepartmentUpdate,
+    RoleCreate,
+    RoleUpdate,
+)
 from app.schemas.organization import (
     ContactCreate,
     ContactUpdate,
@@ -21,6 +34,9 @@ from app.schemas.organization import (
 from app.schemas.templates import ProjectTypeCreate, ProjectTypeUpdate
 
 role = CRUDBase[Role, RoleCreate, RoleUpdate](Role)
+org_department = CRUDBase[OrgDepartment, OrgDepartmentCreate, OrgDepartmentUpdate](
+    OrgDepartment
+)
 project_type = CRUDBase[ProjectType, ProjectTypeCreate, ProjectTypeUpdate](ProjectType)
 stream = CRUDBase[Stream, StreamCreate, StreamUpdate](Stream)
 customer = CRUDBase[Customer, CustomerCreate, CustomerUpdate](Customer)
@@ -30,6 +46,7 @@ __all__ = [
     "contact",
     "customer",
     "milestone",
+    "org_department",
     "project",
     "project_template",
     "project_type",

@@ -13,6 +13,7 @@ from uuid import UUID
 from sqlalchemy import and_, false, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.access_control import EXECUTIVE_ROLES
 from app.core.permissions import (
     ENGINEERING_MANAGER,
     PLANNING_BOARD,
@@ -54,6 +55,9 @@ def get_accessible_team_ids(db: Session, user: User) -> set[UUID] | None:
     if is_admin(db, user):
         return None
     if role_name == PLANNING_BOARD:
+        return None
+    # Executive tier (MD / Directors) sees the whole company.
+    if role_name in EXECUTIVE_ROLES:
         return None
     if role_name == ENGINEERING_MANAGER and not assigned:
         return None
@@ -97,6 +101,9 @@ def get_organization_chart_team_ids(db: Session, user: User) -> set[UUID] | None
         return None
 
     role_name = get_role_name(db, user)
+    # Executive tier (MD / Directors) sees the full organization chart.
+    if role_name in EXECUTIVE_ROLES:
+        return None
     if role_name == ENGINEERING_MANAGER:
         # Division portfolio (membership ∪ leadership). Unscoped EM → org-wide.
         return get_accessible_team_ids(db, user)
@@ -106,12 +113,15 @@ def get_organization_chart_team_ids(db: Session, user: User) -> set[UUID] | None
 
 
 def user_can_view_organization_chart(db: Session, user: User) -> bool:
-    """Admin, Engineering Manager, or a team leader for at least one team."""
+    """Admin, executive tier (MD / Directors), EM, or a team leader."""
     from app.core.permissions import DESIGN_LEADER
 
     if is_admin(db, user):
         return True
     role_name = get_role_name(db, user)
+    # The MD heads the chart and Directors head their departments.
+    if role_name in EXECUTIVE_ROLES:
+        return True
     if role_name == ENGINEERING_MANAGER:
         return True
     if role_name == DESIGN_LEADER and get_led_team_ids(db, user):

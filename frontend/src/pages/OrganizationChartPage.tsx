@@ -24,7 +24,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '../components/common/PageHeader';
-import { teamsApi } from '../api/resources';
+import { orgDepartmentsApi, teamsApi } from '../api/resources';
 import { getErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -433,6 +433,7 @@ function TeamBranch({
       onDragOver={(event) => {
         if (!canEdit) return;
         event.preventDefault();
+        event.stopPropagation();
         event.dataTransfer.dropEffect = 'move';
         setDropTargetId(team.team_id);
       }}
@@ -442,6 +443,7 @@ function TeamBranch({
       onDrop={(event) => {
         if (!canEdit) return;
         event.preventDefault();
+        event.stopPropagation();
         setDropTargetId(null);
         onDropPerson(team);
       }}
@@ -518,6 +520,7 @@ function DepartmentSection({
   setDropTargetId,
   onPersonDragStart,
   onDropPerson,
+  onDropToDepartment,
 }: {
   department: OrgChartDepartment;
   canEdit: boolean;
@@ -525,9 +528,11 @@ function DepartmentSection({
   setDropTargetId: (id: string | null) => void;
   onPersonDragStart: (person: OrgChartPerson) => void;
   onDropPerson: (target: OrgChartTeamColumn) => void;
+  onDropToDepartment: (department: OrgChartDepartment) => void;
 }) {
   const theme = useTheme();
   const accent = department.colour;
+  const isDeptOver = dropTargetId === department.department_id;
   const pool = [...department.leaders, ...department.staff];
   const head =
     pool.find((row) => row.is_department_head) ??
@@ -543,13 +548,29 @@ function DepartmentSection({
 
   return (
     <Box
+      onDragOver={(event) => {
+        if (!canEdit) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        setDropTargetId(department.department_id);
+      }}
+      onDragLeave={() => {
+        if (dropTargetId === department.department_id) setDropTargetId(null);
+      }}
+      onDrop={(event) => {
+        if (!canEdit) return;
+        event.preventDefault();
+        setDropTargetId(null);
+        onDropToDepartment(department);
+      }}
       sx={{
         borderRadius: 3,
         border: '1px solid',
-        borderColor: alpha(accent, 0.22),
+        borderColor: isDeptOver ? accent : alpha(accent, 0.22),
         overflow: 'visible',
-        bgcolor: theme.palette.background.paper,
-        boxShadow: `0 1px 2px ${alpha('#000', 0.04)}`,
+        bgcolor: isDeptOver ? alpha(accent, 0.06) : theme.palette.background.paper,
+        boxShadow: isDeptOver ? `0 0 0 2px ${alpha(accent, 0.35)}` : `0 1px 2px ${alpha('#000', 0.04)}`,
+        transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
       }}
     >
       <Box
@@ -777,6 +798,29 @@ export function OrganizationChartPage() {
     [dragPerson],
   );
 
+  const assignDeptMutation = useMutation({
+    mutationFn: async (vars: { person: OrgChartPerson; department: OrgChartDepartment }) =>
+      orgDepartmentsApi.assignUser(vars.department.department_id, vars.person.user_id),
+    onSuccess: async (_data, vars) => {
+      showSuccess(`${vars.person.name} moved to ${vars.department.name}.`);
+      setDragPerson(null);
+      await queryClient.invalidateQueries({ queryKey: ORG_CHART_KEY });
+      await queryClient.invalidateQueries({ queryKey: ['org-departments'] });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const handleDropOnDepartment = useCallback(
+    (department: OrgChartDepartment) => {
+      if (!dragPerson) return;
+      const person = dragPerson;
+      setDragPerson(null);
+      if (person.org_department_id === department.department_id) return;
+      assignDeptMutation.mutate({ person, department });
+    },
+    [dragPerson, assignDeptMutation],
+  );
+
   const filteredDepartments = useMemo(() => {
     const departments = (chartQuery.data?.departments ?? []).map((department) =>
       filterDepartment(department, viewPrefs),
@@ -991,6 +1035,7 @@ export function OrganizationChartPage() {
                 setDropTargetId={setDropTargetId}
                 onPersonDragStart={setDragPerson}
                 onDropPerson={handleDropOnTeam}
+                onDropToDepartment={handleDropOnDepartment}
               />
             ))
           ) : (

@@ -43,6 +43,7 @@ import {
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
   MODULE_PERFORMANCE,
+  MODULE_TICKETS,
   MODULE_PLANNING_BOARD,
   MODULE_CALENDAR,
   MODULE_PROJECTS,
@@ -62,6 +63,7 @@ const HrDashboardPage = lazy(() =>
   })),
 );
 const PerformancePage = lazy(() => import('./pages/PerformancePage'));
+const HelpDeskPage = lazy(() => import('./pages/HelpDeskPage'));
 const OrganizationChartPage = lazy(() => import('./pages/OrganizationChartPage'));
 const AnalyticsHubPage = lazy(() =>
   import('./pages/AnalyticsHubPage').then((module) => ({
@@ -106,6 +108,7 @@ const ProjectTemplateEditorPage = lazy(() => import('./pages/admin/ProjectTempla
 const ProjectTypesAdminPage = lazy(() => import('./pages/admin/ProjectTypesPage'));
 const RolesAdminPage = lazy(() => import('./pages/admin/RolesPage'));
 const RoleHierarchyAdminPage = lazy(() => import('./pages/admin/RoleHierarchyPage'));
+const OrgDepartmentsAdminPage = lazy(() => import('./pages/admin/OrgDepartmentsPage'));
 const StreamsAdminPage = lazy(() => import('./pages/admin/StreamsPage'));
 const WorkingModelsAdminPage = lazy(() => import('./pages/admin/WorkingModelsPage'));
 const TeamsAdminPage = lazy(() => import('./pages/admin/TeamsPage'));
@@ -274,6 +277,16 @@ export default function App() {
                       />
                     </Route>
                     <Route path="/performance-reviews" element={<Navigate to="/performance?section=annual" replace />} />
+                    <Route element={<ModuleRoute module={MODULE_TICKETS} />}>
+                      <Route
+                        path="/help-desk"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading help desk…" />}>
+                            <HelpDeskPage />
+                          </Suspense>
+                        }
+                      />
+                    </Route>
                     <Route element={<RoleRoute allowed={canViewOrganizationChart} />}>
                       <Route
                         path="/organization"
@@ -595,6 +608,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <RoleHierarchyAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/org-departments"
+                        element={
+                          <LazyAdminPage>
+                            <OrgDepartmentsAdminPage />
                           </LazyAdminPage>
                         }
                       />

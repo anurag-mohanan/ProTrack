@@ -116,6 +116,12 @@ from app.db.phase49_role_hierarchy_schema_sync import (
 from app.db.phase50_security_foundation_schema_sync import (
     ensure_phase50_security_foundation,
 )
+from app.db.phase51_department_standardization_schema_sync import (
+    ensure_phase51_department_standardization,
+)
+from app.db.phase52_ticketing_schema_sync import (
+    ensure_phase52_ticketing_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -227,6 +233,8 @@ async def lifespan(app: FastAPI):
         ("phase48_compensation_change", ensure_phase48_compensation_change_foundation),
         ("phase49_role_hierarchy", ensure_phase49_role_hierarchy_foundation),
         ("phase50_security_foundation", ensure_phase50_security_foundation),
+        ("phase51_department_standardization", ensure_phase51_department_standardization),
+        ("phase52_ticketing", ensure_phase52_ticketing_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

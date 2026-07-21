@@ -19,6 +19,7 @@ import PaletteIcon from '@mui/icons-material/Palette';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import ApartmentIcon from '@mui/icons-material/Apartment';
 import TypeSpecimenIcon from '@mui/icons-material/TypeSpecimen';
 import ViewTimelineIcon from '@mui/icons-material/ViewTimeline';
 import WorkHistoryOutlinedIcon from '@mui/icons-material/WorkHistoryOutlined';
@@ -108,6 +109,7 @@ export const ADMIN_MANAGE_ITEMS: AdminHubItem[] = [
   },
   { id: 'roles', title: 'Roles', description: 'Security roles and permissions.', icon: SecurityIcon, path: '/admin/roles' },
   { id: 'role-hierarchy', title: 'Role Hierarchy', description: 'Standardized roles by department, placed in a reporting hierarchy.', icon: AccountTreeIcon, path: '/admin/role-hierarchy' },
+  { id: 'org-departments', title: 'Org Departments', description: 'Standardized organization-chart departments and heads.', icon: ApartmentIcon, path: '/admin/org-departments' },
   { id: 'task-types', title: 'Task Types', description: 'Productive task categories.', icon: CategoryIcon, path: '/admin/task-types' },
   { id: 'streams', title: 'Streams', description: 'Design streams and disciplines.', icon: AccountTreeIcon, path: '/admin/streams' },
   { id: 'project-templates', title: 'Project Templates', description: 'Milestone workflows by project type.', icon: ViewTimelineIcon, path: '/admin/project-templates' },

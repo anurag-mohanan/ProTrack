@@ -57,6 +57,94 @@ export const rolesApi = {
     return data;
   },
 };
+export const orgDepartmentsApi = {
+  ...createResourceApi<
+    import('../types').OrgDepartment,
+    import('../types').OrgDepartmentCreate,
+    import('../types').OrgDepartmentUpdate
+  >('org-departments'),
+  assignUser: async (
+    departmentId: string,
+    userId: string,
+  ): Promise<import('../types').OrgDepartment> => {
+    const { data } = await apiClient.post<import('../types').OrgDepartment>(
+      `/org-departments/${departmentId}/assign-user`,
+      { user_id: userId },
+    );
+    return data;
+  },
+};
+export const ticketsApi = {
+  list: async (params?: {
+    status?: string;
+    category?: string;
+    priority?: string;
+    scope?: string;
+    q?: string;
+  }): Promise<import('../types').Ticket[]> => {
+    const { data } = await apiClient.get<import('../types').Ticket[]>(
+      `/tickets${buildQuery(params)}`,
+    );
+    return data;
+  },
+  stats: async (): Promise<import('../types').TicketStats> => {
+    const { data } = await apiClient.get<import('../types').TicketStats>('/tickets/stats');
+    return data;
+  },
+  get: async (id: string): Promise<import('../types').TicketDetail> => {
+    const { data } = await apiClient.get<import('../types').TicketDetail>(`/tickets/${id}`);
+    return data;
+  },
+  create: async (
+    payload: import('../types').TicketCreate,
+  ): Promise<import('../types').TicketDetail> => {
+    const { data } = await apiClient.post<import('../types').TicketDetail>('/tickets', payload);
+    return data;
+  },
+  update: async (
+    id: string,
+    payload: import('../types').TicketUpdate,
+  ): Promise<import('../types').TicketDetail> => {
+    const { data } = await apiClient.patch<import('../types').TicketDetail>(
+      `/tickets/${id}`,
+      payload,
+    );
+    return data;
+  },
+  assign: async (
+    id: string,
+    assigneeId: string | null,
+  ): Promise<import('../types').TicketDetail> => {
+    const { data } = await apiClient.post<import('../types').TicketDetail>(
+      `/tickets/${id}/assign`,
+      { assignee_id: assigneeId },
+    );
+    return data;
+  },
+  setStatus: async (
+    id: string,
+    status: import('../types').TicketStatus,
+    resolution?: string | null,
+  ): Promise<import('../types').TicketDetail> => {
+    const { data } = await apiClient.post<import('../types').TicketDetail>(
+      `/tickets/${id}/status`,
+      { status, resolution },
+    );
+    return data;
+  },
+  addComment: async (
+    id: string,
+    body: string,
+    isInternal = false,
+  ): Promise<import('../types').TicketComment> => {
+    const { data } = await apiClient.post<import('../types').TicketComment>(
+      `/tickets/${id}/comments`,
+      { body, is_internal: isInternal },
+    );
+    return data;
+  },
+};
+
 export const usersApi = createResourceApi<User>('users');
 export const streamsApi = createResourceApi<Stream>('streams');
 export const workingModelsApi = createResourceApi<

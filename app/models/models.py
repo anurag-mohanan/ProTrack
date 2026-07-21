@@ -1528,6 +1528,73 @@ class CompensationChangeRequest(Base, TimestampMixin):
     l2_approver: Mapped[Optional[User]] = relationship(foreign_keys=[l2_approver_id])
 
 
+class Ticket(Base, TimestampMixin):
+    """Help-desk / service-desk ticket (IT, Facility, Admin, HR, …).
+
+    A company-wide request tracker: any employee raises a ticket, which is
+    routed by ``category`` to the responsible team and worked by an assignee
+    through a simple status lifecycle. Workflow fields use plain strings (as with
+    :class:`CompensationChangeRequest`) validated by the API schemas.
+    """
+
+    __tablename__ = "tickets"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    ticket_number: Mapped[str] = mapped_column(
+        String(20), unique=True, nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(20), nullable=False, default="it", index=True)
+    priority: Mapped[str] = mapped_column(String(16), nullable=False, default="medium")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open", index=True)
+    requester_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    org_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("org_departments.id"), nullable=True
+    )
+    location: Mapped[Optional[str]] = mapped_column(String(120))
+    due_date: Mapped[Optional[date]] = mapped_column(Date)
+    resolution: Mapped[Optional[str]] = mapped_column(Text)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    requester: Mapped[User] = relationship(foreign_keys=[requester_id])
+    assignee: Mapped[Optional[User]] = relationship(foreign_keys=[assignee_id])
+    comments: Mapped[list["TicketComment"]] = relationship(
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketComment.created_at",
+    )
+
+
+class TicketComment(Base, TimestampMixin):
+    """A note / reply on a ticket. ``is_internal`` hides agent-only notes."""
+
+    __tablename__ = "ticket_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    ticket_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tickets.id"), nullable=False, index=True
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    is_internal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    ticket: Mapped[Ticket] = relationship(back_populates="comments")
+    author: Mapped[User] = relationship(foreign_keys=[author_id])
+
+
 # Phase 7 foundation models (registers tables with metadata)
 from app.models.foundation import (  # noqa: E402, F401
     CompanySettings,

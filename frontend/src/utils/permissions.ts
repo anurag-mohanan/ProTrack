@@ -9,6 +9,7 @@ import AccountBalanceRoundedIcon from '@mui/icons-material/AccountBalanceRounded
 import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded';
 import AccountTreeRoundedIcon from '@mui/icons-material/AccountTreeRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
+import SupportAgentRoundedIcon from '@mui/icons-material/SupportAgentRounded';
 import type { CurrentUser } from '../types';
 import {
   ALL_MODULES,
@@ -26,6 +27,7 @@ import {
   MODULE_WORKLOAD,
   MODULE_PLANNING_BOARD,
   MODULE_CALENDAR,
+  MODULE_TICKETS,
   SPECIAL_APPROVE_TIMESHEETS,
   SPECIAL_ARCHIVE_PROJECTS,
   SPECIAL_CREATE_PROJECTS,
@@ -46,6 +48,13 @@ import {
 
 export const ROLES = {
   ADMIN: 'Admin',
+  MANAGING_DIRECTOR: 'Managing Director',
+  DIRECTOR_OF_ENGINEERING: 'Director of Engineering',
+  DIRECTOR_OF_SALES: 'Director of Sales',
+  DIRECTOR_OF_HR: 'Director of HR',
+  DIRECTOR_OF_ACCOUNTS: 'Director of Accounts',
+  DIRECTOR_OF_IT: 'Director of IT',
+  DIRECTOR: 'Director',
   ENGINEERING_MANAGER: 'Engineering Manager',
   PROJECT_MANAGER: 'Project Manager',
   DESIGN_LEADER: 'Design Leader',
@@ -58,6 +67,45 @@ export const ROLES = {
   HR: 'HR',
   OFFICE_ADMINISTRATOR: 'Office Administrator',
 } as const;
+
+/** Executive / leadership tier (MD + Directors) — company-wide oversight. */
+export const EXECUTIVE_ROLES: readonly string[] = [
+  ROLES.MANAGING_DIRECTOR,
+  ROLES.DIRECTOR_OF_ENGINEERING,
+  ROLES.DIRECTOR_OF_SALES,
+  ROLES.DIRECTOR_OF_HR,
+  ROLES.DIRECTOR_OF_ACCOUNTS,
+  ROLES.DIRECTOR_OF_IT,
+  ROLES.DIRECTOR,
+];
+
+export function isExecutiveRole(roleName: string): boolean {
+  return EXECUTIVE_ROLES.includes(normalizeRoleName(roleName));
+}
+
+// Roles that work help-desk queues (mirror of ticketing_service agent roles).
+export const TICKET_AGENT_ROLES: readonly string[] = [
+  ROLES.ADMIN,
+  ...EXECUTIVE_ROLES,
+  'Director of IT',
+  'IT Manager',
+  'System Administrator',
+  'IT Executive',
+  'IT Support Engineer',
+  'Director of HR',
+  'HR Manager',
+  'HR Executive',
+  ROLES.HR,
+  'HR Assistant',
+  ROLES.OFFICE_ADMINISTRATOR,
+];
+
+export function isTicketAgentRole(roleName?: string | null): boolean {
+  if (!roleName) return false;
+  return TICKET_AGENT_ROLES.some(
+    (role) => normalizeRoleName(role) === normalizeRoleName(roleName),
+  );
+}
 
 export type DashboardRoleGroup =
   | 'admin'
@@ -83,8 +131,20 @@ export interface AccessContext {
   can_view_organization_chart?: boolean;
 }
 
+// Executive tier: every business module except System Administration (Admin/IT).
+const EXECUTIVE_MODULES: ModuleKey[] = ALL_MODULES.filter(
+  (module) => module !== MODULE_SYSTEM_ADMINISTRATION,
+);
+
 const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
   [ROLES.ADMIN]: [...ALL_MODULES],
+  [ROLES.MANAGING_DIRECTOR]: EXECUTIVE_MODULES,
+  [ROLES.DIRECTOR_OF_ENGINEERING]: EXECUTIVE_MODULES,
+  [ROLES.DIRECTOR_OF_SALES]: EXECUTIVE_MODULES,
+  [ROLES.DIRECTOR_OF_HR]: EXECUTIVE_MODULES,
+  [ROLES.DIRECTOR_OF_ACCOUNTS]: EXECUTIVE_MODULES,
+  [ROLES.DIRECTOR_OF_IT]: EXECUTIVE_MODULES,
+  [ROLES.DIRECTOR]: EXECUTIVE_MODULES,
   [ROLES.ENGINEERING_MANAGER]: [
     MODULE_DASHBOARD,
     MODULE_PROJECTS,
@@ -130,6 +190,14 @@ const DEFAULT_MODULES_BY_ROLE: Record<string, ModuleKey[]> = {
   ],
 };
 
+// Fallback specials (pre-/me only). The backend supplies the full executive set
+// (approvals + financial-field visibility) via resolved_special_permissions.
+const EXECUTIVE_SPECIALS: SpecialPermissionKey[] = [
+  SPECIAL_VIEW_REPORTS,
+  SPECIAL_EXPORT_REPORTS,
+  SPECIAL_VIEW_RESOURCE_PLANNING,
+];
+
 const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
   [ROLES.ADMIN]: [
     SPECIAL_CREATE_PROJECTS,
@@ -147,6 +215,13 @@ const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
   ],
+  [ROLES.MANAGING_DIRECTOR]: EXECUTIVE_SPECIALS,
+  [ROLES.DIRECTOR_OF_ENGINEERING]: EXECUTIVE_SPECIALS,
+  [ROLES.DIRECTOR_OF_SALES]: EXECUTIVE_SPECIALS,
+  [ROLES.DIRECTOR_OF_HR]: EXECUTIVE_SPECIALS,
+  [ROLES.DIRECTOR_OF_ACCOUNTS]: EXECUTIVE_SPECIALS,
+  [ROLES.DIRECTOR_OF_IT]: EXECUTIVE_SPECIALS,
+  [ROLES.DIRECTOR]: EXECUTIVE_SPECIALS,
   [ROLES.ENGINEERING_MANAGER]: [
     SPECIAL_CREATE_PROJECTS,
     SPECIAL_EDIT_PROJECTS,
@@ -208,6 +283,12 @@ const NAV_MODULE_CONFIG: Array<{
     label: 'Performance',
     path: '/performance',
     icon: BadgeRoundedIcon,
+  },
+  {
+    module: MODULE_TICKETS,
+    label: 'Help Desk',
+    path: '/help-desk',
+    icon: SupportAgentRoundedIcon,
   },
   {
     module: MODULE_DASHBOARD,
@@ -291,7 +372,12 @@ export function toAccessContext(roleNameOrContext: string | AccessContext): Acce
 
 export function defaultModulesForRole(roleName: string): ModuleKey[] {
   const normalized = normalizeRoleName(roleName);
-  return DEFAULT_MODULES_BY_ROLE[normalized] ?? DEFAULT_MODULES_BY_ROLE[ROLES.DESIGNER];
+  const base = DEFAULT_MODULES_BY_ROLE[normalized] ?? DEFAULT_MODULES_BY_ROLE[ROLES.DESIGNER];
+  // Help Desk is company-wide — every user can raise a ticket.
+  if (!base.includes(MODULE_TICKETS)) {
+    return [...base, MODULE_TICKETS];
+  }
+  return base;
 }
 
 export function defaultSpecialPermissionsForRole(roleName: string): SpecialPermissionKey[] {
@@ -313,7 +399,11 @@ export function resolveModules(ctx: AccessContext): ModuleKey[] {
   }
   // Performance previously gated by Dashboard — keep nav parity for stale tokens.
   if (modules.includes(MODULE_DASHBOARD) && !modules.includes(MODULE_PERFORMANCE)) {
-    return [...modules, MODULE_PERFORMANCE];
+    modules = [...modules, MODULE_PERFORMANCE];
+  }
+  // Help Desk is company-wide — surface it for every user (incl. stale tokens).
+  if (!modules.includes(MODULE_TICKETS)) {
+    modules = [...modules, MODULE_TICKETS];
   }
   return modules;
 }
@@ -336,6 +426,8 @@ export function userHasSpecial(ctx: AccessContext, permission: SpecialPermission
 export function getDashboardRoleGroup(roleName: string): DashboardRoleGroup {
   const normalized = normalizeRoleName(roleName);
   if (normalized === ROLES.ADMIN) return 'admin';
+  // Executive tier gets the company-wide management dashboard (no admin-only calls).
+  if (isExecutiveRole(normalized)) return 'engineering_manager';
   if (normalized === ROLES.ENGINEERING_MANAGER) return 'engineering_manager';
   if (normalized === ROLES.DESIGN_LEADER) return 'design_leader';
   if (normalized === ROLES.READ_ONLY) return 'read_only';
@@ -362,7 +454,11 @@ export function canViewOrganizationChart(roleNameOrContext: string | AccessConte
     return ctx.can_view_organization_chart;
   }
   // Fallback before /me loads — never expose to Design Leader without the flag.
-  return isAdminRole(ctx.role_name) || isEngineeringManagerRole(ctx.role_name);
+  return (
+    isAdminRole(ctx.role_name) ||
+    isEngineeringManagerRole(ctx.role_name) ||
+    isExecutiveRole(ctx.role_name)
+  );
 }
 
 export function isProjectStaffRole(roleName: string): boolean {
@@ -578,6 +674,12 @@ export function getMainNavItems(roleNameOrContext: string | AccessContext): Main
         path: '/planning-board',
         icon: CalendarMonthRoundedIcon,
         label: 'Planning Board',
+      },
+      {
+        module: MODULE_TICKETS,
+        path: '/help-desk',
+        icon: SupportAgentRoundedIcon,
+        label: 'Help Desk',
       },
     ];
   }

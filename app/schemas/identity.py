@@ -67,6 +67,39 @@ class RoleHierarchyRead(BaseModel):
     departments: list[RoleHierarchyDepartment] = Field(default_factory=list)
 
 
+class OrgDepartmentBase(BaseModel):
+    code: str = Field(max_length=40)
+    name: str = Field(max_length=120)
+    description: str | None = None
+    colour: str = Field(default="#1976d2", max_length=20)
+    sort_order: int = 100
+    head_user_id: UUID | None = None
+    is_active: bool = True
+
+
+class OrgDepartmentCreate(BlankOptionalFieldsMixin, OrgDepartmentBase):
+    pass
+
+
+class OrgDepartmentUpdate(BlankOptionalFieldsMixin, BaseModel):
+    code: str | None = Field(default=None, max_length=40)
+    name: str | None = Field(default=None, max_length=120)
+    description: str | None = None
+    colour: str | None = Field(default=None, max_length=20)
+    sort_order: int | None = None
+    head_user_id: UUID | None = None
+    is_active: bool | None = None
+
+
+class OrgDepartmentRead(OrgDepartmentBase, TimestampSchema):
+    head_name: str | None = None
+    member_count: int = 0
+
+
+class AssignDepartmentRequest(BaseModel):
+    user_id: UUID
+
+
 class UserTeamAssignmentBase(BaseModel):
     team_id: UUID
     relationship_type: TeamRelationshipType = TeamRelationshipType.member

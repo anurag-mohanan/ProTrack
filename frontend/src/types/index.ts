@@ -48,6 +48,118 @@ export interface RoleHierarchy {
   departments: RoleHierarchyDepartment[];
 }
 
+export interface OrgDepartment {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  colour: string;
+  sort_order: number;
+  head_user_id: string | null;
+  head_name: string | null;
+  is_active: boolean;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrgDepartmentCreate {
+  code: string;
+  name: string;
+  description?: string | null;
+  colour?: string;
+  sort_order?: number;
+  head_user_id?: string | null;
+  is_active?: boolean;
+}
+
+export type OrgDepartmentUpdate = Partial<OrgDepartmentCreate>;
+
+export type TicketCategory = 'it' | 'facility' | 'admin' | 'hr' | 'other';
+export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type TicketStatus =
+  | 'open'
+  | 'in_progress'
+  | 'on_hold'
+  | 'resolved'
+  | 'closed'
+  | 'cancelled';
+
+export interface TicketComment {
+  id: string;
+  ticket_id: string;
+  author_id: string;
+  author_name: string | null;
+  body: string;
+  is_internal: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Ticket {
+  id: string;
+  ticket_number: string;
+  title: string;
+  description: string | null;
+  category: TicketCategory;
+  category_label: string;
+  priority: TicketPriority;
+  status: TicketStatus;
+  status_label: string;
+  requester_id: string;
+  requester_name: string | null;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  org_department_id: string | null;
+  location: string | null;
+  due_date: string | null;
+  resolution: string | null;
+  resolved_at: string | null;
+  closed_at: string | null;
+  comment_count: number;
+  can_manage: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TicketDetail extends Ticket {
+  comments: TicketComment[];
+}
+
+export interface TicketCreate {
+  title: string;
+  description?: string | null;
+  category: TicketCategory;
+  priority?: TicketPriority;
+  location?: string | null;
+  due_date?: string | null;
+  org_department_id?: string | null;
+}
+
+export interface TicketUpdate {
+  title?: string;
+  description?: string | null;
+  category?: TicketCategory;
+  priority?: TicketPriority;
+  status?: TicketStatus;
+  assignee_id?: string | null;
+  location?: string | null;
+  due_date?: string | null;
+  resolution?: string | null;
+}
+
+export interface TicketStats {
+  total: number;
+  open: number;
+  in_progress: number;
+  on_hold: number;
+  resolved: number;
+  closed: number;
+  cancelled: number;
+  assigned_to_me: number;
+  raised_by_me: number;
+}
+
 export interface UserTeamAssignment {
   id?: string;
   team_id: string;

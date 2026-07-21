@@ -18,6 +18,7 @@ from app.api.v1 import (
     milestones,
     non_productive_codes,
     notifications,
+    org_departments,
     preferences,
     project_templates,
     project_types,
@@ -28,6 +29,7 @@ from app.api.v1 import (
     security,
     settings,
     system,
+    tickets,
     timesheet_entries,
     timesheets,
     teams,
@@ -71,6 +73,7 @@ delivery_write = ("Admin", "Engineering Manager", "Design Leader")
 
 api_router.include_router(lookups.router)
 api_router.include_router(roles.router)
+api_router.include_router(org_departments.router)
 api_router.include_router(users.router)
 api_router.include_router(teams.router)
 api_router.include_router(
@@ -149,6 +152,7 @@ api_router.include_router(finance.router)
 api_router.include_router(hr.router)
 api_router.include_router(analytics.router)
 api_router.include_router(system.router)
+api_router.include_router(tickets.router)
 api_router.include_router(security.router)
 api_router.include_router(imports.router)
 api_router.include_router(timesheet_imports.router)

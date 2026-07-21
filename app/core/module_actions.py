@@ -75,6 +75,7 @@ def default_module_actions_for_role(role_name: str, modules: list[str]) -> dict[
         ADMIN,
         DESIGN_LEADER,
         ENGINEERING_MANAGER,
+        EXECUTIVE_ROLES,
         HR,
         MODULE_FINANCIAL_PLANNING,
         MODULE_HUMAN_RESOURCES,
@@ -86,6 +87,7 @@ def default_module_actions_for_role(role_name: str, modules: list[str]) -> dict[
     )
 
     normalized = normalize_role_name(role_name)
+    is_executive = normalized in EXECUTIVE_ROLES
     full = list(ALL_MODULE_ACTIONS)
     performance_manager = [
         MODULE_ACTION_VIEW,
@@ -105,16 +107,20 @@ def default_module_actions_for_role(role_name: str, modules: list[str]) -> dict[
         elif module == MODULE_PERFORMANCE:
             if normalized in {ADMIN, HR, OFFICE_ADMINISTRATOR}:
                 result[module] = performance_hr
-            elif normalized in {ENGINEERING_MANAGER, DESIGN_LEADER}:
+            elif normalized in {ENGINEERING_MANAGER, DESIGN_LEADER} or is_executive:
                 result[module] = performance_manager
             else:
                 result[module] = [MODULE_ACTION_VIEW]
-        elif normalized == ENGINEERING_MANAGER and module == MODULE_FINANCIAL_PLANNING:
+        elif module == MODULE_FINANCIAL_PLANNING and (
+            normalized == ENGINEERING_MANAGER or is_executive
+        ):
+            # EM and the executive tier get full financial-planning authority
+            # (view/create/edit/approve/export) for budgets and annual plans.
             result[module] = full
         elif module == MODULE_SYSTEM_ADMINISTRATION and normalized == ADMIN:
             result[module] = full
         elif module in {MODULE_HUMAN_RESOURCES, MODULE_REPORTS_ANALYTICS}:
-            if normalized in {ADMIN, HR, OFFICE_ADMINISTRATOR, ENGINEERING_MANAGER}:
+            if normalized in {ADMIN, HR, OFFICE_ADMINISTRATOR, ENGINEERING_MANAGER} or is_executive:
                 result[module] = [MODULE_ACTION_VIEW, MODULE_ACTION_EXPORT]
             else:
                 result[module] = [MODULE_ACTION_VIEW]

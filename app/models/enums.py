@@ -167,6 +167,7 @@ class ActivityAction(enum.Enum):
     user_restored = "user_restored"
     user_deleted = "user_deleted"
     user_restored_from_deleted = "user_restored_from_deleted"
+    user_department_changed = "user_department_changed"
     record_deleted = "record_deleted"
     record_restored = "record_restored"
     record_archived = "record_archived"
@@ -183,6 +184,14 @@ class ActivityAction(enum.Enum):
     budget_rejected = "budget_rejected"
     fx_rate_updated = "fx_rate_updated"
     cost_updated = "cost_updated"
+    ticket_created = "ticket_created"
+    ticket_updated = "ticket_updated"
+    ticket_assigned = "ticket_assigned"
+    ticket_status_changed = "ticket_status_changed"
+    ticket_commented = "ticket_commented"
+    ticket_resolved = "ticket_resolved"
+    ticket_closed = "ticket_closed"
+    ticket_reopened = "ticket_reopened"
 
 
 class NotificationType(enum.Enum):
@@ -229,6 +238,7 @@ class EntityType(enum.Enum):
     expense = "expense"
     fx_rate = "fx_rate"
     employee_cost = "employee_cost"
+    ticket = "ticket"
 
 
 class CostNature(enum.Enum):

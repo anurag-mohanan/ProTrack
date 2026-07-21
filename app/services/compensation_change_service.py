@@ -22,6 +22,10 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.access_control import (
+    DIRECTOR_ROLES as ORG_DIRECTOR_ROLES,
+    MANAGING_DIRECTOR,
+)
 from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import (
     ADMIN,
@@ -59,7 +63,10 @@ VALID_STAGES = (
 REQUEST_HIKE = "hike"
 REQUEST_PROMOTION = "promotion"
 
-DIRECTOR_ROLES = frozenset({"Director of Engineering", "Director"})
+# Level-2 approvers: the Managing Director (top authority) and every Director.
+# Draws from the standardized org roles so a new Director department is covered
+# automatically. The legacy generic "Director" is retained via ORG_DIRECTOR_ROLES.
+DIRECTOR_ROLES = frozenset({MANAGING_DIRECTOR}) | ORG_DIRECTOR_ROLES
 
 
 def _now() -> datetime:

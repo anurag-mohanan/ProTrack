@@ -793,7 +793,9 @@ def update_team_commercial(
     if row is None or not row.is_active:
         raise HTTPException(status_code=404, detail="Team commercial terms not found")
     data = payload.model_dump(exclude_unset=True)
-    fee_bands = data.pop("fee_bands", None)
+    fee_bands_provided = "fee_bands" in data
+    data.pop("fee_bands", None)
+    fee_bands = payload.fee_bands if fee_bands_provided else None
     for key, value in data.items():
         setattr(row, key, value)
     model = db.get(WorkingModel, row.working_model_id)

@@ -8,7 +8,13 @@ from datetime import date, timedelta
 from sqlalchemy import select
 
 from app.models.enums import WorkingModelCode
-from app.models.models import User, UserWorkingModelPeriod, WorkingModel
+from app.models.models import (
+    Team,
+    TeamMember,
+    User,
+    UserWorkingModelPeriod,
+    WorkingModel,
+)
 from app.services import user_change_service
 from tests.conftest import IDS
 
@@ -93,3 +99,47 @@ def test_billing_change_records_dated_period(session):
     )
     assert period is not None
     assert period.working_model_id == wm.id
+
+
+def test_future_transfer_updates_live_membership_on_sweep(session):
+    employee = _make_employee(session, IDS["role_designer"])
+    source = Team(id=uuid.uuid4(), name=f"Src {uuid.uuid4().hex[:6]}", colour="#111", is_active=True)
+    target = Team(id=uuid.uuid4(), name=f"Tgt {uuid.uuid4().hex[:6]}", colour="#222", is_active=True)
+    session.add_all([source, target])
+    session.flush()
+    session.add(
+        TeamMember(
+            team_id=source.id,
+            user_id=employee.id,
+            role_within_team="Designer",
+            is_primary=True,
+            is_billable_headcount=True,
+        )
+    )
+    employee.team_id = source.id
+    session.flush()
+
+    future = date.today() + timedelta(days=3)
+    user_change_service.record_transfer(
+        session,
+        user=employee,
+        target_team_id=target.id,
+        effective_date=future,
+        update_reporting_manager=False,
+    )
+    session.commit()
+    session.refresh(employee)
+    # Future-dated: live home stays on source until the effective date.
+    assert employee.team_id == source.id
+
+    user_change_service.apply_due_lifecycle(session, as_of=future)
+    session.commit()
+    session.refresh(employee)
+    assert employee.team_id == target.id
+    target_member = session.scalar(
+        select(TeamMember).where(
+            TeamMember.user_id == employee.id,
+            TeamMember.team_id == target.id,
+        )
+    )
+    assert target_member is not None and target_member.is_primary is True

@@ -278,6 +278,27 @@ def record_transfer(
     return event
 
 
+def _apply_transfer_event(db: Session, *, user: User, event: UserJobEvent) -> None:
+    """Flip the live primary-team membership so the org chart reflects the move."""
+    payload = json.loads(event.to_value or "{}")
+    team_id = payload.get("team_id")
+    if team_id:
+        target_id = UUID(str(team_id)) if not isinstance(team_id, UUID) else team_id
+        members = db.scalars(
+            select(TeamMember).where(TeamMember.user_id == user.id)
+        ).all()
+        target_member = None
+        for member in members:
+            is_target = member.team_id == target_id
+            member.is_primary = is_target
+            if is_target:
+                target_member = member
+        if target_member is not None:
+            user.team_id = target_id
+            db.add(user)
+    event.applied_at = _now()
+
+
 # ---------------------------------------------------------------------------
 # Apply-forward sweep
 # ---------------------------------------------------------------------------
@@ -301,6 +322,9 @@ def apply_due_lifecycle(db: Session, *, as_of: Optional[date] = None) -> int:
             applied += 1
         elif event.event_type == EVENT_BILLING_CHANGE:
             _apply_billing_event(db, user=user, event=event)
+            applied += 1
+        elif event.event_type == EVENT_TRANSFER:
+            _apply_transfer_event(db, user=user, event=event)
             applied += 1
         elif event.event_type == EVENT_HIKE:
             event.applied_at = _now()

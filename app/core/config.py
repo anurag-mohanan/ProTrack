@@ -21,6 +21,10 @@ def _int(name: str, default: int) -> int:
 # secret/config guard in app.main and turns on stricter transport defaults.
 ENVIRONMENT = os.getenv("PROTRACK_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT in ("production", "prod")
+# When true, production refuses to start on insecure config (missing secrets).
+# Default false so upgrades never take a running deployment offline; enable it
+# once real secrets are provisioned.
+STRICT_SECURITY = _flag("PROTRACK_STRICT_SECURITY", "false")
 
 # --- Signing / encryption secrets -------------------------------------------
 DEV_DEFAULT_SECRET_KEY = "dev-only-change-me-in-production"
@@ -138,12 +142,17 @@ def security_config_warnings() -> list[str]:
 
 
 def assert_production_security() -> list[str]:
-    """In production, raise on insecure secrets. Otherwise, return advisories.
+    """Surface security misconfigurations at startup.
+
+    By default the app always boots (insecure config is logged loudly) so an
+    upgrade can never take a live deployment offline. Set
+    ``PROTRACK_STRICT_SECURITY=true`` to make production *refuse* to start on
+    missing secrets once you are ready to enforce it.
 
     Returns the combined list of problems + warnings so callers can log them.
     """
     problems = security_config_problems()
-    if problems and IS_PRODUCTION:
+    if problems and IS_PRODUCTION and STRICT_SECURITY:
         raise RuntimeError(
             "Refusing to start in production with insecure configuration:\n  - "
             + "\n  - ".join(problems)

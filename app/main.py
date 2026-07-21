@@ -330,13 +330,16 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 # --- Rate limiting ----------------------------------------------------------
-from slowapi.errors import RateLimitExceeded
-from slowapi import _rate_limit_exceeded_handler
-
-from app.core.rate_limit import limiter
+# Imported via app.core.rate_limit so a missing slowapi degrades gracefully
+# instead of crashing startup.
+from app.core.rate_limit import (
+    RateLimitExceeded,
+    limiter,
+    rate_limit_exceeded_handler,
+)
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # --- Middleware (outermost first) -------------------------------------------
 from app.core.config import TRUSTED_HOSTS

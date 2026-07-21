@@ -109,7 +109,12 @@ INTERNAL_RELEASE = os.getenv("INTERNAL_RELEASE", "true").lower() in ("1", "true"
 
 
 def security_config_problems() -> list[str]:
-    """Return a list of production-blocking security misconfigurations."""
+    """Production-blocking security misconfigurations (hard startup blockers).
+
+    Only true secrets belong here — items whose absence makes the deployment
+    genuinely insecure. Operational flags (e.g. INTERNAL_RELEASE) are advisory
+    and must never prevent the service from starting.
+    """
     problems: list[str] = []
     if SECRET_KEY == DEV_DEFAULT_SECRET_KEY:
         problems.append(
@@ -119,17 +124,23 @@ def security_config_problems() -> list[str]:
         problems.append(
             "PROTRACK_ENCRYPTION_KEY is not set (required to encrypt stored secrets)."
         )
-    if INTERNAL_RELEASE:
-        problems.append(
-            "INTERNAL_RELEASE is true (forced password change is bypassed)."
-        )
     return problems
 
 
-def assert_production_security() -> list[str]:
-    """In production, raise on insecure config. In dev, return warnings.
+def security_config_warnings() -> list[str]:
+    """Non-blocking advisories surfaced at startup (never prevent boot)."""
+    warnings: list[str] = []
+    if INTERNAL_RELEASE:
+        warnings.append(
+            "INTERNAL_RELEASE is true (forced password change is bypassed)."
+        )
+    return warnings
 
-    Returns the list of problems (empty when clean) so callers can log them.
+
+def assert_production_security() -> list[str]:
+    """In production, raise on insecure secrets. Otherwise, return advisories.
+
+    Returns the combined list of problems + warnings so callers can log them.
     """
     problems = security_config_problems()
     if problems and IS_PRODUCTION:
@@ -137,4 +148,4 @@ def assert_production_security() -> list[str]:
             "Refusing to start in production with insecure configuration:\n  - "
             + "\n  - ".join(problems)
         )
-    return problems
+    return problems + security_config_warnings()

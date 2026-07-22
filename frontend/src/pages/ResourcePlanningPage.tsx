@@ -275,10 +275,11 @@ export function ResourcePlanningPage() {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: '280px 1fr 300px' },
+          gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 280px) minmax(0, 1fr) minmax(0, 300px)' },
           gap: 2,
-          height: { lg: 'calc(100vh - 280px)' },
-          minHeight: 520,
+          height: { lg: 'calc(100dvh - 280px)' },
+          minHeight: { xs: 0, lg: 480 },
+          minWidth: 0,
         }}
       >
         <ResourcePlanningLeftPanel

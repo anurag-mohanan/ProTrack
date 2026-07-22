@@ -1,13 +1,18 @@
 import { useEffect } from 'react';
 import { Box, Toolbar } from '@mui/material';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { AppSidebar, DRAWER_WIDTH } from '../components/layout/AppSidebar';
+import { AppSidebar } from '../components/layout/AppSidebar';
 import { AppFooter } from '../components/layout/AppFooter';
 import { AppTopBar } from '../components/layout/AppTopBar';
 import { ImpersonationBanner } from '../components/layout/ImpersonationBanner';
 import { PageErrorBoundary } from '../components/common/PageErrorBoundary';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import {
+  requestOpenGlobalSearch,
+  shellMinHeightSx,
+  useResponsiveShell,
+} from '../hooks/useResponsiveShell';
 
 export function MainLayout() {
   const { user, displayName, logout } = useAuth();
@@ -15,6 +20,7 @@ export function MainLayout() {
   const location = useLocation();
   const { showInfo } = useToast();
   const roleName = user?.role_name ?? '';
+  const { isCompact, mobileNavOpen, openMobileNav, closeMobileNav } = useResponsiveShell();
 
   const handleLogout = async () => {
     await logout();
@@ -28,9 +34,7 @@ export function MainLayout() {
 
       if (key === 'f') {
         event.preventDefault();
-        const searchInput = document.getElementById('global-search-input') as HTMLInputElement | null;
-        searchInput?.focus();
-        searchInput?.select();
+        requestOpenGlobalSearch();
       }
 
       if (key === 'n') {
@@ -67,28 +71,43 @@ export function MainLayout() {
   }, [location.pathname, navigate, showInfo]);
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
+    <Box sx={{ display: 'flex', ...shellMinHeightSx(), bgcolor: 'background.default' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0, maxWidth: '100%' }}>
         <ImpersonationBanner />
         <AppTopBar
           displayName={displayName}
           roleName={roleName}
           onLogout={() => void handleLogout()}
+          isCompact={isCompact}
+          onOpenNav={openMobileNav}
         />
-        <Box sx={{ display: 'flex', flexGrow: 1, minWidth: 0 }}>
-          <AppSidebar user={user} />
+        <Box sx={{ display: 'flex', flexGrow: 1, minWidth: 0, maxWidth: '100%' }}>
+          <AppSidebar
+            user={user}
+            mobileOpen={mobileNavOpen}
+            onMobileClose={closeMobileNav}
+          />
           <Box
             component="main"
             sx={{
               flexGrow: 1,
-              width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
+              width: '100%',
               display: 'flex',
               flexDirection: 'column',
               minWidth: 0,
+              maxWidth: '100%',
             }}
           >
             <Toolbar sx={{ minHeight: '64px !important' }} />
-            <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, minWidth: 0 }}>
+            <Box
+              sx={{
+                flexGrow: 1,
+                p: { xs: 1.5, sm: 2, md: 3 },
+                minWidth: 0,
+                maxWidth: '100%',
+                overflowX: 'clip',
+              }}
+            >
               <PageErrorBoundary title="This section could not be loaded.">
                 <Outlet />
               </PageErrorBoundary>

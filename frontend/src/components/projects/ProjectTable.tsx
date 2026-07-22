@@ -416,7 +416,12 @@ function buildColumns(
   return [...baseColumns, actionColumn];
 }
 
-const LIVE_TABLE_HEIGHT = 'calc(100vh - 268px)';
+const LIVE_TABLE_HEIGHT = {
+  height: 'calc(100vh - 268px)',
+  '@supports (height: 100dvh)': {
+    height: 'calc(100dvh - 268px)',
+  },
+};
 const COMPLETED_TABLE_HEIGHT = 360;
 const PAGE_SIZE = 25;
 
@@ -479,7 +484,7 @@ function ProjectTableComponent({
   const tableHeight = primary
     ? LIVE_TABLE_HEIGHT
     : rows.length > PAGE_SIZE
-      ? COMPLETED_TABLE_HEIGHT
+      ? { height: COMPLETED_TABLE_HEIGHT }
       : undefined;
 
   return (
@@ -495,7 +500,7 @@ function ProjectTableComponent({
       sx={
         tableHeight
           ? {
-              height: tableHeight,
+              ...tableHeight,
               minHeight: 360,
               '& .MuiDataGrid-main': { overflow: 'hidden' },
               '& .MuiDataGrid-virtualScroller': { overflow: 'auto !important' },

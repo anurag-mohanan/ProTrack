@@ -85,12 +85,16 @@ CREATE TABLE IF NOT EXISTS onboarding_checklist_items (
     item_text VARCHAR(500) NOT NULL,
     responsibility VARCHAR(40) NOT NULL DEFAULT 'hr',
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    owner_user_id CHAR(36) NULL,
+    help_ticket_id CHAR(36) NULL,
     completed_by_id CHAR(36) NULL,
     completion_date DATE NULL,
     notes TEXT NULL,
     created_at DATETIME,
     updated_at DATETIME,
     FOREIGN KEY(checklist_id) REFERENCES onboarding_checklists (id),
+    FOREIGN KEY(owner_user_id) REFERENCES users (id),
+    FOREIGN KEY(help_ticket_id) REFERENCES tickets (id),
     FOREIGN KEY(completed_by_id) REFERENCES users (id)
 )
 """
@@ -143,6 +147,8 @@ CREATE TABLE IF NOT EXISTS onboarding_checklist_items (
     item_text VARCHAR(500) NOT NULL,
     responsibility VARCHAR(40) NOT NULL DEFAULT 'hr',
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    owner_user_id UUID NULL REFERENCES users(id),
+    help_ticket_id UUID NULL REFERENCES tickets(id),
     completed_by_id UUID NULL REFERENCES users(id),
     completion_date DATE NULL,
     notes TEXT NULL,
@@ -236,6 +242,35 @@ def _ensure_placement_columns(engine: Engine) -> None:
                 )
 
 
+_ITEM_COLUMNS = (
+    ("owner_user_id", "CHAR(36) NULL", "UUID NULL"),
+    ("help_ticket_id", "CHAR(36) NULL", "UUID NULL"),
+)
+
+
+def _ensure_item_columns(engine: Engine) -> None:
+    if not _sqlite_has_table(engine, "onboarding_checklist_items") and engine.dialect.name == "sqlite":
+        return
+    dialect = engine.dialect.name
+    with engine.begin() as connection:
+        if dialect == "sqlite":
+            for column, ddl, _pg in _ITEM_COLUMNS:
+                if not _sqlite_has_column(engine, "onboarding_checklist_items", column):
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE onboarding_checklist_items ADD COLUMN {column} {ddl}"
+                        )
+                    )
+        else:
+            for column, _sq, pg in _ITEM_COLUMNS:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE onboarding_checklist_items "
+                        f"ADD COLUMN IF NOT EXISTS {column} {pg}"
+                    )
+                )
+
+
 def ensure_phase54_onboarding_foundation(engine: Engine) -> None:
     dialect = engine.dialect.name
     with engine.begin() as connection:
@@ -254,4 +289,5 @@ def ensure_phase54_onboarding_foundation(engine: Engine) -> None:
             connection.execute(text(statement))
 
     _ensure_placement_columns(engine)
+    _ensure_item_columns(engine)
     _seed_default_template(engine)

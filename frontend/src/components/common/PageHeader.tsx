@@ -25,13 +25,17 @@ export function PageHeader({ subtitle, action }: PageHeaderProps) {
       }}
     >
       {subtitle ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ minWidth: 0, flex: 1, pr: { sm: 2 }, wordBreak: 'break-word' }}
+        >
           {subtitle}
         </Typography>
       ) : (
         <Box />
       )}
-      {action}
+      {action ? <Box sx={{ flexShrink: 0, width: { xs: '100%', sm: 'auto' } }}>{action}</Box> : null}
     </Box>
   );
 }

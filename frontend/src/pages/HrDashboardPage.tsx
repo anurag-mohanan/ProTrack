@@ -148,7 +148,8 @@ export function HrDashboardPage() {
         ))}
       </Stack>
       <Typography color="text.secondary">
-        Leave & attendance remain on GreytHR for now. Onboarding checklists are available under{' '}
+        Leave & attendance remain on GreytHR. New-hire checklists (PP-HRD-FO-14) auto-route owners and
+        Help Desk tickets — open{' '}
         <Link component={RouterLink} to="/hr/onboarding">
           Human Resources → Onboarding
         </Link>

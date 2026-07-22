@@ -5,10 +5,14 @@ import { useNavigate } from 'react-router-dom';
 
 interface AppGlobalSearchBarProps {
   placeholder?: string;
+  onSubmitted?: () => void;
+  autoFocus?: boolean;
 }
 
 export function AppGlobalSearchBar({
   placeholder = 'Search projects, customers, teams…',
+  onSubmitted,
+  autoFocus = false,
 }: AppGlobalSearchBarProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -18,6 +22,7 @@ export function AppGlobalSearchBar({
     if (!term) return;
     navigate(`/projects?search=${encodeURIComponent(term)}`);
     setQuery('');
+    onSubmitted?.();
   };
 
   return (
@@ -28,6 +33,7 @@ export function AppGlobalSearchBar({
       aria-label="Global search"
       placeholder={placeholder}
       value={query}
+      autoFocus={autoFocus}
       onChange={(event) => setQuery(event.target.value)}
       onKeyDown={(event) => {
         if (event.key === 'Enter') {
@@ -45,7 +51,8 @@ export function AppGlobalSearchBar({
         },
       }}
       sx={{
-        maxWidth: 420,
+        maxWidth: { xs: '100%', md: 420 },
+        width: '100%',
         '& .MuiOutlinedInput-root': {
           borderRadius: 2.5,
           bgcolor: 'background.paper',

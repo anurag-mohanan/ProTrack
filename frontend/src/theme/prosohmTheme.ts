@@ -206,11 +206,25 @@ function buildComponents(mode: ProsohmColorMode): ThemeOptions['components'] {
   return {
     MuiCssBaseline: {
       styleOverrides: {
+        html: {
+          overflowX: 'clip',
+        },
         body: {
           scrollbarColor: `${alpha(colors.primary.main, 0.4)} transparent`,
+          overflowX: 'clip',
+          maxWidth: '100%',
         },
         '#root': {
           minHeight: '100vh',
+          maxWidth: '100%',
+          overflowX: 'clip',
+          '@supports (min-height: 100dvh)': {
+            minHeight: '100dvh',
+          },
+        },
+        img: {
+          maxWidth: '100%',
+          height: 'auto',
         },
       },
     },

@@ -22,6 +22,7 @@ from app.schemas.onboarding import (
     OnboardingChecklistUpdate,
     OnboardingItemStatusUpdate,
     OnboardingTemplateRead,
+    OnboardingTriggeredTicket,
 )
 from app.services import onboarding_checklist_service as onboard
 
@@ -50,6 +51,11 @@ def _require_hr_or_owner(db: Session, user: User) -> None:
 def _item_read(
     db: Session, item: OnboardingChecklistItem, current_user: User
 ) -> OnboardingChecklistItemRead:
+    is_mine = (
+        item.owner_user_id == current_user.id
+        or item.responsibility in onboard.responsibilities_for_user(db, current_user)
+    )
+    ticket = item.help_ticket
     return OnboardingChecklistItemRead(
         id=item.id,
         created_at=item.created_at,
@@ -64,11 +70,16 @@ def _item_read(
         ),
         status=item.status,
         status_label=onboard.STATUS_LABELS.get(item.status, item.status),
+        owner_user_id=item.owner_user_id,
+        owner_name=_full_name(item.owner),
+        help_ticket_id=item.help_ticket_id,
+        help_ticket_number=ticket.ticket_number if ticket is not None else None,
         completed_by_id=item.completed_by_id,
         completed_by_name=_full_name(item.completed_by),
         completion_date=item.completion_date,
         notes=item.notes,
         can_edit=onboard.can_edit_item(db, current_user, item),
+        is_mine=is_mine,
     )
 
 
@@ -76,6 +87,16 @@ def _to_read(
     db: Session, checklist: OnboardingChecklist, current_user: User
 ) -> OnboardingChecklistRead:
     stats = onboard.completion_stats(checklist)
+    my_pending = sum(
+        1
+        for item in checklist.items
+        if item.status == "pending"
+        and (
+            item.owner_user_id == current_user.id
+            or item.responsibility
+            in onboard.responsibilities_for_user(db, current_user)
+        )
+    )
     return OnboardingChecklistRead(
         id=checklist.id,
         created_at=checklist.created_at,
@@ -110,11 +131,38 @@ def _to_read(
         pending_items=stats["pending"],
         completion_percent=stats["percent"],
         can_manage=onboard.can_manage_onboarding(db, current_user),
+        my_pending_items=my_pending,
     )
 
 
+def _triggered_tickets(
+    checklist: OnboardingChecklist,
+    extra: list[dict] | None = None,
+) -> list[OnboardingTriggeredTicket]:
+    raw = extra if extra is not None else onboard.triggered_tickets_from_items(checklist)
+    result: list[OnboardingTriggeredTicket] = []
+    for row in raw:
+        assignee_raw = row.get("assignee_id")
+        result.append(
+            OnboardingTriggeredTicket(
+                responsibility=str(row["responsibility"]),
+                responsibility_label=str(row["responsibility_label"]),
+                ticket_id=UUID(str(row["ticket_id"])),
+                ticket_number=str(row["ticket_number"]),
+                category=str(row["category"]),
+                assignee_id=UUID(str(assignee_raw)) if assignee_raw else None,
+                item_count=int(row.get("item_count") or 0),
+            )
+        )
+    return result
+
+
 def _to_detail(
-    db: Session, checklist: OnboardingChecklist, current_user: User
+    db: Session,
+    checklist: OnboardingChecklist,
+    current_user: User,
+    *,
+    triggered: list[dict] | None = None,
 ) -> OnboardingChecklistDetailRead:
     base = _to_read(db, checklist, current_user)
     items = [_item_read(db, item, current_user) for item in checklist.items]
@@ -128,6 +176,7 @@ def _to_detail(
         **base.model_dump(),
         items=items,
         sections=sections,
+        triggered_tickets=_triggered_tickets(checklist, triggered),
     )
 
 
@@ -212,7 +261,7 @@ def create_checklist(
             raise HTTPException(status_code=404, detail="Employee user not found.")
 
     try:
-        checklist = onboard.create_checklist_from_template(
+        checklist, triggered = onboard.create_checklist_from_template(
             db,
             template=template,
             employee_name=payload.employee_name,
@@ -234,7 +283,7 @@ def create_checklist(
     db.commit()
     loaded = onboard.load_checklist(db, checklist.id)
     assert loaded is not None
-    return _to_detail(db, loaded, current_user)
+    return _to_detail(db, loaded, current_user, triggered=triggered)
 
 
 @router.get("/{checklist_id}", response_model=OnboardingChecklistDetailRead)

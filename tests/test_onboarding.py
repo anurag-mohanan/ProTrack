@@ -8,9 +8,17 @@ from sqlalchemy import select
 
 from app.core.security import hash_password
 from app.data.india_leave_defaults import INDIA_LEAVE_TYPE_DEFAULTS
-from app.models.models import OnboardingChecklistTemplate, Role, User
-from app.services.onboarding_checklist_service import FORM_CODE, PP_HRD_FO_14_STRUCTURE
+from app.models.models import OnboardingChecklistTemplate, Role, Ticket, User
+from app.services.onboarding_checklist_service import (
+    FORM_CODE,
+    PP_HRD_FO_14_STRUCTURE,
+    TEMPLATE_VERSION,
+)
 from tests.conftest import DEFAULT_PASSWORD, login
+
+
+def _expected_item_count() -> int:
+    return sum(len(section["items"]) for section in PP_HRD_FO_14_STRUCTURE)
 
 
 def _make_user(session, role_name: str, email: str, first: str = "Test", last: str = "User") -> User:
@@ -50,8 +58,8 @@ def test_default_template_seeded(client, session):
         select(OnboardingChecklistTemplate).where(OnboardingChecklistTemplate.code == FORM_CODE)
     )
     assert row is not None
-    expected_items = sum(len(section["items"]) for section in PP_HRD_FO_14_STRUCTURE)
-    assert expected_items == 25
+    assert row.version >= TEMPLATE_VERSION
+    assert _expected_item_count() == 24
 
 
 def test_hr_can_create_and_complete_checklist(client, session):
@@ -73,15 +81,17 @@ def test_hr_can_create_and_complete_checklist(client, session):
     body = created.json()
     assert body["employee_name"] == "Abhay CK"
     assert body["template_code"] == FORM_CODE
-    assert body["total_items"] == 25
-    assert body["pending_items"] == 25
+    assert body["total_items"] == 24
+    assert body["pending_items"] == 24
     assert body["status"] == "in_progress"
     assert {item["section"] for item in body["items"]} >= {
         "HUMAN RESOURCES",
-        "ENGINEERING",
+        "ADMINISTRATION",
+        "TEAM / MANAGER",
         "IT",
         "ACCOUNTS",
     }
+    assert len(body["triggered_tickets"]) == 4  # hr, admin, it, accounts (not manager)
 
     first_item = body["items"][0]
     updated = client.post(
@@ -94,6 +104,38 @@ def test_hr_can_create_and_complete_checklist(client, session):
     assert updated_body["completed_items"] == 1
     assert updated_body["items"][0]["status"] == "completed"
     assert updated_body["items"][0]["completion_date"] is not None
+
+
+def test_create_assigns_manager_owner_and_raises_tickets(client, session):
+    admin = login(client, "admin@prosohm.com")
+    manager = _make_user(
+        session, "Engineering Manager", "mgr-onboard@prosohm.com", first="Maya", last="Mgr"
+    )
+    created = client.post(
+        "/api/v1/hr/onboarding",
+        headers=admin,
+        json={
+            "employee_name": "Routed Hire",
+            "reporting_manager_id": str(manager.id),
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    manager_items = [item for item in body["items"] if item["responsibility"] == "manager"]
+    assert manager_items
+    assert all(item["owner_user_id"] == str(manager.id) for item in manager_items)
+    assert all(item["help_ticket_id"] is None for item in manager_items)
+
+    ticketed = [item for item in body["items"] if item["responsibility"] != "manager"]
+    assert ticketed
+    assert all(item["help_ticket_id"] is not None for item in ticketed)
+    assert all(item["help_ticket_number"] for item in ticketed)
+
+    ticket_ids = {uuid.UUID(item["help_ticket_id"]) for item in ticketed}
+    assert len(ticket_ids) == 4
+    tickets = session.scalars(select(Ticket).where(Ticket.id.in_(ticket_ids))).all()
+    assert len(tickets) == 4
+    assert {t.category for t in tickets} == {"hr", "admin", "it", "other"}
 
 
 def test_designer_cannot_create_onboarding(client, session):

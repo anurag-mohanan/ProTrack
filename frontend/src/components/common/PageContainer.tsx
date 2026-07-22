@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 interface PageContainerProps {
   children: ReactNode;
+  /** Cap content width on ultrawide monitors (keeps readable line lengths). */
   maxWidth?: number | false;
   sx?: SxProps<Theme>;
 }
@@ -16,6 +17,9 @@ export function PageContainer({
     <Box
       sx={{
         width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        boxSizing: 'border-box',
         ...(maxWidth ? { maxWidth, mx: 'auto' } : null),
         animation: 'prosohmPageIn 0.28s ease-out',
         '@keyframes prosohmPageIn': {

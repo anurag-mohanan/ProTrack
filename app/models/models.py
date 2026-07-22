@@ -1710,6 +1710,12 @@ class OnboardingChecklistItem(Base, TimestampMixin):
     item_text: Mapped[str] = mapped_column(String(500), nullable=False)
     responsibility: Mapped[str] = mapped_column(String(40), nullable=False, default="hr")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    owner_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    help_ticket_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tickets.id"), nullable=True
+    )
     completed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
@@ -1717,6 +1723,8 @@ class OnboardingChecklistItem(Base, TimestampMixin):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     checklist: Mapped[OnboardingChecklist] = relationship(back_populates="items")
+    owner: Mapped[Optional[User]] = relationship(foreign_keys=[owner_user_id])
+    help_ticket: Mapped[Optional["Ticket"]] = relationship(foreign_keys=[help_ticket_id])
     completed_by: Mapped[Optional[User]] = relationship(foreign_keys=[completed_by_id])
 
 

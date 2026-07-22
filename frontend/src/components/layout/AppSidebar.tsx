@@ -28,6 +28,7 @@ import {
   getOperationsSectionNavItems,
 } from '../../utils/permissions';
 import { navItemNeedsExactMatch } from '../../utils/navActive';
+import { NAV_COMPACT_BREAKPOINT } from '../../hooks/useResponsiveShell';
 
 export const DRAWER_WIDTH = 272;
 
@@ -38,6 +39,7 @@ function NavButton({
   accent = false,
   disabled = false,
   end = false,
+  onNavigate,
 }: {
   path: string;
   label: string;
@@ -45,6 +47,7 @@ function NavButton({
   accent?: boolean;
   disabled?: boolean;
   end?: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <ListItemButton
@@ -52,6 +55,7 @@ function NavButton({
       to={disabled ? undefined : path}
       end={disabled ? undefined : end}
       disabled={disabled}
+      onClick={disabled ? undefined : onNavigate}
       sx={{
         mx: 1,
         mb: 0.25,
@@ -103,9 +107,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 interface AppSidebarProps {
   user: CurrentUser | null;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export function AppSidebar({ user }: AppSidebarProps) {
+export function AppSidebar({ user, mobileOpen = false, onMobileClose }: AppSidebarProps) {
   const [adminOpen, setAdminOpen] = useState(true);
   const [futureOpen, setFutureOpen] = useState(false);
   const ctx = accessContextFromUser(user);
@@ -113,35 +119,28 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const operationsItems = getOperationsSectionNavItems(ctx);
   const hrItems = getHrSectionNavItems(ctx);
   const showAdministratorEntry = canAccessAdministration(ctx);
-  // Paths that appear together in the sidebar — used so parent links (e.g. /hr)
-  // do not stay "active" when a more specific sibling (e.g. /hr/onboarding) is open.
   const allNavPaths = [
     ...visibleNavItems.map((item) => item.path),
     ...operationsItems.map((item) => item.path),
     ...hrItems.map((item) => item.path),
   ];
 
-  return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width: DRAWER_WIDTH,
-        flexShrink: 0,
-        [`& .MuiDrawer-paper`]: {
-          width: DRAWER_WIDTH,
-          boxSizing: 'border-box',
-          bgcolor: designTokens.semantic.sidebar,
-          color: '#fff',
-          borderRight: 'none',
-          boxShadow: designTokens.elevation.nav,
-        },
-      }}
-    >
+  const drawerPaperSx = {
+    width: DRAWER_WIDTH,
+    boxSizing: 'border-box' as const,
+    bgcolor: designTokens.semantic.sidebar,
+    color: '#fff',
+    borderRight: 'none',
+    boxShadow: designTokens.elevation.nav,
+  };
+
+  const nav = (
+    <>
       <Toolbar sx={{ px: 2.5, minHeight: '72px !important' }}>
         <LogoHomeLink light size="md" />
       </Toolbar>
 
-      <Box sx={{ px: 0.5, pb: 2, overflow: 'auto' }}>
+      <Box sx={{ px: 0.5, pb: 2, overflow: 'auto', maxHeight: 'calc(100dvh - 72px)' }}>
         <SectionLabel>Engineering Operations</SectionLabel>
         <List disablePadding>
           {visibleNavItems.map((item) => (
@@ -151,6 +150,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
               label={item.label}
               icon={item.icon}
               end={navItemNeedsExactMatch(item.path, allNavPaths)}
+              onNavigate={onMobileClose}
             />
           ))}
         </List>
@@ -167,6 +167,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   label={item.label}
                   icon={item.icon}
                   end={navItemNeedsExactMatch(item.path, allNavPaths)}
+                  onNavigate={onMobileClose}
                 />
               ))}
             </List>
@@ -185,6 +186,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   label={item.label}
                   icon={item.icon}
                   end={navItemNeedsExactMatch(item.path, allNavPaths)}
+                  onNavigate={onMobileClose}
                 />
               ))}
             </List>
@@ -253,12 +255,42 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   label="System Administration"
                   icon={AdminPanelSettingsRoundedIcon}
                   accent
+                  onNavigate={onMobileClose}
                 />
               </List>
             </Collapse>
           </>
         ) : null}
       </Box>
-    </Drawer>
+    </>
+  );
+
+  return (
+    <>
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={onMobileClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: 'block', [NAV_COMPACT_BREAKPOINT]: 'none' },
+          [`& .MuiDrawer-paper`]: drawerPaperSx,
+        }}
+      >
+        {nav}
+      </Drawer>
+      <Drawer
+        variant="permanent"
+        open
+        sx={{
+          display: { xs: 'none', [NAV_COMPACT_BREAKPOINT]: 'block' },
+          width: DRAWER_WIDTH,
+          flexShrink: 0,
+          [`& .MuiDrawer-paper`]: drawerPaperSx,
+        }}
+      >
+        {nav}
+      </Drawer>
+    </>
   );
 }

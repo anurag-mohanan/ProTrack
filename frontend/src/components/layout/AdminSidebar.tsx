@@ -17,27 +17,30 @@ import { getAdminWorkspaceNav } from '../../config/adminNavigation';
 import { useAuth } from '../../context/AuthContext';
 import { accessContextFromUser } from '../../utils/permissions';
 import { navItemNeedsExactMatch } from '../../utils/navActive';
+import { NAV_COMPACT_BREAKPOINT } from '../../hooks/useResponsiveShell';
+import { designTokens } from '../../theme/designTokens';
 
 export const ADMIN_DRAWER_WIDTH = 272;
-
-import { designTokens } from '../../theme/designTokens';
 
 function NavButton({
   path,
   label,
   icon: Icon,
   end = false,
+  onNavigate,
 }: {
   path: string;
   label: string;
   icon: React.ComponentType<{ fontSize?: 'small' | 'inherit' | 'large' | 'medium' }>;
   end?: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <ListItemButton
       component={NavLink}
       to={path}
       end={end}
+      onClick={onNavigate}
       sx={{
         mx: 1,
         mb: 0.25,
@@ -75,33 +78,33 @@ function NavButton({
   );
 }
 
-export function AdminSidebar() {
+interface AdminSidebarProps {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+export function AdminSidebar({ mobileOpen = false, onMobileClose }: AdminSidebarProps) {
   const { user } = useAuth();
   const workspaceNav = getAdminWorkspaceNav(accessContextFromUser(user));
   const workspacePaths = workspaceNav.map((item) => item.path);
 
-  return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width: ADMIN_DRAWER_WIDTH,
-        flexShrink: 0,
-        [`& .MuiDrawer-paper`]: {
-          width: ADMIN_DRAWER_WIDTH,
-          boxSizing: 'border-box',
-          bgcolor: '#0B1220',
-          color: 'prosohm.sidebarText',
-          backgroundImage: 'linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(2,6,23,1) 100%)',
-          borderRight: '1px solid',
-          borderColor: 'rgba(148,163,184,0.12)',
-        },
-      }}
-    >
+  const drawerPaperSx = {
+    width: ADMIN_DRAWER_WIDTH,
+    boxSizing: 'border-box' as const,
+    bgcolor: '#0B1220',
+    color: 'prosohm.sidebarText',
+    backgroundImage: 'linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(2,6,23,1) 100%)',
+    borderRight: '1px solid',
+    borderColor: 'rgba(148,163,184,0.12)',
+  };
+
+  const nav = (
+    <>
       <Toolbar sx={{ px: 2.5, minHeight: '72px !important' }}>
         <LogoHomeLink light size="md" to="/admin/dashboard" />
       </Toolbar>
 
-      <Box sx={{ px: 1, pb: 2, overflow: 'auto' }}>
+      <Box sx={{ px: 1, pb: 2, overflow: 'auto', maxHeight: 'calc(100dvh - 72px)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1 }}>
           <AdminPanelSettingsRoundedIcon sx={{ fontSize: 16, color: '#93c5fd' }} />
           <Typography variant="overline" sx={{ color: 'prosohm.sidebarTextMuted' }}>
@@ -117,6 +120,7 @@ export function AdminSidebar() {
               label={item.label}
               icon={item.icon}
               end={navItemNeedsExactMatch(item.path, workspacePaths)}
+              onNavigate={onMobileClose}
             />
           ))}
         </List>
@@ -124,9 +128,44 @@ export function AdminSidebar() {
         <Divider sx={{ my: 2, borderColor: 'rgba(148,163,184,0.16)' }} />
 
         <List disablePadding>
-          <NavButton path="/dashboard" label="Engineering Operations" icon={ArrowBackRoundedIcon} end />
+          <NavButton
+            path="/dashboard"
+            label="Engineering Operations"
+            icon={ArrowBackRoundedIcon}
+            end
+            onNavigate={onMobileClose}
+          />
         </List>
       </Box>
-    </Drawer>
+    </>
+  );
+
+  return (
+    <>
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={onMobileClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: 'block', [NAV_COMPACT_BREAKPOINT]: 'none' },
+          [`& .MuiDrawer-paper`]: drawerPaperSx,
+        }}
+      >
+        {nav}
+      </Drawer>
+      <Drawer
+        variant="permanent"
+        open
+        sx={{
+          display: { xs: 'none', [NAV_COMPACT_BREAKPOINT]: 'block' },
+          width: ADMIN_DRAWER_WIDTH,
+          flexShrink: 0,
+          [`& .MuiDrawer-paper`]: drawerPaperSx,
+        }}
+      >
+        {nav}
+      </Drawer>
+    </>
   );
 }

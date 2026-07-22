@@ -25,7 +25,7 @@ export function DashboardLayout({ children, sidebar }: DashboardLayoutProps) {
             position: { lg: 'sticky' },
             top: { lg: 72 },
             alignSelf: 'flex-start',
-            maxHeight: { lg: 'calc(100vh - 88px)' },
+            maxHeight: { lg: 'calc(100dvh - 88px)' },
             overflowY: { lg: 'auto' },
             pb: { lg: 2 },
             pr: { lg: 0.5 },

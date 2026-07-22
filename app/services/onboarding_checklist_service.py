@@ -21,16 +21,24 @@ from app.models.models import (
 
 FORM_CODE = "PP-HRD-FO-14"
 FORM_TITLE = "New Hire Onboarding Checklist"
+TEMPLATE_VERSION = 2
 
-# Responsibility owners — mapped from the Excel RESPONSIBILITY column
-# (DINESH → hr/it by context, ADMIN, MANAGER, ACCOUNTS).
+# Responsibility owners — company-wide buckets (common for every department).
 RESPONSIBILITY_LABELS: dict[str, str] = {
     "hr": "Human Resources",
     "admin": "Administration",
     "manager": "Reporting Manager",
     "it": "IT",
     "accounts": "Accounts",
-    "engineering": "Engineering",
+}
+
+# Map checklist owners → Help Desk ticket categories (auto-trigger on create).
+RESPONSIBILITY_TICKET_CATEGORY: dict[str, str | None] = {
+    "hr": "hr",
+    "admin": "admin",
+    "it": "it",
+    "accounts": "other",
+    "manager": None,  # assigned to reporting manager — no department ticket
 }
 
 STATUS_LABELS: dict[str, str] = {
@@ -45,61 +53,44 @@ CHECKLIST_STATUS_LABELS: dict[str, str] = {
     "cancelled": "Cancelled",
 }
 
-# Structure mirrors PP-HRD-FO-14_ONBOARDING_CHECKLIST Excel
-# (sections + items with default responsibility).
+# Compact company-wide PP-HRD-FO-14 structure (same for all joining departments).
 PP_HRD_FO_14_STRUCTURE: list[dict[str, Any]] = [
     {
         "section": "HUMAN RESOURCES",
         "items": [
-            {"text": "Offer letter sent to candidate", "responsibility": "hr"},
-            {"text": "Offer letter signed and submitted by candidate", "responsibility": "hr"},
-            {"text": "Secure / designate space", "responsibility": "admin"},
-            {"text": "Generate employee ID number", "responsibility": "hr"},
-            {
-                "text": "Welcome kit provided (Diary, water bottle, mug, pens, T-shirt)",
-                "responsibility": "admin",
-            },
-            {"text": "ID card provided", "responsibility": "admin"},
-            {
-                "text": "Training provided to use GreytHR (leaves, payslips etc)",
-                "responsibility": "manager",
-            },
-            {
-                "text": "Send out a company wide email announcing new hire, with their name & position",
-                "responsibility": "manager",
-            },
-            {"text": "Physical copy of offer letter given", "responsibility": "admin"},
-            {"text": "Employee added to group insurance", "responsibility": "admin"},
-            {"text": "Onboarding kit available", "responsibility": "admin"},
-            {
-                "text": "File all HR related documents (attested and physical copy)",
-                "responsibility": "admin",
-            },
+            {"text": "Offer letter sent", "responsibility": "hr"},
+            {"text": "Offer letter signed & returned", "responsibility": "hr"},
+            {"text": "Employee ID generated", "responsibility": "hr"},
+            {"text": "HR documents filed (attested + physical)", "responsibility": "hr"},
         ],
     },
     {
-        "section": "ENGINEERING",
+        "section": "ADMINISTRATION",
         "items": [
-            {
-                "text": "Are IT setup completed? (Workstation, 3D mouse, license)",
-                "responsibility": "manager",
-            },
-            {"text": "Induction program completed", "responsibility": "manager"},
-            {
-                "text": "Initiate new hire registration in HR system (GreytHR)",
-                "responsibility": "manager",
-            },
-            {"text": "Individual training document created", "responsibility": "manager"},
-            {
-                "text": "Individual timesheets provided and training given on using them",
-                "responsibility": "manager",
-            },
+            {"text": "Workspace / desk assigned", "responsibility": "admin"},
+            {"text": "Welcome kit issued", "responsibility": "admin"},
+            {"text": "ID card issued", "responsibility": "admin"},
+            {"text": "Physical offer letter provided", "responsibility": "admin"},
+            {"text": "Group insurance enrolment", "responsibility": "admin"},
+            {"text": "Bank account opened", "responsibility": "admin"},
+        ],
+    },
+    {
+        "section": "TEAM / MANAGER",
+        "items": [
+            {"text": "Company announcement email sent", "responsibility": "manager"},
+            {"text": "GreytHR training (leave, payslips)", "responsibility": "manager"},
+            {"text": "Induction completed", "responsibility": "manager"},
+            {"text": "GreytHR registration initiated", "responsibility": "manager"},
+            {"text": "Training plan / document created", "responsibility": "manager"},
+            {"text": "Timesheet access & training given", "responsibility": "manager"},
         ],
     },
     {
         "section": "IT",
         "items": [
-            {"text": "Email ID created & setup on workstation", "responsibility": "it"},
+            {"text": "Workstation, 3D mouse & license ready", "responsibility": "it"},
+            {"text": "Email ID created & set up", "responsibility": "it"},
             {"text": "Teams account created", "responsibility": "it"},
             {"text": "Domain user created", "responsibility": "it"},
             {"text": "OneDrive access provided", "responsibility": "it"},
@@ -108,12 +99,8 @@ PP_HRD_FO_14_STRUCTURE: list[dict[str, Any]] = [
     {
         "section": "ACCOUNTS",
         "items": [
-            {"text": "Onboarding process through HR system", "responsibility": "accounts"},
-            {
-                "text": "All onboarding documents submitted by employee",
-                "responsibility": "accounts",
-            },
-            {"text": "Bank account opened (HDFC Bank)", "responsibility": "admin"},
+            {"text": "Onboarding completed in HR/payroll system", "responsibility": "accounts"},
+            {"text": "Employee documents received", "responsibility": "accounts"},
             {"text": "Payroll structure created", "responsibility": "accounts"},
         ],
     },
@@ -174,17 +161,23 @@ def ensure_default_template(db: Session) -> OnboardingChecklistTemplate:
             OnboardingChecklistTemplate.code == FORM_CODE
         )
     )
-    if row is not None:
+    payload = json.dumps(PP_HRD_FO_14_STRUCTURE)
+    if row is None:
+        row = OnboardingChecklistTemplate(
+            code=FORM_CODE,
+            name=FORM_TITLE,
+            version=TEMPLATE_VERSION,
+            structure_json=payload,
+            is_active=True,
+        )
+        db.add(row)
+        db.flush()
         return row
-    row = OnboardingChecklistTemplate(
-        code=FORM_CODE,
-        name=FORM_TITLE,
-        version=1,
-        structure_json=json.dumps(PP_HRD_FO_14_STRUCTURE),
-        is_active=True,
-    )
-    db.add(row)
-    db.flush()
+    if (row.version or 1) < TEMPLATE_VERSION:
+        row.version = TEMPLATE_VERSION
+        row.name = FORM_TITLE
+        row.structure_json = payload
+        db.flush()
     return row
 
 
@@ -223,6 +216,8 @@ def responsibilities_for_user(db: Session, user: User) -> set[str]:
 def can_edit_item(db: Session, user: User, item: OnboardingChecklistItem) -> bool:
     if can_manage_onboarding(db, user):
         return True
+    if item.owner_user_id == user.id:
+        return True
     return item.responsibility in responsibilities_for_user(db, user)
 
 
@@ -234,6 +229,8 @@ def can_view_checklist(db: Session, user: User, checklist: OnboardingChecklist) 
     if checklist.reporting_manager_id == user.id:
         return True
     if checklist.created_by_id == user.id:
+        return True
+    if any(item.owner_user_id == user.id for item in checklist.items):
         return True
     # Anyone who owns at least one responsibility bucket can open checklists
     # to complete their section items.
@@ -391,6 +388,117 @@ def delete_checklist(db: Session, checklist: OnboardingChecklist) -> None:
     db.flush()
 
 
+def resolve_owner_for_responsibility(
+    db: Session,
+    responsibility: str,
+    *,
+    reporting_manager_id: UUID | None,
+) -> UUID | None:
+    """Pick the person who should action items for a responsibility bucket."""
+    from app.services import ticketing_service as tickets
+
+    if responsibility == "manager":
+        return reporting_manager_id
+
+    category = RESPONSIBILITY_TICKET_CATEGORY.get(responsibility)
+    if category:
+        contact_id = tickets.category_contact_id(db, category)
+        if contact_id is not None:
+            return contact_id
+
+    role_sets = {
+        "hr": _HR_ROLES,
+        "admin": _ADMIN_ROLES,
+        "it": _IT_ROLES,
+        "accounts": _ACCOUNTS_ROLES,
+    }
+    wanted = role_sets.get(responsibility)
+    if not wanted:
+        return reporting_manager_id
+    from app.models.models import Role
+
+    return db.scalar(
+        select(User.id)
+        .join(Role, Role.id == User.role_id)
+        .where(
+            User.is_active.is_(True),
+            User.is_deleted.is_(False),
+            Role.name.in_(wanted),
+        )
+        .order_by(User.last_name, User.first_name)
+        .limit(1)
+    )
+
+
+def raise_department_tickets(
+    db: Session,
+    checklist: OnboardingChecklist,
+    *,
+    created_by: User,
+) -> list[dict[str, Any]]:
+    """Create one Help Desk ticket per owning department for pending items."""
+    from app.models.models import Ticket
+    from app.services import ticketing_service as tickets
+
+    by_resp: dict[str, list[OnboardingChecklistItem]] = {}
+    for item in checklist.items:
+        if item.status == "not_applicable":
+            continue
+        by_resp.setdefault(item.responsibility, []).append(item)
+
+    raised: list[dict[str, Any]] = []
+    for responsibility, items in by_resp.items():
+        category = RESPONSIBILITY_TICKET_CATEGORY.get(responsibility)
+        if not category:
+            continue
+        label = RESPONSIBILITY_LABELS.get(responsibility, responsibility)
+        bullet_lines = "\n".join(f"- {row.item_text}" for row in items)
+        description = (
+            f"Auto-created from onboarding checklist {FORM_CODE} for "
+            f"{checklist.employee_name}"
+            f"{f' ({checklist.employee_code})' if checklist.employee_code else ''}.\n"
+            f"Joining: {checklist.joining_date or 'TBD'} · "
+            f"Dept: {checklist.department_name or '—'} · "
+            f"Team: {checklist.team_name or '—'} · "
+            f"Role: {checklist.role_name or checklist.designation or '—'}\n"
+            f"Manager: {checklist.reporting_manager_name or '—'}\n\n"
+            f"Tasks for {label}:\n{bullet_lines}\n\n"
+            f"Checklist id: {checklist.id}"
+        )
+        assignee_id = tickets.category_contact_id(db, category) or items[0].owner_user_id
+        ticket = Ticket(
+            ticket_number=tickets.next_ticket_number(db),
+            title=f"Onboarding · {checklist.employee_name} · {label}",
+            description=description,
+            category=category,
+            priority="medium",
+            status="open",
+            requester_id=created_by.id,
+            assignee_id=assignee_id,
+            org_department_id=tickets.default_department_id_for_category(db, category),
+            location=checklist.department_name,
+        )
+        db.add(ticket)
+        db.flush()
+        for row in items:
+            row.help_ticket_id = ticket.id
+            if row.owner_user_id is None and assignee_id is not None:
+                row.owner_user_id = assignee_id
+        raised.append(
+            {
+                "responsibility": responsibility,
+                "responsibility_label": label,
+                "ticket_id": str(ticket.id),
+                "ticket_number": ticket.ticket_number,
+                "category": category,
+                "assignee_id": str(assignee_id) if assignee_id else None,
+                "item_count": len(items),
+            }
+        )
+    db.flush()
+    return raised
+
+
 def create_checklist_from_template(
     db: Session,
     *,
@@ -408,7 +516,8 @@ def create_checklist_from_template(
     reporting_manager_id: UUID | None = None,
     reporting_manager_name: str | None = None,
     notes: str | None = None,
-) -> OnboardingChecklist:
+    raise_tickets: bool = True,
+) -> tuple[OnboardingChecklist, list[dict[str, Any]]]:
     if employee_user_id and (not designation or not employee_code):
         emp = db.get(User, employee_user_id)
         if emp is not None:
@@ -440,6 +549,7 @@ def create_checklist_from_template(
     db.add(checklist)
     db.flush()
 
+    manager_id = checklist.reporting_manager_id
     structure = parse_structure(template.structure_json)
     order = 0
     for section_row in structure:
@@ -451,6 +561,9 @@ def create_checklist_from_template(
             responsibility = str(item_row.get("responsibility") or "hr").strip().lower()
             if responsibility not in RESPONSIBILITY_LABELS:
                 responsibility = "hr"
+            owner_id = resolve_owner_for_responsibility(
+                db, responsibility, reporting_manager_id=manager_id
+            )
             db.add(
                 OnboardingChecklistItem(
                     checklist_id=checklist.id,
@@ -459,11 +572,16 @@ def create_checklist_from_template(
                     item_text=text,
                     responsibility=responsibility,
                     status="pending",
+                    owner_user_id=owner_id,
                 )
             )
             order += 1
     db.flush()
-    return checklist
+    checklist = load_checklist(db, checklist.id) or checklist
+    triggered: list[dict[str, Any]] = []
+    if raise_tickets:
+        triggered = raise_department_tickets(db, checklist, created_by=created_by)
+    return checklist, triggered
 
 
 def refresh_checklist_status(checklist: OnboardingChecklist) -> None:
@@ -516,6 +634,12 @@ def load_checklist(db: Session, checklist_id: UUID) -> OnboardingChecklist | Non
             selectinload(OnboardingChecklist.items).selectinload(
                 OnboardingChecklistItem.completed_by
             ),
+            selectinload(OnboardingChecklist.items).selectinload(
+                OnboardingChecklistItem.owner
+            ),
+            selectinload(OnboardingChecklist.items).selectinload(
+                OnboardingChecklistItem.help_ticket
+            ),
             selectinload(OnboardingChecklist.template),
             selectinload(OnboardingChecklist.employee),
             selectinload(OnboardingChecklist.reporting_manager),
@@ -523,6 +647,31 @@ def load_checklist(db: Session, checklist_id: UUID) -> OnboardingChecklist | Non
         )
         .where(OnboardingChecklist.id == checklist_id)
     )
+
+
+def triggered_tickets_from_items(checklist: OnboardingChecklist) -> list[dict[str, Any]]:
+    """Summarize Help Desk tickets already linked on checklist items."""
+    seen: dict[str, dict[str, Any]] = {}
+    for item in checklist.items:
+        if item.help_ticket_id is None or item.help_ticket is None:
+            continue
+        key = str(item.help_ticket_id)
+        if key in seen:
+            seen[key]["item_count"] = int(seen[key]["item_count"]) + 1
+            continue
+        ticket = item.help_ticket
+        seen[key] = {
+            "responsibility": item.responsibility,
+            "responsibility_label": RESPONSIBILITY_LABELS.get(
+                item.responsibility, item.responsibility
+            ),
+            "ticket_id": key,
+            "ticket_number": ticket.ticket_number,
+            "category": ticket.category,
+            "assignee_id": str(ticket.assignee_id) if ticket.assignee_id else None,
+            "item_count": 1,
+        }
+    return list(seen.values())
 
 
 def completion_stats(checklist: OnboardingChecklist) -> dict[str, int]:

@@ -6,19 +6,27 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   LinearProgress,
+  Link,
   MenuItem,
   Stack,
+  Switch,
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import HowToRegRoundedIcon from '@mui/icons-material/HowToRegRounded';
+import RadioButtonUncheckedRoundedIcon from '@mui/icons-material/RadioButtonUncheckedRounded';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link as RouterLink } from 'react-router-dom';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -32,6 +40,7 @@ import {
   type OnboardingChecklist,
   type OnboardingChecklistCreate,
   type OnboardingChecklistDetail,
+  type OnboardingChecklistItem,
   type OnboardingChecklistUpdate,
   type OnboardingItemStatus,
 } from '../api/onboarding';
@@ -46,6 +55,14 @@ const STATUS_FILTERS = [
   { value: 'completed', label: 'Completed' },
 ];
 
+const SECTION_SHORT: Record<string, string> = {
+  'HUMAN RESOURCES': 'HR',
+  ADMINISTRATION: 'Admin',
+  'TEAM / MANAGER': 'Manager',
+  IT: 'IT',
+  ACCOUNTS: 'Accounts',
+};
+
 type FormPayload = OnboardingChecklistCreate;
 
 export default function OnboardingPage() {
@@ -56,6 +73,7 @@ export default function OnboardingPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<OnboardingChecklist | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OnboardingChecklist | null>(null);
+  const [mineOnly, setMineOnly] = useState(false);
 
   const listQuery = useQuery({
     queryKey: ['onboarding', statusFilter],
@@ -95,7 +113,12 @@ export default function OnboardingPage() {
   const createMutation = useMutation({
     mutationFn: onboardingApi.create,
     onSuccess: (data) => {
-      showSuccess(`Onboarding started for ${data.employee_name}.`);
+      const ticketCount = data.triggered_tickets?.length ?? 0;
+      showSuccess(
+        ticketCount > 0
+          ? `Onboarding started for ${data.employee_name}. ${ticketCount} department ticket${ticketCount === 1 ? '' : 's'} raised.`
+          : `Onboarding started for ${data.employee_name}.`,
+      );
       setCreateOpen(false);
       setSelectedId(data.id);
       invalidate();
@@ -137,21 +160,26 @@ export default function OnboardingPage() {
       status: OnboardingItemStatus;
     }) => onboardingApi.setItemStatus(selectedId!, itemId, { status }),
     onSuccess: () => {
-      showSuccess('Checklist item updated.');
+      showSuccess('Item updated.');
       invalidate();
       void queryClient.invalidateQueries({ queryKey: ['onboarding', selectedId] });
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
   });
 
-  const rows = listQuery.data ?? [];
+  const rows = useMemo(() => {
+    const all = listQuery.data ?? [];
+    if (!mineOnly) return all;
+    return all.filter((row) => row.my_pending_items > 0);
+  }, [listQuery.data, mineOnly]);
+
   const detail = detailQuery.data;
 
   return (
     <PageContainer>
       <PageHeader
         title="Onboarding"
-        subtitle="New-hire checklist (PP-HRD-FO-14) — Human Resources, Engineering, IT, and Accounts."
+        subtitle="Standard company checklist (PP-HRD-FO-14) — HR, Admin, Manager, IT, and Accounts. Selecting department / team / manager auto-routes owners and Help Desk tickets."
         action={
           <ProsohmButton
             buttonVariant="primary"
@@ -163,14 +191,18 @@ export default function OnboardingPage() {
         }
       />
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1.5}
+        sx={{ mb: 1.5, alignItems: { sm: 'center' } }}
+      >
         <TextField
           select
           size="small"
           label="Status"
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value)}
-          sx={{ minWidth: 180 }}
+          sx={{ minWidth: 160 }}
         >
           {STATUS_FILTERS.map((option) => (
             <MenuItem key={option.value} value={option.value}>
@@ -178,6 +210,16 @@ export default function OnboardingPage() {
             </MenuItem>
           ))}
         </TextField>
+        <FormControlLabel
+          control={
+            <Switch
+              size="small"
+              checked={mineOnly}
+              onChange={(event) => setMineOnly(event.target.checked)}
+            />
+          }
+          label={<Typography variant="body2">My items only</Typography>}
+        />
       </Stack>
 
       {listQuery.isLoading ? (
@@ -185,11 +227,11 @@ export default function OnboardingPage() {
       ) : rows.length === 0 ? (
         <ContentCard>
           <Typography color="text.secondary">
-            No onboarding checklists yet. Start one when a new hire joins.
+            No onboarding checklists match this filter. Start one when a new hire joins.
           </Typography>
         </ContentCard>
       ) : (
-        <Stack spacing={1.25}>
+        <Stack spacing={0.75}>
           {rows.map((row) => (
             <ChecklistRow
               key={row.id}
@@ -204,12 +246,13 @@ export default function OnboardingPage() {
       )}
 
       {selectedId ? (
-        <Box sx={{ mt: 3 }}>
+        <Box sx={{ mt: 2.5 }}>
           {detailQuery.isLoading || !detail ? (
             <LoadingState message="Loading checklist…" />
           ) : (
             <ChecklistDetail
               detail={detail}
+              mineOnly={mineOnly}
               busy={itemMutation.isPending}
               onStatus={(itemId, status) => itemMutation.mutate({ itemId, status })}
               onEdit={() => setEditTarget(detail)}
@@ -252,7 +295,7 @@ export default function OnboardingPage() {
         open={Boolean(deleteTarget)}
         title="Delete onboarding checklist?"
         recordName={deleteTarget?.employee_name}
-        message="This permanently deletes the checklist and all item progress. This cannot be undone."
+        message="This permanently deletes the checklist and all item progress. Linked Help Desk tickets are not deleted."
         confirmLabel="Delete checklist"
         danger
         loading={deleteMutation.isPending}
@@ -283,10 +326,10 @@ function ChecklistRow({
       <Box
         onClick={onOpen}
         sx={{
-          px: 2,
-          py: 1.5,
+          px: 1.5,
+          py: 1,
           cursor: 'pointer',
-          borderLeft: selected ? '4px solid' : '4px solid transparent',
+          borderLeft: selected ? '3px solid' : '3px solid transparent',
           borderColor: selected ? 'primary.main' : 'transparent',
           '&:hover': { bgcolor: 'action.hover' },
         }}
@@ -297,50 +340,61 @@ function ChecklistRow({
           sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
         >
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-              <HowToRegRoundedIcon fontSize="small" color="primary" />
-              <Typography sx={{ fontWeight: 800 }}>{row.employee_name}</Typography>
+            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              <HowToRegRoundedIcon sx={{ fontSize: 18 }} color="primary" />
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {row.employee_name}
+              </Typography>
               {row.employee_code ? (
-                <Chip size="small" variant="outlined" label={row.employee_code} />
+                <Chip size="small" variant="outlined" label={row.employee_code} sx={{ height: 22 }} />
               ) : null}
-              <Chip size="small" label={row.status_label} color={row.status === 'completed' ? 'success' : 'info'} />
+              <Chip
+                size="small"
+                label={row.status_label}
+                color={row.status === 'completed' ? 'success' : 'info'}
+                sx={{ height: 22 }}
+              />
+              {row.my_pending_items > 0 ? (
+                <Chip
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  label={`${row.my_pending_items} for me`}
+                  sx={{ height: 22 }}
+                />
+              ) : null}
             </Stack>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
               {[
                 row.designation || row.role_name,
                 row.department_name,
                 row.team_name,
                 row.joining_date ? `Joined ${row.joining_date}` : null,
+                row.reporting_manager_name ? `Mgr: ${row.reporting_manager_name}` : null,
               ]
                 .filter(Boolean)
                 .join(' · ') || 'New hire'}
-              {row.reporting_manager_name ? ` · Manager: ${row.reporting_manager_name}` : ''}
             </Typography>
-            <Box sx={{ mt: 1, maxWidth: 360 }}>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
-                <Typography variant="caption" color="text.secondary">
-                  {row.completed_items}/{row.total_items} complete
-                </Typography>
-                <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                  {row.completion_percent}%
-                </Typography>
-              </Stack>
-              <LinearProgress variant="determinate" value={row.completion_percent} />
-            </Box>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 0.75, maxWidth: 320 }}>
+              <LinearProgress
+                variant="determinate"
+                value={row.completion_percent}
+                sx={{ flex: 1, height: 6, borderRadius: 1 }}
+              />
+              <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 52 }}>
+                {row.completed_items}/{row.total_items}
+              </Typography>
+            </Stack>
           </Box>
           {row.can_manage ? (
             <Stack
               direction="row"
-              spacing={0.5}
+              spacing={0.25}
               onClick={(event) => event.stopPropagation()}
               sx={{ flexShrink: 0 }}
             >
               <Tooltip title="Edit">
-                <IconButton
-                  size="small"
-                  aria-label="Edit onboarding checklist"
-                  onClick={onEdit}
-                >
+                <IconButton size="small" aria-label="Edit onboarding checklist" onClick={onEdit}>
                   <EditOutlinedIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -362,8 +416,15 @@ function ChecklistRow({
   );
 }
 
+function sectionStats(items: OnboardingChecklistItem[]) {
+  const actionable = items.filter((item) => item.status !== 'not_applicable');
+  const done = actionable.filter((item) => item.status === 'completed').length;
+  return { done, total: actionable.length };
+}
+
 function ChecklistDetail({
   detail,
+  mineOnly,
   busy,
   onStatus,
   onEdit,
@@ -371,6 +432,7 @@ function ChecklistDetail({
   onClose,
 }: {
   detail: OnboardingChecklistDetail;
+  mineOnly: boolean;
   busy: boolean;
   onStatus: (itemId: string, status: OnboardingItemStatus) => void;
   onEdit: () => void;
@@ -378,41 +440,72 @@ function ChecklistDetail({
   onClose: () => void;
 }) {
   const bySection = useMemo(() => {
-    const map = new Map<string, typeof detail.items>();
+    const map = new Map<string, OnboardingChecklistItem[]>();
     for (const section of detail.sections) {
-      map.set(
-        section,
-        detail.items.filter((item) => item.section === section),
-      );
+      const items = detail.items.filter((item) => item.section === section);
+      const filtered = mineOnly ? items.filter((item) => item.is_mine) : items;
+      if (filtered.length > 0) map.set(section, filtered);
     }
     return map;
-  }, [detail]);
+  }, [detail, mineOnly]);
 
   return (
     <ContentCard>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={1}
-        sx={{ mb: 2, alignItems: { sm: 'flex-start' }, justifyContent: 'space-between' }}
+        sx={{ mb: 1.5, alignItems: { sm: 'flex-start' }, justifyContent: 'space-between' }}
       >
-        <Box>
-          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
             {detail.employee_name}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {detail.template_code ?? 'PP-HRD-FO-14'} · {detail.completion_percent}% complete
+          <Typography variant="caption" color="text.secondary">
+            {detail.template_code ?? 'PP-HRD-FO-14'} · {detail.completion_percent}% ·{' '}
             {[
               detail.department_name,
               detail.team_name,
               detail.role_name || detail.designation,
-              detail.reporting_manager_name ? `Manager: ${detail.reporting_manager_name}` : null,
+              detail.reporting_manager_name ? `Mgr: ${detail.reporting_manager_name}` : null,
             ]
               .filter(Boolean)
-              .map((part) => ` · ${part}`)
-              .join('')}
+              .join(' · ')}
           </Typography>
+          <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
+            {detail.sections.map((section) => {
+              const items = detail.items.filter((item) => item.section === section);
+              const { done, total } = sectionStats(items);
+              return (
+                <Chip
+                  key={section}
+                  size="small"
+                  variant="outlined"
+                  label={`${SECTION_SHORT[section] ?? section} ${done}/${total}`}
+                  color={done === total && total > 0 ? 'success' : 'default'}
+                  sx={{ height: 22 }}
+                />
+              );
+            })}
+          </Stack>
+          {detail.triggered_tickets.length > 0 ? (
+            <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
+              {detail.triggered_tickets.map((ticket) => (
+                <Chip
+                  key={ticket.ticket_id}
+                  size="small"
+                  color="info"
+                  variant="outlined"
+                  component={RouterLink}
+                  clickable
+                  to="/help-desk"
+                  label={`${ticket.responsibility_label}: ${ticket.ticket_number}`}
+                  sx={{ height: 22 }}
+                />
+              ))}
+            </Stack>
+          ) : null}
         </Box>
-        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+        <Stack direction="row" spacing={0.75} sx={{ flexShrink: 0 }}>
           {detail.can_manage ? (
             <>
               <ProsohmButton buttonVariant="secondary" startIcon={<EditOutlinedIcon />} onClick={onEdit}>
@@ -433,77 +526,106 @@ function ChecklistDetail({
         </Stack>
       </Stack>
 
-      <Stack spacing={2.5}>
+      <Stack spacing={1.75}>
         {[...bySection.entries()].map(([section, items]) => (
           <Box key={section}>
-            <Typography
-              variant="overline"
-              sx={{ color: 'text.secondary', letterSpacing: '0.08em', fontWeight: 700 }}
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+              <Typography
+                variant="overline"
+                sx={{ color: 'text.secondary', letterSpacing: '0.06em', fontWeight: 700, lineHeight: 1 }}
+              >
+                {section}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {sectionStats(items).done}/{sectionStats(items).total}
+              </Typography>
+            </Stack>
+            <Stack
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                overflow: 'hidden',
+              }}
             >
-              {section}
-            </Typography>
-            <Stack spacing={1} sx={{ mt: 0.75 }}>
               {items.map((item, index) => (
                 <Box
                   key={item.id}
                   sx={{
-                    p: 1.25,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
+                    px: 1.25,
+                    py: 0.75,
                     display: 'flex',
-                    gap: 1.5,
-                    alignItems: 'flex-start',
+                    gap: 1,
+                    alignItems: 'center',
                     flexWrap: 'wrap',
+                    borderTop: index === 0 ? 'none' : '1px solid',
+                    borderColor: 'divider',
+                    bgcolor:
+                      item.status === 'completed'
+                        ? 'action.hover'
+                        : item.is_mine
+                          ? 'transparent'
+                          : 'transparent',
                   }}
                 >
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ minWidth: 24, pt: 0.5, fontWeight: 700 }}
-                  >
-                    {index + 1}
-                  </Typography>
-                  <Box sx={{ flex: '1 1 220px', minWidth: 0 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  <Tooltip title={item.status === 'completed' ? 'Completed' : 'Pending'}>
+                    <Box sx={{ display: 'flex', color: item.status === 'completed' ? 'success.main' : 'text.disabled' }}>
+                      {item.status === 'completed' ? (
+                        <CheckCircleOutlineRoundedIcon sx={{ fontSize: 18 }} />
+                      ) : (
+                        <RadioButtonUncheckedRoundedIcon sx={{ fontSize: 18 }} />
+                      )}
+                    </Box>
+                  </Tooltip>
+                  <Box sx={{ flex: '1 1 200px', minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
                       {item.item_text}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {item.responsibility_label}
+                      {item.owner_name || item.responsibility_label}
+                      {item.help_ticket_number ? (
+                        <>
+                          {' · '}
+                          <Link component={RouterLink} to="/help-desk" underline="hover">
+                            {item.help_ticket_number}
+                          </Link>
+                        </>
+                      ) : null}
                       {item.completed_by_name
                         ? ` · ${item.completed_by_name}${item.completion_date ? ` · ${item.completion_date}` : ''}`
                         : ''}
                     </Typography>
                   </Box>
-                  <Chip
-                    size="small"
-                    label={item.status_label}
-                    color={
-                      item.status === 'completed'
-                        ? 'success'
-                        : item.status === 'not_applicable'
-                          ? 'default'
-                          : 'warning'
-                    }
-                    variant={item.status === 'pending' ? 'outlined' : 'filled'}
-                  />
                   {item.can_edit ? (
                     <TextField
                       select
                       size="small"
-                      label="Update"
                       value={item.status}
                       disabled={busy}
                       onChange={(event) =>
                         onStatus(item.id, event.target.value as OnboardingItemStatus)
                       }
-                      sx={{ minWidth: 150 }}
+                      sx={{ minWidth: 120, '& .MuiInputBase-root': { height: 32 } }}
                     >
                       <MenuItem value="pending">Pending</MenuItem>
-                      <MenuItem value="completed">Completed</MenuItem>
+                      <MenuItem value="completed">Done</MenuItem>
                       <MenuItem value="not_applicable">N/A</MenuItem>
                     </TextField>
-                  ) : null}
+                  ) : (
+                    <Chip
+                      size="small"
+                      label={item.status_label}
+                      color={
+                        item.status === 'completed'
+                          ? 'success'
+                          : item.status === 'not_applicable'
+                            ? 'default'
+                            : 'warning'
+                      }
+                      variant={item.status === 'pending' ? 'outlined' : 'filled'}
+                      sx={{ height: 22 }}
+                    />
+                  )}
                 </Box>
               ))}
             </Stack>
@@ -554,7 +676,9 @@ function ChecklistFormDialog({
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<'in_progress' | 'completed' | 'cancelled'>('in_progress');
 
-  // Hydrate when opening for edit / reset for create.
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
+
   useEffect(() => {
     if (!open) return;
     if (mode === 'edit' && initial) {
@@ -659,12 +783,18 @@ function ChecklistFormDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
       <DialogTitle>
-        {mode === 'edit' ? 'Edit onboarding checklist' : 'Start onboarding (PP-HRD-FO-14)'}
+        {mode === 'edit' ? 'Edit onboarding' : 'Start onboarding'}
       </DialogTitle>
       <DialogContent>
-        <Stack spacing={1.5} sx={{ mt: 1 }}>
+        <Stack spacing={1.25} sx={{ mt: 1 }}>
+          {mode === 'create' ? (
+            <Typography variant="caption" color="text.secondary">
+              Same 24-item checklist for every department. Creating this raises Help Desk tickets for
+              HR, Admin, IT, and Accounts, and assigns manager items to the reporting manager.
+            </Typography>
+          ) : null}
           <TextField
             select
             fullWidth
@@ -688,7 +818,7 @@ function ChecklistFormDialog({
             value={employeeName}
             onChange={(event) => setEmployeeName(event.target.value)}
           />
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
             <TextField
               fullWidth
               size="small"
@@ -707,7 +837,7 @@ function ChecklistFormDialog({
               slotProps={{ inputLabel: { shrink: true } }}
             />
           </Stack>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
             <TextField
               select
               fullWidth
@@ -739,7 +869,7 @@ function ChecklistFormDialog({
               ))}
             </TextField>
           </Stack>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
             <TextField
               select
               fullWidth
@@ -771,7 +901,7 @@ function ChecklistFormDialog({
             label="Reporting manager"
             value={managerId}
             onChange={(event) => setManagerId(event.target.value)}
-            helperText="Auto-fills from team lead when a team is selected"
+            helperText="Owns TEAM / MANAGER items; auto-fills from team lead"
           >
             <MenuItem value="">— Select —</MenuItem>
             {userOptions.map((user) => (
@@ -816,7 +946,7 @@ function ChecklistFormDialog({
           onClick={handleSubmit}
           disabled={loading || !employeeName.trim()}
         >
-          {mode === 'edit' ? 'Save changes' : 'Create checklist'}
+          {mode === 'edit' ? 'Save changes' : 'Create & route'}
         </ProsohmButton>
       </DialogActions>
     </Dialog>

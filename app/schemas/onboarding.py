@@ -61,11 +61,26 @@ class OnboardingChecklistItemRead(TimestampSchema):
     responsibility_label: str
     status: str
     status_label: str
+    owner_user_id: Optional[UUID] = None
+    owner_name: Optional[str] = None
+    help_ticket_id: Optional[UUID] = None
+    help_ticket_number: Optional[str] = None
     completed_by_id: Optional[UUID] = None
     completed_by_name: Optional[str] = None
     completion_date: Optional[date] = None
     notes: Optional[str] = None
     can_edit: bool = False
+    is_mine: bool = False
+
+
+class OnboardingTriggeredTicket(BaseModel):
+    responsibility: str
+    responsibility_label: str
+    ticket_id: UUID
+    ticket_number: str
+    category: str
+    assignee_id: Optional[UUID] = None
+    item_count: int = 0
 
 
 class OnboardingChecklistRead(TimestampSchema):
@@ -96,11 +111,13 @@ class OnboardingChecklistRead(TimestampSchema):
     pending_items: int = 0
     completion_percent: int = 0
     can_manage: bool = False
+    my_pending_items: int = 0
 
 
 class OnboardingChecklistDetailRead(OnboardingChecklistRead):
     items: list[OnboardingChecklistItemRead] = Field(default_factory=list)
     sections: list[str] = Field(default_factory=list)
+    triggered_tickets: list[OnboardingTriggeredTicket] = Field(default_factory=list)
 
 
 class OnboardingTemplateRead(BaseModel):

@@ -49,9 +49,12 @@ export function LoginPage() {
     <Box
       sx={{
         minHeight: '100vh',
+        '@supports (min-height: 100dvh)': { minHeight: '100dvh' },
         display: 'grid',
         gridTemplateColumns: { xs: '1fr', lg: '1.1fr 1fr' },
         bgcolor: 'background.default',
+        maxWidth: '100%',
+        overflowX: 'clip',
       }}
     >
       <Box
@@ -87,6 +90,7 @@ export function LoginPage() {
           display: 'flex',
           flexDirection: 'column',
           minHeight: '100vh',
+          '@supports (min-height: 100dvh)': { minHeight: '100dvh' },
         }}
       >
         <Box
@@ -96,6 +100,8 @@ export function LoginPage() {
             alignItems: 'center',
             justifyContent: 'center',
             p: { xs: 2, md: 4 },
+            width: '100%',
+            maxWidth: '100%',
           }}
         >
           <Card sx={{ width: '100%', maxWidth: 420, borderRadius: 3 }}>

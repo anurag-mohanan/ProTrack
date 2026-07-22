@@ -1,16 +1,18 @@
 import { Box, Toolbar } from '@mui/material';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { AdminSidebar, ADMIN_DRAWER_WIDTH } from '../components/layout/AdminSidebar';
+import { AdminSidebar } from '../components/layout/AdminSidebar';
 import { AdminTopBar } from '../components/layout/AdminTopBar';
 import { AppFooter } from '../components/layout/AppFooter';
 import { ImpersonationBanner } from '../components/layout/ImpersonationBanner';
 import { PageErrorBoundary } from '../components/common/PageErrorBoundary';
 import { useAuth } from '../context/AuthContext';
+import { shellMinHeightSx, useResponsiveShell } from '../hooks/useResponsiveShell';
 
 export function AdminLayout() {
   const { user, displayName, logout } = useAuth();
   const navigate = useNavigate();
   const roleName = user?.role_name ?? '';
+  const { isCompact, mobileNavOpen, openMobileNav, closeMobileNav } = useResponsiveShell();
 
   const handleLogout = async () => {
     await logout();
@@ -18,28 +20,39 @@ export function AdminLayout() {
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
+    <Box sx={{ display: 'flex', ...shellMinHeightSx(), bgcolor: 'background.default' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0, maxWidth: '100%' }}>
         <ImpersonationBanner />
         <AdminTopBar
           displayName={displayName}
           roleName={roleName}
           onLogout={() => void handleLogout()}
+          isCompact={isCompact}
+          onOpenNav={openMobileNav}
         />
-        <Box sx={{ display: 'flex', flexGrow: 1, minWidth: 0 }}>
-          <AdminSidebar />
+        <Box sx={{ display: 'flex', flexGrow: 1, minWidth: 0, maxWidth: '100%' }}>
+          <AdminSidebar mobileOpen={mobileNavOpen} onMobileClose={closeMobileNav} />
           <Box
             component="main"
             sx={{
               flexGrow: 1,
-              width: { sm: `calc(100% - ${ADMIN_DRAWER_WIDTH}px)` },
+              width: '100%',
               display: 'flex',
               flexDirection: 'column',
               minWidth: 0,
+              maxWidth: '100%',
             }}
           >
             <Toolbar sx={{ minHeight: '64px !important' }} />
-            <Box sx={{ flexGrow: 1, p: { xs: 1.5, md: 2 }, minWidth: 0 }}>
+            <Box
+              sx={{
+                flexGrow: 1,
+                p: { xs: 1.25, sm: 1.5, md: 2 },
+                minWidth: 0,
+                maxWidth: '100%',
+                overflowX: 'clip',
+              }}
+            >
               <PageErrorBoundary title="This admin section could not be loaded.">
                 <Outlet />
               </PageErrorBoundary>

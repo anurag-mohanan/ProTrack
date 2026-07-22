@@ -1620,6 +1620,90 @@ class TicketCategoryRoute(Base, TimestampMixin):
     assignee: Mapped[Optional[User]] = relationship(foreign_keys=[assignee_user_id])
 
 
+class OnboardingChecklistTemplate(Base, TimestampMixin):
+    """Master onboarding form (e.g. PP-HRD-FO-14). Structure is JSON sections/items."""
+
+    __tablename__ = "onboarding_checklist_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    structure_json: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class OnboardingChecklist(Base, TimestampMixin):
+    """A new-hire onboarding checklist instance (one per joining employee)."""
+
+    __tablename__ = "onboarding_checklists"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("onboarding_checklist_templates.id"), nullable=True
+    )
+    employee_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    employee_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    employee_code: Mapped[Optional[str]] = mapped_column(String(40))
+    joining_date: Mapped[Optional[date]] = mapped_column(Date)
+    designation: Mapped[Optional[str]] = mapped_column(String(120))
+    department_name: Mapped[Optional[str]] = mapped_column(String(120))
+    reporting_manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    reporting_manager_name: Mapped[Optional[str]] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="in_progress", index=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    template: Mapped[Optional[OnboardingChecklistTemplate]] = relationship()
+    employee: Mapped[Optional[User]] = relationship(foreign_keys=[employee_user_id])
+    reporting_manager: Mapped[Optional[User]] = relationship(
+        foreign_keys=[reporting_manager_id]
+    )
+    created_by: Mapped[Optional[User]] = relationship(foreign_keys=[created_by_id])
+    items: Mapped[list["OnboardingChecklistItem"]] = relationship(
+        back_populates="checklist",
+        cascade="all, delete-orphan",
+        order_by="OnboardingChecklistItem.sort_order",
+    )
+
+
+class OnboardingChecklistItem(Base, TimestampMixin):
+    """One checklist line item with owner responsibility and completion status."""
+
+    __tablename__ = "onboarding_checklist_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    checklist_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("onboarding_checklists.id"), nullable=False, index=True
+    )
+    section: Mapped[str] = mapped_column(String(80), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    item_text: Mapped[str] = mapped_column(String(500), nullable=False)
+    responsibility: Mapped[str] = mapped_column(String(40), nullable=False, default="hr")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    completed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    completion_date: Mapped[Optional[date]] = mapped_column(Date)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    checklist: Mapped[OnboardingChecklist] = relationship(back_populates="items")
+    completed_by: Mapped[Optional[User]] = relationship(foreign_keys=[completed_by_id])
+
+
 # Phase 7 foundation models (registers tables with metadata)
 from app.models.foundation import (  # noqa: E402, F401
     CompanySettings,

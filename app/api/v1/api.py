@@ -18,6 +18,7 @@ from app.api.v1 import (
     milestones,
     non_productive_codes,
     notifications,
+    onboarding,
     org_departments,
     preferences,
     project_templates,
@@ -150,6 +151,7 @@ api_router.include_router(ai.router)
 api_router.include_router(reports.router)
 api_router.include_router(finance.router)
 api_router.include_router(hr.router)
+api_router.include_router(onboarding.router)
 api_router.include_router(analytics.router)
 api_router.include_router(system.router)
 api_router.include_router(tickets.router)

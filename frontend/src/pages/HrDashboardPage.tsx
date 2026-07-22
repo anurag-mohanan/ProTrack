@@ -43,7 +43,7 @@ export function HrDashboardPage() {
   return (
     <Stack spacing={2}>
       <PageHeader
-        title="Human Resources"
+        title="HR Dashboard"
         subtitle="View assigned teams, monitor timesheet completion, and follow up with people who are behind. Engineering project edit is not included."
       />
       <Grid container spacing={1.5}>
@@ -106,7 +106,7 @@ export function HrDashboardPage() {
             {(attention.length ? attention : users.slice(0, 25)).map((user) => (
               <TableRow key={user.id}>
                 <TableCell>
-                  <Typography fontWeight={600}>{user.name}</Typography>
+                  <Typography sx={{ fontWeight: 600 }}>{user.name}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     {user.email}
                   </Typography>
@@ -142,13 +142,18 @@ export function HrDashboardPage() {
         {(data?.teams ?? []).map((team: { id: string; name: string }) => (
           <Card key={team.id} variant="outlined">
             <CardContent>
-              <Typography fontWeight={600}>{team.name}</Typography>
+              <Typography sx={{ fontWeight: 600 }}>{team.name}</Typography>
             </CardContent>
           </Card>
         ))}
       </Stack>
-      <Typography color="text.secondary">{data?.leave_placeholder}</Typography>
-      <Typography color="text.secondary">{data?.onboarding_placeholder}</Typography>
+      <Typography color="text.secondary">
+        Leave & attendance remain on GreytHR for now. Onboarding checklists are available under{' '}
+        <Link component={RouterLink} to="/hr/onboarding">
+          Human Resources → Onboarding
+        </Link>
+        .
+      </Typography>
     </Stack>
   );
 }

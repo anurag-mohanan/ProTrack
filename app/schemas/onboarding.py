@@ -21,6 +21,9 @@ class OnboardingChecklistCreate(BlankOptionalFieldsMixin, BaseModel):
     joining_date: Optional[date] = None
     designation: Optional[str] = Field(default=None, max_length=120)
     department_name: Optional[str] = Field(default=None, max_length=120)
+    org_department_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
+    role_id: Optional[UUID] = None
     reporting_manager_id: Optional[UUID] = None
     reporting_manager_name: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
@@ -34,6 +37,9 @@ class OnboardingChecklistUpdate(BlankOptionalFieldsMixin, BaseModel):
     joining_date: Optional[date] = None
     designation: Optional[str] = Field(default=None, max_length=120)
     department_name: Optional[str] = Field(default=None, max_length=120)
+    org_department_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
+    role_id: Optional[UUID] = None
     reporting_manager_id: Optional[UUID] = None
     reporting_manager_name: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
@@ -72,6 +78,11 @@ class OnboardingChecklistRead(TimestampSchema):
     joining_date: Optional[date] = None
     designation: Optional[str] = None
     department_name: Optional[str] = None
+    org_department_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
+    team_name: Optional[str] = None
+    role_id: Optional[UUID] = None
+    role_name: Optional[str] = None
     reporting_manager_id: Optional[UUID] = None
     reporting_manager_name: Optional[str] = None
     status: str

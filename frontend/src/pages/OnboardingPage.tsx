@@ -29,6 +29,9 @@ import {
   type OnboardingItemStatus,
 } from '../api/onboarding';
 import { usersApi } from '../api/resources';
+import { fetchOrgDepartments, fetchRoles, fetchTeams } from '../api/lookups';
+import type { OrgDepartment, Role } from '../types';
+import type { Team } from '../types/Team';
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
@@ -57,6 +60,21 @@ export default function OnboardingPage() {
   const usersQuery = useQuery({
     queryKey: ['users', 'active-lite'],
     queryFn: () => usersApi.list({ limit: 500 }),
+  });
+
+  const departmentsQuery = useQuery({
+    queryKey: ['lookups', 'org-departments'],
+    queryFn: fetchOrgDepartments,
+  });
+
+  const teamsQuery = useQuery({
+    queryKey: ['lookups', 'teams'],
+    queryFn: fetchTeams,
+  });
+
+  const rolesQuery = useQuery({
+    queryKey: ['lookups', 'roles'],
+    queryFn: fetchRoles,
   });
 
   const invalidate = () => {
@@ -165,6 +183,9 @@ export default function OnboardingPage() {
       <CreateOnboardingDialog
         open={createOpen}
         users={usersQuery.data ?? []}
+        departments={departmentsQuery.data ?? []}
+        teams={teamsQuery.data ?? []}
+        roles={rolesQuery.data ?? []}
         loading={createMutation.isPending}
         onClose={() => setCreateOpen(false)}
         onSubmit={(payload) => createMutation.mutate(payload)}
@@ -210,7 +231,12 @@ function ChecklistRow({
               <Chip size="small" label={row.status_label} color={row.status === 'completed' ? 'success' : 'info'} />
             </Stack>
             <Typography variant="caption" color="text.secondary">
-              {[row.designation, row.department_name, row.joining_date ? `Joined ${row.joining_date}` : null]
+              {[
+                row.designation || row.role_name,
+                row.department_name,
+                row.team_name,
+                row.joining_date ? `Joined ${row.joining_date}` : null,
+              ]
                 .filter(Boolean)
                 .join(' · ') || 'New hire'}
               {row.reporting_manager_name ? ` · Manager: ${row.reporting_manager_name}` : ''}
@@ -268,7 +294,15 @@ function ChecklistDetail({
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {detail.template_code ?? 'PP-HRD-FO-14'} · {detail.completion_percent}% complete
-            {detail.reporting_manager_name ? ` · Manager: ${detail.reporting_manager_name}` : ''}
+            {[
+              detail.department_name,
+              detail.team_name,
+              detail.role_name || detail.designation,
+              detail.reporting_manager_name ? `Manager: ${detail.reporting_manager_name}` : null,
+            ]
+              .filter(Boolean)
+              .map((part) => ` · ${part}`)
+              .join('')}
           </Typography>
         </Box>
         <ProsohmButton buttonVariant="secondary" onClick={onClose}>
@@ -360,6 +394,9 @@ function ChecklistDetail({
 function CreateOnboardingDialog({
   open,
   users,
+  departments,
+  teams,
+  roles,
   loading,
   onClose,
   onSubmit,
@@ -371,6 +408,9 @@ function CreateOnboardingDialog({
     last_name: string;
     designation?: string | null;
   }>;
+  departments: OrgDepartment[];
+  teams: Team[];
+  roles: Role[];
   loading: boolean;
   onClose: () => void;
   onSubmit: (payload: {
@@ -380,6 +420,9 @@ function CreateOnboardingDialog({
     joining_date?: string | null;
     designation?: string | null;
     department_name?: string | null;
+    org_department_id?: string | null;
+    team_id?: string | null;
+    role_id?: string | null;
     reporting_manager_id?: string | null;
     notes?: string | null;
   }) => void;
@@ -389,7 +432,9 @@ function CreateOnboardingDialog({
   const [employeeCode, setEmployeeCode] = useState('');
   const [joiningDate, setJoiningDate] = useState('');
   const [designation, setDesignation] = useState('');
-  const [departmentName, setDepartmentName] = useState('Prosohm');
+  const [departmentId, setDepartmentId] = useState('');
+  const [teamId, setTeamId] = useState('');
+  const [roleId, setRoleId] = useState('');
   const [managerId, setManagerId] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -405,6 +450,21 @@ function CreateOnboardingDialog({
     [users],
   );
 
+  const departmentOptions = useMemo(
+    () => [...departments].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)),
+    [departments],
+  );
+
+  const teamOptions = useMemo(
+    () => [...teams].sort((a, b) => a.name.localeCompare(b.name)),
+    [teams],
+  );
+
+  const roleOptions = useMemo(
+    () => [...roles].sort((a, b) => a.name.localeCompare(b.name)),
+    [roles],
+  );
+
   const handleEmployeePick = (id: string) => {
     setEmployeeUserId(id);
     const match = userOptions.find((user) => user.id === id);
@@ -414,15 +474,39 @@ function CreateOnboardingDialog({
     }
   };
 
+  const handleDepartmentPick = (id: string) => {
+    setDepartmentId(id);
+  };
+
+  const handleTeamPick = (id: string) => {
+    setTeamId(id);
+    const team = teamOptions.find((row) => row.id === id);
+    if (team?.team_lead_id && !managerId) {
+      setManagerId(team.team_lead_id);
+    }
+  };
+
+  const handleRolePick = (id: string) => {
+    setRoleId(id);
+    const role = roleOptions.find((row) => row.id === id);
+    if (role && !designation.trim()) {
+      setDesignation(role.name);
+    }
+  };
+
   const handleSubmit = () => {
     if (!employeeName.trim()) return;
+    const dept = departmentOptions.find((row) => row.id === departmentId);
     onSubmit({
       employee_name: employeeName.trim(),
       employee_user_id: employeeUserId || null,
       employee_code: employeeCode.trim() || null,
       joining_date: joiningDate || null,
       designation: designation.trim() || null,
-      department_name: departmentName.trim() || null,
+      department_name: dept?.name ?? null,
+      org_department_id: departmentId || null,
+      team_id: teamId || null,
+      role_id: roleId || null,
       reporting_manager_id: managerId || null,
       notes: notes.trim() || null,
     });
@@ -477,18 +561,59 @@ function CreateOnboardingDialog({
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
             <TextField
+              select
+              fullWidth
+              size="small"
+              label="Department"
+              value={departmentId}
+              onChange={(event) => handleDepartmentPick(event.target.value)}
+            >
+              <MenuItem value="">— Select department —</MenuItem>
+              {departmentOptions.map((dept) => (
+                <MenuItem key={dept.id} value={dept.id}>
+                  {dept.name}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Team"
+              value={teamId}
+              onChange={(event) => handleTeamPick(event.target.value)}
+            >
+              <MenuItem value="">— Select team —</MenuItem>
+              {teamOptions.map((team) => (
+                <MenuItem key={team.id} value={team.id}>
+                  {team.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Role"
+              value={roleId}
+              onChange={(event) => handleRolePick(event.target.value)}
+            >
+              <MenuItem value="">— Select role —</MenuItem>
+              {roleOptions.map((role) => (
+                <MenuItem key={role.id} value={role.id}>
+                  {role.name}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
               fullWidth
               size="small"
               label="Designation"
               value={designation}
               onChange={(event) => setDesignation(event.target.value)}
-            />
-            <TextField
-              fullWidth
-              size="small"
-              label="Department"
-              value={departmentName}
-              onChange={(event) => setDepartmentName(event.target.value)}
+              helperText="Defaults from role when empty"
             />
           </Stack>
           <TextField
@@ -498,6 +623,7 @@ function CreateOnboardingDialog({
             label="Reporting manager"
             value={managerId}
             onChange={(event) => setManagerId(event.target.value)}
+            helperText="Auto-fills from team lead when a team is selected"
           >
             <MenuItem value="">— Select —</MenuItem>
             {userOptions.map((user) => (

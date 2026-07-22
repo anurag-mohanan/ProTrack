@@ -33,6 +33,11 @@ export interface OnboardingChecklist {
   joining_date: string | null;
   designation: string | null;
   department_name: string | null;
+  org_department_id: string | null;
+  team_id: string | null;
+  team_name: string | null;
+  role_id: string | null;
+  role_name: string | null;
   reporting_manager_id: string | null;
   reporting_manager_name: string | null;
   status: OnboardingChecklistStatus;
@@ -62,6 +67,9 @@ export interface OnboardingChecklistCreate {
   joining_date?: string | null;
   designation?: string | null;
   department_name?: string | null;
+  org_department_id?: string | null;
+  team_id?: string | null;
+  role_id?: string | null;
   reporting_manager_id?: string | null;
   reporting_manager_name?: string | null;
   notes?: string | null;

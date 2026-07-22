@@ -106,6 +106,35 @@ def test_designer_cannot_create_onboarding(client, session):
     assert response.status_code == 403
 
 
+def test_create_with_department_team_and_role(client, session):
+    from app.models.models import OrgDepartment, Role, Team
+
+    admin = login(client, "admin@prosohm.com")
+    dept = session.scalar(select(OrgDepartment).where(OrgDepartment.is_active.is_(True)))
+    team = session.scalar(select(Team).where(Team.is_active.is_(True)))
+    role = session.scalar(select(Role).where(Role.name == "Design Engineer"))
+    assert dept is not None and team is not None
+
+    payload = {
+        "employee_name": "Placement Hire",
+        "org_department_id": str(dept.id),
+        "team_id": str(team.id),
+    }
+    if role is not None:
+        payload["role_id"] = str(role.id)
+
+    created = client.post("/api/v1/hr/onboarding", headers=admin, json=payload)
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["org_department_id"] == str(dept.id)
+    assert body["department_name"] == dept.name
+    assert body["team_id"] == str(team.id)
+    assert body["team_name"] == team.name
+    if role is not None:
+        assert body["role_id"] == str(role.id)
+        assert body["role_name"] == role.name
+
+
 def test_completing_all_items_marks_checklist_complete(client, session):
     admin = login(client, "admin@prosohm.com")
     created = client.post(

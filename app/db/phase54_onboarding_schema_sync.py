@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS onboarding_checklists (
     joining_date DATE NULL,
     designation VARCHAR(120) NULL,
     department_name VARCHAR(120) NULL,
+    org_department_id CHAR(36) NULL,
+    team_id CHAR(36) NULL,
+    team_name VARCHAR(120) NULL,
+    role_id CHAR(36) NULL,
+    role_name VARCHAR(120) NULL,
     reporting_manager_id CHAR(36) NULL,
     reporting_manager_name VARCHAR(200) NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'in_progress',
@@ -63,6 +68,9 @@ CREATE TABLE IF NOT EXISTS onboarding_checklists (
     updated_at DATETIME,
     FOREIGN KEY(template_id) REFERENCES onboarding_checklist_templates (id),
     FOREIGN KEY(employee_user_id) REFERENCES users (id),
+    FOREIGN KEY(org_department_id) REFERENCES org_departments (id),
+    FOREIGN KEY(team_id) REFERENCES teams (id),
+    FOREIGN KEY(role_id) REFERENCES roles (id),
     FOREIGN KEY(reporting_manager_id) REFERENCES users (id),
     FOREIGN KEY(created_by_id) REFERENCES users (id)
 )
@@ -110,6 +118,11 @@ CREATE TABLE IF NOT EXISTS onboarding_checklists (
     joining_date DATE NULL,
     designation VARCHAR(120) NULL,
     department_name VARCHAR(120) NULL,
+    org_department_id UUID NULL REFERENCES org_departments(id),
+    team_id UUID NULL REFERENCES teams(id),
+    team_name VARCHAR(120) NULL,
+    role_id UUID NULL REFERENCES roles(id),
+    role_name VARCHAR(120) NULL,
     reporting_manager_id UUID NULL REFERENCES users(id),
     reporting_manager_name VARCHAR(200) NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'in_progress',
@@ -186,6 +199,43 @@ def _seed_default_template(engine: Engine) -> None:
         )
 
 
+def _sqlite_has_column(engine: Engine, table: str, column: str) -> bool:
+    with engine.connect() as connection:
+        rows = connection.execute(text(f"PRAGMA table_info({table})")).fetchall()
+    return any(row[1] == column for row in rows)
+
+
+_PLACEMENT_COLUMNS = (
+    ("org_department_id", "CHAR(36) NULL", "UUID NULL"),
+    ("team_id", "CHAR(36) NULL", "UUID NULL"),
+    ("team_name", "VARCHAR(120) NULL", "VARCHAR(120) NULL"),
+    ("role_id", "CHAR(36) NULL", "UUID NULL"),
+    ("role_name", "VARCHAR(120) NULL", "VARCHAR(120) NULL"),
+)
+
+
+def _ensure_placement_columns(engine: Engine) -> None:
+    """Add department/team/role columns when upgrading an existing phase54 table."""
+    if not _sqlite_has_table(engine, "onboarding_checklists") and engine.dialect.name == "sqlite":
+        return
+    dialect = engine.dialect.name
+    with engine.begin() as connection:
+        if dialect == "sqlite":
+            for column, ddl, _pg in _PLACEMENT_COLUMNS:
+                if not _sqlite_has_column(engine, "onboarding_checklists", column):
+                    connection.execute(
+                        text(f"ALTER TABLE onboarding_checklists ADD COLUMN {column} {ddl}")
+                    )
+        else:
+            for column, _sq, pg in _PLACEMENT_COLUMNS:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE onboarding_checklists "
+                        f"ADD COLUMN IF NOT EXISTS {column} {pg}"
+                    )
+                )
+
+
 def ensure_phase54_onboarding_foundation(engine: Engine) -> None:
     dialect = engine.dialect.name
     with engine.begin() as connection:
@@ -203,4 +253,5 @@ def ensure_phase54_onboarding_foundation(engine: Engine) -> None:
         for statement in _INDEXES:
             connection.execute(text(statement))
 
+    _ensure_placement_columns(engine)
     _seed_default_template(engine)

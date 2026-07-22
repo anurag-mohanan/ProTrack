@@ -8,8 +8,8 @@ from app.api.deps import get_db
 from app.core.permissions import can_write_timesheet_entry
 from app.crud.timesheet_projects import get_timesheet_project_context, list_timesheet_projects
 from app.crud.base import select
-from app.models.models import Contact, Customer, NonProductiveCode, OperationalRoleType, ProjectType, Role, Stream, TaskType, Team, User, WorkingModel
-from app.schemas.identity import OperationalRoleTypeRead, RoleRead
+from app.models.models import Contact, Customer, NonProductiveCode, OperationalRoleType, OrgDepartment, ProjectType, Role, Stream, TaskType, Team, User, WorkingModel
+from app.schemas.identity import OperationalRoleTypeRead, OrgDepartmentRead, RoleRead
 from app.schemas.organization import ContactRead, CustomerRead, NonProductiveCodeRead, StreamRead, TaskTypeRead, WorkingModelRead
 from app.schemas.team import TeamRead
 from app.schemas.templates import ProjectTypeRead
@@ -123,6 +123,36 @@ def list_lookup_roles(
     _current_user: User = Depends(get_current_user),
 ):
     return db.scalars(select(Role).order_by(Role.name)).all()
+
+
+@router.get("/org-departments", response_model=list[OrgDepartmentRead])
+def list_lookup_org_departments(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    """Active org-chart departments for placement pickers (onboarding, etc.)."""
+    rows = db.scalars(
+        select(OrgDepartment)
+        .where(OrgDepartment.is_active.is_(True))
+        .order_by(OrgDepartment.sort_order, OrgDepartment.name)
+    ).all()
+    return [
+        OrgDepartmentRead(
+            id=row.id,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            code=row.code,
+            name=row.name,
+            description=row.description,
+            colour=row.colour or "#1976d2",
+            sort_order=row.sort_order or 100,
+            head_user_id=row.head_user_id,
+            is_active=row.is_active,
+            head_name=None,
+            member_count=0,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/project-types", response_model=list[ProjectTypeRead])

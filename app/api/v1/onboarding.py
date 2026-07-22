@@ -89,6 +89,11 @@ def _to_read(
         joining_date=checklist.joining_date,
         designation=checklist.designation,
         department_name=checklist.department_name,
+        org_department_id=checklist.org_department_id,
+        team_id=checklist.team_id,
+        team_name=checklist.team_name,
+        role_id=checklist.role_id,
+        role_name=checklist.role_name,
         reporting_manager_id=checklist.reporting_manager_id,
         reporting_manager_name=checklist.reporting_manager_name
         or _full_name(checklist.reporting_manager),
@@ -206,20 +211,26 @@ def create_checklist(
         if emp is None or emp.is_deleted:
             raise HTTPException(status_code=404, detail="Employee user not found.")
 
-    checklist = onboard.create_checklist_from_template(
-        db,
-        template=template,
-        employee_name=payload.employee_name,
-        created_by=current_user,
-        employee_user_id=payload.employee_user_id,
-        employee_code=payload.employee_code,
-        joining_date=payload.joining_date,
-        designation=payload.designation,
-        department_name=payload.department_name,
-        reporting_manager_id=payload.reporting_manager_id,
-        reporting_manager_name=payload.reporting_manager_name,
-        notes=payload.notes,
-    )
+    try:
+        checklist = onboard.create_checklist_from_template(
+            db,
+            template=template,
+            employee_name=payload.employee_name,
+            created_by=current_user,
+            employee_user_id=payload.employee_user_id,
+            employee_code=payload.employee_code,
+            joining_date=payload.joining_date,
+            designation=payload.designation,
+            department_name=payload.department_name,
+            org_department_id=payload.org_department_id,
+            team_id=payload.team_id,
+            role_id=payload.role_id,
+            reporting_manager_id=payload.reporting_manager_id,
+            reporting_manager_name=payload.reporting_manager_name,
+            notes=payload.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     db.commit()
     loaded = onboard.load_checklist(db, checklist.id)
     assert loaded is not None

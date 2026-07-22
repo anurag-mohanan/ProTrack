@@ -53,6 +53,16 @@ export async function fetchTeams() {
   return ensureArray<import('../types/Team').Team>(data);
 }
 
+export async function fetchRoles(): Promise<import('../types').Role[]> {
+  const { data } = await apiClient.get<unknown>('/lookups/roles');
+  return ensureArray<import('../types').Role>(data);
+}
+
+export async function fetchOrgDepartments(): Promise<import('../types').OrgDepartment[]> {
+  const { data } = await apiClient.get<unknown>('/lookups/org-departments');
+  return ensureArray<import('../types').OrgDepartment>(data);
+}
+
 export async function fetchWorkingModels(): Promise<WorkingModel[]> {
   const { data } = await apiClient.get<unknown>('/lookups/working-models');
   return ensureArray<WorkingModel>(data);

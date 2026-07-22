@@ -251,10 +251,15 @@ def create_checklist_from_template(
     joining_date: date | None = None,
     designation: str | None = None,
     department_name: str | None = None,
+    org_department_id: UUID | None = None,
+    team_id: UUID | None = None,
+    role_id: UUID | None = None,
     reporting_manager_id: UUID | None = None,
     reporting_manager_name: str | None = None,
     notes: str | None = None,
 ) -> OnboardingChecklist:
+    from app.models.models import OrgDepartment, Role, Team
+
     if reporting_manager_id and not reporting_manager_name:
         mgr = db.get(User, reporting_manager_id)
         if mgr is not None:
@@ -264,7 +269,35 @@ def create_checklist_from_template(
         emp = db.get(User, employee_user_id)
         if emp is not None:
             designation = designation or emp.designation
-            # employee_code may live on profile later; keep optional
+
+    team_name: str | None = None
+    if team_id is not None:
+        team = db.get(Team, team_id)
+        if team is None:
+            raise ValueError("Team not found.")
+        team_name = team.name
+        # Prefer the team lead as reporting manager when none was chosen.
+        if reporting_manager_id is None and team.team_lead_id is not None:
+            reporting_manager_id = team.team_lead_id
+            lead = db.get(User, team.team_lead_id)
+            if lead is not None:
+                reporting_manager_name = f"{lead.first_name} {lead.last_name}".strip()
+
+    role_name: str | None = None
+    if role_id is not None:
+        role = db.get(Role, role_id)
+        if role is None:
+            raise ValueError("Role not found.")
+        role_name = role.name
+        if not designation:
+            designation = role.name
+
+    if org_department_id is not None:
+        dept = db.get(OrgDepartment, org_department_id)
+        if dept is None:
+            raise ValueError("Department not found.")
+        if not department_name:
+            department_name = dept.name
 
     checklist = OnboardingChecklist(
         template_id=template.id,
@@ -274,6 +307,11 @@ def create_checklist_from_template(
         joining_date=joining_date,
         designation=designation,
         department_name=department_name,
+        org_department_id=org_department_id,
+        team_id=team_id,
+        team_name=team_name,
+        role_id=role_id,
+        role_name=role_name,
         reporting_manager_id=reporting_manager_id,
         reporting_manager_name=reporting_manager_name,
         status="in_progress",

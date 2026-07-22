@@ -1654,6 +1654,17 @@ class OnboardingChecklist(Base, TimestampMixin):
     joining_date: Mapped[Optional[date]] = mapped_column(Date)
     designation: Mapped[Optional[str]] = mapped_column(String(120))
     department_name: Mapped[Optional[str]] = mapped_column(String(120))
+    org_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("org_departments.id"), nullable=True
+    )
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=True
+    )
+    team_name: Mapped[Optional[str]] = mapped_column(String(120))
+    role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("roles.id"), nullable=True
+    )
+    role_name: Mapped[Optional[str]] = mapped_column(String(120))
     reporting_manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
@@ -1671,6 +1682,11 @@ class OnboardingChecklist(Base, TimestampMixin):
         foreign_keys=[reporting_manager_id]
     )
     created_by: Mapped[Optional[User]] = relationship(foreign_keys=[created_by_id])
+    org_department: Mapped[Optional["OrgDepartment"]] = relationship(
+        foreign_keys=[org_department_id]
+    )
+    team: Mapped[Optional["Team"]] = relationship(foreign_keys=[team_id])
+    role: Mapped[Optional["Role"]] = relationship(foreign_keys=[role_id])
     items: Mapped[list["OnboardingChecklistItem"]] = relationship(
         back_populates="checklist",
         cascade="all, delete-orphan",

@@ -16,6 +16,7 @@ import { LogoHomeLink } from '../branding/LogoHomeLink';
 import { getAdminWorkspaceNav } from '../../config/adminNavigation';
 import { useAuth } from '../../context/AuthContext';
 import { accessContextFromUser } from '../../utils/permissions';
+import { navItemNeedsExactMatch } from '../../utils/navActive';
 
 export const ADMIN_DRAWER_WIDTH = 272;
 
@@ -77,6 +78,7 @@ function NavButton({
 export function AdminSidebar() {
   const { user } = useAuth();
   const workspaceNav = getAdminWorkspaceNav(accessContextFromUser(user));
+  const workspacePaths = workspaceNav.map((item) => item.path);
 
   return (
     <Drawer
@@ -114,7 +116,7 @@ export function AdminSidebar() {
               path={item.path}
               label={item.label}
               icon={item.icon}
-              end={item.path === '/admin/dashboard'}
+              end={navItemNeedsExactMatch(item.path, workspacePaths)}
             />
           ))}
         </List>
@@ -122,7 +124,7 @@ export function AdminSidebar() {
         <Divider sx={{ my: 2, borderColor: 'rgba(148,163,184,0.16)' }} />
 
         <List disablePadding>
-          <NavButton path="/dashboard" label="Engineering Operations" icon={ArrowBackRoundedIcon} />
+          <NavButton path="/dashboard" label="Engineering Operations" icon={ArrowBackRoundedIcon} end />
         </List>
       </Box>
     </Drawer>

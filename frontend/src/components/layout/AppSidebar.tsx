@@ -27,6 +27,7 @@ import {
   getMainNavItems,
   getOperationsSectionNavItems,
 } from '../../utils/permissions';
+import { navItemNeedsExactMatch } from '../../utils/navActive';
 
 export const DRAWER_WIDTH = 272;
 
@@ -36,17 +37,20 @@ function NavButton({
   icon: Icon,
   accent = false,
   disabled = false,
+  end = false,
 }: {
   path: string;
   label: string;
   icon?: React.ComponentType<{ fontSize?: 'small' | 'inherit' | 'large' | 'medium' }>;
   accent?: boolean;
   disabled?: boolean;
+  end?: boolean;
 }) {
   return (
     <ListItemButton
       component={disabled ? 'div' : NavLink}
       to={disabled ? undefined : path}
+      end={disabled ? undefined : end}
       disabled={disabled}
       sx={{
         mx: 1,
@@ -109,6 +113,13 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const operationsItems = getOperationsSectionNavItems(ctx);
   const hrItems = getHrSectionNavItems(ctx);
   const showAdministratorEntry = canAccessAdministration(ctx);
+  // Paths that appear together in the sidebar — used so parent links (e.g. /hr)
+  // do not stay "active" when a more specific sibling (e.g. /hr/onboarding) is open.
+  const allNavPaths = [
+    ...visibleNavItems.map((item) => item.path),
+    ...operationsItems.map((item) => item.path),
+    ...hrItems.map((item) => item.path),
+  ];
 
   return (
     <Drawer
@@ -134,7 +145,13 @@ export function AppSidebar({ user }: AppSidebarProps) {
         <SectionLabel>Engineering Operations</SectionLabel>
         <List disablePadding>
           {visibleNavItems.map((item) => (
-            <NavButton key={item.path} path={item.path} label={item.label} icon={item.icon} />
+            <NavButton
+              key={item.path}
+              path={item.path}
+              label={item.label}
+              icon={item.icon}
+              end={navItemNeedsExactMatch(item.path, allNavPaths)}
+            />
           ))}
         </List>
 
@@ -144,7 +161,13 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <SectionLabel>Operations</SectionLabel>
             <List disablePadding>
               {operationsItems.map((item) => (
-                <NavButton key={item.path} path={item.path} label={item.label} icon={item.icon} />
+                <NavButton
+                  key={item.path}
+                  path={item.path}
+                  label={item.label}
+                  icon={item.icon}
+                  end={navItemNeedsExactMatch(item.path, allNavPaths)}
+                />
               ))}
             </List>
           </>
@@ -156,7 +179,13 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <SectionLabel>Human Resources</SectionLabel>
             <List disablePadding>
               {hrItems.map((item) => (
-                <NavButton key={item.path} path={item.path} label={item.label} icon={item.icon} />
+                <NavButton
+                  key={item.path}
+                  path={item.path}
+                  label={item.label}
+                  icon={item.icon}
+                  end={navItemNeedsExactMatch(item.path, allNavPaths)}
+                />
               ))}
             </List>
           </>

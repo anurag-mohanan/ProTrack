@@ -264,16 +264,30 @@ def update_checklist(
     if not onboard.can_manage_onboarding(db, current_user):
         raise HTTPException(status_code=403, detail="Only HR / Admin can edit checklist header.")
     data = payload.model_dump(exclude_unset=True)
-    for field, value in data.items():
-        setattr(checklist, field, value)
-    if payload.status == "completed" and checklist.completed_at is None:
-        from datetime import datetime
-
-        checklist.completed_at = datetime.utcnow()
+    try:
+        onboard.apply_checklist_header(db, checklist, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     db.commit()
     loaded = onboard.load_checklist(db, checklist_id)
     assert loaded is not None
     return _to_detail(db, loaded, current_user)
+
+
+@router.delete("/{checklist_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_checklist(
+    checklist_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    checklist = onboard.load_checklist(db, checklist_id)
+    if checklist is None:
+        raise HTTPException(status_code=404, detail="Onboarding checklist not found.")
+    if not onboard.can_manage_onboarding(db, current_user):
+        raise HTTPException(status_code=403, detail="Only HR / Admin can delete checklists.")
+    onboard.delete_checklist(db, checklist)
+    db.commit()
+    return None
 
 
 @router.post(

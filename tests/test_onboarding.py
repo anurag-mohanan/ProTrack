@@ -106,6 +106,47 @@ def test_designer_cannot_create_onboarding(client, session):
     assert response.status_code == 403
 
 
+def test_hr_can_edit_and_delete_checklist(client, session):
+    admin = login(client, "admin@prosohm.com")
+    created = client.post(
+        "/api/v1/hr/onboarding",
+        headers=admin,
+        json={"employee_name": "Editable Hire", "employee_code": "PP100"},
+    )
+    assert created.status_code == 201, created.text
+    checklist_id = created.json()["id"]
+
+    updated = client.patch(
+        f"/api/v1/hr/onboarding/{checklist_id}",
+        headers=admin,
+        json={"employee_name": "Editable Hire Updated", "employee_code": "PP101"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["employee_name"] == "Editable Hire Updated"
+    assert updated.json()["employee_code"] == "PP101"
+
+    deleted = client.delete(f"/api/v1/hr/onboarding/{checklist_id}", headers=admin)
+    assert deleted.status_code == 204, deleted.text
+
+    missing = client.get(f"/api/v1/hr/onboarding/{checklist_id}", headers=admin)
+    assert missing.status_code == 404
+
+
+def test_designer_cannot_delete_onboarding(client, session):
+    admin = login(client, "admin@prosohm.com")
+    created = client.post(
+        "/api/v1/hr/onboarding",
+        headers=admin,
+        json={"employee_name": "Protected Hire"},
+    )
+    assert created.status_code == 201
+    checklist_id = created.json()["id"]
+
+    designer = login(client, "binil@prosohm.com")
+    denied = client.delete(f"/api/v1/hr/onboarding/{checklist_id}", headers=designer)
+    assert denied.status_code == 403
+
+
 def test_create_with_department_team_and_role(client, session):
     from app.models.models import OrgDepartment, Role, Team
 

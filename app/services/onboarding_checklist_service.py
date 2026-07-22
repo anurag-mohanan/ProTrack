@@ -240,6 +240,157 @@ def can_view_checklist(db: Session, user: User, checklist: OnboardingChecklist) 
     return bool(responsibilities_for_user(db, user))
 
 
+def resolve_placement_fields(
+    db: Session,
+    *,
+    org_department_id: UUID | None = None,
+    team_id: UUID | None = None,
+    role_id: UUID | None = None,
+    reporting_manager_id: UUID | None = None,
+    reporting_manager_name: str | None = None,
+    department_name: str | None = None,
+    designation: str | None = None,
+    fill_manager_from_team: bool = True,
+) -> dict[str, object | None]:
+    """Resolve denormalized names for department / team / role / manager."""
+    from app.models.models import OrgDepartment, Role, Team
+
+    team_name: str | None = None
+    role_name: str | None = None
+    resolved_manager_id = reporting_manager_id
+    resolved_manager_name = reporting_manager_name
+    resolved_department_name = department_name
+    resolved_designation = designation
+
+    if team_id is not None:
+        team = db.get(Team, team_id)
+        if team is None:
+            raise ValueError("Team not found.")
+        team_name = team.name
+        if fill_manager_from_team and resolved_manager_id is None and team.team_lead_id is not None:
+            resolved_manager_id = team.team_lead_id
+
+    if role_id is not None:
+        role = db.get(Role, role_id)
+        if role is None:
+            raise ValueError("Role not found.")
+        role_name = role.name
+        if not resolved_designation:
+            resolved_designation = role.name
+
+    if org_department_id is not None:
+        dept = db.get(OrgDepartment, org_department_id)
+        if dept is None:
+            raise ValueError("Department not found.")
+        if not resolved_department_name:
+            resolved_department_name = dept.name
+
+    if resolved_manager_id and not resolved_manager_name:
+        mgr = db.get(User, resolved_manager_id)
+        if mgr is not None:
+            resolved_manager_name = f"{mgr.first_name} {mgr.last_name}".strip()
+
+    return {
+        "org_department_id": org_department_id,
+        "department_name": resolved_department_name,
+        "team_id": team_id,
+        "team_name": team_name if team_id is not None else None,
+        "role_id": role_id,
+        "role_name": role_name if role_id is not None else None,
+        "reporting_manager_id": resolved_manager_id,
+        "reporting_manager_name": resolved_manager_name if resolved_manager_id else None,
+        "designation": resolved_designation,
+    }
+
+
+def apply_checklist_header(
+    db: Session,
+    checklist: OnboardingChecklist,
+    fields: dict[str, object | None],
+) -> OnboardingChecklist:
+    """Apply header/placement updates and keep denormalized names consistent."""
+    simple_fields = {
+        "employee_name",
+        "employee_user_id",
+        "employee_code",
+        "joining_date",
+        "notes",
+        "status",
+    }
+    for key in simple_fields:
+        if key in fields:
+            value = fields[key]
+            if key == "employee_name" and isinstance(value, str):
+                value = value.strip()
+            setattr(checklist, key, value)
+
+    placement_keys = {
+        "org_department_id",
+        "team_id",
+        "role_id",
+        "reporting_manager_id",
+        "reporting_manager_name",
+        "department_name",
+        "designation",
+    }
+    if any(key in fields for key in placement_keys):
+        placement = resolve_placement_fields(
+            db,
+            org_department_id=(
+                fields["org_department_id"]  # type: ignore[arg-type]
+                if "org_department_id" in fields
+                else checklist.org_department_id
+            ),
+            team_id=(
+                fields["team_id"]  # type: ignore[arg-type]
+                if "team_id" in fields
+                else checklist.team_id
+            ),
+            role_id=(
+                fields["role_id"]  # type: ignore[arg-type]
+                if "role_id" in fields
+                else checklist.role_id
+            ),
+            reporting_manager_id=(
+                fields["reporting_manager_id"]  # type: ignore[arg-type]
+                if "reporting_manager_id" in fields
+                else checklist.reporting_manager_id
+            ),
+            reporting_manager_name=(
+                fields["reporting_manager_name"]  # type: ignore[arg-type]
+                if "reporting_manager_name" in fields
+                else checklist.reporting_manager_name
+            ),
+            department_name=(
+                fields["department_name"]  # type: ignore[arg-type]
+                if "department_name" in fields
+                else checklist.department_name
+            ),
+            designation=(
+                fields["designation"]  # type: ignore[arg-type]
+                if "designation" in fields
+                else checklist.designation
+            ),
+            fill_manager_from_team="reporting_manager_id" not in fields,
+        )
+        for key, value in placement.items():
+            setattr(checklist, key, value)
+
+    if fields.get("status") == "completed" and checklist.completed_at is None:
+        checklist.completed_at = _utcnow()
+    if fields.get("status") == "in_progress":
+        checklist.completed_at = None
+
+    db.flush()
+    return checklist
+
+
+def delete_checklist(db: Session, checklist: OnboardingChecklist) -> None:
+    """Hard-delete a checklist and its items (cascade)."""
+    db.delete(checklist)
+    db.flush()
+
+
 def create_checklist_from_template(
     db: Session,
     *,
@@ -258,46 +409,22 @@ def create_checklist_from_template(
     reporting_manager_name: str | None = None,
     notes: str | None = None,
 ) -> OnboardingChecklist:
-    from app.models.models import OrgDepartment, Role, Team
-
-    if reporting_manager_id and not reporting_manager_name:
-        mgr = db.get(User, reporting_manager_id)
-        if mgr is not None:
-            reporting_manager_name = f"{mgr.first_name} {mgr.last_name}".strip()
-
     if employee_user_id and (not designation or not employee_code):
         emp = db.get(User, employee_user_id)
         if emp is not None:
             designation = designation or emp.designation
 
-    team_name: str | None = None
-    if team_id is not None:
-        team = db.get(Team, team_id)
-        if team is None:
-            raise ValueError("Team not found.")
-        team_name = team.name
-        # Prefer the team lead as reporting manager when none was chosen.
-        if reporting_manager_id is None and team.team_lead_id is not None:
-            reporting_manager_id = team.team_lead_id
-            lead = db.get(User, team.team_lead_id)
-            if lead is not None:
-                reporting_manager_name = f"{lead.first_name} {lead.last_name}".strip()
-
-    role_name: str | None = None
-    if role_id is not None:
-        role = db.get(Role, role_id)
-        if role is None:
-            raise ValueError("Role not found.")
-        role_name = role.name
-        if not designation:
-            designation = role.name
-
-    if org_department_id is not None:
-        dept = db.get(OrgDepartment, org_department_id)
-        if dept is None:
-            raise ValueError("Department not found.")
-        if not department_name:
-            department_name = dept.name
+    placement = resolve_placement_fields(
+        db,
+        org_department_id=org_department_id,
+        team_id=team_id,
+        role_id=role_id,
+        reporting_manager_id=reporting_manager_id,
+        reporting_manager_name=reporting_manager_name,
+        department_name=department_name,
+        designation=designation,
+        fill_manager_from_team=reporting_manager_id is None,
+    )
 
     checklist = OnboardingChecklist(
         template_id=template.id,
@@ -305,18 +432,10 @@ def create_checklist_from_template(
         employee_name=employee_name.strip(),
         employee_code=(employee_code or None),
         joining_date=joining_date,
-        designation=designation,
-        department_name=department_name,
-        org_department_id=org_department_id,
-        team_id=team_id,
-        team_name=team_name,
-        role_id=role_id,
-        role_name=role_name,
-        reporting_manager_id=reporting_manager_id,
-        reporting_manager_name=reporting_manager_name,
-        status="in_progress",
         notes=notes,
         created_by_id=created_by.id,
+        status="in_progress",
+        **placement,  # type: ignore[arg-type]
     )
     db.add(checklist)
     db.flush()

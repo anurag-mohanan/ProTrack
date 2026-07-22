@@ -76,6 +76,22 @@ export interface OnboardingChecklistCreate {
   template_id?: string | null;
 }
 
+export interface OnboardingChecklistUpdate {
+  employee_name?: string;
+  employee_user_id?: string | null;
+  employee_code?: string | null;
+  joining_date?: string | null;
+  designation?: string | null;
+  department_name?: string | null;
+  org_department_id?: string | null;
+  team_id?: string | null;
+  role_id?: string | null;
+  reporting_manager_id?: string | null;
+  reporting_manager_name?: string | null;
+  notes?: string | null;
+  status?: OnboardingChecklistStatus;
+}
+
 function buildQuery(params?: Record<string, string | undefined>) {
   if (!params) return '';
   const qs = new URLSearchParams();
@@ -100,6 +116,19 @@ export const onboardingApi = {
   create: async (payload: OnboardingChecklistCreate): Promise<OnboardingChecklistDetail> => {
     const { data } = await apiClient.post<OnboardingChecklistDetail>('/hr/onboarding', payload);
     return data;
+  },
+  update: async (
+    id: string,
+    payload: OnboardingChecklistUpdate,
+  ): Promise<OnboardingChecklistDetail> => {
+    const { data } = await apiClient.patch<OnboardingChecklistDetail>(
+      `/hr/onboarding/${id}`,
+      payload,
+    );
+    return data;
+  },
+  delete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/hr/onboarding/${id}`);
   },
   setItemStatus: async (
     checklistId: string,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Chip,
@@ -6,18 +6,23 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   LinearProgress,
   MenuItem,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import HowToRegRoundedIcon from '@mui/icons-material/HowToRegRounded';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ContentCard } from '../components/ui/cards';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useToast } from '../context/ToastContext';
@@ -25,7 +30,9 @@ import { getErrorMessage } from '../api/client';
 import {
   onboardingApi,
   type OnboardingChecklist,
+  type OnboardingChecklistCreate,
   type OnboardingChecklistDetail,
+  type OnboardingChecklistUpdate,
   type OnboardingItemStatus,
 } from '../api/onboarding';
 import { usersApi } from '../api/resources';
@@ -39,12 +46,16 @@ const STATUS_FILTERS = [
   { value: 'completed', label: 'Completed' },
 ];
 
+type FormPayload = OnboardingChecklistCreate;
+
 export default function OnboardingPage() {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('in_progress');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<OnboardingChecklist | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<OnboardingChecklist | null>(null);
 
   const listQuery = useQuery({
     queryKey: ['onboarding', statusFilter],
@@ -87,6 +98,31 @@ export default function OnboardingPage() {
       showSuccess(`Onboarding started for ${data.employee_name}.`);
       setCreateOpen(false);
       setSelectedId(data.id);
+      invalidate();
+    },
+    onError: (error: unknown) => showError(getErrorMessage(error)),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: OnboardingChecklistUpdate }) =>
+      onboardingApi.update(id, payload),
+    onSuccess: (data) => {
+      showSuccess(`Onboarding updated for ${data.employee_name}.`);
+      setEditTarget(null);
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['onboarding', data.id] });
+    },
+    onError: (error: unknown) => showError(getErrorMessage(error)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => onboardingApi.delete(id),
+    onSuccess: () => {
+      showSuccess('Onboarding checklist deleted.');
+      if (deleteTarget && selectedId === deleteTarget.id) {
+        setSelectedId(null);
+      }
+      setDeleteTarget(null);
       invalidate();
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
@@ -160,6 +196,8 @@ export default function OnboardingPage() {
               row={row}
               selected={selectedId === row.id}
               onOpen={() => setSelectedId(row.id)}
+              onEdit={() => setEditTarget(row)}
+              onDelete={() => setDeleteTarget(row)}
             />
           ))}
         </Stack>
@@ -174,14 +212,17 @@ export default function OnboardingPage() {
               detail={detail}
               busy={itemMutation.isPending}
               onStatus={(itemId, status) => itemMutation.mutate({ itemId, status })}
+              onEdit={() => setEditTarget(detail)}
+              onDelete={() => setDeleteTarget(detail)}
               onClose={() => setSelectedId(null)}
             />
           )}
         </Box>
       ) : null}
 
-      <CreateOnboardingDialog
+      <ChecklistFormDialog
         open={createOpen}
+        mode="create"
         users={usersQuery.data ?? []}
         departments={departmentsQuery.data ?? []}
         teams={teamsQuery.data ?? []}
@@ -189,6 +230,36 @@ export default function OnboardingPage() {
         loading={createMutation.isPending}
         onClose={() => setCreateOpen(false)}
         onSubmit={(payload) => createMutation.mutate(payload)}
+      />
+
+      <ChecklistFormDialog
+        open={Boolean(editTarget)}
+        mode="edit"
+        initial={editTarget}
+        users={usersQuery.data ?? []}
+        departments={departmentsQuery.data ?? []}
+        teams={teamsQuery.data ?? []}
+        roles={rolesQuery.data ?? []}
+        loading={updateMutation.isPending}
+        onClose={() => setEditTarget(null)}
+        onSubmit={(payload) => {
+          if (!editTarget) return;
+          updateMutation.mutate({ id: editTarget.id, payload });
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete onboarding checklist?"
+        recordName={deleteTarget?.employee_name}
+        message="This permanently deletes the checklist and all item progress. This cannot be undone."
+        confirmLabel="Delete checklist"
+        danger
+        loading={deleteMutation.isPending}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+        }}
       />
     </PageContainer>
   );
@@ -198,10 +269,14 @@ function ChecklistRow({
   row,
   selected,
   onOpen,
+  onEdit,
+  onDelete,
 }: {
   row: OnboardingChecklist;
   selected: boolean;
   onOpen: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   return (
     <ContentCard noPadding>
@@ -253,6 +328,34 @@ function ChecklistRow({
               <LinearProgress variant="determinate" value={row.completion_percent} />
             </Box>
           </Box>
+          {row.can_manage ? (
+            <Stack
+              direction="row"
+              spacing={0.5}
+              onClick={(event) => event.stopPropagation()}
+              sx={{ flexShrink: 0 }}
+            >
+              <Tooltip title="Edit">
+                <IconButton
+                  size="small"
+                  aria-label="Edit onboarding checklist"
+                  onClick={onEdit}
+                >
+                  <EditOutlinedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete">
+                <IconButton
+                  size="small"
+                  color="error"
+                  aria-label="Delete onboarding checklist"
+                  onClick={onDelete}
+                >
+                  <DeleteOutlineRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          ) : null}
         </Stack>
       </Box>
     </ContentCard>
@@ -263,11 +366,15 @@ function ChecklistDetail({
   detail,
   busy,
   onStatus,
+  onEdit,
+  onDelete,
   onClose,
 }: {
   detail: OnboardingChecklistDetail;
   busy: boolean;
   onStatus: (itemId: string, status: OnboardingItemStatus) => void;
+  onEdit: () => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   const bySection = useMemo(() => {
@@ -305,9 +412,25 @@ function ChecklistDetail({
               .join('')}
           </Typography>
         </Box>
-        <ProsohmButton buttonVariant="secondary" onClick={onClose}>
-          Close
-        </ProsohmButton>
+        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+          {detail.can_manage ? (
+            <>
+              <ProsohmButton buttonVariant="secondary" startIcon={<EditOutlinedIcon />} onClick={onEdit}>
+                Edit
+              </ProsohmButton>
+              <ProsohmButton
+                buttonVariant="danger"
+                startIcon={<DeleteOutlineRoundedIcon />}
+                onClick={onDelete}
+              >
+                Delete
+              </ProsohmButton>
+            </>
+          ) : null}
+          <ProsohmButton buttonVariant="secondary" onClick={onClose}>
+            Close
+          </ProsohmButton>
+        </Stack>
       </Stack>
 
       <Stack spacing={2.5}>
@@ -391,8 +514,10 @@ function ChecklistDetail({
   );
 }
 
-function CreateOnboardingDialog({
+function ChecklistFormDialog({
   open,
+  mode,
+  initial,
   users,
   departments,
   teams,
@@ -402,6 +527,8 @@ function CreateOnboardingDialog({
   onSubmit,
 }: {
   open: boolean;
+  mode: 'create' | 'edit';
+  initial?: OnboardingChecklist | null;
   users: Array<{
     id: string;
     first_name: string;
@@ -413,19 +540,7 @@ function CreateOnboardingDialog({
   roles: Role[];
   loading: boolean;
   onClose: () => void;
-  onSubmit: (payload: {
-    employee_name: string;
-    employee_user_id?: string | null;
-    employee_code?: string | null;
-    joining_date?: string | null;
-    designation?: string | null;
-    department_name?: string | null;
-    org_department_id?: string | null;
-    team_id?: string | null;
-    role_id?: string | null;
-    reporting_manager_id?: string | null;
-    notes?: string | null;
-  }) => void;
+  onSubmit: (payload: FormPayload) => void;
 }) {
   const [employeeUserId, setEmployeeUserId] = useState('');
   const [employeeName, setEmployeeName] = useState('');
@@ -437,6 +552,37 @@ function CreateOnboardingDialog({
   const [roleId, setRoleId] = useState('');
   const [managerId, setManagerId] = useState('');
   const [notes, setNotes] = useState('');
+  const [status, setStatus] = useState<'in_progress' | 'completed' | 'cancelled'>('in_progress');
+
+  // Hydrate when opening for edit / reset for create.
+  useEffect(() => {
+    if (!open) return;
+    if (mode === 'edit' && initial) {
+      setEmployeeUserId(initial.employee_user_id ?? '');
+      setEmployeeName(initial.employee_name ?? '');
+      setEmployeeCode(initial.employee_code ?? '');
+      setJoiningDate(initial.joining_date ?? '');
+      setDesignation(initial.designation ?? '');
+      setDepartmentId(initial.org_department_id ?? '');
+      setTeamId(initial.team_id ?? '');
+      setRoleId(initial.role_id ?? '');
+      setManagerId(initial.reporting_manager_id ?? '');
+      setNotes(initial.notes ?? '');
+      setStatus(initial.status);
+    } else if (mode === 'create') {
+      setEmployeeUserId('');
+      setEmployeeName('');
+      setEmployeeCode('');
+      setJoiningDate('');
+      setDesignation('');
+      setDepartmentId('');
+      setTeamId('');
+      setRoleId('');
+      setManagerId('');
+      setNotes('');
+      setStatus('in_progress');
+    }
+  }, [open, mode, initial]);
 
   const userOptions = useMemo(
     () =>
@@ -474,10 +620,6 @@ function CreateOnboardingDialog({
     }
   };
 
-  const handleDepartmentPick = (id: string) => {
-    setDepartmentId(id);
-  };
-
   const handleTeamPick = (id: string) => {
     setTeamId(id);
     const team = teamOptions.find((row) => row.id === id);
@@ -497,7 +639,7 @@ function CreateOnboardingDialog({
   const handleSubmit = () => {
     if (!employeeName.trim()) return;
     const dept = departmentOptions.find((row) => row.id === departmentId);
-    onSubmit({
+    const payload: FormPayload & { status?: 'in_progress' | 'completed' | 'cancelled' } = {
       employee_name: employeeName.trim(),
       employee_user_id: employeeUserId || null,
       employee_code: employeeCode.trim() || null,
@@ -509,12 +651,18 @@ function CreateOnboardingDialog({
       role_id: roleId || null,
       reporting_manager_id: managerId || null,
       notes: notes.trim() || null,
-    });
+    };
+    if (mode === 'edit') {
+      payload.status = status;
+    }
+    onSubmit(payload);
   };
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Start onboarding (PP-HRD-FO-14)</DialogTitle>
+      <DialogTitle>
+        {mode === 'edit' ? 'Edit onboarding checklist' : 'Start onboarding (PP-HRD-FO-14)'}
+      </DialogTitle>
       <DialogContent>
         <Stack spacing={1.5} sx={{ mt: 1 }}>
           <TextField
@@ -566,7 +714,7 @@ function CreateOnboardingDialog({
               size="small"
               label="Department"
               value={departmentId}
-              onChange={(event) => handleDepartmentPick(event.target.value)}
+              onChange={(event) => setDepartmentId(event.target.value)}
             >
               <MenuItem value="">— Select department —</MenuItem>
               {departmentOptions.map((dept) => (
@@ -632,6 +780,22 @@ function CreateOnboardingDialog({
               </MenuItem>
             ))}
           </TextField>
+          {mode === 'edit' ? (
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Checklist status"
+              value={status}
+              onChange={(event) =>
+                setStatus(event.target.value as 'in_progress' | 'completed' | 'cancelled')
+              }
+            >
+              <MenuItem value="in_progress">In Progress</MenuItem>
+              <MenuItem value="completed">Completed</MenuItem>
+              <MenuItem value="cancelled">Cancelled</MenuItem>
+            </TextField>
+          ) : null}
           <TextField
             fullWidth
             size="small"
@@ -652,7 +816,7 @@ function CreateOnboardingDialog({
           onClick={handleSubmit}
           disabled={loading || !employeeName.trim()}
         >
-          Create checklist
+          {mode === 'edit' ? 'Save changes' : 'Create checklist'}
         </ProsohmButton>
       </DialogActions>
     </Dialog>

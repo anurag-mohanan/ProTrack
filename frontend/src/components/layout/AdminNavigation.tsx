@@ -95,7 +95,7 @@ function NavSection({ item }: { item: AdminNavItem }) {
       <Collapse in={expanded} timeout="auto" unmountOnExit>
         <List disablePadding>
           {item.path ? (
-            <ListItemButton component={NavLink} to={item.path} sx={leafSx}>
+            <ListItemButton component={NavLink} to={item.path} end sx={leafSx}>
               <ListItemText primary="Overview" sx={{ pl: 2 }} />
             </ListItemButton>
           ) : null}

@@ -23,10 +23,10 @@ from app.services.master_data_delete_service import (
 router = APIRouter(
     prefix="/project-types",
     tags=["project-types"],
-    dependencies=[Depends(require_roles("Admin", "Engineering Manager"))],
+    dependencies=[Depends(require_roles("Admin"))],
 )
 
-write_access = Depends(require_roles("Admin", "Engineering Manager"))
+write_access = Depends(require_roles("Admin"))
 admin_access = Depends(require_roles("Admin"))
 
 

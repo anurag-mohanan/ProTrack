@@ -212,6 +212,28 @@ DEFAULT_EMAIL_TEMPLATES: list[dict[str, str]] = [
         "body_text": "{{Message}}",
     },
     {
+        "slug": "new_hire_onboarding",
+        "name": "New Hire Onboarding",
+        "description": "Notify team leader when a new hire starts onboarding.",
+        "subject": "New hire onboarding: {{EmployeeName}}",
+        "body_html": (
+            "<p>Hello {{Designer}},</p>"
+            "<p><strong>{{EmployeeName}}</strong> has started onboarding.</p>"
+            "<p>Team: {{TeamName}}<br/>Joining date: {{JoiningDate}}</p>"
+            "<p>{{Message}}</p>"
+            "<p>Please set their role and access in Users "
+            "({{UsersUrl}}) and complete manager checklist items "
+            "({{OnboardingUrl}}).</p>"
+        ),
+        "body_text": (
+            "Hello {{Designer}},\n\n"
+            "{{EmployeeName}} has started onboarding.\n"
+            "Team: {{TeamName}}\nJoining date: {{JoiningDate}}\n\n"
+            "{{Message}}\n\n"
+            "Users: {{UsersUrl}}\nOnboarding: {{OnboardingUrl}}\n"
+        ),
+    },
+    {
         "slug": "daily_engineering_summary",
         "name": "Daily Engineering Summary",
         "description": "Morning engineering digest for managers.",

@@ -255,10 +255,46 @@ def create_checklist(
             raise HTTPException(status_code=404, detail="Template not found.")
         template = custom
 
-    if payload.employee_user_id is not None:
-        emp = db.get(User, payload.employee_user_id)
+    from app.services import hr_onboarding_provisioning as provision
+
+    employee_user_id = payload.employee_user_id
+    role_id = payload.role_id
+
+    if employee_user_id is not None:
+        emp = db.get(User, employee_user_id)
         if emp is None or emp.is_deleted:
             raise HTTPException(status_code=404, detail="Employee user not found.")
+    elif payload.employee_email:
+        try:
+            placement_preview = onboard.resolve_placement_fields(
+                db,
+                org_department_id=payload.org_department_id,
+                team_id=payload.team_id,
+                role_id=payload.role_id,
+                reporting_manager_id=payload.reporting_manager_id,
+                reporting_manager_name=payload.reporting_manager_name,
+                department_name=payload.department_name,
+                designation=payload.designation,
+                fill_manager_from_team=payload.reporting_manager_id is None,
+            )
+            designation = payload.designation
+            if not designation and isinstance(placement_preview.get("designation"), str):
+                designation = placement_preview["designation"]  # type: ignore[assignment]
+            new_user, _temp_pw = provision.create_user_for_onboarding(
+                db,
+                employee_name=payload.employee_name,
+                email=payload.employee_email,
+                role_id=payload.role_id,
+                team_id=payload.team_id,
+                manager_id=placement_preview.get("reporting_manager_id"),  # type: ignore[arg-type]
+                joining_date=payload.joining_date,
+                designation=designation,
+            )
+            employee_user_id = new_user.id
+            if role_id is None:
+                role_id = new_user.role_id
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
         checklist, triggered = onboard.create_checklist_from_template(
@@ -266,21 +302,34 @@ def create_checklist(
             template=template,
             employee_name=payload.employee_name,
             created_by=current_user,
-            employee_user_id=payload.employee_user_id,
+            employee_user_id=employee_user_id,
             employee_code=payload.employee_code,
             joining_date=payload.joining_date,
             designation=payload.designation,
             department_name=payload.department_name,
             org_department_id=payload.org_department_id,
             team_id=payload.team_id,
-            role_id=payload.role_id,
+            role_id=role_id,
             reporting_manager_id=payload.reporting_manager_id,
             reporting_manager_name=payload.reporting_manager_name,
             notes=payload.notes,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     db.commit()
+
+    # Notify after commit so onboarding is durable even if notify fails.
+    if checklist.employee_user_id is not None:
+        try:
+            loaded_for_notify = onboard.load_checklist(db, checklist.id)
+            if loaded_for_notify is not None:
+                provision.notify_team_leader_of_new_hire(
+                    db, loaded_for_notify, created_by=current_user
+                )
+        except Exception:
+            pass
+
     loaded = onboard.load_checklist(db, checklist.id)
     assert loaded is not None
     return _to_detail(db, loaded, current_user, triggered=triggered)
@@ -313,6 +362,8 @@ def update_checklist(
     if not onboard.can_manage_onboarding(db, current_user):
         raise HTTPException(status_code=403, detail="Only HR / Admin can edit checklist header.")
     data = payload.model_dump(exclude_unset=True)
+    prev_team = checklist.team_id
+    prev_manager = checklist.reporting_manager_id
     try:
         onboard.apply_checklist_header(db, checklist, data)
     except ValueError as exc:
@@ -320,6 +371,20 @@ def update_checklist(
     db.commit()
     loaded = onboard.load_checklist(db, checklist_id)
     assert loaded is not None
+
+    team_or_manager_changed = (
+        loaded.team_id != prev_team or loaded.reporting_manager_id != prev_manager
+    )
+    if loaded.employee_user_id is not None and team_or_manager_changed:
+        try:
+            from app.services import hr_onboarding_provisioning as provision
+
+            provision.notify_team_leader_of_new_hire(
+                db, loaded, created_by=current_user
+            )
+        except Exception:
+            pass
+
     return _to_detail(db, loaded, current_user)
 
 

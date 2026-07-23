@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
+from app.schemas.hr_process_audit import ProcessAuditItem, ProcessAuditRead
+from app.services import hr_process_audit_service as process_audit
 from app.schemas.skill_matrix import (
     SkillMatrixRead,
     SkillMatrixUpsertRequest,
@@ -647,6 +649,47 @@ def suggested_review_projects(
         period_end=period_end,
     )
     return [PerformanceReviewProjectSuggestionRead.model_validate(row) for row in rows]
+
+
+@router.get("/process-audit", response_model=ProcessAuditRead)
+def hr_process_audit(
+    sla_days: int = Query(default=14, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Flag incomplete onboarding, missing exit, orphan placement, and access gaps."""
+    from app.services import onboarding_checklist_service as onboard
+
+    if not onboard.can_manage_onboarding(db, current_user):
+        _require_hr_view(db, current_user)
+    raw = process_audit.build_process_audit(db, sla_days=sla_days)
+    items: list[ProcessAuditItem] = []
+    for row in raw["items"]:
+        items.append(
+            ProcessAuditItem(
+                flag=row["flag"],
+                severity=row.get("severity") or "medium",
+                title=row["title"],
+                subject_name=row["subject_name"],
+                subject_user_id=UUID(row["subject_user_id"])
+                if row.get("subject_user_id")
+                else None,
+                checklist_id=UUID(row["checklist_id"]) if row.get("checklist_id") else None,
+                exit_interview_id=UUID(row["exit_interview_id"])
+                if row.get("exit_interview_id")
+                else None,
+                detail=row["detail"],
+                deep_link=row["deep_link"],
+                anchor_date=row.get("anchor_date"),
+            )
+        )
+    return ProcessAuditRead(
+        as_of=raw["as_of"],
+        sla_days=raw["sla_days"],
+        total=raw["total"],
+        counts=raw["counts"],
+        items=items,
+    )
 
 
 @router.get("/dashboard")

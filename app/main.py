@@ -131,6 +131,9 @@ from app.db.phase54_onboarding_schema_sync import (
 from app.db.phase55_exit_process_schema_sync import (
     ensure_phase55_exit_process_foundation,
 )
+from app.db.phase56_hr_process_control_schema_sync import (
+    ensure_phase56_hr_process_control_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -247,6 +250,7 @@ async def lifespan(app: FastAPI):
         ("phase53_ticket_routing", ensure_phase53_ticket_routing_foundation),
         ("phase54_onboarding", ensure_phase54_onboarding_foundation),
         ("phase55_exit_process", ensure_phase55_exit_process_foundation),
+        ("phase56_hr_process_control", ensure_phase56_hr_process_control_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

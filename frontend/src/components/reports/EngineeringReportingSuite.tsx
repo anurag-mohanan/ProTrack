@@ -246,32 +246,38 @@ export function EngineeringReportingSuite({
 
   return (
     <Stack spacing={3}>
-      <Paper sx={{ p: 2.5 }}>
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            gap: 2,
-            alignItems: { md: 'center' },
-            justifyContent: 'space-between',
-          }}
-        >
-          <Box>
+      <Paper sx={{ p: 2.5, overflow: 'hidden' }}>
+        <Stack spacing={2}>
+          <Box sx={{ minWidth: 0 }}>
             <Typography variant="h6">Engineering Management Reporting Suite</Typography>
             <Typography variant="body2" color="text.secondary">
               Filter Customer → Team → Week/Month. Team leaders can only download their own teams.
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'flex-start' }}>
-            {!isCustomerTimesheetPack ? (
-              <>
+          {!isCustomerTimesheetPack ? (
+            <Stack spacing={1.5}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gap: 1.5,
+                  width: '100%',
+                  minWidth: 0,
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    sm: 'repeat(2, minmax(0, 1fr))',
+                    md: 'repeat(3, minmax(0, 1fr))',
+                    lg: 'repeat(4, minmax(0, 1fr))',
+                  },
+                  '& > *': { minWidth: 0, width: '100%' },
+                }}
+              >
                 <TextField
                   select
                   size="small"
                   label="Customer"
                   value={customerId}
                   onChange={(event) => setCustomerId(event.target.value)}
-                  sx={{ minWidth: 160 }}
+                  fullWidth
                   helperText="Optional"
                   slotProps={{ inputLabel: { shrink: true } }}
                 >
@@ -288,7 +294,7 @@ export function EngineeringReportingSuite({
                   label="Team"
                   value={teamId}
                   onChange={(event) => setTeamId(event.target.value)}
-                  sx={{ minWidth: 160 }}
+                  fullWidth
                   helperText={
                     multiTeam
                       ? 'Leaders: pick one or all accessible'
@@ -313,7 +319,7 @@ export function EngineeringReportingSuite({
                     setPeriodType(next);
                     setAnchor((current) => syncAnchorForPeriodChange(next, current));
                   }}
-                  sx={{ minWidth: 140 }}
+                  fullWidth
                 >
                   {(selectedReport?.supported_periods ?? ['monthly']).map((period) => (
                     <MenuItem key={period} value={period}>
@@ -325,13 +331,15 @@ export function EngineeringReportingSuite({
                   periodType={periodType}
                   anchor={anchor}
                   onAnchorChange={setAnchor}
+                  fluid
                 />
+              </Box>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
                 <Button
                   variant="contained"
                   startIcon={<PlayArrowRoundedIcon />}
                   onClick={() => previewQuery.generate()}
                   disabled={!selectedReportId || previewQuery.isFetching}
-                  sx={{ alignSelf: 'center' }}
                 >
                   {previewQuery.isFetching ? 'Generating…' : 'Generate'}
                 </Button>
@@ -341,29 +349,31 @@ export function EngineeringReportingSuite({
                     startIcon={<DownloadRoundedIcon />}
                     onClick={() => void handleDownload()}
                     disabled={!previewQuery.canDownload || downloading}
-                    sx={{ alignSelf: 'center' }}
                   >
                     {downloading ? 'Downloading…' : 'Download Excel'}
                   </Button>
                 ) : null}
-              </>
-            ) : (
-              <Chip
-                size="small"
-                color="primary"
-                label="Use Customer / Team / Week-Month filters below"
-              />
-            )}
-          </Box>
-        </Box>
+              </Stack>
+            </Stack>
+          ) : (
+            <Chip
+              size="small"
+              color="primary"
+              label="Use Customer / Team / Week-Month filters below"
+              sx={{ alignSelf: 'flex-start' }}
+            />
+          )}
+        </Stack>
         {downloadError ? <Alert severity="error" sx={{ mt: 2 }}>{downloadError}</Alert> : null}
       </Paper>
 
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: 'minmax(240px, 1fr) 2fr' },
+          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 280px) minmax(0, 1fr)' },
           gap: 2,
+          width: '100%',
+          minWidth: 0,
         }}
       >
         <Paper sx={{ p: 2, height: '100%' }}>

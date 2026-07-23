@@ -18,8 +18,10 @@ interface ReportPeriodSelectorsProps {
   periodType: ReportPeriodType;
   anchor: string;
   onAnchorChange: (anchor: string) => void;
-  /** Optional min width for each field */
+  /** Optional min width for each field (ignored when fluid). */
   minWidth?: number;
+  /** Stretch fields to fill parent grid/flex cells without forcing overflow. */
+  fluid?: boolean;
 }
 
 function recentYearMonthOptions(count = 24): { value: string; label: string; year: number; month: number }[] {
@@ -53,7 +55,20 @@ export function ReportPeriodSelectors({
   anchor,
   onAnchorChange,
   minWidth = 150,
+  fluid = false,
 }: ReportPeriodSelectorsProps) {
+  const fieldSx = fluid
+    ? { width: '100%', minWidth: 0, maxWidth: '100%' }
+    : { minWidth };
+  const yearFieldSx = fluid
+    ? fieldSx
+    : { minWidth: Math.min(minWidth, 110) };
+  const weekFieldSx = fluid
+    ? fieldSx
+    : { minWidth: Math.max(minWidth, 230) };
+  const monthComboSx = fluid
+    ? fieldSx
+    : { minWidth: Math.max(minWidth, 160) };
   const selection = selectionFromAnchor(periodType, anchor || defaultAnchorForPeriod(periodType));
   const years = availableYears();
   const weeks = weeksInMonth(selection.year, selection.month);
@@ -90,7 +105,7 @@ export function ReportPeriodSelectors({
             const monday = nextWeeks[0]?.monday ?? firstDayOfMonth(year, month);
             onAnchorChange(normalizeAnchor('weekly', monday));
           }}
-          sx={{ minWidth: Math.max(minWidth, 160) }}
+          sx={monthComboSx}
         >
           {yearMonthOptions.map((row) => (
             <MenuItem key={row.value} value={row.value}>
@@ -104,7 +119,7 @@ export function ReportPeriodSelectors({
           label="Week"
           value={activeWeek}
           onChange={(event) => onAnchorChange(normalizeAnchor('weekly', event.target.value))}
-          sx={{ minWidth: Math.max(minWidth, 230) }}
+          sx={weekFieldSx}
           helperText="Mon–Sun week"
         >
           {weeks.map((week) => (
@@ -129,7 +144,7 @@ export function ReportPeriodSelectors({
             const year = Number(event.target.value);
             onAnchorChange(firstDayOfMonth(year, selection.month));
           }}
-          sx={{ minWidth: Math.min(minWidth, 110) }}
+          sx={yearFieldSx}
         >
           {years.map((year) => (
             <MenuItem key={year} value={year}>
@@ -146,7 +161,7 @@ export function ReportPeriodSelectors({
             const month = Number(event.target.value);
             onAnchorChange(firstDayOfMonth(selection.year, month));
           }}
-          sx={{ minWidth }}
+          sx={fieldSx}
         >
           {monthOptions().map((month) => (
             <MenuItem key={month.value} value={month.value}>
@@ -170,7 +185,7 @@ export function ReportPeriodSelectors({
             const year = Number(event.target.value);
             onAnchorChange(firstDayOfQuarter(year, selection.quarter));
           }}
-          sx={{ minWidth: Math.min(minWidth, 110) }}
+          sx={yearFieldSx}
         >
           {years.map((year) => (
             <MenuItem key={year} value={year}>
@@ -187,7 +202,7 @@ export function ReportPeriodSelectors({
             const quarter = Number(event.target.value);
             onAnchorChange(firstDayOfQuarter(selection.year, quarter));
           }}
-          sx={{ minWidth }}
+          sx={fieldSx}
         >
           {quarterOptions().map((quarter) => (
             <MenuItem key={quarter.value} value={quarter.value}>
@@ -207,7 +222,7 @@ export function ReportPeriodSelectors({
         label="Year"
         value={selection.year}
         onChange={(event) => onAnchorChange(firstDayOfYear(Number(event.target.value)))}
-        sx={{ minWidth: Math.min(minWidth, 120) }}
+        sx={yearFieldSx}
       >
         {years.map((year) => (
           <MenuItem key={year} value={year}>
@@ -226,7 +241,7 @@ export function ReportPeriodSelectors({
       value={anchor}
       onChange={(event) => onAnchorChange(event.target.value)}
       slotProps={{ inputLabel: { shrink: true } }}
-      sx={{ minWidth }}
+      sx={fieldSx}
     />
   );
 }

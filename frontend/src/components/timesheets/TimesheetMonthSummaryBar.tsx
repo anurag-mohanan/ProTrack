@@ -54,8 +54,9 @@ function ProgressStat({
         py: 1,
         borderRadius: `${designTokens.radius.md}px`,
         bgcolor: designTokens.semantic.neutralSoft,
-        minWidth: 128,
-        flex: '1 1 128px',
+        minWidth: 0,
+        flex: '1 1 120px',
+        maxWidth: '100%',
       }}
     >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 1 }}>
@@ -112,7 +113,9 @@ function MetricCard({ label, value, accent }: { label: string; value: string; ac
         py: 1,
         borderRadius: `${designTokens.radius.md}px`,
         bgcolor: accent ? `${accent}14` : designTokens.semantic.neutralSoft,
-        minWidth: 92,
+        minWidth: 0,
+        flex: '1 1 88px',
+        maxWidth: '100%',
       }}
     >
       <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block' }}>
@@ -148,9 +151,14 @@ export function TimesheetMonthSummaryBar({
         flexWrap: 'wrap',
         alignItems: 'stretch',
         gap: 1.5,
-        px: 2,
+        px: { xs: 1.25, sm: 2 },
         py: 1.5,
         mb: 2,
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        boxSizing: 'border-box',
+        overflow: 'hidden',
         borderRadius: `${designTokens.radius.lg}px`,
         border: '1px solid',
         borderColor: 'divider',

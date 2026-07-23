@@ -80,6 +80,7 @@ export interface OnboardingChecklistDetail extends OnboardingChecklist {
 export interface OnboardingChecklistCreate {
   employee_name: string;
   employee_user_id?: string | null;
+  employee_email?: string | null;
   employee_code?: string | null;
   joining_date?: string | null;
   designation?: string | null;

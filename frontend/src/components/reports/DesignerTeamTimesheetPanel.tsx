@@ -131,17 +131,9 @@ export function DesignerTeamTimesheetPanel({
 
   return (
     <Stack spacing={2}>
-      <Paper sx={{ p: 2.5 }}>
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            gap: 2,
-            justifyContent: 'space-between',
-            alignItems: { md: 'flex-start' },
-          }}
-        >
-          <Box>
+      <Paper sx={{ p: 2.5, overflow: 'hidden' }}>
+        <Stack spacing={2}>
+          <Box sx={{ minWidth: 0 }}>
             <Typography variant="h6">Timesheet Reports</Typography>
             <Typography variant="body2" color="text.secondary">
               Set filters, then Generate to preview in the UI. Download Excel unlocks after a
@@ -149,19 +141,20 @@ export function DesignerTeamTimesheetPanel({
               excluded).
             </Typography>
           </Box>
+
           <Box
             sx={{
               display: 'grid',
               gap: 1.5,
+              width: '100%',
+              minWidth: 0,
               gridTemplateColumns: {
                 xs: '1fr',
-                sm: 'repeat(2, minmax(140px, 1fr))',
-                lg: 'repeat(4, minmax(140px, 1fr)) auto auto',
+                sm: 'repeat(2, minmax(0, 1fr))',
+                md: 'repeat(3, minmax(0, 1fr))',
+                xl: 'repeat(4, minmax(0, 1fr))',
               },
-              alignItems: 'start',
-              minWidth: { md: 480 },
-              maxWidth: 1100,
-              flex: 1,
+              '& > *': { minWidth: 0, width: '100%' },
             }}
           >
             <TextField
@@ -172,6 +165,7 @@ export function DesignerTeamTimesheetPanel({
               onChange={(event) =>
                 handlePeriodChange(event.target.value as (typeof PERIOD_REPORTS)[number]['id'])
               }
+              fullWidth
             >
               {PERIOD_REPORTS.map((row) => (
                 <MenuItem key={row.id} value={row.id}>
@@ -183,6 +177,7 @@ export function DesignerTeamTimesheetPanel({
               periodType={selected.period}
               anchor={anchor}
               onAnchorChange={setAnchor}
+              fluid
             />
             <TextField
               select
@@ -191,6 +186,7 @@ export function DesignerTeamTimesheetPanel({
               value={customerId}
               onChange={(event) => setCustomerId(event.target.value)}
               helperText="Optional"
+              fullWidth
               slotProps={{ inputLabel: { shrink: true } }}
             >
               <MenuItem value="">All customers</MenuItem>
@@ -207,6 +203,7 @@ export function DesignerTeamTimesheetPanel({
               value={teamId}
               onChange={(event) => setTeamId(event.target.value)}
               helperText="Your accessible teams only"
+              fullWidth
               slotProps={{ inputLabel: { shrink: true } }}
             >
               <MenuItem value="">All accessible teams</MenuItem>
@@ -216,12 +213,14 @@ export function DesignerTeamTimesheetPanel({
                 </MenuItem>
               ))}
             </TextField>
+          </Box>
+
+          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               startIcon={<PlayArrowRoundedIcon />}
               onClick={() => previewQuery.generate()}
               disabled={previewQuery.isFetching}
-              sx={{ alignSelf: { lg: 'center' } }}
             >
               {previewQuery.isFetching ? 'Generating…' : 'Generate'}
             </Button>
@@ -231,13 +230,12 @@ export function DesignerTeamTimesheetPanel({
                 startIcon={<DownloadRoundedIcon />}
                 onClick={() => void handleDownload()}
                 disabled={!previewQuery.canDownload || downloading}
-                sx={{ alignSelf: { lg: 'center' } }}
               >
                 {downloading ? 'Downloading…' : 'Download Excel'}
               </Button>
             ) : null}
-          </Box>
-        </Box>
+          </Stack>
+        </Stack>
         {downloadError ? <Alert severity="error" sx={{ mt: 2 }}>{downloadError}</Alert> : null}
       </Paper>
 
@@ -297,7 +295,7 @@ export function DesignerTeamTimesheetPanel({
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               {payload.period.label} · Includes draft / submitted / approved
             </Typography>
-            <TableContainer>
+            <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -351,7 +349,7 @@ export function DesignerTeamTimesheetPanel({
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               Cumulative as of {new Date(payload.generated_at).toLocaleString()}
             </Typography>
-            <TableContainer>
+            <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>

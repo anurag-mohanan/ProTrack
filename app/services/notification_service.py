@@ -31,6 +31,7 @@ _NOTIFICATION_TYPE_TO_TEMPLATE = {
     NotificationType.timesheet_approved: "timesheet_approved",
     NotificationType.timesheet_rejected: "timesheet_rejected",
     NotificationType.import_completed: "historical_import_completed",
+    NotificationType.new_hire_onboarding: "new_hire_onboarding",
 }
 
 
@@ -112,6 +113,7 @@ def create_notification(
     entity_id: UUID | None = None,
     email_context: dict | None = None,
     send_email: bool = True,
+    commit: bool = True,
 ) -> Notification | None:
     if not _notification_allowed(db, notification_type):
         return None
@@ -125,8 +127,11 @@ def create_notification(
         entity_id=entity_id,
     )
     db.add(notification)
-    db.commit()
-    db.refresh(notification)
+    if commit:
+        db.commit()
+        db.refresh(notification)
+    else:
+        db.flush()
 
     if send_email:
         _dispatch_notification_email(

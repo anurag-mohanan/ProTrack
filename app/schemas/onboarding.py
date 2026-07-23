@@ -17,6 +17,7 @@ OnboardingChecklistStatus = Literal["in_progress", "completed", "cancelled"]
 class OnboardingChecklistCreate(BlankOptionalFieldsMixin, BaseModel):
     employee_name: str = Field(min_length=2, max_length=200)
     employee_user_id: Optional[UUID] = None
+    employee_email: Optional[str] = Field(default=None, max_length=255)
     employee_code: Optional[str] = Field(default=None, max_length=40)
     joining_date: Optional[date] = None
     designation: Optional[str] = Field(default=None, max_length=120)

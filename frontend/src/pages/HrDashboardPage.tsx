@@ -156,6 +156,10 @@ export function HrDashboardPage() {
         <Link component={RouterLink} to="/hr/exit-process">
           Exit process
         </Link>
+        ; compliance gaps are listed on{' '}
+        <Link component={RouterLink} to="/hr/process-audit">
+          Process Audit
+        </Link>
         .
       </Typography>
     </Stack>

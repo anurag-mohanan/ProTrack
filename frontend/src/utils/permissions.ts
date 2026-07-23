@@ -12,6 +12,7 @@ import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import SupportAgentRoundedIcon from '@mui/icons-material/SupportAgentRounded';
 import HowToRegRoundedIcon from '@mui/icons-material/HowToRegRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import type { CurrentUser } from '../types';
 import {
   ALL_MODULES,
@@ -332,6 +333,12 @@ const HR_SECTION_NAV: SectionNavConfigItem[] = [
     label: 'Exit process',
     path: '/hr/exit-process',
     icon: LogoutRoundedIcon,
+  },
+  {
+    module: MODULE_HUMAN_RESOURCES,
+    label: 'Process Audit',
+    path: '/hr/process-audit',
+    icon: FactCheckRoundedIcon,
   },
   {
     module: MODULE_PERFORMANCE,

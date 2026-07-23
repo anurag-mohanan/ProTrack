@@ -110,85 +110,97 @@ export function CustomerTimesheetPackPanel({
   const payload = previewQuery.hasGenerated ? previewQuery.data : undefined;
 
   const controls = (
-    <Box
-      sx={{
-        display: 'grid',
-        gap: 1.5,
-        gridTemplateColumns: { xs: '1fr', md: '1.5fr 1fr 1.2fr 1.2fr auto' },
-        alignItems: 'start',
-      }}
-    >
-      <TextField
-        select
-        size="small"
-        label="Customer"
-        required
-        value={customerId}
-        onChange={(event) => setCustomerId(event.target.value)}
-        helperText="Required — pack is always for one customer"
-        slotProps={{ inputLabel: { shrink: true } }}
+    <Stack spacing={1.5}>
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 1.5,
+          width: '100%',
+          minWidth: 0,
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: 'repeat(2, minmax(0, 1fr))',
+            md: 'repeat(3, minmax(0, 1fr))',
+          },
+          '& > *': { minWidth: 0, width: '100%' },
+        }}
       >
-        <MenuItem value="">Select customer</MenuItem>
-        {(customers).map((customer) => (
-          <MenuItem key={customer.id} value={customer.id}>
-            {customer.name}
-          </MenuItem>
-        ))}
-      </TextField>
-      <TextField
-        select
-        size="small"
-        label="Week or month"
-        value={periodType}
-        onChange={(event) => handlePeriodTypeChange(event.target.value as 'weekly' | 'monthly')}
-      >
-        <MenuItem value="weekly">Weekly</MenuItem>
-        <MenuItem value="monthly">Monthly</MenuItem>
-      </TextField>
-      <ReportPeriodSelectors
-        periodType={periodType}
-        anchor={anchor}
-        onAnchorChange={setAnchor}
-      />
-      <TextField
-        select
-        size="small"
-        label="Team"
-        value={teamId}
-        onChange={(event) => setTeamId(event.target.value)}
-        helperText={
-          multiTeam
-            ? 'Leaders with multiple teams: pick one, or leave as all accessible'
-            : 'Optional team filter'
-        }
-        slotProps={{ inputLabel: { shrink: true } }}
-      >
-        <MenuItem value="">All accessible teams</MenuItem>
-        {teams.map((team) => (
-          <MenuItem key={team.id} value={team.id}>
-            {team.name}
-          </MenuItem>
-        ))}
-      </TextField>
-      <Button
-        variant="contained"
-        startIcon={<PlayArrowRoundedIcon />}
-        disabled={!customerId || previewQuery.isFetching}
-        onClick={() => previewQuery.generate()}
-        sx={{ mt: 0.5 }}
-      >
-        {previewQuery.isFetching ? 'Generating…' : 'Generate'}
-      </Button>
-      <Button
-        variant="outlined"
-        startIcon={<DownloadRoundedIcon />}
-        disabled={!canExport || !previewQuery.canDownload || downloading}
-        onClick={() => void handleDownload()}
-        sx={{ mt: 0.5 }}
-      >
-        {downloading ? 'Downloading…' : 'Download Excel'}
-      </Button>
-    </Box>
+        <TextField
+          select
+          size="small"
+          label="Customer"
+          required
+          value={customerId}
+          onChange={(event) => setCustomerId(event.target.value)}
+          helperText="Required — pack is always for one customer"
+          fullWidth
+          slotProps={{ inputLabel: { shrink: true } }}
+        >
+          <MenuItem value="">Select customer</MenuItem>
+          {customers.map((customer) => (
+            <MenuItem key={customer.id} value={customer.id}>
+              {customer.name}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          size="small"
+          label="Week or month"
+          value={periodType}
+          onChange={(event) => handlePeriodTypeChange(event.target.value as 'weekly' | 'monthly')}
+          fullWidth
+        >
+          <MenuItem value="weekly">Weekly</MenuItem>
+          <MenuItem value="monthly">Monthly</MenuItem>
+        </TextField>
+        <ReportPeriodSelectors
+          periodType={periodType}
+          anchor={anchor}
+          onAnchorChange={setAnchor}
+          fluid
+        />
+        <TextField
+          select
+          size="small"
+          label="Team"
+          value={teamId}
+          onChange={(event) => setTeamId(event.target.value)}
+          helperText={
+            multiTeam
+              ? 'Leaders with multiple teams: pick one, or leave as all accessible'
+              : 'Optional team filter'
+          }
+          fullWidth
+          slotProps={{ inputLabel: { shrink: true } }}
+        >
+          <MenuItem value="">All accessible teams</MenuItem>
+          {teams.map((team) => (
+            <MenuItem key={team.id} value={team.id}>
+              {team.name}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Box>
+      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+        <Button
+          variant="contained"
+          startIcon={<PlayArrowRoundedIcon />}
+          disabled={!customerId || previewQuery.isFetching}
+          onClick={() => previewQuery.generate()}
+        >
+          {previewQuery.isFetching ? 'Generating…' : 'Generate'}
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<DownloadRoundedIcon />}
+          disabled={!canExport || !previewQuery.canDownload || downloading}
+          onClick={() => void handleDownload()}
+        >
+          {downloading ? 'Downloading…' : 'Download Excel'}
+        </Button>
+      </Stack>
+    </Stack>
   );
 
   return (

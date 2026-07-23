@@ -153,7 +153,7 @@ export default function ExitProcessPage() {
       setSelectedId(data.id);
       invalidate();
     },
-    onError: (error) => showError(getErrorMessage(error, 'Could not start exit interview')),
+    onError: (error) => showError(getErrorMessage(error) || 'Could not start exit interview'),
   });
 
   const saveMutation = useMutation({
@@ -169,7 +169,7 @@ export default function ExitProcessPage() {
       showSuccess('Exit interview saved');
       invalidate();
     },
-    onError: (error) => showError(getErrorMessage(error, 'Could not save exit interview')),
+    onError: (error) => showError(getErrorMessage(error) || 'Could not save exit interview'),
   });
 
   const completeMutation = useMutation({
@@ -186,7 +186,7 @@ export default function ExitProcessPage() {
       showSuccess('Exit interview marked completed');
       invalidate();
     },
-    onError: (error) => showError(getErrorMessage(error, 'Could not complete exit interview')),
+    onError: (error) => showError(getErrorMessage(error) || 'Could not complete exit interview'),
   });
 
   const deleteMutation = useMutation({
@@ -197,7 +197,7 @@ export default function ExitProcessPage() {
       setDeleteTarget(null);
       invalidate();
     },
-    onError: (error) => showError(getErrorMessage(error, 'Could not delete exit interview')),
+    onError: (error) => showError(getErrorMessage(error) || 'Could not delete exit interview'),
   });
 
   const users = usersQuery.data ?? [];
@@ -251,7 +251,11 @@ export default function ExitProcessPage() {
         ))}
       </Stack>
 
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start">
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        spacing={2}
+        sx={{ alignItems: 'flex-start' }}
+      >
         <Box sx={{ width: { xs: '100%', md: 360 }, flexShrink: 0 }}>
           <Stack spacing={1.25}>
             {(listQuery.data ?? []).length === 0 ? (
@@ -273,7 +277,11 @@ export default function ExitProcessPage() {
                 >
                   <CardActionArea onClick={() => setSelectedId(row.id)}>
                     <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                      <Stack direction="row" justifyContent="space-between" spacing={1}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ justifyContent: 'space-between' }}
+                      >
                         <Box>
                           <Typography sx={{ fontWeight: 700 }}>{row.employee_name}</Typography>
                           <Typography variant="caption" color="text.secondary">
@@ -306,9 +314,8 @@ export default function ExitProcessPage() {
               <Stack spacing={2}>
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
-                  justifyContent="space-between"
                   spacing={1}
-                  alignItems={{ sm: 'center' }}
+                  sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }}
                 >
                   <Box>
                     <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -461,7 +468,7 @@ export default function ExitProcessPage() {
                   onChange={(e) => setMeta((p) => ({ ...p, notes: e.target.value }))}
                 />
 
-                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
                   <ProsohmButton
                     buttonVariant="outlined"
                     disabled={saveMutation.isPending}

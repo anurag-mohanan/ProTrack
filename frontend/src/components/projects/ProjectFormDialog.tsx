@@ -174,6 +174,7 @@ export function ProjectFormDialog({
   const [changeTemplateOpen, setChangeTemplateOpen] = useState(false);
   const baselineRef = useRef('');
   const hydratedForRef = useRef<string | null>(null);
+  const autoTemplateKeyRef = useRef<string | null>(null);
 
   const serializeForm = (values: ProjectFormValues) => JSON.stringify(values);
 
@@ -236,6 +237,7 @@ export function ProjectFormDialog({
   useEffect(() => {
     if (!open) {
       hydratedForRef.current = null;
+      autoTemplateKeyRef.current = null;
       setForm(emptyForm);
       baselineRef.current = serializeForm(emptyForm);
       return;
@@ -413,20 +415,45 @@ export function ProjectFormDialog({
 
   useEffect(() => {
     if (isEdit || !open || !form.customer_id || !form.project_type_id) return;
-    if (form.project_template_id) return;
-    const customer = activeCustomers.find((item) => item.id === form.customer_id);
-    if (customer?.default_project_template_id) {
-      setForm((current) => ({
-        ...current,
-        project_template_id: customer.default_project_template_id ?? '',
-      }));
+    if (matchingTemplatesQuery.isFetching) return;
+
+    const key = `${form.customer_id}:${form.project_type_id}`;
+    if (autoTemplateKeyRef.current === key) return;
+
+    if (
+      form.project_template_id &&
+      matchingTemplates.some((template) => template.id === form.project_template_id)
+    ) {
+      autoTemplateKeyRef.current = key;
+      return;
     }
+
+    const customer = activeCustomers.find((item) => item.id === form.customer_id);
+    const withMilestones = matchingTemplates.filter(
+      (template) => (template.milestone_count ?? 0) > 0,
+    );
+    const preferred =
+      withMilestones.find((template) => template.id === customer?.default_project_template_id) ||
+      withMilestones.find((template) => template.is_customer_specific) ||
+      withMilestones.find((template) => template.is_default) ||
+      withMilestones[0] ||
+      matchingTemplates[0];
+
+    autoTemplateKeyRef.current = key;
+    if (!preferred) return;
+    setForm((current) => ({
+      ...current,
+      project_template_id: preferred.id,
+      team_id: current.team_id || preferred.default_team_id || current.team_id,
+    }));
   }, [
     activeCustomers,
     form.customer_id,
     form.project_template_id,
     form.project_type_id,
     isEdit,
+    matchingTemplates,
+    matchingTemplatesQuery.isFetching,
     open,
   ]);
 
@@ -513,9 +540,8 @@ export function ProjectFormDialog({
       project_type_id: customer?.default_project_type_id ?? current.project_type_id,
       working_model_id: customer?.default_working_model_id ?? current.working_model_id,
       team_id: customer?.default_team_id ?? current.team_id,
-      project_template_id: isEdit
-        ? current.project_template_id
-        : (customer?.default_project_template_id ?? ''),
+      // Clear so the match effect can pick a type-compatible template with milestones.
+      project_template_id: isEdit ? current.project_template_id : '',
     }));
   };
 
@@ -778,10 +804,19 @@ export function ProjectFormDialog({
                   helper="Defines the default milestones created for the project."
                   options={[
                     { value: '', label: 'None' },
-                    ...matchingTemplates.map((template) => ({
-                      value: template.id,
-                      label: `${template.name}${template.is_default ? ' (Default)' : ''}${template.is_customer_specific ? ` (${template.customer_name ?? 'Customer'})` : ''}`,
-                    })),
+                    ...matchingTemplates.map((template) => {
+                      const scopeLabel = template.is_customer_specific
+                        ? template.customer_name ?? 'Customer'
+                        : 'General';
+                      const milestoneLabel =
+                        (template.milestone_count ?? 0) === 0
+                          ? ' · no milestones'
+                          : ` · ${template.milestone_count} milestones`;
+                      return {
+                        value: template.id,
+                        label: `${template.name}${template.is_default ? ' (Default)' : ''} (${scopeLabel})${milestoneLabel}`,
+                      };
+                    }),
                   ]}
                   onChange={(event) => {
                     const templateId = String(event.target.value);

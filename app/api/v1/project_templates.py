@@ -103,6 +103,12 @@ def match_project_templates(
 def list_project_templates(
     pagination: PaginationParams = Depends(pagination_query),
     search: str | None = Query(None),
+    customer_id: UUID | None = Query(None),
+    project_type_id: UUID | None = Query(None),
+    scope: str | None = Query(
+        None,
+        description="Filter by ownership: all | customer | general",
+    ),
     db: Session = Depends(get_db),
 ):
     page = project_template_crud.get_multi_paginated_with_counts(
@@ -112,6 +118,9 @@ def list_project_templates(
         skip=pagination.skip,
         limit=pagination.limit,
         search=search,
+        customer_id=customer_id,
+        project_type_id=project_type_id,
+        scope=scope,
     )
     items = [
         _build_template_read(

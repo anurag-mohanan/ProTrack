@@ -94,6 +94,32 @@ class CRUDProjectTemplate(
             .where(ProjectTemplate.id == record_id)
         )
 
+    @staticmethod
+    def _apply_list_filters(
+        stmt,
+        *,
+        search: str | None = None,
+        customer_id: UUID | None = None,
+        project_type_id: UUID | None = None,
+        scope: str | None = None,
+    ):
+        if search:
+            term = f"%{search.strip()}%"
+            stmt = stmt.where(
+                ProjectTemplate.name.ilike(term)
+                | ProjectTemplate.description.ilike(term)
+            )
+        if customer_id is not None:
+            stmt = stmt.where(ProjectTemplate.customer_id == customer_id)
+        if project_type_id is not None:
+            stmt = stmt.where(ProjectTemplate.project_type_id == project_type_id)
+        normalized_scope = (scope or "all").strip().lower()
+        if normalized_scope == "customer":
+            stmt = stmt.where(ProjectTemplate.customer_id.is_not(None))
+        elif normalized_scope == "general":
+            stmt = stmt.where(ProjectTemplate.customer_id.is_(None))
+        return stmt
+
     def get_multi_with_counts(
         self,
         db: Session,
@@ -101,6 +127,9 @@ class CRUDProjectTemplate(
         skip: int = 0,
         limit: int = 500,
         search: str | None = None,
+        customer_id: UUID | None = None,
+        project_type_id: UUID | None = None,
+        scope: str | None = None,
     ) -> list[tuple[ProjectTemplate, int, int]]:
         milestone_count = func.count(ProjectTemplateMilestone.id).label("milestone_count")
         stmt = (
@@ -115,12 +144,13 @@ class CRUDProjectTemplate(
             )
             .group_by(ProjectTemplate.id)
         )
-        if search:
-            term = f"%{search.strip()}%"
-            stmt = stmt.where(
-                ProjectTemplate.name.ilike(term)
-                | ProjectTemplate.description.ilike(term)
-            )
+        stmt = self._apply_list_filters(
+            stmt,
+            search=search,
+            customer_id=customer_id,
+            project_type_id=project_type_id,
+            scope=scope,
+        )
         rows = db.execute(
             stmt.order_by(ProjectTemplate.name).offset(skip).limit(limit)
         ).all()
@@ -143,14 +173,23 @@ class CRUDProjectTemplate(
             for template, count in rows
         ]
 
-    def count_list(self, db: Session, *, search: str | None = None) -> int:
+    def count_list(
+        self,
+        db: Session,
+        *,
+        search: str | None = None,
+        customer_id: UUID | None = None,
+        project_type_id: UUID | None = None,
+        scope: str | None = None,
+    ) -> int:
         stmt = select(func.count()).select_from(ProjectTemplate)
-        if search:
-            term = f"%{search.strip()}%"
-            stmt = stmt.where(
-                ProjectTemplate.name.ilike(term)
-                | ProjectTemplate.description.ilike(term)
-            )
+        stmt = self._apply_list_filters(
+            stmt,
+            search=search,
+            customer_id=customer_id,
+            project_type_id=project_type_id,
+            scope=scope,
+        )
         return int(db.scalar(stmt) or 0)
 
     def get_multi_paginated_with_counts(
@@ -162,16 +201,28 @@ class CRUDProjectTemplate(
         skip: int | None = None,
         limit: int | None = None,
         search: str | None = None,
+        customer_id: UUID | None = None,
+        project_type_id: UUID | None = None,
+        scope: str | None = None,
     ) -> PaginatedResponse[Any]:
         resolved_skip = skip if skip is not None else (page - 1) * page_size
         resolved_limit = limit if limit is not None else page_size
         resolved_page = (resolved_skip // resolved_limit) + 1 if resolved_limit else page
-        total = self.count_list(db, search=search)
+        total = self.count_list(
+            db,
+            search=search,
+            customer_id=customer_id,
+            project_type_id=project_type_id,
+            scope=scope,
+        )
         rows = self.get_multi_with_counts(
             db,
             skip=resolved_skip,
             limit=resolved_limit,
             search=search,
+            customer_id=customer_id,
+            project_type_id=project_type_id,
+            scope=scope,
         )
         return PaginatedResponse.build(
             items=rows,
@@ -187,6 +238,10 @@ class CRUDProjectTemplate(
             project_type_id=obj_in.project_type_id,
             customer_id=obj_in.customer_id,
         )
+        if obj_in.is_active and not obj_in.milestones:
+            raise ProTrackValidationError(
+                "Active project templates must include at least one milestone"
+            )
         if obj_in.is_default and obj_in.customer_id is None:
             clear_default_for_type(db, project_type_id=obj_in.project_type_id)
 
@@ -245,6 +300,11 @@ class CRUDProjectTemplate(
                 else ProjectTemplateMilestoneCreate.model_validate(item)
                 for item in milestones
             ]
+            will_be_active = bool(update_data.get("is_active", updated.is_active))
+            if will_be_active and len(parsed) == 0:
+                raise ProTrackValidationError(
+                    "Active project templates must include at least one milestone"
+                )
             _replace_milestones(db, updated, parsed)
             db.commit()
             db.refresh(updated)

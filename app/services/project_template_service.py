@@ -20,6 +20,55 @@ from app.models.models import (
 )
 
 
+def _template_has_milestones(db: Session, template_id: UUID) -> bool:
+    count = db.scalar(
+        select(func.count())
+        .select_from(ProjectTemplateMilestone)
+        .where(ProjectTemplateMilestone.project_template_id == template_id)
+    )
+    return int(count or 0) > 0
+
+
+def _load_ordered_template_milestones(
+    db: Session, template_id: UUID
+) -> list[ProjectTemplateMilestone]:
+    return list(
+        db.scalars(
+            select(ProjectTemplateMilestone)
+            .where(ProjectTemplateMilestone.project_template_id == template_id)
+            .order_by(ProjectTemplateMilestone.sort_order)
+        ).all()
+    )
+
+
+def _fallback_template_with_milestones(
+    db: Session,
+    *,
+    project_type_id: UUID,
+    exclude_template_id: UUID | None = None,
+) -> ProjectTemplate | None:
+    candidates = list(
+        db.scalars(
+            select(ProjectTemplate)
+            .where(
+                ProjectTemplate.project_type_id == project_type_id,
+                ProjectTemplate.is_active.is_(True),
+                ProjectTemplate.customer_id.is_(None),
+            )
+            .order_by(
+                ProjectTemplate.is_default.desc(),
+                ProjectTemplate.name.asc(),
+            )
+        ).all()
+    )
+    for candidate in candidates:
+        if exclude_template_id is not None and candidate.id == exclude_template_id:
+            continue
+        if _template_has_milestones(db, candidate.id):
+            return candidate
+    return None
+
+
 def list_matching_templates(
     db: Session,
     *,
@@ -31,6 +80,7 @@ def list_matching_templates(
     Customer-specific templates remain available for any project of that type so
     quote-created and manually created projects see the same catalog. Templates
     for the selected customer are sorted first, then global defaults, then others.
+    Templates without milestones are sorted last within each group.
     """
     templates = list(
         db.scalars(
@@ -46,14 +96,20 @@ def list_matching_templates(
         ).all()
     )
 
-    def _sort_key(template: ProjectTemplate) -> tuple[int, int, str]:
+    def _sort_key(template: ProjectTemplate) -> tuple[int, int, int, str]:
         if template.customer_id == customer_id:
             group = 0
         elif template.customer_id is None:
             group = 1
         else:
             group = 2
-        return (group, 0 if template.is_default else 1, template.name.lower())
+        has_milestones = 0 if template.milestones else 1
+        return (
+            group,
+            has_milestones,
+            0 if template.is_default else 1,
+            template.name.lower(),
+        )
 
     templates.sort(key=_sort_key)
     return templates
@@ -85,18 +141,22 @@ def resolve_template(
             default_template is not None
             and default_template.is_active
             and default_template.project_type_id == project_type_id
+            and _template_has_milestones(db, default_template.id)
         ):
             return default_template
 
-    customer_template = db.scalar(
-        select(ProjectTemplate).where(
-            ProjectTemplate.project_type_id == project_type_id,
-            ProjectTemplate.customer_id == customer_id,
-            ProjectTemplate.is_active.is_(True),
-        )
+    customer_templates = list(
+        db.scalars(
+            select(ProjectTemplate).where(
+                ProjectTemplate.project_type_id == project_type_id,
+                ProjectTemplate.customer_id == customer_id,
+                ProjectTemplate.is_active.is_(True),
+            )
+        ).all()
     )
-    if customer_template is not None:
-        return customer_template
+    for customer_template in customer_templates:
+        if _template_has_milestones(db, customer_template.id):
+            return customer_template
 
     default_template = db.scalar(
         select(ProjectTemplate).where(
@@ -106,17 +166,21 @@ def resolve_template(
             ProjectTemplate.is_active.is_(True),
         )
     )
-    if default_template is not None:
+    if default_template is not None and _template_has_milestones(db, default_template.id):
         return default_template
 
-    fallback = db.scalar(
+    fallback = _fallback_template_with_milestones(db, project_type_id=project_type_id)
+    if fallback is not None:
+        return fallback
+
+    any_active = db.scalar(
         select(ProjectTemplate).where(
             ProjectTemplate.project_type_id == project_type_id,
             ProjectTemplate.is_active.is_(True),
         )
     )
-    if fallback is not None:
-        return fallback
+    if any_active is not None:
+        return any_active
 
     raise ProTrackValidationError(
         "No active project template is configured for the selected project type"
@@ -168,22 +232,29 @@ def resolve_template_assigned_user(
     return resolve_auto_assigned_user_id(project, assigned_role)
 
 
-def create_milestones_from_template(    db: Session,
+def create_milestones_from_template(
+    db: Session,
     *,
     project: Project,
     template: ProjectTemplate,
     anchor_date: date | None = None,
 ) -> None:
     anchor = anchor_date or date.today()
-    template_milestones = db.scalars(
-        select(ProjectTemplateMilestone)
-        .where(ProjectTemplateMilestone.project_template_id == template.id)
-        .order_by(ProjectTemplateMilestone.sort_order)
-    ).all()
+    template_milestones = _load_ordered_template_milestones(db, template.id)
+
+    if not template_milestones:
+        fallback = _fallback_template_with_milestones(
+            db,
+            project_type_id=template.project_type_id,
+            exclude_template_id=template.id,
+        )
+        if fallback is not None:
+            template_milestones = _load_ordered_template_milestones(db, fallback.id)
 
     if not template_milestones:
         raise ProTrackValidationError(
-            f"Project template '{template.name}' has no milestones configured"
+            f"Project template '{template.name}' has no milestones configured. "
+            "Add milestones in Admin → Project Templates before using it."
         )
 
     for template_milestone in template_milestones:

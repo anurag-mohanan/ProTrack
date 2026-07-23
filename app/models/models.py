@@ -1728,6 +1728,68 @@ class OnboardingChecklistItem(Base, TimestampMixin):
     completed_by: Mapped[Optional[User]] = relationship(foreign_keys=[completed_by_id])
 
 
+class ExitInterview(Base, TimestampMixin):
+    """Generic employee exit interview (PP-HRD-FO-30) — one per departing employee."""
+
+    __tablename__ = "exit_interviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    form_code: Mapped[str] = mapped_column(String(40), nullable=False, default="PP-HRD-FO-30")
+    employee_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    employee_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    employee_code: Mapped[Optional[str]] = mapped_column(String(40))
+    designation: Mapped[Optional[str]] = mapped_column(String(120))
+    department_name: Mapped[Optional[str]] = mapped_column(String(120))
+    org_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("org_departments.id"), nullable=True
+    )
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=True
+    )
+    team_name: Mapped[Optional[str]] = mapped_column(String(120))
+    role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("roles.id"), nullable=True
+    )
+    role_name: Mapped[Optional[str]] = mapped_column(String(120))
+    reporting_manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    reporting_manager_name: Mapped[Optional[str]] = mapped_column(String(200))
+    last_working_date: Mapped[Optional[date]] = mapped_column(Date)
+    resignation_date: Mapped[Optional[date]] = mapped_column(Date)
+    interview_date: Mapped[Optional[date]] = mapped_column(Date)
+    interviewer_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    interviewer_name: Mapped[Optional[str]] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", index=True
+    )
+    # JSON map of question_id -> answer (string / number / choice).
+    answers_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    employee: Mapped[Optional[User]] = relationship(foreign_keys=[employee_user_id])
+    reporting_manager: Mapped[Optional[User]] = relationship(
+        foreign_keys=[reporting_manager_id]
+    )
+    interviewer: Mapped[Optional[User]] = relationship(foreign_keys=[interviewer_user_id])
+    created_by: Mapped[Optional[User]] = relationship(foreign_keys=[created_by_id])
+    org_department: Mapped[Optional["OrgDepartment"]] = relationship(
+        foreign_keys=[org_department_id]
+    )
+    team: Mapped[Optional["Team"]] = relationship(foreign_keys=[team_id])
+    role: Mapped[Optional["Role"]] = relationship(foreign_keys=[role_id])
+
+
 # Phase 7 foundation models (registers tables with metadata)
 from app.models.foundation import (  # noqa: E402, F401
     CompanySettings,

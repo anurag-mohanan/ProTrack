@@ -148,10 +148,13 @@ export function HrDashboardPage() {
         ))}
       </Stack>
       <Typography color="text.secondary">
-        Leave & attendance remain on GreytHR. New-hire checklists (PP-HRD-FO-14) auto-route owners and
-        Help Desk tickets — open{' '}
+        Leave & attendance remain on GreytHR. New-hire checklists live under{' '}
         <Link component={RouterLink} to="/hr/onboarding">
-          Human Resources → Onboarding
+          Onboarding
+        </Link>
+        ; departing employees use the generic exit interview under{' '}
+        <Link component={RouterLink} to="/hr/exit-process">
+          Exit process
         </Link>
         .
       </Typography>

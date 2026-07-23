@@ -664,8 +664,10 @@ def _replace_fee_bands(
 
 
 def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommercialTermsRead:
-    from app.services.finance.dashboard_service import _normalize_monthly_fee
+    from datetime import date as date_cls
+
     from app.services.finance.billable_headcount import billable_salary_counts_by_skill
+    from app.services.finance.retainer_fee import prorated_retainer_amount_for_term
 
     team = db.get(Team, row.team_id)
     model = db.get(WorkingModel, row.working_model_id)
@@ -688,21 +690,7 @@ def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommerci
                 billable_count=counts.get(skill, 0),
             )
         )
-    if strategy == WorkingModelCode.retainer.value:
-        bands = list(row.fee_bands or [])
-        if bands:
-            band_map = {(b.skill_level or ""): Decimal(str(b.base_fee_inr or 0)) for b in bands}
-            default_rate = band_map.get("") or Decimal(str(row.base_fee_inr or 0))
-            period_amount = Decimal("0.00")
-            for skill, count in counts.items():
-                period_amount += band_map.get(skill, default_rate) * Decimal(count)
-        else:
-            period_amount = Decimal(str(row.base_fee_inr or 0)) * Decimal(resource_count or 0)
-        monthly_signal = _normalize_monthly_fee(period_amount, row.billing_period)
-    elif uses_flat_customer_fee(strategy):
-        monthly_signal = _normalize_monthly_fee(Decimal(str(row.base_fee_inr or 0)), row.billing_period)
-    else:
-        monthly_signal = Decimal("0.00")
+    monthly_signal = prorated_retainer_amount_for_term(db, row, as_of=date_cls.today())
     return TeamCommercialTermsRead(
         id=row.id,
         team_id=row.team_id,

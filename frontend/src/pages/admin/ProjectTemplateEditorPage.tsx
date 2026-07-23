@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -43,10 +44,12 @@ import {
   createProjectTemplate,
   fetchAdminProjectTypes,
   fetchProjectTemplate,
+  fetchProjectTemplates,
   updateProjectTemplate,
 } from '../../api/projectTemplates';
 import { ensureArray } from '../../types/pagination';
 import type {
+  ProjectTemplate,
   ProjectTemplateMilestoneInput,
   ProjectType,
 } from '../../types/ProjectTemplate';
@@ -130,7 +133,12 @@ export default function ProjectTemplateEditorPage() {
   const [editingMilestoneKey, setEditingMilestoneKey] = useState<string | null>(null);
   const [milestoneDraft, setMilestoneDraft] = useState<MilestoneRow>(createMilestoneRow());
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [sourceTemplates, setSourceTemplates] = useState<ProjectTemplate[]>([]);
+  const [copyFromTemplateId, setCopyFromTemplateId] = useState('');
+  const [copyingMilestones, setCopyingMilestones] = useState(false);
   const baselineRef = useRef('');
+  const milestonesSectionRef = useRef<HTMLDivElement | null>(null);
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
   const serializeEditorState = (templateForm: TemplateFormState, rows: MilestoneRow[]) =>
     JSON.stringify({ form: templateForm, milestones: rows });
@@ -160,6 +168,60 @@ export default function ProjectTemplateEditorPage() {
       setLookupsLoading(false);
     }
   }, [showError]);
+
+  useEffect(() => {
+    if (!isNew) return;
+    const prefillCustomerId = searchParams.get('customer_id') ?? '';
+    const prefillProjectTypeId = searchParams.get('project_type_id') ?? '';
+    if (!prefillCustomerId && !prefillProjectTypeId) return;
+    setForm((current) => ({
+      ...current,
+      customer_id: prefillCustomerId || current.customer_id,
+      project_type_id: prefillProjectTypeId || current.project_type_id,
+      is_default: prefillCustomerId ? false : current.is_default,
+    }));
+  }, [isNew, searchParams]);
+
+  useEffect(() => {
+    if (location.hash !== '#milestones') return;
+    const timer = window.setTimeout(() => {
+      milestonesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setEditingMilestoneKey(null);
+      setMilestoneDraft(createMilestoneRow({}, milestones.length + 1));
+    }, 150);
+    return () => window.clearTimeout(timer);
+    // Intentionally only re-run when navigation hash / load state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.hash, loading, lookupsLoading]);
+
+  useEffect(() => {
+    if (!form.project_type_id) {
+      setSourceTemplates([]);
+      return;
+    }
+    let cancelled = false;
+    void fetchProjectTemplates({
+      project_type_id: form.project_type_id,
+      limit: 200,
+    })
+      .then((rows) => {
+        if (cancelled) return;
+        setSourceTemplates(
+          rows.filter(
+            (template) =>
+              template.id !== templateId &&
+              (template.milestone_count ?? 0) > 0 &&
+              template.is_active,
+          ),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setSourceTemplates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.project_type_id, templateId]);
 
   const loadTemplate = useCallback(async () => {
     if (isNew || !templateId) return;
@@ -323,6 +385,49 @@ export default function ProjectTemplateEditorPage() {
         ),
       ]),
     );
+  };
+
+  const handleCopyMilestonesFromTemplate = async () => {
+    if (!copyFromTemplateId) {
+      showError('Select a template to copy milestones from.');
+      return;
+    }
+    setCopyingMilestones(true);
+    try {
+      const source = await fetchProjectTemplate(copyFromTemplateId);
+      if (!source.milestones.length) {
+        showError('Selected template has no milestones to copy.');
+        return;
+      }
+      setMilestones(
+        reindexMilestones(
+          source.milestones
+            .slice()
+            .sort((left, right) => left.sort_order - right.sort_order)
+            .map((milestone) =>
+              createMilestoneRow({
+                milestone_name: milestone.milestone_name,
+                description: milestone.description,
+                sort_order: milestone.sort_order,
+                default_due_offset_days: milestone.default_due_offset_days,
+                is_required: milestone.is_required,
+                is_visible: milestone.is_visible ?? true,
+                project_stage: milestone.project_stage ?? '',
+                estimated_hours: milestone.estimated_hours ?? null,
+                assigned_role: milestone.assigned_role ?? 'Designer',
+                default_assigned_user_id: milestone.default_assigned_user_id ?? null,
+              }),
+            ),
+        ),
+      );
+      setEditingMilestoneKey(null);
+      setMilestoneDraft(createMilestoneRow({}, source.milestones.length + 1));
+      showSuccess(`Copied ${source.milestones.length} milestones.`);
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setCopyingMilestones(false);
+    }
   };
 
   const moveMilestone = (index: number, direction: -1 | 1) => {
@@ -544,13 +649,62 @@ export default function ProjectTemplateEditorPage() {
         </Grid>
       </Card>
 
-      <Card sx={{ p: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">Milestones</Typography>
-          <Button startIcon={<AddIcon />} onClick={openCreateMilestone}>
+      <Card id="milestones" ref={milestonesSectionRef} sx={{ p: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
+          <Box>
+            <Typography variant="h6">Milestones</Typography>
+            <Typography variant="body2" color="text.secondary">
+              These steps are created when a project uses this template.
+            </Typography>
+          </Box>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateMilestone}>
             Add Milestone
           </Button>
         </Box>
+
+        {form.project_type_id ? (
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 1.5,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              mb: 2,
+            }}
+          >
+            <FilterSelect
+              label="Copy milestones from"
+              size="small"
+              value={copyFromTemplateId}
+              onChange={(event) => setCopyFromTemplateId(String(event.target.value))}
+              sx={{ minWidth: 280, flex: 1, maxWidth: 420 }}
+            >
+              <MenuItem value="">Select a template…</MenuItem>
+              {sourceTemplates.map((template) => (
+                <MenuItem key={template.id} value={template.id}>
+                  {template.name}
+                  {template.customer_name ? ` (${template.customer_name})` : ' (General)'}
+                  {` · ${template.milestone_count} milestones`}
+                </MenuItem>
+              ))}
+            </FilterSelect>
+            <Button
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              disabled={!copyFromTemplateId || copyingMilestones}
+              onClick={() => void handleCopyMilestonesFromTemplate()}
+            >
+              Copy
+            </Button>
+          </Box>
+        ) : null}
+
+        {milestones.length === 0 ? (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            This template has no milestones yet. Customer projects will fail or fall back until you
+            add at least one milestone.
+          </Alert>
+        ) : null}
 
         <Table size="small">
           <TableHead>

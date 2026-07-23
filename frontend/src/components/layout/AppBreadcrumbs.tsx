@@ -19,6 +19,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/resource-planning': 'Resource Planning',
   '/hr': 'HR Dashboard',
   '/hr/onboarding': 'Onboarding',
+  '/hr/exit-process': 'Exit process',
   '/performance': 'Performance',
   '/help-desk': 'Help Desk',
   '/organization': 'Organization Chart',

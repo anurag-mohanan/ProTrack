@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Chip, IconButton, Stack, Tooltip } from '@mui/material';
+import { Box, Chip, IconButton, MenuItem, Stack, Tooltip } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RestoreIcon from '@mui/icons-material/Restore';
+import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
 import type { GridColDef } from '@mui/x-data-grid';
+import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PaginatedDataGrid } from '../../components/common/PaginatedDataGrid';
@@ -15,9 +17,11 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
+import { fetchCustomers } from '../../api/lookups';
 import {
   deactivateProjectTemplate,
   duplicateProjectTemplate,
+  fetchAdminProjectTypes,
   fetchProjectTemplatesPaginated,
   reactivateProjectTemplate,
 } from '../../api/projectTemplates';
@@ -31,6 +35,7 @@ import {
   SearchToolbar,
   TableRowActions,
 } from '../../components/ui/design-system';
+import { FilterSelect } from '../../components/ui/design-system/FilterSelect';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { usePaginatedQuery } from '../../hooks/usePaginatedQuery';
 import { formatCellValue } from '../../utils/format';
@@ -38,21 +43,44 @@ import { canDeleteRecords } from '../../utils/permissions';
 import { useAuth } from '../../context/AuthContext';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 
+type TemplateScope = 'all' | 'customer' | 'general';
+
 export default function ProjectTemplatesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
   const [search, setSearch] = useState('');
+  const [customerId, setCustomerId] = useState('');
+  const [projectTypeId, setProjectTypeId] = useState('');
+  const [scope, setScope] = useState<TemplateScope>('all');
   const debouncedSearch = useDebouncedValue(search, 300);
+
+  const customersQuery = useQuery({
+    queryKey: ['customers', 'project-templates-filter'],
+    queryFn: fetchCustomers,
+  });
+  const projectTypesQuery = useQuery({
+    queryKey: ['project-types', 'admin'],
+    queryFn: fetchAdminProjectTypes,
+  });
 
   const listFilters = useMemo(() => {
     const params: Record<string, string> = {};
     if (debouncedSearch.trim()) {
       params.search = debouncedSearch.trim();
     }
+    if (customerId) {
+      params.customer_id = customerId;
+    }
+    if (projectTypeId) {
+      params.project_type_id = projectTypeId;
+    }
+    if (scope !== 'all') {
+      params.scope = scope;
+    }
     return params;
-  }, [debouncedSearch]);
+  }, [customerId, debouncedSearch, projectTypeId, scope]);
 
   const { pagination, query, items: templates } = usePaginatedQuery({
     queryKey: ['project-templates'],
@@ -69,9 +97,28 @@ export default function ProjectTemplatesPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<ProjectTemplate | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  const activeCustomers = useMemo(
+    () => (customersQuery.data ?? []).filter((customer) => customer.is_active),
+    [customersQuery.data],
+  );
+  const activeProjectTypes = useMemo(
+    () => (projectTypesQuery.data ?? []).filter((type) => type.is_active),
+    [projectTypesQuery.data],
+  );
+
   const reload = useCallback(async () => {
     await query.refetch();
   }, [query]);
+
+  const createTemplatePath = useMemo(() => {
+    const params = new URLSearchParams();
+    if (customerId) params.set('customer_id', customerId);
+    if (projectTypeId) params.set('project_type_id', projectTypeId);
+    const queryString = params.toString();
+    return queryString
+      ? `/admin/project-templates/new?${queryString}`
+      : '/admin/project-templates/new';
+  }, [customerId, projectTypeId]);
 
   const handleDuplicate = async (template: ProjectTemplate) => {
     setActionLoading(true);
@@ -104,9 +151,13 @@ export default function ProjectTemplatesPage() {
     navigate(`/admin/project-templates/${template.id}`);
   };
 
+  const openMilestones = (template: ProjectTemplate) => {
+    navigate(`/admin/project-templates/${template.id}#milestones`);
+  };
+
   const actionsColumnWidth = isAdmin
-    ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 120
-    : DATA_GRID_ACTIONS_COLUMN_WIDTH + 80;
+    ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 160
+    : DATA_GRID_ACTIONS_COLUMN_WIDTH + 120;
 
   const columns: GridColDef<ProjectTemplate>[] = useMemo(
     () => [
@@ -128,7 +179,24 @@ export default function ProjectTemplatesPage() {
       {
         field: 'milestone_count',
         headerName: 'Milestones',
-        width: 110,
+        width: 130,
+        renderCell: (params) => {
+          const count = params.row.milestone_count ?? 0;
+          if (count === 0) {
+            return (
+              <Chip
+                label="Add milestones"
+                size="small"
+                color="warning"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openMilestones(params.row);
+                }}
+              />
+            );
+          }
+          return count;
+        },
       },
       {
         field: 'projects_using_count',
@@ -163,6 +231,18 @@ export default function ProjectTemplatesPage() {
         filterable: false,
         renderCell: (params) => (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+            <Tooltip title="Edit milestones">
+              <IconButton
+                size="small"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openMilestones(params.row);
+                }}
+                disabled={actionLoading}
+              >
+                <TimelineOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Duplicate">
               <IconButton
                 size="small"
@@ -227,7 +307,7 @@ export default function ProjectTemplatesPage() {
           <ProsohmButton
             buttonVariant="primary"
             startIcon={<AddIcon />}
-            onClick={() => navigate('/admin/project-templates/new')}
+            onClick={() => navigate(createTemplatePath)}
           >
             Create Template
           </ProsohmButton>
@@ -239,8 +319,50 @@ export default function ProjectTemplatesPage() {
           label="Search templates"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          sx={{ minWidth: 280, flex: 1, maxWidth: 480 }}
+          sx={{ minWidth: 220, flex: 1, maxWidth: 360 }}
         />
+        <FilterSelect
+          label="Customer"
+          value={customerId}
+          onChange={(event) => {
+            setCustomerId(String(event.target.value));
+            if (event.target.value) {
+              setScope('all');
+            }
+          }}
+          sx={{ minWidth: 200 }}
+        >
+          <MenuItem value="">All customers</MenuItem>
+          {activeCustomers.map((customer) => (
+            <MenuItem key={customer.id} value={customer.id}>
+              {customer.name}
+            </MenuItem>
+          ))}
+        </FilterSelect>
+        <FilterSelect
+          label="Project Type"
+          value={projectTypeId}
+          onChange={(event) => setProjectTypeId(String(event.target.value))}
+          sx={{ minWidth: 180 }}
+        >
+          <MenuItem value="">All types</MenuItem>
+          {activeProjectTypes.map((projectType) => (
+            <MenuItem key={projectType.id} value={projectType.id}>
+              {projectType.name}
+            </MenuItem>
+          ))}
+        </FilterSelect>
+        <FilterSelect
+          label="Scope"
+          value={scope}
+          disabled={Boolean(customerId)}
+          onChange={(event) => setScope(String(event.target.value) as TemplateScope)}
+          sx={{ minWidth: 160 }}
+        >
+          <MenuItem value="all">All templates</MenuItem>
+          <MenuItem value="customer">Customer-specific</MenuItem>
+          <MenuItem value="general">General only</MenuItem>
+        </FilterSelect>
       </SearchToolbar>
 
       <ContentCard noPadding>
@@ -286,12 +408,28 @@ export default function ProjectTemplatesPage() {
               {selectedTemplate.is_default ? (
                 <Chip label="Default" size="small" color="primary" />
               ) : null}
+              {(selectedTemplate.milestone_count ?? 0) === 0 ? (
+                <Chip label="Needs milestones" size="small" color="warning" />
+              ) : null}
             </Stack>
           ) : null
         }
         quickActions={
           selectedTemplate ? (
             <DrawerQuickActions>
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                startIcon={<TimelineOutlinedIcon />}
+                onClick={() => {
+                  openMilestones(selectedTemplate);
+                  setSelectedTemplate(null);
+                }}
+              >
+                {(selectedTemplate.milestone_count ?? 0) === 0
+                  ? 'Add Milestones'
+                  : 'Edit Milestones'}
+              </ProsohmButton>
               <ProsohmButton
                 buttonVariant="outlined"
                 size="small"

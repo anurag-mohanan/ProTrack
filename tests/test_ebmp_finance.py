@@ -521,7 +521,7 @@ def test_team_commercial_terms_in_dashboard(client, auth_headers, session):
             "customer_fee_amount": "120000",
             "currency_code": "INR",
             "billing_period": "monthly",
-            "effective_from": date.today().isoformat(),
+            "effective_from": date.today().replace(day=1).isoformat(),
         },
     )
     assert create.status_code == 201, create.text
@@ -583,7 +583,7 @@ def test_non_billable_member_excluded_from_retainer_fee(client, auth_headers, se
             "customer_fee_amount": "10000",
             "currency_code": "INR",
             "billing_period": "monthly",
-            "effective_from": date.today().isoformat(),
+            "effective_from": date.today().replace(day=1).isoformat(),
         },
     )
     assert create.status_code == 201, create.text

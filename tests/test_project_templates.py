@@ -510,3 +510,65 @@ def test_project_read_exposes_template_change_eligibility(client, template_db):
     body = read_response.json()
     assert body["can_change_template"] is True
     assert body["template_change_blocked_reason"] is None
+
+
+def test_list_templates_filters_by_customer_and_scope(client, template_db):
+    sybridge = template_db.scalar(select(Customer).where(Customer.name == "Sybridge"))
+    assert sybridge is not None
+
+    customer_response = client.get(
+        "/api/v1/project-templates",
+        params={"customer_id": str(sybridge.id), "limit": 100},
+        headers=client.auth_headers,
+    )
+    assert customer_response.status_code == 200, customer_response.text
+    customer_names = [item["name"] for item in customer_response.json()["items"]]
+    assert "Sybridge Mold Design" in customer_names
+    assert "General Mold Design" not in customer_names
+
+    general_response = client.get(
+        "/api/v1/project-templates",
+        params={"scope": "general", "limit": 100},
+        headers=client.auth_headers,
+    )
+    assert general_response.status_code == 200, general_response.text
+    general_names = [item["name"] for item in general_response.json()["items"]]
+    assert "General Mold Design" in general_names
+    assert all(
+        item["customer_id"] is None for item in general_response.json()["items"]
+    )
+
+
+def test_empty_customer_template_falls_back_to_general_milestones(client, template_db):
+    mold_type = _get_project_type(template_db, "Mold Design")
+    empty = ProjectTemplate(
+        name=f"Empty Customer Template {uuid.uuid4().hex[:6]}",
+        description="Missing milestones",
+        project_type_id=mold_type.id,
+        customer_id=IDS["customer"],
+        is_default=False,
+        is_active=True,
+    )
+    template_db.add(empty)
+    template_db.commit()
+    template_db.refresh(empty)
+
+    payload = _create_project_payload(
+        template_db,
+        customer_id=IDS["customer"],
+        contact_id=IDS["contact"],
+        project_type_id=mold_type.id,
+        template_id=empty.id,
+    )
+    create_response = client.post(
+        "/api/v1/projects", json=payload, headers=client.auth_headers
+    )
+    assert create_response.status_code == 201, create_response.text
+    body = create_response.json()
+    assert body["project_template_id"] == str(empty.id)
+    milestones = template_db.scalars(
+        select(Milestone)
+        .where(Milestone.project_id == uuid.UUID(body["id"]))
+        .order_by(Milestone.sort_order)
+    ).all()
+    assert len(milestones) > 0

@@ -511,7 +511,14 @@ export default function CustomersPage() {
                   { value: '', label: 'None' },
                   ...projectTemplates.map((template) => ({
                     value: template.id,
-                    label: template.name,
+                    label: [
+                      template.name,
+                      template.project_type_name ? `· ${template.project_type_name}` : null,
+                      template.customer_name ? `· ${template.customer_name}` : '· General',
+                      `· ${template.milestone_count ?? 0} milestones`,
+                    ]
+                      .filter(Boolean)
+                      .join(' '),
                   })),
                 ]}
                 onChange={(event) =>

@@ -500,49 +500,9 @@ def _expense_sum(
 
 
 def _team_fee_monthly(db: Session, *, team_id: UUID | None, today: date) -> Decimal:
-    from app.models.enums import WorkingModelCode
-    from app.models.models import WorkingModel
-    from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
-    from app.services.finance.billable_headcount import (
-        billable_salary_counts_by_skill,
-        billable_salary_headcount,
-    )
+    from app.services.finance.retainer_fee import team_retainer_fee_monthly
 
-    stmt = select(TeamCommercialTerms).where(TeamCommercialTerms.is_active.is_(True))
-    if team_id is not None:
-        stmt = stmt.where(TeamCommercialTerms.team_id == team_id)
-    total = Decimal("0.00")
-    for term in db.scalars(stmt).all():
-        if term.effective_from and term.effective_from > today:
-            continue
-        if term.effective_to and term.effective_to < today:
-            continue
-        model = db.get(WorkingModel, term.working_model_id)
-        strategy = model.strategy_key if model is not None else None
-        if not uses_flat_customer_fee(strategy):
-            continue
-        is_retainer = strategy == WorkingModelCode.retainer or (
-            hasattr(strategy, "value") and strategy.value == WorkingModelCode.retainer.value
-        )
-        bands = list(getattr(term, "fee_bands", None) or [])
-        if is_retainer and bands:
-            counts = billable_salary_counts_by_skill(db, term.team_id, as_of=today)
-            band_map = {
-                (band.skill_level or ""): _d(band.base_fee_inr)
-                for band in bands
-            }
-            default_rate = band_map.get("") or _d(term.base_fee_inr)
-            period_amount = Decimal("0.00")
-            for skill, count in counts.items():
-                rate = band_map.get(skill, default_rate)
-                period_amount += rate * Decimal(count)
-        elif is_retainer:
-            count = billable_salary_headcount(db, term.team_id, as_of=today)
-            period_amount = _d(term.base_fee_inr) * Decimal(count)
-        else:
-            period_amount = _d(term.base_fee_inr)
-        total += _normalize_monthly_fee(period_amount, term.billing_period)
-    return total
+    return team_retainer_fee_monthly(db, team_id=team_id, as_of=today)
 
 
 def _team_rollups(

@@ -491,11 +491,9 @@ def get_kpi_breakdown(
         from app.models.finance import TeamCommercialTerms
         from app.models.models import WorkingModel
         from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
-        from app.services.finance.dashboard_service import _normalize_monthly_fee
-        from app.models.enums import WorkingModelCode
-        from app.services.finance.billable_headcount import (
-            billable_salary_counts_by_skill,
-            billable_salary_headcount,
+        from app.services.finance.retainer_fee import (
+            prorated_retainer_amount_for_term,
+            team_retainer_fee_monthly,
         )
 
         stmt = select(TeamCommercialTerms).where(TeamCommercialTerms.is_active.is_(True))
@@ -503,55 +501,38 @@ def get_kpi_breakdown(
             stmt = stmt.where(TeamCommercialTerms.team_id == team_id)
         lines: list[dict] = []
         for term in db.scalars(stmt).all():
-            if term.effective_from and term.effective_from > today:
-                continue
-            if term.effective_to and term.effective_to < today:
+            monthly = prorated_retainer_amount_for_term(db, term, as_of=today)
+            if monthly <= 0:
                 continue
             model = db.get(WorkingModel, term.working_model_id)
             strategy = model.strategy_key if model is not None else None
             if not uses_flat_customer_fee(strategy):
                 continue
             team = db.get(Team, term.team_id)
-            is_retainer = strategy == WorkingModelCode.retainer or (
-                hasattr(strategy, "value") and strategy.value == WorkingModelCode.retainer.value
-            )
-            bands = list(getattr(term, "fee_bands", None) or [])
-            if is_retainer and bands:
-                counts = billable_salary_counts_by_skill(db, term.team_id)
-                band_map = {
-                    (band.skill_level or ""): _q(band.base_fee_inr) for band in bands
-                }
-                default_rate = band_map.get("") or _q(term.base_fee_inr)
-                period_amount = Decimal("0.00")
-                for skill, count in counts.items():
-                    rate = band_map.get(skill, default_rate)
-                    period_amount += rate * Decimal(count)
-            elif is_retainer:
-                count = billable_salary_headcount(db, term.team_id)
-                period_amount = _q(term.base_fee_inr) * Decimal(count)
-            else:
-                period_amount = _q(term.base_fee_inr)
-            monthly = _normalize_monthly_fee(period_amount, term.billing_period)
-            if monthly <= 0:
-                continue
             lines.append(
                 {
                     "id": str(term.id),
                     "label": team.name if team else str(term.team_id),
-                    "detail": model.name if model else "Commercial fee",
+                    "detail": (
+                        f"{model.name if model else 'Commercial fee'} "
+                        "(day-prorated from resource / term start)"
+                    ),
                     "amount_inr": _q(monthly),
                     "kind": "fee",
                 }
             )
         lines.sort(key=lambda r: r["amount_inr"], reverse=True)
-        total = _team_fee_monthly(db, team_id=team_id, today=today)
+        total = team_retainer_fee_monthly(db, team_id=team_id, as_of=today)
         return {
             "metric": key,
             "title": "Team fees / month",
-            "subtitle": "Retainer / subscription commercial terms normalized to monthly INR.",
+            "subtitle": (
+                "Retainer / subscription fees day-prorated from each resource’s start date "
+                "(and commercial term start) within the month."
+            ),
             "total_inr": _q(total),
             "currency_code": base,
-            "formula": "Sum of active flat customer fee terms (monthly equivalent)",
+            "formula": "Σ (monthly rate × calendar days on team ÷ days in month)",
             "insights": _insights_from_lines(lines, _q(total), subject="fee lines"),
             "groups": [
                 {

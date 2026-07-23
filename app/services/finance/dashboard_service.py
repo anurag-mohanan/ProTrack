@@ -49,7 +49,9 @@ def _user_ids_for_team(db: Session, team_id: UUID) -> set[UUID]:
     - Delivery teams: only **billable** membership (fixed-resource engineers).
       Managers / Planning Board / Design Leaders with ``is_billable_headcount=False``
       are Prosohm overhead and must not inflate delivery-team salary even if listed.
-    - Corporate / Management: all primary members (overhead pool).
+    - Corporate / Management: all primary (or sole-home) members (overhead pool).
+    - Members with **no primary team anywhere** still count on a team they work on
+      (primary is optional in Admin — otherwise People costs never hit P&L).
     - Legacy ``User.team_id`` without a membership row: include only when the user's
       role is a fixed-resource default (or team is the overhead home).
     """
@@ -63,22 +65,21 @@ def _user_ids_for_team(db: Session, team_id: UUID) -> set[UUID]:
     team = db.get(Team, team_id)
     corporate = is_corporate_team(team)
     ids: set[UUID] = set()
-    members = db.scalars(
-        select(TeamMember).where(
-            TeamMember.team_id == team_id,
-            TeamMember.is_primary.is_(True),
-        )
-    ).all()
+
+    members = db.scalars(select(TeamMember).where(TeamMember.team_id == team_id)).all()
+    member_user_ids = {member.user_id for member in members}
+    users_with_any_primary = set(
+        db.scalars(
+            select(TeamMember.user_id).where(TeamMember.is_primary.is_(True))
+        ).all()
+    )
+
     for member in members:
-        if corporate or bool(getattr(member, "is_billable_headcount", True)):
+        if not (corporate or bool(getattr(member, "is_billable_headcount", True))):
+            continue
+        if member.is_primary or member.user_id not in users_with_any_primary:
             ids.add(member.user_id)
 
-    member_user_ids = {
-        row
-        for row in db.scalars(
-            select(TeamMember.user_id).where(TeamMember.team_id == team_id)
-        ).all()
-    }
     legacy = db.scalars(
         select(User).where(User.team_id == team_id, User.is_active.is_(True))
     ).all()
@@ -386,10 +387,21 @@ def _salary_for_users(
 
 
 def _salary_for_team(db: Session, team_id: UUID, *, as_of: date | None = None) -> Decimal:
-    """Team-scoped salary using primary-home period proration."""
-    from app.services.finance.employment_cost import primary_team_salary_factor
+    """Team-scoped salary for net profit / operating cost.
+
+    Uses the billable∩home roster from ``_user_ids_for_team``, then prorates with
+    primary-home periods (or full employment factor for sole-home members).
+    """
+    from app.services.finance.employment_cost import (
+        employment_salary_factor,
+        primary_team_salary_factor,
+    )
 
     ref = as_of or date.today()
+    eligible = _user_ids_for_team(db, team_id)
+    if not eligible:
+        return Decimal("0.00")
+
     stmt = (
         select(EmployeeCostProfile, User)
         .join(User, User.id == EmployeeCostProfile.user_id)
@@ -397,6 +409,7 @@ def _salary_for_team(db: Session, team_id: UUID, *, as_of: date | None = None) -
             EmployeeCostProfile.is_active.is_(True),
             User.requires_salary.is_(True),
             User.is_active.is_(True),
+            EmployeeCostProfile.user_id.in_(eligible),
         )
     )
     total = Decimal("0.00")
@@ -404,6 +417,9 @@ def _salary_for_team(db: Session, team_id: UUID, *, as_of: date | None = None) -
         factor = primary_team_salary_factor(
             db, user_id=user.id, team_id=team_id, as_of=ref
         )
+        if factor <= 0:
+            # Sole-home / non-primary membership still in eligible set.
+            factor = employment_salary_factor(user, as_of=ref)
         if factor <= 0:
             continue
         total += _d(profile.base_monthly_salary_inr) * factor
@@ -413,15 +429,43 @@ def _salary_for_team(db: Session, team_id: UUID, *, as_of: date | None = None) -
 def _user_ids_with_team_salary(
     db: Session, team_id: UUID, *, as_of: date | None = None
 ) -> set[UUID]:
-    from app.services.finance.employment_cost import primary_team_salary_factor
+    """Users whose salary contributes to this team's operating cost on as_of."""
+    from app.services.finance.employment_cost import (
+        employment_salary_factor,
+        primary_team_salary_factor,
+    )
 
     ref = as_of or date.today()
+    eligible = _user_ids_for_team(db, team_id)
     ids: set[UUID] = set()
-    users = db.scalars(select(User).where(User.is_active.is_(True))).all()
-    for user in users:
-        if primary_team_salary_factor(db, user_id=user.id, team_id=team_id, as_of=ref) > 0:
-            ids.add(user.id)
+    for user_id in eligible:
+        user = db.get(User, user_id)
+        if user is None or not user.is_active:
+            continue
+        factor = primary_team_salary_factor(
+            db, user_id=user_id, team_id=team_id, as_of=ref
+        )
+        if factor <= 0:
+            factor = employment_salary_factor(user, as_of=ref)
+        if factor > 0:
+            ids.add(user_id)
     return ids
+
+
+def _expense_monthly_amount(expense: Expense) -> Decimal:
+    """Convert stored amount to a monthly signal using expense frequency."""
+    from app.models.enums import CostFrequency
+
+    amount = _d(expense.base_amount_inr)
+    freq = expense.frequency
+    if freq == CostFrequency.monthly or freq == CostFrequency.recurring:
+        return amount
+    if freq == CostFrequency.quarterly:
+        return (amount / Decimal("3")).quantize(Decimal("0.01"))
+    if freq == CostFrequency.yearly:
+        return (amount / Decimal("12")).quantize(Decimal("0.01"))
+    # one_time: full amount in months it remains active (FY purchase signal)
+    return amount
 
 
 def _expense_sum(
@@ -451,7 +495,7 @@ def _expense_sum(
         factor = expense_month_factor(expense, as_of=ref)
         if factor <= 0:
             continue
-        total += _d(expense.base_amount_inr) * factor
+        total += _expense_monthly_amount(expense) * factor
     return total.quantize(Decimal("0.01"))
 
 
@@ -515,6 +559,9 @@ def _team_rollups(
     prosohm_opex = _expense_sum(
         db, team_id=team.id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.opex
     )
+    prosohm_capex = _expense_sum(
+        db, team_id=team.id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.capex
+    )
     pass_through = _expense_sum(
         db, team_id=team.id, paid_by=ExpensePaidBy.customer, nature=CostNature.opex
     )
@@ -534,7 +581,8 @@ def _team_rollups(
         months_elapsed_in_period(today, bounds[0], bounds[1]) if bounds is not None else 0
     )
     fee_quarter = (fee * Decimal(fee_months)).quantize(Decimal("0.01"))
-    operating = prosohm_opex + salary
+    # Fully loaded team cost: salaries + software/OpEx + hardware CapEx assigned to the team.
+    operating = prosohm_opex + salary + prosohm_capex
     revenue = quote_revenue + fee
     period_quarter_revenue = (quote_quarter + fee_quarter).quantize(Decimal("0.01"))
     gross_profit = revenue - quote_estimated_cost
@@ -555,6 +603,7 @@ def _team_rollups(
         "is_overhead_home": is_corporate_team(team),
         "salary_cost_inr": salary,
         "prosohm_opex_inr": prosohm_opex,
+        "prosohm_capex_inr": prosohm_capex,
         "pass_through_opex_inr": pass_through,
         "monthly_operating_cost_inr": operating,
         "team_commercial_fee_monthly_inr": fee,
@@ -655,7 +704,7 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     )
 
     planning_revenue = revenue + team_fee_monthly
-    operating_cost = prosohm_opex + salary_cost
+    operating_cost = prosohm_opex + salary_cost + capex
     display_revenue = revenue + team_fee_monthly
     # Actual period revenue: quote awards in period + retainer accrued (not ×3 projection)
     period_monthly_revenue = (quote_month + team_fee_monthly).quantize(Decimal("0.01"))

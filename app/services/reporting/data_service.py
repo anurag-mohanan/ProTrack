@@ -46,7 +46,7 @@ from app.schemas.reporting import (
 from app.services.holiday_service import load_holiday_dates
 from app.services.project_calculation_service import calculate_hours, calculate_progress
 from app.services.reporting.periods import build_report_period
-from app.services.reporting.report_scope import ReportScope, user_matches_scope
+from app.services.reporting.report_scope import ReportScope, refine_scope_for_period, user_matches_scope
 from app.services.reporting.timesheet_report_inclusion import (
     users_excluded_from_timesheet_reports,
 )
@@ -75,7 +75,11 @@ def _entry_scope_clauses(scope: ReportScope):
                 ),
             )
         )
-    if scope.user_ids is not None:
+    if scope.membership_windows is not None:
+        from app.services.reporting.team_membership_windows import membership_entry_sql_clause
+
+        clauses.append(membership_entry_sql_clause(scope.membership_windows))
+    elif scope.user_ids is not None:
         if not scope.user_ids:
             clauses.append(Timesheet.user_id.in_(()))
         else:
@@ -167,6 +171,12 @@ def build_engineering_report(
         anchor or date.today(),
     )
     period = build_report_period(period_type, anchor=anchor, holidays=holidays)
+    report_scope = refine_scope_for_period(
+        db,
+        report_scope,
+        range_start=period.start_date,
+        range_end=period.end_date,
+    )
     company = get_or_create_company_settings(db)
     daily_hours = _decimal(company.default_working_hours_per_day)
 

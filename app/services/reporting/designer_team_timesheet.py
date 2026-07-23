@@ -6,10 +6,14 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.models import User
+from app.models.enums import TeamBillingMode, WorkingModelCode
+from app.models.finance import TeamCommercialTerms
+from app.models.models import User, WorkingModel
 from app.schemas.reporting import DesignerTeamTimesheetPayload
+from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
 from app.services.reporting.data_service import build_engineering_report
 from app.services.reporting.report_scope import ReportScope, resolve_report_scope
 
@@ -38,6 +42,56 @@ def period_for_timesheet_report(report_id: str, period_type: str | None = None) 
     if period_type in ("weekly", "monthly", "quarterly", "yearly"):
         return period_type
     return "monthly"
+
+
+def _active_team_commercial_terms(
+    db: Session, team_id: UUID, *, as_of: date | None = None
+) -> TeamCommercialTerms | None:
+    today = as_of or date.today()
+    rows = db.scalars(
+        select(TeamCommercialTerms)
+        .where(
+            TeamCommercialTerms.team_id == team_id,
+            TeamCommercialTerms.is_active.is_(True),
+        )
+        .order_by(TeamCommercialTerms.effective_from.desc())
+    ).all()
+    for row in rows:
+        if row.effective_from and row.effective_from > today:
+            continue
+        if row.effective_to and row.effective_to < today:
+            continue
+        return row
+    return None
+
+
+def _team_is_retainer_or_subscription(db: Session, team_id: UUID, *, as_of: date | None = None) -> bool:
+    """Retainer working model / subscription billing — customer column is not useful."""
+    terms = _active_team_commercial_terms(db, team_id, as_of=as_of)
+    if terms is None:
+        return False
+    if terms.billing_mode == TeamBillingMode.subscription:
+        return True
+    model = db.get(WorkingModel, terms.working_model_id)
+    if model is None:
+        return False
+    strategy = model.strategy_key
+    return uses_flat_customer_fee(strategy) or strategy == WorkingModelCode.retainer
+
+
+def include_customer_columns_for_scope(
+    db: Session,
+    *,
+    customer_id: UUID | None,
+    team_id: UUID | None,
+    as_of: date | None = None,
+) -> bool:
+    """Omit Customer columns for single-customer or retainer/subscription team reports."""
+    if customer_id is not None:
+        return False
+    if team_id is not None and _team_is_retainer_or_subscription(db, team_id, as_of=as_of):
+        return False
+    return True
 
 
 def build_designer_team_timesheet(
@@ -95,4 +149,10 @@ def build_designer_team_timesheet(
         team_count=len(teams),
         designer_count=len(designers),
         project_count=len(projects),
+        include_customer_columns=include_customer_columns_for_scope(
+            db,
+            customer_id=report_scope.customer_id or customer_id,
+            team_id=team_id,
+            as_of=full.period.end_date if full.period else None,
+        ),
     )

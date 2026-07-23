@@ -40,7 +40,7 @@ from app.crud.team_reports import (
 )
 from app.models.enums import ActivityAction, EntityType, ProjectStage
 from app.crud.dashboard import get_designer_workload
-from app.models.models import User
+from app.models.models import Customer, User
 from app.services.activity_service import log_activity
 from app.schemas.dashboard import DesignerWorkload
 from app.schemas.reports import (
@@ -87,6 +87,7 @@ from app.services.reporting.designer_team_timesheet import (
 )
 from app.services.reporting.excel.customer_timesheet import generate_customer_timesheet_excel
 from app.services.reporting.excel.designer_team_timesheet import generate_designer_team_timesheet_excel
+from app.services.reporting.export_filenames import customer_timesheet_download_filename
 from app.services.reporting.schedule_store import list_schedules, upsert_schedule
 
 router = APIRouter(
@@ -207,13 +208,11 @@ def customer_timesheet_pack_export(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     content = generate_customer_timesheet_excel(payload)
-    week_bit = f"-W{payload.week_number}" if payload.week_number is not None else ""
-    safe_customer = "".join(
-        ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in payload.customer_name
-    )[:40]
-    filename = (
-        f"{safe_customer}_{period_type}_timesheet_"
-        f"{payload.period.start_date.isoformat()}{week_bit}.xlsx"
+    filename = customer_timesheet_download_filename(
+        customer_name=payload.customer_name,
+        period_type=period_type,
+        period_start=payload.period.start_date,
+        week_number=payload.week_number,
     )
     log_activity(
         db,
@@ -280,6 +279,8 @@ def engineering_report_export(
         )
     try:
         if is_designer_team_timesheet_report(report_id):
+            scope = options.get("scope")
+            customer_id = getattr(scope, "customer_id", None) if scope is not None else None
             timesheet_payload = build_designer_team_timesheet(
                 db,
                 current_user=current_user,
@@ -288,10 +289,26 @@ def engineering_report_export(
                 anchor=options.get("anchor"),  # type: ignore[arg-type]
                 include_archived=bool(options.get("include_archived", True)),
                 include_deleted=bool(options.get("include_deleted", False)),
-                scope=options.get("scope"),  # type: ignore[arg-type]
+                scope=scope,  # type: ignore[arg-type]
             )
             content = generate_designer_team_timesheet_excel(timesheet_payload)
-            filename = f"{report_id}-{timesheet_payload.period.start_date.isoformat()}.xlsx"
+            if customer_id is not None:
+                customer = db.get(Customer, customer_id)
+                customer_name = customer.name if customer else "Customer"
+                period_type = str(options.get("period_type") or timesheet_payload.period.period_type)
+                week_number = (
+                    timesheet_payload.period.start_date.isocalendar()[1]
+                    if period_type == "weekly"
+                    else None
+                )
+                filename = customer_timesheet_download_filename(
+                    customer_name=customer_name,
+                    period_type=period_type,
+                    period_start=timesheet_payload.period.start_date,
+                    week_number=week_number,
+                )
+            else:
+                filename = f"{report_id}-{timesheet_payload.period.start_date.isoformat()}.xlsx"
         else:
             payload = reporting_engine.build_report(db, report_id=report_id, **options)
             content = reporting_engine.export_excel(payload)

@@ -117,6 +117,116 @@ def test_timesheet_excel_has_two_sheets(session):
     assert workbook.sheetnames == ["Designer Hours by Team", "Project Hours To Date"]
 
 
+def test_omit_customer_column_for_customer_filter(session):
+    team, week_start = _seed_timesheet_week(session)
+    admin = session.get(User, IDS["user_admin"])
+    assert admin
+    payload = build_designer_team_timesheet(
+        session,
+        current_user=admin,
+        report_id="monthly-timesheet",
+        anchor=week_start.replace(day=1),
+        customer_id=IDS["customer"],
+        team_id=team.id,
+    )
+    assert payload.include_customer_columns is False
+    workbook = load_workbook(
+        filename=__import__("io").BytesIO(generate_designer_team_timesheet_excel(payload))
+    )
+    designers = workbook["Designer Hours by Team"]
+    header_row = next(
+        row
+        for row in designers.iter_rows(min_row=1, max_row=20, values_only=True)
+        if row and row[0] == "Team"
+    )
+    assert "Customers" not in header_row
+    assert "Projects" in header_row
+
+    projects = workbook["Project Hours To Date"]
+    project_header = next(
+        row
+        for row in projects.iter_rows(min_row=1, max_row=20, values_only=True)
+        if row and row[0] == "Tool #"
+    )
+    assert "Customer" not in project_header
+
+
+def test_omit_customer_column_for_retainer_team(session):
+    from app.models.enums import TeamBillingMode, WorkingModelCode
+    from app.models.finance import TeamCommercialTerms
+    from app.models.models import WorkingModel
+
+    team, week_start = _seed_timesheet_week(session)
+    admin = session.get(User, IDS["user_admin"])
+    assert admin
+    model = WorkingModel(
+        id=uuid.uuid4(),
+        code=f"ret_ts_{uuid.uuid4().hex[:6]}",
+        strategy_key=WorkingModelCode.retainer,
+        name="Retainer Timesheet",
+        is_active=True,
+        is_archived=False,
+    )
+    session.add(model)
+    session.flush()
+    session.add(
+        TeamCommercialTerms(
+            team_id=team.id,
+            working_model_id=model.id,
+            billing_mode=TeamBillingMode.subscription,
+            customer_fee_amount=Decimal("5000"),
+            currency_code="INR",
+            base_fee_inr=Decimal("5000"),
+            effective_from=date(2026, 1, 1),
+            is_active=True,
+        )
+    )
+    session.commit()
+
+    payload = build_designer_team_timesheet(
+        session,
+        current_user=admin,
+        report_id="monthly-timesheet",
+        anchor=week_start.replace(day=1),
+        team_id=team.id,
+    )
+    assert payload.include_customer_columns is False
+    workbook = load_workbook(
+        filename=__import__("io").BytesIO(generate_designer_team_timesheet_excel(payload))
+    )
+    designers = workbook["Designer Hours by Team"]
+    header_row = next(
+        row
+        for row in designers.iter_rows(min_row=1, max_row=20, values_only=True)
+        if row and row[0] == "Team"
+    )
+    assert "Customers" not in header_row
+
+
+def test_keep_customer_column_for_non_retainer_team_without_customer(session):
+    team, week_start = _seed_timesheet_week(session)
+    admin = session.get(User, IDS["user_admin"])
+    assert admin
+    payload = build_designer_team_timesheet(
+        session,
+        current_user=admin,
+        report_id="monthly-timesheet",
+        anchor=week_start.replace(day=1),
+        team_id=team.id,
+    )
+    assert payload.include_customer_columns is True
+    workbook = load_workbook(
+        filename=__import__("io").BytesIO(generate_designer_team_timesheet_excel(payload))
+    )
+    designers = workbook["Designer Hours by Team"]
+    header_row = next(
+        row
+        for row in designers.iter_rows(min_row=1, max_row=20, values_only=True)
+        if row and row[0] == "Team"
+    )
+    assert "Customers" in header_row
+
+
 def test_timesheet_preview_api(client, session):
     team, week_start = _seed_timesheet_week(session)
     headers = login(client, "admin@prosohm.com")

@@ -93,6 +93,8 @@ export interface DesignerTeamTimesheetPayload {
   team_count: number;
   designer_count: number;
   project_count: number;
+  /** False for single-customer or retainer/subscription team reports. */
+  include_customer_columns?: boolean;
 }
 
 export interface DesignerToolBreakdownRow {

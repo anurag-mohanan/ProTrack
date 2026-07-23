@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -24,6 +24,7 @@ import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
+import { fetchTeams } from '../../api/lookups';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { toFiniteNumber } from '../../utils/format';
@@ -47,7 +48,8 @@ import {
 const OVERHEAD_CATEGORIES: Array<{
   code: string;
   label: string;
-  frequency: 'monthly' | 'quarterly' | 'yearly';
+  frequency: 'monthly' | 'quarterly' | 'yearly' | 'one_time';
+  nature: 'opex' | 'capex';
   hint: string;
   namePlaceholder: string;
 }> = [
@@ -55,27 +57,31 @@ const OVERHEAD_CATEGORIES: Array<{
     code: 'RENT',
     label: 'Rent',
     frequency: 'monthly',
-    hint: 'Facilities & leases',
+    nature: 'opex',
+    hint: 'Facilities & leases — usually Corporate',
     namePlaceholder: 'e.g. HQ lease, annex, parking',
   },
   {
     code: 'UTILITIES',
     label: 'Utilities',
     frequency: 'monthly',
-    hint: 'Power, water, genset',
+    nature: 'opex',
+    hint: 'Power, water, genset — usually Corporate',
     namePlaceholder: 'e.g. Electricity, water, diesel',
   },
   {
     code: 'INTERNET',
     label: 'Internet',
     frequency: 'monthly',
-    hint: 'Connectivity',
+    nature: 'opex',
+    hint: 'Connectivity — Corporate or team site',
     namePlaceholder: 'e.g. Primary ISP, backup link',
   },
   {
     code: 'OFFICE',
     label: 'Office expenses',
     frequency: 'monthly',
+    nature: 'opex',
     hint: 'Supplies & admin',
     namePlaceholder: 'e.g. Stationery, pantry',
   },
@@ -83,6 +89,7 @@ const OVERHEAD_CATEGORIES: Array<{
     code: 'MAINTENANCE',
     label: 'Maintenance',
     frequency: 'monthly',
+    nature: 'opex',
     hint: 'Facility & equipment',
     namePlaceholder: 'e.g. AMC, HVAC service',
   },
@@ -90,27 +97,47 @@ const OVERHEAD_CATEGORIES: Array<{
     code: 'CLOUD',
     label: 'Cloud',
     frequency: 'monthly',
-    hint: 'Hosting & SaaS infra',
+    nature: 'opex',
+    hint: 'Hosting & SaaS — assign to consuming team when dedicated',
     namePlaceholder: 'e.g. AWS, Azure, Google Workspace',
   },
   {
     code: 'SW_LICENSES',
     label: 'Software licenses',
     frequency: 'yearly',
-    hint: 'CAD / engineering tools',
+    nature: 'opex',
+    hint: 'CAD / engineering tools — assign to the team that uses them',
     namePlaceholder: 'e.g. NX Mach 3, AutoCAD, SolidWorks',
   },
   {
     code: 'SW_RENEWALS',
     label: 'Software renewals',
     frequency: 'yearly',
-    hint: 'Renewal cycles',
+    nature: 'opex',
+    hint: 'Renewal cycles — assign to the consuming team',
     namePlaceholder: 'e.g. NX renewal FY26',
+  },
+  {
+    code: 'HARDWARE',
+    label: 'Hardware (CapEx)',
+    frequency: 'one_time',
+    nature: 'capex',
+    hint: 'Workstations, 3D mice, peripherals — assign to the team',
+    namePlaceholder: 'e.g. Dell workstation batch',
+  },
+  {
+    code: 'SERVERS',
+    label: 'Servers (CapEx)',
+    frequency: 'one_time',
+    nature: 'capex',
+    hint: 'Servers / NAS — assign to owning team or Corporate',
+    namePlaceholder: 'e.g. File server upgrade',
   },
   {
     code: 'INSURANCE',
     label: 'Insurance',
     frequency: 'yearly',
+    nature: 'opex',
     hint: 'Corporate policies',
     namePlaceholder: 'e.g. Property, liability',
   },
@@ -118,14 +145,16 @@ const OVERHEAD_CATEGORIES: Array<{
     code: 'TRAINING',
     label: 'Training',
     frequency: 'yearly',
-    hint: 'Learning',
+    nature: 'opex',
+    hint: 'Learning — assign to team when dedicated',
     namePlaceholder: 'e.g. Certification cohort',
   },
   {
     code: 'TRAVEL',
     label: 'Travel',
     frequency: 'yearly',
-    hint: 'Business travel',
+    nature: 'opex',
+    hint: 'Business travel — assign to team when dedicated',
     namePlaceholder: 'e.g. Client visit Q2',
   },
 ];
@@ -147,6 +176,7 @@ type OverheadExpense = {
 };
 
 type CostCentre = { id: string; name: string; code?: string };
+type TeamOption = { id: string; name: string };
 
 type OverheadDash = {
   base_currency: string;
@@ -170,15 +200,22 @@ type LineDraft = {
   amount: string;
   frequency: string;
   vendor_name: string;
+  team_id: string;
 };
 
 type AddDraft = {
   name: string;
   amount: string;
   vendor_name: string;
+  team_id: string;
 };
 
-const emptyAdd = (): AddDraft => ({ name: '', amount: '', vendor_name: '' });
+const emptyAdd = (teamId = ''): AddDraft => ({
+  name: '',
+  amount: '',
+  vendor_name: '',
+  team_id: teamId,
+});
 
 function lineDraftFromExpense(row: OverheadExpense): LineDraft {
   return {
@@ -186,6 +223,7 @@ function lineDraftFromExpense(row: OverheadExpense): LineDraft {
     amount: row.amount === null || row.amount === undefined ? '' : String(row.amount),
     frequency: row.frequency || 'monthly',
     vendor_name: row.vendor_name ?? '',
+    team_id: row.team_id ?? '',
   };
 }
 
@@ -205,6 +243,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     name: '',
     amount: '',
     currency_code: 'INR',
+    nature: 'opex' as 'opex' | 'capex',
     purchase_date: new Date().toISOString().slice(0, 10),
     end_date: '',
     frequency: 'monthly',
@@ -224,27 +263,30 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
   const overheadHomeId = overhead?.corporate_team_id || overhead?.management_team_id;
   const overheadHomeName = overhead?.corporate_team_name ?? 'Corporate / Management';
 
-  const teamIds = useMemo(
-    () => (overheadHomeId ? [overheadHomeId] : []),
-    [overheadHomeId],
+  const teamsQuery = useQuery({
+    queryKey: ['lookup-teams'],
+    queryFn: fetchTeams,
+  });
+  const teams = useMemo(
+    () =>
+      [...(teamsQuery.data ?? [])]
+        .filter((row) => row.is_active !== false)
+        .sort((a, b) => a.name.localeCompare(b.name)) as TeamOption[],
+    [teamsQuery.data],
   );
 
+  const defaultAssignTeamId = teamId || overheadHomeId || '';
+
   const expensesQuery = useQuery({
-    queryKey: ['finance-overhead-expenses', teamIds.join(',')],
+    queryKey: ['finance-overhead-expenses', teamId || 'all-teams'],
     queryFn: async () => {
-      const rows: OverheadExpense[] = [];
-      for (const id of teamIds) {
-        const params = new URLSearchParams();
-        params.set('team_id', id);
-        params.set('current_fy_only', 'true');
-        const { data } = await apiClient.get<OverheadExpense[]>(
-          `/finance/expenses?${params.toString()}`,
-        );
-        rows.push(...data);
-      }
-      return rows;
+      const params = new URLSearchParams();
+      if (teamId) params.set('team_id', teamId);
+      params.set('current_fy_only', 'true');
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      const { data } = await apiClient.get<OverheadExpense[]>(`/finance/expenses${suffix}`);
+      return data;
     },
-    enabled: teamIds.length > 0,
   });
 
   const centres = costCentresQuery.data ?? [];
@@ -256,10 +298,18 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     return map;
   }, [centres]);
 
+  const teamNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of teams) map.set(row.id, row.name);
+    if (overheadHomeId) map.set(overheadHomeId, overheadHomeName);
+    return map;
+  }, [teams, overheadHomeId, overheadHomeName]);
+
   const expenses = useMemo(
     () =>
       (expensesQuery.data ?? []).filter(
-        (row) => row.paid_by === 'prosohm' && row.nature === 'opex',
+        (row) =>
+          row.paid_by === 'prosohm' && (row.nature === 'opex' || row.nature === 'capex'),
       ),
     [expensesQuery.data],
   );
@@ -287,15 +337,19 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
   const draftFor = (row: OverheadExpense): LineDraft =>
     lineDrafts[row.id] ?? lineDraftFromExpense(row);
 
-  const addFor = (code: string): AddDraft => addDrafts[code] ?? emptyAdd();
+  const addFor = (code: string): AddDraft =>
+    addDrafts[code] ?? emptyAdd(defaultAssignTeamId);
+
+  useEffect(() => {
+    if (!defaultAssignTeamId) return;
+    setForm((prev) => (prev.team_id ? prev : { ...prev, team_id: defaultAssignTeamId }));
+  }, [defaultAssignTeamId]);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['finance-overhead-expenses'] });
     void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
     void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
   };
-
-  const defaultTeamId = overheadHomeId || '';
 
   const createLineMutation = useMutation({
     mutationFn: async (payload: {
@@ -304,32 +358,35 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       amount: number;
       vendor_name?: string;
       frequency: string;
+      nature: 'opex' | 'capex';
+      team_id: string;
     }) => {
       const centre = centreByCode.get(payload.code);
       if (!centre) throw new Error(`Cost centre ${payload.code} is not seeded.`);
-      if (!defaultTeamId) throw new Error('Corporate / Management team not ready.');
+      if (!payload.team_id) throw new Error('Select a team to assign this spend.');
       const purchase = new Date().toISOString().slice(0, 10);
+      const recurring = payload.frequency !== 'one_time';
       return (
         await apiClient.post('/finance/expenses', {
-          team_id: defaultTeamId,
+          team_id: payload.team_id,
           cost_centre_id: centre.id,
           name: payload.name,
           amount: payload.amount,
           currency_code: 'INR',
-          nature: 'opex',
+          nature: payload.nature,
           frequency: payload.frequency,
           paid_by: 'prosohm',
           vendor_name: payload.vendor_name || null,
           purchase_date: purchase,
           start_date: purchase,
-          is_recurring: true,
+          is_recurring: recurring,
           notify_enabled: false,
         })
       ).data;
     },
     onSuccess: (_data, vars) => {
       showSuccess(`Added line under ${vars.code}`);
-      setAddDrafts((prev) => ({ ...prev, [vars.code]: emptyAdd() }));
+      setAddDrafts((prev) => ({ ...prev, [vars.code]: emptyAdd(defaultAssignTeamId) }));
       invalidate();
     },
     onError: (error: unknown) => {
@@ -338,19 +395,26 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
   });
 
   const updateLineMutation = useMutation({
-    mutationFn: async (payload: { id: string; draft: LineDraft }) => {
+    mutationFn: async (payload: {
+      id: string;
+      draft: LineDraft;
+      nature: 'opex' | 'capex' | string;
+    }) => {
       const amount = Number(String(payload.draft.amount).replace(/,/g, ''));
       if (!payload.draft.name.trim()) throw new Error('Name is required.');
+      if (!payload.draft.team_id) throw new Error('Select a team.');
       if (!Number.isFinite(amount) || amount < 0) throw new Error('Amount must be a valid number.');
+      const recurring = payload.draft.frequency !== 'one_time';
       return (
         await apiClient.patch(`/finance/expenses/${payload.id}`, {
           name: payload.draft.name.trim(),
           amount,
           frequency: payload.draft.frequency,
           vendor_name: payload.draft.vendor_name.trim() || null,
-          is_recurring: true,
+          team_id: payload.draft.team_id,
+          is_recurring: recurring,
           paid_by: 'prosohm',
-          nature: 'opex',
+          nature: payload.nature === 'capex' ? 'capex' : 'opex',
         })
       ).data;
     },
@@ -384,10 +448,15 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
 
   const createCustomMutation = useMutation({
     mutationFn: async () => {
-      const team = overheadHomeId;
-      if (!team) throw new Error('Corporate / Management team not ready.');
+      const team = form.team_id || defaultAssignTeamId;
+      if (!team) throw new Error('Select a team to assign this spend.');
       if (!form.cost_centre_id) throw new Error('Select a cost centre.');
       if (!form.name.trim()) throw new Error('Name is required.');
+      const centre = centres.find((c) => c.id === form.cost_centre_id);
+      const catNature =
+        OVERHEAD_CATEGORIES.find((c) => c.code === (centre?.code || '').toUpperCase())
+          ?.nature ?? 'opex';
+      const recurring = form.frequency !== 'one_time';
       return (
         await apiClient.post('/finance/expenses', {
           team_id: team,
@@ -395,19 +464,19 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
           name: form.name.trim(),
           amount: form.amount || '0',
           currency_code: form.currency_code || 'INR',
-          nature: 'opex',
+          nature: form.nature || catNature,
           frequency: form.frequency,
           paid_by: 'prosohm',
           purchase_date: form.purchase_date,
           start_date: form.purchase_date,
           end_date: form.end_date || null,
-          is_recurring: true,
+          is_recurring: recurring,
           notify_enabled: Boolean(form.end_date),
         })
       ).data;
     },
     onSuccess: () => {
-      showSuccess('Custom recurring overhead saved');
+      showSuccess('Custom overhead saved to team P&L');
       setForm((prev) => ({ ...prev, name: '', amount: '', end_date: '' }));
       invalidate();
     },
@@ -416,10 +485,11 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     },
   });
 
-  const submitAdd = (code: string, defaultFrequency: string) => {
+  const submitAdd = (code: string, cat: (typeof OVERHEAD_CATEGORIES)[number]) => {
     const draft = addFor(code);
     const name = draft.name.trim();
     const amount = Number(String(draft.amount).replace(/,/g, ''));
+    const assignTeam = draft.team_id || defaultAssignTeamId;
     if (!name) {
       showError('Enter a line name (e.g. NX Mach 3).');
       return;
@@ -428,12 +498,18 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       showError('Enter a valid amount.');
       return;
     }
+    if (!assignTeam) {
+      showError('Select a team so this spend hits that team’s P&L.');
+      return;
+    }
     createLineMutation.mutate({
       code,
       name,
       amount,
       vendor_name: draft.vendor_name.trim() || undefined,
-      frequency: defaultFrequency,
+      frequency: cat.frequency,
+      nature: cat.nature,
+      team_id: assignTeam,
     });
   };
 
@@ -454,7 +530,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Overheads cockpit"
-        subtitle="Each category holds many named lines (licenses, rents, utilities…). Click a KPI card to see what accumulates into that number. Pool = Corporate / Management salaries + Prosohm OpEx ÷ delivery billable FTE."
+        subtitle="Assign software OpEx and hardware CapEx to the team that consumes them — those lines roll into that team’s operating cost and net profit. Corporate stays the pool home for shared HQ spend. Click a KPI card for the build-up."
         chips={
           <>
             {dashboardQuery.data?.planning_fy_label ? (
@@ -558,7 +634,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
         <Grid size={{ xs: 12, md: 8 }}>
           <FinanceSection
             title="Overhead categories"
-            subtitle="Expand a category to manage multiple lines — e.g. several software licenses under one centre."
+            subtitle="Expand a category, assign each line to a delivery team or Corporate — spend then ties to that team’s P&L."
           >
             <Stack spacing={1}>
               {OVERHEAD_CATEGORIES.map((cat) => {
@@ -597,6 +673,12 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                           {cat.label}
                         </Typography>
                         <Chip size="small" label={cat.code} variant="outlined" />
+                        <Chip
+                          size="small"
+                          color={cat.nature === 'capex' ? 'warning' : 'default'}
+                          label={cat.nature === 'capex' ? 'CapEx' : 'OpEx'}
+                          variant="outlined"
+                        />
                         <Chip
                           size="small"
                           color={lines.length ? 'primary' : 'default'}
@@ -676,6 +758,30 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                                       <MenuItem value="monthly">Monthly</MenuItem>
                                       <MenuItem value="quarterly">Quarterly</MenuItem>
                                       <MenuItem value="yearly">Yearly</MenuItem>
+                                      <MenuItem value="one_time">One-time</MenuItem>
+                                    </Select>
+                                  </FormControl>
+                                  <FormControl size="small" sx={{ minWidth: 160 }}>
+                                    <InputLabel>Team</InputLabel>
+                                    <Select
+                                      label="Team"
+                                      value={draft.team_id || defaultAssignTeamId}
+                                      onChange={(e) =>
+                                        setLineDrafts((prev) => ({
+                                          ...prev,
+                                          [row.id]: { ...draft, team_id: e.target.value },
+                                        }))
+                                      }
+                                    >
+                                      {teams.map((t) => (
+                                        <MenuItem key={t.id} value={t.id}>
+                                          {t.name}
+                                        </MenuItem>
+                                      ))}
+                                      {overheadHomeId &&
+                                      !teams.some((t) => t.id === overheadHomeId) ? (
+                                        <MenuItem value={overheadHomeId}>{overheadHomeName}</MenuItem>
+                                      ) : null}
                                     </Select>
                                   </FormControl>
                                   <TextField
@@ -695,7 +801,14 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                                     variant="contained"
                                     disabled={updateLineMutation.isPending}
                                     onClick={() =>
-                                      updateLineMutation.mutate({ id: row.id, draft })
+                                      updateLineMutation.mutate({
+                                        id: row.id,
+                                        draft: {
+                                          ...draft,
+                                          team_id: draft.team_id || defaultAssignTeamId,
+                                        },
+                                        nature: row.nature || cat.nature,
+                                      })
                                     }
                                   >
                                     Update
@@ -775,12 +888,42 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                             }
                             sx={{ flex: 1, minWidth: 140 }}
                           />
+                          <FormControl
+                            size="small"
+                            sx={{ minWidth: 160 }}
+                            disabled={missingCentre || createLineMutation.isPending}
+                          >
+                            <InputLabel>Assign to team</InputLabel>
+                            <Select
+                              label="Assign to team"
+                              value={addFor(cat.code).team_id || defaultAssignTeamId}
+                              onChange={(e) =>
+                                setAddDrafts((prev) => ({
+                                  ...prev,
+                                  [cat.code]: {
+                                    ...addFor(cat.code),
+                                    team_id: e.target.value,
+                                  },
+                                }))
+                              }
+                            >
+                              {teams.map((t) => (
+                                <MenuItem key={t.id} value={t.id}>
+                                  {t.name}
+                                </MenuItem>
+                              ))}
+                              {overheadHomeId &&
+                              !teams.some((t) => t.id === overheadHomeId) ? (
+                                <MenuItem value={overheadHomeId}>{overheadHomeName}</MenuItem>
+                              ) : null}
+                            </Select>
+                          </FormControl>
                           <Button
                             size="small"
                             variant="contained"
                             startIcon={<AddOutlinedIcon />}
                             disabled={missingCentre || createLineMutation.isPending}
-                            onClick={() => submitAdd(cat.code, cat.frequency)}
+                            onClick={() => submitAdd(cat.code, cat)}
                           >
                             Add
                           </Button>
@@ -797,8 +940,8 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
 
       {otherExpenses.length > 0 ? (
         <FinanceSection
-          title="Other overhead OpEx"
-          subtitle="Lines on Corporate / Management whose cost centre is outside the catalogue above"
+          title="Other overhead lines"
+          subtitle="Prosohm OpEx / CapEx whose cost centre is outside the catalogue above"
         >
           <Stack spacing={1}>
             {otherExpenses.map((row) => (
@@ -819,8 +962,12 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                 <Box>
                   <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {financeMoney(row.amount, row.currency_code)} · {row.frequency ?? '—'}
+                    {financeMoney(row.amount, row.currency_code)} · {row.nature} ·{' '}
+                    {row.frequency ?? '—'}
                     {row.vendor_name ? ` · ${row.vendor_name}` : ''}
+                    {row.team_id
+                      ? ` · ${teamNameById.get(row.team_id) ?? 'Team'}`
+                      : ''}
                   </Typography>
                 </Box>
                 <Button size="small" color="error" variant="outlined" onClick={() => setDeleteTarget(row)}>
@@ -833,8 +980,8 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       ) : null}
 
       <FinanceSection
-        title="Custom recurring overhead"
-        subtitle="Escape hatch for centres not listed above"
+        title="Custom overhead line"
+        subtitle="Escape hatch for centres not listed above — still assign to a team for P&L"
         action={
           <Button size="small" onClick={() => setShowCustom((v) => !v)}>
             {showCustom ? 'Hide' : 'Show form'}
@@ -843,7 +990,23 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       >
         <Collapse in={showCustom}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
-            <Chip size="small" label={overheadHomeName} sx={{ fontWeight: 700 }} />
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Team</InputLabel>
+              <Select
+                label="Team"
+                value={form.team_id || defaultAssignTeamId}
+                onChange={(e) => setForm({ ...form, team_id: e.target.value })}
+              >
+                {teams.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+                {overheadHomeId && !teams.some((t) => t.id === overheadHomeId) ? (
+                  <MenuItem value={overheadHomeId}>{overheadHomeName}</MenuItem>
+                ) : null}
+              </Select>
+            </FormControl>
             <FormControl size="small" sx={{ minWidth: 200 }}>
               <InputLabel>Cost centre</InputLabel>
               <Select
@@ -879,6 +1042,19 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               onChange={(e) => setForm({ ...form, currency_code: e.target.value.toUpperCase() })}
               sx={{ width: 90 }}
             />
+            <FormControl size="small" sx={{ minWidth: 110 }}>
+              <InputLabel>Nature</InputLabel>
+              <Select
+                label="Nature"
+                value={form.nature}
+                onChange={(e) =>
+                  setForm({ ...form, nature: e.target.value as 'opex' | 'capex' })
+                }
+              >
+                <MenuItem value="opex">OpEx</MenuItem>
+                <MenuItem value="capex">CapEx</MenuItem>
+              </Select>
+            </FormControl>
             <FormControl size="small" sx={{ minWidth: 120 }}>
               <InputLabel>Frequency</InputLabel>
               <Select
@@ -889,6 +1065,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                 <MenuItem value="monthly">Monthly</MenuItem>
                 <MenuItem value="quarterly">Quarterly</MenuItem>
                 <MenuItem value="yearly">Yearly</MenuItem>
+                <MenuItem value="one_time">One-time</MenuItem>
               </Select>
             </FormControl>
             <TextField
@@ -912,13 +1089,13 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               disabled={createCustomMutation.isPending}
               onClick={() => createCustomMutation.mutate()}
             >
-              Save recurring
+              Save to team
             </Button>
           </Stack>
         </Collapse>
         {!showCustom ? (
           <Typography variant="body2" color="text.secondary">
-            Prefer category accordions above for multi-line OpEx (licenses, rents, utilities).
+            Prefer category accordions above for multi-line software / hardware / facilities spend.
           </Typography>
         ) : null}
       </FinanceSection>
@@ -933,7 +1110,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Remove overhead line?"
-        message="This soft-deletes the expense from Corporate / Management OpEx and refreshes the overhead pool."
+        message="This soft-deletes the expense from the assigned team’s OpEx/CapEx and refreshes dashboard P&L."
         recordName={
           deleteTarget
             ? `${deleteTarget.name} · ${deleteTarget.currency_code} ${deleteTarget.amount}`

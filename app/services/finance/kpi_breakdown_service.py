@@ -16,6 +16,7 @@ from app.models.models import Team, User
 from app.services.finance.annual_plan_service import current_fy_start
 from app.services.finance.billable_headcount import company_delivery_billable_salary_headcount
 from app.services.finance.dashboard_service import (
+    _expense_monthly_amount,
     _expense_sum,
     _overhead_metrics,
     _quote_period_amounts,
@@ -165,7 +166,7 @@ def _expense_lines(
         factor = expense_month_factor(expense, as_of=as_of)
         if factor <= 0:
             continue
-        amount = _q(_q(expense.base_amount_inr) * factor)
+        amount = _q(_expense_monthly_amount(expense) * factor)
         if amount <= 0:
             continue
         centre = centres.get(expense.cost_centre_id)
@@ -426,6 +427,14 @@ def get_kpi_breakdown(
             fy_start=fy_start,
             as_of=today,
         )
+        capex_lines = _expense_lines(
+            db,
+            team_ids=team_ids,
+            paid_by=ExpensePaidBy.prosohm,
+            nature=CostNature.capex,
+            fy_start=fy_start,
+            as_of=today,
+        )
         salary_total = (
             _salary_for_team(db, team_id, as_of=today)
             if team_id
@@ -438,16 +447,25 @@ def get_kpi_breakdown(
             nature=CostNature.opex,
             as_of=today,
         )
-        total = _q(salary_total + opex_total)
+        capex_total = _expense_sum(
+            db,
+            team_id=team_id,
+            paid_by=ExpensePaidBy.prosohm,
+            nature=CostNature.capex,
+            as_of=today,
+        )
+        total = _q(salary_total + opex_total + capex_total)
         return {
             "metric": key,
             "title": "Operating cost / month",
-            "subtitle": "Prosohm salaries + Prosohm OpEx in the current team filter.",
+            "subtitle": "Salaries + team-assigned Prosohm OpEx (software) + CapEx (hardware) in the current filter.",
             "total_inr": total,
             "currency_code": base,
-            "formula": "Operating = salaries + Prosohm OpEx",
+            "formula": "Operating = salaries + OpEx + CapEx",
             "insights": _insights_from_lines(
-                salary_lines[:5] + opex_lines[:5], total, subject="cost drivers"
+                salary_lines[:4] + opex_lines[:3] + capex_lines[:3],
+                total,
+                subject="cost drivers",
             ),
             "groups": [
                 {
@@ -456,9 +474,14 @@ def get_kpi_breakdown(
                     "lines": _annotate(salary_lines[:30], _q(salary_total) or Decimal("1")),
                 },
                 {
-                    "label": "Prosohm OpEx",
+                    "label": "Prosohm OpEx (software / overheads)",
                     "total_inr": _q(opex_total),
                     "lines": _annotate(opex_lines[:30], _q(opex_total) or Decimal("1")),
+                },
+                {
+                    "label": "Prosohm CapEx (hardware)",
+                    "total_inr": _q(capex_total),
+                    "lines": _annotate(capex_lines[:30], _q(capex_total) or Decimal("1")),
                 },
             ],
             "empty_hints": [],

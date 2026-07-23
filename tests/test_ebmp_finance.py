@@ -814,7 +814,7 @@ def test_who_pays_software_defaults_prosohm_when_flags_false(client, auth_header
     after = client.get(
         f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers
     ).json()
-    assert float(after["cost"]["prosohm_opex"]) == float(before["cost"]["prosohm_opex"]) + 9000.0
+    assert float(after["cost"]["prosohm_opex"]) == float(before["cost"]["prosohm_opex"]) + 750.0
     assert float(after["pass_through_opex_inr"]) == float(before["pass_through_opex_inr"])
 
 

@@ -32,7 +32,11 @@ from app.schemas.reporting import (
 )
 from app.services.holiday_service import load_holiday_dates
 from app.services.reporting.periods import build_report_period
-from app.services.reporting.report_scope import _users_on_teams
+from app.services.reporting.team_membership_windows import (
+    entry_date_in_windows,
+    membership_windows_for_teams,
+    users_on_teams_during,
+)
 from app.services.reporting.timesheet_report_inclusion import (
     users_excluded_from_timesheet_reports,
 )
@@ -93,13 +97,28 @@ def build_customer_timesheet_pack(
     daily_hours = _decimal(company.default_working_hours_per_day)
     working_hours_target = _round_hours(Decimal(period.working_days) * daily_hours)
 
-    scoped_user_ids = _scoped_user_ids(db, current_user, team_id=team_id)
+    scoped_user_ids = _scoped_user_ids(
+        db,
+        current_user,
+        team_id=team_id,
+        range_start=period.start_date,
+        range_end=period.end_date,
+    )
+    membership_windows = None
+    if team_id is not None:
+        membership_windows = membership_windows_for_teams(
+            db,
+            frozenset({team_id}),
+            range_start=period.start_date,
+            range_end=period.end_date,
+        )
     entries = _load_customer_entries(
         db,
         customer_id=customer_id,
         period=period,
         user_ids=scoped_user_ids,
         team_id=team_id,
+        membership_windows=membership_windows,
     )
 
     associates = _build_associates(db, entries, working_hours_target)
@@ -136,8 +155,10 @@ def _scoped_user_ids(
     current_user: User,
     *,
     team_id: UUID | None,
+    range_start: date,
+    range_end: date,
 ) -> set[UUID] | None:
-    """None = org-wide; set = restrict to these user IDs (team membership, not KPI flags)."""
+    """None = org-wide; set = restrict to these user IDs (membership during period)."""
     accessible = get_accessible_team_ids(db, current_user)
     if accessible is not None and team_id is not None and team_id not in accessible:
         return set()
@@ -154,7 +175,10 @@ def _scoped_user_ids(
 
     overhead = _overhead_user_ids(db)
     excluded = users_excluded_from_timesheet_reports(db, team_ids=team_filter)
-    return (_users_on_teams(db, team_filter) - overhead) - excluded
+    members = users_on_teams_during(
+        db, team_filter, range_start=range_start, range_end=range_end
+    )
+    return (members - overhead) - excluded
 
 
 def _load_customer_entries(
@@ -164,6 +188,7 @@ def _load_customer_entries(
     period: ReportPeriod,
     user_ids: set[UUID] | None,
     team_id: UUID | None = None,
+    membership_windows: dict[UUID, list[tuple[date, date]]] | None = None,
 ) -> list[tuple[TimesheetEntry, User, Project | None]]:
     stmt = (
         select(TimesheetEntry, User, Project)
@@ -182,17 +207,23 @@ def _load_customer_entries(
         .order_by(User.first_name, User.last_name, TimesheetEntry.entry_date)
     )
     if user_ids is not None:
-        if not user_ids:
+        if not user_ids and team_id is None:
             return []
         # Include hours from team members OR hours booked on projects owned by the selected team.
         if team_id is not None:
-            stmt = stmt.where(
-                or_(
-                    User.id.in_(tuple(user_ids)),
-                    Project.team_id == team_id,
+            member_ids = tuple(user_ids) if user_ids else ()
+            if member_ids:
+                stmt = stmt.where(
+                    or_(
+                        User.id.in_(member_ids),
+                        Project.team_id == team_id,
+                    )
                 )
-            )
+            else:
+                stmt = stmt.where(Project.team_id == team_id)
         else:
+            if not user_ids:
+                return []
             stmt = stmt.where(User.id.in_(tuple(user_ids)))
 
     rows = db.execute(stmt).all()
@@ -202,11 +233,19 @@ def _load_customer_entries(
         team_ids=frozenset({team_id}) if team_id is not None else None,
     )
     skip = overhead_user_ids | excluded
-    return [
-        (entry, user, project)
-        for entry, user, project in rows
-        if user.id not in skip
-    ]
+    result: list[tuple[TimesheetEntry, User, Project | None]] = []
+    for entry, user, project in rows:
+        if user.id in skip:
+            continue
+        if membership_windows is not None and user.id in membership_windows:
+            if not entry_date_in_windows(entry.entry_date, membership_windows[user.id]):
+                continue
+        elif membership_windows is not None and team_id is not None:
+            # Non-member hours only when booked on this team's projects.
+            if project is None or project.team_id != team_id:
+                continue
+        result.append((entry, user, project))
+    return result
 
 
 def _overhead_user_ids(db: Session) -> set[UUID]:

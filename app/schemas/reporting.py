@@ -231,6 +231,8 @@ class DesignerTeamTimesheetPayload(BaseModel):
     team_count: int = 0
     designer_count: int = 0
     project_count: int = 0
+    # False when scoped to one customer, or a retainer/subscription team (column is redundant).
+    include_customer_columns: bool = True
 
 
 class ChartSeries(BaseModel):

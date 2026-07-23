@@ -154,6 +154,30 @@ def primary_team_salary_factor(
                 team_days = _intersect_days(w_start, employment_end, month_start, month_end)
 
     if team_days <= 0:
+        # Primary is optional: if the user has no primary home anywhere but works on
+        # this team, attribute the employment window here (avoids zero team salaries).
+        has_any_primary = db.scalar(
+            select(TeamMember.id).where(
+                TeamMember.user_id == user_id,
+                TeamMember.is_primary.is_(True),
+            ).limit(1)
+        )
+        if has_any_primary is None:
+            member = db.scalar(
+                select(TeamMember).where(
+                    TeamMember.user_id == user_id,
+                    TeamMember.team_id == team_id,
+                )
+            )
+            if member is not None:
+                m_start = getattr(member, "effective_from", None) or employment_start
+                if m_start <= month_end:
+                    w_start = max(m_start, employment_start)
+                    team_days = _intersect_days(
+                        w_start, employment_end, month_start, month_end
+                    )
+
+    if team_days <= 0:
         return Decimal("0")
     if team_days >= days_in_month and employment_start <= month_start and employment_end >= month_end:
         return Decimal("1")

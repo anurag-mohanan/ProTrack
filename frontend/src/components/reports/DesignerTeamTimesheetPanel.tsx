@@ -338,7 +338,9 @@ export function DesignerTeamTimesheetPanel({
                 <TableHead>
                   <TableRow>
                     <TableCell>Tool</TableCell>
-                    <TableCell>Customer</TableCell>
+                    {payload.include_customer_columns !== false ? (
+                      <TableCell>Customer</TableCell>
+                    ) : null}
                     <TableCell align="right">Quoted</TableCell>
                     <TableCell align="right">Actual to date</TableCell>
                     <TableCell align="right">Variance</TableCell>
@@ -348,7 +350,7 @@ export function DesignerTeamTimesheetPanel({
                 <TableBody>
                   {projects.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={payload.include_customer_columns !== false ? 6 : 5}>
                         <Typography variant="body2" color="text.secondary">
                           No projects in scope.
                         </Typography>
@@ -369,7 +371,9 @@ export function DesignerTeamTimesheetPanel({
                             row.tool_number
                           )}
                         </TableCell>
-                        <TableCell>{row.customer_name}</TableCell>
+                        {payload.include_customer_columns !== false ? (
+                          <TableCell>{row.customer_name}</TableCell>
+                        ) : null}
                         <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
                         <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
                         <TableCell align="right">{formatNumber(row.variance_hours)}</TableCell>

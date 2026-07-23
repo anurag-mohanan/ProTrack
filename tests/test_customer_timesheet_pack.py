@@ -111,6 +111,11 @@ def test_customer_timesheet_pack_api_export(client, session):
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     assert response.content[:2] == b"PK"
+    disposition = response.headers.get("content-disposition", "")
+    assert disposition.startswith("attachment;")
+    assert "PP_" in disposition
+    assert "_Week_" in disposition
+    assert week_start.isoformat() in disposition
 
 
 def test_designer_forbidden_from_customer_timesheet_pack(client, session):

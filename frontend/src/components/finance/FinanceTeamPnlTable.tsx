@@ -20,6 +20,9 @@ export type TeamPnlRow = {
   is_overhead_home?: boolean;
   monthly_operating_cost_inr: number | string;
   planning_revenue_signal_inr: number | string;
+  salary_cost_inr?: number | string;
+  prosohm_opex_inr?: number | string;
+  prosohm_capex_inr?: number | string;
   gross_profit_inr?: number | string;
   net_profit_inr?: number | string;
   gross_margin_percent?: number | string;
@@ -140,7 +143,16 @@ export function FinanceTeamPnlTable({
                   <TableCell align="right">
                     {financeMoney(row.planning_revenue_signal_inr, currency)}
                   </TableCell>
-                  <TableCell align="right">
+                  <TableCell
+                    align="right"
+                    title={
+                      [
+                        `Salary ${financeMoney(row.salary_cost_inr, currency)}`,
+                        `OpEx ${financeMoney(row.prosohm_opex_inr, currency)}`,
+                        `CapEx ${financeMoney(row.prosohm_capex_inr, currency)}`,
+                      ].join(' · ')
+                    }
+                  >
                     {financeMoney(row.monthly_operating_cost_inr, currency)}
                   </TableCell>
                   <TableCell align="right">
@@ -170,7 +182,9 @@ export function FinanceTeamPnlTable({
       {overheadRows.length ? (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
           Overhead home ({overheadRows.map((r) => r.team_name).join(', ')}) is excluded from delivery
-          performance ranking — salaries and OpEx there feed the overhead pool CPR.
+          performance ranking — HQ salaries and Corporate-assigned OpEx feed the overhead pool CPR.
+          Team-assigned software / hardware still hit each delivery team’s op cost (hover Op cost for
+          salary · OpEx · CapEx).
         </Typography>
       ) : null}
     </>

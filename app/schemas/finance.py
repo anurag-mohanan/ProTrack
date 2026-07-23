@@ -269,6 +269,7 @@ class TeamFinanceBreakdown(BaseModel):
     is_overhead_home: bool = False
     salary_cost_inr: Decimal
     prosohm_opex_inr: Decimal
+    prosohm_capex_inr: Decimal = Decimal("0")
     pass_through_opex_inr: Decimal
     monthly_operating_cost_inr: Decimal
     team_commercial_fee_monthly_inr: Decimal

@@ -301,7 +301,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
       {!teamId && (data.by_team ?? []).length > 0 ? (
         <FinanceSection
           title="Team P&L performance"
-          subtitle="Monthly planning signals per delivery team — revenue (quotes + fees) vs operating cost. Sort by net margin to compare performance."
+          subtitle="Monthly planning signals per delivery team — revenue vs fully loaded cost (salary + software OpEx + hardware CapEx). Sort by net margin to compare profitability."
         >
           <FinanceTeamPnlTable rows={data.by_team ?? []} currency={currency} />
         </FinanceSection>

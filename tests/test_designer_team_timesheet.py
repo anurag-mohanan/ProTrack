@@ -100,6 +100,60 @@ def test_build_monthly_timesheet_has_designers_and_projects(session):
     assert float(payload.total_designer_hours) >= 8
 
 
+def test_designer_timesheet_includes_draft_excludes_rejected(session):
+    team, week_start = _seed_timesheet_week(session)
+    designer = session.get(User, IDS["user_binil"])
+    assert designer
+    draft_sheet = Timesheet(
+        user_id=designer.id,
+        week_start=date(2026, 7, 13),
+        status=TimesheetStatus.draft,
+    )
+    rejected_sheet = Timesheet(
+        user_id=designer.id,
+        week_start=date(2026, 7, 20),
+        status=TimesheetStatus.rejected,
+    )
+    session.add_all([draft_sheet, rejected_sheet])
+    session.flush()
+    session.add_all(
+        [
+            TimesheetEntry(
+                timesheet_id=draft_sheet.id,
+                entry_date=date(2026, 7, 13),
+                hours=Decimal("5"),
+                work_category=WorkCategory.productive,
+                is_billable=True,
+                customer_id=IDS["customer"],
+                project_id=IDS["project"],
+            ),
+            TimesheetEntry(
+                timesheet_id=rejected_sheet.id,
+                entry_date=date(2026, 7, 20),
+                hours=Decimal("9"),
+                work_category=WorkCategory.productive,
+                is_billable=True,
+                customer_id=IDS["customer"],
+                project_id=IDS["project"],
+            ),
+        ]
+    )
+    session.commit()
+
+    admin = session.get(User, IDS["user_admin"])
+    assert admin
+    payload = build_designer_team_timesheet(
+        session,
+        current_user=admin,
+        report_id="monthly-timesheet",
+        anchor=date(2026, 7, 1),
+        team_id=team.id,
+    )
+    binil = next(row for row in payload.designers if row.user_id == IDS["user_binil"])
+    # Seeded approved 8h + draft 5h; rejected 9h must not count.
+    assert float(binil.total_hours) == 13.0
+
+
 def test_timesheet_excel_has_two_sheets(session):
     team, week_start = _seed_timesheet_week(session)
     admin = session.get(User, IDS["user_admin"])

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, aliased
 from app.core.non_productive_categories import is_leave_entry, leave_entry_clause, standard_np_hours_clause
 from app.crud.dashboard import _decimal, _round_hours
 from app.crud.foundation import get_or_create_company_settings
-from app.models.enums import ExecutionStatus, MilestoneStatus, WorkCategory
+from app.models.enums import ExecutionStatus, MilestoneStatus, TimesheetStatus, WorkCategory
 from app.models.models import (
     Customer,
     Milestone,
@@ -142,10 +142,22 @@ def _tool_breakdown_bucket(task_name: str | None, work_category: WorkCategory | 
 
 
 def _entry_base_filters(start: date, end: date):
+    """Shared entry filters for engineering/timesheet reports.
+
+    Requires ``Timesheet`` to be joined. Includes draft/submitted/approved so
+    leaders can review before export; rejected sheets stay out.
+    """
     return (
         TimesheetEntry.is_deleted.is_(False),
         TimesheetEntry.entry_date >= start,
         TimesheetEntry.entry_date <= end,
+        Timesheet.status.in_(
+            (
+                TimesheetStatus.draft,
+                TimesheetStatus.submitted,
+                TimesheetStatus.approved,
+            )
+        ),
     )
 
 
@@ -357,13 +369,14 @@ def _designer_productivity(
             )
         ).all()
 
-        productive = np_hours = leave_days = billable = Decimal("0")
+        productive = np_hours = leave_days = leave_hours = billable = Decimal("0")
         project_ids: set[UUID] = set()
         customer_ids: set[UUID] = set()
         for entry in entries:
             hours = _decimal(entry.hours)
             if is_leave_entry(entry):
                 leave_days += _decimal(entry.leave_count) or Decimal("1")
+                leave_hours += hours
                 continue
             if entry.work_category == WorkCategory.non_productive:
                 np_hours += hours
@@ -376,7 +389,8 @@ def _designer_productivity(
             if entry.customer_id:
                 customer_ids.add(entry.customer_id)
 
-        total = productive + np_hours
+        worked = productive + np_hours
+        total = worked + leave_hours
         team_name = None
         if person.team_id:
             team = db.get(Team, person.team_id)
@@ -391,8 +405,8 @@ def _designer_productivity(
                 non_productive_hours=_round_hours(np_hours),
                 leave_days=leave_days,
                 total_hours=_round_hours(total),
-                billable_percent=_pct(billable, total),
-                utilization_percent=_pct(total, expected_per_person),
+                billable_percent=_pct(billable, worked),
+                utilization_percent=_pct(worked, expected_per_person),
                 project_count=len(project_ids),
                 customer_count=len(customer_ids),
             )

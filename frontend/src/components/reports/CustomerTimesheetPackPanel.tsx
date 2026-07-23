@@ -16,6 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import { useQuery } from '@tanstack/react-query';
 import { fetchCustomers, fetchTeams } from '../../api/lookups';
 import {
@@ -34,6 +35,7 @@ import type { Team } from '../../types/Team';
 import { formatNumber } from '../../utils/format';
 import { ensureArray } from '../../types/pagination';
 import { defaultAnchorForPeriod } from '../../utils/reportPeriodSelection';
+import { useGeneratedReportQuery } from '../../hooks/useGeneratedReportQuery';
 import {
   ReportPeriodSelectors,
   syncAnchorForPeriodChange,
@@ -81,11 +83,10 @@ export function CustomerTimesheetPackPanel({
     [customerId, periodType, anchor, teamId],
   );
 
-  const previewQuery = useQuery({
+  const previewQuery = useGeneratedReportQuery({
     queryKey: customerTimesheetPackQueryKeys.preview(options),
     queryFn: () => fetchCustomerTimesheetPackPreview(options),
-    enabled: Boolean(customerId),
-    staleTime: 60 * 1000,
+    ready: Boolean(customerId),
   });
 
   const handlePeriodTypeChange = (next: 'weekly' | 'monthly') => {
@@ -94,7 +95,7 @@ export function CustomerTimesheetPackPanel({
   };
 
   const handleDownload = async () => {
-    if (!canExport || !customerId) return;
+    if (!canExport || !customerId || !previewQuery.canDownload) return;
     setDownloading(true);
     setDownloadError(null);
     try {
@@ -106,7 +107,7 @@ export function CustomerTimesheetPackPanel({
     }
   };
 
-  const payload = previewQuery.data;
+  const payload = previewQuery.hasGenerated ? previewQuery.data : undefined;
 
   const controls = (
     <Box
@@ -171,8 +172,17 @@ export function CustomerTimesheetPackPanel({
       </TextField>
       <Button
         variant="contained"
+        startIcon={<PlayArrowRoundedIcon />}
+        disabled={!customerId || previewQuery.isFetching}
+        onClick={() => previewQuery.generate()}
+        sx={{ mt: 0.5 }}
+      >
+        {previewQuery.isFetching ? 'Generating…' : 'Generate'}
+      </Button>
+      <Button
+        variant="outlined"
         startIcon={<DownloadRoundedIcon />}
-        disabled={!canExport || !customerId || downloading || previewQuery.isFetching}
+        disabled={!canExport || !previewQuery.canDownload || downloading}
         onClick={() => void handleDownload()}
         sx={{ mt: 0.5 }}
       >
@@ -187,8 +197,8 @@ export function CustomerTimesheetPackPanel({
         <Paper sx={{ p: 2 }}>
           <Stack spacing={1.5}>
             <Typography variant="body2" color="text.secondary">
-              Select customer, period (week or month), and team if you lead more than one. Only
-              submitted/approved hours are included.
+              Select customer, period (week or month), and team if you lead more than one. Click
+              Generate to preview. Totals include draft, submitted, and approved hours.
             </Typography>
             {controls}
             {!canExport ? (
@@ -202,9 +212,9 @@ export function CustomerTimesheetPackPanel({
           <Stack spacing={1.5}>
             <Typography variant="h6">Customer Timesheet Pack</Typography>
             <Typography variant="body2" color="text.secondary">
-              Prosohm-style weekly or monthly timesheet for one customer. Includes draft,
-              submitted, and approved hours — productive vs NP, utilization, and tool rollup.
-              Includes associate productive vs NP hours, utilization, and tool rollup for customer AP.
+              Prosohm-style weekly or monthly timesheet for one customer. Click Generate to preview,
+              then Download Excel. Includes draft, submitted, and approved hours — productive vs NP,
+              utilization, and tool rollup.
             </Typography>
             {controls}
             {!canExport ? (
@@ -218,7 +228,9 @@ export function CustomerTimesheetPackPanel({
       )}
 
       {!customerId ? (
-        <Alert severity="info">Select a customer to preview the timesheet pack.</Alert>
+        <Alert severity="info">Select a customer, then click Generate to build the timesheet pack.</Alert>
+      ) : !previewQuery.generationRequested ? (
+        <Alert severity="info">Click Generate to preview this customer timesheet pack.</Alert>
       ) : previewQuery.isLoading ? (
         <LoadingState message="Building customer timesheet pack…" />
       ) : previewQuery.error ? (

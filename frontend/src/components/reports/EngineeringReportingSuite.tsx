@@ -24,6 +24,7 @@ import {
   Typography,
 } from '@mui/material';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
@@ -34,6 +35,7 @@ import { LoadingState } from '../common/LoadingState';
 import { AnalyticsBarChart } from '../analytics/AnalyticsCharts';
 import { KpiMetricCard } from '../ui/design-system';
 import { CustomerTimesheetPackPanel } from './CustomerTimesheetPackPanel';
+import { useGeneratedReportQuery } from '../../hooks/useGeneratedReportQuery';
 import {
   ReportPeriodSelectors,
   syncAnchorForPeriodChange,
@@ -177,11 +179,10 @@ export function EngineeringReportingSuite({
     [periodType, anchor, customerId, teamId, includeArchived, includeDeleted],
   );
 
-  const previewQuery = useQuery({
+  const previewQuery = useGeneratedReportQuery({
     queryKey: engineeringReportQueryKeys.preview(selectedReportId, reportOptions),
     queryFn: () => fetchEngineeringReportPreview(selectedReportId, reportOptions),
-    enabled: Boolean(selectedReportId) && !isCustomerTimesheetPack,
-    staleTime: 2 * 60 * 1000,
+    ready: Boolean(selectedReportId) && !isCustomerTimesheetPack,
   });
 
   const scheduleMutation = useMutation({
@@ -206,7 +207,7 @@ export function EngineeringReportingSuite({
   );
 
   const handleDownload = async () => {
-    if (!canExport || isCustomerTimesheetPack) return;
+    if (!canExport || isCustomerTimesheetPack || !previewQuery.canDownload) return;
     setDownloading(true);
     setDownloadError(null);
     try {
@@ -234,7 +235,7 @@ export function EngineeringReportingSuite({
     return <ErrorState error={catalogQuery.error} />;
   }
 
-  const payload = previewQuery.data;
+  const payload = previewQuery.hasGenerated ? previewQuery.data : undefined;
   const engineeringPayload =
     payload && 'executive' in payload ? (payload as EngineeringReportPayload) : null;
   const timesheetPayload =
@@ -325,15 +326,24 @@ export function EngineeringReportingSuite({
                   anchor={anchor}
                   onAnchorChange={setAnchor}
                 />
+                <Button
+                  variant="contained"
+                  startIcon={<PlayArrowRoundedIcon />}
+                  onClick={() => previewQuery.generate()}
+                  disabled={!selectedReportId || previewQuery.isFetching}
+                  sx={{ alignSelf: 'center' }}
+                >
+                  {previewQuery.isFetching ? 'Generating…' : 'Generate'}
+                </Button>
                 {canExport ? (
                   <Button
-                    variant="contained"
+                    variant="outlined"
                     startIcon={<DownloadRoundedIcon />}
-                    onClick={handleDownload}
-                    disabled={downloading}
+                    onClick={() => void handleDownload()}
+                    disabled={!previewQuery.canDownload || downloading}
                     sx={{ alignSelf: 'center' }}
                   >
-                    {downloading ? 'Generating…' : 'Download Excel'}
+                    {downloading ? 'Downloading…' : 'Download Excel'}
                   </Button>
                 ) : null}
               </>
@@ -444,7 +454,15 @@ export function EngineeringReportingSuite({
             <CustomerTimesheetPackPanel canExport={canExport} embedded />
           ) : (
             <>
-          {previewQuery.isLoading ? <LoadingState message="Building report preview…" /> : null}
+          {isCustomerTimesheetPack ? null : !previewQuery.generationRequested ? (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Choose a report and filters, then click Generate to preview results. Download Excel
+              unlocks after generate.
+            </Alert>
+          ) : null}
+          {previewQuery.generationRequested && previewQuery.isLoading ? (
+            <LoadingState message="Building report preview…" />
+          ) : null}
           {previewQuery.error ? <ErrorState error={previewQuery.error} /> : null}
 
           {isDesignerTeamTimesheet && timesheetPayload ? (

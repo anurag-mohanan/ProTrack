@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Button,
   FormControlLabel,
   Switch,
   Tab,
   Tabs,
   Typography,
 } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
@@ -31,6 +33,7 @@ import {
 import type { ProjectHoursReportRow } from '../types/Reports';
 import { accessContextFromUser, canExportReports, canViewDeletedProjects } from '../utils/permissions';
 import { ensureArray } from '../types/pagination';
+import { useGeneratedReportQuery } from '../hooks/useGeneratedReportQuery';
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 
 /**
@@ -112,10 +115,10 @@ export function ReportsPage() {
     include_deleted: appliedIncludeDeleted,
   };
 
-  const projectHoursQuery = useQuery({
+  const projectHoursQuery = useGeneratedReportQuery({
     queryKey: reportQueryKeys.projectHours(reportOptions),
     queryFn: () => getProjectHoursReport(reportOptions),
-    enabled: tab === 2,
+    ready: tab === 2,
   });
 
   const timesheetReportsEnabled = tab === 0;
@@ -202,13 +205,6 @@ export function ReportsPage() {
         })}
       </Tabs>
 
-      {projectHoursEnabled && projectHoursQuery.isLoading ? (
-        <LoadingState message="Loading reports…" />
-      ) : null}
-      {projectHoursEnabled && projectHoursQuery.error ? (
-        <ErrorState error={projectHoursQuery.error} />
-      ) : null}
-
       {timesheetReportsEnabled ? (
         <DesignerTeamTimesheetPanel
           canExport={canExport}
@@ -225,11 +221,33 @@ export function ReportsPage() {
         />
       ) : null}
 
-      {projectHoursEnabled && !projectHoursQuery.isLoading && !projectHoursQuery.error ? (
-        <ProjectHoursReportView
-          rows={ensureArray<ProjectHoursReportRow>(projectHoursQuery.data)}
-          canExport={canExport}
-        />
+      {projectHoursEnabled ? (
+        <>
+          <Button
+            variant="contained"
+            startIcon={<PlayArrowRoundedIcon />}
+            onClick={() => projectHoursQuery.generate()}
+            disabled={projectHoursQuery.isFetching}
+            sx={{ mb: 2 }}
+          >
+            {projectHoursQuery.isFetching ? 'Generating…' : 'Generate'}
+          </Button>
+          {!projectHoursQuery.generationRequested ? (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Click Generate to load project hours for the current filters.
+            </Alert>
+          ) : null}
+          {projectHoursQuery.generationRequested && projectHoursQuery.isLoading ? (
+            <LoadingState message="Loading reports…" />
+          ) : null}
+          {projectHoursQuery.error ? <ErrorState error={projectHoursQuery.error} /> : null}
+          {projectHoursQuery.hasGenerated ? (
+            <ProjectHoursReportView
+              rows={ensureArray<ProjectHoursReportRow>(projectHoursQuery.data)}
+              canExport={canExport}
+            />
+          ) : null}
+        </>
       ) : null}
 
       {teamReportsEnabled ? <TeamReportsPanel reportOptions={reportOptions} /> : null}

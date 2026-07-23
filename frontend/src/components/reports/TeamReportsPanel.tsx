@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Paper,
   Tab,
   Table,
@@ -11,7 +13,7 @@ import {
   TableRow,
   Tabs,
 } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import { ErrorState } from '../common/ErrorState';
 import { LoadingState } from '../common/LoadingState';
 import {
@@ -28,6 +30,7 @@ import type {
 } from '../../types/Reports';
 import { formatDisplayValue, formatNumber } from '../../utils/format';
 import { ensureArray } from '../../types/pagination';
+import { useGeneratedReportQuery } from '../../hooks/useGeneratedReportQuery';
 
 const TEAM_TABS = [
   { label: 'Quoted vs Actual', key: 'quoted-vs-actual' },
@@ -42,26 +45,32 @@ interface TeamReportsPanelProps {
 export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
   const [teamTab, setTeamTab] = useState(0);
 
-  const quotedQuery = useQuery({
+  const quotedQuery = useGeneratedReportQuery({
     queryKey: [...reportQueryKeys.teamReports(reportOptions), 'quoted-vs-actual'],
     queryFn: () => getQuotedVsActualByTeamReport(reportOptions),
-    enabled: teamTab === 0,
+    ready: teamTab === 0,
   });
-  const utilizationQuery = useQuery({
+  const utilizationQuery = useGeneratedReportQuery({
     queryKey: [...reportQueryKeys.teamReports(reportOptions), 'utilization'],
     queryFn: getTeamUtilizationReport,
-    enabled: teamTab === 1,
+    ready: teamTab === 1,
   });
-  const hoursQuery = useQuery({
+  const hoursQuery = useGeneratedReportQuery({
     queryKey: [...reportQueryKeys.teamReports(reportOptions), 'hours'],
     queryFn: () => getHoursByTeamReport(reportOptions),
-    enabled: teamTab === 2,
+    ready: teamTab === 2,
   });
 
   const activeQuery = [quotedQuery, utilizationQuery, hoursQuery][teamTab];
-  const quotedRows = ensureArray<QuotedVsActualByTeamReportRow>(quotedQuery.data);
-  const utilizationRows = ensureArray<TeamUtilizationReportRow>(utilizationQuery.data);
-  const hoursRows = ensureArray<HoursByTeamReportRow>(hoursQuery.data);
+  const quotedRows = ensureArray<QuotedVsActualByTeamReportRow>(
+    quotedQuery.hasGenerated ? quotedQuery.data : undefined,
+  );
+  const utilizationRows = ensureArray<TeamUtilizationReportRow>(
+    utilizationQuery.hasGenerated ? utilizationQuery.data : undefined,
+  );
+  const hoursRows = ensureArray<HoursByTeamReportRow>(
+    hoursQuery.hasGenerated ? hoursQuery.data : undefined,
+  );
 
   return (
     <Box>
@@ -77,10 +86,29 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
         ))}
       </Tabs>
 
-      {activeQuery.isLoading ? <LoadingState message="Loading team report…" /> : null}
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
+        <Button
+          variant="contained"
+          startIcon={<PlayArrowRoundedIcon />}
+          onClick={() => activeQuery.generate()}
+          disabled={activeQuery.isFetching}
+        >
+          {activeQuery.isFetching ? 'Generating…' : 'Generate'}
+        </Button>
+      </Box>
+
+      {!activeQuery.generationRequested ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Click Generate to load this team report for the current filters.
+        </Alert>
+      ) : null}
+
+      {activeQuery.generationRequested && activeQuery.isLoading ? (
+        <LoadingState message="Loading team report…" />
+      ) : null}
       {activeQuery.error ? <ErrorState error={activeQuery.error} /> : null}
 
-      {teamTab === 0 && !quotedQuery.isLoading && !quotedQuery.error ? (
+      {teamTab === 0 && quotedQuery.hasGenerated ? (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -107,7 +135,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
         </TableContainer>
       ) : null}
 
-      {teamTab === 1 && !utilizationQuery.isLoading && !utilizationQuery.error ? (
+      {teamTab === 1 && utilizationQuery.hasGenerated ? (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -134,7 +162,7 @@ export function TeamReportsPanel({ reportOptions }: TeamReportsPanelProps) {
         </TableContainer>
       ) : null}
 
-      {teamTab === 2 && !hoursQuery.isLoading && !hoursQuery.error ? (
+      {teamTab === 2 && hoursQuery.hasGenerated ? (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>

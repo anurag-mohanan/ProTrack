@@ -16,6 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router-dom';
 import { fetchCustomers, fetchTeams } from '../../api/lookups';
@@ -35,6 +36,7 @@ import { KpiMetricCard } from '../ui/design-system';
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
 import { formatNumber } from '../../utils/format';
 import { defaultAnchorForPeriod } from '../../utils/reportPeriodSelection';
+import { useGeneratedReportQuery } from '../../hooks/useGeneratedReportQuery';
 import {
   ReportPeriodSelectors,
   syncAnchorForPeriodChange,
@@ -93,15 +95,14 @@ export function DesignerTeamTimesheetPanel({
     [selected.period, anchor, customerId, teamId, includeArchived, includeDeleted],
   );
 
-  const previewQuery = useQuery({
+  const previewQuery = useGeneratedReportQuery({
     queryKey: engineeringReportQueryKeys.preview(reportId, options),
     queryFn: () => fetchEngineeringReportPreview(reportId, options),
-    enabled: isDesignerTeamTimesheetReport(reportId),
-    staleTime: 60 * 1000,
+    ready: isDesignerTeamTimesheetReport(reportId),
   });
 
   const payload =
-    previewQuery.data && 'designers' in previewQuery.data
+    previewQuery.hasGenerated && previewQuery.data && 'designers' in previewQuery.data
       ? (previewQuery.data as DesignerTeamTimesheetPayload)
       : null;
   const designers = ensureArray<DesignerProductivityRow>(payload?.designers);
@@ -116,7 +117,7 @@ export function DesignerTeamTimesheetPanel({
   };
 
   const handleDownload = async () => {
-    if (!canExport) return;
+    if (!canExport || !previewQuery.canDownload) return;
     setDownloading(true);
     setDownloadError(null);
     try {
@@ -143,8 +144,9 @@ export function DesignerTeamTimesheetPanel({
           <Box>
             <Typography variant="h6">Timesheet Reports</Typography>
             <Typography variant="body2" color="text.secondary">
-              Weekly / Monthly / Quarterly / Yearly — designer hours by team for the period, plus
-              total project hours up to report generation.
+              Set filters, then Generate to preview in the UI. Download Excel unlocks after a
+              successful generate. Totals include draft, submitted, and approved hours (rejected
+              excluded).
             </Typography>
           </Box>
           <Box
@@ -154,11 +156,11 @@ export function DesignerTeamTimesheetPanel({
               gridTemplateColumns: {
                 xs: '1fr',
                 sm: 'repeat(2, minmax(140px, 1fr))',
-                lg: 'repeat(4, minmax(140px, 1fr)) auto',
+                lg: 'repeat(4, minmax(140px, 1fr)) auto auto',
               },
               alignItems: 'start',
               minWidth: { md: 480 },
-              maxWidth: 960,
+              maxWidth: 1100,
               flex: 1,
             }}
           >
@@ -214,15 +216,24 @@ export function DesignerTeamTimesheetPanel({
                 </MenuItem>
               ))}
             </TextField>
+            <Button
+              variant="contained"
+              startIcon={<PlayArrowRoundedIcon />}
+              onClick={() => previewQuery.generate()}
+              disabled={previewQuery.isFetching}
+              sx={{ alignSelf: { lg: 'center' } }}
+            >
+              {previewQuery.isFetching ? 'Generating…' : 'Generate'}
+            </Button>
             {canExport ? (
               <Button
-                variant="contained"
+                variant="outlined"
                 startIcon={<DownloadRoundedIcon />}
-                onClick={handleDownload}
-                disabled={downloading || previewQuery.isFetching}
+                onClick={() => void handleDownload()}
+                disabled={!previewQuery.canDownload || downloading}
                 sx={{ alignSelf: { lg: 'center' } }}
               >
-                {downloading ? 'Generating…' : 'Download Excel'}
+                {downloading ? 'Downloading…' : 'Download Excel'}
               </Button>
             ) : null}
           </Box>
@@ -230,7 +241,14 @@ export function DesignerTeamTimesheetPanel({
         {downloadError ? <Alert severity="error" sx={{ mt: 2 }}>{downloadError}</Alert> : null}
       </Paper>
 
-      {previewQuery.isLoading ? <LoadingState message="Building timesheet report…" /> : null}
+      {!previewQuery.generationRequested ? (
+        <Alert severity="info">
+          Choose period and filters, then click Generate to build the report preview.
+        </Alert>
+      ) : null}
+      {previewQuery.generationRequested && previewQuery.isLoading ? (
+        <LoadingState message="Building timesheet report…" />
+      ) : null}
       {previewQuery.error ? <ErrorState error={previewQuery.error} /> : null}
 
       {payload ? (
@@ -277,7 +295,7 @@ export function DesignerTeamTimesheetPanel({
               Individual designer hours by team
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              {payload.period.label}
+              {payload.period.label} · Includes draft / submitted / approved
             </Typography>
             <TableContainer>
               <Table size="small">

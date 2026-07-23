@@ -329,7 +329,13 @@ def get_monthly_team_summary_report(
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .where(
             Team.is_active.is_(True),
-            Timesheet.status == TimesheetStatus.approved,
+            Timesheet.status.in_(
+                (
+                    TimesheetStatus.draft,
+                    TimesheetStatus.submitted,
+                    TimesheetStatus.approved,
+                )
+            ),
             TimesheetEntry.work_category == WorkCategory.productive,
         )
         .group_by(Team.id, Team.name, extract("year", TimesheetEntry.entry_date), extract("month", TimesheetEntry.entry_date))

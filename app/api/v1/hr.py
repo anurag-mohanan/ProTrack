@@ -607,6 +607,82 @@ def performance_dashboard(
     return payload
 
 
+def _can_view_performance_subject(db: Session, current_user: User, subject: User) -> bool:
+    if subject.id == current_user.id:
+        return True
+    managed = _managed_team_ids(db, current_user)
+    member_ids = team_member_user_ids(db, managed) if managed else set()
+    if subject.id in member_ids:
+        return True
+    return bool(
+        _has_performance_action(db, current_user, MODULE_ACTION_EDIT_REVIEWS)
+        or user_has_module_action(
+            current_user,
+            get_role_name(db, current_user),
+            MODULE_HUMAN_RESOURCES,
+            MODULE_ACTION_VIEW,
+        )
+    )
+
+
+@router.get("/performance/dossier")
+def performance_cycle_dossier(
+    user_id: UUID | None = Query(default=None),
+    review_year: int | None = Query(default=None, ge=2000, le=2100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """July–June quantified cycle dossier for an individual (Gate 0 performance dossier)."""
+    from app.services.performance_dossier_service import build_performance_dossier
+
+    _require_performance_view(db, current_user)
+    subject_id = user_id or current_user.id
+    subject = db.get(User, subject_id)
+    if subject is None or subject.is_deleted:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not _can_view_performance_subject(db, current_user, subject):
+        raise HTTPException(status_code=403, detail="Performance dossier access denied")
+    return build_performance_dossier(
+        db, subject=subject, viewer=current_user, review_year=review_year
+    )
+
+
+@router.get("/performance/dossier-roster")
+def performance_cycle_dossier_roster(
+    team_id: UUID | None = Query(default=None),
+    review_year: int | None = Query(default=None, ge=2000, le=2100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Headline cycle KPIs for people the viewer can manage (team / org)."""
+    from app.services.performance_dossier_service import build_dossier_roster
+    from app.services.performance_review_service import current_review_year
+
+    _require_performance_view(db, current_user)
+    managed = _managed_team_ids(db, current_user)
+    if team_id is not None:
+        if team_id not in managed and not _has_performance_action(
+            db, current_user, MODULE_ACTION_EDIT_REVIEWS
+        ):
+            raise HTTPException(status_code=403, detail="Team access denied")
+        team_ids = [team_id]
+    else:
+        team_ids = managed
+    member_ids = list(team_member_user_ids(db, team_ids)) if team_ids else []
+    # Leaders always see their own row too when managing a team
+    if current_user.id not in member_ids and team_ids:
+        member_ids.append(current_user.id)
+    if not member_ids:
+        member_ids = [current_user.id]
+    resolved_year = review_year or current_review_year()
+    return {
+        "review_year": resolved_year,
+        "items": build_dossier_roster(
+            db, member_ids=member_ids, review_year=resolved_year
+        ),
+    }
+
+
 @router.get("/performance/assignment-fit")
 def performance_assignment_fit(
     complexity: str = Query(default="medium"),

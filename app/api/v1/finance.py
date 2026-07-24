@@ -117,12 +117,41 @@ from app.models.enums import WorkingModelCode
 router = APIRouter(prefix="/finance", tags=["financial-planning"])
 
 
-def _expense_read(row: Expense, *, fy_start: date | None = None) -> ExpenseRead:
+def _expense_read(
+    row: Expense,
+    *,
+    fy_start: date | None = None,
+    team: Team | None = None,
+) -> ExpenseRead:
+    from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
+
     start = fy_start or current_fy_start()
     data = ExpenseRead.model_validate(row)
     purchase = row.purchase_date
     excluded = purchase is None or purchase < start
-    return data.model_copy(update={"prior_fy_excluded_from_overview": excluded})
+    common = bool(team is not None and is_corporate_team(team))
+    team_name = team.name if team is not None else None
+    display_group = "Common" if common else (team_name or "Unassigned")
+    return data.model_copy(
+        update={
+            "prior_fy_excluded_from_overview": excluded,
+            "team_name": team_name,
+            "is_common": common,
+            "display_group": display_group,
+        }
+    )
+
+
+def _teams_by_id(db: Session, team_ids: set) -> dict:
+    if not team_ids:
+        return {}
+    rows = db.scalars(select(Team).where(Team.id.in_(team_ids))).all()
+    return {row.id: row for row in rows}
+
+
+def _expense_read_with_team(db: Session, row: Expense) -> ExpenseRead:
+    team = db.get(Team, row.team_id) if row.team_id is not None else None
+    return _expense_read(row, team=team)
 
 
 def _role(db: Session, user: User) -> str:
@@ -313,7 +342,12 @@ def list_expenses(
         stmt = stmt.where(Expense.team_id == team_id)
     if current_fy_only:
         stmt = stmt.where(Expense.purchase_date.is_not(None), Expense.purchase_date >= fy_start)
-    return [_expense_read(row, fy_start=fy_start) for row in db.scalars(stmt).all()]
+    rows = list(db.scalars(stmt).all())
+    teams = _teams_by_id(db, {row.team_id for row in rows if row.team_id is not None})
+    return [
+        _expense_read(row, fy_start=fy_start, team=teams.get(row.team_id) if row.team_id else None)
+        for row in rows
+    ]
 
 
 @router.post("/expenses", response_model=ExpenseRead, status_code=status.HTTP_201_CREATED)
@@ -362,7 +396,7 @@ def create_expense(
     )
     db.commit()
     db.refresh(row)
-    return _expense_read(row)
+    return _expense_read_with_team(db, row)
 
 
 @router.patch("/expenses/{expense_id}", response_model=ExpenseRead)
@@ -422,7 +456,7 @@ def update_expense(
     )
     db.commit()
     db.refresh(row)
-    return _expense_read(row)
+    return _expense_read_with_team(db, row)
 
 @router.delete("/expenses/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_expense(

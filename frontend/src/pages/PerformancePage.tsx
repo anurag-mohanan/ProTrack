@@ -11,6 +11,7 @@ import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
 import HubRoundedIcon from '@mui/icons-material/HubRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
+import TimelineRoundedIcon from '@mui/icons-material/TimelineRounded';
 import SettingsSuggestRoundedIcon from '@mui/icons-material/SettingsSuggestRounded';
 import PaymentsRoundedIcon from '@mui/icons-material/PaymentsRounded';
 import { useSearchParams } from 'react-router-dom';
@@ -20,6 +21,7 @@ import { LearningPlansPanel } from '../components/performance/LearningPlansPanel
 import { PerformanceDashboardPanel } from '../components/performance/PerformanceDashboardPanel';
 import { PerformanceTemplatesCyclesPanel } from '../components/performance/PerformanceTemplatesCyclesPanel';
 import { PerformanceAnalyticsPanel } from '../components/performance/PerformanceAnalyticsPanel';
+import { PerformanceCycleDossierPanel } from '../components/performance/PerformanceCycleDossierPanel';
 import { CompensationApprovalsPanel } from '../components/performance/CompensationApprovalsPanel';
 import { UserLifecyclePanel } from '../components/performance/UserLifecyclePanel';
 import { PerformanceReviewsPage } from './PerformanceReviewsPage';
@@ -28,6 +30,7 @@ import { hasRole, ROLES } from '../utils/permissions';
 
 const SECTIONS = [
   { id: 'dashboard', label: 'Dashboard', blurb: 'Ratings, open reviews, skills & utilization', icon: DashboardRoundedIcon },
+  { id: 'cycle', label: 'Cycle dossier', blurb: 'July–June projects, hours, leave & prior goals', icon: TimelineRoundedIcon },
   { id: 'annual', label: 'Annual Reviews', blurb: 'Template-driven annual review workspace', icon: AssessmentRoundedIcon },
   { id: 'skills', label: 'Skills Matrix', blurb: 'Stream proficiency for allocation decisions', icon: HubRoundedIcon },
   { id: 'compensation', label: 'Compensation', blurb: 'Hike & promotion suggestions with 2-level approval', icon: PaymentsRoundedIcon },
@@ -181,6 +184,8 @@ export function PerformancePage() {
           {section === 'dashboard' ? (
             <PerformanceDashboardPanel onOpenReview={() => setSectionAndUrl('annual')} />
           ) : null}
+
+          {section === 'cycle' ? <PerformanceCycleDossierPanel /> : null}
 
           {section === 'annual' ? <PerformanceReviewsPage embedded kind="annual" /> : null}
 

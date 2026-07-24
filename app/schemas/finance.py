@@ -130,6 +130,9 @@ class ExpenseRead(BaseModel):
     is_active: bool
     renewal_notified_for: date | None = None
     prior_fy_excluded_from_overview: bool = False
+    team_name: str | None = None
+    is_common: bool = False
+    display_group: str | None = None
 
 
 class PaidByDefaultRead(BaseModel):

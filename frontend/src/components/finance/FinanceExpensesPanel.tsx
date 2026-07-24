@@ -11,6 +11,7 @@ import {
   MenuItem,
   Select,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -50,9 +51,37 @@ type Expense = {
   notify_enabled?: boolean;
   is_recurring?: boolean;
   team_id?: string | null;
+  team_name?: string | null;
+  is_common?: boolean;
+  display_group?: string | null;
   base_amount_inr?: number | string | null;
   prior_fy_excluded_from_overview?: boolean;
 };
+
+/** Matches backend corporate / overhead home names for form labels. */
+const COMMON_TEAM_NAMES = new Set([
+  'corporate / management',
+  'corporate / shared services',
+  'corporate',
+  'management',
+]);
+
+function isCommonTeamName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  return COMMON_TEAM_NAMES.has(name.trim().toLowerCase());
+}
+
+function teamSelectLabel(name: string): string {
+  return isCommonTeamName(name) ? 'Common (Corporate / Management)' : name;
+}
+
+function expenseGroupLabel(row: Expense, teamNameById: Map<string, string>): string {
+  if (row.display_group) return row.display_group;
+  if (row.is_common) return 'Common';
+  if (row.team_name) return row.team_name;
+  if (row.team_id) return teamNameById.get(row.team_id) || 'Unassigned';
+  return 'Unassigned';
+}
 
 const emptyForm = {
   cost_centre_id: '',
@@ -92,10 +121,16 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [paidByHint, setPaidByHint] = useState('');
   const [currentFyOnly, setCurrentFyOnly] = useState(false);
+  /** Advanced = group by team / Common (default on for All teams). */
+  const [advancedMode, setAdvancedMode] = useState(!teamId);
 
   useEffect(() => {
     if (!editingId) setForm((prev) => ({ ...prev, team_id: teamId || prev.team_id }));
   }, [teamId, editingId]);
+
+  useEffect(() => {
+    if (!teamId) setAdvancedMode(true);
+  }, [teamId]);
 
   const costCentresQuery = useQuery({
     queryKey: ['finance-cost-centres'],
@@ -221,32 +256,133 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
 
   const teams = teamsQuery.data ?? [];
   const expenses = expensesQuery.data ?? [];
+  const teamNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const team of teams) map.set(team.id, team.name);
+    return map;
+  }, [teams]);
+
+  const baseOf = (e: Expense) => toFiniteNumber(e.base_amount_inr ?? e.amount);
+
   const expenseStats = useMemo(() => {
     const prosohm = expenses.filter((e) => e.paid_by === 'prosohm');
     const customer = expenses.filter((e) => e.paid_by === 'customer');
     const renewals = expenses.filter((e) => Boolean(e.next_renewal_date)).length;
-    const baseOf = (e: Expense) => toFiniteNumber(e.base_amount_inr ?? e.amount);
     const currencies = new Set(
       expenses.map((e) => (e.currency_code || 'INR').toUpperCase()).filter(Boolean),
     );
+    const commonCount = expenses.filter(
+      (e) => e.is_common || e.display_group === 'Common' || isCommonTeamName(e.team_name),
+    ).length;
     return {
       count: expenses.length,
       prosohmSum: prosohm.reduce((s, e) => s + baseOf(e), 0),
       customerSum: customer.reduce((s, e) => s + baseOf(e), 0),
       renewals,
       mixedFx: currencies.size > 1,
+      commonCount,
     };
   }, [expenses]);
+
+  const expenseGroups = useMemo(() => {
+    const buckets = new Map<string, Expense[]>();
+    for (const row of expenses) {
+      const key = expenseGroupLabel(row, teamNameById);
+      const list = buckets.get(key) ?? [];
+      list.push(row);
+      buckets.set(key, list);
+    }
+    const keys = [...buckets.keys()].sort((a, b) => {
+      if (a === 'Common') return -1;
+      if (b === 'Common') return 1;
+      return a.localeCompare(b);
+    });
+    return keys.map((key) => {
+      const rows = buckets.get(key) ?? [];
+      const prosohmSum = rows
+        .filter((e) => e.paid_by === 'prosohm')
+        .reduce((s, e) => s + baseOf(e), 0);
+      return { key, rows, prosohmSum, isCommon: key === 'Common' };
+    });
+  }, [expenses, teamNameById]);
+
+  const showGrouped = advancedMode && !teamId;
+
+  const renderExpenseRow = (row: Expense) => {
+    const groupLabel = expenseGroupLabel(row, teamNameById);
+    const isCommon = row.is_common || groupLabel === 'Common';
+    return (
+      <Box key={row.id} sx={listRowSx}>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.5 }}
+          >
+            <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
+            <Chip
+              size="small"
+              label={isCommon ? 'Common' : groupLabel}
+              color={isCommon ? 'secondary' : 'default'}
+              variant="outlined"
+            />
+            <Chip
+              size="small"
+              label={row.paid_by === 'customer' ? 'Customer' : 'Prosohm'}
+              color={row.paid_by === 'customer' ? 'info' : 'default'}
+              variant="outlined"
+            />
+            {row.next_renewal_date ? (
+              <Chip
+                size="small"
+                color="success"
+                variant="outlined"
+                label={`Renews ${row.next_renewal_date}`}
+              />
+            ) : null}
+          </Stack>
+          <Typography variant="body2" color="text.secondary">
+            {financeMoney(row.amount, row.currency_code)} · {row.nature} · {row.frequency}
+            {row.purchase_date ? ` · Purchased ${row.purchase_date}` : ''}
+            {row.vendor_name ? ` · ${row.vendor_name}` : ''}
+            {row.next_renewal_date && row.notify_enabled
+              ? ` · notify ${row.notify_before_days ?? 7}d before`
+              : ''}
+          </Typography>
+          {row.prior_fy_excluded_from_overview ? (
+            <Typography variant="caption" color="warning.main">
+              Prior FY — not in Overview
+            </Typography>
+          ) : null}
+        </Box>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Button size="small" variant="contained" onClick={() => startEdit(row)}>
+            Edit
+          </Button>
+          <Button size="small" color="error" variant="outlined" onClick={() => setDeleteTarget(row)}>
+            Delete
+          </Button>
+        </Stack>
+      </Box>
+    );
+  };
 
   return (
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Expenses & subscriptions"
-        subtitle="Capture Prosohm vs customer-paid spend with purchase dates and renewal radar — feeds Overview and Annual Plan renewals sync."
+        subtitle="Team OpEx vs Common (shared HQ) — Advanced mode groups spend for team P&L. Feeds Overview and Annual Plan renewals."
         chips={
           <>
             <Chip size="small" label={currentFyOnly ? 'Current FY' : 'All years'} sx={{ fontWeight: 700 }} />
             <Chip size="small" variant="outlined" label={`${expenseStats.count} lines`} />
+            {expenseStats.commonCount > 0 ? (
+              <Chip size="small" color="secondary" variant="outlined" label={`${expenseStats.commonCount} Common`} />
+            ) : null}
+            {advancedMode && !teamId ? (
+              <Chip size="small" color="primary" label="Advanced · by team" />
+            ) : null}
             {expenseStats.mixedFx ? (
               <Chip size="small" color="info" label="Mixed FX → base INR" />
             ) : null}
@@ -299,10 +435,10 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
 
       <FinanceSection
         title={editingId ? 'Edit expense / subscription' : 'Add expense / subscription'}
-        subtitle="Team and date of purchase are required. Overview only counts purchases in the current Indian FY (Apr–Mar). Paid by defaults from Team commercial for SW/HW — you can override."
+        subtitle="Team and date of purchase are required. Use Common (Corporate / Management) for shared HQ spend — delivery teams keep direct OpEx for team P&L. Overview counts current Indian FY (Apr–Mar) only."
       >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', mb: 1 }}>
-          <FormControl size="small" sx={{ minWidth: 200 }} required>
+          <FormControl size="small" sx={{ minWidth: 240 }} required>
             <InputLabel>Team</InputLabel>
             <Select
               label="Team"
@@ -315,7 +451,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             >
               {teams.map((team) => (
                 <MenuItem key={team.id} value={team.id}>
-                  {team.name}
+                  {teamSelectLabel(team.name)}
                 </MenuItem>
               ))}
             </Select>
@@ -489,17 +625,35 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
 
       <FinanceSection
         title="Expense lines"
-        subtitle="Edit or delete rows. Prior-FY purchases stay listed but do not hit Overview until in the current FY."
+        subtitle={
+          showGrouped
+            ? 'Grouped by team for P&L: Common (shared) first, then delivery teams. Prior-FY purchases stay listed but do not hit Overview.'
+            : 'Edit or delete rows. Turn on Advanced (All teams) to group by team vs Common. Prior-FY purchases stay listed but do not hit Overview.'
+        }
         action={
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={currentFyOnly}
-                onChange={(e) => setCurrentFyOnly(e.target.checked)}
+          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+            {!teamId ? (
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={advancedMode}
+                    onChange={(e) => setAdvancedMode(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label="Advanced"
               />
-            }
-            label="Current FY only"
-          />
+            ) : null}
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={currentFyOnly}
+                  onChange={(e) => setCurrentFyOnly(e.target.checked)}
+                />
+              }
+              label="Current FY only"
+            />
+          </Stack>
         }
       >
         <Stack spacing={1.25}>
@@ -507,46 +661,31 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             <Typography variant="body2" color="text.secondary">
               No expenses yet — add the first line above.
             </Typography>
-          ) : (
-            expenses.map((row) => (
-              <Box key={row.id} sx={listRowSx}>
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.5 }}>
-                    <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
-                    <Chip
-                      size="small"
-                      label={row.paid_by === 'customer' ? 'Customer' : 'Prosohm'}
-                      color={row.paid_by === 'customer' ? 'info' : 'default'}
-                      variant="outlined"
-                    />
-                    {row.next_renewal_date ? (
-                      <Chip size="small" color="success" variant="outlined" label={`Renews ${row.next_renewal_date}`} />
-                    ) : null}
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary">
-                    {financeMoney(row.amount, row.currency_code)} · {row.nature} · {row.frequency}
-                    {row.purchase_date ? ` · Purchased ${row.purchase_date}` : ''}
-                    {row.vendor_name ? ` · ${row.vendor_name}` : ''}
-                    {row.next_renewal_date && row.notify_enabled
-                      ? ` · notify ${row.notify_before_days ?? 7}d before`
-                      : ''}
+          ) : showGrouped ? (
+            expenseGroups.map((group) => (
+              <Box key={group.key} sx={{ mb: 0.5 }}>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  useFlexGap
+                  sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 1 }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    {group.isCommon ? 'Common (shared HQ)' : group.key}
                   </Typography>
-                  {row.prior_fy_excluded_from_overview ? (
-                    <Typography variant="caption" color="warning.main">
-                      Prior FY — not in Overview
-                    </Typography>
-                  ) : null}
-                </Box>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                  <Button size="small" variant="contained" onClick={() => startEdit(row)}>
-                    Edit
-                  </Button>
-                  <Button size="small" color="error" variant="outlined" onClick={() => setDeleteTarget(row)}>
-                    Delete
-                  </Button>
+                  <Chip size="small" variant="outlined" label={`${group.rows.length} lines`} />
+                  <Chip
+                    size="small"
+                    color={group.isCommon ? 'secondary' : 'default'}
+                    variant="outlined"
+                    label={`Prosohm Σ ${financeMoney(group.prosohmSum, 'INR')}`}
+                  />
                 </Stack>
+                <Stack spacing={1.25}>{group.rows.map((row) => renderExpenseRow(row))}</Stack>
               </Box>
             ))
+          ) : (
+            expenses.map((row) => renderExpenseRow(row))
           )}
         </Stack>
       </FinanceSection>
@@ -557,7 +696,15 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
         message="This removes the expense from Financial Planning lists and Overview totals (soft-delete)."
         recordName={
           deleteTarget
-            ? `${deleteTarget.name} · ${deleteTarget.amount} ${deleteTarget.currency_code} · Paid by ${deleteTarget.paid_by}`
+            ? `${deleteTarget.name} · ${
+                deleteTarget.is_common || deleteTarget.display_group === 'Common'
+                  ? 'Common'
+                  : deleteTarget.display_group ||
+                    deleteTarget.team_name ||
+                    (deleteTarget.team_id
+                      ? teamNameById.get(deleteTarget.team_id) || 'Team'
+                      : 'Team')
+              } · ${deleteTarget.amount} ${deleteTarget.currency_code} · Paid by ${deleteTarget.paid_by}`
             : undefined
         }
         confirmLabel="Delete"

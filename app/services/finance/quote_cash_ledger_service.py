@@ -20,12 +20,20 @@ def _d(value) -> Decimal:
 
 
 def _current_revision(db: Session, quote: Quote) -> QuoteRevision | None:
-    return db.scalar(
+    current = db.scalar(
         select(QuoteRevision).where(
             QuoteRevision.quote_id == quote.id,
             QuoteRevision.version == quote.current_version,
             QuoteRevision.revision == quote.current_revision,
         )
+    )
+    if current is not None:
+        return current
+    return db.scalar(
+        select(QuoteRevision)
+        .where(QuoteRevision.quote_id == quote.id)
+        .order_by(QuoteRevision.version.desc())
+        .limit(1)
     )
 
 
@@ -80,19 +88,27 @@ def summarize_quote_cash(
     latest_payment = max((row.line_date for row in payments), default=None)
     is_invoiced = total_invoiced > 0
     is_paid = is_invoiced and balance_due == 0
-    # Partial vs full vs quoted / vs invoiced (is_invoiced stays true for any invoice progress).
+    # Compare to quoted contract. Never treat as fully invoiced when quoted is
+    # unknown/zero but cash lines exist (avoids false "Invoiced" / "Settled").
     if total_invoiced <= 0:
         invoice_status = "none"
+    elif quoted <= 0:
+        invoice_status = "partial"
     elif remaining_to_invoice <= Decimal("0.01"):
         invoice_status = "full"
     else:
         invoice_status = "partial"
     if total_paid <= 0:
         payment_status = "none"
+    elif invoice_status == "partial" and balance_due <= Decimal("0.01"):
+        # Settled vs invoices so far, but contract still open.
+        payment_status = "partial"
     elif balance_due <= Decimal("0.01"):
         payment_status = "full"
     else:
         payment_status = "partial"
+    # is_paid means contract cash is closed (fully invoiced and settled).
+    is_paid = invoice_status == "full" and balance_due <= Decimal("0.01")
     return {
         "quoted_revenue": quoted,
         "total_invoiced": total_invoiced,

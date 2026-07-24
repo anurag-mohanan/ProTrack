@@ -50,6 +50,21 @@ def test_fifty_twentyfive_twentyfive_settles(client, auth_headers, session):
     assert inv1.json()["invoice_status"] == "partial"
     assert inv1.json()["is_partially_invoiced"] is True
 
+    # Pay the 50% invoice in full — still not contract-paid / still partially invoiced.
+    mid_pay = client.post(
+        f"/api/v1/finance/quotes/{quote_id}/payment-lines",
+        headers=auth_headers,
+        json={"amount": "500.00", "line_date": "2026-06-10", "reference": "50% settle"},
+    )
+    assert mid_pay.status_code == 201, mid_pay.text
+    mid = mid_pay.json()
+    assert mid["invoice_status"] == "partial"
+    assert mid["is_partially_invoiced"] is True
+    assert mid["payment_status"] == "partial"
+    assert mid["is_paid"] is False
+    assert Decimal(str(mid["balance_due"])) == Decimal("0")
+    assert Decimal(str(mid["remaining_to_invoice"])) == Decimal("500.00")
+
     inv2 = client.post(
         f"/api/v1/finance/quotes/{quote_id}/invoice-lines",
         headers=auth_headers,
@@ -58,18 +73,10 @@ def test_fifty_twentyfive_twentyfive_settles(client, auth_headers, session):
     assert inv2.status_code == 201, inv2.text
     body = inv2.json()
     assert Decimal(str(body["total_invoiced"])) == Decimal("1000.00")
-    assert Decimal(str(body["balance_due"])) == Decimal("1000.00")
+    assert Decimal(str(body["balance_due"])) == Decimal("500.00")
     assert body["invoice_status"] == "full"
     assert body["is_partially_invoiced"] is False
     assert body["is_invoiced"] is True
-
-    pay1 = client.post(
-        f"/api/v1/finance/quotes/{quote_id}/payment-lines",
-        headers=auth_headers,
-        json={"amount": "500.00", "line_date": "2026-06-15", "reference": "50%"},
-    )
-    assert pay1.status_code == 201, pay1.text
-    assert Decimal(str(pay1.json()["balance_due"])) == Decimal("500.00")
 
     pay2 = client.post(
         f"/api/v1/finance/quotes/{quote_id}/payment-lines",

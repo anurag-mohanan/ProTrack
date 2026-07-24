@@ -49,6 +49,39 @@ export type AwardedQuoteRow = {
   billing_gaps?: string[];
 };
 
+function resolveInvoiceStatus(quote: AwardedQuoteRow): 'none' | 'partial' | 'full' {
+  const quoted = toFiniteNumber(quote.quoted_revenue);
+  const invoiced = toFiniteNumber(quote.total_invoiced);
+  const remaining =
+    quote.remaining_to_invoice != null
+      ? toFiniteNumber(quote.remaining_to_invoice)
+      : Math.max(0, quoted - invoiced);
+
+  if (invoiced <= 0 && !(quote.is_invoiced && quoted > 0)) return 'none';
+  if (invoiced <= 0) return 'none';
+
+  // Amounts are source of truth — never show "Invoiced" when contract remains.
+  if (quoted > 0 && remaining > 0.01) return 'partial';
+  if (quoted > 0 && remaining <= 0.01) return 'full';
+
+  if (quote.invoice_status === 'partial' || quote.is_partially_invoiced) return 'partial';
+  if (quote.invoice_status === 'full') return 'full';
+  // Quoted unknown: do not claim fully invoiced.
+  return 'partial';
+}
+
+function resolvePaymentStatus(
+  quote: AwardedQuoteRow,
+  invoiceStatus: 'none' | 'partial' | 'full',
+): 'none' | 'partial' | 'full' {
+  const paid = toFiniteNumber(quote.total_paid);
+  const due = toFiniteNumber(quote.balance_due);
+  if (invoiceStatus === 'none' || paid <= 0) return 'none';
+  if (invoiceStatus === 'partial') return 'partial';
+  if (due > 0.01) return 'partial';
+  return 'full';
+}
+
 function StatusPill({
   label,
   tone,
@@ -194,6 +227,15 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
               const quoteLabel = quote.external_quote_number?.trim() || quote.tool_number;
               const showFx =
                 quote.base_quoted_revenue_inr != null && currency !== 'INR';
+              const invoiceStatus = resolveInvoiceStatus(quote);
+              const paymentStatus = resolvePaymentStatus(quote, invoiceStatus);
+              const remainingToInvoice =
+                quote.remaining_to_invoice != null
+                  ? toFiniteNumber(quote.remaining_to_invoice)
+                  : Math.max(
+                      0,
+                      toFiniteNumber(quote.quoted_revenue) - toFiniteNumber(quote.total_invoiced),
+                    );
 
               return (
                 <TableRow
@@ -248,31 +290,36 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                       variant="caption"
                       sx={{
                         display: 'block',
-                        fontWeight: quote.is_invoiced ? 600 : 500,
-                        color: quote.is_invoiced
-                          ? designTokens.semantic.success
-                          : designTokens.semantic.warning,
+                        fontWeight: invoiceStatus !== 'none' ? 600 : 500,
+                        color:
+                          invoiceStatus !== 'none'
+                            ? designTokens.semantic.success
+                            : designTokens.semantic.warning,
                       }}
                     >
-                      {quote.is_invoiced && quote.invoiced_date
-                        ? quote.invoice_status === 'partial' || quote.is_partially_invoiced
-                          ? `Partially invoiced ${quote.invoiced_date}`
-                          : `Invoiced ${quote.invoiced_date}`
-                        : 'Not invoiced'}
+                      {invoiceStatus === 'partial' && quote.invoiced_date
+                        ? `Partially invoiced ${quote.invoiced_date}`
+                        : invoiceStatus === 'full' && quote.invoiced_date
+                          ? `Invoiced ${quote.invoiced_date}`
+                          : invoiceStatus === 'partial'
+                            ? 'Partially invoiced'
+                            : invoiceStatus === 'full'
+                              ? 'Invoiced'
+                              : 'Not invoiced'}
                     </Typography>
                     {quote.customer_po_number ? (
                       <Typography variant="caption" sx={{ color: chartTheme.ink.secondary, display: 'block' }}>
                         PO {quote.customer_po_number}
                       </Typography>
                     ) : null}
-                    {quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0 ? (
+                    {invoiceStatus !== 'none' ? (
                       <Typography
                         variant="caption"
                         sx={{
                           display: 'block',
                           fontWeight: 600,
                           color:
-                            toFiniteNumber(quote.balance_due) > 0
+                            toFiniteNumber(quote.balance_due) > 0 || invoiceStatus === 'partial'
                               ? designTokens.semantic.warning
                               : designTokens.semantic.success,
                         }}
@@ -281,7 +328,9 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                         {financeMoney(quote.total_invoiced, currency)}
                         {toFiniteNumber(quote.balance_due) > 0
                           ? ` · Due ${financeMoney(quote.balance_due, currency)}`
-                          : ' · Settled'}
+                          : invoiceStatus === 'partial'
+                            ? ` · Settled on invoices · Left ${financeMoney(remainingToInvoice, currency)}`
+                            : ' · Settled'}
                       </Typography>
                     ) : null}
                     {toFiniteNumber(quote.balance_due) > 0 && quote.payment_follow_up_due ? (
@@ -299,34 +348,26 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                       />
                       <StatusPill
                         label={
-                          quote.invoice_status === 'partial' || quote.is_partially_invoiced
+                          invoiceStatus === 'partial'
                             ? 'Partially invoiced'
-                            : quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0
+                            : invoiceStatus === 'full'
                               ? 'Invoiced'
                               : 'Pending'
                         }
-                        tone={
-                          quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0
-                            ? 'success'
-                            : 'warning'
-                        }
+                        tone={invoiceStatus === 'none' ? 'warning' : 'success'}
                       />
-                      {quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0 ? (
+                      {invoiceStatus !== 'none' ? (
                         <StatusPill
                           label={
-                            quote.payment_status === 'partial' || quote.is_partially_paid
-                              ? 'Partially paid'
-                              : quote.is_paid || toFiniteNumber(quote.balance_due) <= 0
+                            paymentStatus === 'partial'
+                              ? toFiniteNumber(quote.balance_due) > 0
+                                ? 'Partially paid'
+                                : 'Paid on invoices'
+                              : paymentStatus === 'full'
                                 ? 'Paid'
-                                : toFiniteNumber(quote.total_paid) > 0
-                                  ? 'Partially paid'
-                                  : 'Unpaid'
+                                : 'Unpaid'
                           }
-                          tone={
-                            quote.is_paid || toFiniteNumber(quote.balance_due) <= 0
-                              ? 'success'
-                              : 'warning'
-                          }
+                          tone={paymentStatus === 'full' ? 'success' : 'warning'}
                         />
                       ) : null}
                       {quote.payment_follow_up_due ? (

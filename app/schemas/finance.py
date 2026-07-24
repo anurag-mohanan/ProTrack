@@ -133,6 +133,9 @@ class ExpenseRead(BaseModel):
     team_name: str | None = None
     is_common: bool = False
     display_group: str | None = None
+    cost_centre_code: str | None = None
+    cost_centre_name: str | None = None
+    spend_category: str | None = None
 
 
 class PaidByDefaultRead(BaseModel):

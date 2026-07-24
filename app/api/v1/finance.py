@@ -122,6 +122,7 @@ def _expense_read(
     *,
     fy_start: date | None = None,
     team: Team | None = None,
+    cost_centre: CostCentre | None = None,
 ) -> ExpenseRead:
     from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
 
@@ -132,14 +133,35 @@ def _expense_read(
     common = bool(team is not None and is_corporate_team(team))
     team_name = team.name if team is not None else None
     display_group = "Common" if common else (team_name or "Unassigned")
+    code = cost_centre.code if cost_centre is not None else None
+    centre_name = cost_centre.name if cost_centre is not None else None
+    category = _spend_category(is_common=common, cost_centre_code=code)
     return data.model_copy(
         update={
             "prior_fy_excluded_from_overview": excluded,
             "team_name": team_name,
             "is_common": common,
             "display_group": display_group,
+            "cost_centre_code": code,
+            "cost_centre_name": centre_name,
+            "spend_category": category,
         }
     )
+
+
+_SOFTWARE_CENTRE_CODES = frozenset({"SW_LICENSES", "SW_RENEWALS", "CLOUD"})
+_HARDWARE_CENTRE_CODES = frozenset({"HARDWARE", "SERVERS"})
+
+
+def _spend_category(*, is_common: bool, cost_centre_code: str | None) -> str:
+    if is_common:
+        return "shared"
+    code = (cost_centre_code or "").upper()
+    if code in _SOFTWARE_CENTRE_CODES:
+        return "software"
+    if code in _HARDWARE_CENTRE_CODES:
+        return "hardware_capex"
+    return "other"
 
 
 def _teams_by_id(db: Session, team_ids: set) -> dict:
@@ -149,9 +171,17 @@ def _teams_by_id(db: Session, team_ids: set) -> dict:
     return {row.id: row for row in rows}
 
 
+def _cost_centres_by_id(db: Session, centre_ids: set) -> dict:
+    if not centre_ids:
+        return {}
+    rows = db.scalars(select(CostCentre).where(CostCentre.id.in_(centre_ids))).all()
+    return {row.id: row for row in rows}
+
+
 def _expense_read_with_team(db: Session, row: Expense) -> ExpenseRead:
     team = db.get(Team, row.team_id) if row.team_id is not None else None
-    return _expense_read(row, team=team)
+    centre = db.get(CostCentre, row.cost_centre_id) if row.cost_centre_id is not None else None
+    return _expense_read(row, team=team, cost_centre=centre)
 
 
 def _role(db: Session, user: User) -> str:
@@ -332,10 +362,22 @@ def list_cost_centres(
 def list_expenses(
     team_id: UUID | None = Query(default=None),
     current_fy_only: bool = Query(default=False),
+    scope: str = Query(
+        default="all",
+        description="all | team (delivery teams only) | overhead (Corporate / Management only)",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
+
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    scope_norm = (scope or "all").strip().lower()
+    if scope_norm not in {"all", "team", "overhead"}:
+        raise HTTPException(
+            status_code=400,
+            detail="scope must be one of: all, team, overhead",
+        )
     fy_start = current_fy_start()
     stmt = select(Expense).where(Expense.is_active.is_(True)).order_by(Expense.name)
     if team_id is not None:
@@ -344,8 +386,26 @@ def list_expenses(
         stmt = stmt.where(Expense.purchase_date.is_not(None), Expense.purchase_date >= fy_start)
     rows = list(db.scalars(stmt).all())
     teams = _teams_by_id(db, {row.team_id for row in rows if row.team_id is not None})
+    centres = _cost_centres_by_id(
+        db, {row.cost_centre_id for row in rows if row.cost_centre_id is not None}
+    )
+    if scope_norm in {"team", "overhead"}:
+        filtered: list[Expense] = []
+        for row in rows:
+            team = teams.get(row.team_id) if row.team_id else None
+            corporate = is_corporate_team(team)
+            if scope_norm == "team" and not corporate:
+                filtered.append(row)
+            elif scope_norm == "overhead" and corporate:
+                filtered.append(row)
+        rows = filtered
     return [
-        _expense_read(row, fy_start=fy_start, team=teams.get(row.team_id) if row.team_id else None)
+        _expense_read(
+            row,
+            fy_start=fy_start,
+            team=teams.get(row.team_id) if row.team_id else None,
+            cost_centre=centres.get(row.cost_centre_id) if row.cost_centre_id else None,
+        )
         for row in rows
     ]
 

@@ -44,7 +44,7 @@ import {
   type KpiBreakdownMetric,
 } from './FinanceKpiBreakdownDrawer';
 
-/** Catalogue categories — each holds many named expense lines. */
+/** Company-wide shared HQ catalogue — team SW/HW lives on Expenses & subscriptions. */
 const OVERHEAD_CATEGORIES: Array<{
   code: string;
   label: string;
@@ -58,7 +58,7 @@ const OVERHEAD_CATEGORIES: Array<{
     label: 'Rent',
     frequency: 'monthly',
     nature: 'opex',
-    hint: 'Facilities & leases — usually Corporate',
+    hint: 'Facilities & leases — company-wide',
     namePlaceholder: 'e.g. HQ lease, annex, parking',
   },
   {
@@ -66,7 +66,7 @@ const OVERHEAD_CATEGORIES: Array<{
     label: 'Utilities',
     frequency: 'monthly',
     nature: 'opex',
-    hint: 'Power, water, genset — usually Corporate',
+    hint: 'Power, water, genset — shared',
     namePlaceholder: 'e.g. Electricity, water, diesel',
   },
   {
@@ -74,7 +74,7 @@ const OVERHEAD_CATEGORIES: Array<{
     label: 'Internet',
     frequency: 'monthly',
     nature: 'opex',
-    hint: 'Connectivity — Corporate or team site',
+    hint: 'Office connectivity — shared HQ',
     namePlaceholder: 'e.g. Primary ISP, backup link',
   },
   {
@@ -82,7 +82,7 @@ const OVERHEAD_CATEGORIES: Array<{
     label: 'Office expenses',
     frequency: 'monthly',
     nature: 'opex',
-    hint: 'Supplies & admin',
+    hint: 'Supplies & admin — company-wide',
     namePlaceholder: 'e.g. Stationery, pantry',
   },
   {
@@ -90,48 +90,8 @@ const OVERHEAD_CATEGORIES: Array<{
     label: 'Maintenance',
     frequency: 'monthly',
     nature: 'opex',
-    hint: 'Facility & equipment',
+    hint: 'Facility & equipment — shared',
     namePlaceholder: 'e.g. AMC, HVAC service',
-  },
-  {
-    code: 'CLOUD',
-    label: 'Cloud',
-    frequency: 'monthly',
-    nature: 'opex',
-    hint: 'Hosting & SaaS — assign to consuming team when dedicated',
-    namePlaceholder: 'e.g. AWS, Azure, Google Workspace',
-  },
-  {
-    code: 'SW_LICENSES',
-    label: 'Software licenses',
-    frequency: 'yearly',
-    nature: 'opex',
-    hint: 'CAD / engineering tools — assign to the team that uses them',
-    namePlaceholder: 'e.g. NX Mach 3, AutoCAD, SolidWorks',
-  },
-  {
-    code: 'SW_RENEWALS',
-    label: 'Software renewals',
-    frequency: 'yearly',
-    nature: 'opex',
-    hint: 'Renewal cycles — assign to the consuming team',
-    namePlaceholder: 'e.g. NX renewal FY26',
-  },
-  {
-    code: 'HARDWARE',
-    label: 'Hardware (CapEx)',
-    frequency: 'one_time',
-    nature: 'capex',
-    hint: 'Workstations, 3D mice, peripherals — assign to the team',
-    namePlaceholder: 'e.g. Dell workstation batch',
-  },
-  {
-    code: 'SERVERS',
-    label: 'Servers (CapEx)',
-    frequency: 'one_time',
-    nature: 'capex',
-    hint: 'Servers / NAS — assign to owning team or Corporate',
-    namePlaceholder: 'e.g. File server upgrade',
   },
   {
     code: 'INSURANCE',
@@ -142,20 +102,20 @@ const OVERHEAD_CATEGORIES: Array<{
     namePlaceholder: 'e.g. Property, liability',
   },
   {
-    code: 'TRAINING',
-    label: 'Training',
+    code: 'TAXES',
+    label: 'Taxes',
     frequency: 'yearly',
     nature: 'opex',
-    hint: 'Learning — assign to team when dedicated',
-    namePlaceholder: 'e.g. Certification cohort',
+    hint: 'Company tax & statutory',
+    namePlaceholder: 'e.g. Property tax, GST adj.',
   },
   {
-    code: 'TRAVEL',
-    label: 'Travel',
-    frequency: 'yearly',
+    code: 'MISC',
+    label: 'Miscellaneous (shared)',
+    frequency: 'monthly',
     nature: 'opex',
-    hint: 'Business travel — assign to team when dedicated',
-    namePlaceholder: 'e.g. Client visit Q2',
+    hint: 'Other company-wide costs only',
+    namePlaceholder: 'e.g. Shared subscription not team-owned',
   },
 ];
 
@@ -231,7 +191,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const dashQ = teamQueryParam(teamId);
-  const [expanded, setExpanded] = useState<string | false>('SW_LICENSES');
+  const [expanded, setExpanded] = useState<string | false>('RENT');
   const [lineDrafts, setLineDrafts] = useState<Record<string, LineDraft>>({});
   const [addDrafts, setAddDrafts] = useState<Record<string, AddDraft>>({});
   const [showCustom, setShowCustom] = useState(false);
@@ -275,16 +235,19 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     [teamsQuery.data],
   );
 
-  const defaultAssignTeamId = teamId || overheadHomeId || '';
+  const defaultAssignTeamId = overheadHomeId || '';
 
   const expensesQuery = useQuery({
-    queryKey: ['finance-overhead-expenses', teamId || 'all-teams'],
+    queryKey: ['finance-overhead-expenses', overheadHomeId || 'pending'],
+    enabled: Boolean(overheadHomeId),
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (teamId) params.set('team_id', teamId);
+      params.set('scope', 'overhead');
       params.set('current_fy_only', 'true');
-      const suffix = params.toString() ? `?${params.toString()}` : '';
-      const { data } = await apiClient.get<OverheadExpense[]>(`/finance/expenses${suffix}`);
+      if (overheadHomeId) params.set('team_id', overheadHomeId);
+      const { data } = await apiClient.get<OverheadExpense[]>(
+        `/finance/expenses?${params.toString()}`,
+      );
       return data;
     },
   });
@@ -402,7 +365,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     }) => {
       const amount = Number(String(payload.draft.amount).replace(/,/g, ''));
       if (!payload.draft.name.trim()) throw new Error('Name is required.');
-      if (!payload.draft.team_id) throw new Error('Select a team.');
+      if (!defaultAssignTeamId) throw new Error('Corporate / Management overhead home is not available yet.');
       if (!Number.isFinite(amount) || amount < 0) throw new Error('Amount must be a valid number.');
       const recurring = payload.draft.frequency !== 'one_time';
       return (
@@ -411,7 +374,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
           amount,
           frequency: payload.draft.frequency,
           vendor_name: payload.draft.vendor_name.trim() || null,
-          team_id: payload.draft.team_id,
+          team_id: defaultAssignTeamId,
           is_recurring: recurring,
           paid_by: 'prosohm',
           nature: payload.nature === 'capex' ? 'capex' : 'opex',
@@ -448,8 +411,8 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
 
   const createCustomMutation = useMutation({
     mutationFn: async () => {
-      const team = form.team_id || defaultAssignTeamId;
-      if (!team) throw new Error('Select a team to assign this spend.');
+      const team = defaultAssignTeamId;
+      if (!team) throw new Error('Corporate / Management overhead home is not available yet.');
       if (!form.cost_centre_id) throw new Error('Select a cost centre.');
       if (!form.name.trim()) throw new Error('Name is required.');
       const centre = centres.find((c) => c.id === form.cost_centre_id);
@@ -476,7 +439,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       ).data;
     },
     onSuccess: () => {
-      showSuccess('Custom overhead saved to team P&L');
+      showSuccess('Custom overhead saved to shared HQ pool');
       setForm((prev) => ({ ...prev, name: '', amount: '', end_date: '' }));
       invalidate();
     },
@@ -489,9 +452,9 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     const draft = addFor(code);
     const name = draft.name.trim();
     const amount = Number(String(draft.amount).replace(/,/g, ''));
-    const assignTeam = draft.team_id || defaultAssignTeamId;
+    const assignTeam = defaultAssignTeamId;
     if (!name) {
-      showError('Enter a line name (e.g. NX Mach 3).');
+      showError('Enter a line name (e.g. HQ lease).');
       return;
     }
     if (!Number.isFinite(amount) || amount < 0) {
@@ -499,7 +462,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       return;
     }
     if (!assignTeam) {
-      showError('Select a team so this spend hits that team’s P&L.');
+      showError('Corporate / Management overhead home is not available yet.');
       return;
     }
     createLineMutation.mutate({
@@ -530,7 +493,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Overheads cockpit"
-        subtitle="Assign software OpEx and hardware CapEx to the team that consumes them — those lines roll into that team’s operating cost and net profit. Corporate stays the pool home for shared HQ spend. Click a KPI card for the build-up."
+        subtitle="Company-wide shared costs only (rent, utilities, office, insurance). Team software, CapEx, and other delivery spend belong under Expenses & subscriptions. Click a KPI for the build-up."
         chips={
           <>
             {dashboardQuery.data?.planning_fy_label ? (
@@ -545,6 +508,12 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               color="info"
               label={`${billableN} delivery billable FTE`}
               sx={{ fontWeight: 700 }}
+            />
+            <Chip
+              size="small"
+              color="secondary"
+              variant="outlined"
+              label="Shared HQ only"
             />
             <Chip
               size="small"
@@ -761,29 +730,13 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                                       <MenuItem value="one_time">One-time</MenuItem>
                                     </Select>
                                   </FormControl>
-                                  <FormControl size="small" sx={{ minWidth: 160 }}>
-                                    <InputLabel>Team</InputLabel>
-                                    <Select
-                                      label="Team"
-                                      value={draft.team_id || defaultAssignTeamId}
-                                      onChange={(e) =>
-                                        setLineDrafts((prev) => ({
-                                          ...prev,
-                                          [row.id]: { ...draft, team_id: e.target.value },
-                                        }))
-                                      }
-                                    >
-                                      {teams.map((t) => (
-                                        <MenuItem key={t.id} value={t.id}>
-                                          {t.name}
-                                        </MenuItem>
-                                      ))}
-                                      {overheadHomeId &&
-                                      !teams.some((t) => t.id === overheadHomeId) ? (
-                                        <MenuItem value={overheadHomeId}>{overheadHomeName}</MenuItem>
-                                      ) : null}
-                                    </Select>
-                                  </FormControl>
+                                  <Chip
+                                    size="small"
+                                    color="secondary"
+                                    variant="outlined"
+                                    label={overheadHomeName}
+                                    sx={{ alignSelf: 'center' }}
+                                  />
                                   <TextField
                                     size="small"
                                     label="Vendor"
@@ -799,13 +752,13 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                                   <Button
                                     size="small"
                                     variant="contained"
-                                    disabled={updateLineMutation.isPending}
+                                    disabled={updateLineMutation.isPending || !defaultAssignTeamId}
                                     onClick={() =>
                                       updateLineMutation.mutate({
                                         id: row.id,
                                         draft: {
                                           ...draft,
-                                          team_id: draft.team_id || defaultAssignTeamId,
+                                          team_id: defaultAssignTeamId,
                                         },
                                         nature: row.nature || cat.nature,
                                       })
@@ -888,41 +841,18 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                             }
                             sx={{ flex: 1, minWidth: 140 }}
                           />
-                          <FormControl
+                          <Chip
                             size="small"
-                            sx={{ minWidth: 160 }}
-                            disabled={missingCentre || createLineMutation.isPending}
-                          >
-                            <InputLabel>Assign to team</InputLabel>
-                            <Select
-                              label="Assign to team"
-                              value={addFor(cat.code).team_id || defaultAssignTeamId}
-                              onChange={(e) =>
-                                setAddDrafts((prev) => ({
-                                  ...prev,
-                                  [cat.code]: {
-                                    ...addFor(cat.code),
-                                    team_id: e.target.value,
-                                  },
-                                }))
-                              }
-                            >
-                              {teams.map((t) => (
-                                <MenuItem key={t.id} value={t.id}>
-                                  {t.name}
-                                </MenuItem>
-                              ))}
-                              {overheadHomeId &&
-                              !teams.some((t) => t.id === overheadHomeId) ? (
-                                <MenuItem value={overheadHomeId}>{overheadHomeName}</MenuItem>
-                              ) : null}
-                            </Select>
-                          </FormControl>
+                            color="secondary"
+                            variant="outlined"
+                            label={`Shared · ${overheadHomeName}`}
+                            sx={{ alignSelf: 'center' }}
+                          />
                           <Button
                             size="small"
                             variant="contained"
                             startIcon={<AddOutlinedIcon />}
-                            disabled={missingCentre || createLineMutation.isPending}
+                            disabled={missingCentre || createLineMutation.isPending || !defaultAssignTeamId}
                             onClick={() => submitAdd(cat.code, cat)}
                           >
                             Add
@@ -981,7 +911,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
 
       <FinanceSection
         title="Custom overhead line"
-        subtitle="Escape hatch for centres not listed above — still assign to a team for P&L"
+        subtitle="Escape hatch for centres not listed above — always attributed to shared HQ (Corporate / Management)"
         action={
           <Button size="small" onClick={() => setShowCustom((v) => !v)}>
             {showCustom ? 'Hide' : 'Show form'}
@@ -990,23 +920,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       >
         <Collapse in={showCustom}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel>Team</InputLabel>
-              <Select
-                label="Team"
-                value={form.team_id || defaultAssignTeamId}
-                onChange={(e) => setForm({ ...form, team_id: e.target.value })}
-              >
-                {teams.map((t) => (
-                  <MenuItem key={t.id} value={t.id}>
-                    {t.name}
-                  </MenuItem>
-                ))}
-                {overheadHomeId && !teams.some((t) => t.id === overheadHomeId) ? (
-                  <MenuItem value={overheadHomeId}>{overheadHomeName}</MenuItem>
-                ) : null}
-              </Select>
-            </FormControl>
+            <Chip size="small" color="secondary" variant="outlined" label={overheadHomeName} />
             <FormControl size="small" sx={{ minWidth: 200 }}>
               <InputLabel>Cost centre</InputLabel>
               <Select
@@ -1014,7 +928,9 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                 value={form.cost_centre_id}
                 onChange={(e) => setForm({ ...form, cost_centre_id: e.target.value })}
               >
-                {centres.map((c) => (
+                {centres
+                  .filter((c) => OVERHEAD_CATEGORIES.some((cat) => cat.code === (c.code || '').toUpperCase()) || (c.code || '').toUpperCase() === 'MISC')
+                  .map((c) => (
                   <MenuItem key={c.id} value={c.id}>
                     {c.name}
                   </MenuItem>

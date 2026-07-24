@@ -34,7 +34,7 @@ import {
   financeMoney,
 } from './FinanceCockpitPrimitives';
 
-type CostCentre = { id: string; name: string; code?: string };
+type CostCentre = { id: string; name: string; code?: string; nature?: string };
 type Expense = {
   id: string;
   cost_centre_id: string;
@@ -54,31 +54,67 @@ type Expense = {
   team_name?: string | null;
   is_common?: boolean;
   display_group?: string | null;
+  cost_centre_code?: string | null;
+  cost_centre_name?: string | null;
+  spend_category?: string | null;
   base_amount_inr?: number | string | null;
   prior_fy_excluded_from_overview?: boolean;
 };
 
-/** Matches backend corporate / overhead home names for form labels. */
-const COMMON_TEAM_NAMES = new Set([
+/** Corporate / overhead home — company-wide spend belongs on Overheads, not here. */
+const OVERHEAD_TEAM_NAMES = new Set([
   'corporate / management',
   'corporate / shared services',
   'corporate',
   'management',
 ]);
 
-function isCommonTeamName(name: string | null | undefined): boolean {
+/** Cost centres preferred for team Expenses & subscriptions. */
+const TEAM_EXPENSE_CENTRE_CODES = new Set([
+  'SW_LICENSES',
+  'SW_RENEWALS',
+  'CLOUD',
+  'HARDWARE',
+  'SERVERS',
+  'TRAINING',
+  'TRAVEL',
+  'MISC',
+]);
+
+const CATEGORY_ORDER = ['software', 'hardware_capex', 'other'] as const;
+const CATEGORY_LABELS: Record<(typeof CATEGORY_ORDER)[number], string> = {
+  software: 'Software & cloud',
+  hardware_capex: 'Hardware CapEx',
+  other: 'Other team expenses',
+};
+
+function isOverheadTeamName(name: string | null | undefined): boolean {
   if (!name) return false;
-  return COMMON_TEAM_NAMES.has(name.trim().toLowerCase());
+  return OVERHEAD_TEAM_NAMES.has(name.trim().toLowerCase());
 }
 
-function teamSelectLabel(name: string): string {
-  return isCommonTeamName(name) ? 'Common (Corporate / Management)' : name;
+function resolveSpendCategory(
+  row: Expense,
+  centreById: Map<string, CostCentre>,
+): (typeof CATEGORY_ORDER)[number] {
+  if (row.spend_category === 'software') return 'software';
+  if (row.spend_category === 'hardware_capex') return 'hardware_capex';
+  if (row.spend_category === 'other' || row.spend_category === 'shared') return 'other';
+  const code = (
+    row.cost_centre_code ||
+    centreById.get(row.cost_centre_id)?.code ||
+    ''
+  ).toUpperCase();
+  if (code === 'SW_LICENSES' || code === 'SW_RENEWALS' || code === 'CLOUD' || code.startsWith('SW_')) {
+    return 'software';
+  }
+  if (code === 'HARDWARE' || code === 'SERVERS') return 'hardware_capex';
+  return 'other';
 }
 
-function expenseGroupLabel(row: Expense, teamNameById: Map<string, string>): string {
-  if (row.display_group) return row.display_group;
-  if (row.is_common) return 'Common';
-  if (row.team_name) return row.team_name;
+function teamGroupLabel(row: Expense, teamNameById: Map<string, string>): string {
+  if (row.team_name && !isOverheadTeamName(row.team_name)) return row.team_name;
+  if (row.display_group && row.display_group !== 'Common') return row.display_group;
   if (row.team_id) return teamNameById.get(row.team_id) || 'Unassigned';
   return 'Unassigned';
 }
@@ -121,15 +157,15 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [paidByHint, setPaidByHint] = useState('');
   const [currentFyOnly, setCurrentFyOnly] = useState(false);
-  /** Advanced = group by team / Common (default on for All teams). */
-  const [advancedMode, setAdvancedMode] = useState(!teamId);
+  /** By team + category (default on for All teams). */
+  const [groupByTeam, setGroupByTeam] = useState(!teamId);
 
   useEffect(() => {
     if (!editingId) setForm((prev) => ({ ...prev, team_id: teamId || prev.team_id }));
   }, [teamId, editingId]);
 
   useEffect(() => {
-    if (!teamId) setAdvancedMode(true);
+    if (!teamId) setGroupByTeam(true);
   }, [teamId]);
 
   const costCentresQuery = useQuery({
@@ -146,13 +182,13 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     queryFn: fetchTeams,
   });
   const expensesQuery = useQuery({
-    queryKey: ['finance-expenses', teamId || 'all', currentFyOnly ? 'fy' : 'all'],
+    queryKey: ['finance-expenses', 'team', teamId || 'all', currentFyOnly ? 'fy' : 'all'],
     queryFn: async () => {
       const params = new URLSearchParams();
+      params.set('scope', 'team');
       if (teamId) params.set('team_id', teamId);
       if (currentFyOnly) params.set('current_fy_only', 'true');
-      const suffix = params.toString() ? `?${params.toString()}` : '';
-      return (await apiClient.get<Expense[]>(`/finance/expenses${suffix}`)).data;
+      return (await apiClient.get<Expense[]>(`/finance/expenses?${params.toString()}`)).data;
     },
   });
 
@@ -189,6 +225,12 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     notify_enabled: form.notify_enabled,
   });
 
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-overhead-expenses'] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+  };
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (editingId) {
@@ -206,8 +248,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
         currency_code: prev.currency_code,
       }));
       setPaidByHint('');
-      void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
-      void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+      invalidate();
     },
     onError: (error: unknown) => {
       showError(apiErrorMessage(error, 'Could not save expense'));
@@ -225,8 +266,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
         setEditingId(null);
         setForm({ ...emptyForm, team_id: teamId });
       }
-      void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
-      void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+      invalidate();
     },
     onError: (error: unknown) => {
       showError(apiErrorMessage(error, 'Could not delete expense'));
@@ -254,13 +294,32 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     setPaidByHint('');
   };
 
-  const teams = teamsQuery.data ?? [];
+  const deliveryTeams = useMemo(
+    () =>
+      (teamsQuery.data ?? []).filter(
+        (team) => team.is_active !== false && !isOverheadTeamName(team.name),
+      ),
+    [teamsQuery.data],
+  );
+
+  const centreById = useMemo(() => {
+    const map = new Map<string, CostCentre>();
+    for (const c of costCentresQuery.data ?? []) map.set(c.id, c);
+    return map;
+  }, [costCentresQuery.data]);
+
+  const teamCostCentres = useMemo(() => {
+    const all = costCentresQuery.data ?? [];
+    const preferred = all.filter((c) => TEAM_EXPENSE_CENTRE_CODES.has((c.code || '').toUpperCase()));
+    return preferred.length > 0 ? preferred : all;
+  }, [costCentresQuery.data]);
+
   const expenses = expensesQuery.data ?? [];
   const teamNameById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const team of teams) map.set(team.id, team.name);
+    for (const team of deliveryTeams) map.set(team.id, team.name);
     return map;
-  }, [teams]);
+  }, [deliveryTeams]);
 
   const baseOf = (e: Expense) => toFiniteNumber(e.base_amount_inr ?? e.amount);
 
@@ -271,46 +330,123 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     const currencies = new Set(
       expenses.map((e) => (e.currency_code || 'INR').toUpperCase()).filter(Boolean),
     );
-    const commonCount = expenses.filter(
-      (e) => e.is_common || e.display_group === 'Common' || isCommonTeamName(e.team_name),
-    ).length;
+    const byCat = { software: 0, hardware_capex: 0, other: 0 };
+    for (const e of expenses) {
+      byCat[resolveSpendCategory(e, centreById)] += 1;
+    }
     return {
       count: expenses.length,
       prosohmSum: prosohm.reduce((s, e) => s + baseOf(e), 0),
       customerSum: customer.reduce((s, e) => s + baseOf(e), 0),
       renewals,
       mixedFx: currencies.size > 1,
-      commonCount,
+      byCat,
     };
-  }, [expenses]);
+  }, [expenses, centreById]);
 
-  const expenseGroups = useMemo(() => {
-    const buckets = new Map<string, Expense[]>();
+  type CatBucket = {
+    key: (typeof CATEGORY_ORDER)[number];
+    label: string;
+    rows: Expense[];
+    prosohmSum: number;
+  };
+  type TeamBucket = {
+    teamKey: string;
+    categories: CatBucket[];
+    prosohmSum: number;
+    lineCount: number;
+  };
+
+  const teamCategoryGroups = useMemo((): TeamBucket[] => {
+    const byTeam = new Map<string, Expense[]>();
     for (const row of expenses) {
-      const key = expenseGroupLabel(row, teamNameById);
-      const list = buckets.get(key) ?? [];
+      const key = teamGroupLabel(row, teamNameById);
+      const list = byTeam.get(key) ?? [];
       list.push(row);
-      buckets.set(key, list);
+      byTeam.set(key, list);
     }
-    const keys = [...buckets.keys()].sort((a, b) => {
-      if (a === 'Common') return -1;
-      if (b === 'Common') return 1;
-      return a.localeCompare(b);
-    });
-    return keys.map((key) => {
-      const rows = buckets.get(key) ?? [];
-      const prosohmSum = rows
-        .filter((e) => e.paid_by === 'prosohm')
-        .reduce((s, e) => s + baseOf(e), 0);
-      return { key, rows, prosohmSum, isCommon: key === 'Common' };
-    });
-  }, [expenses, teamNameById]);
+    return [...byTeam.keys()]
+      .sort((a, b) => a.localeCompare(b))
+      .map((teamKey) => {
+        const rows = byTeam.get(teamKey) ?? [];
+        const catMap = new Map<(typeof CATEGORY_ORDER)[number], Expense[]>();
+        for (const row of rows) {
+          const cat = resolveSpendCategory(row, centreById);
+          const list = catMap.get(cat) ?? [];
+          list.push(row);
+          catMap.set(cat, list);
+        }
+        const categories: CatBucket[] = CATEGORY_ORDER.filter((k) => (catMap.get(k) ?? []).length > 0).map(
+          (key) => {
+            const catRows = catMap.get(key) ?? [];
+            return {
+              key,
+              label: CATEGORY_LABELS[key],
+              rows: catRows,
+              prosohmSum: catRows
+                .filter((e) => e.paid_by === 'prosohm')
+                .reduce((s, e) => s + baseOf(e), 0),
+            };
+          },
+        );
+        return {
+          teamKey,
+          categories,
+          lineCount: rows.length,
+          prosohmSum: rows
+            .filter((e) => e.paid_by === 'prosohm')
+            .reduce((s, e) => s + baseOf(e), 0),
+        };
+      });
+  }, [expenses, teamNameById, centreById]);
 
-  const showGrouped = advancedMode && !teamId;
+  /** Single-team filter: still show category groups. */
+  const categoryGroupsOnly = useMemo((): CatBucket[] => {
+    const catMap = new Map<(typeof CATEGORY_ORDER)[number], Expense[]>();
+    for (const row of expenses) {
+      const cat = resolveSpendCategory(row, centreById);
+      const list = catMap.get(cat) ?? [];
+      list.push(row);
+      catMap.set(cat, list);
+    }
+    return CATEGORY_ORDER.filter((k) => (catMap.get(k) ?? []).length > 0).map((key) => {
+      const catRows = catMap.get(key) ?? [];
+      return {
+        key,
+        label: CATEGORY_LABELS[key],
+        rows: catRows,
+        prosohmSum: catRows
+          .filter((e) => e.paid_by === 'prosohm')
+          .reduce((s, e) => s + baseOf(e), 0),
+      };
+    });
+  }, [expenses, centreById]);
+
+  const showTeamGroups = groupByTeam && !teamId;
+
+  const onCostCentreChange = (nextCentreId: string) => {
+    const centre = centreById.get(nextCentreId);
+    const code = (centre?.code || '').toUpperCase();
+    const nextNature =
+      code === 'HARDWARE' || code === 'SERVERS' || centre?.nature === 'capex' ? 'capex' : 'opex';
+    const nextFreq =
+      code === 'SW_LICENSES' || code === 'SW_RENEWALS'
+        ? 'yearly'
+        : code === 'HARDWARE' || code === 'SERVERS'
+          ? 'one_time'
+          : form.frequency;
+    setForm((p) => ({
+      ...p,
+      cost_centre_id: nextCentreId,
+      nature: nextNature,
+      frequency: nextFreq,
+    }));
+    void refreshPaidByDefault(form.team_id, nextCentreId);
+  };
 
   const renderExpenseRow = (row: Expense) => {
-    const groupLabel = expenseGroupLabel(row, teamNameById);
-    const isCommon = row.is_common || groupLabel === 'Common';
+    const cat = resolveSpendCategory(row, centreById);
+    const centreLabel = row.cost_centre_name || centreById.get(row.cost_centre_id)?.name;
     return (
       <Box key={row.id} sx={listRowSx}>
         <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -321,12 +457,10 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.5 }}
           >
             <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
-            <Chip
-              size="small"
-              label={isCommon ? 'Common' : groupLabel}
-              color={isCommon ? 'secondary' : 'default'}
-              variant="outlined"
-            />
+            <Chip size="small" label={CATEGORY_LABELS[cat]} variant="outlined" />
+            {centreLabel ? (
+              <Chip size="small" label={centreLabel} variant="outlined" color="default" />
+            ) : null}
             <Chip
               size="small"
               label={row.paid_by === 'customer' ? 'Customer' : 'Prosohm'}
@@ -343,7 +477,8 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             ) : null}
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            {financeMoney(row.amount, row.currency_code)} · {row.nature} · {row.frequency}
+            {financeMoney(row.amount, row.currency_code)} · {row.nature.toUpperCase()} ·{' '}
+            {row.frequency}
             {row.purchase_date ? ` · Purchased ${row.purchase_date}` : ''}
             {row.vendor_name ? ` · ${row.vendor_name}` : ''}
             {row.next_renewal_date && row.notify_enabled
@@ -368,20 +503,50 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     );
   };
 
+  const renderCategoryBlock = (cat: CatBucket) => (
+    <Box key={cat.key} sx={{ mb: 1 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.75, pl: showTeamGroups ? 0.5 : 0 }}
+      >
+        <Typography variant="body2" sx={{ fontWeight: 650 }}>
+          {cat.label}
+        </Typography>
+        <Chip size="small" variant="outlined" label={`${cat.rows.length}`} />
+        <Chip
+          size="small"
+          variant="outlined"
+          label={`Prosohm Σ ${financeMoney(cat.prosohmSum, 'INR')}`}
+        />
+      </Stack>
+      <Stack spacing={1.25}>{cat.rows.map((row) => renderExpenseRow(row))}</Stack>
+    </Box>
+  );
+
   return (
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Expenses & subscriptions"
-        subtitle="Team OpEx vs Common (shared HQ) — Advanced mode groups spend for team P&L. Feeds Overview and Annual Plan renewals."
+        subtitle="Team-wise spend only — software, hardware CapEx, and other team costs that hit that team’s P&L. Company-wide shared costs belong under Overheads."
         chips={
           <>
             <Chip size="small" label={currentFyOnly ? 'Current FY' : 'All years'} sx={{ fontWeight: 700 }} />
-            <Chip size="small" variant="outlined" label={`${expenseStats.count} lines`} />
-            {expenseStats.commonCount > 0 ? (
-              <Chip size="small" color="secondary" variant="outlined" label={`${expenseStats.commonCount} Common`} />
+            <Chip size="small" variant="outlined" label={`${expenseStats.count} team lines`} />
+            {expenseStats.byCat.software > 0 ? (
+              <Chip size="small" color="primary" variant="outlined" label={`${expenseStats.byCat.software} software`} />
             ) : null}
-            {advancedMode && !teamId ? (
-              <Chip size="small" color="primary" label="Advanced · by team" />
+            {expenseStats.byCat.hardware_capex > 0 ? (
+              <Chip
+                size="small"
+                color="warning"
+                variant="outlined"
+                label={`${expenseStats.byCat.hardware_capex} CapEx`}
+              />
+            ) : null}
+            {groupByTeam && !teamId ? (
+              <Chip size="small" color="primary" label="By team · category" />
             ) : null}
             {expenseStats.mixedFx ? (
               <Chip size="small" color="info" label="Mixed FX → base INR" />
@@ -396,7 +561,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             compact
             accent="primary"
             icon={AccountBalanceWalletOutlinedIcon}
-            title="Expense lines"
+            title="Team expense lines"
             value={String(expenseStats.count)}
             subtitle={currentFyOnly ? 'Current FY filter' : 'All listed'}
           />
@@ -434,11 +599,11 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       </Grid>
 
       <FinanceSection
-        title={editingId ? 'Edit expense / subscription' : 'Add expense / subscription'}
-        subtitle="Team and date of purchase are required. Use Common (Corporate / Management) for shared HQ spend — delivery teams keep direct OpEx for team P&L. Overview counts current Indian FY (Apr–Mar) only."
+        title={editingId ? 'Edit team expense / subscription' : 'Add team expense / subscription'}
+        subtitle="Pick a delivery team and cost type (software, hardware CapEx, etc.). Shared HQ rent/utilities go to Overheads — not here."
       >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', mb: 1 }}>
-          <FormControl size="small" sx={{ minWidth: 240 }} required>
+          <FormControl size="small" sx={{ minWidth: 220 }} required>
             <InputLabel>Team</InputLabel>
             <Select
               label="Team"
@@ -449,27 +614,24 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
                 void refreshPaidByDefault(next, form.cost_centre_id);
               }}
             >
-              {teams.map((team) => (
+              {deliveryTeams.map((team) => (
                 <MenuItem key={team.id} value={team.id}>
-                  {teamSelectLabel(team.name)}
+                  {team.name}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Cost centre</InputLabel>
+          <FormControl size="small" sx={{ minWidth: 220 }}>
+            <InputLabel>Cost type</InputLabel>
             <Select
-              label="Cost centre"
+              label="Cost type"
               value={form.cost_centre_id}
-              onChange={(e) => {
-                const next = e.target.value;
-                setForm((p) => ({ ...p, cost_centre_id: next }));
-                void refreshPaidByDefault(form.team_id, next);
-              }}
+              onChange={(e) => onCostCentreChange(e.target.value)}
             >
-              {(costCentresQuery.data ?? []).map((c) => (
+              {teamCostCentres.map((c) => (
                 <MenuItem key={c.id} value={c.id}>
                   {c.name}
+                  {c.code ? ` (${c.code})` : ''}
                 </MenuItem>
               ))}
             </Select>
@@ -624,11 +786,13 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       </FinanceSection>
 
       <FinanceSection
-        title="Expense lines"
+        title="Team expense lines"
         subtitle={
-          showGrouped
-            ? 'Grouped by team for P&L: Common (shared) first, then delivery teams. Prior-FY purchases stay listed but do not hit Overview.'
-            : 'Edit or delete rows. Turn on Advanced (All teams) to group by team vs Common. Prior-FY purchases stay listed but do not hit Overview.'
+          showTeamGroups
+            ? 'Grouped by delivery team, then Software / Hardware CapEx / Other — feeds that team’s P&L.'
+            : teamId
+              ? 'Category groups for the selected team. Prior-FY purchases stay listed but do not hit Overview.'
+              : 'Turn on “By team” to see each delivery team’s Software, CapEx, and other spend.'
         }
         action={
           <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
@@ -636,12 +800,12 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
               <FormControlLabel
                 control={
                   <Switch
-                    checked={advancedMode}
-                    onChange={(e) => setAdvancedMode(e.target.checked)}
+                    checked={groupByTeam}
+                    onChange={(e) => setGroupByTeam(e.target.checked)}
                     size="small"
                   />
                 }
-                label="Advanced"
+                label="By team"
               />
             ) : null}
             <FormControlLabel
@@ -656,14 +820,15 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
           </Stack>
         }
       >
-        <Stack spacing={1.25}>
+        <Stack spacing={1.5}>
           {expenses.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No expenses yet — add the first line above.
+              No team expenses yet — add software, CapEx, or other team spend above. Shared HQ costs go under
+              Overheads.
             </Typography>
-          ) : showGrouped ? (
-            expenseGroups.map((group) => (
-              <Box key={group.key} sx={{ mb: 0.5 }}>
+          ) : showTeamGroups ? (
+            teamCategoryGroups.map((group) => (
+              <Box key={group.teamKey} sx={{ mb: 0.5 }}>
                 <Stack
                   direction="row"
                   spacing={1}
@@ -671,40 +836,37 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
                   sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 1 }}
                 >
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    {group.isCommon ? 'Common (shared HQ)' : group.key}
+                    {group.teamKey}
                   </Typography>
-                  <Chip size="small" variant="outlined" label={`${group.rows.length} lines`} />
+                  <Chip size="small" variant="outlined" label={`${group.lineCount} lines`} />
                   <Chip
                     size="small"
-                    color={group.isCommon ? 'secondary' : 'default'}
+                    color="primary"
                     variant="outlined"
                     label={`Prosohm Σ ${financeMoney(group.prosohmSum, 'INR')}`}
                   />
                 </Stack>
-                <Stack spacing={1.25}>{group.rows.map((row) => renderExpenseRow(row))}</Stack>
+                <Stack spacing={1}>{group.categories.map((cat) => renderCategoryBlock(cat))}</Stack>
               </Box>
             ))
           ) : (
-            expenses.map((row) => renderExpenseRow(row))
+            <Stack spacing={1}>{categoryGroupsOnly.map((cat) => renderCategoryBlock(cat))}</Stack>
           )}
         </Stack>
       </FinanceSection>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="Delete expense?"
+        title="Delete team expense?"
         message="This removes the expense from Financial Planning lists and Overview totals (soft-delete)."
         recordName={
           deleteTarget
             ? `${deleteTarget.name} · ${
-                deleteTarget.is_common || deleteTarget.display_group === 'Common'
-                  ? 'Common'
-                  : deleteTarget.display_group ||
-                    deleteTarget.team_name ||
-                    (deleteTarget.team_id
-                      ? teamNameById.get(deleteTarget.team_id) || 'Team'
-                      : 'Team')
-              } · ${deleteTarget.amount} ${deleteTarget.currency_code} · Paid by ${deleteTarget.paid_by}`
+                deleteTarget.team_name ||
+                (deleteTarget.team_id
+                  ? teamNameById.get(deleteTarget.team_id) || 'Team'
+                  : 'Team')
+              } · ${CATEGORY_LABELS[resolveSpendCategory(deleteTarget, centreById)]} · ${deleteTarget.amount} ${deleteTarget.currency_code}`
             : undefined
         }
         confirmLabel="Delete"

@@ -71,16 +71,25 @@ def expense_counts_for_as_of(expense: Expense, *, as_of: date) -> bool:
 
 
 def expense_month_factor(expense: Expense, *, as_of: date) -> Decimal:
-    """Prorate recurring/ended expenses within the as_of month; else 0 or 1."""
-    if not expense_counts_for_as_of(expense, as_of=as_of):
+    """Fraction of the as_of calendar month this expense is recognized.
+
+    Intersects the expense activity window with the month — independent of whether
+    ``as_of`` is after ``end_date`` (mirrors salary leave-month proration).
+    Mid-month start and end both prorate.
+    """
+    if not getattr(expense, "is_active", True):
         return Decimal("0")
     month_start, month_end, days_in_month = _month_bounds(as_of)
+    start = getattr(expense, "start_date", None) or getattr(expense, "purchase_date", None)
     end = getattr(expense, "end_date", None)
-    if end is None or end >= month_end:
+    if start is None:
         return Decimal("1")
-    if end < month_start:
+    window_end = end if end is not None else month_end
+    days = _intersect_days(start, window_end, month_start, month_end)
+    if days <= 0:
         return Decimal("0")
-    days = (end - month_start).days + 1
+    if days >= days_in_month:
+        return Decimal("1")
     return (Decimal(days) / Decimal(days_in_month)).quantize(Decimal("0.0001"))
 
 
@@ -155,7 +164,8 @@ def primary_team_salary_factor(
 
     if team_days <= 0:
         # Primary is optional: if the user has no primary home anywhere but works on
-        # this team, attribute the employment window here (avoids zero team salaries).
+        # this team, attribute the employment window here ONLY when this membership is
+        # the designated sole home (avoids charging full salary on every team).
         has_any_primary = db.scalar(
             select(TeamMember.id).where(
                 TeamMember.user_id == user_id,
@@ -163,14 +173,17 @@ def primary_team_salary_factor(
             ).limit(1)
         )
         if has_any_primary is None:
-            member = db.scalar(
-                select(TeamMember).where(
-                    TeamMember.user_id == user_id,
-                    TeamMember.team_id == team_id,
+            sole = db.scalar(
+                select(TeamMember)
+                .where(TeamMember.user_id == user_id)
+                .order_by(
+                    TeamMember.effective_from.asc().nulls_first(),
+                    TeamMember.team_id.asc(),
                 )
+                .limit(1)
             )
-            if member is not None:
-                m_start = getattr(member, "effective_from", None) or employment_start
+            if sole is not None and sole.team_id == team_id:
+                m_start = getattr(sole, "effective_from", None) or employment_start
                 if m_start <= month_end:
                     w_start = max(m_start, employment_start)
                     team_days = _intersect_days(
@@ -181,7 +194,10 @@ def primary_team_salary_factor(
         return Decimal("0")
     if team_days >= days_in_month and employment_start <= month_start and employment_end >= month_end:
         return Decimal("1")
-    return (Decimal(team_days) / Decimal(days_in_month)).quantize(Decimal("0.0001"))
+    factor = (Decimal(team_days) / Decimal(days_in_month)).quantize(Decimal("0.0001"))
+    if factor > Decimal("1"):
+        return Decimal("1")
+    return factor
 
 
 def user_billable_on_team_at(

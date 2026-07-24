@@ -351,7 +351,7 @@ def test_retainer_counts_only_fixed_resource_roles(client, auth_headers, session
             "customer_fee_amount": "10000",
             "currency_code": "INR",
             "billing_period": "monthly",
-            "effective_from": date.today().isoformat(),
+            "effective_from": date.today().replace(day=1).isoformat(),
         },
     )
     assert create.status_code == 201, create.text

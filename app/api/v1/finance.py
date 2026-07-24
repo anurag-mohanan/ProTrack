@@ -1655,6 +1655,10 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
             "balance_due": cash["balance_due"],
             "remaining_to_invoice": cash["remaining_to_invoice"],
             "remaining_contract": cash["remaining_contract"],
+            "invoice_status": cash["invoice_status"],
+            "payment_status": cash["payment_status"],
+            "is_partially_invoiced": cash["is_partially_invoiced"],
+            "is_partially_paid": cash["is_partially_paid"],
             "invoice_lines": [
                 QuoteInvoiceLineRead.model_validate(line) for line in cash["invoice_lines"]
             ],

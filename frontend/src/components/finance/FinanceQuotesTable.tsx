@@ -40,6 +40,11 @@ export type AwardedQuoteRow = {
   total_invoiced?: number | string | null;
   total_paid?: number | string | null;
   balance_due?: number | string | null;
+  remaining_to_invoice?: number | string | null;
+  invoice_status?: 'none' | 'partial' | 'full' | string | null;
+  payment_status?: 'none' | 'partial' | 'full' | string | null;
+  is_partially_invoiced?: boolean;
+  is_partially_paid?: boolean;
   billing_ready?: boolean;
   billing_gaps?: string[];
 };
@@ -250,7 +255,9 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                       }}
                     >
                       {quote.is_invoiced && quote.invoiced_date
-                        ? `Invoiced ${quote.invoiced_date}`
+                        ? quote.invoice_status === 'partial' || quote.is_partially_invoiced
+                          ? `Partially invoiced ${quote.invoiced_date}`
+                          : `Invoiced ${quote.invoiced_date}`
                         : 'Not invoiced'}
                     </Typography>
                     {quote.customer_po_number ? (
@@ -291,19 +298,35 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                         tone={quote.project_linked ? 'success' : 'neutral'}
                       />
                       <StatusPill
-                        label={quote.is_invoiced ? 'Invoiced' : 'Pending'}
-                        tone={quote.is_invoiced ? 'success' : 'warning'}
+                        label={
+                          quote.invoice_status === 'partial' || quote.is_partially_invoiced
+                            ? 'Partially invoiced'
+                            : quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0
+                              ? 'Invoiced'
+                              : 'Pending'
+                        }
+                        tone={
+                          quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0
+                            ? 'success'
+                            : 'warning'
+                        }
                       />
-                      {quote.is_invoiced ? (
+                      {quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0 ? (
                         <StatusPill
                           label={
-                            toFiniteNumber(quote.balance_due) > 0
-                              ? 'Balance due'
-                              : quote.is_paid
+                            quote.payment_status === 'partial' || quote.is_partially_paid
+                              ? 'Partially paid'
+                              : quote.is_paid || toFiniteNumber(quote.balance_due) <= 0
                                 ? 'Paid'
-                                : 'Unpaid'
+                                : toFiniteNumber(quote.total_paid) > 0
+                                  ? 'Partially paid'
+                                  : 'Unpaid'
                           }
-                          tone={toFiniteNumber(quote.balance_due) > 0 ? 'warning' : 'success'}
+                          tone={
+                            quote.is_paid || toFiniteNumber(quote.balance_due) <= 0
+                              ? 'success'
+                              : 'warning'
+                          }
                         />
                       ) : null}
                       {quote.payment_follow_up_due ? (

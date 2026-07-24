@@ -116,6 +116,17 @@ def _salary_lines(
             factor = primary_team_salary_factor(
                 db, user_id=user.id, team_id=team_id, as_of=as_of
             )
+            if factor <= 0:
+                from app.models.models import TeamMember
+
+                has_membership = db.scalar(
+                    select(TeamMember.id).where(
+                        TeamMember.user_id == user.id,
+                        TeamMember.team_id == team_id,
+                    ).limit(1)
+                )
+                if has_membership is None:
+                    factor = employment_salary_factor(user, as_of=as_of)
         else:
             factor = employment_salary_factor(user, as_of=as_of)
         if factor <= 0:
@@ -154,7 +165,6 @@ def _expense_lines(
         Expense.paid_by == paid_by,
         Expense.nature == nature,
         Expense.purchase_date.is_not(None),
-        Expense.purchase_date >= fy_start,
     )
     centres = {
         row.id: row
@@ -162,7 +172,13 @@ def _expense_lines(
     }
     teams = {row.id: row for row in db.scalars(select(Team).where(Team.id.in_(team_ids))).all()}
     rows: list[dict] = []
+    from app.models.enums import CostFrequency
+
     for expense in db.scalars(stmt).all():
+        purchase = expense.purchase_date
+        if purchase is not None and purchase < fy_start:
+            if expense.frequency == CostFrequency.one_time:
+                continue
         factor = expense_month_factor(expense, as_of=as_of)
         if factor <= 0:
             continue

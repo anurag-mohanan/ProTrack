@@ -80,6 +80,19 @@ def summarize_quote_cash(
     latest_payment = max((row.line_date for row in payments), default=None)
     is_invoiced = total_invoiced > 0
     is_paid = is_invoiced and balance_due == 0
+    # Partial vs full vs quoted / vs invoiced (is_invoiced stays true for any invoice progress).
+    if total_invoiced <= 0:
+        invoice_status = "none"
+    elif remaining_to_invoice <= Decimal("0.01"):
+        invoice_status = "full"
+    else:
+        invoice_status = "partial"
+    if total_paid <= 0:
+        payment_status = "none"
+    elif balance_due <= Decimal("0.01"):
+        payment_status = "full"
+    else:
+        payment_status = "partial"
     return {
         "quoted_revenue": quoted,
         "total_invoiced": total_invoiced,
@@ -88,8 +101,12 @@ def summarize_quote_cash(
         "remaining_to_invoice": remaining_to_invoice,
         "remaining_contract": remaining_contract,
         "is_invoiced": is_invoiced,
+        "is_partially_invoiced": invoice_status == "partial",
+        "invoice_status": invoice_status,
         "invoiced_date": earliest_invoice,
         "is_paid": is_paid,
+        "is_partially_paid": payment_status == "partial",
+        "payment_status": payment_status,
         "paid_date": latest_payment if is_paid else None,
         "invoice_lines": invoices,
         "payment_lines": payments,

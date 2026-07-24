@@ -510,6 +510,10 @@ class QuoteRead(BaseModel):
     balance_due: Decimal = Decimal("0")
     remaining_to_invoice: Decimal = Decimal("0")
     remaining_contract: Decimal = Decimal("0")
+    invoice_status: str = "none"
+    payment_status: str = "none"
+    is_partially_invoiced: bool = False
+    is_partially_paid: bool = False
     invoice_lines: list[QuoteInvoiceLineRead] = Field(default_factory=list)
     payment_lines: list[QuotePaymentLineRead] = Field(default_factory=list)
     current_version: int

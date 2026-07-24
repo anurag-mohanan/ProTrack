@@ -80,6 +80,10 @@ type QuoteRow = {
   balance_due?: number | string | null;
   remaining_to_invoice?: number | string | null;
   remaining_contract?: number | string | null;
+  invoice_status?: string | null;
+  payment_status?: string | null;
+  is_partially_invoiced?: boolean;
+  is_partially_paid?: boolean;
   invoice_lines?: QuoteCashLine[];
   payment_lines?: QuoteCashLine[];
   billing_ready?: boolean;
@@ -118,10 +122,12 @@ type ManualQuoteForm = {
 type ListFilter =
   | 'all'
   | 'not_invoiced'
+  | 'partially_invoiced'
   | 'missing_date'
   | 'unlinked'
   | 'invoiced'
   | 'awaiting_payment'
+  | 'partially_paid'
   | 'follow_up';
 
 const emptyManual: ManualQuoteForm = {
@@ -398,7 +404,28 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       ) {
         return false;
       }
+      if (
+        listFilter === 'partially_invoiced' &&
+        !(
+          quote.invoice_status === 'partial' ||
+          quote.is_partially_invoiced ||
+          (toFiniteNumber(quote.total_invoiced) > 0 &&
+            toFiniteNumber(quote.remaining_to_invoice) > 0.01)
+        )
+      ) {
+        return false;
+      }
       if (listFilter === 'awaiting_payment' && toFiniteNumber(quote.balance_due) <= 0) {
+        return false;
+      }
+      if (
+        listFilter === 'partially_paid' &&
+        !(
+          quote.payment_status === 'partial' ||
+          quote.is_partially_paid ||
+          (toFiniteNumber(quote.total_paid) > 0 && toFiniteNumber(quote.balance_due) > 0.01)
+        )
+      ) {
         return false;
       }
       if (listFilter === 'follow_up' && !quote.payment_follow_up_due) return false;
@@ -822,7 +849,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
               {(
                 [
                   { key: 'not_invoiced' as const, label: 'Not invoiced' },
+                  { key: 'partially_invoiced' as const, label: 'Partially invoiced' },
                   { key: 'invoiced' as const, label: 'Invoiced' },
+                  { key: 'partially_paid' as const, label: 'Partially paid' },
                   { key: 'awaiting_payment' as const, label: 'Awaiting payment' },
                   { key: 'follow_up' as const, label: 'Follow-up due' },
                   { key: 'unlinked' as const, label: 'Unlinked' },

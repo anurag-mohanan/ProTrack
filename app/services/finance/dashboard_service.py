@@ -73,12 +73,31 @@ def _user_ids_for_team(db: Session, team_id: UUID) -> set[UUID]:
             select(TeamMember.user_id).where(TeamMember.is_primary.is_(True))
         ).all()
     )
+    sole_home_team: dict[UUID, UUID] = {}
+    no_primary_ids = [
+        uid for uid in {m.user_id for m in members} if uid not in users_with_any_primary
+    ]
+    if no_primary_ids:
+        sole_rows = db.scalars(
+            select(TeamMember)
+            .where(TeamMember.user_id.in_(no_primary_ids))
+            .order_by(
+                TeamMember.user_id.asc(),
+                TeamMember.effective_from.asc().nulls_first(),
+                TeamMember.team_id.asc(),
+            )
+        ).all()
+        for row in sole_rows:
+            sole_home_team.setdefault(row.user_id, row.team_id)
 
     for member in members:
         if not (corporate or bool(getattr(member, "is_billable_headcount", True))):
             continue
-        if member.is_primary or member.user_id not in users_with_any_primary:
+        if member.is_primary:
             ids.add(member.user_id)
+        elif member.user_id not in users_with_any_primary:
+            if sole_home_team.get(member.user_id) == team_id:
+                ids.add(member.user_id)
 
     legacy = db.scalars(
         select(User).where(User.team_id == team_id, User.is_active.is_(True))
@@ -99,37 +118,14 @@ def _quote_revenue_cost(
     """Sum current revision INR for active quotes (all company or one team)."""
     from app.models.finance import Quote
 
-    if team_id is None:
-        revenue = _d(
-            db.scalar(select(func.coalesce(func.sum(QuoteRevision.base_quoted_revenue_inr), 0)))
-        )
-        cost = _d(
-            db.scalar(select(func.coalesce(func.sum(QuoteRevision.base_estimated_cost_inr), 0)))
-        )
-        return revenue, cost
-
-    quotes = db.scalars(
-        select(Quote).where(Quote.is_active.is_(True), Quote.team_id == team_id)
-    ).all()
+    stmt = select(Quote).where(Quote.is_active.is_(True))
+    if team_id is not None:
+        stmt = stmt.where(Quote.team_id == team_id)
+    quotes = db.scalars(stmt).all()
     revenue = Decimal("0.00")
     cost = Decimal("0.00")
     for quote in quotes:
-        rev = db.scalar(
-            select(QuoteRevision)
-            .where(
-                QuoteRevision.quote_id == quote.id,
-                QuoteRevision.version == quote.current_version,
-                QuoteRevision.revision == quote.current_revision,
-            )
-            .limit(1)
-        )
-        if rev is None:
-            rev = db.scalar(
-                select(QuoteRevision)
-                .where(QuoteRevision.quote_id == quote.id)
-                .order_by(QuoteRevision.version.desc())
-                .limit(1)
-            )
+        rev = _current_quote_revision(db, quote)
         if rev is None:
             continue
         revenue += _d(rev.base_quoted_revenue_inr)
@@ -418,8 +414,15 @@ def _salary_for_team(db: Session, team_id: UUID, *, as_of: date | None = None) -
             db, user_id=user.id, team_id=team_id, as_of=ref
         )
         if factor <= 0:
-            # Sole-home / non-primary membership still in eligible set.
-            factor = employment_salary_factor(user, as_of=ref)
+            # Legacy User.team_id roster without a TeamMember row.
+            has_membership = db.scalar(
+                select(TeamMember.id).where(
+                    TeamMember.user_id == user.id,
+                    TeamMember.team_id == team_id,
+                ).limit(1)
+            )
+            if has_membership is None:
+                factor = employment_salary_factor(user, as_of=ref)
         if factor <= 0:
             continue
         total += _d(profile.base_monthly_salary_inr) * factor
@@ -446,7 +449,14 @@ def _user_ids_with_team_salary(
             db, user_id=user_id, team_id=team_id, as_of=ref
         )
         if factor <= 0:
-            factor = employment_salary_factor(user, as_of=ref)
+            has_membership = db.scalar(
+                select(TeamMember.id).where(
+                    TeamMember.user_id == user_id,
+                    TeamMember.team_id == team_id,
+                ).limit(1)
+            )
+            if has_membership is None:
+                factor = employment_salary_factor(user, as_of=ref)
         if factor > 0:
             ids.add(user_id)
     return ids
@@ -477,13 +487,16 @@ def _expense_sum(
     fy_start: date | None = None,
     as_of: date | None = None,
 ) -> Decimal:
+    from app.models.enums import CostFrequency
     from app.services.finance.annual_plan_service import current_fy_start
     from app.services.finance.employment_cost import expense_month_factor
 
     ref = as_of or date.today()
-    stmt = select(Expense).where(Expense.is_active.is_(True))
+    stmt = select(Expense).where(
+        Expense.is_active.is_(True),
+        Expense.purchase_date.is_not(None),
+    )
     start = fy_start if fy_start is not None else current_fy_start()
-    stmt = stmt.where(Expense.purchase_date.is_not(None), Expense.purchase_date >= start)
     if team_id is not None:
         stmt = stmt.where(Expense.team_id == team_id)
     if paid_by is not None:
@@ -492,6 +505,13 @@ def _expense_sum(
         stmt = stmt.where(Expense.nature == nature)
     total = Decimal("0.00")
     for expense in db.scalars(stmt).all():
+        purchase = expense.purchase_date
+        assert purchase is not None
+        if purchase < start:
+            # Prior-FY one-time purchases stay out of this month's run-rate.
+            # Recurring OpEx (rent, licenses, …) still contributes while active.
+            if expense.frequency == CostFrequency.one_time:
+                continue
         factor = expense_month_factor(expense, as_of=ref)
         if factor <= 0:
             continue

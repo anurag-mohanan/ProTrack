@@ -11,7 +11,6 @@ import {
   MenuItem,
   Select,
   Stack,
-  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -157,16 +156,10 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [paidByHint, setPaidByHint] = useState('');
   const [currentFyOnly, setCurrentFyOnly] = useState(false);
-  /** By team + category (default on for All teams). */
-  const [groupByTeam, setGroupByTeam] = useState(!teamId);
 
   useEffect(() => {
     if (!editingId) setForm((prev) => ({ ...prev, team_id: teamId || prev.team_id }));
   }, [teamId, editingId]);
-
-  useEffect(() => {
-    if (!teamId) setGroupByTeam(true);
-  }, [teamId]);
 
   const costCentresQuery = useQuery({
     queryKey: ['finance-cost-centres'],
@@ -317,9 +310,9 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
   const expenses = expensesQuery.data ?? [];
   const teamNameById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const team of deliveryTeams) map.set(team.id, team.name);
+    for (const team of teamsQuery.data ?? []) map.set(team.id, team.name);
     return map;
-  }, [deliveryTeams]);
+  }, [teamsQuery.data]);
 
   const baseOf = (e: Expense) => toFiniteNumber(e.base_amount_inr ?? e.amount);
 
@@ -400,30 +393,6 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       });
   }, [expenses, teamNameById, centreById]);
 
-  /** Single-team filter: still show category groups. */
-  const categoryGroupsOnly = useMemo((): CatBucket[] => {
-    const catMap = new Map<(typeof CATEGORY_ORDER)[number], Expense[]>();
-    for (const row of expenses) {
-      const cat = resolveSpendCategory(row, centreById);
-      const list = catMap.get(cat) ?? [];
-      list.push(row);
-      catMap.set(cat, list);
-    }
-    return CATEGORY_ORDER.filter((k) => (catMap.get(k) ?? []).length > 0).map((key) => {
-      const catRows = catMap.get(key) ?? [];
-      return {
-        key,
-        label: CATEGORY_LABELS[key],
-        rows: catRows,
-        prosohmSum: catRows
-          .filter((e) => e.paid_by === 'prosohm')
-          .reduce((s, e) => s + baseOf(e), 0),
-      };
-    });
-  }, [expenses, centreById]);
-
-  const showTeamGroups = groupByTeam && !teamId;
-
   const onCostCentreChange = (nextCentreId: string) => {
     const centre = centreById.get(nextCentreId);
     const code = (centre?.code || '').toUpperCase();
@@ -447,6 +416,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
   const renderExpenseRow = (row: Expense) => {
     const cat = resolveSpendCategory(row, centreById);
     const centreLabel = row.cost_centre_name || centreById.get(row.cost_centre_id)?.name;
+    const teamLabel = teamGroupLabel(row, teamNameById);
     return (
       <Box key={row.id} sx={listRowSx}>
         <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -457,6 +427,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.5 }}
           >
             <Typography sx={{ fontWeight: 600 }}>{row.name}</Typography>
+            <Chip size="small" color="primary" variant="outlined" label={teamLabel} />
             <Chip size="small" label={CATEGORY_LABELS[cat]} variant="outlined" />
             {centreLabel ? (
               <Chip size="small" label={centreLabel} variant="outlined" color="default" />
@@ -509,7 +480,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
         direction="row"
         spacing={1}
         useFlexGap
-        sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.75, pl: showTeamGroups ? 0.5 : 0 }}
+        sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.75, pl: 0.5 }}
       >
         <Typography variant="body2" sx={{ fontWeight: 650 }}>
           {cat.label}
@@ -545,9 +516,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
                 label={`${expenseStats.byCat.hardware_capex} CapEx`}
               />
             ) : null}
-            {groupByTeam && !teamId ? (
-              <Chip size="small" color="primary" label="By team · category" />
-            ) : null}
+            <Chip size="small" color="primary" label="Grouped by team" />
             {expenseStats.mixedFx ? (
               <Chip size="small" color="info" label="Mixed FX → base INR" />
             ) : null}
@@ -787,58 +756,47 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
 
       <FinanceSection
         title="Team expense lines"
-        subtitle={
-          showTeamGroups
-            ? 'Grouped by delivery team, then Software / Hardware CapEx / Other — feeds that team’s P&L.'
-            : teamId
-              ? 'Category groups for the selected team. Prior-FY purchases stay listed but do not hit Overview.'
-              : 'Turn on “By team” to see each delivery team’s Software, CapEx, and other spend.'
-        }
+        subtitle="Always grouped by delivery team, then Software / Hardware CapEx / Other — so each team’s spend is clear for P&L. Shared HQ costs live under Overheads."
         action={
-          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
-            {!teamId ? (
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={groupByTeam}
-                    onChange={(e) => setGroupByTeam(e.target.checked)}
-                    size="small"
-                  />
-                }
-                label="By team"
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={currentFyOnly}
+                onChange={(e) => setCurrentFyOnly(e.target.checked)}
               />
-            ) : null}
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={currentFyOnly}
-                  onChange={(e) => setCurrentFyOnly(e.target.checked)}
-                />
-              }
-              label="Current FY only"
-            />
-          </Stack>
+            }
+            label="Current FY only"
+          />
         }
       >
-        <Stack spacing={1.5}>
+        <Stack spacing={2}>
           {expenses.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               No team expenses yet — add software, CapEx, or other team spend above. Shared HQ costs go under
               Overheads.
             </Typography>
-          ) : showTeamGroups ? (
+          ) : (
             teamCategoryGroups.map((group) => (
-              <Box key={group.teamKey} sx={{ mb: 0.5 }}>
+              <Box
+                key={group.teamKey}
+                sx={{
+                  p: 1.75,
+                  borderRadius: `${designTokens.radius.lg}px`,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'action.hover',
+                }}
+              >
                 <Stack
                   direction="row"
                   spacing={1}
                   useFlexGap
-                  sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 1 }}
+                  sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 1.25 }}
                 >
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 750, fontSize: '1.05rem' }}>
                     {group.teamKey}
                   </Typography>
-                  <Chip size="small" variant="outlined" label={`${group.lineCount} lines`} />
+                  <Chip size="small" color="primary" label={`${group.lineCount} lines`} />
                   <Chip
                     size="small"
                     color="primary"
@@ -846,11 +804,9 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
                     label={`Prosohm Σ ${financeMoney(group.prosohmSum, 'INR')}`}
                   />
                 </Stack>
-                <Stack spacing={1}>{group.categories.map((cat) => renderCategoryBlock(cat))}</Stack>
+                <Stack spacing={1.25}>{group.categories.map((cat) => renderCategoryBlock(cat))}</Stack>
               </Box>
             ))
-          ) : (
-            <Stack spacing={1}>{categoryGroupsOnly.map((cat) => renderCategoryBlock(cat))}</Stack>
           )}
         </Stack>
       </FinanceSection>

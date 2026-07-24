@@ -41,6 +41,15 @@ import {
   financeMoney,
 } from './FinanceCockpitPrimitives';
 import { FinanceQuotesTable } from './FinanceQuotesTable';
+import { QuoteCashLedgerPanel } from './QuoteCashLedgerPanel';
+
+type QuoteCashLine = {
+  id: string;
+  amount: number | string;
+  line_date: string;
+  notes?: string | null;
+  reference?: string | null;
+};
 
 type QuoteRow = {
   id: string;
@@ -61,6 +70,18 @@ type QuoteRow = {
   quoted_date?: string | null;
   invoiced_date?: string | null;
   is_invoiced?: boolean;
+  customer_po_number?: string | null;
+  is_paid?: boolean;
+  paid_date?: string | null;
+  payment_follow_up_due?: boolean;
+  payment_follow_up_on?: string | null;
+  total_invoiced?: number | string | null;
+  total_paid?: number | string | null;
+  balance_due?: number | string | null;
+  remaining_to_invoice?: number | string | null;
+  remaining_contract?: number | string | null;
+  invoice_lines?: QuoteCashLine[];
+  payment_lines?: QuoteCashLine[];
   billing_ready?: boolean;
   billing_gaps?: string[];
 };
@@ -91,11 +112,17 @@ type ManualQuoteForm = {
   cost: string;
   currencyCode: string;
   quotedDate: string;
-  isInvoiced: 'yes' | 'no';
-  invoicedDate: string;
+  customerPoNumber: string;
 };
 
-type ListFilter = 'all' | 'not_invoiced' | 'missing_date' | 'unlinked' | 'invoiced';
+type ListFilter =
+  | 'all'
+  | 'not_invoiced'
+  | 'missing_date'
+  | 'unlinked'
+  | 'invoiced'
+  | 'awaiting_payment'
+  | 'follow_up';
 
 const emptyManual: ManualQuoteForm = {
   customerId: '',
@@ -104,8 +131,7 @@ const emptyManual: ManualQuoteForm = {
   cost: '',
   currencyCode: '',
   quotedDate: new Date().toISOString().slice(0, 10),
-  isInvoiced: 'no',
-  invoicedDate: '',
+  customerPoNumber: '',
 };
 
 function quoteSearchBlob(quote: QuoteRow): string {
@@ -115,6 +141,7 @@ function quoteSearchBlob(quote: QuoteRow): string {
     quote.customer_name,
     quote.team_name,
     quote.currency_code,
+    quote.customer_po_number,
   ]
     .filter(Boolean)
     .join(' ')
@@ -200,10 +227,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       quoted_date: manual.quotedDate.trim() || null,
       ...(editingId
         ? {
-            is_invoiced: manual.isInvoiced === 'yes',
-            ...(manual.isInvoiced === 'yes'
-              ? { invoiced_date: manual.invoicedDate.trim() || null }
-              : {}),
+            customer_po_number: manual.customerPoNumber.trim() || null,
           }
         : {}),
       create_project: createProject,
@@ -229,8 +253,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           : String(quote.quoted_revenue),
       currencyCode: (quote.currency_code || '').toUpperCase(),
       quotedDate: quote.quoted_date ?? new Date().toISOString().slice(0, 10),
-      isInvoiced: quote.is_invoiced ? 'yes' : 'no',
-      invoicedDate: quote.invoiced_date ?? '',
+      customerPoNumber: quote.customer_po_number ?? '',
     });
     window.requestAnimationFrame(() => {
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -250,7 +273,13 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     onSuccess: (data) => {
       if (editingId) {
         showSuccess('Quote updated');
-        cancelEdit();
+        void queryClient.setQueryData(
+          ['finance-quotes', teamId || 'all'],
+          (prev: QuoteRow[] | undefined) =>
+            (prev ?? []).map((row) =>
+              row.id === (data as QuoteRow).id ? { ...row, ...(data as QuoteRow) } : row,
+            ),
+        );
         invalidateFinance();
         return;
       }
@@ -320,16 +349,33 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const quotes = quotesQuery.data ?? [];
   const quoteStats = useMemo(() => {
     const invoicedRevenue = quotes
-      .filter((q) => q.is_invoiced)
+      .filter((q) => q.is_invoiced || toFiniteNumber(q.total_invoiced) > 0)
       .reduce((s, q) => s + toFiniteNumber(q.base_quoted_revenue_inr), 0);
+    const unpaidReceivable = quotes.reduce((s, q) => {
+      const balance = toFiniteNumber(q.balance_due);
+      if (balance <= 0) return s;
+      const quoted = toFiniteNumber(q.quoted_revenue);
+      const base = toFiniteNumber(q.base_quoted_revenue_inr);
+      if (quoted > 0 && base > 0) return s + (balance / quoted) * base;
+      return s + balance;
+    }, 0);
+    const awaitingPaymentCount = quotes.filter(
+      (q) => toFiniteNumber(q.balance_due) > 0,
+    ).length;
+    const followUpDue = quotes.filter((q) => q.payment_follow_up_due).length;
     const missingDate = quotes.filter((q) => !q.quoted_date).length;
-    const notInvoiced = quotes.filter((q) => !q.is_invoiced).length;
+    const notInvoiced = quotes.filter(
+      (q) => !q.is_invoiced && toFiniteNumber(q.total_invoiced) <= 0,
+    ).length;
     const currencies = new Set(
       quotes.map((q) => (q.currency_code || 'INR').toUpperCase()).filter(Boolean),
     );
     return {
       count: quotes.length,
       invoicedRevenue,
+      unpaidReceivable,
+      awaitingPaymentCount,
+      followUpDue,
       missingDate,
       notInvoiced,
       mixedFx: currencies.size > 1,
@@ -340,8 +386,22 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const filteredQuotes = useMemo(() => {
     const q = search.trim().toLowerCase();
     return quotes.filter((quote) => {
-      if (listFilter === 'not_invoiced' && quote.is_invoiced) return false;
-      if (listFilter === 'invoiced' && !quote.is_invoiced) return false;
+      if (
+        listFilter === 'not_invoiced' &&
+        (quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0)
+      ) {
+        return false;
+      }
+      if (
+        listFilter === 'invoiced' &&
+        !(quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0)
+      ) {
+        return false;
+      }
+      if (listFilter === 'awaiting_payment' && toFiniteNumber(quote.balance_due) <= 0) {
+        return false;
+      }
+      if (listFilter === 'follow_up' && !quote.payment_follow_up_due) return false;
       if (listFilter === 'missing_date' && quote.quoted_date) return false;
       if (listFilter === 'unlinked' && quote.project_linked) return false;
       if (q && !quoteSearchBlob(quote).includes(q)) return false;
@@ -377,7 +437,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Revenue / awarded quotes"
-        subtitle="Book awarded quotes for planning. Quoted date places Annual Plan sales; mark Invoiced with invoiced date when revenue is recognized."
+        subtitle="Book awarded quotes, capture customer PO, mark invoiced and paid so cash and receivables stay clear. Unpaid invoices get a follow-up at 30 days, then weekly."
         chips={
           <>
             <Chip size="small" label={teamId ? 'Team scope' : 'All teams'} sx={{ fontWeight: 700 }} />
@@ -388,6 +448,22 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                 color="warning"
                 label={`${quoteStats.notInvoiced} not invoiced`}
                 onClick={() => setListFilter('not_invoiced')}
+              />
+            ) : null}
+            {quoteStats.awaitingPaymentCount > 0 ? (
+              <Chip
+                size="small"
+                color="info"
+                label={`${quoteStats.awaitingPaymentCount} awaiting payment`}
+                onClick={() => setListFilter('awaiting_payment')}
+              />
+            ) : null}
+            {quoteStats.followUpDue > 0 ? (
+              <Chip
+                size="small"
+                color="error"
+                label={`${quoteStats.followUpDue} payment follow-up`}
+                onClick={() => setListFilter('follow_up')}
               />
             ) : null}
             {quoteStats.mixedFx ? (
@@ -440,11 +516,11 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             compact
             accent="warning"
             icon={ReceiptLongOutlinedIcon}
-            title="Not invoiced"
-            value={String(quoteStats.notInvoiced)}
-            subtitle="Awaiting billing"
-            selected={listFilter === 'not_invoiced'}
-            onClick={() => toggleFilter('not_invoiced')}
+            title="Awaiting payment Σ"
+            value={financeMoney(quoteStats.unpaidReceivable, 'INR')}
+            subtitle={`${quoteStats.awaitingPaymentCount} invoiced · unpaid`}
+            selected={listFilter === 'awaiting_payment'}
+            onClick={() => toggleFilter('awaiting_payment')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -452,11 +528,11 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             compact
             accent="info"
             icon={CalendarMonthOutlinedIcon}
-            title="Missing quoted date"
-            value={String(quoteStats.missingDate)}
-            subtitle="Needed for Annual Plan FY"
-            selected={listFilter === 'missing_date'}
-            onClick={() => toggleFilter('missing_date')}
+            title="Payment follow-up"
+            value={String(quoteStats.followUpDue)}
+            subtitle="30+ days unpaid (then weekly)"
+            selected={listFilter === 'follow_up'}
+            onClick={() => toggleFilter('follow_up')}
           />
         </Grid>
       </Grid>
@@ -552,40 +628,17 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                 helperText="FY quarter for Annual Plan sales"
               />
               {editingId ? (
-                <>
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <InputLabel>Invoiced</InputLabel>
-                    <Select
-                      label="Invoiced"
-                      value={manual.isInvoiced}
-                      onChange={(e) =>
-                        setManual({
-                          ...manual,
-                          isInvoiced: e.target.value as 'yes' | 'no',
-                          invoicedDate:
-                            e.target.value === 'yes' && !manual.invoicedDate
-                              ? new Date().toISOString().slice(0, 10)
-                              : manual.invoicedDate,
-                        })
-                      }
-                    >
-                      <MenuItem value="no">No</MenuItem>
-                      <MenuItem value="yes">Yes</MenuItem>
-                    </Select>
-                  </FormControl>
-                  {manual.isInvoiced === 'yes' ? (
-                    <TextField
-                      size="small"
-                      type="date"
-                      label="Invoiced date"
-                      value={manual.invoicedDate}
-                      onChange={(e) => setManual({ ...manual, invoicedDate: e.target.value })}
-                      slotProps={{ inputLabel: { shrink: true } }}
-                      sx={{ minWidth: 160 }}
-                      helperText="Revenue is recognized on this date"
-                    />
-                  ) : null}
-                </>
+                <TextField
+                  size="small"
+                  label="Customer PO #"
+                  placeholder="PO number"
+                  value={manual.customerPoNumber}
+                  onChange={(e) =>
+                    setManual({ ...manual, customerPoNumber: e.target.value })
+                  }
+                  sx={{ minWidth: 160, flex: 1 }}
+                  helperText="Customer purchase order"
+                />
               ) : null}
               <FormControl size="small" sx={{ minWidth: 130 }}>
                 <InputLabel>Currency</InputLabel>
@@ -604,6 +657,34 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                 </Select>
               </FormControl>
             </Stack>
+
+            {editingId ? (
+              <QuoteCashLedgerPanel
+                quote={
+                  (quotes.find((q) => q.id === editingId) as QuoteRow | undefined) ?? {
+                    id: editingId,
+                    currency_code: manual.currencyCode || 'INR',
+                    quoted_revenue: manual.cost,
+                    total_invoiced: 0,
+                    total_paid: 0,
+                    balance_due: 0,
+                    remaining_to_invoice: 0,
+                    invoice_lines: [],
+                    payment_lines: [],
+                  }
+                }
+                onChanged={(updated) => {
+                  void queryClient.setQueryData(
+                    ['finance-quotes', teamId || 'all'],
+                    (prev: QuoteRow[] | undefined) =>
+                      (prev ?? []).map((row) =>
+                        row.id === updated.id ? { ...row, ...updated } : row,
+                      ),
+                  );
+                  invalidateFinance();
+                }}
+              />
+            ) : null}
 
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -742,6 +823,8 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                 [
                   { key: 'not_invoiced' as const, label: 'Not invoiced' },
                   { key: 'invoiced' as const, label: 'Invoiced' },
+                  { key: 'awaiting_payment' as const, label: 'Awaiting payment' },
+                  { key: 'follow_up' as const, label: 'Follow-up due' },
                   { key: 'unlinked' as const, label: 'Unlinked' },
                   { key: 'missing_date' as const, label: 'No date' },
                 ] as const

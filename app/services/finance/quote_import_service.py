@@ -259,6 +259,9 @@ def update_quote(
     quoted_date: date | None = None,
     invoiced_date: object = _MISSING,
     is_invoiced: object = _MISSING,
+    customer_po_number: object = _MISSING,
+    is_paid: object = _MISSING,
+    paid_date: object = _MISSING,
     create_project: bool = False,
 ) -> QuoteImportOutcome:
     """In-place edit of quote header + current revision (expenses-style)."""
@@ -288,20 +291,92 @@ def update_quote(
     if quoted_date is not None:
         quote.quoted_date = quoted_date
 
-    if is_invoiced is not _MISSING:
-        quote.is_invoiced = bool(is_invoiced)
-    if invoiced_date is not _MISSING:
-        quote.invoiced_date = invoiced_date
-        if invoiced_date is not None and is_invoiced is _MISSING:
-            quote.is_invoiced = True
-        elif invoiced_date is None and is_invoiced is _MISSING:
-            quote.is_invoiced = False
+    from app.services.finance.quote_cash_ledger_service import (
+        ensure_invoice_from_legacy_flags,
+        ensure_payment_from_legacy_flags,
+        list_invoice_lines,
+        list_payment_lines,
+        sync_quote_cash_flags,
+    )
 
-    if quote.is_invoiced:
-        if quote.invoiced_date is None:
-            quote.invoiced_date = date.today()
-    else:
-        quote.invoiced_date = None
+    has_invoice_lines = bool(list_invoice_lines(db, quote.id))
+    has_payment_lines = bool(list_payment_lines(db, quote.id))
+
+    # Legacy boolean convenience: only when ledger is empty, materialize lines.
+    want_invoiced = None
+    if is_invoiced is not _MISSING:
+        want_invoiced = bool(is_invoiced)
+    if invoiced_date is not _MISSING and invoiced_date is not None and want_invoiced is None:
+        want_invoiced = True
+    if invoiced_date is not _MISSING and invoiced_date is None and want_invoiced is None:
+        want_invoiced = False
+
+    if not has_invoice_lines and want_invoiced:
+        ensure_invoice_from_legacy_flags(
+            db,
+            quote=quote,
+            line_date=invoiced_date if invoiced_date is not _MISSING else None,
+        )
+        has_invoice_lines = True
+    elif not has_invoice_lines:
+        # Preserve prior boolean path when still no lines
+        if is_invoiced is not _MISSING:
+            quote.is_invoiced = bool(is_invoiced)
+        if invoiced_date is not _MISSING:
+            quote.invoiced_date = invoiced_date
+            if invoiced_date is not None and is_invoiced is _MISSING:
+                quote.is_invoiced = True
+            elif invoiced_date is None and is_invoiced is _MISSING:
+                quote.is_invoiced = False
+        if quote.is_invoiced:
+            if quote.invoiced_date is None:
+                quote.invoiced_date = date.today()
+        else:
+            quote.invoiced_date = None
+            quote.is_paid = False
+            quote.paid_date = None
+
+    if customer_po_number is not _MISSING:
+        if customer_po_number is None:
+            quote.customer_po_number = None
+        else:
+            quote.customer_po_number = str(customer_po_number).strip() or None
+
+    want_paid = None
+    if is_paid is not _MISSING:
+        want_paid = bool(is_paid)
+    if paid_date is not _MISSING and paid_date is not None and want_paid is None:
+        want_paid = True
+    if paid_date is not _MISSING and paid_date is None and want_paid is None:
+        want_paid = False
+
+    if has_invoice_lines and not has_payment_lines and want_paid:
+        ensure_payment_from_legacy_flags(
+            db,
+            quote=quote,
+            line_date=paid_date if paid_date is not _MISSING else None,
+        )
+    elif not has_invoice_lines and not has_payment_lines:
+        if is_paid is not _MISSING:
+            quote.is_paid = bool(is_paid)
+        if paid_date is not _MISSING:
+            quote.paid_date = paid_date
+            if paid_date is not None and is_paid is _MISSING:
+                quote.is_paid = True
+            elif paid_date is None and is_paid is _MISSING:
+                quote.is_paid = False
+        if quote.is_paid:
+            if not quote.is_invoiced:
+                raise ProTrackValidationError(
+                    "Mark the quote invoiced before recording payment."
+                )
+            if quote.paid_date is None:
+                quote.paid_date = date.today()
+        else:
+            quote.paid_date = None
+
+    if list_invoice_lines(db, quote.id) or list_payment_lines(db, quote.id):
+        sync_quote_cash_flags(db, quote)
 
     customer = db.get(Customer, quote.customer_id)
     if customer is None:

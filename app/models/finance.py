@@ -291,6 +291,10 @@ class Quote(Base, TimestampMixin):
     invoiced_date: Mapped[Optional[date]] = mapped_column(Date)
     is_invoiced: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_invoicing_reminder_at: Mapped[Optional[date]] = mapped_column(Date)
+    customer_po_number: Mapped[Optional[str]] = mapped_column(String(100))
+    is_paid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    paid_date: Mapped[Optional[date]] = mapped_column(Date)
+    last_payment_reminder_at: Mapped[Optional[date]] = mapped_column(Date)
     current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     current_revision: Mapped[str] = mapped_column(String(20), nullable=False, default="A")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -298,6 +302,55 @@ class Quote(Base, TimestampMixin):
     revisions: Mapped[list["QuoteRevision"]] = relationship(
         back_populates="quote", cascade="all, delete-orphan"
     )
+    invoice_lines: Mapped[list["QuoteInvoiceLine"]] = relationship(
+        back_populates="quote",
+        cascade="all, delete-orphan",
+        order_by="QuoteInvoiceLine.sort_order, QuoteInvoiceLine.line_date",
+    )
+    payment_lines: Mapped[list["QuotePaymentLine"]] = relationship(
+        back_populates="quote",
+        cascade="all, delete-orphan",
+        order_by="QuotePaymentLine.sort_order, QuotePaymentLine.line_date",
+    )
+
+
+class QuoteInvoiceLine(Base, TimestampMixin):
+    """Partial or full invoice entry against an awarded quote."""
+
+    __tablename__ = "quote_invoice_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    quote_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("quotes.id"), nullable=False, index=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    line_date: Mapped[date] = mapped_column(Date, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    quote: Mapped[Quote] = relationship(back_populates="invoice_lines")
+
+
+class QuotePaymentLine(Base, TimestampMixin):
+    """Partial or full customer payment against invoiced amounts."""
+
+    __tablename__ = "quote_payment_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    quote_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("quotes.id"), nullable=False, index=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    line_date: Mapped[date] = mapped_column(Date, nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(200))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    quote: Mapped[Quote] = relationship(back_populates="payment_lines")
 
 
 class QuoteRevision(Base, TimestampMixin):

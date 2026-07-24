@@ -9,6 +9,7 @@ from app.api.v1 import (
     auth,
     calendar,
     dashboard,
+    documents,
     emails,
     finance,
     hr,
@@ -149,6 +150,7 @@ api_router.include_router(preferences.router)
 api_router.include_router(notifications.router)
 api_router.include_router(activities.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(documents.router)
 api_router.include_router(calendar.router)
 api_router.include_router(ai.router)
 api_router.include_router(reports.router)

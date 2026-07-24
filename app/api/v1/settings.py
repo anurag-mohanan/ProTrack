@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.auth_deps import require_roles
@@ -60,6 +61,7 @@ from app.schemas.settings import (
     UserSkillCreate,
     UserSkillRead,
 )
+from app.schemas.enterprise import LegalEntityCreate, LegalEntityRead
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 admin_access = [Depends(require_roles("Admin"))]
@@ -194,6 +196,34 @@ def get_timesheet_policy_settings():
     from app.core.timesheet_locking import timesheet_policy_dict
 
     return TimesheetPolicySettingsRead.model_validate(timesheet_policy_dict())
+
+
+@router.get("/legal-entities", response_model=list[LegalEntityRead])
+def get_legal_entities(db: Session = Depends(get_db)):
+    from app.services.legal_entity_service import list_legal_entities
+
+    return [LegalEntityRead.model_validate(row) for row in list_legal_entities(db)]
+
+
+@router.post(
+    "/legal-entities",
+    response_model=LegalEntityRead,
+    dependencies=admin_access,
+)
+def create_legal_entity(payload: LegalEntityCreate, db: Session = Depends(get_db)):
+    from app.models.enterprise import LegalEntity
+    from app.services.legal_entity_service import ensure_default_legal_entity
+
+    ensure_default_legal_entity(db)
+    if payload.is_default:
+        for row in db.scalars(select(LegalEntity)).all():
+            row.is_default = False
+            db.add(row)
+    row = LegalEntity(**payload.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return LegalEntityRead.model_validate(row)
 
 
 @router.patch(

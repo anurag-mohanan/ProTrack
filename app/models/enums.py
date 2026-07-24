@@ -206,6 +206,7 @@ class NotificationType(enum.Enum):
     pending_approval = "pending_approval"
     expense_renewal = "expense_renewal"
     quote_not_invoiced = "quote_not_invoiced"
+    quote_payment_follow_up = "quote_payment_follow_up"
     new_hire_onboarding = "new_hire_onboarding"
 
 

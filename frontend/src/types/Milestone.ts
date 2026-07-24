@@ -14,6 +14,8 @@ export interface Milestone extends Timestamped {
   assigned_user_name: string | null;
   actual_hours: number;
   sort_order: number;
+  qa_acknowledged?: boolean;
+  qa_gate_required?: boolean;
 }
 
 export interface MilestoneUpdate {
@@ -27,6 +29,7 @@ export interface MilestoneUpdate {
   progress_percent?: number;
   assigned_user_id?: string | null;
   sort_order?: number;
+  qa_acknowledged?: boolean;
 }
 
 export interface MilestoneCreate {

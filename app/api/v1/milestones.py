@@ -12,6 +12,7 @@ from app.api.deps import (
     status,
 )
 from app.api.v1.router_factory import MilestoneFilters
+from app.core.exceptions import ProTrackValidationError
 from app.core.permissions import (
     can_edit_milestone,
     can_read_project,
@@ -39,7 +40,13 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
-_PROGRESS_ONLY_FIELDS = frozenset({"progress_percent", "status", "due_date"})
+_PROGRESS_ONLY_FIELDS = frozenset(
+    {"progress_percent", "status", "due_date", "qa_acknowledged"}
+)
+
+
+def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail=exc.detail)
 
 
 def _milestone_to_read(db: Session, row: Milestone) -> MilestoneRead:
@@ -147,7 +154,10 @@ def update_milestone(
         allowed = False
     if not allowed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
-    updated = milestone.update(db, db_obj=db_obj, obj_in=obj_in, actor=current_user)
+    try:
+        updated = milestone.update(db, db_obj=db_obj, obj_in=obj_in, actor=current_user)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
     return _milestone_to_read(db, updated)
 
 

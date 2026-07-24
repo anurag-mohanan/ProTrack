@@ -65,6 +65,13 @@ from app.schemas.performance_review import (
     PerformanceReviewUpdate,
     PerformanceReviewWorkflowAction,
 )
+from app.schemas.enterprise import (
+    LearningPlanCreateFromGaps,
+    LearningPlanItemRead,
+    LearningPlanItemStatusUpdate,
+    LearningPlanRead,
+    SkillGapRead,
+)
 from app.services.performance_review_service import (
     DEFAULT_REVIEW_TEMPLATE,
     FORM_CODE,
@@ -853,6 +860,133 @@ def get_team_skill_matrix(
         matrix = build_team_skill_matrix(db, team_ids=scope_ids, stream_id=stream_id)
     db.commit()
     return SkillMatrixRead.model_validate(matrix)
+
+
+@router.get("/performance/skill-gaps", response_model=list[SkillGapRead])
+def get_skill_gaps(
+    user_id: UUID = Query(...),
+    target_proficiency: str = Query("proficient"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.learning_plan_service import skill_gaps_for_user
+
+    _require_performance_view(db, current_user)
+    gaps = skill_gaps_for_user(db, user_id, target=target_proficiency)
+    return [SkillGapRead.model_validate(gap) for gap in gaps]
+
+
+@router.get("/performance/learning-plans", response_model=list[LearningPlanRead])
+def get_learning_plans(
+    user_id: UUID = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.models import StreamSkill
+    from app.services.learning_plan_service import list_plans_for_user
+
+    _require_performance_view(db, current_user)
+    plans = list_plans_for_user(db, user_id)
+    skill_names = {
+        row.id: row.name
+        for row in db.scalars(select(StreamSkill)).all()
+    }
+    result: list[LearningPlanRead] = []
+    for plan in plans:
+        items = [
+            LearningPlanItemRead(
+                id=item.id,
+                plan_id=item.plan_id,
+                stream_skill_id=item.stream_skill_id,
+                skill_name=skill_names.get(item.stream_skill_id),
+                current_proficiency=item.current_proficiency,
+                target_proficiency=item.target_proficiency,
+                status=item.status,
+                due_date=item.due_date,
+                notes=item.notes,
+                sort_order=item.sort_order,
+            )
+            for item in plan.items
+        ]
+        result.append(
+            LearningPlanRead(
+                id=plan.id,
+                user_id=plan.user_id,
+                title=plan.title,
+                status=plan.status,
+                created_by_id=plan.created_by_id,
+                items=items,
+                created_at=plan.created_at,
+                updated_at=plan.updated_at,
+            )
+        )
+    return result
+
+
+@router.post("/performance/learning-plans/from-gaps", response_model=LearningPlanRead)
+def create_learning_plan_from_gaps(
+    payload: LearningPlanCreateFromGaps,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.models import StreamSkill
+    from app.services.learning_plan_service import create_plan_from_gaps, list_plans_for_user
+
+    _require_performance_view(db, current_user)
+    plan = create_plan_from_gaps(
+        db,
+        user_id=payload.user_id,
+        created_by=current_user,
+        title=payload.title,
+        target=payload.target_proficiency,
+    )
+    plans = list_plans_for_user(db, payload.user_id)
+    loaded = next((row for row in plans if row.id == plan.id), plan)
+    skill_names = {
+        row.id: row.name
+        for row in db.scalars(select(StreamSkill)).all()
+    }
+    items = [
+        LearningPlanItemRead(
+            id=item.id,
+            plan_id=item.plan_id,
+            stream_skill_id=item.stream_skill_id,
+            skill_name=skill_names.get(item.stream_skill_id),
+            current_proficiency=item.current_proficiency,
+            target_proficiency=item.target_proficiency,
+            status=item.status,
+            due_date=item.due_date,
+            notes=item.notes,
+            sort_order=item.sort_order,
+        )
+        for item in getattr(loaded, "items", []) or []
+    ]
+    return LearningPlanRead(
+        id=loaded.id,
+        user_id=loaded.user_id,
+        title=loaded.title,
+        status=loaded.status,
+        created_by_id=loaded.created_by_id,
+        items=items,
+        created_at=loaded.created_at,
+        updated_at=loaded.updated_at,
+    )
+
+
+@router.patch("/performance/learning-plan-items/{item_id}", response_model=LearningPlanItemRead)
+def patch_learning_plan_item(
+    item_id: UUID,
+    payload: LearningPlanItemStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.learning_plan_service import update_plan_item_status
+
+    _require_performance_view(db, current_user)
+    item = update_plan_item_status(db, item_id=item_id, status=payload.status)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Learning plan item not found")
+    return LearningPlanItemRead.model_validate(item)
 
 
 @router.put("/performance/skill-matrix", response_model=SkillMatrixUpsertResponse)

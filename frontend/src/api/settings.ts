@@ -8,6 +8,7 @@ import type {
   EngineeringDiscipline,
   FilePathSettings,
   Holiday,
+  LegalEntity,
   NotificationSettings,
   PublicSettings,
   Skill,
@@ -160,5 +161,10 @@ export async function updateEmailTemplate(
     `/settings/email/templates/${templateId}`,
     payload,
   );
+  return data;
+}
+
+export async function fetchLegalEntities(): Promise<LegalEntity[]> {
+  const { data } = await apiClient.get<LegalEntity[]>('/settings/legal-entities');
   return data;
 }

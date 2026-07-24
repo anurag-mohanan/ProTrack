@@ -55,6 +55,7 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
   const [formOpen, setFormOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Milestone | null>(null);
+  const [qaCompleteTarget, setQaCompleteTarget] = useState<Milestone | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   const { data, isLoading, error } = useQuery({
@@ -67,13 +68,20 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
   };
 
   const completeMutation = useMutation({
-    mutationFn: completeMilestone,
-    onMutate: (milestoneId) => {
+    mutationFn: ({
+      milestoneId,
+      qaAcknowledged,
+    }: {
+      milestoneId: string;
+      qaAcknowledged?: boolean;
+    }) => completeMilestone(milestoneId, { qaAcknowledged }),
+    onMutate: ({ milestoneId }) => {
       setPendingAction({ milestoneId, action: 'complete' });
     },
     onSuccess: () => {
       refreshRelatedQueries();
       showSuccess('Milestone marked as completed');
+      setQaCompleteTarget(null);
     },
     onError: (err) => showError(getErrorMessage(err)),
     onSettled: () => setPendingAction(null),
@@ -112,6 +120,14 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
 
   const isRowPending = (milestoneId: string) =>
     pendingAction?.milestoneId === milestoneId;
+
+  const requestComplete = (milestone: Milestone) => {
+    if (milestone.qa_gate_required) {
+      setQaCompleteTarget(milestone);
+      return;
+    }
+    completeMutation.mutate({ milestoneId: milestone.id });
+  };
 
   if (isLoading) return <LoadingState message="Loading milestones…" />;
   if (error) return <ErrorState error={error} />;
@@ -186,7 +202,13 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
                         sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}
                       >
                         {canComplete ? (
-                          <Tooltip title="Complete milestone">
+                          <Tooltip
+                            title={
+                              milestone.qa_gate_required
+                                ? 'Complete (QA acknowledgement required)'
+                                : 'Complete milestone'
+                            }
+                          >
                             <span>
                               <Button
                                 size="small"
@@ -194,7 +216,7 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
                                 variant="outlined"
                                 startIcon={<TaskAltIcon />}
                                 disabled={Boolean(pendingAction)}
-                                onClick={() => completeMutation.mutate(milestone.id)}
+                                onClick={() => requestComplete(milestone)}
                               >
                                 Complete
                               </Button>
@@ -262,6 +284,26 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
         }}
         projectId={projectId}
         milestone={editingMilestone}
+      />
+
+      <ConfirmDialog
+        open={Boolean(qaCompleteTarget)}
+        title="QA acknowledgement"
+        message={
+          qaCompleteTarget
+            ? `QA gate is enabled for this project. Confirm that QA checks are complete for "${qaCompleteTarget.name}" before marking it done.`
+            : ''
+        }
+        confirmLabel="Acknowledge & complete"
+        loading={completeMutation.isPending}
+        onClose={() => setQaCompleteTarget(null)}
+        onConfirm={() =>
+          qaCompleteTarget &&
+          completeMutation.mutate({
+            milestoneId: qaCompleteTarget.id,
+            qaAcknowledged: true,
+          })
+        }
       />
 
       <ConfirmDialog

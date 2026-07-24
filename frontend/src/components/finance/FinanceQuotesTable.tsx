@@ -16,6 +16,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import { designTokens } from '../../theme/designTokens';
 import { chartTheme } from '../../theme/chartTheme';
 import { financeMoney } from './FinanceCockpitPrimitives';
+import { toFiniteNumber } from '../../utils/format';
 
 export type AwardedQuoteRow = {
   id: string;
@@ -31,6 +32,14 @@ export type AwardedQuoteRow = {
   quoted_date?: string | null;
   invoiced_date?: string | null;
   is_invoiced?: boolean;
+  customer_po_number?: string | null;
+  is_paid?: boolean;
+  paid_date?: string | null;
+  payment_follow_up_due?: boolean;
+  payment_follow_up_on?: string | null;
+  total_invoiced?: number | string | null;
+  total_paid?: number | string | null;
+  balance_due?: number | string | null;
   billing_ready?: boolean;
   billing_gaps?: string[];
 };
@@ -244,6 +253,36 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                         ? `Invoiced ${quote.invoiced_date}`
                         : 'Not invoiced'}
                     </Typography>
+                    {quote.customer_po_number ? (
+                      <Typography variant="caption" sx={{ color: chartTheme.ink.secondary, display: 'block' }}>
+                        PO {quote.customer_po_number}
+                      </Typography>
+                    ) : null}
+                    {quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0 ? (
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          display: 'block',
+                          fontWeight: 600,
+                          color:
+                            toFiniteNumber(quote.balance_due) > 0
+                              ? designTokens.semantic.warning
+                              : designTokens.semantic.success,
+                        }}
+                      >
+                        Paid {financeMoney(quote.total_paid, currency)} / Invoiced{' '}
+                        {financeMoney(quote.total_invoiced, currency)}
+                        {toFiniteNumber(quote.balance_due) > 0
+                          ? ` · Due ${financeMoney(quote.balance_due, currency)}`
+                          : ' · Settled'}
+                      </Typography>
+                    ) : null}
+                    {toFiniteNumber(quote.balance_due) > 0 && quote.payment_follow_up_due ? (
+                      <Typography variant="caption" sx={{ color: designTokens.semantic.warning, display: 'block' }}>
+                        Follow up
+                        {quote.payment_follow_up_on ? ` (${quote.payment_follow_up_on})` : ''}
+                      </Typography>
+                    ) : null}
                   </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>
@@ -255,6 +294,21 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                         label={quote.is_invoiced ? 'Invoiced' : 'Pending'}
                         tone={quote.is_invoiced ? 'success' : 'warning'}
                       />
+                      {quote.is_invoiced ? (
+                        <StatusPill
+                          label={
+                            toFiniteNumber(quote.balance_due) > 0
+                              ? 'Balance due'
+                              : quote.is_paid
+                                ? 'Paid'
+                                : 'Unpaid'
+                          }
+                          tone={toFiniteNumber(quote.balance_due) > 0 ? 'warning' : 'success'}
+                        />
+                      ) : null}
+                      {quote.payment_follow_up_due ? (
+                        <StatusPill label="Follow up" tone="warning" />
+                      ) : null}
                       {!quote.quoted_date ? <StatusPill label="No date" tone="warning" /> : null}
                       {quote.billing_ready === false ? (
                         <Tooltip

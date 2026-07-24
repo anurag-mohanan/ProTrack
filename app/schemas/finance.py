@@ -317,6 +317,11 @@ class QuoteInvoicingNotifyResult(BaseModel):
     quote_ids: list[UUID] = Field(default_factory=list)
 
 
+class QuotePaymentNotifyResult(BaseModel):
+    notified_count: int
+    quote_ids: list[UUID] = Field(default_factory=list)
+
+
 class BudgetCreate(BaseModel):
     name: str
     scope_type: BudgetScopeType
@@ -434,6 +439,46 @@ class QuoteRevisionRead(BaseModel):
     imported_at: datetime | None = None
 
 
+class QuoteInvoiceLineRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    quote_id: UUID
+    amount: Decimal
+    line_date: date
+    notes: str | None = None
+    sort_order: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class QuotePaymentLineRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    quote_id: UUID
+    amount: Decimal
+    line_date: date
+    reference: str | None = None
+    notes: str | None = None
+    sort_order: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class QuoteInvoiceLineCreate(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+    line_date: date
+    notes: str | None = None
+
+
+class QuotePaymentLineCreate(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+    line_date: date
+    reference: str | None = None
+    notes: str | None = None
+
+
 class QuoteRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -449,6 +494,18 @@ class QuoteRead(BaseModel):
     quoted_date: date | None = None
     invoiced_date: date | None = None
     is_invoiced: bool = False
+    customer_po_number: str | None = None
+    is_paid: bool = False
+    paid_date: date | None = None
+    payment_follow_up_due: bool = False
+    payment_follow_up_on: date | None = None
+    total_invoiced: Decimal = Decimal("0")
+    total_paid: Decimal = Decimal("0")
+    balance_due: Decimal = Decimal("0")
+    remaining_to_invoice: Decimal = Decimal("0")
+    remaining_contract: Decimal = Decimal("0")
+    invoice_lines: list[QuoteInvoiceLineRead] = Field(default_factory=list)
+    payment_lines: list[QuotePaymentLineRead] = Field(default_factory=list)
     current_version: int
     current_revision: str
     is_active: bool
@@ -522,6 +579,18 @@ class QuoteUpdate(BaseModel):
     is_invoiced: bool | None = Field(
         default=None,
         description="Whether the quote has been invoiced",
+    )
+    customer_po_number: str | None = Field(
+        default=None,
+        description="Customer purchase order number",
+    )
+    is_paid: bool | None = Field(
+        default=None,
+        description="Whether payment was received",
+    )
+    paid_date: date | None = Field(
+        default=None,
+        description="Date payment was received (required when paid)",
     )
     create_project: bool = False
 

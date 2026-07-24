@@ -56,6 +56,8 @@ def enrich_milestone_read(
         user = db.get(User, milestone.assigned_user_id)
         if user is not None:
             assigned_name = f"{user.first_name} {user.last_name}".strip() or user.email
+    project = db.get(Project, milestone.project_id)
+    qa_gate_required = bool(getattr(project, "qa_gate_enabled", False)) if project else False
     return MilestoneRead(
         id=milestone.id,
         created_at=milestone.created_at,
@@ -73,6 +75,8 @@ def enrich_milestone_read(
         sort_order=milestone.sort_order,
         actual_hours=actual_hours,
         assigned_user_name=assigned_name,
+        qa_acknowledged=bool(getattr(milestone, "qa_acknowledged", False)),
+        qa_gate_required=qa_gate_required,
     )
 
 

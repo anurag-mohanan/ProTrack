@@ -121,6 +121,17 @@ export interface TimesheetPolicySettings {
   soft_lock_message: string;
 }
 
+export interface LegalEntity {
+  id: string;
+  code: string;
+  name: string;
+  currency_code: string;
+  is_default: boolean;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface EmailSettings {
   id: string;
   enabled: boolean;

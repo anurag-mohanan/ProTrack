@@ -79,7 +79,10 @@ from app.schemas.finance import (
     QuoteManualCreate,
     QuoteRead,
     QuoteUpdate,
+    QuoteInvoiceLineCreate,
+    QuotePaymentLineCreate,
     QuoteInvoicingNotifyResult,
+    QuotePaymentNotifyResult,
     RenewalNotifyResult,
     TeamCommercialFeeBandInput,
     TeamCommercialFeeBandRead,
@@ -105,6 +108,7 @@ from app.services.finance.quote_import_service import (
     import_quotes_from_upload,
 )
 from app.services.finance.quote_invoicing_notifier import notify_uninvoiced_quotes
+from app.services.finance.quote_payment_notifier import notify_unpaid_quotes
 from app.services.finance.renewal_notifier import notify_upcoming_renewals
 from app.services.finance.roster_service import get_employee_cost_roster
 from app.core.salary_eligibility import user_requires_salary
@@ -467,6 +471,134 @@ def trigger_quote_invoicing_reminders(
     count, quote_ids = notify_uninvoiced_quotes(db, team_id=team_id)
     db.commit()
     return QuoteInvoicingNotifyResult(notified_count=count, quote_ids=quote_ids)
+
+
+@router.post("/quotes/payment-reminders/notify", response_model=QuotePaymentNotifyResult)
+def trigger_quote_payment_reminders(
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create in-app notifications for invoiced quotes still unpaid (30 days, then weekly)."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    count, quote_ids = notify_unpaid_quotes(db, team_id=team_id)
+    db.commit()
+    return QuotePaymentNotifyResult(notified_count=count, quote_ids=quote_ids)
+
+
+@router.post(
+    "/quotes/{quote_id}/invoice-lines",
+    response_model=QuoteRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_quote_invoice_line(
+    quote_id: UUID,
+    payload: QuoteInvoiceLineCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.quote_cash_ledger_service import add_invoice_line
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    try:
+        add_invoice_line(
+            db,
+            quote=row,
+            amount=payload.amount,
+            line_date=payload.line_date,
+            notes=payload.notes,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    db.commit()
+    db.refresh(row)
+    return _quote_read(db, row)
+
+
+@router.delete(
+    "/quotes/{quote_id}/invoice-lines/{line_id}",
+    response_model=QuoteRead,
+)
+def delete_quote_invoice_line(
+    quote_id: UUID,
+    line_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.quote_cash_ledger_service import delete_invoice_line
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    try:
+        delete_invoice_line(db, quote=row, line_id=line_id)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    db.commit()
+    db.refresh(row)
+    return _quote_read(db, row)
+
+
+@router.post(
+    "/quotes/{quote_id}/payment-lines",
+    response_model=QuoteRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_quote_payment_line(
+    quote_id: UUID,
+    payload: QuotePaymentLineCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.quote_cash_ledger_service import add_payment_line
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    try:
+        add_payment_line(
+            db,
+            quote=row,
+            amount=payload.amount,
+            line_date=payload.line_date,
+            reference=payload.reference,
+            notes=payload.notes,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    db.commit()
+    db.refresh(row)
+    return _quote_read(db, row)
+
+
+@router.delete(
+    "/quotes/{quote_id}/payment-lines/{line_id}",
+    response_model=QuoteRead,
+)
+def delete_quote_payment_line(
+    quote_id: UUID,
+    line_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.quote_cash_ledger_service import delete_payment_line
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    try:
+        delete_payment_line(db, quote=row, line_id=line_id)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    db.commit()
+    db.refresh(row)
+    return _quote_read(db, row)
 
 
 @router.get("/employee-costs/roster", response_model=list[EmployeeCostRosterItem])
@@ -1391,12 +1523,19 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
         quote_billing_gaps,
         quote_billing_ready,
     )
+    from app.services.finance.quote_cash_ledger_service import summarize_quote_cash
     from app.services.finance.quote_import_service import _current_revision
+    from app.services.finance.quote_payment_notifier import (
+        next_payment_follow_up_date,
+        payment_follow_up_due,
+    )
+    from app.schemas.finance import QuoteInvoiceLineRead, QuotePaymentLineRead
 
     customer = db.get(Customer, row.customer_id)
     team = db.get(Team, row.team_id) if row.team_id else None
     revision = _current_revision(db, row)
     gaps = quote_billing_gaps(row)
+    cash = summarize_quote_cash(db, row, revision=revision)
     data = QuoteRead.model_validate(row)
     return data.model_copy(
         update={
@@ -1413,6 +1552,23 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
             "revisions": [],
             "billing_ready": quote_billing_ready(row),
             "billing_gaps": gaps,
+            "is_invoiced": cash["is_invoiced"] or bool(row.is_invoiced),
+            "invoiced_date": cash["invoiced_date"] or row.invoiced_date,
+            "is_paid": cash["is_paid"] if cash["invoice_lines"] else bool(row.is_paid),
+            "paid_date": cash["paid_date"] if cash["invoice_lines"] else row.paid_date,
+            "total_invoiced": cash["total_invoiced"],
+            "total_paid": cash["total_paid"],
+            "balance_due": cash["balance_due"],
+            "remaining_to_invoice": cash["remaining_to_invoice"],
+            "remaining_contract": cash["remaining_contract"],
+            "invoice_lines": [
+                QuoteInvoiceLineRead.model_validate(line) for line in cash["invoice_lines"]
+            ],
+            "payment_lines": [
+                QuotePaymentLineRead.model_validate(line) for line in cash["payment_lines"]
+            ],
+            "payment_follow_up_due": payment_follow_up_due(db, row),
+            "payment_follow_up_on": next_payment_follow_up_date(db, row),
         }
     )
 

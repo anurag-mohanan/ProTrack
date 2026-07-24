@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Grid, MenuItem } from '@mui/material';
+import { Box, Chip, Grid, MenuItem, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
@@ -11,6 +11,7 @@ import { CollapsibleFormSection, FormField, StickyRecordHeader } from '../../com
 import { LogoUpload } from '../../components/settings/LogoUpload';
 import {
   fetchCompanySettings,
+  fetchLegalEntities,
   updateCompanySettings,
   uploadCompanyLogo,
 } from '../../api/settings';
@@ -50,6 +51,10 @@ export default function CompanyProfilePage() {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ['settings', 'company'], queryFn: fetchCompanySettings });
+  const legalEntitiesQuery = useQuery({
+    queryKey: ['settings', 'legal-entities'],
+    queryFn: fetchLegalEntities,
+  });
   const [form, setForm] = useState({
     company_name: '',
     company_short_name: '',
@@ -350,6 +355,50 @@ export default function CompanyProfilePage() {
                     })}
                   </Box>
                 </Grid>
+            </CollapsibleFormSection>
+            </Box>
+
+            <Box sx={{ mt: 2.5 }}>
+            <CollapsibleFormSection
+              sectionId="legal-entities"
+              storageKey={COMPANY_SECTION_STORAGE_KEY}
+              title="Legal entities"
+              defaultExpanded={false}
+            >
+              <Grid size={{ xs: 12 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                  Multi-entity prep for future books. Operations remain single-tenant today;
+                  the default entity is used for company currency context.
+                </Typography>
+                {legalEntitiesQuery.isLoading ? (
+                  <LoadingState message="Loading legal entities…" />
+                ) : (legalEntitiesQuery.data ?? []).length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No legal entities registered yet. A default entity is created on first API
+                    access.
+                  </Typography>
+                ) : (
+                  <Stack spacing={1}>
+                    {(legalEntitiesQuery.data ?? []).map((entity) => (
+                      <Stack
+                        key={entity.id}
+                        direction="row"
+                        spacing={1}
+                        sx={{ alignItems: 'center', flexWrap: 'wrap' }}
+                      >
+                        <Typography sx={{ fontWeight: 700 }}>
+                          {entity.code} — {entity.name}
+                        </Typography>
+                        <Chip size="small" label={entity.currency_code} variant="outlined" />
+                        {entity.is_default ? <Chip size="small" color="primary" label="Default" /> : null}
+                        {!entity.is_active ? (
+                          <Chip size="small" label="Inactive" color="warning" />
+                        ) : null}
+                      </Stack>
+                    ))}
+                  </Stack>
+                )}
+              </Grid>
             </CollapsibleFormSection>
             </Box>
           </ContentCard>

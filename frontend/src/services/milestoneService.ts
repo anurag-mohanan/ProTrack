@@ -62,8 +62,15 @@ export async function reorderMilestones(
   return data;
 }
 
-export async function completeMilestone(milestoneId: string): Promise<Milestone> {
-  return updateMilestone(milestoneId, { status: 'completed', progress_percent: 100 });
+export async function completeMilestone(
+  milestoneId: string,
+  options?: { qaAcknowledged?: boolean },
+): Promise<Milestone> {
+  return updateMilestone(milestoneId, {
+    status: 'completed',
+    progress_percent: 100,
+    ...(options?.qaAcknowledged ? { qa_acknowledged: true } : {}),
+  });
 }
 
 export async function reopenMilestone(milestoneId: string): Promise<Milestone> {

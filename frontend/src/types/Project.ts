@@ -63,6 +63,7 @@ export interface Project extends Timestamped {
   template_change_blocked_reason?: string | null;
   needs_setup?: boolean;
   setup_gaps?: string[];
+  qa_gate_enabled?: boolean;
 }
 
 export interface ArchivedProjectListItem extends Omit<Project, 'design_leader_name'> {
@@ -132,6 +133,7 @@ export interface ProjectUpdate {
   cavity_count?: number | null;
   tool_type?: string | null;
   customer_specs?: string | null;
+  qa_gate_enabled?: boolean;
 }
 
 export function projectLabel(

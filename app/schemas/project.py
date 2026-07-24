@@ -96,6 +96,7 @@ class ProjectUpdate(BlankOptionalFieldsMixin, BaseModel):
     project_folder_path: str | None = Field(default=None, max_length=500)
     cad_folder_path: str | None = Field(default=None, max_length=500)
     released_folder_path: str | None = Field(default=None, max_length=500)
+    qa_gate_enabled: bool | None = None
 
 
 class ProjectRead(ProjectBase, TimestampSchema):
@@ -130,6 +131,7 @@ class ProjectRead(ProjectBase, TimestampSchema):
     template_change_blocked_reason: str | None = None
     needs_setup: bool = False
     setup_gaps: list[str] = Field(default_factory=list)
+    qa_gate_enabled: bool = False
 
 
 class ProjectDeleteCheck(BaseModel):
@@ -191,11 +193,14 @@ class MilestoneUpdate(BlankOptionalFieldsMixin, BaseModel):
     progress_percent: int | None = Field(default=None, ge=0, le=100)
     assigned_user_id: UUID | None = None
     sort_order: int | None = None
+    qa_acknowledged: bool | None = None
 
 
 class MilestoneRead(MilestoneBase, TimestampSchema):
     actual_hours: Decimal = Decimal("0")
     assigned_user_name: str | None = None
+    qa_acknowledged: bool = False
+    qa_gate_required: bool = False
 
 
 class MilestoneReorderItem(BaseModel):

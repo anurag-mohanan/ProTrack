@@ -16,6 +16,7 @@ import PaymentsRoundedIcon from '@mui/icons-material/PaymentsRounded';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamSkillMatrixPanel } from '../components/performance/TeamSkillMatrixPanel';
+import { LearningPlansPanel } from '../components/performance/LearningPlansPanel';
 import { PerformanceDashboardPanel } from '../components/performance/PerformanceDashboardPanel';
 import { PerformanceTemplatesCyclesPanel } from '../components/performance/PerformanceTemplatesCyclesPanel';
 import { PerformanceAnalyticsPanel } from '../components/performance/PerformanceAnalyticsPanel';
@@ -191,6 +192,7 @@ export function PerformancePage() {
                 (or Surfacing) level.
               </Typography>
               <TeamSkillMatrixPanel canManage={canManage} />
+              <LearningPlansPanel canManage={canManage} />
             </Box>
           ) : null}
 

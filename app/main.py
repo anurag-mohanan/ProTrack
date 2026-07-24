@@ -141,6 +141,15 @@ from app.db.phase57_background_jobs_schema_sync import (
 from app.db.phase58_r3_portfolio_schema_sync import (
     ensure_phase58_r3_portfolio_foundation,
 )
+from app.db.phase59_r4_enterprise_schema_sync import (
+    ensure_phase59_r4_enterprise_foundation,
+)
+from app.db.phase60_quote_payment_schema_sync import (
+    ensure_phase60_quote_payment_foundation,
+)
+from app.db.phase61_quote_partial_payments_schema_sync import (
+    ensure_phase61_quote_partial_payments_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -260,6 +269,9 @@ async def lifespan(app: FastAPI):
         ("phase56_hr_process_control", ensure_phase56_hr_process_control_foundation),
         ("phase57_background_jobs", ensure_phase57_background_jobs_foundation),
         ("phase58_r3_portfolio", ensure_phase58_r3_portfolio_foundation),
+        ("phase59_r4_enterprise", ensure_phase59_r4_enterprise_foundation),
+        ("phase60_quote_payment", ensure_phase60_quote_payment_foundation),
+        ("phase61_quote_partial_payments", ensure_phase61_quote_partial_payments_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 
@@ -319,12 +331,14 @@ async def lifespan(app: FastAPI):
     reminder_session = sessionmaker(bind=engine)()
     try:
         from app.services.finance.quote_invoicing_notifier import notify_uninvoiced_quotes
+        from app.services.finance.quote_payment_notifier import notify_unpaid_quotes
 
         notify_uninvoiced_quotes(reminder_session)
+        notify_unpaid_quotes(reminder_session)
         reminder_session.commit()
     except Exception:
         reminder_session.rollback()
-        logger.exception("Quote invoicing reminder step failed")
+        logger.exception("Quote invoicing / payment reminder step failed")
     finally:
         reminder_session.close()
 

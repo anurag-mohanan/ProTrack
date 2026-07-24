@@ -1032,6 +1032,10 @@ class Project(Base, TimestampMixin):
     project_folder_path: Mapped[Optional[str]] = mapped_column(String(500))
     cad_folder_path: Mapped[Optional[str]] = mapped_column(String(500))
     released_folder_path: Mapped[Optional[str]] = mapped_column(String(500))
+    # R4: opt-in QA acknowledgement before milestone complete
+    qa_gate_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
     customer: Mapped[Customer] = relationship(back_populates="projects")
     customer_contact: Mapped[Contact] = relationship(back_populates="projects")
@@ -1101,6 +1105,10 @@ class Milestone(Base, TimestampMixin):
         Boolean, nullable=False, default=False, server_default="0"
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # R4: set true when QA checklist acknowledged at complete time
+    qa_acknowledged: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
     project: Mapped[Project] = relationship(back_populates="milestones")
     assigned_user: Mapped[Optional[User]] = relationship(
@@ -1836,4 +1844,10 @@ from app.models.intelligence import (  # noqa: E402, F401
     LessonLearned,
     ProjectDecision,
     ProjectKnowledgeRecord,
+)
+from app.models.enterprise import (  # noqa: E402, F401
+    DocumentAsset,
+    LearningPlan,
+    LearningPlanItem,
+    LegalEntity,
 )

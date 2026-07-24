@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Grid, Typography, Alert } from '@mui/material';
+import { Box, FormControlLabel, Grid, Switch, Typography, Alert } from '@mui/material';
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined';
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
@@ -34,6 +34,7 @@ import {
 import { userDisplayName } from '../../utils/format';
 import { optionalString, optionalUuid, optionalNumber, validateRequiredFields, isBlankDisplayValue } from '../../utils/formValues';
 import { ChangeProjectTemplateDialog } from './ChangeProjectTemplateDialog';
+import { ProjectDocumentsPanel } from './ProjectDocumentsPanel';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { useToast } from '../../context/ToastContext';
@@ -68,6 +69,7 @@ interface ProjectFormValues {
   project_stage: ProjectStage;
   execution_status: ExecutionStatus;
   health: ProjectHealth;
+  qa_gate_enabled: boolean;
 }
 
 const PROJECT_SECTION_STORAGE_KEY = 'protrack:sections:project-form';
@@ -100,6 +102,7 @@ const emptyForm: ProjectFormValues = {
   project_stage: 'preliminary',
   execution_status: 'planning',
   health: 'green',
+  qa_gate_enabled: false,
 };
 
 function projectToForm(project: Project): ProjectFormValues {
@@ -135,6 +138,7 @@ function projectToForm(project: Project): ProjectFormValues {
     project_stage: project.project_stage,
     execution_status: project.execution_status,
     health: project.health,
+    qa_gate_enabled: Boolean(project.qa_gate_enabled),
   };
 }
 
@@ -330,6 +334,7 @@ export function ProjectFormDialog({
           complexity: form.complexity,
           health: form.health,
           working_model_id: optionalUuid(form.working_model_id),
+          qa_gate_enabled: form.qa_gate_enabled,
         };
         return updateProject(project.id, updatePayload);
       }
@@ -1116,6 +1121,22 @@ export function ProjectFormDialog({
                 }
               />
             </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={form.qa_gate_enabled}
+                    onChange={(event) =>
+                      setForm({ ...form, qa_gate_enabled: event.target.checked })
+                    }
+                  />
+                }
+                label="Require QA acknowledgement before completing milestones"
+              />
+              <Typography variant="caption" color="text.secondary" display="block">
+                When enabled, Completing a milestone asks for an explicit QA confirm.
+              </Typography>
+            </Grid>
           </CollapsibleFormSection>
         ) : (
           <CollapsibleFormSection
@@ -1286,10 +1307,11 @@ export function ProjectFormDialog({
             defaultExpanded={false}
           >
             <Grid size={{ xs: 12 }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 Folder paths and engineering files are managed from the project command center.
-                Open the project detail page to edit folder locations and released documents.
+                Document metadata uploads below use the R4 DMS foundation.
               </Typography>
+              <ProjectDocumentsPanel projectId={project.id} />
             </Grid>
           </CollapsibleFormSection>
         ) : null}

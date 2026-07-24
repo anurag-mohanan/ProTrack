@@ -58,6 +58,16 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
         }
         previous_status = db_obj.status
         update_data = apply_progress_rules(update_data, previous_status=previous_status)
+
+        from app.services.milestone_qa_gate_service import assert_milestone_qa_gate
+
+        assert_milestone_qa_gate(
+            db,
+            db_obj,
+            next_status=update_data.get("status", db_obj.status),
+            qa_acknowledged=update_data.get("qa_acknowledged"),
+        )
+
         if "assigned_user_id" in update_data:
             update_data["assignment_manual"] = True
 

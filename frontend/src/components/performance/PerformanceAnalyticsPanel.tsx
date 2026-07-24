@@ -1,4 +1,4 @@
-import { Box, Grid, Stack, Typography } from '@mui/material';
+import { Box, Grid, LinearProgress, Stack, Typography } from '@mui/material';
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
 import HourglassEmptyOutlinedIcon from '@mui/icons-material/HourglassEmptyOutlined';
 import TaskAltOutlinedIcon from '@mui/icons-material/TaskAltOutlined';
@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { LoadingState } from '../common/LoadingState';
 import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
+import { designTokens } from '../../theme/designTokens';
 
 type ReviewRow = {
   id: string;
@@ -19,6 +20,34 @@ type ReviewRow = {
   employee_name: string;
 };
 
+function isAcknowledged(row: ReviewRow): boolean {
+  return row.stage === 'acknowledged' || row.status === 'acknowledged';
+}
+
+function RatingBar({ label, count, total }: { label: string; count: number; total: number }) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <Box sx={{ mb: 1.25 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+        <Typography variant="body2">{label}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+          {count} ({pct}%)
+        </Typography>
+      </Stack>
+      <LinearProgress
+        variant="determinate"
+        value={pct}
+        sx={{
+          height: 8,
+          borderRadius: 999,
+          bgcolor: designTokens.semantic.neutralSoft,
+          '& .MuiLinearProgress-bar': { borderRadius: 999 },
+        }}
+      />
+    </Box>
+  );
+}
+
 export function PerformanceAnalyticsPanel() {
   const myQuery = useQuery({
     queryKey: ['performance-reviews', 'me'],
@@ -27,18 +56,28 @@ export function PerformanceAnalyticsPanel() {
   const teamQuery = useQuery({
     queryKey: ['performance-reviews', 'team', 'analytics'],
     queryFn: async () => (await apiClient.get<ReviewRow[]>('/hr/reviews/team')).data,
+    retry: false,
   });
 
   const rows = useMemo(() => {
-    const team = teamQuery.data ?? [];
-    if (team.length) return team;
+    if (teamQuery.isSuccess && (teamQuery.data?.length ?? 0) > 0) {
+      return teamQuery.data ?? [];
+    }
     return myQuery.data ?? [];
-  }, [myQuery.data, teamQuery.data]);
+  }, [myQuery.data, teamQuery.data, teamQuery.isSuccess]);
+
+  const scopeLabel = useMemo(() => {
+    if (teamQuery.isSuccess && (teamQuery.data?.length ?? 0) > 0) {
+      return 'team reviews in your managed scope';
+    }
+    return 'your reviews';
+  }, [teamQuery.data, teamQuery.isSuccess]);
 
   const stats = useMemo(() => {
-    const open = rows.filter((r) => r.stage !== 'acknowledged' && r.status !== 'acknowledged');
-    const done = rows.filter((r) => r.stage === 'acknowledged' || r.status === 'acknowledged');
-    const overdue = open.filter((r) => r.due_date && r.due_date < new Date().toISOString().slice(0, 10));
+    const today = new Date().toISOString().slice(0, 10);
+    const open = rows.filter((r) => !isAcknowledged(r));
+    const done = rows.filter((r) => isAcknowledged(r));
+    const overdue = open.filter((r) => Boolean(r.due_date && r.due_date < today));
     const rated = rows.filter((r) => r.overall_score != null && r.overall_score !== '');
     const buckets = { low: 0, mid: 0, high: 0 };
     for (const row of rated) {
@@ -48,14 +87,13 @@ export function PerformanceAnalyticsPanel() {
       else if (score < 4) buckets.mid += 1;
       else buckets.high += 1;
     }
-    const quarterly = rows.filter((r) => r.cycle_kind === 'quarterly').length;
     const annual = rows.filter((r) => (r.cycle_kind || 'annual') === 'annual').length;
     return {
       open: open.length,
       done: done.length,
       overdue: overdue.length,
       buckets,
-      quarterly,
+      ratedCount: rated.length,
       annual,
       calibration: open.filter((r) => r.stage === 'calibration').length,
     };
@@ -65,10 +103,18 @@ export function PerformanceAnalyticsPanel() {
     return <LoadingState message="Loading analytics…" />;
   }
 
+  if (myQuery.isError && teamQuery.isError) {
+    return (
+      <Typography color="error" variant="body2">
+        Unable to load performance analytics.
+      </Typography>
+    );
+  }
+
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Snapshot of review progress and rating distribution for your scope (team reviews when available).
+        Snapshot of review progress and rating distribution for {scopeLabel}.
       </Typography>
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 6, md: 3 }}>
@@ -77,11 +123,18 @@ export function PerformanceAnalyticsPanel() {
             value={String(stats.open)}
             subtitle={`${stats.overdue} overdue`}
             icon={HourglassEmptyOutlinedIcon}
+            accent={stats.overdue ? 'warning' : undefined}
             compact
           />
         </Grid>
         <Grid size={{ xs: 6, md: 3 }}>
-          <KpiMetricCard title="Acknowledged" value={String(stats.done)} icon={TaskAltOutlinedIcon} compact />
+          <KpiMetricCard
+            title="Acknowledged"
+            value={String(stats.done)}
+            icon={TaskAltOutlinedIcon}
+            accent="success"
+            compact
+          />
         </Grid>
         <Grid size={{ xs: 6, md: 3 }}>
           <KpiMetricCard
@@ -101,13 +154,30 @@ export function PerformanceAnalyticsPanel() {
           />
         </Grid>
       </Grid>
-      <Box sx={{ bgcolor: 'background.paper', borderRadius: 2, p: 2, border: 1, borderColor: 'divider' }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+      <Box
+        sx={{
+          bgcolor: designTokens.semantic.card,
+          borderRadius: `${designTokens.radius.lg}px`,
+          p: 2,
+          border: 1,
+          borderColor: 'divider',
+          boxShadow: designTokens.elevation.card,
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.25 }}>
           Rating distribution
         </Typography>
-        <Typography variant="body2">Below 3.0: {stats.buckets.low}</Typography>
-        <Typography variant="body2">3.0 – 3.9: {stats.buckets.mid}</Typography>
-        <Typography variant="body2">4.0+: {stats.buckets.high}</Typography>
+        {stats.ratedCount === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            No scored reviews in this scope yet.
+          </Typography>
+        ) : (
+          <>
+            <RatingBar label="Below 3.0" count={stats.buckets.low} total={stats.ratedCount} />
+            <RatingBar label="3.0 – 3.9" count={stats.buckets.mid} total={stats.ratedCount} />
+            <RatingBar label="4.0+" count={stats.buckets.high} total={stats.ratedCount} />
+          </>
+        )}
       </Box>
     </Stack>
   );

@@ -159,14 +159,21 @@ def _quote_period_amounts(
     team_id: UUID | None,
     today: date,
     fy_start: date,
-) -> tuple[Decimal, Decimal]:
-    """Actual quote awards: this calendar month + current FY quarter (by invoiced_date)."""
+) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """Actual quote awards by period (month / FY quarter / half / full FY)."""
     from app.models.finance import Quote
     from app.services.finance.plan_sales_from_quotes_service import effective_revenue_date
-    from app.services.finance.renewal_budget_service import fy_quarter_date_bounds
+    from app.services.finance.renewal_budget_service import (
+        fy_half_date_bounds,
+        fy_quarter_date_bounds,
+        fy_year_date_bounds,
+    )
 
     bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
     q_start, q_end = bounds if bounds is not None else (None, None)
+    half_bounds = fy_half_date_bounds(today, fy_start=fy_start)
+    h_start, h_end = half_bounds if half_bounds is not None else (None, None)
+    y_start, y_end = fy_year_date_bounds(fy_start=fy_start)
 
     quote_stmt = select(Quote).where(Quote.is_active.is_(True))
     if team_id is not None:
@@ -174,6 +181,8 @@ def _quote_period_amounts(
 
     monthly = Decimal("0.00")
     quarterly = Decimal("0.00")
+    half = Decimal("0.00")
+    yearly = Decimal("0.00")
     for quote in db.scalars(quote_stmt).all():
         revision = _current_quote_revision(db, quote)
         when = effective_revenue_date(quote)
@@ -184,7 +193,16 @@ def _quote_period_amounts(
             monthly += amount
         if q_start is not None and q_end is not None and q_start <= when <= q_end:
             quarterly += amount
-    return monthly.quantize(Decimal("0.01")), quarterly.quantize(Decimal("0.01"))
+        if h_start is not None and h_end is not None and h_start <= when <= h_end:
+            half += amount
+        if y_start <= when <= y_end:
+            yearly += amount
+    return (
+        monthly.quantize(Decimal("0.01")),
+        quarterly.quantize(Decimal("0.01")),
+        half.quantize(Decimal("0.01")),
+        yearly.quantize(Decimal("0.01")),
+    )
 
 
 def _retainer_fee_for_period(
@@ -548,23 +566,38 @@ def _team_rollups(
     fee = _team_fee_monthly(db, team_id=team.id, today=today)
     from app.services.finance.annual_plan_service import current_fy_start
     from app.services.finance.renewal_budget_service import (
+        fy_half_date_bounds,
         fy_quarter_date_bounds,
+        fy_year_date_bounds,
         months_elapsed_in_period,
     )
 
     fy_start = current_fy_start(today)
-    quote_month, quote_quarter = _quote_period_amounts(
+    quote_month, quote_quarter, quote_half, quote_year = _quote_period_amounts(
         db, team_id=team.id, today=today, fy_start=fy_start
     )
-    bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
-    fee_months = (
-        months_elapsed_in_period(today, bounds[0], bounds[1]) if bounds is not None else 0
+    q_bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
+    h_bounds = fy_half_date_bounds(today, fy_start=fy_start)
+    y_start, y_end = fy_year_date_bounds(fy_start=fy_start)
+    fee_q_months = (
+        months_elapsed_in_period(today, q_bounds[0], q_bounds[1]) if q_bounds is not None else 0
     )
-    fee_quarter = (fee * Decimal(fee_months)).quantize(Decimal("0.01"))
+    fee_h_months = (
+        months_elapsed_in_period(today, h_bounds[0], h_bounds[1]) if h_bounds is not None else 0
+    )
+    fee_y_months = months_elapsed_in_period(today, y_start, y_end)
+    fee_quarter = (fee * Decimal(fee_q_months)).quantize(Decimal("0.01"))
+    fee_half = (fee * Decimal(fee_h_months)).quantize(Decimal("0.01"))
+    fee_year = (fee * Decimal(fee_y_months)).quantize(Decimal("0.01"))
     # Fully loaded team cost: salaries + software/OpEx + hardware CapEx assigned to the team.
     operating = prosohm_opex + salary + prosohm_capex
+    other_op = (prosohm_opex + prosohm_capex).quantize(Decimal("0.01"))
     revenue = quote_revenue + fee
     period_quarter_revenue = (quote_quarter + fee_quarter).quantize(Decimal("0.01"))
+    period_half_revenue = (quote_half + fee_half).quantize(Decimal("0.01"))
+    period_year_revenue = (quote_year + fee_year).quantize(Decimal("0.01"))
+    # Month chart/table: open quote pipeline + monthly retainer (quote-basis teams show revenue).
+    # Longer periods: actual awards in window + retainer accrued for months elapsed.
     gross_profit = revenue - quote_estimated_cost
     net_profit = gross_profit - operating
     gross_margin = (
@@ -586,6 +619,7 @@ def _team_rollups(
         "prosohm_capex_inr": prosohm_capex,
         "pass_through_opex_inr": pass_through,
         "monthly_operating_cost_inr": operating,
+        "other_operating_cost_inr": other_op,
         "team_commercial_fee_monthly_inr": fee,
         "quote_revenue_inr": quote_revenue,
         "estimated_cost_inr": quote_estimated_cost,
@@ -595,9 +629,35 @@ def _team_rollups(
         "gross_margin_percent": gross_margin,
         "net_margin_percent": net_margin,
         "quarterly_revenue_signal_inr": period_quarter_revenue,
+        "half_year_revenue_signal_inr": period_half_revenue,
+        "year_revenue_signal_inr": period_year_revenue,
         "quarter_quote_awards_inr": quote_quarter,
+        "half_year_quote_awards_inr": quote_half,
+        "year_quote_awards_inr": quote_year,
         "quarter_retainer_accrued_inr": fee_quarter,
+        "half_year_retainer_accrued_inr": fee_half,
+        "year_retainer_accrued_inr": fee_year,
         "month_quote_awards_inr": quote_month,
+        "period_months_quarter": fee_q_months,
+        "period_months_half": fee_h_months,
+        "period_months_year": fee_y_months,
+        "quarter_operating_cost_inr": (operating * Decimal(fee_q_months)).quantize(Decimal("0.01")),
+        "half_year_operating_cost_inr": (operating * Decimal(fee_h_months)).quantize(
+            Decimal("0.01")
+        ),
+        "year_operating_cost_inr": (operating * Decimal(fee_y_months)).quantize(Decimal("0.01")),
+        "quarter_salary_cost_inr": (salary * Decimal(fee_q_months)).quantize(Decimal("0.01")),
+        "half_year_salary_cost_inr": (salary * Decimal(fee_h_months)).quantize(Decimal("0.01")),
+        "year_salary_cost_inr": (salary * Decimal(fee_y_months)).quantize(Decimal("0.01")),
+        "quarter_other_operating_cost_inr": (other_op * Decimal(fee_q_months)).quantize(
+            Decimal("0.01")
+        ),
+        "half_year_other_operating_cost_inr": (other_op * Decimal(fee_h_months)).quantize(
+            Decimal("0.01")
+        ),
+        "year_other_operating_cost_inr": (other_op * Decimal(fee_y_months)).quantize(
+            Decimal("0.01")
+        ),
     }
 
 
@@ -676,23 +736,44 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         db, team_id=team_id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.capex, as_of=as_of
     )
     team_fee_monthly = _team_fee_monthly(db, team_id=team_id, today=today)
-    quote_month, quote_quarter = _quote_period_amounts(
+    quote_month, quote_quarter, quote_half, quote_year = _quote_period_amounts(
         db, team_id=team_id, today=today, fy_start=fy_start
     )
     _, fee_quarter = _retainer_fee_for_period(
         db, team_id=team_id, today=today, fy_start=fy_start
     )
+    from app.services.finance.renewal_budget_service import (
+        fy_half_date_bounds,
+        fy_quarter_date_bounds,
+        fy_year_date_bounds,
+        months_elapsed_in_period,
+    )
+
+    q_bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
+    h_bounds = fy_half_date_bounds(today, fy_start=fy_start)
+    y_start, y_end = fy_year_date_bounds(fy_start=fy_start)
+    fee_q_months = (
+        months_elapsed_in_period(today, q_bounds[0], q_bounds[1]) if q_bounds is not None else 0
+    )
+    fee_h_months = (
+        months_elapsed_in_period(today, h_bounds[0], h_bounds[1]) if h_bounds is not None else 0
+    )
+    fee_y_months = months_elapsed_in_period(today, y_start, y_end)
+    fee_half = (team_fee_monthly * Decimal(fee_h_months)).quantize(Decimal("0.01"))
+    fee_year = (team_fee_monthly * Decimal(fee_y_months)).quantize(Decimal("0.01"))
 
     planning_revenue = revenue + team_fee_monthly
     operating_cost = prosohm_opex + salary_cost + capex
-    display_revenue = revenue + team_fee_monthly
+    display_revenue = planning_revenue
     # Actual period revenue: quote awards in period + retainer accrued (not ×3 projection)
     period_monthly_revenue = (quote_month + team_fee_monthly).quantize(Decimal("0.01"))
     quarterly_revenue = (quote_quarter + fee_quarter).quantize(Decimal("0.01"))
-    yearly_revenue = (display_revenue * Decimal("12")).quantize(Decimal("0.01"))
-    quarterly_operating = (operating_cost * Decimal("3")).quantize(Decimal("0.01"))
-    yearly_operating = (operating_cost * Decimal("12")).quantize(Decimal("0.01"))
-    quarterly_salary = (salary_cost * Decimal("3")).quantize(Decimal("0.01"))
+    half_year_revenue = (quote_half + fee_half).quantize(Decimal("0.01"))
+    yearly_revenue = (quote_year + fee_year).quantize(Decimal("0.01"))
+    quarterly_operating = (operating_cost * Decimal(fee_q_months)).quantize(Decimal("0.01"))
+    half_year_operating = (operating_cost * Decimal(fee_h_months)).quantize(Decimal("0.01"))
+    yearly_operating = (operating_cost * Decimal(fee_y_months)).quantize(Decimal("0.01"))
+    quarterly_salary = (salary_cost * Decimal(fee_q_months)).quantize(Decimal("0.01"))
     gross_profit = display_revenue - estimated_cost
     gross_margin = (
         (gross_profit / display_revenue * 100) if display_revenue else Decimal("0.00")
@@ -805,6 +886,7 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         "revenue": {
             "monthly_revenue": period_monthly_revenue,
             "quarterly_revenue": quarterly_revenue,
+            "half_year_revenue": half_year_revenue,
             "yearly_revenue": yearly_revenue,
             "quote_pipeline_revenue": display_revenue,
             "revenue_forecast": yearly_revenue,
@@ -827,6 +909,7 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
             "recurring_costs": prosohm_opex,
             "monthly_operating_cost": operating_cost,
             "quarterly_operating_cost": quarterly_operating,
+            "half_year_operating_cost": half_year_operating,
             "annual_operating_cost": yearly_operating,
             "prosohm_opex": prosohm_opex,
             "pass_through_opex": pass_through_opex,
@@ -835,6 +918,12 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
             "overhead_pool_monthly_inr": overhead["overhead_pool_monthly_inr"],
             "overhead_cost_per_resource_inr": overhead["overhead_cost_per_resource_inr"],
             "billable_resource_count": overhead["billable_resource_count"],
+        },
+        "period_context": {
+            "months_month": 1,
+            "months_quarter": fee_q_months,
+            "months_half": fee_h_months,
+            "months_year": fee_y_months,
         },
         "profitability": {
             "gross_profit": gross_profit,

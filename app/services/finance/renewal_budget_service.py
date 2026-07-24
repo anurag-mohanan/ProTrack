@@ -56,6 +56,22 @@ def fy_quarter_date_bounds(today: date, *, fy_start: date) -> tuple[date, date] 
     return date(y + 1, 1, 1), date(y + 1, 3, 31)
 
 
+def fy_half_date_bounds(today: date, *, fy_start: date) -> tuple[date, date] | None:
+    """Inclusive H1 (Apr–Sep) / H2 (Oct–Mar) bounds for the Indian Eng FY containing today."""
+    fy_end = date(fy_start.year + 1, 3, 31)
+    if today < fy_start or today > fy_end:
+        return None
+    h1_end = date(fy_start.year, 9, 30)
+    if today <= h1_end:
+        return fy_start, h1_end
+    return date(fy_start.year, 10, 1), fy_end
+
+
+def fy_year_date_bounds(*, fy_start: date) -> tuple[date, date]:
+    """Inclusive full Eng FY bounds (Apr 1 – Mar 31)."""
+    return fy_start, date(fy_start.year + 1, 3, 31)
+
+
 def months_elapsed_in_period(today: date, start: date, end: date) -> int:
     """Calendar months from start through min(today, end), inclusive (0 if before start)."""
     if today < start:

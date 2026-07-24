@@ -52,7 +52,7 @@ export function AnalyticsDonutChart({ data, height = 260 }: DonutChartProps) {
 
 interface BarSeriesChartProps {
   categories: string[];
-  series: Array<{ label: string; data: number[]; color?: string }>;
+  series: Array<{ label: string; data: number[]; color?: string; stack?: string }>;
   height?: number;
   horizontal?: boolean;
 }
@@ -75,6 +75,7 @@ export function AnalyticsBarChart({
         series={series.map((s, index) => ({
           data: s.data,
           label: s.label,
+          stack: s.stack,
           color: s.color ?? CHART_COLORS[index % CHART_COLORS.length],
         }))}
         margin={{ left: horizontal ? 100 : 48, right: 16, top: 16, bottom: 40 }}

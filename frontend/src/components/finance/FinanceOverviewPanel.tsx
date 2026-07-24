@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Chip, Grid, Stack, Typography } from '@mui/material';
+import { Box, Chip, Grid, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
@@ -27,7 +27,9 @@ import {
   type KpiBreakdownMetric,
 } from './FinanceKpiBreakdownDrawer';
 import { FinanceRevenueBreakdownTable } from './FinanceRevenueBreakdownTable';
-import { FinanceTeamPnlTable } from './FinanceTeamPnlTable';
+import { FinanceTeamPnlTable, type TeamPnlRow } from './FinanceTeamPnlTable';
+
+type FinancePeriod = 'month' | 'quarter' | 'half' | 'year';
 
 type RevenueBreakdownRow = {
   key: string;
@@ -38,6 +40,25 @@ type RevenueBreakdownRow = {
   project_count: number;
 };
 
+type TeamRollup = TeamPnlRow & {
+  pass_through_opex_inr?: number;
+  team_commercial_fee_monthly_inr?: number;
+  quote_revenue_inr?: number;
+  estimated_cost_inr?: number;
+  other_operating_cost_inr?: number | string;
+  half_year_revenue_signal_inr?: number | string;
+  year_revenue_signal_inr?: number | string;
+  quarter_salary_cost_inr?: number | string;
+  half_year_salary_cost_inr?: number | string;
+  year_salary_cost_inr?: number | string;
+  quarter_other_operating_cost_inr?: number | string;
+  half_year_other_operating_cost_inr?: number | string;
+  year_other_operating_cost_inr?: number | string;
+  quarter_operating_cost_inr?: number | string;
+  half_year_operating_cost_inr?: number | string;
+  year_operating_cost_inr?: number | string;
+};
+
 type FinanceDashboard = {
   base_currency: string;
   selected_team_name?: string | null;
@@ -46,6 +67,12 @@ type FinanceDashboard = {
   revenue: Record<string, number | string>;
   cost: Record<string, number | string>;
   profitability: Record<string, number | string>;
+  period_context?: {
+    months_month?: number;
+    months_quarter?: number;
+    months_half?: number;
+    months_year?: number;
+  };
   upcoming_renewals?: Array<{
     expense_id: string;
     name: string;
@@ -62,22 +89,7 @@ type FinanceDashboard = {
   team_commercial_fee_monthly_inr?: number;
   revenue_by_customer?: RevenueBreakdownRow[];
   revenue_by_stream?: RevenueBreakdownRow[];
-  by_team?: Array<{
-    team_id: string;
-    team_name: string;
-    is_overhead_home?: boolean;
-    monthly_operating_cost_inr: number;
-    pass_through_opex_inr: number;
-    team_commercial_fee_monthly_inr: number;
-    planning_revenue_signal_inr: number;
-    quote_revenue_inr?: number;
-    estimated_cost_inr?: number;
-    gross_profit_inr?: number;
-    net_profit_inr?: number;
-    gross_margin_percent?: number;
-    net_margin_percent?: number;
-    quarterly_revenue_signal_inr?: number;
-  }>;
+  by_team?: TeamRollup[];
   overhead?: {
     overhead_pool_monthly_inr?: number | string;
     overhead_cost_per_resource_inr?: number | string;
@@ -87,11 +99,103 @@ type FinanceDashboard = {
   };
 };
 
+const PERIOD_LABELS: Record<FinancePeriod, string> = {
+  month: 'Month',
+  quarter: 'Quarter',
+  half: 'Half-year',
+  year: 'Full year',
+};
+
+function teamPeriodSeries(row: TeamRollup, period: FinancePeriod) {
+  if (period === 'month') {
+    const salary = toFiniteNumber(row.salary_cost_inr);
+    const other =
+      toFiniteNumber(row.other_operating_cost_inr) ||
+      toFiniteNumber(row.prosohm_opex_inr) + toFiniteNumber(row.prosohm_capex_inr);
+    return {
+      salary,
+      other,
+      operating: toFiniteNumber(row.monthly_operating_cost_inr),
+      // Quote pipeline + retainer so quote-basis teams (e.g. Eng 1) show revenue.
+      revenue: toFiniteNumber(row.planning_revenue_signal_inr),
+    };
+  }
+  if (period === 'quarter') {
+    return {
+      salary: toFiniteNumber(row.quarter_salary_cost_inr ?? row.salary_cost_inr),
+      other: toFiniteNumber(row.quarter_other_operating_cost_inr),
+      operating: toFiniteNumber(row.quarter_operating_cost_inr ?? row.monthly_operating_cost_inr),
+      revenue: toFiniteNumber(row.quarterly_revenue_signal_inr),
+    };
+  }
+  if (period === 'half') {
+    return {
+      salary: toFiniteNumber(row.half_year_salary_cost_inr ?? row.salary_cost_inr),
+      other: toFiniteNumber(row.half_year_other_operating_cost_inr),
+      operating: toFiniteNumber(row.half_year_operating_cost_inr ?? row.monthly_operating_cost_inr),
+      revenue: toFiniteNumber(row.half_year_revenue_signal_inr),
+    };
+  }
+  return {
+    salary: toFiniteNumber(row.year_salary_cost_inr ?? row.salary_cost_inr),
+    other: toFiniteNumber(row.year_other_operating_cost_inr),
+    operating: toFiniteNumber(row.year_operating_cost_inr ?? row.monthly_operating_cost_inr),
+    revenue: toFiniteNumber(row.year_revenue_signal_inr),
+  };
+}
+
+function companyPeriodTotals(data: FinanceDashboard, period: FinancePeriod) {
+  const salary = toFiniteNumber(data.salary_cost_inr ?? data.cost.salary_cost);
+  const operating = toFiniteNumber(data.cost.monthly_operating_cost);
+  const other = Math.max(0, operating - salary);
+  const ctx = data.period_context ?? {};
+  if (period === 'month') {
+    return {
+      salary,
+      other,
+      operating,
+      revenue: toFiniteNumber(
+        data.revenue.quote_pipeline_revenue ?? data.revenue.team_commercial_fee_monthly,
+      ),
+      label: '/ mo',
+    };
+  }
+  if (period === 'quarter') {
+    const m = toFiniteNumber(ctx.months_quarter) || 3;
+    return {
+      salary: salary * m,
+      other: other * m,
+      operating: toFiniteNumber(data.cost.quarterly_operating_cost) || operating * m,
+      revenue: toFiniteNumber(data.revenue.quarterly_revenue),
+      label: '/ qtr',
+    };
+  }
+  if (period === 'half') {
+    const m = toFiniteNumber(ctx.months_half) || 6;
+    return {
+      salary: salary * m,
+      other: other * m,
+      operating: toFiniteNumber(data.cost.half_year_operating_cost) || operating * m,
+      revenue: toFiniteNumber(data.revenue.half_year_revenue),
+      label: '/ half',
+    };
+  }
+  const m = toFiniteNumber(ctx.months_year) || 12;
+  return {
+    salary: salary * m,
+    other: other * m,
+    operating: toFiniteNumber(data.cost.annual_operating_cost) || operating * m,
+    revenue: toFiniteNumber(data.revenue.yearly_revenue),
+    label: '/ FY',
+  };
+}
+
 export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
   const { showSuccess } = useToast();
   const queryClient = useQueryClient();
   const q = teamQueryParam(teamId);
   const [breakdownMetric, setBreakdownMetric] = useState<KpiBreakdownMetric | null>(null);
+  const [period, setPeriod] = useState<FinancePeriod>('month');
 
   const dashboardQuery = useQuery({
     queryKey: ['finance-dashboard', teamId || 'all'],
@@ -148,10 +252,37 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
 
   const teamRows = data.by_team ?? [];
   const teamCategories = teamRows.map((row) => row.team_name);
-  const teamOpex = teamRows.map((row) => toFiniteNumber(row.monthly_operating_cost_inr));
-  const teamFees = teamRows.map((row) => toFiniteNumber(row.team_commercial_fee_monthly_inr));
+  const teamPeriod = teamRows.map((row) => teamPeriodSeries(row, period));
+  const teamSalaries = teamPeriod.map((row) => row.salary);
+  const teamOtherCost = teamPeriod.map((row) => row.other);
+  const teamRevenue = teamPeriod.map((row) => row.revenue);
+  const companyPeriod = companyPeriodTotals(data, period);
+  const periodShort = PERIOD_LABELS[period];
+  const periodHint =
+    period === 'month'
+      ? 'Month: salaries + OpEx/CapEx vs quote pipeline + retainer fees.'
+      : `${periodShort}: salaries + OpEx/CapEx × months elapsed vs quote awards in period + retainer accrued.`;
 
   const scopeLabel = data.selected_team_name ? data.selected_team_name : 'All teams';
+
+  const periodToggle = (
+    <ToggleButtonGroup
+      exclusive
+      size="small"
+      value={period}
+      onChange={(_, next: FinancePeriod | null) => {
+        if (next) setPeriod(next);
+      }}
+      aria-label="Finance period"
+      sx={{ flexWrap: 'wrap' }}
+    >
+      {(Object.keys(PERIOD_LABELS) as FinancePeriod[]).map((key) => (
+        <ToggleButton key={key} value={key} sx={{ px: 1.25, textTransform: 'none', fontWeight: 600 }}>
+          {PERIOD_LABELS[key]}
+        </ToggleButton>
+      ))}
+    </ToggleButtonGroup>
+  );
 
   return (
     <Stack spacing={2.5}>
@@ -236,11 +367,23 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
         </Grid>
       </Grid>
 
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1.5}
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        justifyContent="space-between"
+      >
+        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 640 }}>
+          {periodHint}
+        </Typography>
+        {periodToggle}
+      </Stack>
+
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 5 }}>
           <FinanceSection
             title="Cost composition"
-            subtitle="Where monthly spend sits (Abacum / Mosaic style mix)"
+            subtitle={`Where ${periodShort.toLowerCase()} spend sits (salaries included)`}
           >
             {costMix.length ? (
               <AnalyticsDonutChart data={costMix} height={280} />
@@ -251,8 +394,12 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
         </Grid>
         <Grid size={{ xs: 12, md: 7 }}>
           <FinanceSection
-            title="Team operating cost vs fees"
-            subtitle={!teamId ? 'Delivery teams at a glance' : 'Filtered team context'}
+            title={`Team cost vs revenue · ${periodShort}`}
+            subtitle={
+              !teamId
+                ? 'Salaries stacked with OpEx/CapEx; revenue = quotes + retainer for the selected period'
+                : 'Filtered team context'
+            }
           >
             {!teamId && teamCategories.length ? (
               <AnalyticsBarChart
@@ -260,13 +407,20 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
                 height={280}
                 series={[
                   {
-                    label: 'OpEx / mo',
-                    data: teamOpex,
-                    color: designTokens.semantic.warning,
+                    label: `Salaries`,
+                    data: teamSalaries,
+                    color: designTokens.semantic.primary,
+                    stack: 'cost',
                   },
                   {
-                    label: 'Fees / mo',
-                    data: teamFees,
+                    label: `OpEx + CapEx`,
+                    data: teamOtherCost,
+                    color: designTokens.semantic.warning,
+                    stack: 'cost',
+                  },
+                  {
+                    label: `Revenue`,
+                    data: teamRevenue,
                     color: designTokens.semantic.success,
                   },
                 ]}
@@ -275,7 +429,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
               <Stack spacing={1.5}>
                 <Typography variant="body2" color="text.secondary">
                   {teamId
-                    ? 'Switch to All teams to compare OpEx vs commercial fees across delivery teams.'
+                    ? 'Switch to All teams to compare cost vs revenue across delivery teams.'
                     : 'No team rollups available yet.'}
                 </Typography>
                 <Box
@@ -288,8 +442,9 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
                 >
                   <Typography sx={{ fontWeight: 700 }}>{scopeLabel}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    OpEx {financeMoney(operating, currency)} · Fees {financeMoney(fees, currency)} ·
-                    Pass-through {financeMoney(passThrough, currency)}
+                    Salaries {financeMoney(companyPeriod.salary, currency)} · OpEx/CapEx{' '}
+                    {financeMoney(companyPeriod.other, currency)} · Revenue{' '}
+                    {financeMoney(companyPeriod.revenue, currency)}
                   </Typography>
                 </Box>
               </Stack>
@@ -301,9 +456,9 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
       {!teamId && (data.by_team ?? []).length > 0 ? (
         <FinanceSection
           title="Team P&L performance"
-          subtitle="Monthly planning signals per delivery team — revenue vs fully loaded cost (salary + software OpEx + hardware CapEx). Sort by net margin to compare profitability."
+          subtitle={`${periodShort} planning signals — revenue vs fully loaded cost (salary + software OpEx + hardware CapEx). Sort by net margin to compare profitability.`}
         >
-          <FinanceTeamPnlTable rows={data.by_team ?? []} currency={currency} />
+          <FinanceTeamPnlTable rows={data.by_team ?? []} currency={currency} period={period} />
         </FinanceSection>
       ) : null}
 

@@ -14,6 +14,8 @@ import { designTokens } from '../../theme/designTokens';
 import { toFiniteNumber } from '../../utils/format';
 import { financeMoney } from './FinanceCockpitPrimitives';
 
+export type FinancePnlPeriod = 'month' | 'quarter' | 'half' | 'year';
+
 export type TeamPnlRow = {
   team_id: string;
   team_name: string;
@@ -28,9 +30,78 @@ export type TeamPnlRow = {
   gross_margin_percent?: number | string;
   net_margin_percent?: number | string;
   quarterly_revenue_signal_inr?: number | string;
+  half_year_revenue_signal_inr?: number | string;
+  year_revenue_signal_inr?: number | string;
+  quarter_operating_cost_inr?: number | string;
+  half_year_operating_cost_inr?: number | string;
+  year_operating_cost_inr?: number | string;
+  quarter_salary_cost_inr?: number | string;
+  half_year_salary_cost_inr?: number | string;
+  year_salary_cost_inr?: number | string;
+  estimated_cost_inr?: number | string;
 };
 
 type SortKey = 'team_name' | 'revenue' | 'operating' | 'gross' | 'net' | 'net_margin';
+
+const PERIOD_SUFFIX: Record<FinancePnlPeriod, string> = {
+  month: '/ mo',
+  quarter: '/ qtr',
+  half: '/ half',
+  year: '/ FY',
+};
+
+function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod) {
+  if (period === 'month') {
+    const revenue = toFiniteNumber(row.planning_revenue_signal_inr);
+    const operating = toFiniteNumber(row.monthly_operating_cost_inr);
+    const gross = toFiniteNumber(row.gross_profit_inr);
+    const net = toFiniteNumber(row.net_profit_inr);
+    const netMargin = toFiniteNumber(row.net_margin_percent);
+    return {
+      revenue,
+      operating,
+      salary: toFiniteNumber(row.salary_cost_inr),
+      opex: toFiniteNumber(row.prosohm_opex_inr),
+      capex: toFiniteNumber(row.prosohm_capex_inr),
+      gross,
+      net,
+      netMargin,
+    };
+  }
+
+  const revenue =
+    period === 'quarter'
+      ? toFiniteNumber(row.quarterly_revenue_signal_inr)
+      : period === 'half'
+        ? toFiniteNumber(row.half_year_revenue_signal_inr)
+        : toFiniteNumber(row.year_revenue_signal_inr);
+  const operating =
+    period === 'quarter'
+      ? toFiniteNumber(row.quarter_operating_cost_inr)
+      : period === 'half'
+        ? toFiniteNumber(row.half_year_operating_cost_inr)
+        : toFiniteNumber(row.year_operating_cost_inr);
+  const salary =
+    period === 'quarter'
+      ? toFiniteNumber(row.quarter_salary_cost_inr)
+      : period === 'half'
+        ? toFiniteNumber(row.half_year_salary_cost_inr)
+        : toFiniteNumber(row.year_salary_cost_inr);
+  const estimated = toFiniteNumber(row.estimated_cost_inr);
+  const gross = revenue - estimated;
+  const net = gross - operating;
+  const netMargin = revenue > 0 ? (net / revenue) * 100 : 0;
+  return {
+    revenue,
+    operating,
+    salary,
+    opex: Math.max(0, operating - salary),
+    capex: 0,
+    gross,
+    net,
+    netMargin,
+  };
+}
 
 function marginChip(value: number) {
   if (value >= 15) {
@@ -45,9 +116,11 @@ function marginChip(value: number) {
 export function FinanceTeamPnlTable({
   rows,
   currency,
+  period = 'month',
 }: {
   rows: TeamPnlRow[];
   currency: string;
+  period?: FinancePnlPeriod;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('net_margin');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -66,20 +139,21 @@ export function FinanceTeamPnlTable({
     const dir = sortDir === 'asc' ? 1 : -1;
     list.sort((a, b) => {
       const pick = (row: TeamPnlRow): number => {
+        const m = periodMetrics(row, period);
         switch (sortKey) {
           case 'team_name':
             return 0;
           case 'revenue':
-            return toFiniteNumber(row.planning_revenue_signal_inr);
+            return m.revenue;
           case 'operating':
-            return toFiniteNumber(row.monthly_operating_cost_inr);
+            return m.operating;
           case 'gross':
-            return toFiniteNumber(row.gross_profit_inr);
+            return m.gross;
           case 'net':
-            return toFiniteNumber(row.net_profit_inr);
+            return m.net;
           case 'net_margin':
           default:
-            return toFiniteNumber(row.net_margin_percent);
+            return m.netMargin;
         }
       };
       if (sortKey === 'team_name') {
@@ -88,7 +162,7 @@ export function FinanceTeamPnlTable({
       return (pick(a) - pick(b)) * dir;
     });
     return list;
-  }, [deliveryRows, sortDir, sortKey]);
+  }, [deliveryRows, period, sortDir, sortKey]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -107,6 +181,7 @@ export function FinanceTeamPnlTable({
     );
   }
 
+  const suffix = PERIOD_SUFFIX[period];
   const headCell = (key: SortKey, label: string, align: 'left' | 'right' = 'right') => (
     <TableCell align={align} sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
       <TableSortLabel
@@ -126,8 +201,8 @@ export function FinanceTeamPnlTable({
           <TableHead>
             <TableRow sx={{ bgcolor: designTokens.semantic.primarySoft }}>
               {headCell('team_name', 'Team', 'left')}
-              {headCell('revenue', 'Revenue / mo')}
-              {headCell('operating', 'Op cost / mo')}
+              {headCell('revenue', `Revenue ${suffix}`)}
+              {headCell('operating', `Op cost ${suffix}`)}
               {headCell('gross', 'Gross profit')}
               {headCell('net', 'Net profit')}
               {headCell('net_margin', 'Net margin')}
@@ -135,44 +210,41 @@ export function FinanceTeamPnlTable({
           </TableHead>
           <TableBody>
             {sorted.map((row) => {
-              const netMargin = toFiniteNumber(row.net_margin_percent);
-              const netProfit = toFiniteNumber(row.net_profit_inr);
+              const m = periodMetrics(row, period);
               return (
                 <TableRow key={row.team_id} hover>
                   <TableCell sx={{ fontWeight: 650 }}>{row.team_name}</TableCell>
-                  <TableCell align="right">
-                    {financeMoney(row.planning_revenue_signal_inr, currency)}
-                  </TableCell>
+                  <TableCell align="right">{financeMoney(m.revenue, currency)}</TableCell>
                   <TableCell
                     align="right"
                     title={
-                      [
-                        `Salary ${financeMoney(row.salary_cost_inr, currency)}`,
-                        `OpEx ${financeMoney(row.prosohm_opex_inr, currency)}`,
-                        `CapEx ${financeMoney(row.prosohm_capex_inr, currency)}`,
-                      ].join(' · ')
+                      period === 'month'
+                        ? [
+                            `Salary ${financeMoney(m.salary, currency)}`,
+                            `OpEx ${financeMoney(m.opex, currency)}`,
+                            `CapEx ${financeMoney(m.capex, currency)}`,
+                          ].join(' · ')
+                        : `Salary ${financeMoney(m.salary, currency)} · Other op ${financeMoney(m.opex, currency)}`
                     }
                   >
-                    {financeMoney(row.monthly_operating_cost_inr, currency)}
+                    {financeMoney(m.operating, currency)}
                   </TableCell>
-                  <TableCell align="right">
-                    {financeMoney(row.gross_profit_inr, currency)}
-                  </TableCell>
+                  <TableCell align="right">{financeMoney(m.gross, currency)}</TableCell>
                   <TableCell
                     align="right"
                     sx={{
                       fontWeight: 700,
                       color:
-                        netProfit > 0
+                        m.net > 0
                           ? designTokens.semantic.success
-                          : netProfit < 0
+                          : m.net < 0
                             ? designTokens.semantic.danger
                             : 'text.primary',
                     }}
                   >
-                    {financeMoney(row.net_profit_inr, currency)}
+                    {financeMoney(m.net, currency)}
                   </TableCell>
-                  <TableCell align="right">{marginChip(netMargin)}</TableCell>
+                  <TableCell align="right">{marginChip(m.netMargin)}</TableCell>
                 </TableRow>
               );
             })}

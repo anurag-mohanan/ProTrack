@@ -278,6 +278,7 @@ class TeamFinanceBreakdown(BaseModel):
     prosohm_capex_inr: Decimal = Decimal("0")
     pass_through_opex_inr: Decimal
     monthly_operating_cost_inr: Decimal
+    other_operating_cost_inr: Decimal = Decimal("0")
     team_commercial_fee_monthly_inr: Decimal
     quote_revenue_inr: Decimal = Decimal("0")
     estimated_cost_inr: Decimal = Decimal("0")
@@ -287,6 +288,27 @@ class TeamFinanceBreakdown(BaseModel):
     gross_margin_percent: Decimal = Decimal("0")
     net_margin_percent: Decimal = Decimal("0")
     quarterly_revenue_signal_inr: Decimal = Decimal("0")
+    half_year_revenue_signal_inr: Decimal = Decimal("0")
+    year_revenue_signal_inr: Decimal = Decimal("0")
+    month_quote_awards_inr: Decimal = Decimal("0")
+    quarter_quote_awards_inr: Decimal = Decimal("0")
+    half_year_quote_awards_inr: Decimal = Decimal("0")
+    year_quote_awards_inr: Decimal = Decimal("0")
+    quarter_retainer_accrued_inr: Decimal = Decimal("0")
+    half_year_retainer_accrued_inr: Decimal = Decimal("0")
+    year_retainer_accrued_inr: Decimal = Decimal("0")
+    period_months_quarter: int = 0
+    period_months_half: int = 0
+    period_months_year: int = 0
+    quarter_operating_cost_inr: Decimal = Decimal("0")
+    half_year_operating_cost_inr: Decimal = Decimal("0")
+    year_operating_cost_inr: Decimal = Decimal("0")
+    quarter_salary_cost_inr: Decimal = Decimal("0")
+    half_year_salary_cost_inr: Decimal = Decimal("0")
+    year_salary_cost_inr: Decimal = Decimal("0")
+    quarter_other_operating_cost_inr: Decimal = Decimal("0")
+    half_year_other_operating_cost_inr: Decimal = Decimal("0")
+    year_other_operating_cost_inr: Decimal = Decimal("0")
 
 
 class RevenueBreakdownRow(BaseModel):
@@ -626,6 +648,7 @@ class FinanceDashboardRead(BaseModel):
     revenue_by_customer: list[RevenueBreakdownRow] = Field(default_factory=list)
     revenue_by_stream: list[RevenueBreakdownRow] = Field(default_factory=list)
     overhead: dict = Field(default_factory=dict)
+    period_context: dict = Field(default_factory=dict)
 
 
 class AiForecastPlaceholderRead(BaseModel):

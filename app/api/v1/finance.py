@@ -71,6 +71,7 @@ from app.schemas.finance import (
     FinanceReportRow,
     FxRateCreate,
     FxRateRead,
+    FxRateRefreshResult,
     KpiBreakdownRead,
     PaidByDefaultRead,
     PlanVsActualRead,
@@ -322,6 +323,39 @@ def list_fx_rates(
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
     return db.scalars(select(FxRate).order_by(FxRate.effective_date.desc()).limit(200)).all()
+
+
+@router.post("/fx-rates/refresh", response_model=FxRateRefreshResult)
+def refresh_fx_rates(
+    on_date: date | None = Query(
+        default=None,
+        description="Posting date to refresh (default: today). Past dates use historical feed when available.",
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pull live market rates into fx_rates for the date.
+
+    Existing quotes / expenses / commercial terms keep their locked fx_rate and base INR.
+    Only new writes on or after this effective date use the refreshed table.
+    """
+    _require_finance_action(db, current_user, MODULE_ACTION_CONFIGURE)
+    from app.services.finance.fx_live_service import refresh_live_fx_rates
+
+    result = refresh_live_fx_rates(db, on_date=on_date)
+    db.commit()
+    failed = result.get("failed") or []
+    msg = None
+    if failed:
+        msg = f"Could not fetch: {', '.join(failed)} (kept prior rates where available)"
+    elif result["created"] == 0 and result["updated"] == 0 and result["skipped_manual"] == 0:
+        msg = "No rates changed"
+    else:
+        msg = (
+            f"Live FX stored for {result['effective_date']} "
+            f"({result['created']} new, {result['updated']} updated)"
+        )
+    return FxRateRefreshResult(**result, message=msg)
 
 
 @router.post("/fx-rates", response_model=FxRateRead, status_code=status.HTTP_201_CREATED)
@@ -855,6 +889,13 @@ def _salary_required_headcount(db: Session, team_id: UUID) -> int:
     return billable_salary_headcount(db, team_id)
 
 
+def _commercial_fx_date(effective_from: date) -> date:
+    """Snapshot commercial-term FX on month start (aligned with retainer monthly calc)."""
+    from app.services.finance.retainer_fee import retainer_fx_date_for_month
+
+    return retainer_fx_date_for_month(effective_from)
+
+
 def _replace_fee_bands(
     db: Session,
     row: TeamCommercialTerms,
@@ -987,7 +1028,7 @@ def create_team_commercial(
             db,
             amount=data["customer_fee_amount"],
             currency_code=data["currency_code"],
-            on_date=data["effective_from"],
+            on_date=_commercial_fx_date(data["effective_from"]),
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1016,7 +1057,7 @@ def create_team_commercial(
             row,
             payload.fee_bands,
             currency_code=row.currency_code,
-            on_date=row.effective_from,
+            on_date=_commercial_fx_date(row.effective_from),
         )
     except ProTrackValidationError as exc:
         db.rollback()
@@ -1061,7 +1102,7 @@ def update_team_commercial(
         row.customer_fee_amount = 0
     currency = row.currency_code
     amount = row.customer_fee_amount
-    on_date = row.effective_from
+    on_date = _commercial_fx_date(row.effective_from)
     try:
         base_fee, fx_rate, _ = to_base_amount(
             db, amount=amount, currency_code=currency, on_date=on_date

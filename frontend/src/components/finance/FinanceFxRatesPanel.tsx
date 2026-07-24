@@ -15,6 +15,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
+import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 type Currency = { code: string; name: string; symbol?: string | null; is_base?: boolean };
 type FxRate = {
@@ -24,6 +25,16 @@ type FxRate = {
   rate: number;
   effective_date: string;
   source?: string;
+};
+
+type FxRefreshResult = {
+  effective_date: string;
+  base_currency: string;
+  created: number;
+  updated: number;
+  skipped_manual: number;
+  failed: string[];
+  message?: string | null;
 };
 
 export function FinanceFxRatesPanel() {
@@ -61,8 +72,24 @@ export function FinanceFxRatesPanel() {
       setForm((prev) => ({ ...prev, rate: '' }));
       void queryClient.invalidateQueries({ queryKey: ['finance-fx-rates'] });
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      showError(error.response?.data?.detail ?? 'Could not save FX rate');
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not save FX rate'));
+    },
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      const q = form.effective_date
+        ? `?on_date=${encodeURIComponent(form.effective_date)}`
+        : '';
+      return (await apiClient.post<FxRefreshResult>(`/finance/fx-rates/refresh${q}`)).data;
+    },
+    onSuccess: (data) => {
+      showSuccess(data.message || `Live FX refreshed for ${data.effective_date}`);
+      void queryClient.invalidateQueries({ queryKey: ['finance-fx-rates'] });
+    },
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not refresh live FX rates'));
     },
   });
 
@@ -75,10 +102,23 @@ export function FinanceFxRatesPanel() {
           FX rates
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Enter a rate with an effective date on or before the expense / commercial term date.
-          Overview always uses the INR amount stored when each row was saved — updating FX later
-          does not rewrite prior months.
+          Live rates are pulled automatically when you save a quote, expense, or commercial term —
+          locked to that posting date. Refresh below to store today&apos;s market rates without
+          rewriting prior months. Manual rows always win for the same date.
         </Typography>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', mb: 2 }}>
+          <Button
+            variant="contained"
+            color="secondary"
+            disabled={refreshMutation.isPending}
+            onClick={() => refreshMutation.mutate()}
+          >
+            {refreshMutation.isPending ? 'Refreshing…' : 'Refresh live rates'}
+          </Button>
+          <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+            Uses the effective date in the form (default today). Past dates use historical feed when available.
+          </Typography>
+        </Stack>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>From</InputLabel>
@@ -123,11 +163,11 @@ export function FinanceFxRatesPanel() {
             slotProps={{ inputLabel: { shrink: true } }}
           />
           <Button
-            variant="contained"
+            variant="outlined"
             disabled={!form.rate || !form.effective_date || createMutation.isPending}
             onClick={() => createMutation.mutate()}
           >
-            Add rate
+            Add manual rate
           </Button>
         </Stack>
       </Box>

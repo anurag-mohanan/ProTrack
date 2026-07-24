@@ -400,22 +400,58 @@ def _salary_for_users(
     return total.quantize(Decimal("0.01"))
 
 
+def _salary_attribution_factor(
+    db: Session,
+    user: User,
+    *,
+    team_id: UUID,
+    as_of: date,
+    retainer_full_salary: bool,
+) -> Decimal:
+    """Primary-home day factor, or full CTC when the team is on retainer/subscription."""
+    from app.services.finance.employment_cost import (
+        employment_salary_factor,
+        primary_team_salary_factor,
+    )
+
+    factor = primary_team_salary_factor(
+        db, user_id=user.id, team_id=team_id, as_of=as_of
+    )
+    if factor <= 0:
+        # Legacy User.team_id roster without a TeamMember row.
+        has_membership = db.scalar(
+            select(TeamMember.id).where(
+                TeamMember.user_id == user.id,
+                TeamMember.team_id == team_id,
+            ).limit(1)
+        )
+        if has_membership is None:
+            factor = employment_salary_factor(user, as_of=as_of)
+    if factor <= 0:
+        return Decimal("0")
+    if retainer_full_salary:
+        # Retainer seat cost: full monthly CTC on the home team (not day-prorated).
+        return Decimal("1")
+    return factor
+
+
 def _salary_for_team(db: Session, team_id: UUID, *, as_of: date | None = None) -> Decimal:
     """Team-scoped salary for net profit / operating cost.
 
     Uses the billable∩home roster from ``_user_ids_for_team``, then prorates with
     primary-home periods (or full employment factor for sole-home members).
+
+    Retainer / subscription teams always take full monthly CTC for attributed people
+    (customer covers the seat; fee signal may still day-prorate separately).
     """
-    from app.services.finance.employment_cost import (
-        employment_salary_factor,
-        primary_team_salary_factor,
-    )
+    from app.services.finance.commercial_fee_rules import team_has_active_retainer_terms
 
     ref = as_of or date.today()
     eligible = _user_ids_for_team(db, team_id)
     if not eligible:
         return Decimal("0.00")
 
+    retainer_full = team_has_active_retainer_terms(db, team_id)
     stmt = (
         select(EmployeeCostProfile, User)
         .join(User, User.id == EmployeeCostProfile.user_id)
@@ -428,19 +464,13 @@ def _salary_for_team(db: Session, team_id: UUID, *, as_of: date | None = None) -
     )
     total = Decimal("0.00")
     for profile, user in db.execute(stmt).all():
-        factor = primary_team_salary_factor(
-            db, user_id=user.id, team_id=team_id, as_of=ref
+        factor = _salary_attribution_factor(
+            db,
+            user,
+            team_id=team_id,
+            as_of=ref,
+            retainer_full_salary=retainer_full,
         )
-        if factor <= 0:
-            # Legacy User.team_id roster without a TeamMember row.
-            has_membership = db.scalar(
-                select(TeamMember.id).where(
-                    TeamMember.user_id == user.id,
-                    TeamMember.team_id == team_id,
-                ).limit(1)
-            )
-            if has_membership is None:
-                factor = employment_salary_factor(user, as_of=ref)
         if factor <= 0:
             continue
         total += _d(profile.base_monthly_salary_inr) * factor
@@ -451,30 +481,23 @@ def _user_ids_with_team_salary(
     db: Session, team_id: UUID, *, as_of: date | None = None
 ) -> set[UUID]:
     """Users whose salary contributes to this team's operating cost on as_of."""
-    from app.services.finance.employment_cost import (
-        employment_salary_factor,
-        primary_team_salary_factor,
-    )
+    from app.services.finance.commercial_fee_rules import team_has_active_retainer_terms
 
     ref = as_of or date.today()
     eligible = _user_ids_for_team(db, team_id)
+    retainer_full = team_has_active_retainer_terms(db, team_id)
     ids: set[UUID] = set()
     for user_id in eligible:
         user = db.get(User, user_id)
         if user is None or not user.is_active:
             continue
-        factor = primary_team_salary_factor(
-            db, user_id=user_id, team_id=team_id, as_of=ref
+        factor = _salary_attribution_factor(
+            db,
+            user,
+            team_id=team_id,
+            as_of=ref,
+            retainer_full_salary=retainer_full,
         )
-        if factor <= 0:
-            has_membership = db.scalar(
-                select(TeamMember.id).where(
-                    TeamMember.user_id == user_id,
-                    TeamMember.team_id == team_id,
-                ).limit(1)
-            )
-            if has_membership is None:
-                factor = employment_salary_factor(user, as_of=ref)
         if factor > 0:
             ids.add(user_id)
     return ids

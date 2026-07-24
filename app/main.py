@@ -316,6 +316,30 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("ProTrack API startup schema sync completed successfully")
 
+    # Best-effort: store today's live FX so quote/expense writes lock current market rates.
+    try:
+        from app.services.finance.fx_live_service import live_fx_enabled, refresh_live_fx_rates
+
+        if live_fx_enabled():
+            fx_session = sessionmaker(bind=engine)()
+            try:
+                summary = refresh_live_fx_rates(fx_session)
+                fx_session.commit()
+                logger.info(
+                    "Live FX refresh %s: +%s new, ~%s updated, fail=%s",
+                    summary.get("effective_date"),
+                    summary.get("created"),
+                    summary.get("updated"),
+                    summary.get("failed") or "-",
+                )
+            except Exception:
+                fx_session.rollback()
+                logger.exception("Live FX refresh skipped (seed/manual rates still apply)")
+            finally:
+                fx_session.close()
+    except Exception:
+        logger.exception("Live FX module unavailable at startup")
+
     lifecycle_session = sessionmaker(bind=engine)()
     try:
         from app.services.user_change_service import (

@@ -93,13 +93,15 @@ def _salary_lines(
     team_label: str | None = None,
     team_id: UUID | None = None,
 ) -> list[dict]:
-    from app.services.finance.employment_cost import (
-        employment_salary_factor,
-        primary_team_salary_factor,
-    )
+    from app.services.finance.commercial_fee_rules import team_has_active_retainer_terms
+    from app.services.finance.dashboard_service import _salary_attribution_factor
+    from app.services.finance.employment_cost import employment_salary_factor
 
     if not user_ids:
         return []
+    retainer_full = (
+        team_has_active_retainer_terms(db, team_id) if team_id is not None else False
+    )
     stmt = (
         select(EmployeeCostProfile, User)
         .join(User, User.id == EmployeeCostProfile.user_id)
@@ -113,20 +115,13 @@ def _salary_lines(
     rows: list[dict] = []
     for profile, user in db.execute(stmt).all():
         if team_id is not None:
-            factor = primary_team_salary_factor(
-                db, user_id=user.id, team_id=team_id, as_of=as_of
+            factor = _salary_attribution_factor(
+                db,
+                user,
+                team_id=team_id,
+                as_of=as_of,
+                retainer_full_salary=retainer_full,
             )
-            if factor <= 0:
-                from app.models.models import TeamMember
-
-                has_membership = db.scalar(
-                    select(TeamMember.id).where(
-                        TeamMember.user_id == user.id,
-                        TeamMember.team_id == team_id,
-                    ).limit(1)
-                )
-                if has_membership is None:
-                    factor = employment_salary_factor(user, as_of=as_of)
         else:
             factor = employment_salary_factor(user, as_of=as_of)
         if factor <= 0:
@@ -135,11 +130,14 @@ def _salary_lines(
         if amount <= 0:
             continue
         name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email or str(user.id)
+        detail = team_label or "Salary"
+        if retainer_full and team_id is not None:
+            detail = f"{detail} · full monthly CTC (retainer)"
         rows.append(
             {
                 "id": str(user.id),
                 "label": name,
-                "detail": team_label or "Salary",
+                "detail": detail,
                 "amount_inr": amount,
                 "kind": "salary",
             }
@@ -471,13 +469,24 @@ def get_kpi_breakdown(
             as_of=today,
         )
         total = _q(salary_total + opex_total + capex_total)
+        from app.services.finance.commercial_fee_rules import team_has_active_retainer_terms
+
+        retainer = bool(team_id and team_has_active_retainer_terms(db, team_id))
         return {
             "metric": key,
             "title": "Operating cost / month",
-            "subtitle": "Salaries + team-assigned Prosohm OpEx (software) + CapEx (hardware) in the current filter.",
+            "subtitle": (
+                "Retainer team: full monthly CTC for home-team people + OpEx + CapEx."
+                if retainer
+                else "Salaries + team-assigned Prosohm OpEx (software) + CapEx (hardware) in the current filter."
+            ),
             "total_inr": total,
             "currency_code": base,
-            "formula": "Operating = salaries + OpEx + CapEx",
+            "formula": (
+                "Operating = full monthly salaries (retainer seat) + OpEx + CapEx"
+                if retainer
+                else "Operating = salaries + OpEx + CapEx"
+            ),
             "insights": _insights_from_lines(
                 salary_lines[:4] + opex_lines[:3] + capex_lines[:3],
                 total,
@@ -485,7 +494,7 @@ def get_kpi_breakdown(
             ),
             "groups": [
                 {
-                    "label": "Salaries",
+                    "label": "Salaries" + (" (full monthly CTC)" if retainer else ""),
                     "total_inr": _q(salary_total),
                     "lines": _annotate(salary_lines[:30], _q(salary_total) or Decimal("1")),
                 },

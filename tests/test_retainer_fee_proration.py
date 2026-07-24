@@ -72,7 +72,7 @@ def test_mid_month_resource_prorates_retainer_fee(session):
     assert factor == (Decimal("9") / Decimal("31")).quantize(Decimal("0.0001"))
 
     fee = team_retainer_fee_monthly(session, team_id=team.id, as_of=as_of)
-    expected = (Decimal("31000") * Decimal("9") / Decimal("31")).quantize(Decimal("0.01"))
+    expected = (Decimal("31000") * factor).quantize(Decimal("0.01"))
     assert fee == expected
 
 

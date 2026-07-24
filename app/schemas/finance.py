@@ -47,6 +47,16 @@ class FxRateRead(FxRateCreate):
     created_at: datetime | None = None
 
 
+class FxRateRefreshResult(BaseModel):
+    effective_date: str
+    base_currency: str
+    created: int = 0
+    updated: int = 0
+    skipped_manual: int = 0
+    failed: list[str] = Field(default_factory=list)
+    message: str | None = None
+
+
 class CostCentreRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

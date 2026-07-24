@@ -35,6 +35,68 @@ def normalize_monthly_fee(amount: Decimal, period: TeamBillingPeriod) -> Decimal
     return amount
 
 
+def retainer_fx_date_for_month(as_of: date) -> date:
+    """Retainer / subscription fees lock FX on the first calendar day of the month."""
+    return as_of.replace(day=1)
+
+
+def _amount_to_inr_at(
+    db: Session,
+    *,
+    amount: Decimal,
+    currency_code: str,
+    on_date: date,
+) -> Decimal:
+    """Convert a native fee amount to INR using FX as of ``on_date`` (month start for retainers)."""
+    from app.services.finance.fx_service import get_base_currency, to_base_amount
+
+    native = _d(amount)
+    code = (currency_code or "INR").upper()
+    if native <= 0:
+        return Decimal("0.00")
+    if code == get_base_currency(db).upper():
+        return native
+    base, _, _ = to_base_amount(db, amount=native, currency_code=code, on_date=on_date)
+    return _d(base)
+
+
+def _rate_for_user_inr(
+    db: Session,
+    user: User,
+    *,
+    term: TeamCommercialTerms,
+    bands: list,
+    fx_date: date,
+) -> Decimal:
+    """Per-resource monthly INR rate using month-start FX on native fee amounts."""
+    term_currency = getattr(term, "currency_code", None) or "INR"
+    default_native = _d(term.customer_fee_amount)
+    if not bands:
+        return _amount_to_inr_at(
+            db, amount=default_native, currency_code=term_currency, on_date=fx_date
+        )
+
+    band_map: dict[str, Decimal] = {}
+    for band in bands:
+        skill = (getattr(band, "skill_level", None) or "").strip().lower()
+        currency = getattr(band, "currency_code", None) or term_currency
+        native = _d(getattr(band, "fee_amount", None))
+        band_map[skill] = _amount_to_inr_at(
+            db, amount=native, currency_code=currency, on_date=fx_date
+        )
+    default_rate = band_map.get("") or _amount_to_inr_at(
+        db, amount=default_native, currency_code=term_currency, on_date=fx_date
+    )
+    skill = getattr(user, "skill_level", None)
+    key = (
+        skill.value
+        if skill is not None and hasattr(skill, "value")
+        else (str(skill) if skill else "")
+    )
+    key = (key or "").strip().lower()
+    return band_map.get(key, default_rate)
+
+
 def billable_team_month_factor(
     db: Session,
     *,
@@ -121,6 +183,7 @@ def _rate_for_user(
     bands: list,
     base_fee_inr: Decimal,
 ) -> Decimal:
+    """Legacy helper kept for tests — prefer ``_rate_for_user_inr`` for retainers."""
     if not bands:
         return _d(base_fee_inr)
     band_map = {(band.skill_level or ""): _d(band.base_fee_inr) for band in bands}
@@ -199,7 +262,11 @@ def prorated_retainer_amount_for_term(
     *,
     as_of: date,
 ) -> Decimal:
-    """Monthly-INR customer fee for one commercial term (day-prorated for retainer)."""
+    """Monthly-INR customer fee for one commercial term (day-prorated for retainer).
+
+    Foreign-currency retainer rates convert with FX as of the **first day of the
+    ``as_of`` month**, so the whole month uses one dollar rate.
+    """
     if term.effective_from and term.effective_from > as_of:
         return Decimal("0.00")
     if term.effective_to and term.effective_to < as_of.replace(day=1):
@@ -214,6 +281,7 @@ def prorated_retainer_amount_for_term(
         return Decimal("0.00")
 
     month_start, month_end, days_in_month = _month_bounds(as_of)
+    fx_date = retainer_fx_date_for_month(as_of)
     window_start = max(month_start, term.effective_from) if term.effective_from else month_start
     window_end = month_end
     if term.effective_to is not None:
@@ -239,18 +307,27 @@ def prorated_retainer_amount_for_term(
             )
             if factor <= 0:
                 continue
-            rate = _rate_for_user(user, bands=bands, base_fee_inr=_d(term.base_fee_inr))
+            rate = _rate_for_user_inr(
+                db, user, term=term, bands=bands, fx_date=fx_date
+            )
             period_amount += rate * factor
         return normalize_monthly_fee(period_amount.quantize(Decimal("0.01")), term.billing_period)
 
     # Flat subscription-style fee (no headcount): prorate by term active days in month.
+    # Still convert native fee with month-start FX (same monthly FX rule as retainer).
     active_days = (window_end - window_start).days + 1
     factor = (
         Decimal("1")
         if active_days >= days_in_month and window_start <= month_start and window_end >= month_end
         else (Decimal(active_days) / Decimal(days_in_month)).quantize(Decimal("0.0001"))
     )
-    period_amount = (_d(term.base_fee_inr) * factor).quantize(Decimal("0.01"))
+    monthly_inr = _amount_to_inr_at(
+        db,
+        amount=_d(term.customer_fee_amount),
+        currency_code=getattr(term, "currency_code", None) or "INR",
+        on_date=fx_date,
+    )
+    period_amount = (monthly_inr * factor).quantize(Decimal("0.01"))
     return normalize_monthly_fee(period_amount, term.billing_period)
 
 

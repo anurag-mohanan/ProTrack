@@ -1,6 +1,10 @@
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+import os
+
+# Keep finance tests on seeded FX unless a test explicitly enables live fetch.
+os.environ.setdefault("PROTRACK_FX_LIVE", "0")
 
 import pytest
 from fastapi.testclient import TestClient

@@ -50,6 +50,7 @@ interface TeamFormState {
   team_lead_id: string;
   colour: string;
   is_active: boolean;
+  business_unit: string;
 }
 
 const emptyForm: TeamFormState = {
@@ -58,6 +59,7 @@ const emptyForm: TeamFormState = {
   team_lead_id: '',
   colour: '#1976d2',
   is_active: true,
+  business_unit: '',
 };
 
 export default function TeamsPage() {
@@ -132,6 +134,7 @@ export default function TeamsPage() {
       team_lead_id: team.team_lead_id ?? '',
       colour: team.colour,
       is_active: team.is_active,
+      business_unit: team.business_unit ?? '',
     });
     setFormOpen(true);
   };
@@ -150,6 +153,7 @@ export default function TeamsPage() {
         team_lead_id: optionalUuid(form.team_lead_id),
         colour: form.colour,
         is_active: form.is_active,
+        business_unit: optionalString(form.business_unit),
       };
       if (editingTeam) {
         await teamsApi.update(editingTeam.id, payload);
@@ -300,6 +304,7 @@ export default function TeamsPage() {
       ),
     },
     { field: 'description', headerName: 'Description', flex: 1.5, minWidth: 180, valueFormatter: (value) => formatCellValue(value as string | null) },
+    { field: 'business_unit', headerName: 'Business unit', flex: 0.8, minWidth: 120, valueFormatter: (value) => formatCellValue(value as string | null) },
     { field: 'team_lead_name', headerName: 'Team Lead', flex: 1, minWidth: 140 },
     {
       field: 'billable_member_count',
@@ -437,6 +442,14 @@ export default function TeamsPage() {
                 rows={3}
                 value={form.description}
                 onChange={(event) => setForm({ ...form, description: event.target.value })}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Business unit"
+                value={form.business_unit}
+                onChange={(event) => setForm({ ...form, business_unit: event.target.value })}
+                helper="Portfolio dimension for filters (e.g. Engineering, Corporate)"
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>

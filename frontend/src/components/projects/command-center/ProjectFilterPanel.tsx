@@ -163,6 +163,28 @@ export function ProjectFilterPanel({
         )}
         {field(
           <FormSelect
+            label="Business unit"
+            size="small"
+            value={draft.businessUnit}
+            options={[
+              allOption,
+              ...Array.from(
+                new Set(
+                  teams
+                    .map((team) => team.business_unit?.trim())
+                    .filter((value): value is string => Boolean(value)),
+                ),
+              )
+                .sort()
+                .map((value) => ({ value, label: value })),
+            ]}
+            onChange={(event) =>
+              onDraftChange({ ...draft, businessUnit: String(event.target.value) })
+            }
+          />,
+        )}
+        {field(
+          <FormSelect
             label="Design Leader"
             searchable
             size="small"

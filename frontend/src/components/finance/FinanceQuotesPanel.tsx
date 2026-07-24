@@ -61,6 +61,8 @@ type QuoteRow = {
   quoted_date?: string | null;
   invoiced_date?: string | null;
   is_invoiced?: boolean;
+  billing_ready?: boolean;
+  billing_gaps?: string[];
 };
 
 type QuoteImportItem = {

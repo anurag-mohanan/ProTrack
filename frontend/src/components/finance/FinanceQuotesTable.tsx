@@ -31,6 +31,8 @@ export type AwardedQuoteRow = {
   quoted_date?: string | null;
   invoiced_date?: string | null;
   is_invoiced?: boolean;
+  billing_ready?: boolean;
+  billing_gaps?: string[];
 };
 
 function StatusPill({
@@ -254,6 +256,17 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                         tone={quote.is_invoiced ? 'success' : 'warning'}
                       />
                       {!quote.quoted_date ? <StatusPill label="No date" tone="warning" /> : null}
+                      {quote.billing_ready === false ? (
+                        <Tooltip
+                          title={`Billing gaps: ${(quote.billing_gaps ?? []).join(', ') || 'incomplete'}`}
+                        >
+                          <Box component="span">
+                            <StatusPill label="Needs billing setup" tone="warning" />
+                          </Box>
+                        </Tooltip>
+                      ) : (
+                        <StatusPill label="Billing ready" tone="success" />
+                      )}
                     </Stack>
                   </TableCell>
                   <TableCell align="right">

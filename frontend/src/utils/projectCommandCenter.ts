@@ -23,6 +23,7 @@ export interface ProjectCommandCenterFilters {
   customerIds: string[];
   projectTypeId: string;
   teamIds: string[];
+  businessUnit: string;
   projectStage: ProjectStage | 'all';
   executionStatus: ExecutionStatus | 'all';
   designLeaderId: string;
@@ -43,6 +44,7 @@ export const defaultProjectCommandCenterFilters: ProjectCommandCenterFilters = {
   customerIds: [],
   projectTypeId: 'all',
   teamIds: [],
+  businessUnit: 'all',
   projectStage: 'all',
   executionStatus: 'all',
   designLeaderId: 'all',
@@ -234,6 +236,13 @@ export function filterProjectsForCommandCenter(
       if (!project.team_id || !filters.teamIds.includes(project.team_id)) return false;
     }
 
+    if (filters.businessUnit && filters.businessUnit !== 'all') {
+      const team = lookup.teams.find((item) => item.id === project.team_id);
+      if (!team?.business_unit || team.business_unit !== filters.businessUnit) {
+        return false;
+      }
+    }
+
     if (filters.projectStage !== 'all' && project.project_stage !== filters.projectStage) {
       return false;
     }
@@ -395,6 +404,7 @@ export function countActiveSidebarFilters(filters: ProjectCommandCenterFilters):
   if (filters.customerIds.length > 0) count += 1;
   if (filters.projectTypeId !== 'all') count += 1;
   if (filters.teamIds.length > 0) count += 1;
+  if (filters.businessUnit !== 'all') count += 1;
   if (filters.projectStage !== 'all') count += 1;
   if (filters.executionStatus !== 'all') count += 1;
   if (filters.designLeaderId !== 'all') count += 1;

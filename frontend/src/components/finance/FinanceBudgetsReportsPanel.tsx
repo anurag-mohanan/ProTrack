@@ -227,6 +227,31 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
               label={`${totals.at_risk_count} at risk`}
             />
             <Chip size="small" variant="outlined" label={`${totals.draft_count} draft`} />
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const { data: csv } = await apiClient.get<string>(
+                      '/finance/exports/erp-journal.csv',
+                      { responseType: 'text' },
+                    );
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = 'protrack-erp-journal.csv';
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  } catch (error) {
+                    showError(apiErrorMessage(error));
+                  }
+                })();
+              }}
+            >
+              Export ERP journal CSV
+            </Button>
           </>
         }
       />

@@ -1387,11 +1387,16 @@ async def import_quotes(
 
 
 def _quote_read(db: Session, row: Quote) -> QuoteRead:
+    from app.services.finance.billing_readiness_service import (
+        quote_billing_gaps,
+        quote_billing_ready,
+    )
     from app.services.finance.quote_import_service import _current_revision
 
     customer = db.get(Customer, row.customer_id)
     team = db.get(Team, row.team_id) if row.team_id else None
     revision = _current_revision(db, row)
+    gaps = quote_billing_gaps(row)
     data = QuoteRead.model_validate(row)
     return data.model_copy(
         update={
@@ -1406,7 +1411,32 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
             "fx_rate": revision.fx_rate if revision else None,
             "fx_date": revision.fx_date if revision else None,
             "revisions": [],
+            "billing_ready": quote_billing_ready(row),
+            "billing_gaps": gaps,
         }
+    )
+
+
+@router.get("/exports/erp-journal.csv")
+def export_erp_journal_csv(
+    from_date: date | None = Query(None),
+    to_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generic ERP journal CSV (R3 adapter stub — manual import, not live sync)."""
+    from fastapi.responses import Response
+
+    from app.services.finance.erp_export_service import build_erp_journal_csv
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EXPORT)
+    csv_body = build_erp_journal_csv(db, from_date=from_date, to_date=to_date)
+    return Response(
+        content=csv_body,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="protrack-erp-journal.csv"',
+        },
     )
 
 

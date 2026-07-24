@@ -8,6 +8,7 @@ export interface Team extends Timestamped {
   colour: string;
   is_active: boolean;
   organization_id: string | null;
+  business_unit?: string | null;
   member_count: number;
   /** Customer-paid fixed / retainer headcount (designers & surfacers). */
   billable_member_count?: number;
@@ -104,6 +105,7 @@ export interface TeamCreate {
   colour?: string;
   is_active?: boolean;
   organization_id?: string | null;
+  business_unit?: string | null;
 }
 
 export interface TeamUpdate {
@@ -113,6 +115,7 @@ export interface TeamUpdate {
   colour?: string;
   is_active?: boolean;
   organization_id?: string | null;
+  business_unit?: string | null;
 }
 
 export interface TeamMemberCreate {

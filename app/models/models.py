@@ -456,6 +456,8 @@ class Team(Base, TimestampMixin):
     org_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("org_departments.id"), nullable=True, index=True
     )
+    # R3 portfolio dimension — optional business unit label (e.g. Eng / Corporate).
+    business_unit: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     team_lead: Mapped[Optional[User]] = relationship(
         foreign_keys=[team_lead_id]

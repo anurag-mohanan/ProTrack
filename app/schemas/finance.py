@@ -461,6 +461,8 @@ class QuoteRead(BaseModel):
     fx_rate: Decimal | None = None
     fx_date: date | None = None
     revisions: list[QuoteRevisionRead] = Field(default_factory=list)
+    billing_ready: bool = True
+    billing_gaps: list[str] = Field(default_factory=list)
 
 
 class QuoteImportItemResult(BaseModel):

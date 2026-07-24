@@ -63,3 +63,12 @@ def test_admin_override_unlocks_everything():
         is False
     )
     assert can_edit_timesheet_month(2020, 1, today=TODAY, admin_override=True) is True
+
+
+def test_soft_lock_on_oldest_editable_month():
+    from app.core.timesheet_locking import is_timesheet_month_soft_locked
+
+    # With default months_back=2, May is the soft-lock edge in July.
+    assert is_timesheet_month_soft_locked(date(2026, 5, 1), today=TODAY) is True
+    assert is_timesheet_month_soft_locked(date(2026, 6, 1), today=TODAY) is False
+    assert is_timesheet_month_soft_locked(date(2026, 4, 1), today=TODAY) is False

@@ -61,6 +61,8 @@ export interface Project extends Timestamped {
   project_type_name?: string | null;
   can_change_template?: boolean;
   template_change_blocked_reason?: string | null;
+  needs_setup?: boolean;
+  setup_gaps?: string[];
 }
 
 export interface ArchivedProjectListItem extends Omit<Project, 'design_leader_name'> {

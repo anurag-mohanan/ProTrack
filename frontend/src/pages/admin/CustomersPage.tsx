@@ -12,10 +12,11 @@ import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined';
 import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
 import BarChartOutlinedIcon from '@mui/icons-material/BarChartOutlined';
 import type { GridColDef } from '@mui/x-data-grid';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
-import { ClientPaginatedDataGrid } from '../../components/common/ClientPaginatedDataGrid';
+import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { LoadingState } from '../../components/common/LoadingState';
 import { AdminDeleteButton } from '../../components/admin/AdminDeleteButton';
 import { useToast } from '../../context/ToastContext';
@@ -41,6 +42,7 @@ import {
   StickyRecordHeader,
   TableRowActions,
 } from '../../components/ui/design-system';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { formatCellValue, formatDateTime } from '../../utils/format';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
@@ -86,7 +88,7 @@ export default function CustomersPage() {
   const { user } = useAuth();
   const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const queryClient = useQueryClient();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
@@ -95,6 +97,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [formOpen, setFormOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -120,48 +123,47 @@ export default function CustomersPage() {
     return counts;
   }, [contacts]);
 
+  const listFilters = useMemo(() => {
+    const params: Record<string, string> = {};
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    return params;
+  }, [debouncedSearch]);
+
+  const refreshCustomers = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['customers'] });
+  }, [queryClient]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [customersData, contactsData, teamsData, typesData, templatesData, modelsData] =
+      const [contactsData, teamsData, typesData, templatesData, modelsData] =
         await Promise.all([
-          customersApi.list({ limit: 500 }),
           contactsApi.list({ limit: 500 }),
           fetchTeams(),
           fetchProjectTypes(),
           fetchProjectTemplates(),
           fetchWorkingModels(),
         ]);
-      const safeCustomers = ensureArray<Customer>(customersData);
       const safeContacts = ensureArray<Contact>(contactsData);
       const safeTeams = ensureArray<Team>(teamsData);
       const safeTypes = ensureArray<ProjectType>(typesData);
       const safeTemplates = ensureArray<ProjectTemplate>(templatesData);
-      setCustomers(safeCustomers);
       setContacts(safeContacts);
       setTeams(safeTeams.filter((team) => team.is_active));
       setProjectTypes(safeTypes.filter((type) => type.is_active));
       setProjectTemplates(safeTemplates.filter((template) => template.is_active));
       setWorkingModels(modelsData.filter((model) => model.is_active && !model.is_archived));
+      refreshCustomers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [refreshCustomers, showError]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
-
-  const filteredCustomers = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return customers;
-    return customers.filter((customer) => {
-      const haystack = [customer.name, customer.code ?? ''].join(' ').toLowerCase();
-      return haystack.includes(term);
-    });
-  }, [customers, search]);
 
   const openCreate = () => {
     setEditingCustomer(null);
@@ -339,15 +341,21 @@ export default function CustomersPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <ClientPaginatedDataGrid
-          rows={filteredCustomers}
+        <ServerPaginatedDataGrid<Customer>
+          queryKey={['customers']}
+          fetcher={customersApi.listPaginated}
+          filters={listFilters}
+          enabled={!loading}
           columns={columns}
           pinLeftFields={['name']}
           autoHeight
-          filterKey={search}
           onRowOpen={(rowId) => {
-            const customer = filteredCustomers.find((item) => item.id === rowId);
-            if (customer) setSelectedCustomer(customer);
+            setSelectedCustomer((current) =>
+              current?.id === rowId ? current : ({ id: rowId } as Customer),
+            );
+            void customersApi.get(String(rowId)).then(setSelectedCustomer).catch((error) => {
+              showError(getErrorMessage(error));
+            });
           }}
         />
       </ContentCard>

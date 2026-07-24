@@ -128,6 +128,8 @@ class ProjectRead(ProjectBase, TimestampSchema):
     working_model_code: str | None = None
     can_change_template: bool = True
     template_change_blocked_reason: str | None = None
+    needs_setup: bool = False
+    setup_gaps: list[str] = Field(default_factory=list)
 
 
 class ProjectDeleteCheck(BaseModel):

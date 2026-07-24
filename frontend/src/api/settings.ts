@@ -11,8 +11,10 @@ import type {
   NotificationSettings,
   PublicSettings,
   Skill,
+  TimesheetPolicySettings,
 } from '../types/Settings';
 import { apiClient } from './client';
+import { setTimesheetLockPolicy } from '../utils/timesheetLocking';
 
 export async function fetchPublicSettings(): Promise<PublicSettings> {
   const { data } = await apiClient.get<PublicSettings>('/settings/public');
@@ -105,6 +107,17 @@ export async function updateFilePathSettings(
 
 export async function fetchNotificationSettings(): Promise<NotificationSettings> {
   const { data } = await apiClient.get<NotificationSettings>('/settings/notifications');
+  return data;
+}
+
+export async function fetchTimesheetPolicySettings(): Promise<TimesheetPolicySettings> {
+  const { data } = await apiClient.get<TimesheetPolicySettings>('/settings/timesheet-policy');
+  setTimesheetLockPolicy({
+    editableMonthsBack: data.editable_months_back,
+    softLockEnabled: data.soft_lock_enabled,
+    hardLockMessage: data.hard_lock_message,
+    softLockMessage: data.soft_lock_message,
+  });
   return data;
 }
 

@@ -135,7 +135,21 @@ function GanttRow({
         '&:hover': { bgcolor: 'action.hover' },
       }}
     >
-      <Box sx={{ px: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+      <Box
+        sx={{
+          px: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          minWidth: 0,
+          position: 'sticky',
+          left: 0,
+          zIndex: 1,
+          bgcolor: 'background.paper',
+          borderRight: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
         <Typography sx={{ fontWeight: 800, fontSize: '0.82rem' }} noWrap>
           {bar.tool_number}
           {bar.customer_name ? (
@@ -226,6 +240,7 @@ export default function EngineeringCalendarPage() {
             borderColor: 'divider',
             borderRadius: 2,
             overflow: 'auto',
+            maxHeight: 'calc(100vh - 200px)',
             bgcolor: 'background.paper',
           }}
         >
@@ -236,13 +251,24 @@ export default function EngineeringCalendarPage() {
               minWidth: LABEL_WIDTH + 640,
               position: 'sticky',
               top: 0,
-              zIndex: 2,
+              zIndex: 3,
               bgcolor: 'background.paper',
               borderBottom: '1px solid',
               borderColor: 'divider',
             }}
           >
-            <Box sx={{ px: 1, py: 1 }}>
+            <Box
+              sx={{
+                px: 1,
+                py: 1,
+                position: 'sticky',
+                left: 0,
+                zIndex: 4,
+                bgcolor: 'background.paper',
+                borderRight: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
               <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.secondary' }}>
                 PROJECT
               </Typography>
@@ -293,6 +319,10 @@ export default function EngineeringCalendarPage() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 1,
+                  position: 'sticky',
+                  top: 36,
+                  zIndex: 2,
+                  minWidth: LABEL_WIDTH + 640,
                 }}
               >
                 <Typography sx={{ fontWeight: 800, fontSize: '0.85rem' }}>{group.title}</Typography>

@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { Box, LinearProgress, Link, Tooltip, Typography, useMediaQuery } from '@mui/material';
+import { Box, Chip, LinearProgress, Link, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import RestoreRoundedIcon from '@mui/icons-material/RestoreRounded';
 import { IconButton } from '@mui/material';
 import { useTheme, type Theme } from '@mui/material/styles';
@@ -33,6 +33,13 @@ import {
 } from '../../utils/dataGridAutoFit';
 import { projectTableAutoFitProfiles } from '../../utils/dataGridAutoFitProfiles';
 
+const SETUP_GAP_LABELS: Record<string, string> = {
+  project_type: 'type',
+  team: 'team',
+  design_leader: 'leader',
+  due_date: 'due date',
+  template: 'template',
+};
 export interface ProjectTableRow extends Project {
   customerName: string;
   teamName: string;
@@ -251,26 +258,43 @@ function buildColumns(
         </Box>
       ),
       renderCell: (params) => (
-        <Link
-          component="button"
-          type="button"
-          underline="hover"
-          onClick={(event) => {
-            event.stopPropagation();
-            handlers.onRowOpen?.(params.row);
-          }}
-          sx={{
-            fontWeight: 800,
-            fontSize: '0.8rem',
-            color: designTokens.semantic.primary,
-            textAlign: 'left',
-            cursor: 'pointer',
-            p: 0,
-            ...autoFitCellSx,
-          }}
-        >
-          {params.value}
-        </Link>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+          <Link
+            component="button"
+            type="button"
+            underline="hover"
+            onClick={(event) => {
+              event.stopPropagation();
+              handlers.onRowOpen?.(params.row);
+            }}
+            sx={{
+              fontWeight: 800,
+              fontSize: '0.8rem',
+              color: designTokens.semantic.primary,
+              textAlign: 'left',
+              cursor: 'pointer',
+              p: 0,
+              ...autoFitCellSx,
+            }}
+          >
+            {params.value}
+          </Link>
+          {params.row.needs_setup ? (
+            <Tooltip
+              title={`Needs setup: ${(params.row.setup_gaps ?? [])
+                .map((gap: string) => SETUP_GAP_LABELS[gap] ?? gap)
+                .join(', ')}`}
+            >
+              <Chip
+                label="Needs setup"
+                size="small"
+                color="warning"
+                variant="outlined"
+                sx={{ height: 20, fontSize: '0.65rem', flexShrink: 0 }}
+              />
+            </Tooltip>
+          ) : null}
+        </Box>
       ),
     },
     {

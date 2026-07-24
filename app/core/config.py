@@ -111,6 +111,13 @@ ENABLE_DEMO_SEED = os.getenv("PROTRACK_ENABLE_DEMO_SEED", "").lower() in ("1", "
 # Set INTERNAL_RELEASE=false before production deployment.
 INTERNAL_RELEASE = os.getenv("INTERNAL_RELEASE", "true").lower() in ("1", "true", "yes")
 
+# --- Timesheet org policy pack (R2) -----------------------------------------
+# Months that remain editable, counting back from the current month.
+# 0 = current only, 2 = current + previous two (default).
+TIMESHEET_EDITABLE_MONTHS_BACK = _int("PROTRACK_TIMESHEET_EDITABLE_MONTHS_BACK", 2)
+# When true, the oldest still-editable month shows a soft-lock warning banner.
+TIMESHEET_SOFT_LOCK_ENABLED = _flag("PROTRACK_TIMESHEET_SOFT_LOCK_ENABLED", "true")
+
 
 def security_config_problems() -> list[str]:
     """Production-blocking security misconfigurations (hard startup blockers).

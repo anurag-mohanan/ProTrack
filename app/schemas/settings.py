@@ -225,6 +225,15 @@ class NotificationSettingsUpdate(BaseModel):
     email_notifications_enabled: bool | None = None
 
 
+class TimesheetPolicySettingsRead(BaseModel):
+    """Org-wide timesheet locking policy pack (R2). Config-driven for now."""
+
+    editable_months_back: int = 2
+    soft_lock_enabled: bool = True
+    hard_lock_message: str
+    soft_lock_message: str
+
+
 class EmailSettingsRead(BaseModel):
     id: UUID
     enabled: bool = False

@@ -34,7 +34,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import {
   archiveProject,
-  getProjects,
+  getProjectsPaginated,
   projectQueryKeys,
   restoreProject,
   softDeleteProject,
@@ -160,14 +160,18 @@ export function ProjectsPage() {
         appliedFilters.designerId === 'all' ? undefined : appliedFilters.designerId,
       surfacer_id:
         appliedFilters.surfacerId === 'all' ? undefined : appliedFilters.surfacerId,
-      limit: 500,
+      page: 1,
+      page_size: 500,
     }),
     [appliedFilters],
   );
 
   const projectsQuery = useQuery({
     queryKey: projectQueryKeys.list(listParams),
-    queryFn: () => getProjects(listParams),
+    queryFn: async () => {
+      const page = await getProjectsPaginated(listParams);
+      return page.items;
+    },
     staleTime: QUERY_STALE_TIMES.projects,
   });
 

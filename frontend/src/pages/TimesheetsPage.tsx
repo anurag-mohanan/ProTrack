@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { PageContainer } from '../components/common/PageContainer';
 import { LoadingState } from '../components/common/LoadingState';
@@ -20,6 +20,7 @@ import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useTimesheetMonthWorkspace } from '../hooks/useTimesheetMonthWorkspace';
+import { fetchTimesheetPolicySettings } from '../api/settings';
 import type { TimesheetEntry } from '../types';
 import {
   canApproveTimesheet,
@@ -51,7 +52,11 @@ import {
   buildWeeklyScopedSummary,
   teamSectionBreakdownLabel,
 } from '../utils/timesheetOverview';
-import { isTimesheetMonthCalendarLocked } from '../utils/timesheetLocking';
+import {
+  getTimesheetLockPolicy,
+  isTimesheetMonthCalendarLocked,
+  isTimesheetMonthSoftLocked,
+} from '../utils/timesheetLocking';
 
 function shiftIsoDate(isoDate: string, days: number): string {
   const date = new Date(`${isoDate}T12:00:00`);
@@ -89,12 +94,22 @@ export function TimesheetsPage() {
   const workspace = useTimesheetMonthWorkspace(user, monthValue, viewAllUsers, needsEntryLookups);
   const monthLabel = formatMonthLabel(monthValue);
 
+  useEffect(() => {
+    void fetchTimesheetPolicySettings().catch(() => {
+      // Keep default client policy if settings are unavailable.
+    });
+  }, []);
+
   const calendarLocked = isTimesheetMonthCalendarLocked(monthValue, {
     adminOverride: isAdmin,
   });
+  const softLocked = isTimesheetMonthSoftLocked(monthValue, {
+    adminOverride: isAdmin,
+  });
+  const lockPolicy = getTimesheetLockPolicy();
 
-  // Editability depends only on the calendar rule (current + previous two
-  // months) and role. Workflow status does NOT lock the timesheet.
+  // Editability depends only on the calendar rule (org editable window)
+  // and role. Workflow status does NOT lock the timesheet.
   const readOnly = viewAllUsers || isReadOnlyRole(roleName) || calendarLocked;
 
   const selectedEntry =
@@ -451,8 +466,16 @@ export function TimesheetsPage() {
       {!viewAllUsers && calendarLocked ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
           {isAdmin
-            ? 'This timesheet is archived because it is older than two months. As a System Administrator you can still edit it.'
-            : 'This timesheet is archived because it is older than two months.'}
+            ? `${lockPolicy.hardLockMessage ?? 'This timesheet is archived because it is older than the org editable window.'} As a System Administrator you can still edit it.`
+            : lockPolicy.hardLockMessage ??
+              'This timesheet is archived because it is older than the org editable window.'}
+        </Alert>
+      ) : null}
+
+      {!viewAllUsers && !calendarLocked && softLocked ? (
+        <Alert severity="warning" sx={{ mb: 1.5 }}>
+          {lockPolicy.softLockMessage ??
+            'This month is in the soft-lock window — it will archive at the next month rollover. Finish outstanding entries soon.'}
         </Alert>
       ) : null}
 

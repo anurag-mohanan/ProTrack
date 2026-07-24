@@ -91,10 +91,16 @@ def _name_updates(project: Project, names: dict[str, dict[UUID, object]]) -> dic
 
 
 def build_project_read(db: Session, project: Project) -> ProjectRead:
+    from app.services.project_stage_gate_service import (
+        project_needs_setup,
+        project_setup_gaps,
+    )
+
     progress = calculate_progress(db, project)
     milestone_names = _batch_current_milestones(db, [project.id])
     names = _batch_display_names(db, [project])
     can_change, blocked_reason = can_change_project_template(db, project.id)
+    gaps = project_setup_gaps(project)
     return ProjectRead.model_validate(project, from_attributes=True).model_copy(
         update={
             "progress_percent": progress.progress_percent,
@@ -102,6 +108,8 @@ def build_project_read(db: Session, project: Project) -> ProjectRead:
             "current_milestone": milestone_names.get(project.id),
             "can_change_template": can_change,
             "template_change_blocked_reason": blocked_reason,
+            "needs_setup": project_needs_setup(project),
+            "setup_gaps": gaps,
             **_name_updates(project, names),
         }
     )
@@ -111,6 +119,11 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
     if not projects:
         return []
 
+    from app.services.project_stage_gate_service import (
+        project_needs_setup,
+        project_setup_gaps,
+    )
+
     project_ids = [project.id for project in projects]
     progress_by_project = batch_calculate_progress(db, project_ids)
     milestone_names = _batch_current_milestones(db, project_ids)
@@ -118,6 +131,7 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
     reads: list[ProjectRead] = []
     for project in projects:
         can_change, blocked_reason = can_change_project_template(db, project.id)
+        gaps = project_setup_gaps(project)
         reads.append(
             ProjectRead.model_validate(project, from_attributes=True).model_copy(
                 update={
@@ -126,6 +140,8 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
                     "current_milestone": milestone_names.get(project.id),
                     "can_change_template": can_change,
                     "template_change_blocked_reason": blocked_reason,
+                    "needs_setup": project_needs_setup(project),
+                    "setup_gaps": gaps,
                     **_name_updates(project, names),
                 }
             )

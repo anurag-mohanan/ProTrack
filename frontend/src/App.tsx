@@ -16,6 +16,7 @@ import { ArchivedProjectsPage } from './pages/ArchivedProjectsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TimesheetsPage } from './pages/TimesheetsPage';
+import { ApprovalsInboxPage } from './pages/ApprovalsInboxPage';
 import { ResourcePlanningPage } from './pages/ResourcePlanningPage';
 import { WorkloadPage } from './pages/WorkloadPage';
 import { ExecutiveWallPage } from './pages/ExecutiveWallPage';
@@ -247,6 +248,7 @@ export default function App() {
                         element={<Navigate to="/timesheets" replace />}
                       />
                     </Route>
+                    <Route path="/approvals" element={<ApprovalsInboxPage />} />
                     <Route
                       path="/profile"
                       element={

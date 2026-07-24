@@ -56,6 +56,7 @@ from app.schemas.settings import (
     PublicCompanySettingsRead,
     PublicSettingsRead,
     SkillRead,
+    TimesheetPolicySettingsRead,
     UserSkillCreate,
     UserSkillRead,
 )
@@ -185,6 +186,14 @@ def patch_file_path_settings(payload: FilePathSettingsUpdate, db: Session = Depe
 @router.get("/notifications", response_model=NotificationSettingsRead)
 def get_notification_settings(db: Session = Depends(get_db)):
     return get_or_create_notification_settings(db)
+
+
+@router.get("/timesheet-policy", response_model=TimesheetPolicySettingsRead)
+def get_timesheet_policy_settings():
+    """Effective org timesheet lock policy (env-backed pack for R2)."""
+    from app.core.timesheet_locking import timesheet_policy_dict
+
+    return TimesheetPolicySettingsRead.model_validate(timesheet_policy_dict())
 
 
 @router.patch(

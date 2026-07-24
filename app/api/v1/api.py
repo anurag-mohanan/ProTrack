@@ -40,6 +40,7 @@ from app.api.v1 import (
 from app.api.v1.router_factory import (
     APIRouter,
     ContactFilters,
+    CustomerFilters,
     TaskTypeFilters,
     build_crud_router,
 )
@@ -99,6 +100,7 @@ api_router.include_router(
         schema_read=CustomerRead,
         schema_create=CustomerCreate,
         schema_update=CustomerUpdate,
+        filters_model=CustomerFilters,
         router_dependencies=admin_access,
         write_roles=master_data_write,
         delete_entity="customer",

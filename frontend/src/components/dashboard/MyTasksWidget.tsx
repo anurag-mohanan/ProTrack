@@ -130,10 +130,10 @@ export function MyTasksWidget({ tasks }: MyTasksWidgetProps) {
         <Button
           size="small"
           endIcon={<ArrowForwardIcon />}
-          onClick={() => navigate('/timesheets')}
+          onClick={() => navigate('/approvals')}
           sx={{ textTransform: 'none', fontWeight: 600 }}
         >
-          View All Tasks
+          View all
         </Button>
       </Box>
     </Stack>

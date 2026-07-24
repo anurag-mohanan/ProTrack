@@ -22,6 +22,7 @@ from app.schemas.project import ArchivedProjectListItem, ProjectCreate, ProjectR
 from app.services.notification_service import create_notification
 from app.services.project_calculation_service import recalculate_project
 from app.services.project_lifecycle_service import apply_lifecycle_filter, apply_lifecycle_sort
+from app.services.project_stage_gate_service import assert_stage_gate
 from app.services.project_template_service import (
     create_milestones_from_template,
     resolve_template,
@@ -460,6 +461,18 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
                 raise ProTrackValidationError(
                     "Use Change Project Template to replace milestones from a different template"
                 )
+
+        if "execution_status" in update_data or "project_stage" in update_data:
+            assert_stage_gate(
+                db,
+                db_obj,
+                next_execution_status=update_data.get(
+                    "execution_status", db_obj.execution_status
+                ),
+                next_project_stage=update_data.get(
+                    "project_stage", db_obj.project_stage
+                ),
+            )
 
         if "execution_status" in update_data:
             new_status = update_data["execution_status"]

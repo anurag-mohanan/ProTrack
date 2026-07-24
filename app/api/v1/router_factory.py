@@ -24,6 +24,11 @@ class EmptyFilters(BaseModel):
     pass
 
 
+class CustomerFilters(BaseModel):
+    search: str | None = None
+    is_active: bool | None = None
+
+
 class ContactFilters(BaseModel):
     customer_id: UUID | None = None
 

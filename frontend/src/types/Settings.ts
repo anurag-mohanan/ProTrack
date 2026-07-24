@@ -114,6 +114,13 @@ export interface NotificationSettings {
   email_notifications_enabled: boolean;
 }
 
+export interface TimesheetPolicySettings {
+  editable_months_back: number;
+  soft_lock_enabled: boolean;
+  hard_lock_message: string;
+  soft_lock_message: string;
+}
+
 export interface EmailSettings {
   id: string;
   enabled: boolean;

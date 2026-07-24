@@ -138,14 +138,20 @@ def run_historical_import(
         ) from exc
 
     job_id = import_job_store.create_job(analysis.total_rows)
-    background_tasks.add_task(
-        _execute_import_job,
-        job_id,
-        payload.upload_id,
-        dry_run=payload.dry_run,
-        duplicate_action=payload.duplicate_action,
-        import_as_archived=payload.import_as_archived,
+    from app.services import job_queue
+
+    bg = job_queue.enqueue_job(
+        db,
+        job_type=job_queue.JOB_HISTORICAL_IMPORT,
+        payload={
+            "job_id": job_id,
+            "upload_id": payload.upload_id,
+            "dry_run": payload.dry_run,
+            "duplicate_action": payload.duplicate_action,
+            "import_as_archived": payload.import_as_archived,
+        },
     )
+    background_tasks.add_task(job_queue.process_job_by_id, str(bg.id))
     return ImportRunResponse(job_id=job_id)
 
 

@@ -1,0 +1,46 @@
+# ProTrack R1 — local API + optional Postgres
+# Usage:
+#   docker compose -f deploy/docker-compose.yml up --build
+# SPA is unchanged; point PROTRACK_FRONTEND_URL / Vite proxy at :8000.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: protrack
+      POSTGRES_PASSWORD: protrack
+      POSTGRES_DB: protrack
+    ports:
+      - "5432:5432"
+    volumes:
+      - protrack_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U protrack -d protrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      PROTRACK_ENV: development
+      DATABASE_URL: postgresql+psycopg2://protrack:protrack@db:5432/protrack
+      PROTRACK_UPLOAD_DIR: /var/lib/protrack/uploads
+      INTERNAL_RELEASE: "true"
+      PROTRACK_SECRET_KEY: local-dev-only-change-me-please-use-long-secret
+      PROTRACK_ENCRYPTION_KEY: ${PROTRACK_ENCRYPTION_KEY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - protrack_uploads:/var/lib/protrack/uploads
+      - protrack_backups:/app/Backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  protrack_pg:
+  protrack_uploads:
+  protrack_backups:

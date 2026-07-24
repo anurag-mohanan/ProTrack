@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -134,6 +135,9 @@ from app.db.phase55_exit_process_schema_sync import (
 from app.db.phase56_hr_process_control_schema_sync import (
     ensure_phase56_hr_process_control_foundation,
 )
+from app.db.phase57_background_jobs_schema_sync import (
+    ensure_phase57_background_jobs_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -251,6 +255,7 @@ async def lifespan(app: FastAPI):
         ("phase54_onboarding", ensure_phase54_onboarding_foundation),
         ("phase55_exit_process", ensure_phase55_exit_process_foundation),
         ("phase56_hr_process_control", ensure_phase56_hr_process_control_foundation),
+        ("phase57_background_jobs", ensure_phase57_background_jobs_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 
@@ -394,14 +399,54 @@ app.include_router(api_router, prefix="/api/v1")
 # via uploaded SVGs). The only public asset — the company logo — is served
 # through the permission-aware /api/v1/settings/company/logo endpoint instead.
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+if not os.access(UPLOAD_DIR, os.W_OK):
+    import logging
+
+    logging.getLogger("protrack.startup").warning(
+        "PROTRACK_UPLOAD_DIR is not writable: %s — set a persistent volume path in production.",
+        UPLOAD_DIR,
+    )
 
 
 @app.get("/health")
 def health_check():
+    """Load-balancer friendly health: shallow DB ping + upload dir writable."""
+    from sqlalchemy import text
+
+    from app.core.config import UPLOAD_DIR as _upload_dir
+    from app.db.session import SessionLocal
+
+    checks: dict[str, object] = {
+        "database": "ok",
+        "upload_dir_writable": True,
+    }
+    status = "ok"
+    try:
+        db = SessionLocal()
+        try:
+            db.scalar(text("SELECT 1"))
+        finally:
+            db.close()
+    except Exception as exc:
+        checks["database"] = f"error: {exc.__class__.__name__}"
+        status = "degraded"
+
+    try:
+        _upload_dir.mkdir(parents=True, exist_ok=True)
+        probe = _upload_dir / ".health_write_probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+    except Exception as exc:
+        checks["upload_dir_writable"] = False
+        checks["upload_dir_error"] = exc.__class__.__name__
+        if status == "ok":
+            status = "degraded"
+
     return {
-        "status": "ok",
+        "status": status,
         "app": "ProTrack",
         "version": APP_VERSION,
         "release": RELEASE_CANDIDATE,
         "internal_release": INTERNAL_RELEASE,
+        "checks": checks,
     }

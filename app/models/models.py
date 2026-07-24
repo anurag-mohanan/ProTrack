@@ -1790,6 +1790,29 @@ class ExitInterview(Base, TimestampMixin):
     role: Mapped[Optional["Role"]] = relationship(foreign_keys=[role_id])
 
 
+class BackgroundJob(Base, TimestampMixin):
+    """Durable background work queue (R1 platform)."""
+
+    __tablename__ = "background_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    job_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="queued", index=True
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    run_after: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[Optional[str]] = mapped_column(Text)
+
+
 # Phase 7 foundation models (registers tables with metadata)
 from app.models.foundation import (  # noqa: E402, F401
     CompanySettings,

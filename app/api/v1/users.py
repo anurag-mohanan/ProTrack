@@ -178,6 +178,9 @@ def create_user(obj_in: UserCreate, db: Session = Depends(get_db)):
     try:
         created = user_crud.create(db, obj_in=obj_in)
     except ProTrackValidationError as exc:
+        import logging
+
+        logging.getLogger("protrack.sod").warning("SoD / validation reject on create: %s", exc)
         raise _handle_validation(exc) from exc
     return build_user_read(db, created)
 
@@ -192,6 +195,11 @@ def update_user(
     try:
         updated = user_crud.update(db, db_obj=db_obj, obj_in=obj_in)
     except ProTrackValidationError as exc:
+        import logging
+
+        logging.getLogger("protrack.sod").warning(
+            "SoD / validation reject on update user=%s: %s", record_id, exc
+        )
         raise _handle_validation(exc) from exc
     return build_user_read(db, updated)
 

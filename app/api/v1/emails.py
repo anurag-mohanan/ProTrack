@@ -126,8 +126,25 @@ def get_email_history(
 
 @router.post("/queue/process", dependencies=[Depends(require_roles("Admin", "Engineering Manager"))])
 def process_email_queue(db: Session = Depends(get_db), limit: int = Query(default=50, le=200)):
-    processed = EmailService(db).process_queue(limit=limit)
-    return {"processed": processed}
+    from app.services import job_queue
+    from app.models.models import BackgroundJob
+
+    bg = job_queue.enqueue_job(
+        db,
+        job_type=job_queue.JOB_PROCESS_EMAIL_QUEUE,
+        payload={"limit": limit},
+    )
+    try:
+        processed = EmailService(db).process_queue(limit=limit)
+        row = db.get(BackgroundJob, bg.id)
+        if row is not None:
+            job_queue.complete_job(db, row)
+        return {"processed": processed, "job_id": str(bg.id)}
+    except Exception as exc:
+        row = db.get(BackgroundJob, bg.id)
+        if row is not None:
+            job_queue.complete_job(db, row, error=str(exc))
+        raise
 
 
 @router.post("/send", dependencies=_manager_roles)

@@ -130,13 +130,18 @@ def build_user_read(db: Session, user: User) -> UserRead:
 
 
 def _apply_access_payload(data: dict[str, Any]) -> dict[str, Any]:
+    from app.core.sod import validate_special_permission_sod
+
     payload = dict(data)
     if "module_access" in payload:
         payload["module_access"] = serialize_module_access(payload.pop("module_access"))
     if "special_permissions" in payload:
-        payload["special_permissions"] = serialize_special_permissions(
-            payload.pop("special_permissions")
-        )
+        raw_specials = payload.pop("special_permissions")
+        if isinstance(raw_specials, str):
+            validate_special_permission_sod(parse_access_list(raw_specials))
+        else:
+            validate_special_permission_sod(raw_specials)
+        payload["special_permissions"] = serialize_special_permissions(raw_specials)
     if "module_actions" in payload:
         payload["module_actions"] = serialize_module_actions(payload.pop("module_actions"))
     return payload

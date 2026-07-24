@@ -214,29 +214,48 @@ def _last_backup_info() -> tuple[datetime | None, str | None, int]:
 
 
 def _build_database_health(db: Session) -> DatabaseHealth:
+    from app.db.session import DATABASE_URL
+
     db_path = _sqlite_path()
     connected = True
     sqlite_version: str | None = None
     table_count = 0
     integrity_status: str | None = None
+    database_name: str | None = db_path.name if db_path else None
+    size_bytes = db_path.stat().st_size if db_path and db_path.is_file() else 0
 
     try:
-        sqlite_version = str(db.scalar(text("SELECT sqlite_version()")))
-        table_count = int(
-            db.scalar(
-                text("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        if DATABASE_URL.startswith("sqlite"):
+            sqlite_version = str(db.scalar(text("SELECT sqlite_version()")))
+            table_count = int(
+                db.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                        "AND name NOT LIKE 'sqlite_%'"
+                    )
+                )
+                or 0
             )
-            or 0
-        )
+        else:
+            sqlite_version = str(db.scalar(text("SELECT version()")) or "")[:80]
+            table_count = int(
+                db.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM information_schema.tables "
+                        "WHERE table_schema = 'public'"
+                    )
+                )
+                or 0
+            )
+            database_name = db.scalar(text("SELECT current_database()"))
     except Exception:
         connected = False
 
-    size_bytes = db_path.stat().st_size if db_path and db_path.is_file() else 0
     last_backup, backup_name, _ = _last_backup_info()
 
     return DatabaseHealth(
         connected=connected,
-        database_name=db_path.name if db_path else None,
+        database_name=database_name,
         database_size_bytes=size_bytes,
         database_size_label=_format_bytes(size_bytes),
         sqlite_version=sqlite_version,
@@ -1050,6 +1069,11 @@ def run_maintenance_action(action: str, db: Session) -> dict[str, str]:
 
         processed = EmailService(db).process_queue(limit=50)
         return {"status": "ok", "message": f"Processed {processed} email(s)"}
+    if action == "process_background_jobs":
+        from app.services import job_queue
+
+        done = job_queue.process_due(db, limit=20)
+        return {"status": "ok", "message": f"Processed {done} background job(s)"}
     if action in {"restart_backend", "restart_iis", "restart_scheduler"}:
         return {
             "status": "warning",

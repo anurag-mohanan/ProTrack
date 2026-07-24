@@ -261,16 +261,21 @@ def run_historical_timesheet_import(
             detail="Upload not found or expired.",
         ) from exc
 
-    context = _build_context(payload)
     job_id = timesheet_import_job_store.create_job(analysis.total_rows)
-    background_tasks.add_task(
-        _execute_timesheet_import_job,
-        job_id,
-        payload.upload_id,
-        dry_run=payload.dry_run,
-        context=context,
-        imported_by_id=current_user.id,
+    from app.services import job_queue
+
+    bg = job_queue.enqueue_job(
+        db,
+        job_type=job_queue.JOB_TIMESHEET_IMPORT,
+        payload={
+            "job_id": job_id,
+            "upload_id": payload.upload_id,
+            "dry_run": payload.dry_run,
+            "imported_by_id": str(current_user.id),
+            "request": payload.model_dump(mode="json"),
+        },
     )
+    background_tasks.add_task(job_queue.process_job_by_id, str(bg.id))
     return TimesheetImportRunResponse(job_id=job_id)
 
 

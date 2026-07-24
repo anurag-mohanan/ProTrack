@@ -1,4 +1,4 @@
-"""Retainer fees convert USD with FX as of the 1st of the month."""
+"""Retainer fees convert USD with FX as of the 1st of the month; full seat billing."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from app.models.finance import FxRate, TeamCommercialTerms
 from app.models.models import Team, TeamMember, User, WorkingModel
 from app.services.finance.retainer_fee import (
     prorated_retainer_amount_for_term,
+    retainer_fee_lines_for_term,
     retainer_fx_date_for_month,
 )
 from tests.conftest import IDS
@@ -18,6 +19,67 @@ from tests.conftest import IDS
 
 def test_retainer_fx_date_is_month_start():
     assert retainer_fx_date_for_month(date(2026, 7, 24)) == date(2026, 7, 1)
+
+
+def test_retainer_fee_lines_show_full_seat_and_attendance(session):
+    as_of = date(2026, 7, 24)
+    team = Team(id=uuid.uuid4(), name="Fee Lines Team", is_active=True)
+    model = WorkingModel(
+        id=uuid.uuid4(),
+        code=f"ret_lines_{uuid.uuid4().hex[:6]}",
+        strategy_key=WorkingModelCode.retainer,
+        name="Retainer",
+        is_active=True,
+        is_archived=False,
+    )
+    designer = session.get(User, IDS["user_binil"])
+    assert designer is not None
+    designer.requires_salary = True
+    designer.is_active = True
+    designer.joining_date = date(2020, 1, 1)
+    session.add_all([team, model])
+    session.flush()
+    session.add(
+        TeamMember(
+            team_id=team.id,
+            user_id=designer.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2026, 7, 10),
+        )
+    )
+    session.add(
+        TeamCommercialTerms(
+            team_id=team.id,
+            working_model_id=model.id,
+            billing_mode=TeamBillingMode.subscription,
+            customer_fee_amount=Decimal("1000"),
+            currency_code="USD",
+            base_fee_inr=Decimal("83500"),
+            fx_rate=Decimal("83.5"),
+            billing_period=TeamBillingPeriod.monthly,
+            effective_from=date(2026, 7, 1),
+            is_active=True,
+        )
+    )
+    session.add(
+        FxRate(
+            from_currency="USD",
+            to_currency="INR",
+            rate=Decimal("86.25000000"),
+            effective_date=date(2026, 7, 1),
+            source="test",
+        )
+    )
+    session.commit()
+
+    term = session.query(TeamCommercialTerms).filter_by(team_id=team.id).one()
+    lines = retainer_fee_lines_for_term(session, term, as_of=as_of)
+    assert len(lines) == 1
+    assert lines[0]["billing_factor"] == Decimal("1")
+    assert lines[0]["attendance_factor"] < Decimal("1")
+    assert lines[0]["amount_inr"] == Decimal("86250.00")
+    assert lines[0]["fx_date"] == "2026-07-01"
 
 
 def test_retainer_usd_fee_uses_month_start_fx_not_term_snapshot(session):
@@ -48,7 +110,6 @@ def test_retainer_usd_fee_uses_month_start_fx_not_term_snapshot(session):
             effective_from=date(2026, 1, 1),
         )
     )
-    # Term active for the whole month so FX is the only variable under test.
     session.add(
         TeamCommercialTerms(
             team_id=team.id,
@@ -56,7 +117,7 @@ def test_retainer_usd_fee_uses_month_start_fx_not_term_snapshot(session):
             billing_mode=TeamBillingMode.subscription,
             customer_fee_amount=Decimal("3000"),
             currency_code="USD",
-            base_fee_inr=Decimal("250500.00"),  # 3000 × 83.50 seed — outdated for July
+            base_fee_inr=Decimal("250500.00"),
             fx_rate=Decimal("83.50000000"),
             billing_period=TeamBillingPeriod.monthly,
             effective_from=date(2026, 7, 1),

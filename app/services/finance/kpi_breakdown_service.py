@@ -517,7 +517,7 @@ def get_kpi_breakdown(
         from app.models.models import WorkingModel
         from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
         from app.services.finance.retainer_fee import (
-            prorated_retainer_amount_for_term,
+            retainer_fee_lines_for_term,
             team_retainer_fee_monthly,
         )
 
@@ -526,42 +526,45 @@ def get_kpi_breakdown(
             stmt = stmt.where(TeamCommercialTerms.team_id == team_id)
         lines: list[dict] = []
         for term in db.scalars(stmt).all():
-            monthly = prorated_retainer_amount_for_term(db, term, as_of=today)
-            if monthly <= 0:
-                continue
             model = db.get(WorkingModel, term.working_model_id)
             strategy = model.strategy_key if model is not None else None
             if not uses_flat_customer_fee(strategy):
                 continue
-            team = db.get(Team, term.team_id)
-            lines.append(
-                {
-                    "id": str(term.id),
-                    "label": team.name if team else str(term.team_id),
-                    "detail": (
-                        f"{model.name if model else 'Commercial fee'} "
-                        "(day-prorated from resource / term start)"
-                    ),
-                    "amount_inr": _q(monthly),
-                    "kind": "fee",
-                }
-            )
+            for fee_line in retainer_fee_lines_for_term(db, term, as_of=today):
+                detail_bits = [
+                    f"{fee_line['native_fee']} {fee_line['currency_code']}",
+                    f"FX {fee_line['fx_date']} @ {fee_line['fx_rate']}",
+                    f"seat ×{fee_line['billing_factor']}",
+                ]
+                if fee_line.get("skill_level"):
+                    detail_bits.insert(0, f"skill={fee_line['skill_level']}")
+                if fee_line.get("attendance_factor") != fee_line.get("billing_factor"):
+                    detail_bits.append(f"attendance {fee_line['attendance_factor']}")
+                lines.append(
+                    {
+                        "id": fee_line.get("user_id") or str(term.id),
+                        "label": fee_line["user_name"],
+                        "detail": " · ".join(str(b) for b in detail_bits),
+                        "amount_inr": _q(fee_line["amount_inr"]),
+                        "kind": "fee",
+                    }
+                )
         lines.sort(key=lambda r: r["amount_inr"], reverse=True)
         total = team_retainer_fee_monthly(db, team_id=team_id, as_of=today)
         return {
             "metric": key,
             "title": "Team fees / month",
             "subtitle": (
-                "Retainer / subscription fees day-prorated from each resource’s start date "
-                "(and commercial term start) within the month."
+                "Retainer: full monthly skill-band rate per billable seat, converted at FX on "
+                "the 1st of the month. Attendance days are shown for audit only."
             ),
             "total_inr": _q(total),
             "currency_code": base,
-            "formula": "Σ (monthly rate × calendar days on team ÷ days in month)",
+            "formula": "Σ (skill-band native × month-start FX × full seat)",
             "insights": _insights_from_lines(lines, _q(total), subject="fee lines"),
             "groups": [
                 {
-                    "label": "Commercial fees",
+                    "label": "Commercial fees (per seat)",
                     "total_inr": _q(total),
                     "lines": _annotate(lines, _q(total) or Decimal("1"), band_mode="revenue"),
                 }

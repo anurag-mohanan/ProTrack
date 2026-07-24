@@ -18,8 +18,8 @@ from app.services.finance.retainer_fee import (
 from tests.conftest import IDS
 
 
-def test_mid_month_resource_prorates_retainer_fee(session):
-    """Resource added on the 23rd → bill only balance days of the month."""
+def test_mid_month_resource_bills_full_retainer_seat(session):
+    """Resource added mid-month still bills full monthly retainer seat (accounts lock)."""
     as_of = date(2026, 7, 31)
     days_in_month = calendar.monthrange(2026, 7)[1]
     assert days_in_month == 31
@@ -68,12 +68,11 @@ def test_mid_month_resource_prorates_retainer_fee(session):
     factor = billable_team_month_factor(
         session, user_id=designer.id, team_id=team.id, as_of=as_of
     )
-    # 23..31 inclusive = 9 days
+    # Attendance still day-prorates for audit; fee billing is full seat.
     assert factor == (Decimal("9") / Decimal("31")).quantize(Decimal("0.0001"))
 
     fee = team_retainer_fee_monthly(session, team_id=team.id, as_of=as_of)
-    expected = (Decimal("31000") * factor).quantize(Decimal("0.01"))
-    assert fee == expected
+    assert fee == Decimal("31000.00")
 
 
 def test_full_month_resource_bills_full_retainer(session):

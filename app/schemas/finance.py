@@ -223,6 +223,21 @@ class TeamCommercialFeeBandRead(BaseModel):
     billable_count: int = 0
 
 
+class RetainerFeeLineRead(BaseModel):
+    """Accounts trail for one seat (or flat subscription line) in the fee signal."""
+
+    user_id: str | None = None
+    user_name: str
+    skill_level: str | None = None
+    native_fee: Decimal
+    currency_code: str
+    fx_date: str
+    fx_rate: Decimal
+    attendance_factor: Decimal
+    billing_factor: Decimal
+    amount_inr: Decimal
+
+
 class TeamCommercialTermsCreate(BaseModel):
     team_id: UUID
     working_model_id: UUID
@@ -277,6 +292,7 @@ class TeamCommercialTermsRead(BaseModel):
     resource_count: int | None = None
     monthly_fee_signal_inr: Decimal | None = None
     fee_bands: list[TeamCommercialFeeBandRead] = Field(default_factory=list)
+    fee_lines: list[RetainerFeeLineRead] = Field(default_factory=list)
 
 
 class TeamFinanceBreakdown(BaseModel):

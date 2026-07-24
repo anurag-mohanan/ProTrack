@@ -90,6 +90,7 @@ from app.schemas.finance import (
     TeamCommercialTermsCreate,
     TeamCommercialTermsRead,
     TeamCommercialTermsUpdate,
+    RetainerFeeLineRead,
 )
 from app.services.finance import annual_plan_service
 from app.services.finance.dashboard_service import get_finance_dashboard
@@ -934,7 +935,10 @@ def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommerci
     from datetime import date as date_cls
 
     from app.services.finance.billable_headcount import billable_salary_counts_by_skill
-    from app.services.finance.retainer_fee import prorated_retainer_amount_for_term
+    from app.services.finance.retainer_fee import (
+        prorated_retainer_amount_for_term,
+        retainer_fee_lines_for_term,
+    )
 
     team = db.get(Team, row.team_id)
     model = db.get(WorkingModel, row.working_model_id)
@@ -957,7 +961,11 @@ def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommerci
                 billable_count=counts.get(skill, 0),
             )
         )
-    monthly_signal = prorated_retainer_amount_for_term(db, row, as_of=date_cls.today())
+    as_of = date_cls.today()
+    monthly_signal = prorated_retainer_amount_for_term(db, row, as_of=as_of)
+    fee_line_reads = [
+        RetainerFeeLineRead(**line) for line in retainer_fee_lines_for_term(db, row, as_of=as_of)
+    ]
     return TeamCommercialTermsRead(
         id=row.id,
         team_id=row.team_id,
@@ -980,6 +988,7 @@ def _team_commercial_read(db: Session, row: TeamCommercialTerms) -> TeamCommerci
         resource_count=resource_count,
         monthly_fee_signal_inr=monthly_signal,
         fee_bands=fee_band_reads,
+        fee_lines=fee_line_reads,
     )
 
 

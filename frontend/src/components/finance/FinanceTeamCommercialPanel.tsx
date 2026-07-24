@@ -41,6 +41,19 @@ type WorkingModel = {
   code?: string;
 };
 
+type FeeLine = {
+  user_id?: string | null;
+  user_name: string;
+  skill_level?: string | null;
+  native_fee: number | string;
+  currency_code: string;
+  fx_date: string;
+  fx_rate: number | string;
+  attendance_factor: number | string;
+  billing_factor: number | string;
+  amount_inr: number | string;
+};
+
 type TeamCommercial = {
   id: string;
   team_id: string;
@@ -63,6 +76,7 @@ type TeamCommercial = {
     fee_amount: number;
     billable_count?: number;
   }>;
+  fee_lines?: FeeLine[];
 };
 
 function isRetainer(strategy?: string | null) {
@@ -228,8 +242,20 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
     });
   };
 
-  const teams = teamsQuery.data ?? [];
   const terms = termsQuery.data ?? [];
+
+  // When a team filter has exactly one active retainer, load it into the form so
+  // the editor matches Active terms (avoids blank "no fee" form vs retainer line).
+  useEffect(() => {
+    if (editingId || !teamId || termsQuery.isLoading) return;
+    const retainers = terms.filter((t) => isRetainer(t.working_model_strategy));
+    if (retainers.length === 1) {
+      startEdit(retainers[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamId, termsQuery.isLoading, termsQuery.dataUpdatedAt]);
+
+  const teams = teamsQuery.data ?? [];
   const stats = useMemo(() => {
     const feeSignal = terms.reduce((s, t) => s + toFiniteNumber(t.monthly_fee_signal_inr), 0);
     const billable = terms.reduce((s, t) => s + toFiniteNumber(t.resource_count), 0);
@@ -300,7 +326,11 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
 
       <FinanceSection
         title={editingId ? 'Edit team commercial terms' : 'Team cost / commercial model'}
-        subtitle="Working model drives commercial rules. Retainer uses skill-based rates × billable headcount. Project-based / T&M planning revenue comes from quotes — no team flat fee."
+        subtitle={
+          editingId
+            ? 'Editing the active commercial terms that drive the fee signal below.'
+            : 'Working model drives commercial rules. Retainer uses skill-band rates × billable seats (full monthly seat · FX on 1st of month). Project-based / T&M revenue comes from quotes. Active terms below are the source of truth until you click Edit.'
+        }
       >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -511,9 +541,33 @@ export function FinanceTeamCommercialPanel({ teamId }: { teamId: string }) {
                     {row.customer_pays_hardware ? ' · customer HW' : ''}
                   </Typography>
                   {isRetainer(row.working_model_strategy) ? (
-                    <Typography variant="caption" color="text.secondary">
-                      Billable resources exclude management / overhead (Billable headcount off).
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      Billable count includes only people with Billable headcount on. Managers /
+                      overhead with Billable headcount off are excluded from the fee.
                     </Typography>
+                  ) : null}
+                  {isRetainer(row.working_model_strategy) && (row.fee_lines?.length ?? 0) > 0 ? (
+                    <Stack spacing={0.5} sx={{ mt: 1 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                        Fee breakdown (this month)
+                      </Typography>
+                      {row.fee_lines!.map((line) => (
+                        <Typography
+                          key={`${line.user_id ?? 'flat'}-${line.skill_level ?? ''}-${line.amount_inr}`}
+                          variant="caption"
+                          color="text.secondary"
+                        >
+                          {line.user_name}
+                          {line.skill_level ? ` · ${line.skill_level}` : ''}
+                          {` · ${line.native_fee} ${line.currency_code} × FX ${line.fx_date} @ ${line.fx_rate}`}
+                          {` · seat ×${line.billing_factor}`}
+                          {Number(line.attendance_factor) !== Number(line.billing_factor)
+                            ? ` (attendance ${line.attendance_factor})`
+                            : ''}
+                          {` = ${financeMoney(line.amount_inr, 'INR')}`}
+                        </Typography>
+                      ))}
+                    </Stack>
                   ) : null}
                 </Box>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>

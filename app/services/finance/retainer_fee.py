@@ -256,21 +256,182 @@ def _billable_users_for_month(
     return users
 
 
+def _native_fee_for_user(
+    user: User,
+    *,
+    term: TeamCommercialTerms,
+    bands: list,
+) -> tuple[Decimal, str, str]:
+    """Return (native_amount, currency_code, skill_key) for the user's skill band."""
+    term_currency = (getattr(term, "currency_code", None) or "INR").upper()
+    default_native = _d(term.customer_fee_amount)
+    skill = getattr(user, "skill_level", None)
+    key = (
+        skill.value
+        if skill is not None and hasattr(skill, "value")
+        else (str(skill) if skill else "")
+    )
+    key = (key or "").strip().lower()
+    if not bands:
+        return default_native, term_currency, key
+    band_map: dict[str, tuple[Decimal, str]] = {}
+    for band in bands:
+        skill_key = (getattr(band, "skill_level", None) or "").strip().lower()
+        currency = (getattr(band, "currency_code", None) or term_currency).upper()
+        native = _d(getattr(band, "fee_amount", None))
+        band_map[skill_key] = (native, currency)
+    if key in band_map:
+        native, currency = band_map[key]
+        return native, currency, key
+    if "" in band_map:
+        native, currency = band_map[""]
+        return native, currency, key or ""
+    return default_native, term_currency, key
+
+
+def retainer_fee_lines_for_term(
+    db: Session,
+    term: TeamCommercialTerms,
+    *,
+    as_of: date,
+) -> list[dict]:
+    """Per-person accounts trail for one commercial term (INR amounts for the as_of month)."""
+    from app.services.finance.fx_service import get_base_currency, resolve_fx_rate
+
+    if term.effective_from and term.effective_from > as_of:
+        return []
+    month_start, _, _ = _month_bounds(as_of)
+    if term.effective_to is not None and term.effective_to < month_start:
+        return []
+
+    model = db.get(WorkingModel, term.working_model_id)
+    strategy = model.strategy_key if model is not None else None
+    if not uses_flat_customer_fee(strategy):
+        return []
+
+    is_retainer = strategy == WorkingModelCode.retainer or (
+        hasattr(strategy, "value") and strategy.value == WorkingModelCode.retainer.value
+    )
+    fx_date = retainer_fx_date_for_month(as_of)
+    window_start = max(month_start, term.effective_from) if term.effective_from else month_start
+    window_end = _month_bounds(as_of)[1]
+    if term.effective_to is not None:
+        window_end = min(window_end, term.effective_to)
+    if window_start > window_end:
+        return []
+
+    bands = list(getattr(term, "fee_bands", None) or [])
+    base = get_base_currency(db).upper()
+    lines: list[dict] = []
+
+    if is_retainer:
+        for user in _billable_users_for_month(db, term.team_id, as_of=as_of):
+            attendance = billable_team_month_factor(
+                db,
+                user_id=user.id,
+                team_id=term.team_id,
+                as_of=as_of,
+                window_start=window_start,
+                window_end=window_end,
+            )
+            if attendance <= 0:
+                continue
+            # Accounts lock: full monthly seat when billable any day this month.
+            billing_factor = Decimal("1")
+            native, currency, skill_key = _native_fee_for_user(user, term=term, bands=bands)
+            rate_inr = _amount_to_inr_at(
+                db, amount=native, currency_code=currency, on_date=fx_date
+            )
+            try:
+                fx_rate = (
+                    Decimal("1")
+                    if currency.upper() == base
+                    else resolve_fx_rate(
+                        db, from_currency=currency, on_date=fx_date, fetch_live=False
+                    )
+                )
+            except Exception:
+                fx_rate = (
+                    (rate_inr / native).quantize(Decimal("0.00000001"))
+                    if native > 0
+                    else Decimal("1")
+                )
+            amount = (rate_inr * billing_factor).quantize(Decimal("0.01"))
+            name = f"{user.first_name or ''} {user.last_name or ''}".strip() or (
+                user.email or str(user.id)
+            )
+            lines.append(
+                {
+                    "user_id": str(user.id),
+                    "user_name": name,
+                    "skill_level": skill_key or None,
+                    "native_fee": native,
+                    "currency_code": currency,
+                    "fx_date": fx_date.isoformat(),
+                    "fx_rate": fx_rate,
+                    "attendance_factor": attendance,
+                    "billing_factor": billing_factor,
+                    "amount_inr": amount,
+                }
+            )
+        return lines
+
+    # Flat subscription: one line for the term.
+    month_start, month_end, days_in_month = _month_bounds(as_of)
+    active_days = (window_end - window_start).days + 1
+    attendance = (
+        Decimal("1")
+        if active_days >= days_in_month and window_start <= month_start and window_end >= month_end
+        else (Decimal(active_days) / Decimal(days_in_month)).quantize(Decimal("0.0001"))
+    )
+    currency = (getattr(term, "currency_code", None) or "INR").upper()
+    native = _d(term.customer_fee_amount)
+    rate_inr = _amount_to_inr_at(db, amount=native, currency_code=currency, on_date=fx_date)
+    try:
+        fx_rate = (
+            Decimal("1")
+            if currency == base
+            else resolve_fx_rate(db, from_currency=currency, on_date=fx_date, fetch_live=False)
+        )
+    except Exception:
+        fx_rate = (
+            (rate_inr / native).quantize(Decimal("0.00000001")) if native > 0 else Decimal("1")
+        )
+    amount = (rate_inr * attendance).quantize(Decimal("0.01"))
+    from app.models.models import Team as TeamModel
+
+    team_row = db.get(TeamModel, term.team_id)
+    lines.append(
+        {
+            "user_id": None,
+            "user_name": team_row.name if team_row else "Flat subscription",
+            "skill_level": None,
+            "native_fee": native,
+            "currency_code": currency,
+            "fx_date": fx_date.isoformat(),
+            "fx_rate": fx_rate,
+            "attendance_factor": attendance,
+            "billing_factor": attendance,
+            "amount_inr": amount,
+        }
+    )
+    return lines
+
+
 def prorated_retainer_amount_for_term(
     db: Session,
     term: TeamCommercialTerms,
     *,
     as_of: date,
 ) -> Decimal:
-    """Monthly-INR customer fee for one commercial term (day-prorated for retainer).
+    """Monthly-INR customer fee for one commercial term.
 
-    Foreign-currency retainer rates convert with FX as of the **first day of the
-    ``as_of`` month**, so the whole month uses one dollar rate.
+    Retainer: full monthly skill-band rate per billable seat (month-start FX).
+    Non-retainer flat fee: still day-prorates term active days; month-start FX.
     """
     if term.effective_from and term.effective_from > as_of:
         return Decimal("0.00")
     if term.effective_to and term.effective_to < as_of.replace(day=1):
-        # Term ended before this month
         month_start, _, _ = _month_bounds(as_of)
         if term.effective_to < month_start:
             return Decimal("0.00")
@@ -297,7 +458,7 @@ def prorated_retainer_amount_for_term(
     if is_retainer:
         period_amount = Decimal("0.00")
         for user in _billable_users_for_month(db, term.team_id, as_of=as_of):
-            factor = billable_team_month_factor(
+            attendance = billable_team_month_factor(
                 db,
                 user_id=user.id,
                 team_id=term.team_id,
@@ -305,16 +466,15 @@ def prorated_retainer_amount_for_term(
                 window_start=window_start,
                 window_end=window_end,
             )
-            if factor <= 0:
+            if attendance <= 0:
                 continue
+            # Full seat when billable any day this month (accounts lock).
             rate = _rate_for_user_inr(
                 db, user, term=term, bands=bands, fx_date=fx_date
             )
-            period_amount += rate * factor
+            period_amount += rate
         return normalize_monthly_fee(period_amount.quantize(Decimal("0.01")), term.billing_period)
 
-    # Flat subscription-style fee (no headcount): prorate by term active days in month.
-    # Still convert native fee with month-start FX (same monthly FX rule as retainer).
     active_days = (window_end - window_start).days + 1
     factor = (
         Decimal("1")
@@ -334,7 +494,7 @@ def prorated_retainer_amount_for_term(
 def team_retainer_fee_monthly(
     db: Session, *, team_id: UUID | None, as_of: date
 ) -> Decimal:
-    """Sum of day-prorated retainer/subscription fees for active terms."""
+    """Sum of retainer/subscription fees for active terms (month-start FX)."""
     stmt = select(TeamCommercialTerms).where(TeamCommercialTerms.is_active.is_(True))
     if team_id is not None:
         stmt = stmt.where(TeamCommercialTerms.team_id == team_id)

@@ -115,15 +115,17 @@ const REPORT_META: Record<string, ReportMeta> = {
     description: 'Quoted, invoiced, and collected revenue over time.',
     icon: TrendingUpRoundedIcon,
   },
-  'AI Insights (placeholders)': {
-    description: 'Suggested anomalies and narrative insights (coming soon).',
+  'AI Insights': {
+    description: 'Heuristic narrative insights; optional LLM enrichment when configured.',
     icon: AutoAwesomeRoundedIcon,
-    comingSoon: true,
+  },
+  'AI Insights (placeholders)': {
+    description: 'Heuristic narrative insights; optional LLM enrichment when configured.',
+    icon: AutoAwesomeRoundedIcon,
   },
   'AI Insights (placeholder)': {
-    description: 'Suggested anomalies and narrative insights (coming soon).',
+    description: 'Heuristic narrative insights; optional LLM enrichment when configured.',
     icon: AutoAwesomeRoundedIcon,
-    comingSoon: true,
   },
   'Team Productivity': {
     description: 'Team-level hours, utilization, and follow-up queues.',
@@ -162,14 +164,18 @@ function resolveMeta(title: string): ReportMeta {
 function ReportTile({
   item,
   accent,
+  statusOverride,
 }: {
   item: CatalogItem;
   accent: string;
+  statusOverride?: string | null;
 }) {
   const theme = useTheme();
   const meta = resolveMeta(item.title);
   const Icon = meta.icon;
   const disabled = Boolean(meta.comingSoon);
+  const statusLabel = statusOverride ?? (disabled ? 'Coming soon' : 'Available');
+  const statusOutlined = disabled || Boolean(statusOverride);
 
   return (
     <Paper
@@ -218,19 +224,19 @@ function ReportTile({
         </Box>
         <Chip
           size="small"
-          label={disabled ? 'Coming soon' : 'Available'}
-          color={disabled ? 'default' : 'success'}
-          variant={disabled ? 'outlined' : 'filled'}
+          label={statusLabel}
+          color={disabled ? 'default' : statusOverride ? 'default' : 'success'}
+          variant={statusOutlined ? 'outlined' : 'filled'}
           sx={{
             height: 22,
             fontSize: '0.6875rem',
             fontWeight: 600,
-            ...(disabled
-              ? {}
-              : {
+            ...(!disabled && !statusOverride
+              ? {
                   bgcolor: alpha(designTokens.semantic.success, 0.12),
                   color: designTokens.semantic.success,
-                }),
+                }
+              : {}),
           }}
         />
       </Stack>
@@ -274,6 +280,25 @@ export function AnalyticsHubPage() {
     queryFn: async () =>
       (await apiClient.get<{ categories: CatalogCategory[] }>('/analytics/catalog')).data,
   });
+
+  const providerQuery = useQuery({
+    queryKey: ['ai', 'provider'],
+    queryFn: async () =>
+      (
+        await apiClient.get<{
+          provider: string;
+          mode: string;
+          llm_available: boolean;
+        }>('/ai/provider')
+      ).data,
+    staleTime: 60_000,
+  });
+
+  const aiProviderChip = providerQuery.data
+    ? providerQuery.data.llm_available
+      ? `LLM · ${providerQuery.data.provider}`
+      : 'Offline · heuristic'
+    : null;
 
   const categories = query.data?.categories ?? [];
 
@@ -418,7 +443,15 @@ export function AnalyticsHubPage() {
                     key={`${category.category}-${item.title}`}
                     size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
                   >
-                    <ReportTile item={item} accent={meta.accent} />
+                    <ReportTile
+                      item={item}
+                      accent={meta.accent}
+                      statusOverride={
+                        item.title.toLowerCase().includes('ai insights')
+                          ? aiProviderChip
+                          : null
+                      }
+                    />
                   </Grid>
                 ))}
               </Grid>

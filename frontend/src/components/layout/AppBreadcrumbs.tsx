@@ -82,6 +82,18 @@ function resolveBreadcrumbs(pathname: string, projectLabel?: string | null): Bre
         { label: ROUTE_LABELS[pathname] },
       ];
     }
+    if (pathname.startsWith('/hr/') && pathname !== '/hr') {
+      return [
+        { label: 'HR Dashboard', to: '/hr' },
+        { label: ROUTE_LABELS[pathname] },
+      ];
+    }
+    if (pathname === '/projects/archived') {
+      return [
+        { label: 'Projects', to: '/projects' },
+        { label: ROUTE_LABELS[pathname] },
+      ];
+    }
     return [{ label: ROUTE_LABELS[pathname] }];
   }
 

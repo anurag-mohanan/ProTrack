@@ -118,6 +118,13 @@ TIMESHEET_EDITABLE_MONTHS_BACK = _int("PROTRACK_TIMESHEET_EDITABLE_MONTHS_BACK",
 # When true, the oldest still-editable month shows a soft-lock warning banner.
 TIMESHEET_SOFT_LOCK_ENABLED = _flag("PROTRACK_TIMESHEET_SOFT_LOCK_ENABLED", "true")
 
+# --- AI / LLM enrichment (R5) -----------------------------------------------
+# heuristic = offline default (no external calls). openai = OpenAI-compatible API.
+AI_PROVIDER = os.getenv("AI_PROVIDER", "heuristic").strip().lower() or "heuristic"
+AI_API_KEY = os.getenv("AI_API_KEY", "").strip()
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.openai.com/v1").strip() or "https://api.openai.com/v1"
+AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+
 
 def security_config_problems() -> list[str]:
     """Production-blocking security misconfigurations (hard startup blockers).

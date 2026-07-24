@@ -14,7 +14,6 @@ import { PageContainer } from '../../common/PageContainer';
 import { LoadingState } from '../../common/LoadingState';
 import { ErrorState } from '../../common/ErrorState';
 import { StickyRecordHeader } from '../../ui/design-system';
-import { BackButton } from '../../navigation/BackButton';
 import { APP_TOP_BAR_OFFSET } from '../../ui/design-system/StickyRecordHeader';
 import { commandCenterQueryKeys, fetchProjectCommandCenter } from '../../../api/commandCenter';
 import { QuoteAssistantPanel } from '../../ai/QuoteAssistantPanel';
@@ -135,18 +134,17 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
         />
       )}
 
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 1,
-          flexWrap: 'wrap',
-          mb: 0.5,
-        }}
-      >
-        <BackButton fallbackPath="/projects" label="Back to projects" />
-        {showEditProject ? (
+      {showEditProject ? (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 1,
+            flexWrap: 'wrap',
+            mb: 0.5,
+          }}
+        >
           <ProsohmButton
             buttonVariant="outlined"
             size="small"
@@ -155,8 +153,8 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
           >
             Edit Project
           </ProsohmButton>
-        ) : null}
-      </Box>
+        </Box>
+      ) : null}
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 1.5 }}>
         <Tabs

@@ -6,6 +6,7 @@ import { AppFooter } from '../components/layout/AppFooter';
 import { AppTopBar } from '../components/layout/AppTopBar';
 import { ImpersonationBanner } from '../components/layout/ImpersonationBanner';
 import { PageErrorBoundary } from '../components/common/PageErrorBoundary';
+import { ModuleHomeButton } from '../components/navigation/ModuleHomeButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import {
@@ -13,6 +14,7 @@ import {
   shellMinHeightSx,
   useResponsiveShell,
 } from '../hooks/useResponsiveShell';
+import { resolveModuleHome } from '../navigation/moduleHomes';
 
 export function MainLayout() {
   const { user, displayName, logout } = useAuth();
@@ -21,6 +23,7 @@ export function MainLayout() {
   const { showInfo } = useToast();
   const roleName = user?.role_name ?? '';
   const { isCompact, mobileNavOpen, openMobileNav, closeMobileNav } = useResponsiveShell();
+  const moduleHome = resolveModuleHome(location.pathname);
 
   const handleLogout = async () => {
     await logout();
@@ -108,6 +111,7 @@ export function MainLayout() {
                 overflowX: 'clip',
               }}
             >
+              {moduleHome ? <ModuleHomeButton home={moduleHome} /> : null}
               <PageErrorBoundary title="This section could not be loaded.">
                 <Outlet />
               </PageErrorBoundary>

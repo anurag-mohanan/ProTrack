@@ -33,6 +33,30 @@ class QuotingAssistantModule(AiModule):
             tools = ", ".join(s.tool_number for s in similar[:3])
             rationale = f"Based on similar completed projects: {tools}"
 
+        try:
+            from app.services.ai.providers import get_llm_provider
+
+            provider = get_llm_provider()
+            if provider.is_available():
+                prompt = (
+                    f"Project {project.tool_number}: suggested total "
+                    f"{breakdown['total']:.0f}h "
+                    f"(design {breakdown['design']:.0f}, checking {breakdown['checking']:.0f}). "
+                    "Add one short caution or tip for the estimator."
+                )
+                enriched = provider.enrich(
+                    prompt,
+                    context={
+                        "module": self.name,
+                        "tool_number": project.tool_number,
+                        "confidence": confidence,
+                    },
+                )
+                if enriched:
+                    rationale = f"{rationale}. {enriched}" if rationale else enriched
+        except Exception:
+            pass
+
         return QuoteRecommendation(
             project_id=project.id,
             tool_number=project.tool_number,

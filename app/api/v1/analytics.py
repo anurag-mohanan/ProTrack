@@ -61,7 +61,7 @@ def analytics_catalog(
                     {"title": "Project Profitability", "path": "/finance/reports"},
                     {"title": "Budget vs Actual", "path": "/finance/budgets"},
                     {"title": "Revenue Trend", "path": "/finance"},
-                    {"title": "AI Insights (placeholders)", "path": "/finance"},
+                    {"title": "AI Insights", "path": "/finance"},
                 ],
             }
         )

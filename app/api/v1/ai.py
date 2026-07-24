@@ -60,6 +60,17 @@ def get_ai_operations(
     return ai_engine.run_operations_summary(db, actor_name=name)
 
 
+@router.get("/provider")
+def get_ai_provider_status(
+    current_user: User = Depends(get_current_user),
+):
+    """R5 — configured LLM provider status (heuristic default / offline-safe)."""
+    from app.services.ai.providers import provider_status
+
+    _ = current_user
+    return provider_status()
+
+
 @router.get("/insights", response_model=list[AiInsight])
 def get_ai_insights(
     limit: int = Query(10, ge=1, le=25),

@@ -122,6 +122,24 @@ class ReportInsightsModule(AiModule):
         if not insights:
             insights.append("No significant anomalies detected for this reporting period.")
 
+        try:
+            from app.services.ai.providers import get_llm_provider
+
+            provider = get_llm_provider()
+            if provider.is_available():
+                prompt = (
+                    "Summarize the operational takeaway in one sentence given these insights:\n"
+                    + "\n".join(f"- {line}" for line in insights[:6])
+                )
+                enriched = provider.enrich(
+                    prompt,
+                    context={"module": self.name, "period_type": str(period_type)},
+                )
+                if enriched:
+                    insights = [*insights[:7], enriched]
+        except Exception:
+            pass
+
         return insights[:8]
 
 

@@ -152,6 +152,10 @@ export function HrDashboardPage() {
         <Link component={RouterLink} to="/hr/onboarding">
           Onboarding
         </Link>
+        ; employee courses under{' '}
+        <Link component={RouterLink} to="/hr/training">
+          Training
+        </Link>
         ; departing employees use the generic exit interview under{' '}
         <Link component={RouterLink} to="/hr/exit-process">
           Exit process

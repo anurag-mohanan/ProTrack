@@ -12,6 +12,7 @@ AuditFlag = Literal[
     "missing_exit",
     "orphan_placement",
     "exit_done_still_active",
+    "incomplete_training",
 ]
 
 

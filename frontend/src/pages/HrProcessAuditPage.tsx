@@ -17,6 +17,7 @@ import { LoadingState } from '../components/common/LoadingState';
 
 const FLAG_LABEL: Record<string, string> = {
   incomplete_onboarding: 'Incomplete onboarding',
+  incomplete_training: 'Incomplete training',
   missing_exit: 'Missing exit',
   orphan_placement: 'Orphan placement',
   exit_done_still_active: 'Exit done, still active',

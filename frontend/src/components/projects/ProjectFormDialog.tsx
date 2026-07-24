@@ -1133,7 +1133,7 @@ export function ProjectFormDialog({
                 }
                 label="Require QA acknowledgement before completing milestones"
               />
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                 When enabled, Completing a milestone asks for an explicit QA confirm.
               </Typography>
             </Grid>

@@ -19,6 +19,7 @@ AuditFlagCode = Literal[
     "missing_exit",
     "orphan_placement",
     "exit_done_still_active",
+    "incomplete_training",
 ]
 
 
@@ -210,11 +211,14 @@ def build_process_audit(
     as_of: date | None = None,
     sla_days: int = INCOMPLETE_ONBOARDING_SLA_DAYS,
 ) -> dict[str, Any]:
+    from app.services.training_service import incomplete_training_audit_rows
+
     items = (
         incomplete_onboarding_rows(db, as_of=as_of, sla_days=sla_days)
         + orphan_placement_rows(db)
         + missing_exit_rows(db, as_of=as_of)
         + exit_done_still_active_rows(db, as_of=as_of)
+        + incomplete_training_audit_rows(db, as_of=as_of, sla_days=sla_days)
     )
     by_flag: dict[str, int] = {}
     for item in items:

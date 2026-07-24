@@ -303,7 +303,7 @@ export function ResourcePlanningPage() {
             value={whatIfExtraDesigners}
             onChange={(event) => setWhatIfExtraDesigners(Number(event.target.value) || 0)}
             sx={{ width: 140 }}
-            inputProps={{ step: 1 }}
+            slotProps={{ htmlInput: { step: 1 } }}
           />
           <TextField
             size="small"
@@ -312,7 +312,7 @@ export function ResourcePlanningPage() {
             value={whatIfHoursDelta}
             onChange={(event) => setWhatIfHoursDelta(Number(event.target.value) || 0)}
             sx={{ width: 140 }}
-            inputProps={{ step: 8 }}
+            slotProps={{ htmlInput: { step: 8 } }}
           />
           <Typography variant="body2" color="text.secondary">
             Scenario util {scenarioUtil}% · capacity {formatNumber(scenarioCapacity, 0) || '0'}h

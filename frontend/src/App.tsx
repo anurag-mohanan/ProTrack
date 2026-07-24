@@ -66,6 +66,7 @@ const HrDashboardPage = lazy(() =>
 const PerformancePage = lazy(() => import('./pages/PerformancePage'));
 const HelpDeskPage = lazy(() => import('./pages/HelpDeskPage'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
+const TrainingPage = lazy(() => import('./pages/TrainingPage'));
 const ExitProcessPage = lazy(() => import('./pages/ExitProcessPage'));
 const HrProcessAuditPage = lazy(() =>
   import('./pages/HrProcessAuditPage').then((module) => ({
@@ -340,6 +341,14 @@ export default function App() {
                         element={
                           <Suspense fallback={<LoadingState message="Loading onboarding…" />}>
                             <OnboardingPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/hr/training"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading training…" />}>
+                            <TrainingPage />
                           </Suspense>
                         }
                       />

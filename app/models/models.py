@@ -1851,3 +1851,7 @@ from app.models.enterprise import (  # noqa: E402, F401
     LearningPlanItem,
     LegalEntity,
 )
+from app.models.training import (  # noqa: E402, F401
+    TrainingAssignment,
+    TrainingCourse,
+)

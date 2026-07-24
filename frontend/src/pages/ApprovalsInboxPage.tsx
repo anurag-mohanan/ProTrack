@@ -72,7 +72,8 @@ export function ApprovalsInboxPage() {
     return (
       <PageContainer>
         <ErrorState
-          message="Unable to load approvals inbox."
+          error={tasksQuery.error}
+          title="Unable to load approvals inbox"
           onRetry={() => void tasksQuery.refetch()}
         />
       </PageContainer>

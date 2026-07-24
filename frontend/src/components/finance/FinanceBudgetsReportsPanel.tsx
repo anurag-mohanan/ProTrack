@@ -245,7 +245,7 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
                     link.click();
                     URL.revokeObjectURL(url);
                   } catch (error) {
-                    showError(apiErrorMessage(error));
+                    showError(apiErrorMessage(error, 'Could not export ERP journal CSV'));
                   }
                 })();
               }}

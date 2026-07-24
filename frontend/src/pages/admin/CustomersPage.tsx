@@ -341,7 +341,7 @@ export default function CustomersPage() {
       </SearchToolbar>
 
       <ContentCard noPadding>
-        <ServerPaginatedDataGrid<Customer>
+        <ServerPaginatedDataGrid<Customer, Customer>
           queryKey={['customers']}
           fetcher={customersApi.listPaginated}
           filters={listFilters}

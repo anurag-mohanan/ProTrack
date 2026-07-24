@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
 from app.core.access_control import MODULE_HUMAN_RESOURCES
+from app.core.exceptions import ProTrackValidationError
 from app.core.module_actions import MODULE_ACTION_VIEW, user_has_module_action
 from app.core.permissions import get_role_name
 from app.models.models import OnboardingChecklist, OnboardingChecklistItem, User
@@ -368,6 +369,8 @@ def update_checklist(
         onboard.apply_checklist_header(db, checklist, data)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.commit()
     loaded = onboard.load_checklist(db, checklist_id)
     assert loaded is not None
@@ -437,7 +440,7 @@ def update_item_status(
             completion_date=payload.completion_date,
             notes=payload.notes,
         )
-    except ValueError as exc:
+    except (ValueError, ProTrackValidationError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.commit()
     loaded = onboard.load_checklist(db, checklist_id)

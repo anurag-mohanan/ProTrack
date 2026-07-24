@@ -6,6 +6,12 @@ from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from app.schemas.hr_process_audit import ProcessAuditItem, ProcessAuditRead
+from app.schemas.training import (
+    TrainingAssignRequest,
+    TrainingAssignmentRead,
+    TrainingCourseCreate,
+    TrainingCourseRead,
+)
 from app.services import hr_process_audit_service as process_audit
 from app.schemas.skill_matrix import (
     SkillMatrixRead,
@@ -697,6 +703,162 @@ def hr_process_audit(
         counts=raw["counts"],
         items=items,
     )
+
+
+def _training_assignment_read(row) -> TrainingAssignmentRead:
+    course = row.course
+    return TrainingAssignmentRead(
+        id=row.id,
+        course_id=row.course_id,
+        user_id=row.user_id,
+        status=row.status,
+        due_date=row.due_date,
+        assigned_by_id=row.assigned_by_id,
+        completed_at=row.completed_at,
+        completed_by_id=row.completed_by_id,
+        notes=row.notes,
+        onboarding_checklist_id=row.onboarding_checklist_id,
+        course_title=course.title if course else None,
+        course_code=course.code if course else None,
+        estimated_minutes=course.estimated_minutes if course else None,
+        external_url=course.external_url if course else None,
+        is_required_for_onboarding=bool(course.is_required_for_onboarding) if course else False,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/training/courses", response_model=list[TrainingCourseRead])
+def list_training_courses(
+    active_only: bool = Query(default=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import onboarding_checklist_service as onboard
+    from app.services import training_service as training
+
+    if not onboard.can_manage_onboarding(db, current_user):
+        _require_hr_view(db, current_user)
+    return [
+        TrainingCourseRead.model_validate(row)
+        for row in training.list_courses(db, active_only=active_only)
+    ]
+
+
+@router.post("/training/courses", response_model=TrainingCourseRead, status_code=201)
+def create_training_course(
+    payload: TrainingCourseCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import onboarding_checklist_service as onboard
+    from app.services import training_service as training
+
+    if not onboard.can_manage_onboarding(db, current_user):
+        raise HTTPException(status_code=403, detail="Training course management denied")
+    try:
+        course = training.create_course(
+            db,
+            code=payload.code,
+            title=payload.title,
+            description=payload.description,
+            owner_department=payload.owner_department,
+            estimated_minutes=payload.estimated_minutes,
+            external_url=payload.external_url,
+            is_required_for_onboarding=payload.is_required_for_onboarding,
+            sort_order=payload.sort_order,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
+    db.commit()
+    db.refresh(course)
+    return TrainingCourseRead.model_validate(course)
+
+
+@router.get("/training/assignments", response_model=list[TrainingAssignmentRead])
+def list_training_assignments(
+    user_id: UUID | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import onboarding_checklist_service as onboard
+    from app.services import training_service as training
+
+    can_manage = onboard.can_manage_onboarding(db, current_user)
+    if can_manage:
+        target = user_id
+    else:
+        _require_hr_view(db, current_user)
+        target = user_id
+    rows = training.list_assignments(db, user_id=target, status=status_filter)
+    return [_training_assignment_read(row) for row in rows]
+
+
+@router.get("/training/my-assignments", response_model=list[TrainingAssignmentRead])
+def my_training_assignments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import training_service as training
+
+    rows = training.list_assignments(db, user_id=current_user.id)
+    return [_training_assignment_read(row) for row in rows]
+
+
+@router.post("/training/assign", response_model=list[TrainingAssignmentRead])
+def assign_training(
+    payload: TrainingAssignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.training import TrainingCourse
+    from app.services import onboarding_checklist_service as onboard
+    from app.services import training_service as training
+
+    if not onboard.can_manage_onboarding(db, current_user):
+        raise HTTPException(status_code=403, detail="Training assignment denied")
+    course = db.get(TrainingCourse, payload.course_id)
+    if course is None or not course.is_active:
+        raise HTTPException(status_code=404, detail="Course not found")
+    rows = training.assign_course_to_users(
+        db,
+        course=course,
+        user_ids=payload.user_ids,
+        assigned_by=current_user,
+        due_date=payload.due_date,
+    )
+    db.commit()
+    return [_training_assignment_read(row) for row in rows]
+
+
+@router.post(
+    "/training/assignments/{assignment_id}/complete",
+    response_model=TrainingAssignmentRead,
+)
+def complete_training_assignment(
+    assignment_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.training import TrainingAssignment
+    from app.services import onboarding_checklist_service as onboard
+    from app.services import training_service as training
+
+    row = db.get(TrainingAssignment, assignment_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    can_manage = onboard.can_manage_onboarding(db, current_user)
+    if row.user_id != current_user.id and not can_manage:
+        raise HTTPException(status_code=403, detail="Cannot complete this training")
+    training.complete_assignment(db, assignment=row, actor=current_user)
+    db.commit()
+    loaded = db.scalar(
+        select(TrainingAssignment)
+        .where(TrainingAssignment.id == assignment_id)
+        .options(selectinload(TrainingAssignment.course))
+    )
+    return _training_assignment_read(loaded or row)
 
 
 @router.get("/dashboard")

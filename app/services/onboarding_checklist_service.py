@@ -373,8 +373,12 @@ def apply_checklist_header(
         for key, value in placement.items():
             setattr(checklist, key, value)
 
-    if fields.get("status") == "completed" and checklist.completed_at is None:
-        checklist.completed_at = _utcnow()
+    if fields.get("status") == "completed":
+        from app.services.training_service import assert_required_trainings_complete
+
+        assert_required_trainings_complete(db, checklist.employee_user_id)
+        if checklist.completed_at is None:
+            checklist.completed_at = _utcnow()
     if fields.get("status") == "in_progress":
         checklist.completed_at = None
 
@@ -581,15 +585,30 @@ def create_checklist_from_template(
     triggered: list[dict[str, Any]] = []
     if raise_tickets:
         triggered = raise_department_tickets(db, checklist, created_by=created_by)
+    if checklist.employee_user_id is not None:
+        from app.services.training_service import assign_required_onboarding_trainings
+
+        emp = db.get(User, checklist.employee_user_id)
+        if emp is not None:
+            assign_required_onboarding_trainings(
+                db,
+                user=emp,
+                checklist=checklist,
+                assigned_by=created_by,
+            )
     return checklist, triggered
 
 
-def refresh_checklist_status(checklist: OnboardingChecklist) -> None:
+def refresh_checklist_status(checklist: OnboardingChecklist, db: Session | None = None) -> None:
     items = list(checklist.items)
     if not items:
         return
     actionable = [i for i in items if i.status != "not_applicable"]
     if actionable and all(i.status == "completed" for i in actionable):
+        if db is not None and checklist.employee_user_id is not None:
+            from app.services.training_service import assert_required_trainings_complete
+
+            assert_required_trainings_complete(db, checklist.employee_user_id)
         checklist.status = "completed"
         checklist.completed_at = checklist.completed_at or _utcnow()
     elif checklist.status == "completed":
@@ -623,7 +642,7 @@ def set_item_status(
         item.completion_date = completion_date or date.today()
     db.flush()
     if item.checklist is not None:
-        refresh_checklist_status(item.checklist)
+        refresh_checklist_status(item.checklist, db)
     return item
 
 

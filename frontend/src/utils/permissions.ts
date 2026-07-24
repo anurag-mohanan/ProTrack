@@ -11,6 +11,7 @@ import AccountTreeRoundedIcon from '@mui/icons-material/AccountTreeRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import SupportAgentRoundedIcon from '@mui/icons-material/SupportAgentRounded';
 import HowToRegRoundedIcon from '@mui/icons-material/HowToRegRounded';
+import SchoolRoundedIcon from '@mui/icons-material/SchoolRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import type { CurrentUser } from '../types';
@@ -327,6 +328,12 @@ const HR_SECTION_NAV: SectionNavConfigItem[] = [
     label: 'Onboarding',
     path: '/hr/onboarding',
     icon: HowToRegRoundedIcon,
+  },
+  {
+    module: MODULE_HUMAN_RESOURCES,
+    label: 'Training',
+    path: '/hr/training',
+    icon: SchoolRoundedIcon,
   },
   {
     module: MODULE_HUMAN_RESOURCES,

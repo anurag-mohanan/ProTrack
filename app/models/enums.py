@@ -208,6 +208,7 @@ class NotificationType(enum.Enum):
     quote_not_invoiced = "quote_not_invoiced"
     quote_payment_follow_up = "quote_payment_follow_up"
     new_hire_onboarding = "new_hire_onboarding"
+    training_assigned = "training_assigned"
 
 
 class WorkingModelCode(enum.Enum):
@@ -241,6 +242,8 @@ class EntityType(enum.Enum):
     fx_rate = "fx_rate"
     employee_cost = "employee_cost"
     ticket = "ticket"
+    training_course = "training_course"
+    training_assignment = "training_assignment"
 
 
 class CostNature(enum.Enum):

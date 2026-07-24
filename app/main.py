@@ -150,6 +150,9 @@ from app.db.phase60_quote_payment_schema_sync import (
 from app.db.phase61_quote_partial_payments_schema_sync import (
     ensure_phase61_quote_partial_payments_foundation,
 )
+from app.db.phase62_employee_training_schema_sync import (
+    ensure_phase62_employee_training_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -272,6 +275,7 @@ async def lifespan(app: FastAPI):
         ("phase59_r4_enterprise", ensure_phase59_r4_enterprise_foundation),
         ("phase60_quote_payment", ensure_phase60_quote_payment_foundation),
         ("phase61_quote_partial_payments", ensure_phase61_quote_partial_payments_foundation),
+        ("phase62_employee_training", ensure_phase62_employee_training_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

@@ -313,6 +313,8 @@ class TeamFinanceBreakdown(BaseModel):
     net_profit_inr: Decimal = Decimal("0")
     gross_margin_percent: Decimal = Decimal("0")
     net_margin_percent: Decimal = Decimal("0")
+    after_tax_net_profit_inr: Decimal = Decimal("0")
+    after_tax_net_margin_percent: Decimal = Decimal("0")
     quarterly_revenue_signal_inr: Decimal = Decimal("0")
     half_year_revenue_signal_inr: Decimal = Decimal("0")
     year_revenue_signal_inr: Decimal = Decimal("0")
@@ -730,7 +732,15 @@ class CompanyFinanceSettingsRead(BaseModel):
     id: UUID
     base_currency: str
     display_name: str
+    corporate_tax_percent: Decimal = Decimal("30")
     is_active: bool
+
+
+class CompanyFinanceSettingsUpdate(BaseModel):
+    base_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    display_name: str | None = Field(default=None, min_length=1, max_length=100)
+    corporate_tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    is_active: bool | None = None
 
 
 class FinancePlanCreate(BaseModel):

@@ -29,6 +29,8 @@ export type TeamPnlRow = {
   net_profit_inr?: number | string;
   gross_margin_percent?: number | string;
   net_margin_percent?: number | string;
+  after_tax_net_profit_inr?: number | string;
+  after_tax_net_margin_percent?: number | string;
   quarterly_revenue_signal_inr?: number | string;
   half_year_revenue_signal_inr?: number | string;
   year_revenue_signal_inr?: number | string;
@@ -41,7 +43,15 @@ export type TeamPnlRow = {
   estimated_cost_inr?: number | string;
 };
 
-type SortKey = 'team_name' | 'revenue' | 'operating' | 'gross' | 'net' | 'net_margin';
+type SortKey =
+  | 'team_name'
+  | 'revenue'
+  | 'operating'
+  | 'gross'
+  | 'net'
+  | 'net_margin'
+  | 'after_tax_net'
+  | 'after_tax_margin';
 
 const PERIOD_SUFFIX: Record<FinancePnlPeriod, string> = {
   month: '/ mo',
@@ -50,13 +60,26 @@ const PERIOD_SUFFIX: Record<FinancePnlPeriod, string> = {
   year: '/ FY',
 };
 
-function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod) {
+function applyTax(net: number, revenue: number, taxPercent: number) {
+  const afterTax = (net * (100 - taxPercent)) / 100;
+  const afterTaxMargin = revenue > 0 ? (afterTax / revenue) * 100 : 0;
+  return { afterTax, afterTaxMargin };
+}
+
+function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod, taxPercent: number) {
   if (period === 'month') {
     const revenue = toFiniteNumber(row.planning_revenue_signal_inr);
     const operating = toFiniteNumber(row.monthly_operating_cost_inr);
     const gross = toFiniteNumber(row.gross_profit_inr);
     const net = toFiniteNumber(row.net_profit_inr);
     const netMargin = toFiniteNumber(row.net_margin_percent);
+    const fromApi = row.after_tax_net_profit_inr != null;
+    const taxed = fromApi
+      ? {
+          afterTax: toFiniteNumber(row.after_tax_net_profit_inr),
+          afterTaxMargin: toFiniteNumber(row.after_tax_net_margin_percent),
+        }
+      : applyTax(net, revenue, taxPercent);
     return {
       revenue,
       operating,
@@ -66,6 +89,8 @@ function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod) {
       gross,
       net,
       netMargin,
+      afterTax: taxed.afterTax,
+      afterTaxMargin: taxed.afterTaxMargin,
     };
   }
 
@@ -91,6 +116,7 @@ function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod) {
   const gross = revenue - estimated;
   const net = gross - operating;
   const netMargin = revenue > 0 ? (net / revenue) * 100 : 0;
+  const taxed = applyTax(net, revenue, taxPercent);
   return {
     revenue,
     operating,
@@ -100,6 +126,8 @@ function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod) {
     gross,
     net,
     netMargin,
+    afterTax: taxed.afterTax,
+    afterTaxMargin: taxed.afterTaxMargin,
   };
 }
 
@@ -117,13 +145,16 @@ export function FinanceTeamPnlTable({
   rows,
   currency,
   period = 'month',
+  corporateTaxPercent = 30,
 }: {
   rows: TeamPnlRow[];
   currency: string;
   period?: FinancePnlPeriod;
+  corporateTaxPercent?: number;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('net_margin');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const taxPercent = Number.isFinite(corporateTaxPercent) ? corporateTaxPercent : 30;
 
   const deliveryRows = useMemo(
     () => rows.filter((row) => !row.is_overhead_home),
@@ -139,7 +170,7 @@ export function FinanceTeamPnlTable({
     const dir = sortDir === 'asc' ? 1 : -1;
     list.sort((a, b) => {
       const pick = (row: TeamPnlRow): number => {
-        const m = periodMetrics(row, period);
+        const m = periodMetrics(row, period, taxPercent);
         switch (sortKey) {
           case 'team_name':
             return 0;
@@ -151,6 +182,10 @@ export function FinanceTeamPnlTable({
             return m.gross;
           case 'net':
             return m.net;
+          case 'after_tax_net':
+            return m.afterTax;
+          case 'after_tax_margin':
+            return m.afterTaxMargin;
           case 'net_margin':
           default:
             return m.netMargin;
@@ -162,7 +197,7 @@ export function FinanceTeamPnlTable({
       return (pick(a) - pick(b)) * dir;
     });
     return list;
-  }, [deliveryRows, period, sortDir, sortKey]);
+  }, [deliveryRows, period, sortDir, sortKey, taxPercent]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -204,13 +239,15 @@ export function FinanceTeamPnlTable({
               {headCell('revenue', `Revenue ${suffix}`)}
               {headCell('operating', `Op cost ${suffix}`)}
               {headCell('gross', 'Gross profit')}
-              {headCell('net', 'Net profit')}
-              {headCell('net_margin', 'Net margin')}
+              {headCell('net', 'Net (pre-tax)')}
+              {headCell('net_margin', 'Pre-tax margin')}
+              {headCell('after_tax_net', 'After-tax net')}
+              {headCell('after_tax_margin', 'After-tax margin')}
             </TableRow>
           </TableHead>
           <TableBody>
             {sorted.map((row) => {
-              const m = periodMetrics(row, period);
+              const m = periodMetrics(row, period, taxPercent);
               return (
                 <TableRow key={row.team_id} hover>
                   <TableCell sx={{ fontWeight: 650 }}>{row.team_name}</TableCell>
@@ -245,6 +282,21 @@ export function FinanceTeamPnlTable({
                     {financeMoney(m.net, currency)}
                   </TableCell>
                   <TableCell align="right">{marginChip(m.netMargin)}</TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{
+                      fontWeight: 700,
+                      color:
+                        m.afterTax > 0
+                          ? designTokens.semantic.success
+                          : m.afterTax < 0
+                            ? designTokens.semantic.danger
+                            : 'text.primary',
+                    }}
+                  >
+                    {financeMoney(m.afterTax, currency)}
+                  </TableCell>
+                  <TableCell align="right">{marginChip(m.afterTaxMargin)}</TableCell>
                 </TableRow>
               );
             })}
@@ -256,7 +308,7 @@ export function FinanceTeamPnlTable({
           Overhead home ({overheadRows.map((r) => r.team_name).join(', ')}) is excluded from delivery
           performance ranking — HQ salaries and Corporate-assigned OpEx feed the overhead pool CPR.
           Team-assigned software / hardware still hit each delivery team’s op cost (hover Op cost for
-          salary · OpEx · CapEx).
+          salary · OpEx · CapEx). After-tax uses company corporate tax ({taxPercent}%).
         </Typography>
       ) : null}
     </>

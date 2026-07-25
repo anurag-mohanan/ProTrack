@@ -83,6 +83,10 @@ class CompanyFinanceSettings(Base, TimestampMixin):
         String(3), ForeignKey("currencies.code"), nullable=False, default="INR"
     )
     display_name: Mapped[str] = mapped_column(String(100), nullable=False, default="Default")
+    # India corporate income tax rate for Overview / Team P&L after-tax net (Annual Plan has its own %).
+    corporate_tax_percent: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2), nullable=False, default=Decimal("30")
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 

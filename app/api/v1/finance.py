@@ -47,6 +47,7 @@ from app.schemas.finance import (
     BudgetRead,
     BudgetStatusUpdate,
     CompanyFinanceSettingsRead,
+    CompanyFinanceSettingsUpdate,
     CostCentreRead,
     CurrencyRead,
     EmployeeCostProfileCreate,
@@ -314,6 +315,31 @@ def finance_settings(
     )
     if settings is None:
         raise HTTPException(status_code=404, detail="Finance settings not configured")
+    return settings
+
+
+@router.patch("/settings", response_model=CompanyFinanceSettingsRead)
+def update_finance_settings(
+    payload: CompanyFinanceSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CONFIGURE)
+    settings = db.scalar(
+        select(CompanyFinanceSettings).where(CompanyFinanceSettings.is_active.is_(True))
+    )
+    if settings is None:
+        raise HTTPException(status_code=404, detail="Finance settings not configured")
+    data = payload.model_dump(exclude_unset=True)
+    if "corporate_tax_percent" in data and data["corporate_tax_percent"] is not None:
+        data["corporate_tax_percent"] = Decimal(str(data["corporate_tax_percent"]))
+    if "base_currency" in data and data["base_currency"] is not None:
+        data["base_currency"] = str(data["base_currency"]).upper()
+    for key, value in data.items():
+        setattr(settings, key, value)
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
     return settings
 
 

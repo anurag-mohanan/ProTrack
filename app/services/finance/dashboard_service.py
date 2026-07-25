@@ -32,6 +32,33 @@ def _d(value) -> Decimal:
     return Decimal(str(value or 0)).quantize(Decimal("0.01"))
 
 
+def _corporate_tax_percent(db: Session) -> Decimal:
+    from app.models.finance import CompanyFinanceSettings
+
+    settings = db.scalar(
+        select(CompanyFinanceSettings).where(CompanyFinanceSettings.is_active.is_(True))
+    )
+    if settings is None or getattr(settings, "corporate_tax_percent", None) is None:
+        return Decimal("30.00")
+    return Decimal(str(settings.corporate_tax_percent)).quantize(Decimal("0.01"))
+
+
+def _after_tax_net(
+    net_profit: Decimal,
+    revenue: Decimal,
+    tax_percent: Decimal,
+) -> tuple[Decimal, Decimal]:
+    """Apply corporate tax to pre-tax net; return (after_tax_net, after_tax_margin%)."""
+    factor = (Decimal("100") - tax_percent) / Decimal("100")
+    after_tax = (net_profit * factor).quantize(Decimal("0.01"))
+    margin = (
+        (after_tax / revenue * Decimal("100")).quantize(Decimal("0.01"))
+        if revenue > 0
+        else Decimal("0.00")
+    )
+    return after_tax, margin
+
+
 def _normalize_monthly_fee(amount: Decimal, period: TeamBillingPeriod) -> Decimal:
     if period == TeamBillingPeriod.monthly:
         return amount
@@ -573,6 +600,7 @@ def _team_rollups(
     today: date,
     quote_revenue: Decimal,
     quote_estimated_cost: Decimal,
+    tax_percent: Decimal | None = None,
 ) -> dict:
     from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
 
@@ -633,6 +661,8 @@ def _team_rollups(
         if revenue > 0
         else Decimal("0.00")
     )
+    tax = tax_percent if tax_percent is not None else _corporate_tax_percent(db)
+    after_tax_net, after_tax_margin = _after_tax_net(net_profit, revenue, tax)
     return {
         "team_id": str(team.id),
         "team_name": team.name,
@@ -651,6 +681,8 @@ def _team_rollups(
         "net_profit_inr": net_profit.quantize(Decimal("0.01")),
         "gross_margin_percent": gross_margin,
         "net_margin_percent": net_margin,
+        "after_tax_net_profit_inr": after_tax_net,
+        "after_tax_net_margin_percent": after_tax_margin,
         "quarterly_revenue_signal_inr": period_quarter_revenue,
         "half_year_revenue_signal_inr": period_half_revenue,
         "year_revenue_signal_inr": period_year_revenue,
@@ -804,6 +836,8 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     net_profit = display_revenue - estimated_cost - operating_cost
     net_base = display_revenue
     net_margin = (net_profit / net_base * 100) if net_base else Decimal("0.00")
+    tax_percent = _corporate_tax_percent(db)
+    after_tax_net, after_tax_margin = _after_tax_net(net_profit, display_revenue, tax_percent)
 
     from app.services.finance.renewal_budget_service import renewals_by_quarter_inr
 
@@ -889,6 +923,7 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
                     today=today,
                     quote_revenue=team_quote,
                     quote_estimated_cost=team_est,
+                    tax_percent=tax_percent,
                 )
             )
 
@@ -952,6 +987,9 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
             "gross_profit": gross_profit,
             "gross_margin": gross_margin.quantize(Decimal("0.01")),
             "net_margin": net_margin.quantize(Decimal("0.01")),
+            "corporate_tax_percent": tax_percent,
+            "after_tax_net_profit": after_tax_net,
+            "after_tax_net_margin_percent": after_tax_margin,
             "recovery_percent": recovery.quantize(Decimal("0.01")),
             "profit_forecast": net_profit,
             "project_margin": gross_margin.quantize(Decimal("0.01")),

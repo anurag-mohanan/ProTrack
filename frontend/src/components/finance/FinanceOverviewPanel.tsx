@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Box, Chip, Grid, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Chip,
+  Grid,
+  Stack,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
@@ -191,15 +201,36 @@ function companyPeriodTotals(data: FinanceDashboard, period: FinancePeriod) {
 }
 
 export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const q = teamQueryParam(teamId);
   const [breakdownMetric, setBreakdownMetric] = useState<KpiBreakdownMetric | null>(null);
   const [period, setPeriod] = useState<FinancePeriod>('month');
+  const [taxDraft, setTaxDraft] = useState('30');
 
   const dashboardQuery = useQuery({
     queryKey: ['finance-dashboard', teamId || 'all'],
     queryFn: async () => (await apiClient.get<FinanceDashboard>(`/finance/dashboard${q}`)).data,
+  });
+
+  const taxPercent = toFiniteNumber(dashboardQuery.data?.profitability?.corporate_tax_percent) || 30;
+
+  useEffect(() => {
+    if (dashboardQuery.data?.profitability?.corporate_tax_percent != null) {
+      setTaxDraft(String(toFiniteNumber(dashboardQuery.data.profitability.corporate_tax_percent)));
+    }
+  }, [dashboardQuery.data?.profitability?.corporate_tax_percent]);
+
+  const taxMutation = useMutation({
+    mutationFn: async (corporate_tax_percent: number) =>
+      (await apiClient.patch('/finance/settings', { corporate_tax_percent })).data,
+    onSuccess: () => {
+      showSuccess('Corporate tax rate saved');
+      void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+    },
+    onError: () => {
+      showError('Could not save corporate tax rate');
+    },
   });
 
   const notifyMutation = useMutation({
@@ -238,6 +269,9 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
   );
   const grossProfit = toFiniteNumber(data.profitability.gross_profit);
   const netMargin = toFiniteNumber(data.profitability.net_margin);
+  const preTaxNet = toFiniteNumber(data.profitability.profit_forecast);
+  const afterTaxNet = toFiniteNumber(data.profitability.after_tax_net_profit);
+  const afterTaxMargin = toFiniteNumber(data.profitability.after_tax_net_margin_percent);
   const cpr = toFiniteNumber(
     data.overhead?.overhead_cost_per_resource_inr ?? data.cost.overhead_cost_per_resource_inr,
   );
@@ -333,13 +367,13 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
           <KpiMetricCard
             title="Gross profit signal"
             value={financeMoney(grossProfit, currency)}
-            subtitle={`Net margin ${netMargin.toFixed(1)}%`}
+            subtitle={`Pre-tax net ${financeMoney(preTaxNet, currency)} (${netMargin.toFixed(1)}%) · After-tax ${financeMoney(afterTaxNet, currency)} (${afterTaxMargin.toFixed(1)}% @ ${taxPercent}%)`}
             icon={ShowChartOutlinedIcon}
             accent={netMargin >= 0 ? 'success' : 'error'}
             compact
             trend={{
-              value: `${netMargin.toFixed(1)}%`,
-              direction: netMargin > 0 ? 'up' : netMargin < 0 ? 'down' : 'flat',
+              value: `${afterTaxMargin.toFixed(1)}%`,
+              direction: afterTaxMargin > 0 ? 'up' : afterTaxMargin < 0 ? 'down' : 'flat',
             }}
           />
         </Grid>
@@ -375,7 +409,32 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 640 }}>
           {periodHint}
         </Typography>
-        {periodToggle}
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <TextField
+            size="small"
+            label="Corporate tax %"
+            value={taxDraft}
+            onChange={(event) => setTaxDraft(event.target.value)}
+            sx={{ width: 130 }}
+            inputProps={{ inputMode: 'decimal' }}
+          />
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={taxMutation.isPending}
+            onClick={() => {
+              const next = Number(String(taxDraft).replace(/,/g, ''));
+              if (!Number.isFinite(next) || next < 0 || next > 100) {
+                showError('Corporate tax must be between 0 and 100');
+                return;
+              }
+              taxMutation.mutate(next);
+            }}
+          >
+            Save tax
+          </Button>
+          {periodToggle}
+        </Stack>
       </Stack>
 
       <Grid container spacing={2}>
@@ -455,9 +514,14 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
       {!teamId && (data.by_team ?? []).length > 0 ? (
         <FinanceSection
           title="Team P&L performance"
-          subtitle={`${periodShort} planning signals — revenue vs fully loaded cost (salary + software OpEx + hardware CapEx). Sort by net margin to compare profitability.`}
+          subtitle={`${periodShort} planning signals — revenue vs fully loaded cost (salary + software OpEx + hardware CapEx). After-tax uses ${taxPercent}% corporate tax.`}
         >
-          <FinanceTeamPnlTable rows={data.by_team ?? []} currency={currency} period={period} />
+          <FinanceTeamPnlTable
+            rows={data.by_team ?? []}
+            currency={currency}
+            period={period}
+            corporateTaxPercent={taxPercent}
+          />
         </FinanceSection>
       ) : null}
 

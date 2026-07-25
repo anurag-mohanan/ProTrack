@@ -127,6 +127,9 @@ from app.db.phase55_exit_process_schema_sync import (
 from app.db.phase62_employee_training_schema_sync import (
     ensure_phase62_employee_training_foundation,
 )
+from app.db.phase63_corporate_tax_schema_sync import (
+    ensure_phase63_corporate_tax_foundation,
+)
 from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_user_auth_schema, ensure_user_access_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_timesheet_entry_leave_count, ensure_timesheet_entry_soft_delete, ensure_team_schema, ensure_user_team_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -447,6 +450,7 @@ def test_engine():
     ensure_phase48_compensation_change_foundation(engine)
     ensure_phase49_role_hierarchy_columns(engine)
     ensure_phase50_security_foundation(engine)
+    ensure_phase63_corporate_tax_foundation(engine)
     ensure_project_complexity(engine)
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
@@ -503,6 +507,7 @@ def seeded_db(test_session_factory, test_engine):
     ensure_phase54_onboarding_foundation(test_engine)
     ensure_phase55_exit_process_foundation(test_engine)
     ensure_phase62_employee_training_foundation(test_engine)
+    ensure_phase63_corporate_tax_foundation(test_engine)
     ensure_project_complexity(test_engine)
     ensure_standard_task_types(test_engine)
     return milestone

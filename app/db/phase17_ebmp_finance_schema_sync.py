@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -139,6 +141,7 @@ def _seed_finance(session: Session) -> None:
             CompanyFinanceSettings(
                 base_currency="INR",
                 display_name="Company Default",
+                corporate_tax_percent=Decimal("30"),
                 is_active=True,
             )
         )

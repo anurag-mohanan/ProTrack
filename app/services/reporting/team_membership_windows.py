@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from uuid import UUID
 
@@ -9,7 +10,64 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
 
-from app.models.models import TeamMember, TeamMembershipPeriod, Timesheet, TimesheetEntry, User
+from app.models.models import (
+    TeamMember,
+    TeamMembershipPeriod,
+    Timesheet,
+    TimesheetEntry,
+    User,
+    UserJobEvent,
+)
+
+_TRANSFER_EVENT = "transfer"
+
+
+def _member_start_floor(member: TeamMember) -> date | None:
+    """Earliest day this live membership row should count for the current stint."""
+    if member.effective_from is not None:
+        return member.effective_from
+    joined = getattr(member, "joined_at", None)
+    if joined is not None:
+        return joined.date() if hasattr(joined, "date") else joined
+    return None
+
+
+def _transfer_start_floors(
+    db: Session,
+    team_ids: frozenset[UUID] | set[UUID],
+    *,
+    range_end: date,
+) -> dict[tuple[UUID, UUID], date]:
+    """Latest recorded transfer onto each (user, team), used to correct stale periods."""
+    team_set = set(team_ids)
+    if not team_set:
+        return {}
+    floors: dict[tuple[UUID, UUID], date] = {}
+    events = db.scalars(
+        select(UserJobEvent).where(
+            UserJobEvent.event_type == _TRANSFER_EVENT,
+            UserJobEvent.effective_date <= range_end,
+        )
+    ).all()
+    for event in events:
+        try:
+            payload = json.loads(event.to_value or "{}")
+        except json.JSONDecodeError:
+            continue
+        raw_team = payload.get("team_id")
+        if raw_team is None:
+            continue
+        try:
+            team_id = UUID(str(raw_team))
+        except (TypeError, ValueError):
+            continue
+        if team_id not in team_set:
+            continue
+        key = (event.user_id, team_id)
+        prev = floors.get(key)
+        if prev is None or event.effective_date > prev:
+            floors[key] = event.effective_date
+    return floors
 
 
 def membership_windows_for_teams(
@@ -24,12 +82,32 @@ def membership_windows_for_teams(
     when the person was on one of the given teams.
 
     Future-dated transfers (effective_from after range_end) produce no window.
+
+    Open / current stints are floored to ``TeamMember.effective_from`` (then
+    ``joined_at``, then the latest transfer job event onto that team) so a
+    mid-month move never attributes earlier hours to the destination team —
+    even when a backfilled period still starts at hire date.
     """
     if not team_ids or range_start > range_end:
         return {}
 
     team_tuple = tuple(team_ids)
     windows: dict[UUID, list[tuple[date, date]]] = {}
+
+    members = list(
+        db.scalars(select(TeamMember).where(TeamMember.team_id.in_(team_tuple))).all()
+    )
+    member_floors: dict[tuple[UUID, UUID], date] = {}
+    for member in members:
+        floor = _member_start_floor(member)
+        if floor is not None:
+            member_floors[(member.user_id, member.team_id)] = floor
+
+    transfer_floors = _transfer_start_floors(db, team_ids, range_end=range_end)
+    for key, transfer_on in transfer_floors.items():
+        prev = member_floors.get(key)
+        if prev is None or transfer_on > prev:
+            member_floors[key] = transfer_on
 
     periods = db.scalars(
         select(TeamMembershipPeriod).where(
@@ -43,9 +121,16 @@ def membership_windows_for_teams(
         p_end = period.effective_to or range_end
         if p_end < range_start:
             continue
-        if period.effective_from > range_end:
+        period_start = period.effective_from
+        # Current (open) stints must not start before the live membership /
+        # transfer date — fixes hire-date backfills after a mid-month move.
+        if period.effective_to is None:
+            floor = member_floors.get((period.user_id, period.team_id))
+            if floor is not None and floor > period_start:
+                period_start = floor
+        if period_start > range_end:
             continue
-        start = max(period.effective_from, range_start)
+        start = max(period_start, range_start)
         end = min(p_end, range_end)
         if start > end:
             continue
@@ -53,13 +138,10 @@ def membership_windows_for_teams(
         windows.setdefault(period.user_id, []).append((start, end))
 
     # Fallback: live TeamMember rows without a covering period (legacy / backfill gaps).
-    members = db.scalars(
-        select(TeamMember).where(TeamMember.team_id.in_(team_tuple))
-    ).all()
     for member in members:
         if (member.user_id, member.team_id) in users_with_period_on_team:
             continue
-        start_raw = member.effective_from
+        start_raw = member_floors.get((member.user_id, member.team_id))
         if start_raw is not None and start_raw > range_end:
             # Future transfer onto this team — not yet in roster.
             continue

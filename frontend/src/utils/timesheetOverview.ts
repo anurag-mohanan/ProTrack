@@ -36,7 +36,12 @@ export function entryDateInWindows(
   windows: MembershipDateWindow[] | undefined,
 ): boolean {
   if (!windows?.length) return false;
-  return windows.some((window) => entryDate >= window.start && entryDate <= window.end);
+  const day = entryDate.slice(0, 10);
+  return windows.some((window) => {
+    const start = window.start.slice(0, 10);
+    const end = window.end.slice(0, 10);
+    return day >= start && day <= end;
+  });
 }
 
 export function filterEntriesForUsers(
@@ -50,14 +55,18 @@ export function filterEntriesForTeamMembership(
   entries: TimesheetEntry[],
   userIds: Set<string>,
   membershipWindows: Record<string, MembershipDateWindow[]> | undefined,
+  options?: { requireMembershipDates?: boolean },
 ): TimesheetEntry[] {
-  // Unassigned / legacy teams without windows: keep user-id filter only.
-  if (!membershipWindows || Object.keys(membershipWindows).length === 0) {
-    return filterEntriesForUsers(entries, userIds);
+  const requireMembershipDates = Boolean(options?.requireMembershipDates);
+  // Unassigned sections have no windows and intentionally include all user entries.
+  if (!requireMembershipDates) {
+    if (!membershipWindows || Object.keys(membershipWindows).length === 0) {
+      return filterEntriesForUsers(entries, userIds);
+    }
   }
   return entries.filter((entry) => {
     if (entry.user_id == null || !userIds.has(entry.user_id)) return false;
-    return entryDateInWindows(entry.entry_date, membershipWindows[entry.user_id]);
+    return entryDateInWindows(entry.entry_date, membershipWindows?.[entry.user_id]);
   });
 }
 
@@ -78,10 +87,12 @@ export function buildTeamTimesheetSections(
         .filter((user): user is TimesheetOverviewUser => user != null)
         .filter((user) => user.requires_timesheet !== false);
       const userIdSet = new Set(teamUsers.map((user) => user.id));
+      // Named teams must clip to membership start — never fall back to full history.
       const teamEntries = filterEntriesForTeamMembership(
         entries,
         userIdSet,
         team.membership_windows,
+        { requireMembershipDates: team.team_id != null },
       );
       const entriesByUserId = new Map<string, TimesheetEntry[]>();
       for (const entry of teamEntries) {

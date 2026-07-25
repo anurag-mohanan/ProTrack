@@ -9,7 +9,16 @@ from sqlalchemy import select
 from app.core.security import hash_password
 from app.db.phase36_team_membership_periods_schema_sync import backfill_membership_periods
 from app.models.enums import TimesheetStatus, WorkCategory
-from app.models.models import Role, Team, TeamMember, Timesheet, TimesheetEntry, User
+from app.models.models import (
+    Role,
+    Team,
+    TeamMember,
+    TeamMembershipPeriod,
+    Timesheet,
+    TimesheetEntry,
+    User,
+)
+from app.services.reporting.team_membership_windows import membership_windows_for_teams
 from app.services.timesheet_overview_service import (
     build_timesheet_overview,
     get_timesheet_leader_team_ids,
@@ -195,3 +204,50 @@ def test_overview_team_membership_windows_start_from_transfer(session, client):
     body = api.json()
     api_target = next(team for team in body["teams"] if team["team_id"] == str(target.id))
     assert api_target["membership_windows"][str(designer.id)][0]["start"] == transfer_on.isoformat()
+
+
+def test_open_period_floored_to_member_effective_from(session):
+    """Hire-date backfill must not leak pre-transfer hours onto the new team."""
+    target = Team(id=uuid.uuid4(), name="Floor Target Team", is_active=True)
+    session.add(target)
+    session.flush()
+
+    designer = session.get(User, IDS["user_binil"])
+    assert designer is not None
+    designer.team_id = target.id
+    designer.requires_timesheet = True
+    transfer_on = date(2026, 7, 23)
+    session.add(
+        TeamMember(
+            team_id=target.id,
+            user_id=designer.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=transfer_on,
+        )
+    )
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=target.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2020, 4, 1),  # stale hire-date backfill
+            effective_to=None,
+        )
+    )
+    session.commit()
+
+    windows = membership_windows_for_teams(
+        session,
+        frozenset({target.id}),
+        range_start=date(2026, 7, 1),
+        range_end=date(2026, 7, 31),
+    )
+    assert windows[designer.id][0][0] == transfer_on
+
+    admin = session.get(User, IDS["user_admin"])
+    assert admin is not None
+    overview = build_timesheet_overview(session, admin, month="2026-07")
+    section = next(team for team in overview["teams"] if team["team_id"] == target.id)
+    assert section["membership_windows"][str(designer.id)][0]["start"] == transfer_on

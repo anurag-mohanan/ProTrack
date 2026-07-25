@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -189,6 +189,14 @@ def transfer_primary_membership(
         team_id=source_team_id,
         effective_to=last_on_source,
     )
+    # Stale open periods on the destination (e.g. hire-date backfills) would
+    # otherwise merge with the new stint and attribute pre-transfer hours.
+    _close_open_primary_periods(
+        db,
+        user_id=user.id,
+        team_id=target_team_id,
+        effective_to=last_on_source,
+    )
 
     target_member = db.scalar(
         select(TeamMember).where(
@@ -212,6 +220,7 @@ def transfer_primary_membership(
     else:
         target_member.is_billable_headcount = billable
         target_member.effective_from = effective_from
+        target_member.joined_at = datetime.utcnow()
 
     db.add(
         TeamMembershipPeriod(

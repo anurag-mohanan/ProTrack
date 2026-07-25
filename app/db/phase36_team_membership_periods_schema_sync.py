@@ -73,6 +73,34 @@ def backfill_membership_periods(session: Session) -> None:
         if member.effective_from is None:
             member.effective_from = start
 
+    # Align open periods that still start at hire date after a dated move.
+    reconcile_open_periods_to_member_effective_from(session)
+
+
+def reconcile_open_periods_to_member_effective_from(session: Session) -> int:
+    """Raise open period starts to match TeamMember.effective_from when later.
+
+    Returns the number of periods adjusted.
+    """
+    adjusted = 0
+    members = session.scalars(
+        select(TeamMember).where(TeamMember.effective_from.is_not(None))
+    ).all()
+    for member in members:
+        assert member.effective_from is not None
+        open_periods = session.scalars(
+            select(TeamMembershipPeriod).where(
+                TeamMembershipPeriod.user_id == member.user_id,
+                TeamMembershipPeriod.team_id == member.team_id,
+                TeamMembershipPeriod.effective_to.is_(None),
+            )
+        ).all()
+        for period in open_periods:
+            if period.effective_from < member.effective_from:
+                period.effective_from = member.effective_from
+                adjusted += 1
+    return adjusted
+
 
 def ensure_phase36_team_membership_periods_foundation(engine: Engine) -> None:
     dialect = engine.dialect.name

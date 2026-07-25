@@ -416,7 +416,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
             value={taxDraft}
             onChange={(event) => setTaxDraft(event.target.value)}
             sx={{ width: 130 }}
-            inputProps={{ inputMode: 'decimal' }}
+            slotProps={{ htmlInput: { inputMode: 'decimal' } }}
           />
           <Button
             size="small"

@@ -114,7 +114,7 @@ export function TimesheetEntryForm({
   dailyTotals,
   dailyLimit,
   saving,
-  currentUserId,
+  currentUserId: _currentUserId,
   onProjectSearch,
   onSubmit,
   onCancelEdit,
@@ -413,8 +413,10 @@ export function TimesheetEntryForm({
             helperText={
               isReworkEntry ? 'Logged as unbilled rework for design efficiency' : undefined
             }
-            FormHelperTextProps={{ sx: { mx: 0, mt: 0.25, fontSize: '0.65rem' } }}
-            slotProps={{ inputLabel: { shrink: true } }}
+            slotProps={{
+              inputLabel: { shrink: true },
+              formHelperText: { sx: { mx: 0, mt: 0.25, fontSize: '0.65rem' } },
+            }}
             sx={{ width: 220, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           >
             <MenuItem value="">None (billable)</MenuItem>

@@ -76,7 +76,7 @@ export function ProjectListSection({
   if (!collapsible) {
     return (
       <Box sx={{ mb: 1 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, fontSize: '0.8rem' }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.4, fontSize: '0.78rem' }}>
           {sectionTitle}
         </Typography>
         {projects.length ? (

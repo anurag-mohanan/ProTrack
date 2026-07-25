@@ -9,11 +9,17 @@ import {
   Typography,
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import type { Customer, Project, Stream, Team, User } from '../../../types';
 import { designTokens } from '../../../theme/designTokens';
 import { formatDate, formatDisplayValue, formatNumber } from '../../../utils/format';
 import { buildProjectTableRows, type ProjectTableRow } from '../ProjectTable';
+
+/** Desktop board columns — fixed tracks so nothing leaves a dead middle gap. */
+const BOARD_COLUMNS = {
+  xs: '52px minmax(0, 1fr) 28px',
+  md: '56px minmax(140px, 1.6fr) minmax(100px, 0.9fr) 132px 96px 72px 28px',
+} as const;
 
 function healthTone(health?: string | null) {
   if (health === 'red') return designTokens.health.red;
@@ -35,7 +41,49 @@ function cleanName(value?: string | null) {
   return trimmed && trimmed !== '—' ? trimmed : '';
 }
 
-function HoursMetrics({ row }: { row: ProjectTableRow }) {
+function BoardHeader() {
+  const cell = (label: string, sx?: object) => (
+    <Typography
+      sx={{
+        fontSize: '0.62rem',
+        fontWeight: 800,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        color: 'text.secondary',
+        lineHeight: 1.2,
+        ...sx,
+      }}
+    >
+      {label}
+    </Typography>
+  );
+
+  return (
+    <Box
+      sx={{
+        display: { xs: 'none', md: 'grid' },
+        gridTemplateColumns: BOARD_COLUMNS.md,
+        columnGap: 1,
+        alignItems: 'center',
+        px: 1,
+        py: 0.5,
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'action.hover',
+      }}
+    >
+      {cell('Tool')}
+      {cell('Milestone / Customer')}
+      {cell('People')}
+      {cell('Hours')}
+      {cell('Progress')}
+      {cell('Due', { textAlign: 'right' })}
+      <span />
+    </Box>
+  );
+}
+
+function hoursVariance(row: ProjectTableRow) {
   const quoted = Number(row.quoted_hours ?? 0);
   const actual = Number(row.actual_hours ?? 0);
   const variancePct = quoted > 0 ? ((actual - quoted) / quoted) * 100 : null;
@@ -49,31 +97,88 @@ function HoursMetrics({ row }: { row: ProjectTableRow }) {
   const varianceLabel =
     typeof variancePct === 'number'
       ? `${variancePct > 0 ? '+' : ''}${Math.round(variancePct)}%`
-      : 'n/a';
+      : '—';
+  return { quoted, actual, varianceColor, varianceLabel };
+}
+
+function HoursCell({ row }: { row: ProjectTableRow }) {
+  const { quoted, actual, varianceColor, varianceLabel } = hoursVariance(row);
 
   return (
-    <Typography
-      component="span"
-      variant="caption"
-      sx={{
-        fontWeight: 700,
-        fontVariantNumeric: 'tabular-nums',
-        lineHeight: 1.2,
-        whiteSpace: 'nowrap',
-        color: 'text.secondary',
-      }}
-    >
-      Q {formatNumber(quoted, 0)}h · A {formatNumber(actual, 0)}h ·{' '}
-      <Box component="span" sx={{ color: varianceColor, fontWeight: 800 }}>
+    <Box sx={{ minWidth: 0 }}>
+      <Typography
+        variant="caption"
+        sx={{
+          display: 'block',
+          fontWeight: 700,
+          fontVariantNumeric: 'tabular-nums',
+          lineHeight: 1.2,
+          color: 'text.secondary',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Q {formatNumber(quoted, 0)} · A {formatNumber(actual, 0)}
+      </Typography>
+      <Typography
+        variant="caption"
+        sx={{
+          fontWeight: 800,
+          fontVariantNumeric: 'tabular-nums',
+          lineHeight: 1.2,
+          color: varianceColor,
+        }}
+      >
         {varianceLabel}
-      </Box>
-    </Typography>
+      </Typography>
+    </Box>
+  );
+}
+
+function ProgressCell({
+  percent,
+  health,
+}: {
+  percent: number;
+  health: { main: string; soft: string };
+}) {
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.2, gap: 0.5 }}>
+        <Typography
+          variant="caption"
+          sx={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontSize: '0.68rem', lineHeight: 1.1 }}
+        >
+          {Math.round(percent)}%
+        </Typography>
+      </Stack>
+      <LinearProgress
+        variant="determinate"
+        value={percent}
+        sx={{
+          height: 6,
+          borderRadius: 999,
+          bgcolor: health.soft,
+          '& .MuiLinearProgress-bar': { bgcolor: health.main, borderRadius: 999 },
+        }}
+      />
+    </Box>
   );
 }
 
 function SubLabel({ label, count }: { label: string; count: number }) {
   return (
-    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', pt: 0.25, pb: 0 }}>
+    <Stack
+      direction="row"
+      spacing={0.5}
+      sx={{
+        alignItems: 'center',
+        px: 1,
+        py: 0.4,
+        bgcolor: 'action.hover',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+      }}
+    >
       <Typography
         sx={{
           fontSize: '0.65rem',
@@ -117,6 +222,7 @@ function ProjectBoardRow({
   const designer = cleanName(row.designerName);
   const surfacer = cleanName(row.surfacerName);
   const people = [designer, surfacer].filter(Boolean);
+  const peopleLabel = people.length ? people.join(' · ') : 'Unassigned';
 
   const openMenu = (event: MouseEvent<HTMLElement>) => {
     event.stopPropagation();
@@ -129,87 +235,84 @@ function ProjectBoardRow({
       sx={{
         px: 1,
         py: 0.55,
-        borderRadius: 1.25,
-        bgcolor: 'background.paper',
-        border: '1px solid',
+        display: 'grid',
+        gridTemplateColumns: BOARD_COLUMNS,
+        columnGap: 1,
+        alignItems: 'center',
+        borderBottom: '1px solid',
         borderColor: 'divider',
         borderLeft: `3px solid ${health.main}`,
-        display: 'grid',
-        gridTemplateColumns: {
-          xs: '56px minmax(0, 1fr) auto',
-          md: '64px minmax(0, 1fr) 118px 78px 28px',
-        },
-        columnGap: { xs: 0.75, md: 1 },
-        rowGap: 0.25,
-        alignItems: 'center',
         cursor: onRowOpen ? 'pointer' : 'default',
-        opacity: muted ? 0.82 : 1,
+        opacity: muted ? 0.78 : 1,
+        bgcolor: 'background.paper',
+        '&:last-of-type': { borderBottom: 'none' },
         '&:hover': { bgcolor: 'action.hover' },
       }}
     >
-      <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', lineHeight: 1.2 }} noWrap>
+      <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', lineHeight: 1.2 }} noWrap>
         {row.tool_number}
       </Typography>
 
       <Box sx={{ minWidth: 0 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: '0.8rem', lineHeight: 1.25 }} noWrap>
+        <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', lineHeight: 1.25 }} noWrap>
           {formatDisplayValue(stage)}
-          {row.customerName ? (
-            <Box component="span" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-              {' · '}
-              {row.customerName}
-            </Box>
-          ) : null}
         </Typography>
-
-        <Stack
-          direction="row"
-          spacing={0.75}
-          useFlexGap
-          sx={{ flexWrap: 'wrap', alignItems: 'center', mt: 0.15, columnGap: 0.75, rowGap: 0 }}
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: 'block', fontWeight: 600, lineHeight: 1.2, fontSize: '0.7rem' }}
+          noWrap
         >
+          {row.customerName || '—'}
+        </Typography>
+        <Box sx={{ display: { xs: 'block', md: 'none' }, mt: 0.15 }}>
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ fontWeight: 600, lineHeight: 1.2 }}
+            sx={{ fontWeight: 600, lineHeight: 1.25, display: 'block' }}
             noWrap
-            title={people.join(' · ') || undefined}
           >
-            {people.length ? people.join(' · ') : 'Unassigned'}
+            {peopleLabel}
           </Typography>
-          <Box component="span" sx={{ color: 'text.disabled', fontSize: '0.7rem', lineHeight: 1 }}>
-            ·
-          </Box>
-          <HoursMetrics row={row} />
-        </Stack>
+          {(() => {
+            const { quoted, actual, varianceColor, varianceLabel } = hoursVariance(row);
+            return (
+              <Typography
+                variant="caption"
+                sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}
+                noWrap
+              >
+                Q {formatNumber(quoted, 0)} · A {formatNumber(actual, 0)} ·{' '}
+                <Box component="span" sx={{ color: varianceColor, fontWeight: 800 }}>
+                  {varianceLabel}
+                </Box>
+              </Typography>
+            );
+          })()}
+        </Box>
       </Box>
 
-      <Box sx={{ display: { xs: 'none', md: 'block' }, minWidth: 0 }}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.2, gap: 0.5 }}>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ fontWeight: 700, fontSize: '0.65rem', lineHeight: 1.2 }}
-          >
-            Progress
-          </Typography>
-          <Typography
-            variant="caption"
-            sx={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontSize: '0.65rem', lineHeight: 1.2 }}
-          >
-            {Math.round(percent)}%
-          </Typography>
-        </Stack>
-        <LinearProgress
-          variant="determinate"
-          value={percent}
-          sx={{
-            height: 5,
-            borderRadius: 999,
-            bgcolor: health.soft,
-            '& .MuiLinearProgress-bar': { bgcolor: health.main, borderRadius: 999 },
-          }}
-        />
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{
+          display: { xs: 'none', md: 'block' },
+          fontWeight: 600,
+          lineHeight: 1.25,
+          fontSize: '0.72rem',
+        }}
+        noWrap
+        title={peopleLabel}
+      >
+        {peopleLabel}
+      </Typography>
+
+      <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+        <HoursCell row={row} />
+      </Box>
+
+      <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+        <ProgressCell percent={percent} health={health} />
       </Box>
 
       <Typography
@@ -232,7 +335,7 @@ function ProjectBoardRow({
         size="small"
         aria-label="Project actions"
         onClick={openMenu}
-        sx={{ justifySelf: 'end', p: 0.35 }}
+        sx={{ justifySelf: 'end', p: 0.25 }}
       >
         <MoreVertIcon fontSize="small" />
       </IconButton>
@@ -304,6 +407,22 @@ function ProjectBoardRow({
   );
 }
 
+function BoardShell({ children }: { children: ReactNode }) {
+  return (
+    <Box
+      sx={{
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 1.5,
+        overflow: 'hidden',
+        bgcolor: 'background.paper',
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
 type ProjectBoardListProps = {
   projects: Project[];
   customers: Customer[];
@@ -351,43 +470,36 @@ export function ProjectBoardList({
     );
   }
 
+  const renderRows = (list: ProjectTableRow[]) =>
+    list.map((row) => (
+      <ProjectBoardRow
+        key={row.id}
+        row={row}
+        onRowOpen={onRowOpen}
+        onEdit={onEdit}
+        onArchive={onArchive}
+        onDuplicate={onDuplicate}
+        onExport={onExport}
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+    ));
+
   return (
-    <Stack spacing={0.4}>
+    <Stack spacing={1}>
       {working.length ? (
-        <>
+        <BoardShell>
           {splitActiveHold ? <SubLabel label="Active" count={working.length} /> : null}
-          {working.map((row) => (
-            <ProjectBoardRow
-              key={row.id}
-              row={row}
-              onRowOpen={onRowOpen}
-              onEdit={onEdit}
-              onArchive={onArchive}
-              onDuplicate={onDuplicate}
-              onExport={onExport}
-              onDelete={onDelete}
-              canDelete={canDelete}
-            />
-          ))}
-        </>
+          <BoardHeader />
+          {renderRows(working)}
+        </BoardShell>
       ) : null}
       {onHold.length ? (
-        <>
+        <BoardShell>
           <SubLabel label="On hold" count={onHold.length} />
-          {onHold.map((row) => (
-            <ProjectBoardRow
-              key={row.id}
-              row={row}
-              onRowOpen={onRowOpen}
-              onEdit={onEdit}
-              onArchive={onArchive}
-              onDuplicate={onDuplicate}
-              onExport={onExport}
-              onDelete={onDelete}
-              canDelete={canDelete}
-            />
-          ))}
-        </>
+          <BoardHeader />
+          {renderRows(onHold)}
+        </BoardShell>
       ) : null}
     </Stack>
   );

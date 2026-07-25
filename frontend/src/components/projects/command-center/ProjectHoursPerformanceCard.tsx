@@ -42,17 +42,18 @@ export function ProjectHoursPerformanceCard({
     <Card
       elevation={0}
       sx={{
-        minHeight: 58,
-        maxWidth: 220,
-        borderRadius: `${designTokens.radius.lg}px`,
-        boxShadow: designTokens.elevation.card,
+        minHeight: 48,
+        height: '100%',
+        maxWidth: 'none',
+        borderRadius: 1.25,
+        boxShadow: 'none',
         border: '1px solid',
         borderColor: 'divider',
         bgcolor: designTokens.semantic.card,
       }}
     >
-      <CardContent sx={{ p: '8px 10px !important', height: '100%' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+      <CardContent sx={{ p: '6px 10px !important', height: '100%' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.35 }}>
           <Box
             sx={{
               width: 18,

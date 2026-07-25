@@ -780,9 +780,10 @@ def _overhead_metrics(
 ) -> dict:
     """Corporate / Management overhead pool ÷ delivery billable FTE (CPR).
 
+    Pool = HQ salaries + Prosohm OpEx + Prosohm CapEx on the overhead home.
     CPR is allocated into each delivery team's Team P&L Op Cost (× billable FTE).
-    Company-wide operating cost already includes HQ salary/OpEx directly — do not
-    add CPR again at company level.
+    Company-wide operating cost already includes HQ costs directly — do not add
+    CPR again at company level.
     """
     from app.db.phase23_finance_team_scope_schema_sync import (
         ensure_corporate_shared_services_team,
@@ -801,7 +802,15 @@ def _overhead_metrics(
         fy_start=fy_start,
         as_of=as_of,
     ).quantize(Decimal("0.01"))
-    pool = (overhead_salary + overhead_opex).quantize(Decimal("0.01"))
+    overhead_capex = _expense_sum(
+        db,
+        team_id=home.id,
+        paid_by=ExpensePaidBy.prosohm,
+        nature=CostNature.capex,
+        fy_start=fy_start,
+        as_of=as_of,
+    ).quantize(Decimal("0.01"))
+    pool = (overhead_salary + overhead_opex + overhead_capex).quantize(Decimal("0.01"))
     n = company_delivery_billable_salary_headcount(db, as_of=as_of)
     cpr = (pool / Decimal(n)).quantize(Decimal("0.01")) if n else Decimal("0.00")
 
@@ -823,6 +832,7 @@ def _overhead_metrics(
         "overhead_management_salary_inr": overhead_salary,
         "overhead_corporate_salary_inr": Decimal("0.00"),
         "overhead_opex_inr": overhead_opex,
+        "overhead_capex_inr": overhead_capex,
         "overhead_pool_monthly_inr": pool,
         "billable_resource_count": n,
         "overhead_cost_per_resource_inr": cpr,

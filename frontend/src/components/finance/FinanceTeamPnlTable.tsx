@@ -277,24 +277,27 @@ export function FinanceTeamPnlTable({
                 <TableRow key={row.team_id} hover>
                   <TableCell sx={{ fontWeight: 650 }}>{row.team_name}</TableCell>
                   <TableCell align="right">{financeMoney(m.revenue, currency)}</TableCell>
-                  <TableCell
-                    align="right"
-                    title={
-                      period === 'month'
-                        ? [
-                            `Salary ${financeMoney(m.salary, currency)}`,
-                            `OpEx ${financeMoney(m.opex, currency)}`,
-                            `CapEx ${financeMoney(m.capex, currency)}`,
-                            `Allocated OH ${financeMoney(m.allocated, currency)}`,
-                          ].join(' · ')
-                        : [
-                            `Salary ${financeMoney(m.salary, currency)}`,
-                            `Other op ${financeMoney(m.opex, currency)}`,
-                            `Allocated OH ${financeMoney(m.allocated, currency)}`,
-                          ].join(' · ')
-                    }
-                  >
-                    {financeMoney(m.operating, currency)}
+                  <TableCell align="right" sx={{ verticalAlign: 'top' }}>
+                    <Typography sx={{ fontWeight: 650, lineHeight: 1.3 }}>
+                      {financeMoney(m.operating, currency)}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mt: 0.35, lineHeight: 1.35, maxWidth: 220, ml: 'auto' }}
+                    >
+                      Sal {financeMoney(m.salary, currency)}
+                      {' · '}
+                      OpEx {financeMoney(m.opex, currency)}
+                      {period === 'month' ? (
+                        <>
+                          {' · '}
+                          CapEx {financeMoney(m.capex, currency)}
+                        </>
+                      ) : null}
+                      {' · '}
+                      OH {financeMoney(m.allocated, currency)}
+                    </Typography>
                   </TableCell>
                   <TableCell align="right">{financeMoney(m.gross, currency)}</TableCell>
                   <TableCell

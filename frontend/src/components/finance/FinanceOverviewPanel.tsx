@@ -56,6 +56,10 @@ type TeamRollup = TeamPnlRow & {
   quote_revenue_inr?: number;
   estimated_cost_inr?: number;
   monthly_revenue_signal_inr?: number | string;
+  allocated_overhead_inr?: number | string;
+  quarter_allocated_overhead_inr?: number | string;
+  half_year_allocated_overhead_inr?: number | string;
+  year_allocated_overhead_inr?: number | string;
   other_operating_cost_inr?: number | string;
   half_year_revenue_signal_inr?: number | string;
   year_revenue_signal_inr?: number | string;
@@ -120,12 +124,13 @@ const PERIOD_LABELS: Record<FinancePeriod, string> = {
 function teamPeriodSeries(row: TeamRollup, period: FinancePeriod) {
   if (period === 'month') {
     const salary = toFiniteNumber(row.salary_cost_inr);
-    const other =
-      toFiniteNumber(row.other_operating_cost_inr) ||
+    const opexCapex =
       toFiniteNumber(row.prosohm_opex_inr) + toFiniteNumber(row.prosohm_capex_inr);
+    const allocated = toFiniteNumber(row.allocated_overhead_inr);
     return {
       salary,
-      other,
+      other: opexCapex,
+      allocated,
       operating: toFiniteNumber(row.monthly_operating_cost_inr),
       // Calendar-month awards + this month's retainer (not open quote pipeline).
       revenue:
@@ -136,7 +141,12 @@ function teamPeriodSeries(row: TeamRollup, period: FinancePeriod) {
   if (period === 'quarter') {
     return {
       salary: toFiniteNumber(row.quarter_salary_cost_inr ?? row.salary_cost_inr),
-      other: toFiniteNumber(row.quarter_other_operating_cost_inr),
+      other: Math.max(
+        0,
+        toFiniteNumber(row.quarter_other_operating_cost_inr) -
+          toFiniteNumber(row.quarter_allocated_overhead_inr),
+      ),
+      allocated: toFiniteNumber(row.quarter_allocated_overhead_inr),
       operating: toFiniteNumber(row.quarter_operating_cost_inr ?? row.monthly_operating_cost_inr),
       revenue: toFiniteNumber(row.quarterly_revenue_signal_inr),
     };
@@ -144,14 +154,24 @@ function teamPeriodSeries(row: TeamRollup, period: FinancePeriod) {
   if (period === 'half') {
     return {
       salary: toFiniteNumber(row.half_year_salary_cost_inr ?? row.salary_cost_inr),
-      other: toFiniteNumber(row.half_year_other_operating_cost_inr),
+      other: Math.max(
+        0,
+        toFiniteNumber(row.half_year_other_operating_cost_inr) -
+          toFiniteNumber(row.half_year_allocated_overhead_inr),
+      ),
+      allocated: toFiniteNumber(row.half_year_allocated_overhead_inr),
       operating: toFiniteNumber(row.half_year_operating_cost_inr ?? row.monthly_operating_cost_inr),
       revenue: toFiniteNumber(row.half_year_revenue_signal_inr),
     };
   }
   return {
     salary: toFiniteNumber(row.year_salary_cost_inr ?? row.salary_cost_inr),
-    other: toFiniteNumber(row.year_other_operating_cost_inr),
+    other: Math.max(
+      0,
+      toFiniteNumber(row.year_other_operating_cost_inr) -
+        toFiniteNumber(row.year_allocated_overhead_inr),
+    ),
+    allocated: toFiniteNumber(row.year_allocated_overhead_inr),
     operating: toFiniteNumber(row.year_operating_cost_inr ?? row.monthly_operating_cost_inr),
     revenue: toFiniteNumber(row.year_revenue_signal_inr),
   };
@@ -290,6 +310,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
   const teamPeriod = teamRows.map((row) => teamPeriodSeries(row, period));
   const teamSalaries = teamPeriod.map((row) => row.salary);
   const teamOtherCost = teamPeriod.map((row) => row.other);
+  const teamAllocated = teamPeriod.map((row) => row.allocated);
   const teamRevenue = teamPeriod.map((row) => row.revenue);
   const companyPeriod = companyPeriodTotals(data, period);
   const periodShort = PERIOD_LABELS[period];
@@ -456,7 +477,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
             title={`Team cost vs revenue · ${periodShort}`}
             subtitle={
               !teamId
-                ? 'Salaries stacked with OpEx/CapEx; revenue = awards in period + retainer'
+                ? 'Salaries + team OpEx/CapEx + allocated HQ overhead vs awards + retainer'
                 : 'Filtered team context'
             }
           >
@@ -475,6 +496,12 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
                     label: `OpEx + CapEx`,
                     data: teamOtherCost,
                     color: designTokens.semantic.warning,
+                    stack: 'cost',
+                  },
+                  {
+                    label: `Allocated OH`,
+                    data: teamAllocated,
+                    color: '#0ea5e9',
                     stack: 'cost',
                   },
                   {

@@ -19,6 +19,7 @@ export type KpiBreakdownMetric =
   | 'operating_cost'
   | 'overhead_salaries'
   | 'overhead_opex'
+  | 'overhead_capex'
   | 'overhead_pool'
   | 'overhead_cpr'
   | 'team_fees'

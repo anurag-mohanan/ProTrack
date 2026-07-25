@@ -149,6 +149,7 @@ type OverheadDash = {
     overhead_salary_inr?: number | string;
     overhead_management_salary_inr?: number | string;
     overhead_opex_inr?: number | string;
+    overhead_capex_inr?: number | string;
     overhead_pool_monthly_inr?: number | string;
     billable_resource_count?: number;
     overhead_cost_per_resource_inr?: number | string;
@@ -481,6 +482,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     toFiniteNumber(overhead?.overhead_management_salary_inr) ||
     toFiniteNumber(overhead?.overhead_salary_inr);
   const opexInr = toFiniteNumber(overhead?.overhead_opex_inr);
+  const capexInr = toFiniteNumber(overhead?.overhead_capex_inr);
   const poolInr = toFiniteNumber(overhead?.overhead_pool_monthly_inr);
   const cprInr = toFiniteNumber(overhead?.overhead_cost_per_resource_inr);
   const billableN = overhead?.billable_resource_count ?? 0;
@@ -493,7 +495,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
     <Stack spacing={2.5}>
       <FinanceHeroBanner
         title="Overheads cockpit"
-        subtitle="Company-wide shared costs only (rent, utilities, office, insurance). Team software, CapEx, and other delivery spend belong under Expenses & subscriptions. Click a KPI for the build-up."
+        subtitle="Company-wide shared costs (salaries, OpEx, CapEx on Corporate). Team-specific software and hardware belong under Expenses & subscriptions. Click a KPI for the build-up."
         chips={
           <>
             {dashboardQuery.data?.planning_fy_label ? (
@@ -525,7 +527,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
       />
 
       <Grid container spacing={1.5}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KpiMetricCard
             compact
             accent="info"
@@ -536,7 +538,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
             onClick={() => setBreakdownMetric('overhead_salaries')}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KpiMetricCard
             compact
             accent="warning"
@@ -547,18 +549,29 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
             onClick={() => setBreakdownMetric('overhead_opex')}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <KpiMetricCard
+            compact
+            accent="info"
+            icon={PaymentsOutlinedIcon}
+            title="Overhead CapEx"
+            value={financeMoney(capexInr, currency)}
+            subtitle="Shared hardware in CPR pool"
+            onClick={() => setBreakdownMetric('overhead_capex')}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
           <KpiMetricCard
             compact
             accent="primary"
             icon={PaymentsOutlinedIcon}
             title="Pool / month"
             value={financeMoney(poolInr, currency)}
-            subtitle="Click for pool mix"
+            subtitle="Salaries + OpEx + CapEx"
             onClick={() => setBreakdownMetric('overhead_pool')}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
           <KpiMetricCard
             compact
             accent="success"
@@ -573,8 +586,8 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 4 }}>
-          <FinanceSection title="Pool mix" subtitle="What drives the monthly overhead pool">
-            {salaryInr > 0 || opexInr > 0 ? (
+          <FinanceSection title="Pool mix" subtitle="What drives the monthly overhead pool (allocated via CPR)">
+            {salaryInr > 0 || opexInr > 0 || capexInr > 0 ? (
               <AnalyticsDonutChart
                 height={220}
                 data={[
@@ -590,7 +603,13 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                     value: opexInr,
                     color: designTokens.semantic.warning,
                   },
-                ]}
+                  {
+                    id: 'capex',
+                    label: 'HQ CapEx',
+                    value: capexInr,
+                    color: '#0ea5e9',
+                  },
+                ].filter((row) => row.value > 0)}
               />
             ) : (
               <Typography variant="body2" color="text.secondary">

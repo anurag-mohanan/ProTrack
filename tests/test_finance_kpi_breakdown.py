@@ -22,6 +22,7 @@ def test_kpi_breakdown_overhead_opex_and_pool(client, auth_headers):
     labels = {g["label"] for g in pool.json()["groups"]}
     assert "Salaries" in labels
     assert "OpEx" in labels
+    assert "CapEx" in labels
 
     cpr = client.get(
         "/api/v1/finance/kpi-breakdown?metric=overhead_cpr",

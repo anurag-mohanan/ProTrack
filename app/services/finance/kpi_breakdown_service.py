@@ -50,6 +50,7 @@ VALID_METRICS = frozenset(
         "operating_cost",
         "overhead_salaries",
         "overhead_opex",
+        "overhead_capex",
         "overhead_pool",
         "overhead_cpr",
         "team_fees",
@@ -344,6 +345,46 @@ def get_kpi_breakdown(
             "empty_hints": empty,
         }
 
+    if key == "overhead_capex":
+        from app.db.phase23_finance_team_scope_schema_sync import (
+            ensure_corporate_shared_services_team,
+        )
+
+        home = ensure_corporate_shared_services_team(db)
+        lines = _expense_lines(
+            db,
+            team_ids=[home.id],
+            paid_by=ExpensePaidBy.prosohm,
+            nature=CostNature.capex,
+            fy_start=fy_start,
+            as_of=today,
+        )
+        total = _q(overhead.get("overhead_capex_inr") or 0)
+        spent = {str(r.get("category_code") or "") for r in lines if r.get("category_code")}
+        empty = _empty_category_hints(db, spent)
+        return {
+            "metric": key,
+            "title": "Overhead CapEx (Prosohm)",
+            "subtitle": "Shared hardware / CapEx on Corporate / Management — monthly run-rate in the CPR pool.",
+            "total_inr": total,
+            "currency_code": base,
+            "formula": "FY-gated Prosohm CapEx × month factor on Corporate / Management (yearly ÷ 12)",
+            "insights": _insights_from_lines(lines, total, subject="CapEx lines")
+            + (
+                [f"{len(empty)} catalogue categories have no spend yet"]
+                if empty
+                else []
+            ),
+            "groups": [
+                {
+                    "label": "Expense lines",
+                    "total_inr": total,
+                    "lines": _annotate(lines, total),
+                }
+            ],
+            "empty_hints": empty,
+        }
+
     if key in {"overhead_pool", "overhead_cpr"}:
         from app.db.phase23_finance_team_scope_schema_sync import (
             ensure_corporate_shared_services_team,
@@ -364,20 +405,30 @@ def get_kpi_breakdown(
             fy_start=fy_start,
             as_of=today,
         )
+        capex_lines = _expense_lines(
+            db,
+            team_ids=[home.id],
+            paid_by=ExpensePaidBy.prosohm,
+            nature=CostNature.capex,
+            fy_start=fy_start,
+            as_of=today,
+        )
         pool = _q(overhead["overhead_pool_monthly_inr"])
         n = int(overhead["billable_resource_count"] or 0)
         cpr = _q(overhead["overhead_cost_per_resource_inr"])
         salary_total = _q(overhead["overhead_salary_inr"])
         opex_total = _q(overhead["overhead_opex_inr"])
+        capex_total = _q(overhead.get("overhead_capex_inr") or 0)
         title = "Overhead pool / month" if key == "overhead_pool" else "Cost per billable resource"
         formula = (
-            "Pool = overhead salaries + overhead OpEx"
+            "Pool = overhead salaries + overhead OpEx + overhead CapEx"
             if key == "overhead_pool"
             else f"CPR = pool ÷ delivery billable FTE ({n})"
         )
         insights = [
             f"Salaries {salary_total} ({_pct(salary_total, pool)}% of pool)",
             f"OpEx {opex_total} ({_pct(opex_total, pool)}% of pool)",
+            f"CapEx {capex_total} ({_pct(capex_total, pool)}% of pool)",
         ]
         if key == "overhead_cpr":
             insights.append(f"Delivery billable FTE = {n}")
@@ -385,7 +436,7 @@ def get_kpi_breakdown(
         return {
             "metric": key,
             "title": title,
-            "subtitle": "Composition of the overhead burden rate used in P&L analytics.",
+            "subtitle": "Composition of the overhead burden rate allocated into Team P&L Op Cost.",
             "total_inr": cpr if key == "overhead_cpr" else pool,
             "currency_code": base,
             "formula": formula,
@@ -400,6 +451,11 @@ def get_kpi_breakdown(
                     "label": "OpEx",
                     "total_inr": opex_total,
                     "lines": _annotate(opex_lines[:25], opex_total or Decimal("1")),
+                },
+                {
+                    "label": "CapEx",
+                    "total_inr": capex_total,
+                    "lines": _annotate(capex_lines[:25], capex_total or Decimal("1")),
                 },
             ],
             "empty_hints": [],

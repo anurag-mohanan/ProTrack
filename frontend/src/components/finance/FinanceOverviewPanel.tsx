@@ -370,8 +370,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={1.5}
-        alignItems={{ xs: 'stretch', sm: 'center' }}
-        justifyContent="space-between"
+        sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between' }}
       >
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 640 }}>
           {periodHint}

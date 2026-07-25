@@ -33,7 +33,7 @@ export function ProjectQuickFilterStrip({
   ];
 
   return (
-    <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.75, mb: 1 }}>
+    <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
       {chips.map((chip) => (
         <Chip
           key={chip.key}
@@ -42,7 +42,7 @@ export function ProjectQuickFilterStrip({
           color={chip.color}
           variant={activeFilter === chip.key ? 'filled' : 'outlined'}
           onClick={() => onSelect(activeFilter === chip.key ? 'none' : chip.key)}
-          sx={{ fontWeight: 600, height: 28 }}
+          sx={{ fontWeight: 600, height: 24, '& .MuiChip-label': { px: 1 } }}
         />
       ))}
     </Stack>

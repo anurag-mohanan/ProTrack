@@ -52,60 +52,40 @@ function HoursMetrics({ row }: { row: ProjectTableRow }) {
       : 'n/a';
 
   return (
-    <Stack
-      direction="row"
-      spacing={0.75}
-      useFlexGap
-      sx={{ flexWrap: 'wrap', alignItems: 'center', mt: 0.35 }}
+    <Typography
+      component="span"
+      variant="caption"
+      sx={{
+        fontWeight: 700,
+        fontVariantNumeric: 'tabular-nums',
+        lineHeight: 1.2,
+        whiteSpace: 'nowrap',
+        color: 'text.secondary',
+      }}
     >
-      <Typography
-        component="span"
-        variant="caption"
-        color="text.secondary"
-        sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}
-      >
-        Q {formatNumber(quoted, 0)}h
-      </Typography>
-      <Typography component="span" variant="caption" color="text.disabled" sx={{ lineHeight: 1.35 }}>
-        ·
-      </Typography>
-      <Typography
-        component="span"
-        variant="caption"
-        color="text.secondary"
-        sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}
-      >
-        A {formatNumber(actual, 0)}h
-      </Typography>
-      <Typography component="span" variant="caption" color="text.disabled" sx={{ lineHeight: 1.35 }}>
-        ·
-      </Typography>
-      <Typography
-        component="span"
-        variant="caption"
-        sx={{ color: varianceColor, fontWeight: 800, fontVariantNumeric: 'tabular-nums', lineHeight: 1.35 }}
-      >
+      Q {formatNumber(quoted, 0)}h · A {formatNumber(actual, 0)}h ·{' '}
+      <Box component="span" sx={{ color: varianceColor, fontWeight: 800 }}>
         {varianceLabel}
-      </Typography>
-    </Stack>
+      </Box>
+    </Typography>
   );
 }
 
 function SubLabel({ label, count }: { label: string; count: number }) {
   return (
-    <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', pt: 0.5, pb: 0.25 }}>
+    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', pt: 0.25, pb: 0 }}>
       <Typography
         sx={{
-          fontSize: '0.7rem',
+          fontSize: '0.65rem',
           fontWeight: 800,
-          letterSpacing: '0.06em',
+          letterSpacing: '0.05em',
           textTransform: 'uppercase',
           color: 'text.secondary',
         }}
       >
         {label}
       </Typography>
-      <Chip size="small" label={count} sx={{ height: 18, fontSize: '0.65rem', fontWeight: 800 }} />
+      <Chip size="small" label={count} sx={{ height: 16, fontSize: '0.62rem', fontWeight: 800 }} />
     </Stack>
   );
 }
@@ -147,32 +127,32 @@ function ProjectBoardRow({
     <Box
       onClick={() => onRowOpen?.(row)}
       sx={{
-        px: 1.25,
-        py: 1,
-        borderRadius: 2,
+        px: 1,
+        py: 0.55,
+        borderRadius: 1.25,
         bgcolor: 'background.paper',
         border: '1px solid',
         borderColor: 'divider',
-        borderLeft: `4px solid ${health.main}`,
+        borderLeft: `3px solid ${health.main}`,
         display: 'grid',
         gridTemplateColumns: {
-          xs: '72px minmax(0, 1fr) auto',
-          md: '80px minmax(0, 1.4fr) minmax(140px, 0.85fr) 96px auto',
+          xs: '56px minmax(0, 1fr) auto',
+          md: '64px minmax(0, 1fr) 118px 78px 28px',
         },
-        columnGap: 1.5,
-        rowGap: 0.5,
-        alignItems: 'start',
+        columnGap: { xs: 0.75, md: 1 },
+        rowGap: 0.25,
+        alignItems: 'center',
         cursor: onRowOpen ? 'pointer' : 'default',
         opacity: muted ? 0.82 : 1,
         '&:hover': { bgcolor: 'action.hover' },
       }}
     >
-      <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', pt: 0.15 }} noWrap>
+      <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', lineHeight: 1.2 }} noWrap>
         {row.tool_number}
       </Typography>
 
-      <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.35 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: '0.84rem', lineHeight: 1.35 }} noWrap>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography sx={{ fontWeight: 700, fontSize: '0.8rem', lineHeight: 1.25 }} noWrap>
           {formatDisplayValue(stage)}
           {row.customerName ? (
             <Box component="span" sx={{ color: 'text.secondary', fontWeight: 600 }}>
@@ -182,25 +162,41 @@ function ProjectBoardRow({
           ) : null}
         </Typography>
 
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ fontWeight: 600, lineHeight: 1.4, display: 'block' }}
-          noWrap
-          title={people.join(' · ') || undefined}
+        <Stack
+          direction="row"
+          spacing={0.75}
+          useFlexGap
+          sx={{ flexWrap: 'wrap', alignItems: 'center', mt: 0.15, columnGap: 0.75, rowGap: 0 }}
         >
-          {people.length ? people.join(' · ') : 'Unassigned'}
-        </Typography>
-
-        <HoursMetrics row={row} />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 600, lineHeight: 1.2 }}
+            noWrap
+            title={people.join(' · ') || undefined}
+          >
+            {people.length ? people.join(' · ') : 'Unassigned'}
+          </Typography>
+          <Box component="span" sx={{ color: 'text.disabled', fontSize: '0.7rem', lineHeight: 1 }}>
+            ·
+          </Box>
+          <HoursMetrics row={row} />
+        </Stack>
       </Box>
 
-      <Box sx={{ display: { xs: 'none', md: 'block' }, minWidth: 0, pt: 0.35 }}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.35 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+      <Box sx={{ display: { xs: 'none', md: 'block' }, minWidth: 0 }}>
+        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.2, gap: 0.5 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 700, fontSize: '0.65rem', lineHeight: 1.2 }}
+          >
             Progress
           </Typography>
-          <Typography variant="caption" sx={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontSize: '0.65rem', lineHeight: 1.2 }}
+          >
             {Math.round(percent)}%
           </Typography>
         </Stack>
@@ -208,7 +204,7 @@ function ProjectBoardRow({
           variant="determinate"
           value={percent}
           sx={{
-            height: 7,
+            height: 5,
             borderRadius: 999,
             bgcolor: health.soft,
             '& .MuiLinearProgress-bar': { bgcolor: health.main, borderRadius: 999 },
@@ -223,15 +219,21 @@ function ProjectBoardRow({
           display: { xs: 'none', md: 'block' },
           fontWeight: 700,
           textAlign: 'right',
-          pt: 0.35,
           fontVariantNumeric: 'tabular-nums',
+          fontSize: '0.72rem',
+          lineHeight: 1.2,
         }}
         noWrap
       >
         {row.due_date ? formatDate(row.due_date) : '—'}
       </Typography>
 
-      <IconButton size="small" aria-label="Project actions" onClick={openMenu} sx={{ mt: -0.25 }}>
+      <IconButton
+        size="small"
+        aria-label="Project actions"
+        onClick={openMenu}
+        sx={{ justifySelf: 'end', p: 0.35 }}
+      >
         <MoreVertIcon fontSize="small" />
       </IconButton>
 
@@ -343,14 +345,14 @@ export function ProjectBoardList({
 
   if (!rows.length) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ px: 0.5, py: 1 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ px: 0.5, py: 0.75 }}>
         No projects in this section.
       </Typography>
     );
   }
 
   return (
-    <Stack spacing={0.75}>
+    <Stack spacing={0.4}>
       {working.length ? (
         <>
           {splitActiveHold ? <SubLabel label="Active" count={working.length} /> : null}

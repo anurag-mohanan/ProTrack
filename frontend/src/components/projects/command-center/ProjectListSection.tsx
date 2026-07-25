@@ -75,14 +75,14 @@ export function ProjectListSection({
 
   if (!collapsible) {
     return (
-      <Box sx={{ mb: 1.5 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+      <Box sx={{ mb: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, fontSize: '0.8rem' }}>
           {sectionTitle}
         </Typography>
         {projects.length ? (
           board
         ) : (
-          <Typography variant="body2" color="text.secondary" sx={{ px: 0.5, py: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ px: 0.5, py: 0.75 }}>
             No projects in this section.
           </Typography>
         )}
@@ -97,20 +97,20 @@ export function ProjectListSection({
       disableGutters
       elevation={0}
       sx={{
-        mb: 2,
+        mb: 1,
         border: 1,
         borderColor: 'divider',
-        borderRadius: '12px !important',
+        borderRadius: '10px !important',
         '&:before': { display: 'none' },
         overflow: 'hidden',
       }}
     >
-      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 48 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 40, px: 1.25, '& .MuiAccordionSummary-content': { my: 0.75 } }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
           {sectionTitle}
         </Typography>
       </AccordionSummary>
-      <AccordionDetails sx={{ p: 1.5 }}>{board}</AccordionDetails>
+      <AccordionDetails sx={{ p: 1 }}>{board}</AccordionDetails>
     </Accordion>
   );
 }

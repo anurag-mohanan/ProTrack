@@ -8,6 +8,7 @@ import { FilterButton } from './FilterButton';
 interface FilterToolbarProps {
   children?: ReactNode;
   sticky?: boolean;
+  dense?: boolean;
   filterButton?: {
     activeCount?: number;
     onClick: () => void;
@@ -19,6 +20,7 @@ interface FilterToolbarProps {
 export function FilterToolbar({
   children,
   sticky = false,
+  dense = false,
   filterButton,
   chips = [],
   onClearAll,
@@ -26,7 +28,7 @@ export function FilterToolbar({
   return (
     <Box
       sx={{
-        mb: 1.5,
+        mb: dense ? 0.75 : 1.5,
         ...(sticky
           ? {
               position: 'sticky',
@@ -38,14 +40,18 @@ export function FilterToolbar({
           : null),
       }}
     >
-      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', alignItems: 'center', rowGap: 1 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{ flexWrap: 'wrap', alignItems: 'center', rowGap: dense ? 0.5 : 1 }}
+      >
         {children}
         {filterButton ? (
           <FilterButton activeCount={filterButton.activeCount} onClick={filterButton.onClick} />
         ) : null}
       </Stack>
       {chips.length > 0 ? (
-        <Box sx={{ mt: 1 }}>
+        <Box sx={{ mt: dense ? 0.5 : 1 }}>
           <ActiveFilterChips chips={chips} onClearAll={onClearAll} />
         </Box>
       ) : null}

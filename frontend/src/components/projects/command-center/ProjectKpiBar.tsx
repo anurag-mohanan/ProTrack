@@ -64,8 +64,8 @@ export function ProjectKpiBar({
         display: 'flex',
         flexWrap: 'wrap',
         alignItems: 'stretch',
-        gap: 0.75,
-        mb: 0.75,
+        gap: 0.5,
+        mb: 0.5,
       }}
     >
       {countKpis.map((kpi) => (

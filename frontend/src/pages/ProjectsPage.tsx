@@ -482,16 +482,16 @@ export function ProjectsPage() {
           sx={{
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: 2,
-            mb: 2,
+            alignItems: 'center',
+            gap: 1.5,
+            mb: 1,
           }}
         >
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.25 }}>
               {shouldGroupLiveProjectsByTeam ? 'Projects' : 'My Projects'}
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.15 }}>
               {subtitle}
             </Typography>
           </Box>
@@ -522,12 +522,13 @@ export function ProjectsPage() {
             position: 'sticky',
             top: APP_TOP_BAR_OFFSET,
             zIndex: 4,
-            py: 0.75,
-            mb: 1,
+            py: 0.5,
+            mb: 0.75,
             bgcolor: designTokens.semantic.background,
           }}
         >
           <FilterToolbar
+            dense
             filterButton={{
               activeCount: activeFilterCount,
               onClick: () => setFiltersOpen(true),

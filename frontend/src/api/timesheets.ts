@@ -40,8 +40,12 @@ export async function fetchTimesheets(params?: ListParams & { month?: string }):
   return data;
 }
 
-export async function fetchTimesheetOverview(): Promise<TimesheetOverviewContext> {
-  const { data } = await apiClient.get<TimesheetOverviewContext>('/timesheets/overview');
+export async function fetchTimesheetOverview(
+  month?: string,
+): Promise<TimesheetOverviewContext> {
+  const { data } = await apiClient.get<TimesheetOverviewContext>('/timesheets/overview', {
+    params: month ? { month } : undefined,
+  });
   return data;
 }
 

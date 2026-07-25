@@ -76,8 +76,8 @@ export function useTimesheetMonthWorkspace(
   });
 
   const usersQuery = useQuery({
-    queryKey: ['timesheets', 'overview'],
-    queryFn: fetchTimesheetOverview,
+    queryKey: ['timesheets', 'overview', monthValue],
+    queryFn: () => fetchTimesheetOverview(monthValue),
     enabled: viewAllUsers,
     staleTime: QUERY_STALE_TIMES.lookups,
   });

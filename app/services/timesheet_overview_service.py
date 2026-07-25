@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import calendar
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
@@ -18,6 +20,7 @@ from app.core.permissions import (
 from app.core.timesheet_eligibility import user_requires_timesheet
 from app.models.enums import TeamRelationshipType
 from app.models.models import Project, Team, TeamMember, User
+from app.services.reporting.team_membership_windows import membership_windows_for_teams
 from app.services.user_team_service import get_user_team_ids
 
 
@@ -112,11 +115,20 @@ def _required_timesheet_user_ids(db: Session) -> set[UUID]:
     )
 
 
-def get_timesheet_visible_user_ids(db: Session, actor: User) -> set[UUID] | None:
+def get_timesheet_visible_user_ids(
+    db: Session,
+    actor: User,
+    *,
+    range_start: date | None = None,
+    range_end: date | None = None,
+) -> set[UUID] | None:
     """User IDs whose timesheet entries the actor may view in overview mode.
 
     All-teams / compliance scopes are limited to users with Requires timesheet
     so managers and monitor-only accounts are not listed.
+
+    When a month range is provided, dated membership windows are included so
+    people who transferred mid-month remain visible on teams they belonged to.
     """
     if is_admin(db, actor):
         return _required_timesheet_user_ids(db)
@@ -134,6 +146,16 @@ def get_timesheet_visible_user_ids(db: Session, actor: User) -> set[UUID] | None
     for team_id in team_scope:
         visible.update(_users_for_team(db, team_id) & required)
 
+    if range_start is not None and range_end is not None and team_scope:
+        from app.services.reporting.team_membership_windows import users_on_teams_during
+
+        visible.update(
+            users_on_teams_during(
+                db, team_scope, range_start=range_start, range_end=range_end
+            )
+            & required
+        )
+
     if role_name == DESIGN_LEADER:
         visible.update(_design_leader_project_user_ids(db, actor) & required)
         if actor.id in required:
@@ -142,15 +164,53 @@ def get_timesheet_visible_user_ids(db: Session, actor: User) -> set[UUID] | None
     return visible
 
 
-def build_timesheet_overview(db: Session, actor: User) -> dict:
+def month_bounds_from_value(month: str | None = None) -> tuple[date, date]:
+    """Return inclusive (month_start, month_end) for YYYY-MM, or the current month."""
+    if month:
+        year, month_num = map(int, month.split("-"))
+    else:
+        today = date.today()
+        year, month_num = today.year, today.month
+    start = date(year, month_num, 1)
+    end = date(year, month_num, calendar.monthrange(year, month_num)[1])
+    return start, end
+
+
+def _serialize_membership_windows(
+    windows: dict[UUID, list[tuple[date, date]]],
+    user_ids: list[UUID],
+) -> dict[str, list[dict[str, date]]]:
+    allowed = set(user_ids)
+    serialized: dict[str, list[dict[str, date]]] = {}
+    for user_id, intervals in windows.items():
+        if user_id not in allowed:
+            continue
+        serialized[str(user_id)] = [
+            {"start": start, "end": end} for start, end in intervals
+        ]
+    return serialized
+
+
+def build_timesheet_overview(
+    db: Session,
+    actor: User,
+    *,
+    month: str | None = None,
+) -> dict:
     """Return team groupings and user metadata for the timesheet overview UI.
 
     Only users with Requires timesheet appear in team sections — managers,
     Office Admin, Planning Board, System Admin, and other monitor-only accounts
     are omitted so completion chasing stays focused.
+
+    Team sections use dated membership windows for the overview month so line
+    items (and roster) only cover days the person belonged to that team.
     """
+    month_start, month_end = month_bounds_from_value(month)
     team_scope = get_timesheet_leader_team_ids(db, actor)
-    visible_user_ids = get_timesheet_visible_user_ids(db, actor)
+    visible_user_ids = get_timesheet_visible_user_ids(
+        db, actor, range_start=month_start, range_end=month_end
+    )
 
     team_query = select(Team).where(Team.is_active.is_(True)).order_by(Team.name)
     if team_scope is not None:
@@ -194,9 +254,15 @@ def build_timesheet_overview(db: Session, actor: User) -> dict:
     overview_teams = []
     assigned_user_ids: set[UUID] = set()
     for team in teams:
+        windows = membership_windows_for_teams(
+            db,
+            frozenset({team.id}),
+            range_start=month_start,
+            range_end=month_end,
+        )
         member_ids = sorted(
             user_id
-            for user_id in _users_for_team(db, team.id)
+            for user_id in windows
             if user_id in required_ids
             and (visible_user_ids is None or user_id in visible_user_ids)
         )
@@ -208,6 +274,7 @@ def build_timesheet_overview(db: Session, actor: User) -> dict:
                 "team_id": team.id,
                 "team_name": team.name,
                 "user_ids": member_ids,
+                "membership_windows": _serialize_membership_windows(windows, member_ids),
             }
         )
 
@@ -218,6 +285,7 @@ def build_timesheet_overview(db: Session, actor: User) -> dict:
                 "team_id": None,
                 "team_name": "Unassigned",
                 "user_ids": unassigned_users,
+                "membership_windows": {},
             }
         )
 
@@ -242,4 +310,6 @@ def build_timesheet_overview(db: Session, actor: User) -> dict:
         "teams": overview_teams,
         "users": overview_users,
         "scope_all_teams": team_scope is None,
+        "month_start": month_start,
+        "month_end": month_end,
     }

@@ -75,10 +75,13 @@ def list_timesheets(
 
 @router.get("/overview", response_model=TimesheetOverviewContext)
 def get_timesheet_overview(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return TimesheetOverviewContext(**build_timesheet_overview(db, current_user))
+    return TimesheetOverviewContext(
+        **build_timesheet_overview(db, current_user, month=month)
+    )
 
 
 @router.post("/ensure-week", response_model=TimesheetRead)

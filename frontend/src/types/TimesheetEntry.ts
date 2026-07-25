@@ -158,10 +158,17 @@ export interface NonProductiveCodeUpdate {
   sort_order?: number;
 }
 
+export interface MembershipDateWindow {
+  start: string;
+  end: string;
+}
+
 export interface TimesheetOverviewTeam {
   team_id: string | null;
   team_name: string;
   user_ids: string[];
+  /** Inclusive intervals when each user belonged to this team in the overview month. */
+  membership_windows?: Record<string, MembershipDateWindow[]>;
 }
 
 export interface TimesheetOverviewUser {
@@ -180,4 +187,6 @@ export interface TimesheetOverviewContext {
   teams: TimesheetOverviewTeam[];
   users: TimesheetOverviewUser[];
   scope_all_teams: boolean;
+  month_start?: string | null;
+  month_end?: string | null;
 }

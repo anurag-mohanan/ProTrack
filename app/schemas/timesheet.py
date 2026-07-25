@@ -272,10 +272,19 @@ class ProjectContributorSummary(BaseModel):
     contribution_reasons: list[ContributorReasonHours] = Field(default_factory=list)
 
 
+class MembershipDateWindow(BaseModel):
+    """Inclusive dates when a person belonged to the team (for entry clipping)."""
+
+    start: date
+    end: date
+
+
 class TimesheetOverviewTeam(BaseModel):
     team_id: UUID | None = None
     team_name: str
     user_ids: list[UUID] = Field(default_factory=list)
+    # user_id → intervals on this team overlapping the overview month
+    membership_windows: dict[str, list[MembershipDateWindow]] = Field(default_factory=dict)
 
 
 class TimesheetOverviewUser(BaseModel):
@@ -294,3 +303,5 @@ class TimesheetOverviewContext(BaseModel):
     teams: list[TimesheetOverviewTeam] = Field(default_factory=list)
     users: list[TimesheetOverviewUser] = Field(default_factory=list)
     scope_all_teams: bool = False
+    month_start: date | None = None
+    month_end: date | None = None

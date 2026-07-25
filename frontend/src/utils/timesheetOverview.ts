@@ -1,5 +1,9 @@
 import type { TimesheetEntry } from '../types';
-import type { TimesheetOverviewTeam, TimesheetOverviewUser } from '../types/TimesheetEntry';
+import type {
+  MembershipDateWindow,
+  TimesheetOverviewTeam,
+  TimesheetOverviewUser,
+} from '../types/TimesheetEntry';
 import {
   summarizeMonthEntries,
   sumEntryHours,
@@ -13,6 +17,8 @@ export interface TimesheetTeamSection {
   teamName: string;
   users: TimesheetOverviewUser[];
   summary: TimesheetMonthSummary;
+  /** Entries clipped to each user's membership windows on this team. */
+  entriesByUserId: Map<string, TimesheetEntry[]>;
 }
 
 export function expectedHoursForUsers(
@@ -25,11 +31,34 @@ export function expectedHoursForUsers(
   );
 }
 
+export function entryDateInWindows(
+  entryDate: string,
+  windows: MembershipDateWindow[] | undefined,
+): boolean {
+  if (!windows?.length) return false;
+  return windows.some((window) => entryDate >= window.start && entryDate <= window.end);
+}
+
 export function filterEntriesForUsers(
   entries: TimesheetEntry[],
   userIds: Set<string>,
 ): TimesheetEntry[] {
   return entries.filter((entry) => entry.user_id != null && userIds.has(entry.user_id));
+}
+
+export function filterEntriesForTeamMembership(
+  entries: TimesheetEntry[],
+  userIds: Set<string>,
+  membershipWindows: Record<string, MembershipDateWindow[]> | undefined,
+): TimesheetEntry[] {
+  // Unassigned / legacy teams without windows: keep user-id filter only.
+  if (!membershipWindows || Object.keys(membershipWindows).length === 0) {
+    return filterEntriesForUsers(entries, userIds);
+  }
+  return entries.filter((entry) => {
+    if (entry.user_id == null || !userIds.has(entry.user_id)) return false;
+    return entryDateInWindows(entry.entry_date, membershipWindows[entry.user_id]);
+  });
 }
 
 export function buildTeamTimesheetSections(
@@ -49,7 +78,18 @@ export function buildTeamTimesheetSections(
         .filter((user): user is TimesheetOverviewUser => user != null)
         .filter((user) => user.requires_timesheet !== false);
       const userIdSet = new Set(teamUsers.map((user) => user.id));
-      const teamEntries = filterEntriesForUsers(entries, userIdSet);
+      const teamEntries = filterEntriesForTeamMembership(
+        entries,
+        userIdSet,
+        team.membership_windows,
+      );
+      const entriesByUserId = new Map<string, TimesheetEntry[]>();
+      for (const entry of teamEntries) {
+        const key = entry.user_id ?? 'unknown';
+        const list = entriesByUserId.get(key);
+        if (list) list.push(entry);
+        else entriesByUserId.set(key, [entry]);
+      }
       const expectedHours = expectedHoursForUsers(teamUsers, workingDayCount);
 
       return {
@@ -57,6 +97,7 @@ export function buildTeamTimesheetSections(
         teamName: team.team_name,
         users: teamUsers,
         summary: summarizeMonthEntries(teamEntries, expectedHours),
+        entriesByUserId,
       };
     })
     .filter((section) => section.users.length > 0);

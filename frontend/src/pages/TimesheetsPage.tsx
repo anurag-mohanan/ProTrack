@@ -115,17 +115,6 @@ export function TimesheetsPage() {
   const selectedEntry =
     workspace.entries.find((entry) => entry.id === selectedEntryId) ?? null;
 
-  const entriesByUser = useMemo(() => {
-    const map = new Map<string, TimesheetEntry[]>();
-    for (const entry of workspace.entries) {
-      const key = entry.user_id ?? 'unknown';
-      const list = map.get(key);
-      if (list) list.push(entry);
-      else map.set(key, [entry]);
-    }
-    return map;
-  }, [workspace.entries]);
-
   const overviewSections = useMemo<TimesheetOverviewSection[]>(() => {
     if (!viewAllUsers || !workspace.overviewContext) return [];
 
@@ -144,6 +133,7 @@ export function TimesheetsPage() {
         id: person.id,
         name: `${person.first_name} ${person.last_name}`.trim(),
         requiresTimesheet: Boolean(person.requires_timesheet),
+        entries: section.entriesByUserId.get(person.id) ?? [],
       })),
     }));
   }, [
@@ -553,7 +543,6 @@ export function TimesheetsPage() {
           </Typography>
           <TimesheetUsersOverview
             sections={overviewSections}
-            entriesByUser={entriesByUser}
             timesheetById={workspace.timesheetById}
           />
         </>

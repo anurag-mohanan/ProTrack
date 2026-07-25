@@ -22,6 +22,7 @@ export interface OverviewUser {
   id: string;
   name: string;
   requiresTimesheet?: boolean;
+  entries?: TimesheetEntry[];
 }
 
 export interface TimesheetOverviewSection {
@@ -33,7 +34,6 @@ export interface TimesheetOverviewSection {
 
 interface TimesheetUsersOverviewProps {
   sections: TimesheetOverviewSection[];
-  entriesByUser: Map<string, TimesheetEntry[]>;
   timesheetById: Map<string, Timesheet>;
 }
 
@@ -108,7 +108,6 @@ function UserEntries({
 
 export function TimesheetUsersOverview({
   sections,
-  entriesByUser,
   timesheetById,
 }: TimesheetUsersOverviewProps) {
   return (
@@ -131,13 +130,13 @@ export function TimesheetUsersOverview({
             />
           ) : (
             section.users.map((overviewUser) => {
-              const entries = entriesByUser.get(overviewUser.id) ?? [];
+              const entries = overviewUser.entries ?? [];
               const totalHours = entries.reduce((sum, entry) => sum + Number(entry.hours), 0);
               const missingRequired =
                 Boolean(overviewUser.requiresTimesheet) && totalHours <= 0;
               return (
                 <Accordion
-                  key={overviewUser.id}
+                  key={`${section.title}:${overviewUser.id}`}
                   disableGutters
                   elevation={0}
                   sx={{

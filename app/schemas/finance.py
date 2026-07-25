@@ -303,6 +303,10 @@ class TeamFinanceBreakdown(BaseModel):
     prosohm_opex_inr: Decimal
     prosohm_capex_inr: Decimal = Decimal("0")
     pass_through_opex_inr: Decimal
+    direct_operating_cost_inr: Decimal = Decimal("0")
+    allocated_overhead_inr: Decimal = Decimal("0")
+    billable_resource_count: int = 0
+    overhead_cost_per_resource_inr: Decimal = Decimal("0")
     monthly_operating_cost_inr: Decimal
     other_operating_cost_inr: Decimal = Decimal("0")
     team_commercial_fee_monthly_inr: Decimal
@@ -343,6 +347,9 @@ class TeamFinanceBreakdown(BaseModel):
     quarter_other_operating_cost_inr: Decimal = Decimal("0")
     half_year_other_operating_cost_inr: Decimal = Decimal("0")
     year_other_operating_cost_inr: Decimal = Decimal("0")
+    quarter_allocated_overhead_inr: Decimal = Decimal("0")
+    half_year_allocated_overhead_inr: Decimal = Decimal("0")
+    year_allocated_overhead_inr: Decimal = Decimal("0")
 
 
 class RevenueBreakdownRow(BaseModel):

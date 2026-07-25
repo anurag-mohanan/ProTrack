@@ -47,6 +47,13 @@ export type TeamPnlRow = {
   half_year_salary_cost_inr?: number | string;
   year_salary_cost_inr?: number | string;
   estimated_cost_inr?: number | string;
+  direct_operating_cost_inr?: number | string;
+  allocated_overhead_inr?: number | string;
+  billable_resource_count?: number;
+  overhead_cost_per_resource_inr?: number | string;
+  quarter_allocated_overhead_inr?: number | string;
+  half_year_allocated_overhead_inr?: number | string;
+  year_allocated_overhead_inr?: number | string;
 };
 
 type SortKey =
@@ -91,6 +98,7 @@ function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod, taxPercent: nu
       salary: toFiniteNumber(row.salary_cost_inr),
       opex: toFiniteNumber(row.prosohm_opex_inr),
       capex: toFiniteNumber(row.prosohm_capex_inr),
+      allocated: toFiniteNumber(row.allocated_overhead_inr),
       gross,
       net,
       netMargin,
@@ -123,6 +131,12 @@ function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod, taxPercent: nu
       : period === 'half'
         ? toFiniteNumber(row.half_year_estimated_cost_inr)
         : toFiniteNumber(row.year_estimated_cost_inr);
+  const allocated =
+    period === 'quarter'
+      ? toFiniteNumber(row.quarter_allocated_overhead_inr)
+      : period === 'half'
+        ? toFiniteNumber(row.half_year_allocated_overhead_inr)
+        : toFiniteNumber(row.year_allocated_overhead_inr);
   const gross = revenue - estimated;
   const net = gross - operating;
   const netMargin = revenue > 0 ? (net / revenue) * 100 : 0;
@@ -131,8 +145,9 @@ function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod, taxPercent: nu
     revenue,
     operating,
     salary,
-    opex: Math.max(0, operating - salary),
+    opex: Math.max(0, operating - salary - allocated),
     capex: 0,
+    allocated,
     gross,
     net,
     netMargin,
@@ -270,8 +285,13 @@ export function FinanceTeamPnlTable({
                             `Salary ${financeMoney(m.salary, currency)}`,
                             `OpEx ${financeMoney(m.opex, currency)}`,
                             `CapEx ${financeMoney(m.capex, currency)}`,
+                            `Allocated OH ${financeMoney(m.allocated, currency)}`,
                           ].join(' · ')
-                        : `Salary ${financeMoney(m.salary, currency)} · Other op ${financeMoney(m.opex, currency)}`
+                        : [
+                            `Salary ${financeMoney(m.salary, currency)}`,
+                            `Other op ${financeMoney(m.opex, currency)}`,
+                            `Allocated OH ${financeMoney(m.allocated, currency)}`,
+                          ].join(' · ')
                     }
                   >
                     {financeMoney(m.operating, currency)}
@@ -316,11 +336,17 @@ export function FinanceTeamPnlTable({
       {overheadRows.length ? (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
           Overhead home ({overheadRows.map((r) => r.team_name).join(', ')}) is excluded from delivery
-          performance ranking — HQ salaries and Corporate-assigned OpEx feed the overhead pool CPR.
-          Team-assigned software / hardware still hit each delivery team’s op cost (hover Op cost for
-          salary · OpEx · CapEx). After-tax uses company corporate tax ({taxPercent}%).
+          ranking. HQ salary + Corporate OpEx form the overhead pool; each delivery team’s Op Cost
+          includes allocated overhead (CPR × billable FTE) so margins are fully loaded. Hover Op cost
+          for salary · OpEx · CapEx · Allocated OH. After-tax uses company corporate tax ({taxPercent}
+          %).
         </Typography>
-      ) : null}
+      ) : (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+          Op Cost is fully loaded: team salary + OpEx + CapEx + allocated HQ overhead (CPR × billable
+          FTE). After-tax uses company corporate tax ({taxPercent}%).
+        </Typography>
+      )}
     </>
   );
 }

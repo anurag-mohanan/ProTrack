@@ -283,15 +283,20 @@ def test_team_assigned_software_opex_and_hardware_capex_hit_pnl(
         today=date(2026, 7, 15),
         quote_revenue=Decimal("200000"),
         quote_estimated_cost=Decimal("20000"),
+        overhead_cpr=Decimal("0"),
     )
     assert float(rollup["prosohm_opex_inr"]) >= 12000.0
     assert float(rollup["prosohm_capex_inr"]) >= 50000.0
+    assert float(rollup["direct_operating_cost_inr"]) >= 62000.0
     assert float(rollup["monthly_operating_cost_inr"]) >= 62000.0
-    assert float(rollup["gross_profit_inr"]) == 180000.0
+    # Month P&L uses calendar-month awards (none seeded here), not open quote pipeline.
+    assert float(rollup["gross_profit_inr"]) == 0.0
     assert float(rollup["net_profit_inr"]) == float(rollup["gross_profit_inr"]) - float(
         rollup["monthly_operating_cost_inr"]
     )
     assert float(rollup["net_profit_inr"]) < float(rollup["gross_profit_inr"])
+    assert float(rollup["quote_revenue_inr"]) == 200000.0
+    assert float(rollup["quote_pipeline_estimated_cost_inr"]) == 20000.0
 
     dash_team = client.get(
         f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers
@@ -305,6 +310,9 @@ def test_team_assigned_software_opex_and_hardware_capex_hit_pnl(
     assert row is not None
     assert float(row["prosohm_opex_inr"]) >= 12000.0
     assert float(row.get("prosohm_capex_inr") or 0) >= 50000.0
+    # With CPR allocation, fully loaded Op Cost >= direct team spend.
+    assert float(row["monthly_operating_cost_inr"]) >= float(row["direct_operating_cost_inr"])
+    assert float(row["monthly_operating_cost_inr"]) >= 62000.0
 
 
 def test_retainer_counts_only_fixed_resource_roles(client, auth_headers, session):

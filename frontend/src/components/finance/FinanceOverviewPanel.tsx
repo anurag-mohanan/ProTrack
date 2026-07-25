@@ -295,8 +295,8 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
   const periodShort = PERIOD_LABELS[period];
   const periodHint =
     period === 'month'
-      ? 'Month: salaries + OpEx/CapEx vs quotes awarded this calendar month + this month’s retainer. Pipeline projections are in Annual Plan.'
-      : `${periodShort}: salaries + OpEx/CapEx × months elapsed vs quote awards in period + retainer accrued.`;
+      ? 'Month: fully loaded Op Cost (salary + OpEx/CapEx + allocated HQ overhead) vs quotes invoiced this month + retainer. Pipeline projections are in Annual Plan.'
+      : `${periodShort}: fully loaded Op Cost × months elapsed vs quote awards in period + retainer accrued.`;
 
   const scopeLabel = data.selected_team_name ? data.selected_team_name : 'All teams';
 
@@ -515,7 +515,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
       {!teamId && (data.by_team ?? []).length > 0 ? (
         <FinanceSection
           title="Team P&L performance"
-          subtitle={`${periodShort} actuals — awards in period + retainer vs fully loaded cost (salary + software OpEx + hardware CapEx). After-tax uses ${taxPercent}% corporate tax. Pipeline projections are in Annual Plan.`}
+          subtitle={`${periodShort} actuals — awards in period + retainer vs fully loaded cost (salary + OpEx + CapEx + allocated HQ overhead). After-tax uses ${taxPercent}% corporate tax. Pipeline projections are in Annual Plan.`}
         >
           <FinanceTeamPnlTable
             rows={data.by_team ?? []}

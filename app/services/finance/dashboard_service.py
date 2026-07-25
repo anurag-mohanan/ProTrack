@@ -625,9 +625,11 @@ def _team_rollups(
     quote_revenue: Decimal,
     quote_estimated_cost: Decimal,
     tax_percent: Decimal | None = None,
+    overhead_cpr: Decimal | None = None,
 ) -> dict:
     from app.db.phase28_team_member_billable_schema_sync import is_corporate_team
 
+    corporate = is_corporate_team(team)
     salary = _salary_for_team(db, team.id, as_of=today)
     prosohm_opex = _expense_sum(
         db, team_id=team.id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.opex
@@ -667,9 +669,17 @@ def _team_rollups(
     fee_quarter = (fee * Decimal(fee_q_months)).quantize(Decimal("0.01"))
     fee_half = (fee * Decimal(fee_h_months)).quantize(Decimal("0.01"))
     fee_year = (fee * Decimal(fee_y_months)).quantize(Decimal("0.01"))
-    # Fully loaded team cost: salaries + software/OpEx + hardware CapEx assigned to the team.
-    operating = prosohm_opex + salary + prosohm_capex
-    other_op = (prosohm_opex + prosohm_capex).quantize(Decimal("0.01"))
+    # Direct team cost: salaries + software/OpEx + hardware CapEx assigned to the team.
+    direct_operating = (prosohm_opex + salary + prosohm_capex).quantize(Decimal("0.01"))
+    billable_n = 0
+    allocated = Decimal("0.00")
+    cpr = _d(overhead_cpr) if overhead_cpr is not None else Decimal("0.00")
+    if not corporate and cpr > 0:
+        billable_n = billable_salary_headcount(db, team.id, as_of=today)
+        allocated = (cpr * Decimal(billable_n)).quantize(Decimal("0.01"))
+    # Fully loaded Op Cost for Team P&L net: direct cost + allocated HQ overhead (CPR × FTE).
+    operating = (direct_operating + allocated).quantize(Decimal("0.01"))
+    other_op = (prosohm_opex + prosohm_capex + allocated).quantize(Decimal("0.01"))
     # Period revenue = awards in window + retainer accrued (not open quote pipeline).
     # Pipeline stays on quote_revenue_inr for reference; projections live in Annual Plan.
     period_month_revenue = (quote_month + fee).quantize(Decimal("0.01"))
@@ -696,11 +706,15 @@ def _team_rollups(
     return {
         "team_id": str(team.id),
         "team_name": team.name,
-        "is_overhead_home": is_corporate_team(team),
+        "is_overhead_home": corporate,
         "salary_cost_inr": salary,
         "prosohm_opex_inr": prosohm_opex,
         "prosohm_capex_inr": prosohm_capex,
         "pass_through_opex_inr": pass_through,
+        "direct_operating_cost_inr": direct_operating,
+        "allocated_overhead_inr": allocated,
+        "billable_resource_count": billable_n,
+        "overhead_cost_per_resource_inr": cpr,
         "monthly_operating_cost_inr": operating,
         "other_operating_cost_inr": other_op,
         "team_commercial_fee_monthly_inr": fee,
@@ -749,13 +763,27 @@ def _team_rollups(
         "year_other_operating_cost_inr": (other_op * Decimal(fee_y_months)).quantize(
             Decimal("0.01")
         ),
+        "quarter_allocated_overhead_inr": (allocated * Decimal(fee_q_months)).quantize(
+            Decimal("0.01")
+        ),
+        "half_year_allocated_overhead_inr": (allocated * Decimal(fee_h_months)).quantize(
+            Decimal("0.01")
+        ),
+        "year_allocated_overhead_inr": (allocated * Decimal(fee_y_months)).quantize(
+            Decimal("0.01")
+        ),
     }
 
 
 def _overhead_metrics(
     db: Session, *, fy_start: date, team_id: UUID | None = None
 ) -> dict:
-    """Corporate / Management overhead pool ÷ delivery billable FTE (analytical CPR)."""
+    """Corporate / Management overhead pool ÷ delivery billable FTE (CPR).
+
+    CPR is allocated into each delivery team's Team P&L Op Cost (× billable FTE).
+    Company-wide operating cost already includes HQ salary/OpEx directly — do not
+    add CPR again at company level.
+    """
     from app.db.phase23_finance_team_scope_schema_sync import (
         ensure_corporate_shared_services_team,
     )
@@ -952,6 +980,8 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     revenue_by_stream = _revenue_by_stream(
         db, team_id=team_id, today=today, fy_start=fy_start
     )
+    overhead = _overhead_metrics(db, fy_start=fy_start, team_id=team_id)
+    overhead_cpr = _d(overhead.get("overhead_cost_per_resource_inr"))
     if team_id is None:
         teams = db.scalars(select(Team).where(Team.is_active.is_(True)).order_by(Team.name)).all()
         for team in teams:
@@ -964,6 +994,7 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
                     quote_revenue=team_quote,
                     quote_estimated_cost=team_est,
                     tax_percent=tax_percent,
+                    overhead_cpr=overhead_cpr,
                 )
             )
 
@@ -971,8 +1002,6 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     if team_id is not None:
         selected = db.get(Team, team_id)
         selected_team_name = selected.name if selected else None
-
-    overhead = _overhead_metrics(db, fy_start=fy_start, team_id=team_id)
 
     return {
         "base_currency": base,

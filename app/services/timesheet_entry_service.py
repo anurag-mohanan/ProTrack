@@ -12,7 +12,7 @@ from app.core.exceptions import ProTrackValidationError
 from app.core.hours_validation import validate_timesheet_hours
 from app.core.non_productive_categories import apply_category_rules, is_leave_code
 from app.core.permissions import FULL_ACCESS_ROLES, get_role_name, is_admin
-from app.models.enums import ExecutionStatus, WorkCategory
+from app.models.enums import ContributionReason, ExecutionStatus, WorkCategory
 from app.models.models import (
     Customer,
     Milestone,
@@ -35,6 +35,56 @@ ACTIVE_PROJECT_STATUSES = (
 def can_override_billable(db: Session, user: User) -> bool:
     role_name = get_role_name(db, user)
     return is_admin(db, user) or role_name in FULL_ACCESS_ROLES
+
+
+def is_rework_quality_reason(reason: object | None) -> bool:
+    if reason is None:
+        return False
+    if isinstance(reason, ContributionReason):
+        return reason is ContributionReason.rework_quality
+    return str(reason) == ContributionReason.rework_quality.value
+
+
+def _coerce_contribution_reason(value: object | None) -> ContributionReason | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, ContributionReason):
+        return value
+    try:
+        return ContributionReason(str(value))
+    except ValueError as exc:
+        raise ProTrackValidationError("Invalid contribution reason") from exc
+
+
+def apply_productive_billable_rules(
+    data: dict,
+    *,
+    db: Session,
+    actor: User | None,
+) -> None:
+    """Billable defaults for project work; rework/quality is always non-billable."""
+    reason = _coerce_contribution_reason(data.get("contribution_reason"))
+    data["contribution_reason"] = reason
+
+    if is_rework_quality_reason(reason):
+        data["is_billable"] = False
+        return
+
+    if data.get("is_billable") is None:
+        data["is_billable"] = True
+        return
+
+    if actor is not None and can_override_billable(db, actor):
+        data["is_billable"] = bool(data["is_billable"])
+        return
+
+    # Designers and other roles may only mark project hours non-billable as rework.
+    if not bool(data["is_billable"]):
+        raise ProTrackValidationError(
+            "Non-billable project hours require contribution reason "
+            "'Rework / quality issue (non-billable)' so unbilled rework can be analysed."
+        )
+    data["is_billable"] = True
 
 
 def _get_active_project(db: Session, project_id: UUID) -> Project:
@@ -130,10 +180,7 @@ def normalize_entry_payload(
             if milestone is None or milestone.project_id != project.id:
                 raise ProTrackValidationError("Milestone must belong to the selected project")
 
-        if data.get("is_billable") is None:
-            data["is_billable"] = True
-        elif actor is not None and not can_override_billable(db, actor):
-            data["is_billable"] = True
+        apply_productive_billable_rules(data, db=db, actor=actor)
     else:
         if data.get("project_id") is not None:
             raise ProTrackValidationError("Project must remain blank for non-productive work")

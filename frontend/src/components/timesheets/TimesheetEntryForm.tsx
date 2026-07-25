@@ -12,13 +12,16 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import type { TaskType, TimesheetEntry } from '../../types';
 import type { ContributionReason, TimesheetProjectLookup } from '../../types/TimesheetEntry';
-import { CONTRIBUTION_REASON_LABELS } from '../../types/TimesheetEntry';
+import {
+  CONTRIBUTION_REASON_LABELS,
+  isReworkQualityReason,
+  REWORK_QUALITY_REASON,
+} from '../../types/TimesheetEntry';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { TimesheetProjectContextPanel } from './TimesheetProjectContextPanel';
 import { TimesheetToolNumberSelect } from './TimesheetToolNumberSelect';
 import {
   buildToolOptions,
-  isProjectOwner,
   LAST_BILLABLE_KEY,
   LAST_TASK_KEY,
   LAST_TOOL_KEY,
@@ -215,30 +218,70 @@ export function TimesheetEntryForm({
       option?.kind === 'project'
         ? projects.find((item) => item.id === option.projectId) ?? null
         : null;
-    setForm((current) => ({
-      ...current,
-      toolValue: option?.value ?? '',
-      taskTypeId:
-        option?.kind === 'project'
-          ? resolveTaskTypeIdForProject(taskTypes, project?.stream_id, current.taskTypeId)
-          : '',
-      contributionReason: option?.kind === 'project' ? current.contributionReason : '',
-      isBillable: isLeaveToolOption(option)
-        ? false
-        : defaultBillableForTool(option),
-    }));
+    setForm((current) => {
+      const keepRework =
+        option?.kind === 'project' && isReworkQualityReason(current.contributionReason);
+      return {
+        ...current,
+        toolValue: option?.value ?? '',
+        taskTypeId:
+          option?.kind === 'project'
+            ? resolveTaskTypeIdForProject(taskTypes, project?.stream_id, current.taskTypeId)
+            : '',
+        contributionReason: option?.kind === 'project' ? current.contributionReason : '',
+        isBillable: isLeaveToolOption(option)
+          ? false
+          : keepRework
+            ? false
+            : defaultBillableForTool(option),
+      };
+    });
   };
+
+  const handleContributionReasonChange = (value: string) => {
+    setForm((current) => {
+      if (isReworkQualityReason(value)) {
+        writeStored(LAST_BILLABLE_KEY, 'false');
+        return { ...current, contributionReason: value, isBillable: false };
+      }
+      if (isReworkQualityReason(current.contributionReason)) {
+        writeStored(LAST_BILLABLE_KEY, 'true');
+        return { ...current, contributionReason: value, isBillable: true };
+      }
+      return { ...current, contributionReason: value };
+    });
+  };
+
+  const handleBillableChange = (next: boolean) => {
+    writeStored(LAST_BILLABLE_KEY, String(next));
+    setForm((current) => {
+      if (!next && selectedTool?.kind === 'project') {
+        // Unchecking Billable on project work marks it as rework for efficiency tracking.
+        return {
+          ...current,
+          isBillable: false,
+          contributionReason: REWORK_QUALITY_REASON,
+        };
+      }
+      if (next && isReworkQualityReason(current.contributionReason)) {
+        return { ...current, isBillable: true, contributionReason: '' };
+      }
+      return { ...current, isBillable: next };
+    });
+  };
+
+  const isReworkEntry =
+    selectedTool?.kind === 'project' && isReworkQualityReason(form.contributionReason);
 
   const billableDisabled =
     readOnly ||
     saving ||
     isLeaveToolOption(selectedTool) ||
+    isReworkEntry ||
     (!canOverrideBillable && selectedTool?.kind === 'np');
 
-  const showContributionReason =
-    selectedTool?.kind === 'project' &&
-    Boolean(selectedProject) &&
-    !isProjectOwner(selectedProject, currentUserId);
+  // Owners and contributors both need rework tagging for design-efficiency analysis.
+  const showContributionReason = selectedTool?.kind === 'project' && Boolean(selectedProject);
 
   return (
     <Box
@@ -366,13 +409,15 @@ export function TimesheetEntryForm({
             label="Contribution reason"
             disabled={readOnly || saving}
             value={form.contributionReason}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, contributionReason: event.target.value }))
+            onChange={(event) => handleContributionReasonChange(event.target.value)}
+            helperText={
+              isReworkEntry ? 'Logged as unbilled rework for design efficiency' : undefined
             }
+            FormHelperTextProps={{ sx: { mx: 0, mt: 0.25, fontSize: '0.65rem' } }}
             slotProps={{ inputLabel: { shrink: true } }}
-            sx={{ width: 190, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            sx={{ width: 220, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           >
-            <MenuItem value="">None</MenuItem>
+            <MenuItem value="">None (billable)</MenuItem>
             {(Object.entries(CONTRIBUTION_REASON_LABELS) as [ContributionReason, string][]).map(
               ([value, label]) => (
                 <MenuItem key={value} value={value}>
@@ -390,14 +435,10 @@ export function TimesheetEntryForm({
               size="small"
               checked={form.isBillable}
               disabled={billableDisabled}
-              onChange={(event) => {
-                const next = event.target.checked;
-                writeStored(LAST_BILLABLE_KEY, String(next));
-                setForm((current) => ({ ...current, isBillable: next }));
-              }}
+              onChange={(event) => handleBillableChange(event.target.checked)}
             />
           }
-          label="Billable"
+          label={isReworkEntry ? 'Billable (off — rework)' : 'Billable'}
         />
 
         <TextField

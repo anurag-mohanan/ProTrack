@@ -21,6 +21,7 @@ CONTRIBUTION_REASON_LABELS: dict[ContributionReason, str] = {
     ContributionReason.engineering_change: "Engineering Change",
     ContributionReason.customer_request: "Customer Request",
     ContributionReason.training_mentoring: "Training / Mentoring",
+    ContributionReason.rework_quality: "Rework / quality issue (non-billable)",
     ContributionReason.other: "Other",
 }
 

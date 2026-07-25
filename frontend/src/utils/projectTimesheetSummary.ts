@@ -1,4 +1,5 @@
 import type { TimesheetEntry } from '../types';
+import { isReworkQualityReason } from '../types/TimesheetEntry';
 import { toFiniteNumber } from './format';
 
 /** Matches engineering reports Review bucket (Design Review / checking / review). */
@@ -13,10 +14,16 @@ export interface DesignerHoursBreakdown {
   userName: string;
   hours: number;
   entryCount: number;
+  billableHours: number;
+  unbilledHours: number;
+  reworkHours: number;
 }
 
 export interface ProjectTimesheetSummary {
   totalHours: number;
+  billableHours: number;
+  unbilledHours: number;
+  reworkHours: number;
   checkingHours: number;
   designerCount: number;
   entryCount: number;
@@ -30,11 +37,19 @@ export function summarizeProjectTimesheetEntries(
   const byDesigner = new Map<string, DesignerHoursBreakdown>();
   const tasks = new Set<string>();
   let totalHours = 0;
+  let billableHours = 0;
+  let unbilledHours = 0;
+  let reworkHours = 0;
   let checkingHours = 0;
 
   for (const entry of entries) {
     const hours = toFiniteNumber(entry.hours);
     totalHours += hours;
+    if (entry.is_billable) billableHours += hours;
+    else unbilledHours += hours;
+    if (isReworkQualityReason(entry.contribution_reason)) {
+      reworkHours += hours;
+    }
     if (entry.work_category === 'productive' && isCheckingTaskType(entry.task_type_name)) {
       checkingHours += hours;
     }
@@ -54,12 +69,18 @@ export function summarizeProjectTimesheetEntries(
     if (existing) {
       existing.hours += hours;
       existing.entryCount += 1;
+      if (entry.is_billable) existing.billableHours += hours;
+      else existing.unbilledHours += hours;
+      if (isReworkQualityReason(entry.contribution_reason)) existing.reworkHours += hours;
     } else {
       byDesigner.set(userId, {
         userId,
         userName,
         hours,
         entryCount: 1,
+        billableHours: entry.is_billable ? hours : 0,
+        unbilledHours: entry.is_billable ? 0 : hours,
+        reworkHours: isReworkQualityReason(entry.contribution_reason) ? hours : 0,
       });
     }
   }
@@ -70,6 +91,9 @@ export function summarizeProjectTimesheetEntries(
 
   return {
     totalHours,
+    billableHours,
+    unbilledHours,
+    reworkHours,
     checkingHours,
     designerCount: designers.length,
     entryCount: entries.length,

@@ -38,6 +38,7 @@ export type ContributionReason =
   | 'engineering_change'
   | 'customer_request'
   | 'training_mentoring'
+  | 'rework_quality'
   | 'other';
 
 export const CONTRIBUTION_REASON_LABELS: Record<ContributionReason, string> = {
@@ -48,8 +49,18 @@ export const CONTRIBUTION_REASON_LABELS: Record<ContributionReason, string> = {
   engineering_change: 'Engineering Change',
   customer_request: 'Customer Request',
   training_mentoring: 'Training / Mentoring',
+  rework_quality: 'Rework / quality issue (non-billable)',
   other: 'Other',
 };
+
+/** Project hours logged as rework from quality issues — always non-billable. */
+export const REWORK_QUALITY_REASON: ContributionReason = 'rework_quality';
+
+export function isReworkQualityReason(
+  reason: string | null | undefined,
+): reason is typeof REWORK_QUALITY_REASON {
+  return reason === REWORK_QUALITY_REASON;
+}
 
 export interface TimesheetProjectLookup {
   id: string;

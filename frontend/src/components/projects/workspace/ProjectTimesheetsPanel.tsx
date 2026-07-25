@@ -3,9 +3,9 @@ import { Box, Button, Chip, Stack, TableRow, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
-import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
+import MoneyOffRoundedIcon from '@mui/icons-material/MoneyOffRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
-import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded';
+import PaidRoundedIcon from '@mui/icons-material/PaidRounded';
 import { EmptyState } from '../../common/EmptyState';
 import { ErrorState } from '../../common/ErrorState';
 import { LoadingState } from '../../common/LoadingState';
@@ -18,7 +18,11 @@ import {
 } from '../../ui/design-system';
 import { fetchTimesheetEntries } from '../../../api/timesheets';
 import type { TimesheetEntry } from '../../../types';
-import { CONTRIBUTION_REASON_LABELS } from '../../../types/TimesheetEntry';
+import {
+  CONTRIBUTION_REASON_LABELS,
+  isReworkQualityReason,
+  type ContributionReason,
+} from '../../../types/TimesheetEntry';
 import { designTokens } from '../../../theme/designTokens';
 import { formatCellValue, formatDate, formatNumber, toFiniteNumber } from '../../../utils/format';
 import {
@@ -39,6 +43,11 @@ function entryTaskLabel(entry: TimesheetEntry): string {
     return formatCellValue(entry.non_productive_description) || 'Non-Productive';
   }
   return formatCellValue(entry.task_type_name) || '—';
+}
+
+function contributionLabel(reason: ContributionReason | null | undefined): string {
+  if (!reason) return '—';
+  return CONTRIBUTION_REASON_LABELS[reason] ?? reason;
 }
 
 export function ProjectTimesheetsPanel({
@@ -82,6 +91,26 @@ export function ProjectTimesheetsPanel({
         />
         <KpiMetricCard
           compact
+          title="Billable hours"
+          value={formatNumber(summary.billableHours, 1) || '0'}
+          subtitle="Customer-billable productive time"
+          icon={PaidRoundedIcon}
+          accent="success"
+        />
+        <KpiMetricCard
+          compact
+          title="Rework (unbilled)"
+          value={formatNumber(summary.reworkHours, 1) || '0'}
+          subtitle={
+            summary.unbilledHours > summary.reworkHours
+              ? `${formatNumber(summary.unbilledHours, 1)}h unbilled total`
+              : 'Quality / designer rework'
+          }
+          icon={MoneyOffRoundedIcon}
+          accent={summary.reworkHours > 0 ? 'warning' : 'info'}
+        />
+        <KpiMetricCard
+          compact
           title="Designers worked"
           value={String(summary.designerCount)}
           subtitle={
@@ -91,22 +120,6 @@ export function ProjectTimesheetsPanel({
           }
           icon={GroupsRoundedIcon}
           accent="info"
-        />
-        <KpiMetricCard
-          compact
-          title="Checking hours"
-          value={formatNumber(summary.checkingHours, 1) || '0'}
-          subtitle="Design Review / checking"
-          icon={FactCheckRoundedIcon}
-          accent="warning"
-        />
-        <KpiMetricCard
-          compact
-          title="Tasks carried out"
-          value={String(summary.distinctTaskCount)}
-          subtitle="Distinct task types"
-          icon={TaskAltRoundedIcon}
-          accent="success"
         />
       </KpiStrip>
 
@@ -131,7 +144,11 @@ export function ProjectTimesheetsPanel({
               <Chip
                 key={designer.userId}
                 size="small"
-                label={`${designer.userName}: ${formatNumber(designer.hours, 1) || '0'}h (${designer.entryCount})`}
+                label={`${designer.userName}: ${formatNumber(designer.hours, 1) || '0'}h${
+                  designer.reworkHours > 0
+                    ? ` · ${formatNumber(designer.reworkHours, 1)}h rework`
+                    : ''
+                }`}
                 sx={{ fontWeight: 600 }}
               />
             ))}
@@ -150,8 +167,7 @@ export function ProjectTimesheetsPanel({
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          All timesheet lines logged against this project. Checking = Design Review / check / review
-          task types.
+          Unbilled rework hours (quality issues) stay on the tool for design-efficiency analysis.
         </Typography>
         <Button component={RouterLink} to="/timesheets" size="small" variant="outlined">
           Open Timesheets
@@ -179,6 +195,7 @@ export function ProjectTimesheetsPanel({
                 <StickyHeaderCell>Task</StickyHeaderCell>
                 <StickyHeaderCell>Description</StickyHeaderCell>
                 <StickyHeaderCell>Contribution</StickyHeaderCell>
+                <StickyHeaderCell>Billable</StickyHeaderCell>
                 <StickyHeaderCell align="right">Hours</StickyHeaderCell>
               </TableRow>
             }
@@ -215,10 +232,29 @@ export function ProjectTimesheetsPanel({
                   </Typography>
                 </StickyTableCell>
                 <StickyTableCell>
-                  <Typography variant="body2" color="text.secondary">
-                    {entry.contribution_reason
-                      ? CONTRIBUTION_REASON_LABELS[entry.contribution_reason]
-                      : '—'}
+                  <Typography
+                    variant="body2"
+                    color={
+                      isReworkQualityReason(entry.contribution_reason)
+                        ? 'warning.main'
+                        : 'text.secondary'
+                    }
+                    sx={{
+                      fontWeight: isReworkQualityReason(entry.contribution_reason) ? 700 : 400,
+                    }}
+                  >
+                    {contributionLabel(entry.contribution_reason)}
+                  </Typography>
+                </StickyTableCell>
+                <StickyTableCell>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontWeight: 700,
+                      color: entry.is_billable ? 'success.main' : 'warning.main',
+                    }}
+                  >
+                    {entry.is_billable ? 'Yes' : 'No'}
                   </Typography>
                 </StickyTableCell>
                 <StickyTableCell align="right">

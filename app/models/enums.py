@@ -51,6 +51,8 @@ class ContributionReason(enum.Enum):
     engineering_change = "engineering_change"
     customer_request = "customer_request"
     training_mentoring = "training_mentoring"
+    # Designer/resource rework from quality issues — always non-billable for efficiency tracking.
+    rework_quality = "rework_quality"
     other = "other"
 
 

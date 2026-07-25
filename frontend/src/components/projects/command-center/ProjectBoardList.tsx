@@ -15,11 +15,12 @@ import { designTokens } from '../../../theme/designTokens';
 import { formatDate, formatDisplayValue, formatNumber } from '../../../utils/format';
 import { buildProjectTableRows, type ProjectTableRow } from '../ProjectTable';
 
-/** Desktop board columns — fixed tracks so nothing leaves a dead middle gap. */
-const BOARD_COLUMNS = {
-  xs: '52px minmax(0, 1fr) 28px',
-  md: '56px minmax(140px, 1.6fr) minmax(100px, 0.9fr) 132px 96px 72px 28px',
-} as const;
+/**
+ * Fixed tracks only — no `fr` columns. The board sizes to content (~720px)
+ * instead of stretching across the viewport and leaving a dead middle gap.
+ */
+const BOARD_COLUMNS = '52px 220px 120px 88px 76px 28px';
+const BOARD_WIDTH = 660;
 
 function healthTone(health?: string | null) {
   if (health === 'red') return designTokens.health.red;
@@ -39,6 +40,24 @@ function isOnHold(project: ProjectTableRow) {
 function cleanName(value?: string | null) {
   const trimmed = (value ?? '').trim();
   return trimmed && trimmed !== '—' ? trimmed : '';
+}
+
+function hoursVariance(row: ProjectTableRow) {
+  const quoted = Number(row.quoted_hours ?? 0);
+  const actual = Number(row.actual_hours ?? 0);
+  const variancePct = quoted > 0 ? ((actual - quoted) / quoted) * 100 : null;
+  const over = typeof variancePct === 'number' && variancePct > 0;
+  const under = typeof variancePct === 'number' && variancePct < 0;
+  const varianceColor = over
+    ? designTokens.semantic.danger
+    : under
+      ? designTokens.semantic.success
+      : 'text.secondary';
+  const varianceLabel =
+    typeof variancePct === 'number'
+      ? `${variancePct > 0 ? '+' : ''}${Math.round(variancePct)}%`
+      : '—';
+  return { quoted, actual, varianceColor, varianceLabel };
 }
 
 function BoardHeader() {
@@ -61,106 +80,25 @@ function BoardHeader() {
   return (
     <Box
       sx={{
-        display: { xs: 'none', md: 'grid' },
-        gridTemplateColumns: BOARD_COLUMNS.md,
+        display: 'grid',
+        gridTemplateColumns: BOARD_COLUMNS,
         columnGap: 1,
         alignItems: 'center',
+        width: BOARD_WIDTH,
+        maxWidth: '100%',
         px: 1,
-        py: 0.5,
+        py: 0.45,
         borderBottom: '1px solid',
         borderColor: 'divider',
         bgcolor: 'action.hover',
       }}
     >
       {cell('Tool')}
-      {cell('Milestone / Customer')}
-      {cell('People')}
+      {cell('Project')}
       {cell('Hours')}
       {cell('Progress')}
       {cell('Due', { textAlign: 'right' })}
       <span />
-    </Box>
-  );
-}
-
-function hoursVariance(row: ProjectTableRow) {
-  const quoted = Number(row.quoted_hours ?? 0);
-  const actual = Number(row.actual_hours ?? 0);
-  const variancePct = quoted > 0 ? ((actual - quoted) / quoted) * 100 : null;
-  const over = typeof variancePct === 'number' && variancePct > 0;
-  const under = typeof variancePct === 'number' && variancePct < 0;
-  const varianceColor = over
-    ? designTokens.semantic.danger
-    : under
-      ? designTokens.semantic.success
-      : 'text.secondary';
-  const varianceLabel =
-    typeof variancePct === 'number'
-      ? `${variancePct > 0 ? '+' : ''}${Math.round(variancePct)}%`
-      : '—';
-  return { quoted, actual, varianceColor, varianceLabel };
-}
-
-function HoursCell({ row }: { row: ProjectTableRow }) {
-  const { quoted, actual, varianceColor, varianceLabel } = hoursVariance(row);
-
-  return (
-    <Box sx={{ minWidth: 0 }}>
-      <Typography
-        variant="caption"
-        sx={{
-          display: 'block',
-          fontWeight: 700,
-          fontVariantNumeric: 'tabular-nums',
-          lineHeight: 1.2,
-          color: 'text.secondary',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        Q {formatNumber(quoted, 0)} · A {formatNumber(actual, 0)}
-      </Typography>
-      <Typography
-        variant="caption"
-        sx={{
-          fontWeight: 800,
-          fontVariantNumeric: 'tabular-nums',
-          lineHeight: 1.2,
-          color: varianceColor,
-        }}
-      >
-        {varianceLabel}
-      </Typography>
-    </Box>
-  );
-}
-
-function ProgressCell({
-  percent,
-  health,
-}: {
-  percent: number;
-  health: { main: string; soft: string };
-}) {
-  return (
-    <Box sx={{ minWidth: 0 }}>
-      <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.2, gap: 0.5 }}>
-        <Typography
-          variant="caption"
-          sx={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontSize: '0.68rem', lineHeight: 1.1 }}
-        >
-          {Math.round(percent)}%
-        </Typography>
-      </Stack>
-      <LinearProgress
-        variant="determinate"
-        value={percent}
-        sx={{
-          height: 6,
-          borderRadius: 999,
-          bgcolor: health.soft,
-          '& .MuiLinearProgress-bar': { bgcolor: health.main, borderRadius: 999 },
-        }}
-      />
     </Box>
   );
 }
@@ -173,7 +111,7 @@ function SubLabel({ label, count }: { label: string; count: number }) {
       sx={{
         alignItems: 'center',
         px: 1,
-        py: 0.4,
+        py: 0.35,
         bgcolor: 'action.hover',
         borderBottom: '1px solid',
         borderColor: 'divider',
@@ -223,6 +161,7 @@ function ProjectBoardRow({
   const surfacer = cleanName(row.surfacerName);
   const people = [designer, surfacer].filter(Boolean);
   const peopleLabel = people.length ? people.join(' · ') : 'Unassigned';
+  const { quoted, actual, varianceColor, varianceLabel } = hoursVariance(row);
 
   const openMenu = (event: MouseEvent<HTMLElement>) => {
     event.stopPropagation();
@@ -239,6 +178,8 @@ function ProjectBoardRow({
         gridTemplateColumns: BOARD_COLUMNS,
         columnGap: 1,
         alignItems: 'center',
+        width: BOARD_WIDTH,
+        maxWidth: '100%',
         borderBottom: '1px solid',
         borderColor: 'divider',
         borderLeft: `3px solid ${health.main}`,
@@ -256,70 +197,81 @@ function ProjectBoardRow({
       <Box sx={{ minWidth: 0 }}>
         <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', lineHeight: 1.25 }} noWrap>
           {formatDisplayValue(stage)}
+          {row.customerName ? (
+            <Box component="span" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+              {' · '}
+              {row.customerName}
+            </Box>
+          ) : null}
         </Typography>
         <Typography
           variant="caption"
           color="text.secondary"
-          sx={{ display: 'block', fontWeight: 600, lineHeight: 1.2, fontSize: '0.7rem' }}
+          sx={{ display: 'block', fontWeight: 600, lineHeight: 1.2, fontSize: '0.68rem' }}
           noWrap
+          title={peopleLabel}
         >
-          {row.customerName || '—'}
+          {peopleLabel}
         </Typography>
-        <Box sx={{ display: { xs: 'block', md: 'none' }, mt: 0.15 }}>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ fontWeight: 600, lineHeight: 1.25, display: 'block' }}
-            noWrap
-          >
-            {peopleLabel}
-          </Typography>
-          {(() => {
-            const { quoted, actual, varianceColor, varianceLabel } = hoursVariance(row);
-            return (
-              <Typography
-                variant="caption"
-                sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}
-                noWrap
-              >
-                Q {formatNumber(quoted, 0)} · A {formatNumber(actual, 0)} ·{' '}
-                <Box component="span" sx={{ color: varianceColor, fontWeight: 800 }}>
-                  {varianceLabel}
-                </Box>
-              </Typography>
-            );
-          })()}
-        </Box>
+      </Box>
+
+      <Box sx={{ minWidth: 0 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block',
+            fontWeight: 700,
+            fontVariantNumeric: 'tabular-nums',
+            lineHeight: 1.2,
+            color: 'text.secondary',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Q {formatNumber(quoted, 0)} · A {formatNumber(actual, 0)}
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 800,
+            fontVariantNumeric: 'tabular-nums',
+            lineHeight: 1.2,
+            color: varianceColor,
+          }}
+        >
+          {varianceLabel}
+        </Typography>
+      </Box>
+
+      <Box sx={{ minWidth: 0 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block',
+            fontWeight: 800,
+            fontVariantNumeric: 'tabular-nums',
+            fontSize: '0.68rem',
+            lineHeight: 1.1,
+            mb: 0.2,
+          }}
+        >
+          {Math.round(percent)}%
+        </Typography>
+        <LinearProgress
+          variant="determinate"
+          value={percent}
+          sx={{
+            height: 5,
+            borderRadius: 999,
+            bgcolor: health.soft,
+            '& .MuiLinearProgress-bar': { bgcolor: health.main, borderRadius: 999 },
+          }}
+        />
       </Box>
 
       <Typography
         variant="caption"
         color="text.secondary"
         sx={{
-          display: { xs: 'none', md: 'block' },
-          fontWeight: 600,
-          lineHeight: 1.25,
-          fontSize: '0.72rem',
-        }}
-        noWrap
-        title={peopleLabel}
-      >
-        {peopleLabel}
-      </Typography>
-
-      <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-        <HoursCell row={row} />
-      </Box>
-
-      <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-        <ProgressCell percent={percent} health={health} />
-      </Box>
-
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{
-          display: { xs: 'none', md: 'block' },
           fontWeight: 700,
           textAlign: 'right',
           fontVariantNumeric: 'tabular-nums',
@@ -411,10 +363,12 @@ function BoardShell({ children }: { children: ReactNode }) {
   return (
     <Box
       sx={{
+        width: BOARD_WIDTH,
+        maxWidth: '100%',
         border: '1px solid',
         borderColor: 'divider',
         borderRadius: 1.5,
-        overflow: 'hidden',
+        overflow: 'auto',
         bgcolor: 'background.paper',
       }}
     >
@@ -486,7 +440,7 @@ export function ProjectBoardList({
     ));
 
   return (
-    <Stack spacing={1}>
+    <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
       {working.length ? (
         <BoardShell>
           {splitActiveHold ? <SubLabel label="Active" count={working.length} /> : null}

@@ -574,7 +574,7 @@ def get_kpi_breakdown(
 
     # revenue_quarter — actual awards in FY quarter + retainer accrued (not monthly × 3)
     fy_start = current_fy_start(today)
-    quote_month, quote_quarter, _quote_half, _quote_year = _quote_period_amounts(
+    (quote_month, quote_quarter, _quote_half, _quote_year), _costs = _quote_period_amounts(
         db, team_id=team_id, today=today, fy_start=fy_start
     )
     fee_month, fee_quarter = _retainer_fee_for_period(

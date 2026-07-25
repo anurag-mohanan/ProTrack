@@ -55,6 +55,7 @@ type TeamRollup = TeamPnlRow & {
   team_commercial_fee_monthly_inr?: number;
   quote_revenue_inr?: number;
   estimated_cost_inr?: number;
+  monthly_revenue_signal_inr?: number | string;
   other_operating_cost_inr?: number | string;
   half_year_revenue_signal_inr?: number | string;
   year_revenue_signal_inr?: number | string;
@@ -126,8 +127,10 @@ function teamPeriodSeries(row: TeamRollup, period: FinancePeriod) {
       salary,
       other,
       operating: toFiniteNumber(row.monthly_operating_cost_inr),
-      // Quote pipeline + retainer so quote-basis teams (e.g. Eng 1) show revenue.
-      revenue: toFiniteNumber(row.planning_revenue_signal_inr),
+      // Calendar-month awards + this month's retainer (not open quote pipeline).
+      revenue:
+        toFiniteNumber(row.monthly_revenue_signal_inr) ||
+        toFiniteNumber(row.planning_revenue_signal_inr),
     };
   }
   if (period === 'quarter') {
@@ -164,9 +167,7 @@ function companyPeriodTotals(data: FinanceDashboard, period: FinancePeriod) {
       salary,
       other,
       operating,
-      revenue: toFiniteNumber(
-        data.revenue.quote_pipeline_revenue ?? data.revenue.team_commercial_fee_monthly,
-      ),
+      revenue: toFiniteNumber(data.revenue.monthly_revenue),
       label: '/ mo',
     };
   }
@@ -294,7 +295,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
   const periodShort = PERIOD_LABELS[period];
   const periodHint =
     period === 'month'
-      ? 'Month: salaries + OpEx/CapEx vs quote pipeline + retainer fees.'
+      ? 'Month: salaries + OpEx/CapEx vs quotes awarded this calendar month + this month’s retainer. Pipeline projections are in Annual Plan.'
       : `${periodShort}: salaries + OpEx/CapEx × months elapsed vs quote awards in period + retainer accrued.`;
 
   const scopeLabel = data.selected_team_name ? data.selected_team_name : 'All teams';
@@ -365,9 +366,9 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KpiMetricCard
-            title="Gross profit signal"
+            title="Gross profit this month"
             value={financeMoney(grossProfit, currency)}
-            subtitle={`Pre-tax net ${financeMoney(preTaxNet, currency)} (${netMargin.toFixed(1)}%) · After-tax ${financeMoney(afterTaxNet, currency)} (${afterTaxMargin.toFixed(1)}% @ ${taxPercent}%)`}
+            subtitle={`Pre-tax net ${financeMoney(preTaxNet, currency)} (${netMargin.toFixed(1)}%) · After-tax ${financeMoney(afterTaxNet, currency)} (${afterTaxMargin.toFixed(1)}% @ ${taxPercent}%) · awards + retainer this month`}
             icon={ShowChartOutlinedIcon}
             accent={netMargin >= 0 ? 'success' : 'error'}
             compact
@@ -455,7 +456,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
             title={`Team cost vs revenue · ${periodShort}`}
             subtitle={
               !teamId
-                ? 'Salaries stacked with OpEx/CapEx; revenue = quotes + retainer for the selected period'
+                ? 'Salaries stacked with OpEx/CapEx; revenue = awards in period + retainer'
                 : 'Filtered team context'
             }
           >
@@ -514,7 +515,7 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
       {!teamId && (data.by_team ?? []).length > 0 ? (
         <FinanceSection
           title="Team P&L performance"
-          subtitle={`${periodShort} planning signals — revenue vs fully loaded cost (salary + software OpEx + hardware CapEx). After-tax uses ${taxPercent}% corporate tax.`}
+          subtitle={`${periodShort} actuals — awards in period + retainer vs fully loaded cost (salary + software OpEx + hardware CapEx). After-tax uses ${taxPercent}% corporate tax. Pipeline projections are in Annual Plan.`}
         >
           <FinanceTeamPnlTable
             rows={data.by_team ?? []}

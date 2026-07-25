@@ -186,8 +186,15 @@ def _quote_period_amounts(
     team_id: UUID | None,
     today: date,
     fy_start: date,
-) -> tuple[Decimal, Decimal, Decimal, Decimal]:
-    """Actual quote awards by period (month / FY quarter / half / full FY)."""
+) -> tuple[
+    tuple[Decimal, Decimal, Decimal, Decimal],
+    tuple[Decimal, Decimal, Decimal, Decimal],
+]:
+    """Actual quote awards by period (month / FY quarter / half / full FY).
+
+    Returns ``((rev_m, rev_q, rev_h, rev_y), (cost_m, cost_q, cost_h, cost_y))``.
+    Period membership uses the quote's effective revenue date (quoted/invoiced).
+    """
     from app.models.finance import Quote
     from app.services.finance.plan_sales_from_quotes_service import effective_revenue_date
     from app.services.finance.renewal_budget_service import (
@@ -210,25 +217,42 @@ def _quote_period_amounts(
     quarterly = Decimal("0.00")
     half = Decimal("0.00")
     yearly = Decimal("0.00")
+    cost_m = Decimal("0.00")
+    cost_q = Decimal("0.00")
+    cost_h = Decimal("0.00")
+    cost_y = Decimal("0.00")
     for quote in db.scalars(quote_stmt).all():
         revision = _current_quote_revision(db, quote)
         when = effective_revenue_date(quote)
         if when is None or revision is None:
             continue
         amount = _d(revision.base_quoted_revenue_inr)
+        est = _d(revision.base_estimated_cost_inr)
         if when.year == today.year and when.month == today.month:
             monthly += amount
+            cost_m += est
         if q_start is not None and q_end is not None and q_start <= when <= q_end:
             quarterly += amount
+            cost_q += est
         if h_start is not None and h_end is not None and h_start <= when <= h_end:
             half += amount
+            cost_h += est
         if y_start <= when <= y_end:
             yearly += amount
+            cost_y += est
     return (
-        monthly.quantize(Decimal("0.01")),
-        quarterly.quantize(Decimal("0.01")),
-        half.quantize(Decimal("0.01")),
-        yearly.quantize(Decimal("0.01")),
+        (
+            monthly.quantize(Decimal("0.01")),
+            quarterly.quantize(Decimal("0.01")),
+            half.quantize(Decimal("0.01")),
+            yearly.quantize(Decimal("0.01")),
+        ),
+        (
+            cost_m.quantize(Decimal("0.01")),
+            cost_q.quantize(Decimal("0.01")),
+            cost_h.quantize(Decimal("0.01")),
+            cost_y.quantize(Decimal("0.01")),
+        ),
     )
 
 
@@ -624,9 +648,12 @@ def _team_rollups(
     )
 
     fy_start = current_fy_start(today)
-    quote_month, quote_quarter, quote_half, quote_year = _quote_period_amounts(
-        db, team_id=team.id, today=today, fy_start=fy_start
-    )
+    (quote_month, quote_quarter, quote_half, quote_year), (
+        cost_month,
+        cost_quarter,
+        cost_half,
+        cost_year,
+    ) = _quote_period_amounts(db, team_id=team.id, today=today, fy_start=fy_start)
     q_bounds = fy_quarter_date_bounds(today, fy_start=fy_start)
     h_bounds = fy_half_date_bounds(today, fy_start=fy_start)
     y_start, y_end = fy_year_date_bounds(fy_start=fy_start)
@@ -643,13 +670,16 @@ def _team_rollups(
     # Fully loaded team cost: salaries + software/OpEx + hardware CapEx assigned to the team.
     operating = prosohm_opex + salary + prosohm_capex
     other_op = (prosohm_opex + prosohm_capex).quantize(Decimal("0.01"))
-    revenue = quote_revenue + fee
+    # Period revenue = awards in window + retainer accrued (not open quote pipeline).
+    # Pipeline stays on quote_revenue_inr for reference; projections live in Annual Plan.
+    period_month_revenue = (quote_month + fee).quantize(Decimal("0.01"))
     period_quarter_revenue = (quote_quarter + fee_quarter).quantize(Decimal("0.01"))
     period_half_revenue = (quote_half + fee_half).quantize(Decimal("0.01"))
     period_year_revenue = (quote_year + fee_year).quantize(Decimal("0.01"))
-    # Month chart/table: open quote pipeline + monthly retainer (quote-basis teams show revenue).
-    # Longer periods: actual awards in window + retainer accrued for months elapsed.
-    gross_profit = revenue - quote_estimated_cost
+    # Default P&L fields mirror Month (calendar month awards + this month's retainer).
+    revenue = period_month_revenue
+    period_estimated = cost_month
+    gross_profit = revenue - period_estimated
     net_profit = gross_profit - operating
     gross_margin = (
         (gross_profit / revenue * Decimal("100")).quantize(Decimal("0.01"))
@@ -675,8 +705,10 @@ def _team_rollups(
         "other_operating_cost_inr": other_op,
         "team_commercial_fee_monthly_inr": fee,
         "quote_revenue_inr": quote_revenue,
-        "estimated_cost_inr": quote_estimated_cost,
+        "estimated_cost_inr": period_estimated,
+        "quote_pipeline_estimated_cost_inr": quote_estimated_cost,
         "planning_revenue_signal_inr": revenue,
+        "monthly_revenue_signal_inr": period_month_revenue,
         "gross_profit_inr": gross_profit.quantize(Decimal("0.01")),
         "net_profit_inr": net_profit.quantize(Decimal("0.01")),
         "gross_margin_percent": gross_margin,
@@ -686,6 +718,10 @@ def _team_rollups(
         "quarterly_revenue_signal_inr": period_quarter_revenue,
         "half_year_revenue_signal_inr": period_half_revenue,
         "year_revenue_signal_inr": period_year_revenue,
+        "month_estimated_cost_inr": cost_month,
+        "quarter_estimated_cost_inr": cost_quarter,
+        "half_year_estimated_cost_inr": cost_half,
+        "year_estimated_cost_inr": cost_year,
         "quarter_quote_awards_inr": quote_quarter,
         "half_year_quote_awards_inr": quote_half,
         "year_quote_awards_inr": quote_year,
@@ -791,9 +827,12 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         db, team_id=team_id, paid_by=ExpensePaidBy.prosohm, nature=CostNature.capex, as_of=as_of
     )
     team_fee_monthly = _team_fee_monthly(db, team_id=team_id, today=today)
-    quote_month, quote_quarter, quote_half, quote_year = _quote_period_amounts(
-        db, team_id=team_id, today=today, fy_start=fy_start
-    )
+    (quote_month, quote_quarter, quote_half, quote_year), (
+        month_estimated_cost,
+        _quarter_estimated_cost,
+        _half_estimated_cost,
+        _year_estimated_cost,
+    ) = _quote_period_amounts(db, team_id=team_id, today=today, fy_start=fy_start)
     _, fee_quarter = _retainer_fee_for_period(
         db, team_id=team_id, today=today, fy_start=fy_start
     )
@@ -819,8 +858,7 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
 
     planning_revenue = revenue + team_fee_monthly
     operating_cost = prosohm_opex + salary_cost + capex
-    display_revenue = planning_revenue
-    # Actual period revenue: quote awards in period + retainer accrued (not ×3 projection)
+    # Actual period revenue: quote awards in period + retainer accrued (not open pipeline).
     period_monthly_revenue = (quote_month + team_fee_monthly).quantize(Decimal("0.01"))
     quarterly_revenue = (quote_quarter + fee_quarter).quantize(Decimal("0.01"))
     half_year_revenue = (quote_half + fee_half).quantize(Decimal("0.01"))
@@ -829,11 +867,13 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     half_year_operating = (operating_cost * Decimal(fee_h_months)).quantize(Decimal("0.01"))
     yearly_operating = (operating_cost * Decimal(fee_y_months)).quantize(Decimal("0.01"))
     quarterly_salary = (salary_cost * Decimal(fee_q_months)).quantize(Decimal("0.01"))
-    gross_profit = display_revenue - estimated_cost
+    # Overview P&L KPIs = calendar month actuals (projections live in Annual Plan).
+    display_revenue = period_monthly_revenue
+    gross_profit = display_revenue - month_estimated_cost
     gross_margin = (
         (gross_profit / display_revenue * 100) if display_revenue else Decimal("0.00")
     )
-    net_profit = display_revenue - estimated_cost - operating_cost
+    net_profit = display_revenue - month_estimated_cost - operating_cost
     net_base = display_revenue
     net_margin = (net_profit / net_base * 100) if net_base else Decimal("0.00")
     tax_percent = _corporate_tax_percent(db)
@@ -946,7 +986,7 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
             "quarterly_revenue": quarterly_revenue,
             "half_year_revenue": half_year_revenue,
             "yearly_revenue": yearly_revenue,
-            "quote_pipeline_revenue": display_revenue,
+            "quote_pipeline_revenue": planning_revenue,
             "revenue_forecast": yearly_revenue,
             "customer_revenue": revenue,
             "business_model_revenue": team_fee_monthly,

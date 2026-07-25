@@ -308,7 +308,9 @@ class TeamFinanceBreakdown(BaseModel):
     team_commercial_fee_monthly_inr: Decimal
     quote_revenue_inr: Decimal = Decimal("0")
     estimated_cost_inr: Decimal = Decimal("0")
+    quote_pipeline_estimated_cost_inr: Decimal = Decimal("0")
     planning_revenue_signal_inr: Decimal
+    monthly_revenue_signal_inr: Decimal = Decimal("0")
     gross_profit_inr: Decimal = Decimal("0")
     net_profit_inr: Decimal = Decimal("0")
     gross_margin_percent: Decimal = Decimal("0")
@@ -318,6 +320,10 @@ class TeamFinanceBreakdown(BaseModel):
     quarterly_revenue_signal_inr: Decimal = Decimal("0")
     half_year_revenue_signal_inr: Decimal = Decimal("0")
     year_revenue_signal_inr: Decimal = Decimal("0")
+    month_estimated_cost_inr: Decimal = Decimal("0")
+    quarter_estimated_cost_inr: Decimal = Decimal("0")
+    half_year_estimated_cost_inr: Decimal = Decimal("0")
+    year_estimated_cost_inr: Decimal = Decimal("0")
     month_quote_awards_inr: Decimal = Decimal("0")
     quarter_quote_awards_inr: Decimal = Decimal("0")
     half_year_quote_awards_inr: Decimal = Decimal("0")

@@ -31,6 +31,12 @@ export type TeamPnlRow = {
   net_margin_percent?: number | string;
   after_tax_net_profit_inr?: number | string;
   after_tax_net_margin_percent?: number | string;
+  monthly_revenue_signal_inr?: number | string;
+  team_commercial_fee_monthly_inr?: number | string;
+  month_estimated_cost_inr?: number | string;
+  quarter_estimated_cost_inr?: number | string;
+  half_year_estimated_cost_inr?: number | string;
+  year_estimated_cost_inr?: number | string;
   quarterly_revenue_signal_inr?: number | string;
   half_year_revenue_signal_inr?: number | string;
   year_revenue_signal_inr?: number | string;
@@ -68,18 +74,17 @@ function applyTax(net: number, revenue: number, taxPercent: number) {
 
 function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod, taxPercent: number) {
   if (period === 'month') {
-    const revenue = toFiniteNumber(row.planning_revenue_signal_inr);
+    const revenue =
+      toFiniteNumber(row.monthly_revenue_signal_inr) ||
+      toFiniteNumber(row.planning_revenue_signal_inr);
     const operating = toFiniteNumber(row.monthly_operating_cost_inr);
-    const gross = toFiniteNumber(row.gross_profit_inr);
-    const net = toFiniteNumber(row.net_profit_inr);
-    const netMargin = toFiniteNumber(row.net_margin_percent);
-    const fromApi = row.after_tax_net_profit_inr != null;
-    const taxed = fromApi
-      ? {
-          afterTax: toFiniteNumber(row.after_tax_net_profit_inr),
-          afterTaxMargin: toFiniteNumber(row.after_tax_net_margin_percent),
-        }
-      : applyTax(net, revenue, taxPercent);
+    const estimated = toFiniteNumber(
+      row.month_estimated_cost_inr ?? row.estimated_cost_inr,
+    );
+    const gross = revenue - estimated;
+    const net = gross - operating;
+    const netMargin = revenue > 0 ? (net / revenue) * 100 : 0;
+    const taxed = applyTax(net, revenue, taxPercent);
     return {
       revenue,
       operating,
@@ -112,7 +117,12 @@ function periodMetrics(row: TeamPnlRow, period: FinancePnlPeriod, taxPercent: nu
       : period === 'half'
         ? toFiniteNumber(row.half_year_salary_cost_inr)
         : toFiniteNumber(row.year_salary_cost_inr);
-  const estimated = toFiniteNumber(row.estimated_cost_inr);
+  const estimated =
+    period === 'quarter'
+      ? toFiniteNumber(row.quarter_estimated_cost_inr)
+      : period === 'half'
+        ? toFiniteNumber(row.half_year_estimated_cost_inr)
+        : toFiniteNumber(row.year_estimated_cost_inr);
   const gross = revenue - estimated;
   const net = gross - operating;
   const netMargin = revenue > 0 ? (net / revenue) * 100 : 0;

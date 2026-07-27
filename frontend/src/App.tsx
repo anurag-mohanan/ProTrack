@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppThemeProvider } from './context/AppThemeProvider';
 import { ToastProvider } from './context/ToastContext';
 import { LoadingState } from './components/common/LoadingState';
+import { GlobalDragAutoScroll } from './components/common/GlobalDragAutoScroll';
 import { queryClient } from './lib/queryClient';
 import { MainLayout } from './layouts/MainLayout';
 import { AdminLayout } from './layouts/AdminLayout';
@@ -211,6 +212,7 @@ export default function App() {
       <AuthProvider>
         <AppThemeProvider>
           <ToastProvider>
+            <GlobalDragAutoScroll />
             <BrowserRouter>
               <Routes>
                 <Route element={<PublicRoute />}>

@@ -184,6 +184,9 @@ class ActivityAction(enum.Enum):
     budget_created = "budget_created"
     budget_approved = "budget_approved"
     budget_rejected = "budget_rejected"
+    finance_planning_scenario_created = "finance_planning_scenario_created"
+    finance_planning_scenario_updated = "finance_planning_scenario_updated"
+    finance_planning_scenario_deleted = "finance_planning_scenario_deleted"
     fx_rate_updated = "fx_rate_updated"
     cost_updated = "cost_updated"
     ticket_created = "ticket_created"
@@ -239,6 +242,7 @@ class EntityType(enum.Enum):
     import_batch = "import_batch"
     quote = "quote"
     budget = "budget"
+    finance_planning_scenario = "finance_planning_scenario"
     cost_centre = "cost_centre"
     expense = "expense"
     fx_rate = "fx_rate"
@@ -306,6 +310,18 @@ class FinancePlanSection(enum.Enum):
 class FinancePlanStatus(enum.Enum):
     draft = "draft"
     active = "active"
+    archived = "archived"
+
+
+class FinancePlanningScenarioType(enum.Enum):
+    expansion = "expansion"
+    downsize = "downsize"
+    what_if = "what_if"
+
+
+class FinancePlanningScenarioStatus(enum.Enum):
+    draft = "draft"
+    approved = "approved"
     archived = "archived"
 
 

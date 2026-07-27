@@ -61,6 +61,9 @@ export interface OnboardingChecklist {
   created_by_id: string | null;
   created_by_name: string | null;
   completed_at: string | null;
+  is_published: boolean;
+  published_at: string | null;
+  published_by_id: string | null;
   total_items: number;
   completed_items: number;
   pending_items: number;
@@ -147,6 +150,12 @@ export const onboardingApi = {
   },
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/hr/onboarding/${id}`);
+  },
+  publish: async (id: string): Promise<OnboardingChecklistDetail> => {
+    const { data } = await apiClient.post<OnboardingChecklistDetail>(
+      `/hr/onboarding/${id}/publish`,
+    );
+    return data;
   },
   setItemStatus: async (
     checklistId: string,

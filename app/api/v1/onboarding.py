@@ -127,6 +127,9 @@ def _to_read(
         created_by_id=checklist.created_by_id,
         created_by_name=_full_name(checklist.created_by),
         completed_at=checklist.completed_at,
+        is_published=bool(getattr(checklist, "is_published", False)),
+        published_at=getattr(checklist, "published_at", None),
+        published_by_id=getattr(checklist, "published_by_id", None),
         total_items=stats["total"],
         completed_items=stats["completed"],
         pending_items=stats["pending"],
@@ -402,9 +405,40 @@ def delete_checklist(
         raise HTTPException(status_code=404, detail="Onboarding checklist not found.")
     if not onboard.can_manage_onboarding(db, current_user):
         raise HTTPException(status_code=403, detail="Only HR / Admin can delete checklists.")
-    onboard.delete_checklist(db, checklist)
-    db.commit()
+    try:
+        from app.services.hr_form_publish import assert_can_delete
+
+        assert_can_delete(checklist, document_label="onboarding checklist")
+        onboard.delete_checklist(db, checklist)
+        db.commit()
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return None
+
+
+@router.post("/{checklist_id}/publish", response_model=OnboardingChecklistDetailRead)
+def publish_checklist(
+    checklist_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    checklist = onboard.load_checklist(db, checklist_id)
+    if checklist is None:
+        raise HTTPException(status_code=404, detail="Onboarding checklist not found.")
+    if not onboard.can_manage_onboarding(db, current_user):
+        raise HTTPException(status_code=403, detail="Only HR / Admin can publish checklists.")
+    try:
+        from app.services.hr_form_publish import publish_document
+
+        publish_document(checklist, user=current_user)
+        db.commit()
+        loaded = onboard.load_checklist(db, checklist_id)
+        assert loaded is not None
+        return _to_detail(db, loaded, current_user)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post(

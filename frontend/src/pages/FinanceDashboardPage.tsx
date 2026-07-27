@@ -9,6 +9,7 @@ import { FinanceOverheadsPanel } from '../components/finance/FinanceOverheadsPan
 import { FinanceOverviewPanel } from '../components/finance/FinanceOverviewPanel';
 import { FinancePeopleCostsPanel } from '../components/finance/FinancePeopleCostsPanel';
 import { FinanceQuotesPanel } from '../components/finance/FinanceQuotesPanel';
+import { FinanceScenariosPanel } from '../components/finance/FinanceScenariosPanel';
 import { FinanceTeamCommercialPanel } from '../components/finance/FinanceTeamCommercialPanel';
 import {
   FinanceTeamFilter,
@@ -61,6 +62,7 @@ export function FinanceDashboardPage() {
         <Tab label="People costs" />
         <Tab label="Expenses & subscriptions" />
         <Tab label="Overheads" />
+        <Tab label="Scenarios / Planning" />
         <Tab label="Team commercial" />
         <Tab label="Annual Plan" />
         <Tab label="Revenue / quotes" />
@@ -71,10 +73,11 @@ export function FinanceDashboardPage() {
       {tab === 1 && <FinancePeopleCostsPanel teamId={teamId} />}
       {tab === 2 && <FinanceExpensesPanel teamId={teamId} />}
       {tab === 3 && <FinanceOverheadsPanel teamId={teamId} />}
-      {tab === 4 && <FinanceTeamCommercialPanel teamId={teamId} />}
-      {tab === 5 && <AnnualPlanPanel />}
-      {tab === 6 && <FinanceQuotesPanel teamId={teamId} />}
-      {tab === 7 && <FinanceBudgetsReportsPanel teamId={teamId} />}
+      {tab === 4 && <FinanceScenariosPanel teamId={teamId} />}
+      {tab === 5 && <FinanceTeamCommercialPanel teamId={teamId} />}
+      {tab === 6 && <AnnualPlanPanel />}
+      {tab === 7 && <FinanceQuotesPanel teamId={teamId} />}
+      {tab === 8 && <FinanceBudgetsReportsPanel teamId={teamId} />}
     </Box>
   );
 }

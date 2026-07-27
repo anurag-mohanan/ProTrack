@@ -28,6 +28,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import HowToRegRoundedIcon from '@mui/icons-material/HowToRegRounded';
+import PublishRoundedIcon from '@mui/icons-material/PublishRounded';
 import RadioButtonUncheckedRoundedIcon from '@mui/icons-material/RadioButtonUncheckedRounded';
 import UnfoldLessRoundedIcon from '@mui/icons-material/UnfoldLessRounded';
 import UnfoldMoreRoundedIcon from '@mui/icons-material/UnfoldMoreRounded';
@@ -79,6 +80,7 @@ export default function OnboardingPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<OnboardingChecklist | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OnboardingChecklist | null>(null);
+  const [publishTarget, setPublishTarget] = useState<OnboardingChecklist | null>(null);
   const [mineOnly, setMineOnly] = useState(false);
 
   const listQuery = useQuery({
@@ -153,6 +155,17 @@ export default function OnboardingPage() {
       }
       setDeleteTarget(null);
       invalidate();
+    },
+    onError: (error: unknown) => showError(getErrorMessage(error)),
+  });
+
+  const publishMutation = useMutation({
+    mutationFn: (id: string) => onboardingApi.publish(id),
+    onSuccess: (data) => {
+      showSuccess(`Onboarding checklist published for ${data.employee_name}.`);
+      setPublishTarget(null);
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['onboarding', data.id] });
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
   });
@@ -245,6 +258,7 @@ export default function OnboardingPage() {
               selected={selectedId === row.id}
               onOpen={() => setSelectedId(row.id)}
               onEdit={() => setEditTarget(row)}
+              onPublish={() => setPublishTarget(row)}
               onDelete={() => setDeleteTarget(row)}
             />
           ))}
@@ -262,6 +276,7 @@ export default function OnboardingPage() {
               busy={itemMutation.isPending}
               onStatus={(itemId, status) => itemMutation.mutate({ itemId, status })}
               onEdit={() => setEditTarget(detail)}
+              onPublish={() => setPublishTarget(detail)}
               onDelete={() => setDeleteTarget(detail)}
               onClose={() => setSelectedId(null)}
             />
@@ -310,6 +325,19 @@ export default function OnboardingPage() {
           if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
         }}
       />
+
+      <ConfirmDialog
+        open={Boolean(publishTarget)}
+        title="Publish onboarding checklist?"
+        recordName={publishTarget?.employee_name}
+        message="Publishing locks this checklist as the official record. After publish, it cannot be deleted."
+        confirmLabel="Publish"
+        loading={publishMutation.isPending}
+        onClose={() => setPublishTarget(null)}
+        onConfirm={() => {
+          if (publishTarget) publishMutation.mutate(publishTarget.id);
+        }}
+      />
     </PageContainer>
   );
 }
@@ -319,12 +347,14 @@ function ChecklistRow({
   selected,
   onOpen,
   onEdit,
+  onPublish,
   onDelete,
 }: {
   row: OnboardingChecklist;
   selected: boolean;
   onOpen: () => void;
   onEdit: () => void;
+  onPublish: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -360,6 +390,9 @@ function ChecklistRow({
                 color={row.status === 'completed' ? 'success' : 'info'}
                 sx={{ height: 22 }}
               />
+              {row.is_published ? (
+                <Chip size="small" color="success" variant="outlined" label="Published" sx={{ height: 22 }} />
+              ) : null}
               {row.my_pending_items > 0 ? (
                 <Chip
                   size="small"
@@ -404,16 +437,30 @@ function ChecklistRow({
                   <EditOutlinedIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Delete">
-                <IconButton
-                  size="small"
-                  color="error"
-                  aria-label="Delete onboarding checklist"
-                  onClick={onDelete}
-                >
-                  <DeleteOutlineRoundedIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
+              {!row.is_published ? (
+                <Tooltip title="Publish">
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    aria-label="Publish onboarding checklist"
+                    onClick={onPublish}
+                  >
+                    <PublishRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
+              {!row.is_published ? (
+                <Tooltip title="Delete">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    aria-label="Delete onboarding checklist"
+                    onClick={onDelete}
+                  >
+                    <DeleteOutlineRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
             </Stack>
           ) : null}
         </Stack>
@@ -434,6 +481,7 @@ function ChecklistDetail({
   busy,
   onStatus,
   onEdit,
+  onPublish,
   onDelete,
   onClose,
 }: {
@@ -442,6 +490,7 @@ function ChecklistDetail({
   busy: boolean;
   onStatus: (itemId: string, status: OnboardingItemStatus) => void;
   onEdit: () => void;
+  onPublish: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -562,6 +611,15 @@ function ChecklistDetail({
               .join(' · ')}
           </Typography>
           <Stack direction="row" spacing={0.5} sx={{ mt: 0.75, flexWrap: 'wrap', gap: 0.5 }}>
+            {detail.is_published ? (
+              <Chip
+                size="small"
+                color="success"
+                variant="outlined"
+                label="Published"
+                sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.7rem' } }}
+              />
+            ) : null}
             {detail.sections.map((section) => {
               const items = detail.items.filter((item) => item.section === section);
               const { done, total } = sectionStats(items);
@@ -612,16 +670,30 @@ function ChecklistDetail({
                   <EditOutlinedIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Delete">
-                <IconButton
-                  size="small"
-                  color="error"
-                  aria-label="Delete onboarding checklist"
-                  onClick={onDelete}
-                >
-                  <DeleteOutlineRoundedIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
+              {!detail.is_published ? (
+                <Tooltip title="Publish">
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    aria-label="Publish onboarding checklist"
+                    onClick={onPublish}
+                  >
+                    <PublishRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
+              {!detail.is_published ? (
+                <Tooltip title="Delete">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    aria-label="Delete onboarding checklist"
+                    onClick={onDelete}
+                  >
+                    <DeleteOutlineRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
             </>
           ) : null}
           <Tooltip title="Close">

@@ -17,6 +17,8 @@ from app.models.enums import (
     ExpensePaidBy,
     FinancePlanSection,
     FinancePlanStatus,
+    FinancePlanningScenarioStatus,
+    FinancePlanningScenarioType,
     TeamBillingMode,
     TeamBillingPeriod,
 )
@@ -925,3 +927,120 @@ class FinancePlanAiInsightsRead(BaseModel):
 
 class FinancePlanAiApplyRequest(BaseModel):
     action_code: str = Field(..., min_length=1, max_length=80)
+
+
+class FinancePlanningScenarioPayload(BaseModel):
+    schema_version: int = 2
+    overhead: dict = Field(default_factory=dict)
+    new_teams: list[dict] = Field(default_factory=list)
+    management_hires: list[dict] = Field(default_factory=list)
+    facility_lines: list[dict] = Field(default_factory=list)
+    expansion: dict = Field(default_factory=dict)
+    opex_yearly: bool = False
+    capex_yearly: bool = False
+
+
+class FinancePlanningScenarioCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str | None = None
+    scenario_type: FinancePlanningScenarioType = FinancePlanningScenarioType.expansion
+    status: FinancePlanningScenarioStatus = FinancePlanningScenarioStatus.draft
+    baseline_as_of: date | None = None
+    payload: FinancePlanningScenarioPayload | dict | None = None
+
+
+class FinancePlanningScenarioUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = None
+    scenario_type: FinancePlanningScenarioType | None = None
+    status: FinancePlanningScenarioStatus | None = None
+    baseline_as_of: date | None = None
+    payload: FinancePlanningScenarioPayload | dict | None = None
+
+
+class FinancePlanningScenarioRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    description: str | None = None
+    scenario_type: FinancePlanningScenarioType
+    status: FinancePlanningScenarioStatus
+    baseline_as_of: date
+    payload: dict
+    created_by_user_id: UUID
+    updated_by_user_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class FinancePlanningScenarioListItem(BaseModel):
+    id: UUID
+    name: str
+    description: str | None = None
+    scenario_type: FinancePlanningScenarioType
+    status: FinancePlanningScenarioStatus
+    baseline_as_of: date
+    updated_at: datetime
+
+
+class FinancePlanningScenarioComputeRequest(BaseModel):
+    payload: FinancePlanningScenarioPayload | dict
+    team_id: UUID | None = None
+
+
+class FinancePlanningScenarioSimulatedTeam(BaseModel):
+    team_id: str
+    team_name: str
+    revenue: Decimal
+    current_net: Decimal
+    current_operating: Decimal
+    simulated_direct: Decimal
+    simulated_allocated: Decimal
+    simulated_operating: Decimal
+    simulated_net: Decimal
+    simulated_after_tax: Decimal
+    delta_operating: Decimal
+    break_even_revenue: Decimal
+    break_even_revenue_after_tax: Decimal
+    is_new_team: bool = False
+
+
+class FinancePlanningScenarioResult(BaseModel):
+    simulated_pool: Decimal
+    delta_pool: Decimal
+    simulated_billable_fte: Decimal
+    simulated_cpr: Decimal
+    delta_cpr: Decimal
+    company_direct_delta: Decimal
+    company_simulated_operating: Decimal
+    delta_company_operating: Decimal
+    shared_overhead: dict = Field(default_factory=dict)
+    teams: list[FinancePlanningScenarioSimulatedTeam]
+
+
+class FinancePlanningScenarioComputeResponse(BaseModel):
+    baseline: dict
+    payload: dict
+    result: FinancePlanningScenarioResult
+
+
+class FinancePlanningScenarioCompareRequest(BaseModel):
+    scenario_id_a: UUID
+    scenario_id_b: UUID
+    team_id: UUID | None = None
+
+
+class FinancePlanningScenarioCompareSummary(BaseModel):
+    scenario_id: UUID
+    name: str
+    simulated_pool: Decimal
+    simulated_cpr: Decimal
+    company_simulated_operating: Decimal
+    delta_company_operating: Decimal
+    total_simulated_net: Decimal
+
+
+class FinancePlanningScenarioCompareResponse(BaseModel):
+    scenario_a: FinancePlanningScenarioCompareSummary
+    scenario_b: FinancePlanningScenarioCompareSummary

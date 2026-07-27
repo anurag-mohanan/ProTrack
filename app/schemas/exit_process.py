@@ -92,4 +92,7 @@ class ExitInterviewRead(TimestampSchema):
     notes: Optional[str] = None
     created_by_id: Optional[UUID] = None
     completed_at: Optional[datetime] = None
+    is_published: bool = False
+    published_at: Optional[datetime] = None
+    published_by_id: Optional[UUID] = None
     questions: list[ExitInterviewQuestion] = Field(default_factory=list)

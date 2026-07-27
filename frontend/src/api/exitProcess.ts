@@ -42,6 +42,9 @@ export interface ExitInterview {
   notes: string | null;
   created_by_id: string | null;
   completed_at: string | null;
+  is_published: boolean;
+  published_at: string | null;
+  published_by_id: string | null;
   questions: ExitInterviewQuestion[];
   created_at: string;
   updated_at: string;
@@ -94,5 +97,9 @@ export const exitProcessApi = {
   },
   remove: async (id: string) => {
     await apiClient.delete(`/hr/exit-process/${id}`);
+  },
+  publish: async (id: string) => {
+    const { data } = await apiClient.post<ExitInterview>(`/hr/exit-process/${id}/publish`);
+    return data;
   },
 };

@@ -641,6 +641,11 @@ class PerformanceReviewSheet(Base, TimestampMixin):
     calibration_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     acknowledgement_signature: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    published_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
 
     cycle: Mapped[Optional[PerformanceReviewCycle]] = relationship(back_populates="sheets")
     template: Mapped[Optional[PerformanceReviewTemplate]] = relationship(
@@ -655,6 +660,7 @@ class PerformanceReviewSheet(Base, TimestampMixin):
         foreign_keys=[reviewer_id],
     )
     calibrator: Mapped[Optional[User]] = relationship(foreign_keys=[calibrator_id])
+    published_by: Mapped[Optional[User]] = relationship(foreign_keys=[published_by_id])
     team: Mapped[Optional[Team]] = relationship(foreign_keys=[team_id])
     sections: Mapped[list["PerformanceReviewSection"]] = relationship(
         back_populates="sheet", cascade="all, delete-orphan"
@@ -1685,6 +1691,11 @@ class OnboardingChecklist(Base, TimestampMixin):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    published_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
 
     template: Mapped[Optional[OnboardingChecklistTemplate]] = relationship()
     employee: Mapped[Optional[User]] = relationship(foreign_keys=[employee_user_id])
@@ -1692,6 +1703,7 @@ class OnboardingChecklist(Base, TimestampMixin):
         foreign_keys=[reporting_manager_id]
     )
     created_by: Mapped[Optional[User]] = relationship(foreign_keys=[created_by_id])
+    published_by: Mapped[Optional[User]] = relationship(foreign_keys=[published_by_id])
     org_department: Mapped[Optional["OrgDepartment"]] = relationship(
         foreign_keys=[org_department_id]
     )
@@ -1786,6 +1798,11 @@ class ExitInterview(Base, TimestampMixin):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    published_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
 
     employee: Mapped[Optional[User]] = relationship(foreign_keys=[employee_user_id])
     reporting_manager: Mapped[Optional[User]] = relationship(
@@ -1793,6 +1810,7 @@ class ExitInterview(Base, TimestampMixin):
     )
     interviewer: Mapped[Optional[User]] = relationship(foreign_keys=[interviewer_user_id])
     created_by: Mapped[Optional[User]] = relationship(foreign_keys=[created_by_id])
+    published_by: Mapped[Optional[User]] = relationship(foreign_keys=[published_by_id])
     org_department: Mapped[Optional["OrgDepartment"]] = relationship(
         foreign_keys=[org_department_id]
     )

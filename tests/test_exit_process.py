@@ -60,3 +60,27 @@ def test_exit_process_forbidden_for_designer(client, session):
     headers = login(client, "binil@prosohm.com")
     response = client.get("/api/v1/hr/exit-process", headers=headers)
     assert response.status_code == 403
+
+
+def test_published_exit_interview_cannot_be_deleted(client, session):
+    headers = login(client, "admin@prosohm.com")
+    created = client.post(
+        "/api/v1/hr/exit-process",
+        headers=headers,
+        json={
+            "employee_name": "Published Exit",
+            "employee_user_id": str(IDS["user_binil"]),
+            "answers": {"reason_for_leaving": "Career growth / new opportunity"},
+        },
+    )
+    assert created.status_code == 201, created.text
+    interview_id = created.json()["id"]
+    assert created.json()["is_published"] is False
+
+    published = client.post(f"/api/v1/hr/exit-process/{interview_id}/publish", headers=headers)
+    assert published.status_code == 200, published.text
+    assert published.json()["is_published"] is True
+
+    blocked = client.delete(f"/api/v1/hr/exit-process/{interview_id}", headers=headers)
+    assert blocked.status_code == 400
+    assert "cannot be deleted" in blocked.json()["detail"].lower()

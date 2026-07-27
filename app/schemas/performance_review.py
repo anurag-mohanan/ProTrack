@@ -303,6 +303,9 @@ class PerformanceReviewRead(BaseModel):
     manager_submitted_at: datetime | None = None
     calibrated_at: datetime | None = None
     finalized_at: datetime | None = None
+    is_published: bool = False
+    published_at: datetime | None = None
+    published_by_id: UUID | None = None
     sections: list[PerformanceReviewSectionRead] = Field(default_factory=list)
     projects: list[PerformanceReviewProjectRead] = Field(default_factory=list)
     is_editable: bool = False
@@ -310,6 +313,8 @@ class PerformanceReviewRead(BaseModel):
     can_submit_self: bool = False
     can_submit_manager: bool = False
     can_calibrate: bool = False
+    can_publish: bool = False
+    can_delete: bool = False
 
 
 class PerformanceReviewTeamMemberRead(BaseModel):

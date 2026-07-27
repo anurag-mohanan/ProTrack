@@ -84,6 +84,7 @@ export default function ExitProcessPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<ExitInterviewCreate>(emptyCreate());
   const [deleteTarget, setDeleteTarget] = useState<ExitInterview | null>(null);
+  const [publishTarget, setPublishTarget] = useState<ExitInterview | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
   const [meta, setMeta] = useState({
     last_working_date: '',
@@ -200,6 +201,17 @@ export default function ExitProcessPage() {
     onError: (error) => showError(getErrorMessage(error) || 'Could not delete exit interview'),
   });
 
+  const publishMutation = useMutation({
+    mutationFn: (id: string) => exitProcessApi.publish(id),
+    onSuccess: (data) => {
+      showSuccess(`Exit interview published for ${data.employee_name}`);
+      setPublishTarget(null);
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['exit-process', data.id] });
+    },
+    onError: (error) => showError(getErrorMessage(error) || 'Could not publish exit interview'),
+  });
+
   const users = usersQuery.data ?? [];
   const departments = departmentsQuery.data ?? [];
   const teams = teamsQuery.data ?? [];
@@ -290,7 +302,12 @@ export default function ExitProcessPage() {
                               .join(' · ') || 'Exit interview'}
                           </Typography>
                         </Box>
-                        <Chip size="small" color={statusColor(row.status)} label={row.status_label} />
+                        <Stack spacing={0.5} sx={{ alignItems: 'flex-end' }}>
+                          <Chip size="small" color={statusColor(row.status)} label={row.status_label} />
+                          {row.is_published ? (
+                            <Chip size="small" color="success" variant="outlined" label="Published" />
+                          ) : null}
+                        </Stack>
                       </Stack>
                     </CardContent>
                   </CardActionArea>
@@ -325,16 +342,30 @@ export default function ExitProcessPage() {
                       {selected.form_code} · {selected.form_title}
                     </Typography>
                   </Box>
-                  <Stack direction="row" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <Chip size="small" color={statusColor(selected.status)} label={selected.status_label} />
-                    <ProsohmButton
-                      size="small"
-                      buttonVariant="danger"
-                      startIcon={<DeleteOutlineRoundedIcon />}
-                      onClick={() => setDeleteTarget(selected)}
-                    >
-                      Delete
-                    </ProsohmButton>
+                    {selected.is_published ? (
+                      <Chip size="small" color="success" variant="outlined" label="Published" />
+                    ) : null}
+                    {!selected.is_published ? (
+                      <ProsohmButton
+                        size="small"
+                        buttonVariant="primary"
+                        onClick={() => setPublishTarget(selected)}
+                      >
+                        Publish
+                      </ProsohmButton>
+                    ) : null}
+                    {!selected.is_published ? (
+                      <ProsohmButton
+                        size="small"
+                        buttonVariant="danger"
+                        startIcon={<DeleteOutlineRoundedIcon />}
+                        onClick={() => setDeleteTarget(selected)}
+                      >
+                        Delete
+                      </ProsohmButton>
+                    ) : null}
                   </Stack>
                 </Stack>
 
@@ -640,6 +671,19 @@ export default function ExitProcessPage() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(publishTarget)}
+        title="Publish exit interview?"
+        message="Publishing locks this exit interview as the official record. After publish, it cannot be deleted."
+        recordName={publishTarget?.employee_name}
+        confirmLabel="Publish"
+        loading={publishMutation.isPending}
+        onClose={() => setPublishTarget(null)}
+        onConfirm={() => {
+          if (publishTarget) publishMutation.mutate(publishTarget.id);
         }}
       />
     </PageContainer>

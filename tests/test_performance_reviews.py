@@ -298,6 +298,52 @@ def test_non_manager_cannot_delete_review(client, session):
     assert missing.status_code == 404
 
 
+def test_published_performance_review_cannot_be_deleted(client, session):
+    team = Team(
+        id=uuid.uuid4(),
+        name="Publish Lock Review Team",
+        is_active=True,
+        team_lead_id=IDS["user_anurag"],
+    )
+    session.add(team)
+    session.add(
+        TeamMember(
+            team_id=team.id,
+            user_id=IDS["user_binil"],
+            is_primary=True,
+            relationship_type=TeamRelationshipType.member,
+        )
+    )
+    session.commit()
+
+    leader_headers = login(client, "anurag@prosohm.com")
+    created = client.post(
+        "/api/v1/hr/reviews",
+        headers=leader_headers,
+        json={
+            "employee_id": str(IDS["user_binil"]),
+            "team_id": str(team.id),
+            "period_label": "Publish lock test",
+        },
+    )
+    assert created.status_code == 200, created.text
+    review_id = created.json()["id"]
+    assert created.json()["is_published"] is False
+    assert created.json()["can_publish"] is True
+    assert created.json()["can_delete"] is True
+
+    published = client.post(f"/api/v1/hr/reviews/{review_id}/publish", headers=leader_headers)
+    assert published.status_code == 200, published.text
+    body = published.json()
+    assert body["is_published"] is True
+    assert body["can_publish"] is False
+    assert body["can_delete"] is False
+
+    blocked = client.delete(f"/api/v1/hr/reviews/{review_id}", headers=leader_headers)
+    assert blocked.status_code == 400
+    assert "cannot be deleted" in blocked.json()["detail"].lower()
+
+
 def test_non_manager_cannot_create_review_for_other_user(client, session):
     team = Team(id=uuid.uuid4(), name="Protected Review Team", is_active=True)
     session.add(team)

@@ -326,19 +326,42 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
         manager_submitted_at=sheet.manager_submitted_at,
         calibrated_at=sheet.calibrated_at,
         finalized_at=sheet.finalized_at,
+        is_published=bool(getattr(sheet, "is_published", False)),
+        published_at=getattr(sheet, "published_at", None),
+        published_by_id=getattr(sheet, "published_by_id", None),
         sections=[_build_section_read(section) for section in sorted(sheet.sections, key=lambda row: row.sort_order)],
         projects=[
             PerformanceReviewProjectRead.model_validate(project)
             for project in sorted(sheet.projects, key=lambda row: row.sort_order)
         ],
         is_editable=bool(
-            (can_manage and stage in (STAGE_MANAGER, STAGE_CALIBRATION, STAGE_FINAL))
-            or (is_self and stage == STAGE_SELF)
+            not bool(getattr(sheet, "is_published", False))
+            and (
+                (can_manage and stage in (STAGE_MANAGER, STAGE_CALIBRATION, STAGE_FINAL))
+                or (is_self and stage == STAGE_SELF)
+            )
         ),
-        can_acknowledge=bool(is_self and stage == STAGE_FINAL and sheet.status == "submitted"),
-        can_submit_self=bool(is_self and stage == STAGE_SELF),
-        can_submit_manager=bool(can_manage and stage == STAGE_MANAGER),
-        can_calibrate=bool(can_manage and stage == STAGE_CALIBRATION),
+        can_acknowledge=bool(
+            not bool(getattr(sheet, "is_published", False))
+            and is_self
+            and stage == STAGE_FINAL
+            and sheet.status == "submitted"
+        ),
+        can_submit_self=bool(
+            not bool(getattr(sheet, "is_published", False)) and is_self and stage == STAGE_SELF
+        ),
+        can_submit_manager=bool(
+            not bool(getattr(sheet, "is_published", False))
+            and can_manage
+            and stage == STAGE_MANAGER
+        ),
+        can_calibrate=bool(
+            not bool(getattr(sheet, "is_published", False))
+            and can_manage
+            and stage == STAGE_CALIBRATION
+        ),
+        can_publish=bool(can_manage and not bool(getattr(sheet, "is_published", False))),
+        can_delete=bool(can_manage and not bool(getattr(sheet, "is_published", False))),
     )
 
 
@@ -1849,10 +1872,56 @@ def delete_performance_review(
     is_reviewer = sheet.reviewer_id == current_user.id
     if not (can_manage or is_reviewer):
         raise HTTPException(status_code=403, detail="Performance review delete access denied")
-    sheet.is_active = False
-    db.add(sheet)
-    db.commit()
+    try:
+        from app.services.hr_form_publish import assert_can_delete
+
+        assert_can_delete(sheet, document_label="performance review")
+        sheet.is_active = False
+        db.add(sheet)
+        db.commit()
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return None
+
+
+@router.post("/reviews/{review_id}/publish", response_model=PerformanceReviewRead)
+def publish_performance_review(
+    review_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sheet = db.scalar(
+        select(PerformanceReviewSheet)
+        .options(*_review_load_options())
+        .where(
+            PerformanceReviewSheet.id == review_id,
+            PerformanceReviewSheet.is_active.is_(True),
+        )
+    )
+    if sheet is None:
+        raise HTTPException(status_code=404, detail="Performance review not found")
+    can_manage = sheet.team_id is not None and user_can_manage_team_reviews(
+        db, current_user, sheet.team_id
+    )
+    is_reviewer = sheet.reviewer_id == current_user.id
+    if not (can_manage or is_reviewer):
+        raise HTTPException(status_code=403, detail="Performance review publish access denied")
+    try:
+        from app.services.hr_form_publish import publish_document
+
+        publish_document(sheet, user=current_user)
+        db.commit()
+        sheet = db.scalar(
+            select(PerformanceReviewSheet)
+            .options(*_review_load_options())
+            .where(PerformanceReviewSheet.id == review_id)
+        )
+        assert sheet is not None
+        return _review_to_read(db, sheet, current_user)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------

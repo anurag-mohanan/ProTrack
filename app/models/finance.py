@@ -32,6 +32,8 @@ from app.models.enums import (
     ExpensePaidBy,
     FinancePlanSection,
     FinancePlanStatus,
+    FinancePlanningScenarioStatus,
+    FinancePlanningScenarioType,
     TeamBillingMode,
     TeamBillingPeriod,
 )
@@ -558,3 +560,33 @@ class FinancePlanLine(Base, TimestampMixin):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     plan: Mapped[FinancePlan] = relationship("FinancePlan", back_populates="lines")
+
+
+class FinancePlanningScenario(Base, TimestampMixin):
+    """Persisted finance what-if scenario (simulation worksheet; does not alter live books)."""
+
+    __tablename__ = "finance_planning_scenarios"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    scenario_type: Mapped[FinancePlanningScenarioType] = mapped_column(
+        Enum(FinancePlanningScenarioType, name="finance_planning_scenario_type", native_enum=False),
+        nullable=False,
+        default=FinancePlanningScenarioType.expansion,
+    )
+    status: Mapped[FinancePlanningScenarioStatus] = mapped_column(
+        Enum(FinancePlanningScenarioStatus, name="finance_planning_scenario_status", native_enum=False),
+        nullable=False,
+        default=FinancePlanningScenarioStatus.draft,
+    )
+    baseline_as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    updated_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )

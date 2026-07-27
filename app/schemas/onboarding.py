@@ -107,6 +107,9 @@ class OnboardingChecklistRead(TimestampSchema):
     created_by_id: Optional[UUID] = None
     created_by_name: Optional[str] = None
     completed_at: Optional[datetime] = None
+    is_published: bool = False
+    published_at: Optional[datetime] = None
+    published_by_id: Optional[UUID] = None
     total_items: int = 0
     completed_items: int = 0
     pending_items: int = 0

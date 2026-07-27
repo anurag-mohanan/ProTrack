@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
+from app.core.exceptions import ProTrackValidationError
 from app.models.models import User
 from app.schemas.exit_process import (
     ExitInterviewCreate,
@@ -17,6 +18,7 @@ from app.schemas.exit_process import (
     ExitInterviewUpdate,
 )
 from app.services import exit_process_service as exit_svc
+from app.services.hr_form_publish import assert_can_delete, publish_document
 
 router = APIRouter(prefix="/hr/exit-process", tags=["exit-process"])
 
@@ -60,6 +62,9 @@ def _read(row) -> ExitInterviewRead:
         notes=row.notes,
         created_by_id=row.created_by_id,
         completed_at=row.completed_at,
+        is_published=bool(getattr(row, "is_published", False)),
+        published_at=getattr(row, "published_at", None),
+        published_by_id=getattr(row, "published_by_id", None),
         questions=_questions(),
     )
 
@@ -154,5 +159,29 @@ def delete_exit_interview(
     row = exit_svc.get_exit_interview(db, interview_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Exit interview not found")
-    exit_svc.delete_exit_interview(db, row)
+    try:
+        assert_can_delete(row, document_label="exit interview")
+        exit_svc.delete_exit_interview(db, row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return None
+
+
+@router.post("/{interview_id}/publish", response_model=ExitInterviewRead)
+def publish_exit_interview(
+    interview_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_access(db, current_user)
+    row = exit_svc.get_exit_interview(db, interview_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Exit interview not found")
+    try:
+        publish_document(row, user=current_user)
+        db.commit()
+        db.refresh(row)
+        return _read(row)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

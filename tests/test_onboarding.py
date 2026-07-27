@@ -240,3 +240,31 @@ def test_completing_all_items_marks_checklist_complete(client, session):
     assert body["status"] == "completed"
     assert body["completion_percent"] == 100
     assert body["completed_at"] is not None
+
+
+def test_published_onboarding_checklist_cannot_be_deleted(client, session):
+    admin = login(client, "admin@prosohm.com")
+    created = client.post(
+        "/api/v1/hr/onboarding",
+        headers=admin,
+        json={"employee_name": "Publish Lock Hire", "employee_code": "PP200"},
+    )
+    assert created.status_code == 201, created.text
+    checklist_id = created.json()["id"]
+    assert created.json()["is_published"] is False
+
+    published = client.post(f"/api/v1/hr/onboarding/{checklist_id}/publish", headers=admin)
+    assert published.status_code == 200, published.text
+    assert published.json()["is_published"] is True
+    assert published.json()["published_at"] is not None
+
+    again = client.post(f"/api/v1/hr/onboarding/{checklist_id}/publish", headers=admin)
+    assert again.status_code == 400
+
+    blocked = client.delete(f"/api/v1/hr/onboarding/{checklist_id}", headers=admin)
+    assert blocked.status_code == 400
+    assert "cannot be deleted" in blocked.json()["detail"].lower()
+
+    still_there = client.get(f"/api/v1/hr/onboarding/{checklist_id}", headers=admin)
+    assert still_there.status_code == 200
+    assert still_there.json()["is_published"] is True

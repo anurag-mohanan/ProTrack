@@ -26,7 +26,14 @@ from app.core.module_actions import (
     user_has_module_action,
 )
 from app.core.permissions import get_role_name
-from app.models.enums import ActivityAction, BudgetApprovalStatus, BudgetScopeType, EntityType
+from app.models.enums import (
+    ActivityAction,
+    BudgetApprovalStatus,
+    BudgetScopeType,
+    EntityType,
+    FinancePlanningScenarioStatus,
+    FinancePlanningScenarioType,
+)
 from app.models.finance import (
     AiForecastPlaceholder,
     Budget,
@@ -92,6 +99,14 @@ from app.schemas.finance import (
     TeamCommercialTermsRead,
     TeamCommercialTermsUpdate,
     RetainerFeeLineRead,
+    FinancePlanningScenarioCreate,
+    FinancePlanningScenarioUpdate,
+    FinancePlanningScenarioRead,
+    FinancePlanningScenarioListItem,
+    FinancePlanningScenarioComputeRequest,
+    FinancePlanningScenarioComputeResponse,
+    FinancePlanningScenarioCompareRequest,
+    FinancePlanningScenarioCompareResponse,
 )
 from app.services.finance import annual_plan_service
 from app.services.finance.dashboard_service import get_finance_dashboard
@@ -114,6 +129,7 @@ from app.services.finance.quote_invoicing_notifier import notify_uninvoiced_quot
 from app.services.finance.quote_payment_notifier import notify_unpaid_quotes
 from app.services.finance.renewal_notifier import notify_upcoming_renewals
 from app.services.finance.roster_service import get_employee_cost_roster
+from app.services.finance import planning_scenario_service
 from app.core.salary_eligibility import user_requires_salary
 from app.models.enums import WorkingModelCode
 
@@ -1993,6 +2009,213 @@ def delete_finance_plan_line(
     try:
         annual_plan_service.delete_line(db, plan_id, line_id)
         db.commit()
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _planning_scenario_read(row) -> FinancePlanningScenarioRead:
+    data = planning_scenario_service.scenario_to_dict(row)
+    return FinancePlanningScenarioRead.model_validate(data)
+
+
+@router.get("/planning-scenarios", response_model=list[FinancePlanningScenarioListItem])
+def list_planning_scenarios(
+    status: FinancePlanningScenarioStatus | None = Query(default=None),
+    scenario_type: FinancePlanningScenarioType | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    rows = planning_scenario_service.list_scenarios(
+        db, status=status, scenario_type=scenario_type
+    )
+    return [
+        FinancePlanningScenarioListItem.model_validate(planning_scenario_service.scenario_to_dict(row))
+        for row in rows
+    ]
+
+
+@router.post(
+    "/planning-scenarios",
+    response_model=FinancePlanningScenarioRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_planning_scenario(
+    payload: FinancePlanningScenarioCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        body = payload.model_dump()
+        row = planning_scenario_service.create_scenario(
+            db,
+            user=current_user,
+            name=body["name"],
+            description=body.get("description"),
+            scenario_type=body.get("scenario_type") or FinancePlanningScenarioType.expansion,
+            status=body.get("status") or FinancePlanningScenarioStatus.draft,
+            baseline_as_of=body.get("baseline_as_of"),
+            payload=body.get("payload"),
+        )
+        _audit(
+            db,
+            user=current_user,
+            action=ActivityAction.finance_planning_scenario_created,
+            entity_type=EntityType.finance_planning_scenario,
+            entity_id=row.id,
+            new_value=row.name,
+        )
+        db.commit()
+        row = planning_scenario_service.get_scenario(db, row.id)
+        return _planning_scenario_read(row)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/planning-scenarios/compute", response_model=FinancePlanningScenarioComputeResponse)
+def compute_planning_scenario(
+    payload: FinancePlanningScenarioComputeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if payload.team_id is not None and db.get(Team, payload.team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    body = payload.model_dump()
+    raw_payload = body.get("payload")
+    if hasattr(raw_payload, "model_dump"):
+        raw_payload = raw_payload.model_dump()
+    data = planning_scenario_service.compute_from_dashboard(
+        db,
+        payload=raw_payload or {},
+        team_id=body.get("team_id"),
+    )
+    return FinancePlanningScenarioComputeResponse.model_validate(data)
+
+
+@router.post("/planning-scenarios/compare", response_model=FinancePlanningScenarioCompareResponse)
+def compare_planning_scenarios(
+    payload: FinancePlanningScenarioCompareRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if payload.team_id is not None and db.get(Team, payload.team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    try:
+        data = planning_scenario_service.compare_scenarios(
+            db,
+            scenario_id_a=payload.scenario_id_a,
+            scenario_id_b=payload.scenario_id_b,
+            team_id=payload.team_id,
+        )
+        return FinancePlanningScenarioCompareResponse.model_validate(data)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/planning-scenarios/{scenario_id}", response_model=FinancePlanningScenarioRead)
+def get_planning_scenario(
+    scenario_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    try:
+        row = planning_scenario_service.get_scenario(db, scenario_id)
+        return _planning_scenario_read(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch("/planning-scenarios/{scenario_id}", response_model=FinancePlanningScenarioRead)
+def update_planning_scenario(
+    scenario_id: UUID,
+    payload: FinancePlanningScenarioUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        body = payload.model_dump(exclude_unset=True)
+        row = planning_scenario_service.update_scenario(
+            db,
+            scenario_id,
+            user=current_user,
+            name=body.get("name"),
+            description=body.get("description"),
+            scenario_type=body.get("scenario_type"),
+            status=body.get("status"),
+            baseline_as_of=body.get("baseline_as_of"),
+            payload=body.get("payload"),
+        )
+        _audit(
+            db,
+            user=current_user,
+            action=ActivityAction.finance_planning_scenario_updated,
+            entity_type=EntityType.finance_planning_scenario,
+            entity_id=row.id,
+            new_value=row.name,
+        )
+        db.commit()
+        row = planning_scenario_service.get_scenario(db, row.id)
+        return _planning_scenario_read(row)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/planning-scenarios/{scenario_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_planning_scenario(
+    scenario_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        row = planning_scenario_service.get_scenario(db, scenario_id)
+        _audit(
+            db,
+            user=current_user,
+            action=ActivityAction.finance_planning_scenario_deleted,
+            entity_type=EntityType.finance_planning_scenario,
+            entity_id=row.id,
+            new_value=row.name,
+        )
+        planning_scenario_service.delete_scenario(db, scenario_id)
+        db.commit()
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/planning-scenarios/{scenario_id}/clone",
+    response_model=FinancePlanningScenarioRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def clone_planning_scenario(
+    scenario_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        row = planning_scenario_service.clone_scenario(db, scenario_id, user=current_user)
+        _audit(
+            db,
+            user=current_user,
+            action=ActivityAction.finance_planning_scenario_created,
+            entity_type=EntityType.finance_planning_scenario,
+            entity_id=row.id,
+            new_value=row.name,
+        )
+        db.commit()
+        row = planning_scenario_service.get_scenario(db, row.id)
+        return _planning_scenario_read(row)
     except ProTrackValidationError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

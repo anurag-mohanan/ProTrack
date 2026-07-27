@@ -23,6 +23,7 @@ import TaskAltOutlinedIcon from '@mui/icons-material/TaskAltOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getErrorMessage } from '../api/client';
 import { LoadingState } from '../components/common/LoadingState';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { PageHeader } from '../components/common/PageHeader';
 import { FinanceSection } from '../components/finance/FinanceCockpitPrimitives';
 import { FilterSelect } from '../components/ui/design-system/FilterSelect';
@@ -117,6 +118,10 @@ type Review = {
   can_submit_self?: boolean;
   can_submit_manager?: boolean;
   can_calibrate?: boolean;
+  is_published?: boolean;
+  published_at?: string | null;
+  can_publish?: boolean;
+  can_delete?: boolean;
 };
 
 type TeamMember = {
@@ -214,6 +219,7 @@ export function PerformanceReviewsPage({
   const [dueDate, setDueDate] = useState('');
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Review | null>(null);
+  const [publishTarget, setPublishTarget] = useState<Review | null>(null);
 
   const templateQuery = useQuery({
     queryKey: ['performance-reviews', 'template', kind || 'annual'],
@@ -325,6 +331,19 @@ export function PerformanceReviewsPage({
       setDeleteTarget(null);
       setSelectedReviewId('');
       setEditor(null);
+      void queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
+    },
+    onError: (error: unknown) => showError(getErrorMessage(error)),
+  });
+
+  const publishReviewMutation = useMutation({
+    mutationFn: async (reviewId: string) =>
+      (await apiClient.post<Review>(`/hr/reviews/${reviewId}/publish`)).data,
+    onSuccess: (review) => {
+      showSuccess(`Performance review published for ${review.employee_name}`);
+      setPublishTarget(null);
+      setSelectedReviewId(review.id);
+      setEditor(reviewToEditor(review));
       void queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
@@ -680,6 +699,7 @@ export function PerformanceReviewsPage({
               }}
               saving={updateReviewMutation.isPending}
               onDeleteRequest={setDeleteTarget}
+              onPublishRequest={setPublishTarget}
               onImportProjects={
                 selectedReview
                   ? () => importProjectsMutation.mutate(selectedReview.id)
@@ -706,6 +726,23 @@ export function PerformanceReviewsPage({
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (deleteTarget) deleteReviewMutation.mutate(deleteTarget.id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(publishTarget)}
+        title="Publish performance review?"
+        recordName={
+          publishTarget
+            ? `${publishTarget.employee_name} · ${publishTarget.period_label}`
+            : undefined
+        }
+        message="Publishing locks this review as the official record. After publish, it cannot be deleted."
+        confirmLabel="Publish"
+        loading={publishReviewMutation.isPending}
+        onClose={() => setPublishTarget(null)}
+        onConfirm={() => {
+          if (publishTarget) publishReviewMutation.mutate(publishTarget.id);
         }}
       />
     </Stack>
@@ -796,6 +833,7 @@ function ReviewDetailCard({
   onEmployeeSave,
   onAcknowledge,
   onDeleteRequest,
+  onPublishRequest,
   onImportProjects,
   importingProjects = false,
   onWorkflowAction,
@@ -811,6 +849,7 @@ function ReviewDetailCard({
   onEmployeeSave?: () => void;
   onAcknowledge?: () => void;
   onDeleteRequest?: (review: Review) => void;
+  onPublishRequest?: (review: Review) => void;
   onImportProjects?: () => void;
   importingProjects?: boolean;
   onWorkflowAction?: (
@@ -832,12 +871,23 @@ function ReviewDetailCard({
 
   const actions = (
     <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+      {review.is_published ? <Chip size="small" color="success" label="Published" /> : null}
       {canManage && onImportProjects ? (
         <Button size="small" variant="outlined" disabled={importingProjects} onClick={onImportProjects}>
           Refresh projects
         </Button>
       ) : null}
-      {canManage && onDeleteRequest ? (
+      {canManage && (review.can_publish ?? !review.is_published) && onPublishRequest ? (
+        <Button
+          size="small"
+          variant="contained"
+          disabled={saving}
+          onClick={() => onPublishRequest(review)}
+        >
+          Publish
+        </Button>
+      ) : null}
+      {canManage && (review.can_delete ?? !review.is_published) && onDeleteRequest ? (
         <Button
           size="small"
           color="error"

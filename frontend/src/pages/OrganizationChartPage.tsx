@@ -12,9 +12,11 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  IconButton,
   Stack,
   Switch,
   TextField,
+  Tooltip,
   Typography,
   alpha,
   useTheme,
@@ -33,6 +35,51 @@ import type { OrgChartDepartment, OrgChartPerson, OrgChartTeamColumn } from '../
 
 const ORG_CHART_KEY = ['teams', 'organization-chart'] as const;
 const VIEW_PREFS_KEY = 'protrack.orgChart.viewPrefs.v2';
+
+/** Ink & Plate visual tokens — presentation only; does not affect chart logic. */
+const orgTokens = {
+  radius: { stamp: 4, counter: 6, card: 10, bay: 12, plate: 14 },
+  ink: {
+    900: '#1f2b38',
+    600: '#46586b',
+    400: '#8a99a8',
+    canvas: '#f6f8fa',
+    paper: '#ffffff',
+    execSurface: '#fbfcfd',
+  },
+  border: {
+    hair: 'rgba(31,43,56,0.09)',
+    mid: 'rgba(31,43,56,0.12)',
+    strong: 'rgba(31,43,56,0.16)',
+  },
+  shadow: {
+    member: '0 1px 1px rgba(31,43,56,.04), 0 1px 3px rgba(31,43,56,.05)',
+    lead: '0 1px 2px rgba(31,43,56,.05), 0 3px 8px rgba(31,43,56,.05)',
+    head: (a: string) => `0 1px 2px rgba(31,43,56,.05), 0 8px 20px ${alpha(a, 0.12)}`,
+    exec: '0 1px 2px rgba(31,43,56,.05), 0 12px 28px rgba(31,43,56,.10)',
+    lifted: '0 16px 36px rgba(31,43,56,.16)',
+  },
+  connector: {
+    width: '1.5px',
+    parentDrop: 16,
+    childDrop: 14,
+    execSpine: 24,
+    ink: 'rgba(31,43,56,0.16)',
+  },
+  card: {
+    w: 232,
+    wHead: 264,
+    wExec: 296,
+    avatar: 34,
+    avatarLead: 38,
+    avatarHead: 44,
+    avatarExec: 56,
+  },
+  gap: { card: 1.5, team: 2, section: 2.75, dept: 4 },
+  motion: '180ms cubic-bezier(0.2, 0, 0.2, 1)',
+} as const;
+
+type PersonTier = 'root' | 'head' | 'lead' | 'member';
 
 type PendingMove = {
   person: OrgChartPerson;
@@ -126,6 +173,76 @@ function filterDepartment(department: OrgChartDepartment, prefs: ViewPrefs): Org
   return { ...department, leaders, staff, teams, member_count };
 }
 
+function accentInk(accent: string): string {
+  return `color-mix(in srgb, ${accent} 74%, ${orgTokens.ink[900]})`;
+}
+
+function SectionEyebrow({ label }: { label: string }) {
+  return (
+    <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', mb: 1.25 }}>
+      <Typography
+        variant="overline"
+        sx={{
+          letterSpacing: '0.08em',
+          color: orgTokens.ink[400],
+          fontWeight: 700,
+          lineHeight: 1,
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </Typography>
+      <Box sx={{ flex: 1, height: '1px', bgcolor: orgTokens.border.hair }} />
+    </Stack>
+  );
+}
+
+function RankStamp({ label, accent }: { label: string; accent: string }) {
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        height: 18,
+        px: 0.75,
+        borderRadius: `${orgTokens.radius.stamp}px`,
+        bgcolor: alpha(accent, 0.1),
+        color: accentInk(accent),
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        lineHeight: 1,
+      }}
+    >
+      {label}
+    </Box>
+  );
+}
+
+function CountBadge({ label }: { label: string }) {
+  return (
+    <Box
+      sx={{
+        px: 1,
+        py: 0.35,
+        borderRadius: `${orgTokens.radius.counter}px`,
+        border: '1px solid',
+        borderColor: orgTokens.border.mid,
+        bgcolor: 'transparent',
+        color: orgTokens.ink[600],
+        fontSize: 12,
+        fontWeight: 700,
+        fontVariantNumeric: 'tabular-nums',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </Box>
+  );
+}
+
 function BranchChildren({
   accent,
   children,
@@ -139,22 +256,72 @@ function BranchChildren({
   const count = childArray.length;
   if (count === 0) return null;
 
+  const connector = alpha(accent, 0.42);
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-      <Box sx={{ width: 2, height: 14, bgcolor: accent, opacity: 0.4 }} />
+    <Box
+      sx={{
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        width: '100%',
+        pt: `${orgTokens.connector.parentDrop + orgTokens.connector.childDrop}px`,
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: '50%',
+          width: orgTokens.connector.width,
+          height: orgTokens.connector.parentDrop,
+          bgcolor: connector,
+          transform: 'translateX(-50%)',
+        },
+      }}
+    >
+      {count > 1 ? (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: orgTokens.connector.parentDrop,
+            left: '12%',
+            right: '12%',
+            height: orgTokens.connector.width,
+            bgcolor: connector,
+            borderRadius: '1px',
+          }}
+        />
+      ) : null}
       <Box
         sx={{
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'flex-start',
           flexWrap: wrap ? 'wrap' : 'nowrap',
-          gap: 1.5,
+          gap: orgTokens.gap.card,
           width: '100%',
-          pt: 0.5,
         }}
       >
         {childArray.map((child, index) => (
-          <Box key={index} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <Box
+            key={index}
+            sx={{
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: -orgTokens.connector.childDrop,
+                left: '50%',
+                width: orgTokens.connector.width,
+                height: orgTokens.connector.childDrop,
+                bgcolor: connector,
+                transform: 'translateX(-50%)',
+              },
+            }}
+          >
             {child}
           </Box>
         ))}
@@ -225,6 +392,18 @@ function buildReportingTree(team: OrgChartTeamColumn): TreeNode[] {
     .map(nest);
 }
 
+function resolveTier(args: {
+  featured?: boolean;
+  isLead?: boolean;
+  person: OrgChartPerson;
+  executive?: boolean;
+}): PersonTier {
+  if (args.executive) return 'root';
+  if (args.featured || args.person.is_department_head) return 'head';
+  if (args.isLead || args.person.is_leadership) return 'lead';
+  return 'member';
+}
+
 function PersonCard({
   person,
   accent,
@@ -232,6 +411,7 @@ function PersonCard({
   onDragStart,
   isLead,
   featured,
+  executive,
 }: {
   person: OrgChartPerson;
   accent: string;
@@ -239,10 +419,41 @@ function PersonCard({
   onDragStart: (person: OrgChartPerson) => void;
   isLead?: boolean;
   featured?: boolean;
+  executive?: boolean;
 }) {
   const draggable = canEdit && person.can_move;
-  const emphasized = Boolean(isLead || person.is_department_head || featured);
+  const tier = resolveTier({ featured, isLead, person, executive });
   const title = person.designation || person.role_name || 'Team member';
+  const inkAccent = executive ? orgTokens.ink[900] : accent;
+
+  const width =
+    tier === 'root'
+      ? orgTokens.card.wExec
+      : tier === 'head'
+        ? orgTokens.card.wHead
+        : orgTokens.card.w;
+  const avatarSize =
+    tier === 'root'
+      ? orgTokens.card.avatarExec
+      : tier === 'head'
+        ? orgTokens.card.avatarHead
+        : tier === 'lead'
+          ? orgTokens.card.avatarLead
+          : orgTokens.card.avatar;
+  const flagWidth = tier === 'root' || tier === 'head' ? 4 : tier === 'lead' ? 3 : 2;
+  const nameSize = tier === 'root' ? 17 : tier === 'head' ? 15 : tier === 'lead' ? 14 : 13.5;
+  const nameWeight = tier === 'root' || tier === 'head' ? 700 : tier === 'lead' ? 650 : 600;
+  const solidAvatar = tier === 'root' || tier === 'head';
+  const stampLabel =
+    tier === 'root'
+      ? person.designation || person.role_name || 'Organization head'
+      : person.is_department_head || featured
+        ? 'Dept head'
+        : isLead
+          ? 'Lead'
+          : person.is_leadership
+            ? 'Leader'
+            : null;
 
   return (
     <Box
@@ -257,53 +468,102 @@ function PersonCard({
         onDragStart(person);
       }}
       sx={{
-        width: featured ? 240 : '100%',
-        maxWidth: featured ? 280 : 280,
-        minWidth: featured ? 220 : 0,
-        minHeight: featured ? 112 : 100,
-        p: featured ? 1.5 : 1.35,
-        pl: featured ? 1.75 : 1.6,
-        borderRadius: 2.5,
-        border: '1px solid',
-        borderColor: emphasized ? alpha(accent, 0.55) : alpha('#90a4ae', 0.35),
-        bgcolor: 'background.paper',
-        boxShadow: emphasized
-          ? `0 10px 24px ${alpha(accent, 0.16)}`
-          : `0 2px 8px ${alpha('#000', 0.04)}`,
+        width: featured || executive ? width : '100%',
+        maxWidth: width,
+        minWidth: featured || executive ? width - 24 : 0,
+        p: tier === 'root' ? '20px 22px' : tier === 'head' ? '16px 18px 16px 20px' : '12px 14px 12px 16px',
+        borderRadius: `${orgTokens.radius.card}px`,
+        border: executive ? '2px solid' : '1px solid',
+        borderColor: executive
+          ? orgTokens.border.strong
+          : tier === 'head'
+            ? alpha(accent, 0.42)
+            : tier === 'lead'
+              ? alpha(accent, 0.28)
+              : orgTokens.border.mid,
+        bgcolor: executive ? orgTokens.ink.execSurface : orgTokens.ink.paper,
+        boxShadow:
+          tier === 'root'
+            ? orgTokens.shadow.exec
+            : tier === 'head'
+              ? orgTokens.shadow.head(accent)
+              : tier === 'lead'
+                ? orgTokens.shadow.lead
+                : orgTokens.shadow.member,
         cursor: draggable ? 'grab' : 'default',
-        transition: 'box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease',
+        transition: `box-shadow ${orgTokens.motion}, transform ${orgTokens.motion}, border-color ${orgTokens.motion}`,
         '&:active': draggable ? { cursor: 'grabbing' } : undefined,
         '&:hover': draggable
-          ? { boxShadow: `0 12px 28px ${alpha(accent, 0.2)}`, transform: 'translateY(-2px)' }
-          : { borderColor: alpha(accent, 0.4) },
+          ? {
+              boxShadow: orgTokens.shadow.lifted,
+              transform: 'translateY(-2px)',
+              borderColor: alpha(inkAccent, 0.55),
+              '& .org-drag-grip': { opacity: 1 },
+            }
+          : { borderColor: alpha(inkAccent, 0.4) },
         position: 'relative',
-        overflow: 'visible',
+        overflow: 'hidden',
         boxSizing: 'border-box',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          left: 0,
-          top: 10,
-          bottom: 10,
-          width: 4,
-          borderRadius: '0 4px 4px 0',
-          bgcolor: accent,
-        },
+        ...(executive
+          ? {
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: 0,
+                height: 2,
+                bgcolor: alpha(orgTokens.ink[900], 0.85),
+              },
+            }
+          : {
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                top: 8,
+                bottom: 8,
+                width: flagWidth,
+                borderRadius: '0 3px 3px 0',
+                bgcolor: tier === 'member' ? alpha(accent, 0.4) : alpha(accent, tier === 'lead' ? 0.85 : 1),
+              },
+            }),
       }}
     >
       <Stack direction="row" spacing={1.1} sx={{ alignItems: 'flex-start' }}>
-        {draggable ? (
-          <DragIndicatorIcon sx={{ mt: 0.6, color: 'text.disabled', fontSize: 16, flexShrink: 0 }} />
-        ) : null}
+        <Box
+          sx={{
+            width: 14,
+            flexShrink: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            pt: 0.55,
+          }}
+        >
+          {draggable ? (
+            <DragIndicatorIcon
+              className="org-drag-grip"
+              sx={{
+                color: orgTokens.ink[400],
+                fontSize: 16,
+                opacity: executive ? 0.3 : 0.4,
+                transition: `opacity ${orgTokens.motion}`,
+              }}
+            />
+          ) : null}
+        </Box>
         <Avatar
           sx={{
-            width: featured ? 42 : 36,
-            height: featured ? 42 : 36,
-            fontSize: featured ? 14 : 12,
+            width: avatarSize,
+            height: avatarSize,
+            fontSize: avatarSize * 0.34,
             fontWeight: 700,
-            bgcolor: accent,
+            bgcolor: solidAvatar ? inkAccent : alpha(accent, 0.12),
+            color: solidAvatar ? '#fff' : accentInk(accent),
             flexShrink: 0,
-            mt: 0.15,
+            mt: 0.1,
+            border: `2px solid ${orgTokens.ink.paper}`,
+            boxSizing: 'border-box',
           }}
         >
           {initials(person.name)}
@@ -313,17 +573,22 @@ function PersonCard({
             variant="subtitle2"
             title={person.name}
             sx={{
-              fontWeight: 800,
+              fontWeight: nameWeight,
               lineHeight: 1.25,
-              fontSize: featured ? 14.5 : 13.5,
+              fontSize: nameSize,
+              letterSpacing: '-0.01em',
+              color: orgTokens.ink[900],
               wordBreak: 'break-word',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
             }}
           >
             {person.name}
           </Typography>
           <Typography
             variant="caption"
-            color="text.secondary"
             title={title}
             sx={{
               display: '-webkit-box',
@@ -331,36 +596,36 @@ function PersonCard({
               WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
               lineHeight: 1.35,
-              mt: 0.2,
+              mt: 0.25,
+              fontSize: tier === 'root' ? 12.5 : 11.5,
+              fontWeight: 400,
+              letterSpacing: tier === 'root' ? '0.04em' : 0,
+              textTransform: tier === 'root' ? 'uppercase' : 'none',
+              color: orgTokens.ink[600],
             }}
           >
             {title}
           </Typography>
-          <Stack direction="row" spacing={0.5} useFlexGap sx={{ mt: 0.75, flexWrap: 'wrap' }}>
-            {person.is_department_head || featured ? (
-              <Chip
-                label="Dept head"
-                size="small"
-                sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: alpha(accent, 0.16) }}
-              />
-            ) : isLead ? (
-              <Chip
-                label="Lead"
-                size="small"
-                sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: alpha(accent, 0.14) }}
-              />
-            ) : person.is_leadership ? (
-              <Chip label="Leader" size="small" variant="outlined" sx={{ height: 20, fontSize: 10.5 }} />
-            ) : null}
-            {person.stream_name ? (
-              <Chip
-                label={person.stream_name}
-                size="small"
-                variant="outlined"
-                sx={{ height: 20, fontSize: 10.5 }}
-              />
-            ) : null}
-          </Stack>
+          {(stampLabel || person.stream_name) && (
+            <Stack direction="row" spacing={0.75} useFlexGap sx={{ mt: 0.85, flexWrap: 'wrap', alignItems: 'center' }}>
+              {stampLabel ? <RankStamp label={stampLabel} accent={inkAccent} /> : null}
+              {person.stream_name && !stampLabel ? (
+                <Typography
+                  variant="caption"
+                  sx={{ color: orgTokens.ink[400], fontSize: 11, fontWeight: 500 }}
+                >
+                  {person.stream_name}
+                </Typography>
+              ) : person.stream_name && stampLabel ? (
+                <Typography
+                  variant="caption"
+                  sx={{ color: orgTokens.ink[400], fontSize: 11, fontWeight: 500 }}
+                >
+                  · {person.stream_name}
+                </Typography>
+              ) : null}
+            </Stack>
+          )}
         </Box>
       </Stack>
     </Box>
@@ -452,39 +717,55 @@ function TeamBranch({
         flexDirection: 'column',
         alignItems: 'stretch',
         width: '100%',
-        p: 1.5,
-        borderRadius: 2.5,
+        p: 1.75,
+        pl: 2,
+        borderRadius: `${orgTokens.radius.bay}px`,
         border: '1px solid',
-        borderColor: isOver ? line : alpha(line, 0.28),
-        bgcolor: isOver ? alpha(line, 0.08) : alpha(line, 0.04),
-        boxShadow: isOver ? 3 : 0,
-        transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
+        borderColor: isOver ? alpha(line, 0.55) : orgTokens.border.hair,
+        borderLeft: `2px solid ${isOver ? line : alpha(line, 0.7)}`,
+        bgcolor: isOver ? alpha(line, 0.06) : alpha(line, 0.025),
+        boxShadow: isOver ? `inset 0 0 0 3px ${alpha(line, 0.08)}` : 'none',
+        transition: `border-color ${orgTokens.motion}, box-shadow ${orgTokens.motion}, background-color ${orgTokens.motion}`,
       }}
     >
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.25 }}>
-        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: line, flexShrink: 0 }} />
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5 }}>
+        <Box
+          sx={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            bgcolor: line,
+            flexShrink: 0,
+            boxShadow: `0 0 0 3px ${alpha(line, 0.12)}`,
+          }}
+        />
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 800 }} noWrap>
+          <Typography
+            variant="subtitle2"
+            sx={{ fontWeight: 700, color: orgTokens.ink[900], letterSpacing: '-0.01em' }}
+            noWrap
+          >
             {team.team_name}
           </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>
+          <Typography variant="caption" sx={{ color: orgTokens.ink[400] }} noWrap>
             {team.team_lead_name ? `Lead · ${team.team_lead_name}` : 'No team lead'}
             {canEdit ? ' · drop cards here' : ''}
           </Typography>
         </Box>
-        <Chip label={team.member_count} size="small" sx={{ height: 22, fontWeight: 700 }} />
+        <CountBadge label={String(team.member_count)} />
       </Stack>
 
       {forest.length === 0 ? (
         <Typography
           variant="caption"
-          color="text.secondary"
           sx={{
             py: 2.5,
             border: '1px dashed',
-            borderColor: 'divider',
-            borderRadius: 2,
+            borderColor: alpha(line, 0.35),
+            borderRadius: `${orgTokens.radius.bay}px`,
             textAlign: 'center',
+            color: orgTokens.ink[400],
+            bgcolor: alpha(line, 0.03),
           }}
         >
           {canEdit ? 'Drop a person card onto this team' : 'No members'}
@@ -493,8 +774,9 @@ function TeamBranch({
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(212px, 1fr))',
-            gap: 1.5,
+            gridTemplateColumns: `repeat(auto-fill, ${orgTokens.card.w}px)`,
+            justifyContent: 'start',
+            gap: orgTokens.gap.card,
           }}
         >
           {forest.map((root) => (
@@ -530,7 +812,6 @@ function DepartmentSection({
   onDropPerson: (target: OrgChartTeamColumn) => void;
   onDropToDepartment: (department: OrgChartDepartment) => void;
 }) {
-  const theme = useTheme();
   const accent = department.colour;
   const isDeptOver = dropTargetId === department.department_id;
   const pool = [...department.leaders, ...department.staff];
@@ -564,25 +845,37 @@ function DepartmentSection({
         onDropToDepartment(department);
       }}
       sx={{
-        borderRadius: 3,
+        position: 'relative',
+        borderRadius: `${orgTokens.radius.plate}px`,
         border: '1px solid',
-        borderColor: isDeptOver ? accent : alpha(accent, 0.22),
-        overflow: 'visible',
-        bgcolor: isDeptOver ? alpha(accent, 0.06) : theme.palette.background.paper,
-        boxShadow: isDeptOver ? `0 0 0 2px ${alpha(accent, 0.35)}` : `0 1px 2px ${alpha('#000', 0.04)}`,
-        transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
+        borderColor: isDeptOver ? alpha(accent, 0.45) : orgTokens.border.hair,
+        overflow: 'hidden',
+        bgcolor: isDeptOver ? alpha(accent, 0.04) : orgTokens.ink.paper,
+        boxShadow: isDeptOver ? `0 0 0 2px ${alpha(accent, 0.2)}` : 'none',
+        transition: `border-color ${orgTokens.motion}, box-shadow ${orgTokens.motion}, background-color ${orgTokens.motion}`,
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 3,
+          bgcolor: accent,
+          zIndex: 1,
+        },
       }}
     >
       <Box
         sx={{
-          px: { xs: 2, md: 2.5 },
+          px: { xs: 2, md: 2.75 },
           py: 1.75,
           borderBottom: '1px solid',
-          borderColor: alpha(accent, 0.14),
-          background: `linear-gradient(90deg, ${alpha(accent, 0.12)} 0%, ${alpha(
-            accent,
-            0.03,
-          )} 55%, transparent 100%)`,
+          borderColor: orgTokens.border.hair,
+          bgcolor: alpha(orgTokens.ink.paper, 0.96),
+          position: 'sticky',
+          top: 0,
+          zIndex: 2,
+          backdropFilter: 'blur(8px)',
         }}
       >
         <Stack
@@ -590,62 +883,72 @@ function DepartmentSection({
           spacing={1}
           sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
         >
-          <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h6" sx={{ fontWeight: 800, color: accent, lineHeight: 1.25 }}>
-              {department.name}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-              {isEmpty
-                ? department.description || 'Reserved for future expansion'
-                : department.head_name
-                  ? `Head · ${department.head_name}${department.head_title ? ` · ${department.head_title}` : ''}`
-                  : department.description || `${department.member_count} people`}
-            </Typography>
+          <Stack direction="row" spacing={1.25} sx={{ alignItems: 'flex-start', minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 10,
+                height: 10,
+                borderRadius: '3px',
+                bgcolor: accent,
+                mt: 0.85,
+                flexShrink: 0,
+              }}
+            />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 700,
+                  color: orgTokens.ink[900],
+                  lineHeight: 1.25,
+                  letterSpacing: '-0.015em',
+                  fontSize: { xs: 17, md: 18 },
+                }}
+              >
+                {department.name}
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.35, color: orgTokens.ink[600] }}>
+                {isEmpty
+                  ? department.description || 'Reserved for future expansion'
+                  : department.head_name
+                    ? `Head · ${department.head_name}${department.head_title ? ` · ${department.head_title}` : ''}`
+                    : department.description || `${department.member_count} people`}
+              </Typography>
+            </Box>
+          </Stack>
+          <Box sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, pl: { xs: 2.75, sm: 0 } }}>
+            <CountBadge label={isEmpty ? 'Future' : `${department.member_count} people`} />
           </Box>
-          <Chip
-            label={isEmpty ? 'Future' : `${department.member_count} people`}
-            size="small"
-            sx={{
-              fontWeight: 700,
-              bgcolor: alpha(accent, 0.12),
-              alignSelf: { xs: 'flex-start', sm: 'center' },
-            }}
-          />
         </Stack>
       </Box>
 
-      <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2.25 }}>
+      <Box sx={{ px: { xs: 2, md: 2.75 }, py: 2.5 }}>
         {isEmpty ? (
           <Box
             sx={{
-              py: 2.75,
+              py: 3,
               px: 2,
-              borderRadius: 2.5,
-              border: '1px dashed',
-              borderColor: alpha(accent, 0.35),
+              borderRadius: `${orgTokens.radius.bay}px`,
+              border: '1px solid',
+              borderColor: alpha(accent, 0.2),
               textAlign: 'center',
-              color: 'text.secondary',
-              bgcolor: alpha(accent, 0.03),
+              color: orgTokens.ink[600],
+              background: `repeating-linear-gradient(45deg, ${alpha(accent, 0.05)} 0 6px, transparent 6px 12px)`,
             }}
           >
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: orgTokens.ink[900] }}>
               No people assigned yet
             </Typography>
-            <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+            <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: orgTokens.ink[400] }}>
               This department is ready for future org growth.
             </Typography>
           </Box>
         ) : (
-          <Stack spacing={2.25}>
+          <Stack spacing={orgTokens.gap.section}>
             {head ? (
               <Box>
-                <Typography
-                  variant="overline"
-                  sx={{ letterSpacing: 1, color: 'text.secondary', fontWeight: 700 }}
-                >
-                  Department head
-                </Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+                <SectionEyebrow label="Department head" />
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 0.5 }}>
                   <PersonCard
                     person={head}
                     accent={accent}
@@ -659,18 +962,15 @@ function DepartmentSection({
 
             {hqPeople.length > 0 ? (
               <Box>
-                <Typography
-                  variant="overline"
-                  sx={{ letterSpacing: 1, color: 'text.secondary', fontWeight: 700 }}
-                >
-                  {department.code === 'engineering' ? 'Leadership & HQ' : 'Department staff'}
-                </Typography>
+                <SectionEyebrow
+                  label={department.code === 'engineering' ? 'Leadership & HQ' : 'Department staff'}
+                />
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(212px, 1fr))',
-                    gap: 1.5,
-                    mt: 1,
+                    gridTemplateColumns: `repeat(auto-fill, ${orgTokens.card.w}px)`,
+                    justifyContent: 'start',
+                    gap: orgTokens.gap.card,
                   }}
                 >
                   {hqPeople.map((person) => (
@@ -689,12 +989,7 @@ function DepartmentSection({
 
             {department.teams.length > 0 ? (
               <Box>
-                <Typography
-                  variant="overline"
-                  sx={{ letterSpacing: 1, color: 'text.secondary', fontWeight: 700 }}
-                >
-                  Delivery teams
-                </Typography>
+                <SectionEyebrow label="Delivery teams" />
                 <Box
                   sx={{
                     display: 'grid',
@@ -702,8 +997,7 @@ function DepartmentSection({
                       xs: '1fr',
                       lg: 'repeat(2, minmax(0, 1fr))',
                     },
-                    gap: 1.75,
-                    mt: 1,
+                    gap: orgTokens.gap.team,
                   }}
                 >
                   {department.teams.map((team) => (
@@ -851,6 +1145,7 @@ export function OrganizationChartPage() {
   );
   const hasDepartmentView = (chartQuery.data?.departments?.length ?? 0) > 0;
   const totalPeople = filteredDepartments.reduce((sum, row) => sum + row.member_count, 0);
+  const totalTeams = filteredDepartments.reduce((sum, row) => sum + row.teams.length, 0);
   const hiddenCount =
     viewPrefs.hidePlanningBoard || viewPrefs.hideSystemAdmin
       ? 'Service accounts can be shown via View options'
@@ -861,43 +1156,85 @@ export function OrganizationChartPage() {
   };
 
   return (
-    <Box>
+    <Box
+      sx={{
+        mx: { xs: -1, md: -1.5 },
+        px: { xs: 1, md: 1.5 },
+        pb: 3,
+        background: `
+          linear-gradient(${orgTokens.ink.canvas}, ${orgTokens.ink.canvas}),
+          repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 23px,
+            rgba(31,43,56,0.022) 23px,
+            rgba(31,43,56,0.022) 24px
+          ),
+          repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 23px,
+            rgba(31,43,56,0.022) 23px,
+            rgba(31,43,56,0.022) 24px
+          )
+        `,
+        backgroundBlendMode: 'normal, multiply, multiply',
+        minHeight: '70vh',
+        borderRadius: 2,
+      }}
+    >
       <PageHeader
-        subtitle="Departments stacked for easy scanning — head, leadership, then delivery teams."
+        subtitle="Company structure as a classic organisation chart — departments, heads, and delivery teams."
         action={
-          <Button
-            startIcon={<RefreshIcon />}
-            onClick={() => void chartQuery.refetch()}
-            disabled={chartQuery.isFetching}
-          >
-            Refresh
-          </Button>
+          <Tooltip title="Refresh chart">
+            <span>
+              <IconButton
+                onClick={() => void chartQuery.refetch()}
+                disabled={chartQuery.isFetching}
+                size="small"
+                sx={{
+                  border: '1px solid',
+                  borderColor: orgTokens.border.mid,
+                  borderRadius: `${orgTokens.radius.bay}px`,
+                  bgcolor: orgTokens.ink.paper,
+                }}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
         }
       />
 
       <Box
         sx={{
           mb: 2,
-          p: { xs: 2, md: 2.25 },
-          borderRadius: 3,
-          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(
-            theme.palette.info.main,
-            0.07,
-          )} 55%, ${alpha(theme.palette.background.paper, 0.92)} 100%)`,
-          border: '1px solid',
-          borderColor: alpha(theme.palette.primary.main, 0.12),
+          pb: 2,
+          borderBottom: '1px solid',
+          borderColor: orgTokens.border.hair,
         }}
       >
         <Stack
           direction={{ xs: 'column', md: 'row' }}
           spacing={1.5}
-          sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between' }}
+          sx={{ alignItems: { md: 'flex-end' }, justifyContent: 'space-between' }}
         >
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.2 }}>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 700,
+                letterSpacing: '-0.02em',
+                color: orgTokens.ink[900],
+                fontSize: { xs: 22, md: 26 },
+              }}
+            >
               Organization Chart
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 720 }}>
+            <Typography
+              variant="body2"
+              sx={{ mt: 0.75, maxWidth: 720, color: orgTokens.ink[600], lineHeight: 1.5 }}
+            >
               {chartQuery.data?.note ??
                 (canEdit
                   ? 'Drop a card on a delivery team, confirm the effective date, then save.'
@@ -905,37 +1242,73 @@ export function OrganizationChartPage() {
             </Typography>
           </Box>
           {hasDepartmentView ? (
-            <Chip
-              label={`${filteredDepartments.length} depts · ${totalPeople} people`}
-              sx={{ fontWeight: 700, alignSelf: { xs: 'flex-start', md: 'center' } }}
-            />
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: orgTokens.ink[400],
+                fontVariantNumeric: 'tabular-nums',
+                whiteSpace: 'nowrap',
+                pb: 0.25,
+              }}
+            >
+              {filteredDepartments.length} departments · {totalPeople} people · {totalTeams} teams
+            </Typography>
           ) : null}
         </Stack>
       </Box>
 
       <Box
         sx={{
-          mb: 2.5,
-          p: 1.5,
-          borderRadius: 2.5,
+          mb: 3,
+          px: 1.75,
+          py: 1.25,
+          borderRadius: `${orgTokens.radius.bay}px`,
           border: '1px solid',
-          borderColor: 'divider',
-          bgcolor: alpha(theme.palette.background.paper, 0.8),
+          borderColor: orgTokens.border.hair,
+          bgcolor: alpha(orgTokens.ink.paper, 0.94),
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 1px 2px rgba(31,43,56,.04)',
+          position: 'sticky',
+          top: 8,
+          zIndex: 4,
         }}
       >
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
           spacing={1}
-          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between', mb: 0.5 }}
+          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between', mb: 0.25 }}
         >
           <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
-            <VisibilityOffRoundedIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+            <VisibilityOffRoundedIcon sx={{ fontSize: 17, color: orgTokens.ink[400] }} />
+            <Typography
+              variant="subtitle2"
+              sx={{ fontWeight: 700, color: orgTokens.ink[900], letterSpacing: '-0.01em' }}
+            >
               View options
             </Typography>
+            {canEdit ? (
+              <Chip
+                size="small"
+                icon={<DragIndicatorIcon sx={{ fontSize: '14px !important' }} />}
+                label="Drag to reassign"
+                sx={{
+                  height: 24,
+                  ml: 0.5,
+                  bgcolor: alpha(theme.palette.primary.main, 0.06),
+                  border: '1px solid',
+                  borderColor: orgTokens.border.mid,
+                  color: orgTokens.ink[600],
+                  '& .MuiChip-label': { px: 0.75, fontSize: 11, fontWeight: 600 },
+                  '& .MuiChip-icon': { color: orgTokens.ink[400] },
+                }}
+              />
+            ) : null}
           </Stack>
           {hiddenCount ? (
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{ color: orgTokens.ink[400] }}>
               {hiddenCount}
             </Typography>
           ) : null}
@@ -949,7 +1322,7 @@ export function OrganizationChartPage() {
                 onChange={(event) => setPref('hidePlanningBoard', event.target.checked)}
               />
             }
-            label="Hide Planning Board"
+            label={<Typography variant="body2">Hide Planning Board</Typography>}
           />
           <FormControlLabel
             control={
@@ -959,7 +1332,7 @@ export function OrganizationChartPage() {
                 onChange={(event) => setPref('hideSystemAdmin', event.target.checked)}
               />
             }
-            label="Hide System Admin"
+            label={<Typography variant="body2">Hide System Admin</Typography>}
           />
           <FormControlLabel
             control={
@@ -969,7 +1342,7 @@ export function OrganizationChartPage() {
                 onChange={(event) => setPref('hideEmptyDepartments', event.target.checked)}
               />
             }
-            label="Hide empty departments"
+            label={<Typography variant="body2">Hide empty departments</Typography>}
           />
         </Stack>
       </Box>
@@ -991,115 +1364,169 @@ export function OrganizationChartPage() {
           or show service accounts to see more.
         </Alert>
       ) : (
-        <Stack spacing={2}>
-          {hasDepartmentView && companyRoot ? (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                pt: 1,
-                pb: 0.5,
-              }}
-            >
-              <Typography
-                variant="overline"
-                sx={{ letterSpacing: 1.5, color: 'text.secondary', fontWeight: 700, mb: 1 }}
-              >
-                Organization Head
-              </Typography>
-              <PersonCard
-                person={companyRoot}
-                accent="#455a64"
-                canEdit={canEdit}
-                onDragStart={setDragPerson}
-                featured
-              />
+        <Box
+          sx={{
+            position: 'relative',
+            pl: { xl: `${28}px` },
+            '&::before': {
+              content: '""',
+              display: { xs: 'none', xl: 'block' },
+              position: 'absolute',
+              left: 6,
+              top: companyRoot ? 120 : 12,
+              bottom: 40,
+              width: '1.5px',
+              bgcolor: orgTokens.connector.ink,
+              maskImage: 'linear-gradient(to bottom, #000 0%, #000 85%, transparent 100%)',
+            },
+          }}
+        >
+          <Stack spacing={orgTokens.gap.dept}>
+            {hasDepartmentView && companyRoot ? (
               <Box
                 sx={{
-                  width: 2,
-                  height: 20,
-                  bgcolor: 'divider',
-                  mt: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  pt: 0.5,
+                  pb: 0.5,
                 }}
-              />
-            </Box>
-          ) : null}
-          {hasDepartmentView ? (
-            filteredDepartments.map((department) => (
-              <DepartmentSection
-                key={department.department_id}
-                department={department}
-                canEdit={canEdit}
-                dropTargetId={dropTargetId}
-                setDropTargetId={setDropTargetId}
-                onPersonDragStart={setDragPerson}
-                onDropPerson={handleDropOnTeam}
-                onDropToDepartment={handleDropOnDepartment}
-              />
-            ))
-          ) : (
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  md: 'repeat(auto-fit, minmax(280px, 1fr))',
-                },
-                gap: 1.5,
-              }}
-            >
-              {legacyTeams.map((team) => (
-                <TeamBranch
-                  key={team.team_id}
-                  team={team}
+              >
+                <Stack
+                  direction="row"
+                  spacing={1.5}
+                  sx={{ alignItems: 'center', mb: 1.5, width: '100%', maxWidth: 420 }}
+                >
+                  <Box sx={{ flex: 1, height: '1px', bgcolor: orgTokens.border.mid }} />
+                  <Typography
+                    variant="overline"
+                    sx={{
+                      letterSpacing: '0.12em',
+                      color: orgTokens.ink[400],
+                      fontWeight: 700,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Organization Head
+                  </Typography>
+                  <Box sx={{ flex: 1, height: '1px', bgcolor: orgTokens.border.mid }} />
+                </Stack>
+                <PersonCard
+                  person={companyRoot}
+                  accent="#455a64"
                   canEdit={canEdit}
-                  dropTargetId={dropTargetId}
-                  setDropTargetId={setDropTargetId}
-                  onPersonDragStart={setDragPerson}
-                  onDropPerson={handleDropOnTeam}
-                  accent={team.colour}
+                  onDragStart={setDragPerson}
+                  featured
+                  executive
                 />
-              ))}
-            </Box>
-          )}
-
-          {canEdit && unassigned.length > 0 ? (
-            <Box
-              sx={{
-                borderRadius: 3,
-                border: '1px dashed',
-                borderColor: 'divider',
-                p: 2,
-                bgcolor: alpha(theme.palette.warning.main, 0.04),
-              }}
-            >
-              <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5 }}>
-                Unassigned
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                Drag onto a delivery team to set primary home
-              </Typography>
+                <Box
+                  sx={{
+                    width: orgTokens.connector.width,
+                    height: orgTokens.connector.execSpine,
+                    bgcolor: orgTokens.connector.ink,
+                    mt: 1.25,
+                  }}
+                />
+              </Box>
+            ) : null}
+            {hasDepartmentView ? (
+              filteredDepartments.map((department) => (
+                <Box
+                  key={department.department_id}
+                  sx={{
+                    position: 'relative',
+                    '&::before': {
+                      content: '""',
+                      display: { xs: 'none', xl: 'block' },
+                      position: 'absolute',
+                      left: -22,
+                      top: 28,
+                      width: 14,
+                      height: '1.5px',
+                      bgcolor: orgTokens.connector.ink,
+                    },
+                  }}
+                >
+                  <DepartmentSection
+                    department={department}
+                    canEdit={canEdit}
+                    dropTargetId={dropTargetId}
+                    setDropTargetId={setDropTargetId}
+                    onPersonDragStart={setDragPerson}
+                    onDropPerson={handleDropOnTeam}
+                    onDropToDepartment={handleDropOnDepartment}
+                  />
+                </Box>
+              ))
+            ) : (
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(212px, 1fr))',
-                  gap: 1.5,
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    md: 'repeat(auto-fit, minmax(280px, 1fr))',
+                  },
+                  gap: 2,
                 }}
               >
-                {unassigned.map((person) => (
-                  <PersonCard
-                    key={person.user_id}
-                    person={person}
-                    accent="#78909c"
+                {legacyTeams.map((team) => (
+                  <TeamBranch
+                    key={team.team_id}
+                    team={team}
                     canEdit={canEdit}
-                    onDragStart={setDragPerson}
+                    dropTargetId={dropTargetId}
+                    setDropTargetId={setDropTargetId}
+                    onPersonDragStart={setDragPerson}
+                    onDropPerson={handleDropOnTeam}
+                    accent={team.colour}
                   />
                 ))}
               </Box>
-            </Box>
-          ) : null}
-        </Stack>
+            )}
+
+            {canEdit && unassigned.length > 0 ? (
+              <Box
+                sx={{
+                  borderRadius: `${orgTokens.radius.plate}px`,
+                  border: '1px dashed',
+                  borderColor: alpha(theme.palette.warning.main, 0.4),
+                  p: 2.25,
+                  bgcolor: alpha(theme.palette.warning.main, 0.04),
+                  backgroundImage: `repeating-linear-gradient(45deg, ${alpha(
+                    theme.palette.warning.main,
+                    0.04,
+                  )} 0 6px, transparent 6px 12px)`,
+                }}
+              >
+                <SectionEyebrow label="Unassigned" />
+                <Typography
+                  variant="caption"
+                  sx={{ display: 'block', mb: 1.75, color: orgTokens.ink[400], mt: -0.5 }}
+                >
+                  Drag onto a delivery team to set primary home
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(auto-fill, ${orgTokens.card.w}px)`,
+                    justifyContent: 'start',
+                    gap: orgTokens.gap.card,
+                  }}
+                >
+                  {unassigned.map((person) => (
+                    <PersonCard
+                      key={person.user_id}
+                      person={person}
+                      accent="#78909c"
+                      canEdit={canEdit}
+                      onDragStart={setDragPerson}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            ) : null}
+          </Stack>
+        </Box>
       )}
 
       <Dialog

@@ -26,6 +26,7 @@ def test_timesheet_projects_lists_all_active_loggable_projects(session, contribu
             Project.is_archived.is_(False),
             Project.execution_status.in_(
                 (
+                    ExecutionStatus.planning,
                     ExecutionStatus.currently_being_worked_on,
                     ExecutionStatus.on_hold,
                 )
@@ -38,6 +39,19 @@ def test_timesheet_projects_lists_all_active_loggable_projects(session, contribu
         sample = projects[0]
         assert sample.tool_number
         assert sample.part_description is not None
+
+
+def test_timesheet_projects_include_planning_status(session, contribution_schema):
+    from tests.conftest import IDS
+
+    planning = session.get(Project, IDS["project"])
+    if planning is None:
+        pytest.skip("Seed project missing")
+    planning.execution_status = ExecutionStatus.planning
+    session.commit()
+
+    projects = list_timesheet_projects(session)
+    assert any(row.id == IDS["project"] for row in projects)
 
 
 def test_get_project_contributors_from_existing_entries(session, contribution_schema):

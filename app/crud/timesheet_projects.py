@@ -19,6 +19,7 @@ from app.models.models import (
 from app.schemas.timesheet import TimesheetProjectLookup
 
 LOGGABLE_PROJECT_STATUSES = (
+    ExecutionStatus.planning,
     ExecutionStatus.currently_being_worked_on,
     ExecutionStatus.on_hold,
 )

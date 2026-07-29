@@ -21,7 +21,6 @@ interface TimesheetEntryEditDialogProps {
   dailyLimit: number;
   saving: boolean;
   currentUserId?: string;
-  onProjectSearch?: (value: string) => void;
   onSave: (values: TimesheetEntryFormValues) => Promise<void>;
   onClose: () => void;
 }
@@ -37,7 +36,6 @@ export function TimesheetEntryEditDialog({
   dailyLimit,
   saving,
   currentUserId,
-  onProjectSearch,
   onSave,
   onClose,
 }: TimesheetEntryEditDialogProps) {
@@ -57,7 +55,6 @@ export function TimesheetEntryEditDialog({
             dailyLimit={dailyLimit}
             saving={saving}
             currentUserId={currentUserId}
-            onProjectSearch={onProjectSearch}
             onSubmit={onSave}
             onCancelEdit={onClose}
             variant="dialog"

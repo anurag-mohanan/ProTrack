@@ -507,7 +507,6 @@ export function TimesheetsPage() {
               dailyLimit={workspace.dailyLimit}
               saving={workspace.saveEntryMutation.isPending}
               currentUserId={user?.id}
-              onProjectSearch={workspace.setProjectSearch}
               onSubmit={(values) => handleSaveEntry(values)}
               onCancelEdit={() => undefined}
               onEntryDateChange={setToolbarDate}
@@ -581,7 +580,6 @@ export function TimesheetsPage() {
         dailyLimit={workspace.dailyLimit}
         saving={workspace.saveEntryMutation.isPending}
         currentUserId={user?.id}
-        onProjectSearch={workspace.setProjectSearch}
         onSave={(values) => handleSaveEntry(values, editDialogEntry?.id)}
         onClose={() => setEditDialogEntry(null)}
       />

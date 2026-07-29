@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   bulkSaveTimesheetEntries,
@@ -30,7 +30,6 @@ import {
   weekStartMonday,
 } from '../utils/timesheetMonth';
 import { invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
-import { useDebouncedValue } from './useDebouncedValue';
 
 export function useTimesheetMonthWorkspace(
   user: CurrentUser | null,
@@ -42,8 +41,6 @@ export function useTimesheetMonthWorkspace(
   const bounds = useMemo(() => monthBounds(monthValue), [monthValue]);
   const userId = user?.id;
   const dailyLimit = user?.working_hours_per_day ?? 8;
-  const [projectSearch, setProjectSearch] = useState('');
-  const debouncedProjectSearch = useDebouncedValue(projectSearch, 300);
 
   const holidaysQuery = useQuery({
     queryKey: ['settings', 'holidays'],
@@ -52,11 +49,8 @@ export function useTimesheetMonthWorkspace(
   });
 
   const projectsQuery = useQuery({
-    queryKey: ['timesheet-projects', debouncedProjectSearch || 'all'],
-    queryFn: () =>
-      debouncedProjectSearch.trim().length >= 2
-        ? fetchTimesheetProjects({ q: debouncedProjectSearch.trim(), limit: 50 })
-        : fetchTimesheetProjects(),
+    queryKey: ['timesheet-projects', 'all-loggable'],
+    queryFn: () => fetchTimesheetProjects(),
     staleTime: QUERY_STALE_TIMES.projects,
     enabled: needsEntryLookups,
   });
@@ -337,7 +331,6 @@ export function useTimesheetMonthWorkspace(
     error,
     lookupError,
     refetchLookups,
-    setProjectSearch,
     saveEntryMutation,
     deleteEntryMutation,
     submitMonthMutation,

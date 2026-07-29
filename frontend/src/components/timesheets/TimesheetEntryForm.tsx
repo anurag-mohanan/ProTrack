@@ -59,7 +59,6 @@ interface TimesheetEntryFormProps {
   editingEntry: TimesheetEntry | null;
   saving: boolean;
   currentUserId?: string;
-  onProjectSearch?: (value: string) => void;
   onSubmit: (values: TimesheetEntryFormValues) => Promise<void>;
   onCancelEdit: () => void;
   onEntryDateChange?: (entryDate: string) => void;
@@ -115,7 +114,6 @@ export function TimesheetEntryForm({
   dailyLimit,
   saving,
   currentUserId: _currentUserId,
-  onProjectSearch,
   onSubmit,
   onCancelEdit,
   onEntryDateChange,
@@ -143,7 +141,9 @@ export function TimesheetEntryForm({
       return;
     }
     setForm(emptyForm());
-  }, [editingEntry, toolOptions]);
+    // Only re-sync when entering/leaving edit mode — not when tool options refresh
+    // (search/refetch). Depending on toolOptions was resetting the form on every keystroke.
+  }, [editingEntry]);
 
   useEffect(() => {
     onEntryDateChange?.(form.entryDate);
@@ -347,7 +347,6 @@ export function TimesheetEntryForm({
             disabled={readOnly || saving}
             inputRef={toolRef}
             onChange={handleToolChange}
-            onInputChange={onProjectSearch}
             onKeyDown={(event: KeyboardEvent) => {
               if (event.key === 'Enter') {
                 event.preventDefault();

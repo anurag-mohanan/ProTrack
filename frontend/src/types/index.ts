@@ -284,6 +284,11 @@ export interface Stream {
   name: string;
   description: string | null;
   is_active: boolean;
+  use_project_prefix?: boolean;
+  use_project_numbering?: boolean;
+  project_number_prefix?: string | null;
+  project_number_format?: string | null;
+  next_project_sequence?: number;
 }
 
 export type WorkingModelStrategyKey =

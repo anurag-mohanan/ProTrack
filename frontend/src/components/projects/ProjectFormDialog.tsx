@@ -292,8 +292,23 @@ export function ProjectFormDialog({
     setForm(JSON.parse(baselineRef.current) as ProjectFormValues);
   };
 
+  const activeStreams = useMemo(
+    () => (streamsQuery.data ?? []).filter((stream) => stream.is_active !== false),
+    [streamsQuery.data],
+  );
+
+  const selectedStream = useMemo(
+    () => activeStreams.find((stream) => stream.id === form.stream_id) ?? null,
+    [activeStreams, form.stream_id],
+  );
+
+  const streamManagesCodes = Boolean(
+    selectedStream?.use_project_numbering || selectedStream?.use_project_prefix,
+  );
+
   useEffect(() => {
     if (!open || isEdit) return;
+    if (streamManagesCodes) return;
     if (form.code.trim()) return;
     const suggested = form.tool_number
       .trim()
@@ -302,7 +317,7 @@ export function ProjectFormDialog({
       .toUpperCase();
     if (!suggested) return;
     setForm((current) => ({ ...current, code: suggested }));
-  }, [form.tool_number, form.code, open, isEdit]);
+  }, [form.tool_number, form.code, open, isEdit, streamManagesCodes]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -377,11 +392,6 @@ export function ProjectFormDialog({
       onClose();
     },
   });
-
-  const activeStreams = useMemo(
-    () => (streamsQuery.data ?? []).filter((stream) => stream.is_active !== false),
-    [streamsQuery.data],
-  );
 
   const activeCustomers = useMemo(
     () => (customersQuery.data ?? []).filter((customer) => customer.is_active !== false),
@@ -680,7 +690,11 @@ export function ProjectFormDialog({
             <FormField
               label="Project Code"
               value={form.code}
-              helper="Suggested automatically from Tool Number. You can edit if needed."
+              helper={
+                streamManagesCodes
+                  ? 'Optional. Leave blank to auto-assign from the stream prefix/numbering, or enter a customer project number.'
+                  : 'Suggested automatically from Tool Number. You can edit if needed.'
+              }
               onChange={(event) => setForm({ ...form, code: event.target.value })}
             />
           </Grid>

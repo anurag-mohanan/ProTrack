@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Box, Chip, FormControlLabel, Switch } from '@mui/material';
+import { Alert, Box, Chip, FormControlLabel, Switch, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import StreamOutlinedIcon from '@mui/icons-material/StreamOutlined';
 import type { GridColDef } from '@mui/x-data-grid';
@@ -34,13 +34,56 @@ interface StreamFormState {
   name: string;
   description: string;
   is_active: boolean;
+  use_project_prefix: boolean;
+  use_project_numbering: boolean;
+  project_number_prefix: string;
+  project_number_format: string;
+  next_project_sequence: string;
 }
 
 const emptyForm: StreamFormState = {
   name: '',
   description: '',
   is_active: true,
+  use_project_prefix: false,
+  use_project_numbering: false,
+  project_number_prefix: '',
+  project_number_format: '',
+  next_project_sequence: '1',
 };
+
+function numberingSummary(stream: Stream): string {
+  const parts: string[] = [];
+  if (stream.use_project_prefix && stream.project_number_prefix) {
+    parts.push(`Prefix ${stream.project_number_prefix}`);
+  } else if (stream.use_project_prefix) {
+    parts.push('Prefix on');
+  }
+  if (stream.use_project_numbering) {
+    const fmt = stream.project_number_format?.trim() || 'auto seq';
+    parts.push(`Numbering (${fmt})`);
+  }
+  return parts.length ? parts.join(' · ') : 'Customer numbers';
+}
+
+function previewCode(form: StreamFormState): string | null {
+  if (!form.use_project_prefix && !form.use_project_numbering) return null;
+  const prefix = form.use_project_prefix ? form.project_number_prefix.trim() : '';
+  const seq = form.next_project_sequence.trim() || '1';
+  if (form.use_project_numbering) {
+    const fmt =
+      form.project_number_format.trim() || (prefix ? '{prefix}-{seq}' : '{seq}');
+    return fmt
+      .replaceAll('{prefix}', prefix)
+      .replaceAll('{seq}', seq)
+      .replaceAll('{tool_number}', 'TOOL-001')
+      .replaceAll('{year}', String(new Date().getFullYear()))
+      .replaceAll('--', '-')
+      .replace(/^-+|-+$/g, '');
+  }
+  if (prefix) return `${prefix}-TOOL-001`;
+  return null;
+}
 
 export default function StreamsPage() {
   const { user } = useAuth();
@@ -74,7 +117,14 @@ export default function StreamsPage() {
     const term = search.trim().toLowerCase();
     if (!term) return streams;
     return streams.filter((stream) => {
-      const haystack = [stream.name, stream.description ?? ''].join(' ').toLowerCase();
+      const haystack = [
+        stream.name,
+        stream.description ?? '',
+        stream.project_number_prefix ?? '',
+        stream.project_number_format ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
       return haystack.includes(term);
     });
   }, [search, streams]);
@@ -93,6 +143,11 @@ export default function StreamsPage() {
       name: stream.name,
       description: stream.description ?? '',
       is_active: stream.is_active,
+      use_project_prefix: Boolean(stream.use_project_prefix),
+      use_project_numbering: Boolean(stream.use_project_numbering),
+      project_number_prefix: stream.project_number_prefix ?? '',
+      project_number_format: stream.project_number_format ?? '',
+      next_project_sequence: String(stream.next_project_sequence ?? 1),
     });
     setFormOpen(true);
   };
@@ -104,12 +159,32 @@ export default function StreamsPage() {
       showError(validationError);
       return;
     }
+    if (form.use_project_prefix && !form.project_number_prefix.trim()) {
+      showError('Enter a project code prefix, or turn off the prefix option.');
+      return;
+    }
+    const sequence = Number.parseInt(form.next_project_sequence, 10);
+    if (form.use_project_numbering && (!Number.isFinite(sequence) || sequence < 1)) {
+      showError('Next sequence must be a whole number of 1 or higher.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
         name: form.name.trim(),
         description: optionalString(form.description),
         is_active: form.is_active,
+        use_project_prefix: form.use_project_prefix,
+        use_project_numbering: form.use_project_numbering,
+        project_number_prefix: form.use_project_prefix
+          ? optionalString(form.project_number_prefix)
+          : null,
+        project_number_format: form.use_project_numbering
+          ? optionalString(form.project_number_format)
+          : null,
+        next_project_sequence: form.use_project_numbering
+          ? sequence
+          : editingStream?.next_project_sequence ?? 1,
       };
       if (editingStream) {
         await streamsApi.update(editingStream.id, payload);
@@ -127,14 +202,23 @@ export default function StreamsPage() {
     }
   };
 
+  const sampleCode = previewCode(form);
+
   const columns: GridColDef<Stream>[] = [
     { field: 'name', headerName: 'Name', flex: 1.2, minWidth: 140 },
     {
       field: 'description',
       headerName: 'Description',
-      flex: 2,
-      minWidth: 180,
+      flex: 1.6,
+      minWidth: 160,
       valueFormatter: (value) => formatCellValue(value as string | null),
+    },
+    {
+      field: 'project_number_prefix',
+      headerName: 'Project codes',
+      flex: 1.2,
+      minWidth: 160,
+      valueGetter: (_value, row) => numberingSummary(row),
     },
     {
       field: 'is_active',
@@ -257,6 +341,87 @@ export default function StreamsPage() {
               label="Active"
             />
           </FormSection>
+
+          <FormSection title="Project numbering (optional)" icon={StreamOutlinedIcon}>
+            <Alert severity="info" sx={{ mb: 1 }}>
+              Leave these off when projects use customer-supplied project numbers. Turn them on only
+              when this stream should assign ProTrack prefixes and/or automatic numbers.
+            </Alert>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.use_project_prefix}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      use_project_prefix: event.target.checked,
+                    }))
+                  }
+                />
+              }
+              label="Add a project code prefix for this stream?"
+            />
+            {form.use_project_prefix ? (
+              <FormField
+                label="Prefix"
+                required
+                value={form.project_number_prefix}
+                helper="Example: MD, FIX, CAM"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    project_number_prefix: event.target.value,
+                  }))
+                }
+              />
+            ) : null}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.use_project_numbering}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      use_project_numbering: event.target.checked,
+                    }))
+                  }
+                />
+              }
+              label="Add an automatic numbering system for this stream?"
+            />
+            {form.use_project_numbering ? (
+              <>
+                <FormField
+                  label="Number format"
+                  value={form.project_number_format}
+                  helper="Use {prefix}, {seq}, {tool_number}, {year}. Leave blank for {prefix}-{seq} or {seq}."
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      project_number_format: event.target.value,
+                    }))
+                  }
+                />
+                <FormField
+                  label="Next sequence number"
+                  type="number"
+                  value={form.next_project_sequence}
+                  helper="Used for the next auto-numbered project on this stream."
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      next_project_sequence: event.target.value,
+                    }))
+                  }
+                />
+              </>
+            ) : null}
+            {sampleCode ? (
+              <Typography variant="body2" color="text.secondary">
+                Example next code: <strong>{sampleCode}</strong>
+              </Typography>
+            ) : null}
+          </FormSection>
         </Box>
       </FormDrawer>
 
@@ -318,6 +483,11 @@ export default function StreamsPage() {
               value={formatCellValue(selectedStream.description) || '—'}
               multiline
               minRows={2}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Project codes"
+              value={numberingSummary(selectedStream)}
               slotProps={{ input: { readOnly: true } }}
             />
           </FormSection>

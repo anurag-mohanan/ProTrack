@@ -17,11 +17,12 @@ from app.models.enums import (
     ProjectHealth,
     ProjectLifecycleFilter,
 )
-from app.models.models import Contact, Customer, Project, Role, User
+from app.models.models import Contact, Customer, Project, Role, Stream, User
 from app.schemas.project import ArchivedProjectListItem, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.notification_service import create_notification
 from app.services.project_calculation_service import recalculate_project
 from app.services.project_lifecycle_service import apply_lifecycle_filter, apply_lifecycle_sort
+from app.services.project_number_service import generate_stream_project_code
 from app.services.project_stage_gate_service import assert_stage_gate
 from app.services.project_template_service import (
     create_milestones_from_template,
@@ -183,6 +184,20 @@ def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate
         data["working_model_id"] = customer.default_working_model_id
 
     data["code"] = _normalize_optional_code(data.get("code"))
+
+    if data.get("code") is None and data.get("stream_id") is not None:
+        stream = db.get(Stream, data["stream_id"])
+        if stream is not None and (
+            bool(getattr(stream, "use_project_numbering", False))
+            or bool(getattr(stream, "use_project_prefix", False))
+        ):
+            generated = generate_stream_project_code(
+                db,
+                stream,
+                str(data.get("tool_number") or ""),
+            )
+            if generated:
+                data["code"] = generated
 
     if data.get("quoted_hours") is None:
         data["quoted_hours"] = Decimal("0")

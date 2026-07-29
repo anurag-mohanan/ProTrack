@@ -10,6 +10,11 @@ class StreamBase(BaseModel):
     name: str = Field(max_length=100)
     description: str | None = None
     is_active: bool = True
+    use_project_prefix: bool = False
+    use_project_numbering: bool = False
+    project_number_prefix: str | None = Field(default=None, max_length=50)
+    project_number_format: str | None = Field(default=None, max_length=100)
+    next_project_sequence: int = Field(default=1, ge=1)
 
 
 class StreamCreate(BlankOptionalFieldsMixin, StreamBase):
@@ -20,6 +25,11 @@ class StreamUpdate(BlankOptionalFieldsMixin, BaseModel):
     name: str | None = Field(default=None, max_length=100)
     description: str | None = None
     is_active: bool | None = None
+    use_project_prefix: bool | None = None
+    use_project_numbering: bool | None = None
+    project_number_prefix: str | None = Field(default=None, max_length=50)
+    project_number_format: str | None = Field(default=None, max_length=100)
+    next_project_sequence: int | None = Field(default=None, ge=1)
 
 
 class StreamRead(StreamBase, TimestampSchema):

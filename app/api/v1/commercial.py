@@ -142,6 +142,31 @@ def list_tenants(db: Session = Depends(get_db)):
     return [_tenant_read(row) for row in tenant_service.list_tenants(db)]
 
 
+class TenantCreate(BaseModel):
+    slug: str = Field(min_length=2, max_length=64)
+    name: str = Field(min_length=2, max_length=200)
+    edition: str = "trial"
+    notes: str | None = None
+
+
+@router.post("/tenants", response_model=TenantRead, dependencies=[admin])
+def create_tenant(payload: TenantCreate, db: Session = Depends(get_db)):
+    tenant_service.ensure_prosohm_tenant(db)
+    try:
+        row = tenant_service.create_tenant(
+            db,
+            slug=payload.slug,
+            name=payload.name,
+            edition=payload.edition,
+            notes=payload.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(row)
+    return _tenant_read(row)
+
+
 @router.get("/editions", response_model=EditionCatalogRead, dependencies=[admin])
 def edition_catalog():
     return EditionCatalogRead(

@@ -13,6 +13,7 @@ from app.api.v1 import (
     documents,
     emails,
     finance,
+    history_imports,
     hr,
     imports,
     timesheet_imports,
@@ -165,4 +166,5 @@ api_router.include_router(commercial.router)
 api_router.include_router(tickets.router)
 api_router.include_router(security.router)
 api_router.include_router(imports.router)
+api_router.include_router(history_imports.router)
 api_router.include_router(timesheet_imports.router)

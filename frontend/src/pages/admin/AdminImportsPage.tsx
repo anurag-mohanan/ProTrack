@@ -13,7 +13,7 @@ export default function AdminImportsPage() {
     <Box>
       <PageHeader
         title="Import"
-        subtitle="Historical imports, bulk data tools, and export utilities"
+        subtitle="History packs (employment, finance, customers), legacy project/timesheet importers, and bulk tools"
       />
 
       <Grid container spacing={2.5}>

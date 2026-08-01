@@ -71,6 +71,45 @@ def list_tenants(db: Session) -> list[Tenant]:
     return list(db.scalars(select(Tenant).order_by(Tenant.name)).all())
 
 
+def create_tenant(
+    db: Session,
+    *,
+    slug: str,
+    name: str,
+    edition: str = "trial",
+    notes: str | None = None,
+) -> Tenant:
+    """Create an external/commercial tenant and seed edition flags."""
+    from app.core.editions import edition_codes
+    from app.db.tenant_filter import without_tenant_filter
+    from app.services import feature_flag_service
+
+    clean_slug = slug.strip().lower().replace(" ", "-")
+    if not clean_slug or not name.strip():
+        raise ValueError("slug and name are required")
+    if edition not in edition_codes():
+        raise ValueError(f"Invalid edition: {edition}")
+    existing = db.scalar(select(Tenant).where(Tenant.slug == clean_slug))
+    if existing is not None:
+        raise ValueError(f"Tenant slug already exists: {clean_slug}")
+    row = Tenant(
+        slug=clean_slug,
+        name=name.strip(),
+        edition=edition,
+        is_active=True,
+        terminology_json=json.dumps(DEFAULT_PROSOHM_TERMINOLOGY),
+        numbering_policy_json=json.dumps(DEFAULT_PROSOHM_NUMBERING),
+        notes=notes,
+    )
+    db.add(row)
+    db.flush()
+    # Flags belong to the new tenant; opt out of request-tenant write guard.
+    with without_tenant_filter():
+        feature_flag_service.ensure_tenant_flags(db, row.id)
+        db.flush()
+    return row
+
+
 def parse_json_dict(raw: str | None) -> dict:
     if not raw:
         return {}

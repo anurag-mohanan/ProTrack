@@ -60,6 +60,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/admin/import-historical-projects': 'Historical Import',
   '/admin/imports/historical-projects': 'Historical Projects',
   '/admin/imports/historical-timesheets': 'Historical Timesheets',
+  '/admin/imports/history': 'History data packs',
 };
 
 function projectIdFromPath(pathname: string): string | null {

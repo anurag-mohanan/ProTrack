@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Chip,
+  MenuItem,
   Stack,
   Switch,
   Table,
@@ -67,6 +68,9 @@ export default function CommercialSettingsPage() {
   const [createdRawKey, setCreatedRawKey] = useState<string | null>(null);
   const [webhookName, setWebhookName] = useState('Default webhook');
   const [webhookUrl, setWebhookUrl] = useState('https://example.com/hooks/protrack');
+  const [newTenantSlug, setNewTenantSlug] = useState('');
+  const [newTenantName, setNewTenantName] = useState('');
+  const [newTenantEdition, setNewTenantEdition] = useState('trial');
 
   const apiKeysQuery = useQuery({
     queryKey: ['commercial', 'api-keys'],
@@ -197,6 +201,29 @@ export default function CommercialSettingsPage() {
     queryFn: async () => (await apiClient.get<Tenant>('/commercial/me')).data,
   });
 
+  const tenantsQuery = useQuery({
+    queryKey: ['commercial', 'tenants'],
+    queryFn: async () => (await apiClient.get<Tenant[]>('/commercial/tenants')).data,
+  });
+
+  const createTenantMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await apiClient.post<Tenant>('/commercial/tenants', {
+          slug: newTenantSlug,
+          name: newTenantName,
+          edition: newTenantEdition,
+        })
+      ).data,
+    onSuccess: (row) => {
+      showSuccess(`Tenant created: ${row.name} (${row.slug})`);
+      setNewTenantSlug('');
+      setNewTenantName('');
+      void queryClient.invalidateQueries({ queryKey: ['commercial', 'tenants'] });
+    },
+    onError: (error) => showError(getErrorMessage(error) || 'Could not create tenant'),
+  });
+
   const packQuery = useQuery({
     queryKey: ['commercial', 'pack'],
     queryFn: async () => (await apiClient.get<TenantPack>('/commercial/me/pack')).data,
@@ -310,6 +337,78 @@ export default function CommercialSettingsPage() {
             <Typography color="error">Tenant not loaded</Typography>
           )}
         </Stack>
+      </ContentCard>
+
+      <ContentCard>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+          Tenants registry
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Add external tenants here (design partners / customers). Switch request context with
+          the <code>X-Tenant-Id</code> header when calling APIs for that tenant. Prosohm remains
+          the default when no header is set.
+        </Typography>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5 }}>
+          <TextField
+            size="small"
+            label="Slug"
+            value={newTenantSlug}
+            onChange={(e) => setNewTenantSlug(e.target.value)}
+            placeholder="acme-molds"
+          />
+          <TextField
+            size="small"
+            label="Name"
+            value={newTenantName}
+            onChange={(e) => setNewTenantName(e.target.value)}
+            fullWidth
+          />
+          <TextField
+            select
+            size="small"
+            label="Edition"
+            value={newTenantEdition}
+            onChange={(e) => setNewTenantEdition(e.target.value)}
+            sx={{ minWidth: 140 }}
+          >
+            {['trial', 'starter', 'professional', 'business', 'enterprise'].map((ed) => (
+              <MenuItem key={ed} value={ed}>
+                {ed}
+              </MenuItem>
+            ))}
+          </TextField>
+          <ProsohmButton
+            size="small"
+            disabled={!newTenantSlug || !newTenantName || createTenantMutation.isPending}
+            onClick={() => createTenantMutation.mutate()}
+          >
+            Add tenant
+          </ProsohmButton>
+        </Stack>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>Slug</TableCell>
+              <TableCell>Edition</TableCell>
+              <TableCell>Active</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {(tenantsQuery.data ?? []).map((row) => (
+              <TableRow key={row.id}>
+                <TableCell>{row.name}</TableCell>
+                <TableCell>
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                    {row.slug}
+                  </Typography>
+                </TableCell>
+                <TableCell>{row.edition}</TableCell>
+                <TableCell>{row.is_active ? 'yes' : 'no'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </ContentCard>
 
       <ContentCard>

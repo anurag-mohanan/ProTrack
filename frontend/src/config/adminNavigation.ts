@@ -122,7 +122,13 @@ export const ADMIN_MANAGE_ITEMS: AdminHubItem[] = [
 
 function buildImportItems(ctx: AccessContext, includeComingSoon: boolean): AdminHubItem[] {
   const items: AdminHubItem[] = [
-    { id: 'projects-import', title: 'Projects', description: 'Bulk project import.', icon: FolderSharedIcon, path: '/admin/imports', comingSoon: true },
+    {
+      id: 'history-packs',
+      title: 'History data packs',
+      description: 'Employment, compensation, expenses, customers, and linked legacy importers.',
+      icon: WorkHistoryOutlinedIcon,
+      path: '/admin/imports/history',
+    },
   ];
 
   if (canImportHistoricalProjects(ctx)) {
@@ -135,12 +141,6 @@ function buildImportItems(ctx: AccessContext, includeComingSoon: boolean): Admin
     });
   }
 
-  items.push(
-    { id: 'users-import', title: 'Users', description: 'Bulk user import.', icon: PeopleIcon, path: '/admin/imports', comingSoon: true },
-    { id: 'customers-import', title: 'Customers', description: 'Bulk customer import.', icon: BusinessIcon, path: '/admin/imports', comingSoon: true },
-    { id: 'timesheets-import', title: 'Timesheets', description: 'Bulk timesheet import.', icon: ScheduleIcon, path: '/admin/imports', comingSoon: true },
-  );
-
   if (canImportHistoricalTimesheets(ctx)) {
     items.push({
       id: 'historical-timesheets',
@@ -151,10 +151,13 @@ function buildImportItems(ctx: AccessContext, includeComingSoon: boolean): Admin
     });
   }
 
-  items.push(
-    { id: 'templates-import', title: 'Project Templates', description: 'Template import.', icon: ViewTimelineIcon, path: '/admin/imports', comingSoon: true },
-    { id: 'export-data', title: 'Export Data', description: 'Export master data and reports.', icon: DownloadIcon, path: '/admin/imports', comingSoon: true },
-  );
+  if (includeComingSoon) {
+    items.push(
+      { id: 'projects-import', title: 'Projects', description: 'Bulk project import.', icon: FolderSharedIcon, path: '/admin/imports', comingSoon: true },
+      { id: 'users-import', title: 'Users', description: 'Bulk user import.', icon: PeopleIcon, path: '/admin/imports', comingSoon: true },
+      { id: 'export-data', title: 'Export Data', description: 'Export master data and reports.', icon: DownloadIcon, path: '/admin/imports', comingSoon: true },
+    );
+  }
 
   return includeComingSoon ? items : items.filter((item) => !item.comingSoon);
 }

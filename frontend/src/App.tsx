@@ -86,6 +86,7 @@ const AnalyticsHubPage = lazy(() =>
 const AdminCreatePage = lazy(() => import('./pages/admin/AdminCreatePage'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const AdminImportsPage = lazy(() => import('./pages/admin/AdminImportsPage'));
+const HistoryDataImportPage = lazy(() => import('./pages/admin/HistoryDataImportPage'));
 const AdminManageHubPage = lazy(() => import('./pages/admin/AdminManageHubPage'));
 const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage'));
 const AdminSettingsHubPage = lazy(() => import('./pages/admin/AdminSettingsHubPage'));
@@ -431,6 +432,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <AdminImportsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/imports/history"
+                        element={
+                          <LazyAdminPage>
+                            <HistoryDataImportPage />
                           </LazyAdminPage>
                         }
                       />

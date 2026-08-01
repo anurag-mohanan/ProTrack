@@ -16,29 +16,31 @@ from app.db.base import (
     Mapped,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     mapped_column,
     relationship,
 )
-from app.models.mixins import TimestampMixin
+from app.models.mixins import TenantMixin, TimestampMixin
 
 
-class LegalEntity(Base, TimestampMixin):
+class LegalEntity(Base, TimestampMixin, TenantMixin):
     """Single-tenant legal entity prep (R4). Not multi-book / multi-tenant."""
 
     __tablename__ = "legal_entities"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_legal_entities_tenant_code"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class DocumentAsset(Base, TimestampMixin):
+class DocumentAsset(Base, TimestampMixin, TenantMixin):
     """DMS metadata registry (R4). Storage backend local by default; S3-ready keys."""
 
     __tablename__ = "document_assets"
@@ -61,7 +63,7 @@ class DocumentAsset(Base, TimestampMixin):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 
-class LearningPlan(Base, TimestampMixin):
+class LearningPlan(Base, TimestampMixin, TenantMixin):
     """Personal development plan seeded from skill gaps (R4)."""
 
     __tablename__ = "learning_plans"
@@ -85,7 +87,7 @@ class LearningPlan(Base, TimestampMixin):
     )
 
 
-class LearningPlanItem(Base, TimestampMixin):
+class LearningPlanItem(Base, TimestampMixin, TenantMixin):
     __tablename__ = "learning_plan_items"
 
     id: Mapped[uuid.UUID] = mapped_column(

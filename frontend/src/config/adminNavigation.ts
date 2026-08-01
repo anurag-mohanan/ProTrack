@@ -27,6 +27,7 @@ import ArchiveIcon from '@mui/icons-material/Archive';
 import EmailIcon from '@mui/icons-material/Email';
 import BackupIcon from '@mui/icons-material/Backup';
 import LockIcon from '@mui/icons-material/Lock';
+import StorefrontIcon from '@mui/icons-material/Storefront';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -220,6 +221,20 @@ const ALL_SETTINGS_ITEMS: AdminHubItem[] = [
   { id: 'system-settings', title: 'System Settings', description: 'Core application configuration.', icon: SettingsIcon, path: '/admin/settings' },
   { id: 'company', title: 'Company Information', description: 'Name, logo, address, hours, and holidays.', icon: BusinessIcon, path: '/admin/settings/company' },
   { id: 'branding', title: 'Theme', description: 'Default application theme and colour palette.', icon: PaletteIcon, path: '/admin/settings/branding' },
+  {
+    id: 'commercial',
+    title: 'Commercial / Tenancy',
+    description: 'Tenant, edition, terminology, and feature flags (R10 spine).',
+    icon: StorefrontIcon,
+    path: '/admin/settings/commercial',
+  },
+  {
+    id: 'commercial-readiness',
+    title: 'Commercial Readiness',
+    description: 'GTM sign-offs, design partners, SSO gate, and trust checklist.',
+    icon: StorefrontIcon,
+    path: '/admin/settings/commercial-readiness',
+  },
   { id: 'holidays', title: 'Holiday Calendar', description: 'Company holidays and working-day rules.', icon: ScheduleIcon, path: '/admin/settings/holidays' },
   { id: 'paths', title: 'File Paths', description: 'Project folder templates and backup paths.', icon: FolderSharedIcon, path: '/admin/settings/paths' },
   { id: 'email', title: 'Email Settings', description: 'Outbound SMTP configuration and test delivery.', icon: EmailIcon, path: '/admin/settings/email' },

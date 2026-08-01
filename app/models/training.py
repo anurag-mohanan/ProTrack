@@ -10,17 +10,18 @@ from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
-from app.db.base import Base
-from app.models.mixins import TimestampMixin
+from app.db.base import Base, UniqueConstraint
+from app.models.mixins import TenantMixin, TimestampMixin
 
 
-class TrainingCourse(Base, TimestampMixin):
+class TrainingCourse(Base, TimestampMixin, TenantMixin):
     __tablename__ = "training_courses"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_training_courses_tenant_code"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     owner_department: Mapped[Optional[str]] = mapped_column(String(80))
@@ -37,7 +38,7 @@ class TrainingCourse(Base, TimestampMixin):
     )
 
 
-class TrainingAssignment(Base, TimestampMixin):
+class TrainingAssignment(Base, TimestampMixin, TenantMixin):
     __tablename__ = "training_assignments"
 
     id: Mapped[uuid.UUID] = mapped_column(

@@ -107,6 +107,9 @@ ATTACHMENT_ROOTS = [
 # Demo design-team users are for local development only; keep disabled for production imports.
 ENABLE_DEMO_SEED = os.getenv("PROTRACK_ENABLE_DEMO_SEED", "").lower() in ("1", "true", "yes")
 
+# Optional PostgreSQL RLS (R10) — default off; SQLite unaffected.
+ENABLE_PG_RLS = _flag("PROTRACK_ENABLE_PG_RLS", "false")
+
 # Internal Release (soft launch): skip forced password change redirects while testing.
 # Set INTERNAL_RELEASE=false before production deployment.
 INTERNAL_RELEASE = os.getenv("INTERNAL_RELEASE", "true").lower() in ("1", "true", "yes")

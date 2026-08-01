@@ -160,6 +160,10 @@ export function HrDashboardPage() {
         <Link component={RouterLink} to="/hr/exit-process">
           Exit process
         </Link>
+        ; people with a last working day are listed under{' '}
+        <Link component={RouterLink} to="/hr/past-employees">
+          Past employees
+        </Link>
         ; compliance gaps are listed on{' '}
         <Link component={RouterLink} to="/hr/process-audit">
           Process Audit

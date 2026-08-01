@@ -13,6 +13,7 @@ import SupportAgentRoundedIcon from '@mui/icons-material/SupportAgentRounded';
 import HowToRegRoundedIcon from '@mui/icons-material/HowToRegRounded';
 import SchoolRoundedIcon from '@mui/icons-material/SchoolRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import HistoryEduRoundedIcon from '@mui/icons-material/HistoryEduRounded';
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import type { CurrentUser } from '../types';
 import {
@@ -340,6 +341,12 @@ const HR_SECTION_NAV: SectionNavConfigItem[] = [
     label: 'Exit process',
     path: '/hr/exit-process',
     icon: LogoutRoundedIcon,
+  },
+  {
+    module: MODULE_HUMAN_RESOURCES,
+    label: 'Past employees',
+    path: '/hr/past-employees',
+    icon: HistoryEduRoundedIcon,
   },
   {
     module: MODULE_HUMAN_RESOURCES,

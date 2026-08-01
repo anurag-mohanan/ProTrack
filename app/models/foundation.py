@@ -25,11 +25,12 @@ from app.db.base import (
     relationship,
 )
 from app.models.enums import DueDateCalculationMode, SkillLevel
-from app.models.mixins import TimestampMixin
+from app.models.mixins import TenantMixin, TimestampMixin
 
 
-class CompanySettings(Base, TimestampMixin):
+class CompanySettings(Base, TimestampMixin, TenantMixin):
     __tablename__ = "company_settings"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_company_settings_tenant"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -53,8 +54,9 @@ class CompanySettings(Base, TimestampMixin):
     )
 
 
-class BrandingSettings(Base, TimestampMixin):
+class BrandingSettings(Base, TimestampMixin, TenantMixin):
     __tablename__ = "branding_settings"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_branding_settings_tenant"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -76,7 +78,7 @@ class BrandingSettings(Base, TimestampMixin):
     density: Mapped[str] = mapped_column(String(20), nullable=False, default="default")
 
 
-class UserPreferences(Base, TimestampMixin):
+class UserPreferences(Base, TimestampMixin, TenantMixin):
     __tablename__ = "user_preferences"
     __table_args__ = (UniqueConstraint("user_id"),)
 
@@ -124,7 +126,7 @@ class UserPreferences(Base, TimestampMixin):
     user: Mapped["User"] = relationship(back_populates="preferences")
 
 
-class Holiday(Base, TimestampMixin):
+class Holiday(Base, TimestampMixin, TenantMixin):
     __tablename__ = "holidays"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -137,51 +139,58 @@ class Holiday(Base, TimestampMixin):
     is_recurring: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-class Department(Base, TimestampMixin):
+class Department(Base, TimestampMixin, TenantMixin):
     __tablename__ = "departments"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_departments_tenant_name"),
+        UniqueConstraint("tenant_id", "code", name="uq_departments_tenant_code"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    code: Mapped[Optional[str]] = mapped_column(String(20), unique=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    code: Mapped[Optional[str]] = mapped_column(String(20))
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="department")
 
 
-class ContactType(Base, TimestampMixin):
+class ContactType(Base, TimestampMixin, TenantMixin):
     __tablename__ = "contact_types"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_contact_types_tenant_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="contact_type")
 
 
-class EngineeringDiscipline(Base, TimestampMixin):
+class EngineeringDiscipline(Base, TimestampMixin, TenantMixin):
     __tablename__ = "engineering_disciplines"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_engineering_disciplines_tenant_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class Skill(Base, TimestampMixin):
+class Skill(Base, TimestampMixin, TenantMixin):
     __tablename__ = "skills"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_skills_tenant_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     category: Mapped[Optional[str]] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -190,7 +199,7 @@ class Skill(Base, TimestampMixin):
     )
 
 
-class UserSkill(Base, TimestampMixin):
+class UserSkill(Base, TimestampMixin, TenantMixin):
     __tablename__ = "user_skills"
     __table_args__ = (UniqueConstraint("user_id", "skill_id"),)
 
@@ -213,8 +222,9 @@ class UserSkill(Base, TimestampMixin):
     skill: Mapped[Skill] = relationship(back_populates="user_skills")
 
 
-class FilePathSettings(Base, TimestampMixin):
+class FilePathSettings(Base, TimestampMixin, TenantMixin):
     __tablename__ = "file_path_settings"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_file_path_settings_tenant"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -226,8 +236,9 @@ class FilePathSettings(Base, TimestampMixin):
     backup_folder: Mapped[Optional[str]] = mapped_column(String(500))
 
 
-class NotificationSettings(Base, TimestampMixin):
+class NotificationSettings(Base, TimestampMixin, TenantMixin):
     __tablename__ = "notification_settings"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_notification_settings_tenant"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -240,8 +251,9 @@ class NotificationSettings(Base, TimestampMixin):
     email_notifications_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class EmailSettings(Base, TimestampMixin):
+class EmailSettings(Base, TimestampMixin, TenantMixin):
     __tablename__ = "email_settings"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_email_settings_tenant"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -263,9 +275,9 @@ class EmailSettings(Base, TimestampMixin):
     connection_message: Mapped[Optional[str]] = mapped_column(Text)
 
 
-class EmailTemplate(Base, TimestampMixin):
+class EmailTemplate(Base, TimestampMixin, TenantMixin):
     __tablename__ = "email_templates"
-    __table_args__ = (UniqueConstraint("slug"),)
+    __table_args__ = (UniqueConstraint("tenant_id", "slug", name="uq_email_templates_tenant_slug"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -280,7 +292,7 @@ class EmailTemplate(Base, TimestampMixin):
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class EmailMessage(Base, TimestampMixin):
+class EmailMessage(Base, TimestampMixin, TenantMixin):
     __tablename__ = "email_messages"
 
     id: Mapped[uuid.UUID] = mapped_column(

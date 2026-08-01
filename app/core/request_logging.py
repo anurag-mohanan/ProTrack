@@ -11,7 +11,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.core.request_context import set_request_context
+from app.core.request_context import set_request_context, set_tenant_id
+from app.models.commercial import PROSOHM_TENANT_ID
 
 logger = logging.getLogger("protrack.api")
 
@@ -44,6 +45,18 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         elif request.client is not None:
             client_ip = request.client.host
         set_request_context(client_ip, request.headers.get("user-agent"))
+
+        # Commercial spine: optional X-Tenant-Id; default Prosohm for continuity.
+        raw_tenant = (request.headers.get("x-tenant-id") or "").strip()
+        tenant_uuid = PROSOHM_TENANT_ID
+        if raw_tenant:
+            try:
+                from uuid import UUID as _UUID
+
+                tenant_uuid = _UUID(raw_tenant)
+            except ValueError:
+                tenant_uuid = PROSOHM_TENANT_ID
+        set_tenant_id(tenant_uuid)
 
         started = time.perf_counter()
         params = dict(request.query_params)

@@ -31,6 +31,7 @@ class SecurityPolicyModel(BaseModel):
     lockout_duration_minutes: int
     session_idle_timeout_minutes: int
     audit_retention_days: int
+    require_sso_for_admins: bool = False
 
 
 class SecurityPolicyUpdate(BaseModel):
@@ -41,6 +42,7 @@ class SecurityPolicyUpdate(BaseModel):
     lockout_duration_minutes: int | None = None
     session_idle_timeout_minutes: int | None = None
     audit_retention_days: int | None = None
+    require_sso_for_admins: bool | None = None
 
 
 class ActiveSession(BaseModel):
@@ -98,6 +100,8 @@ def write_security_policy(
 ):
     updates = payload.model_dump(exclude_unset=True)
     for key, value in updates.items():
+        if key == "require_sso_for_admins":
+            continue
         if value is not None and value < 0:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

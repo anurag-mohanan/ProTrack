@@ -12,6 +12,7 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { LoginPage } from './pages/LoginPage';
+import { SsoCallbackPage } from './pages/SsoCallbackPage';
 import { ProjectWorkspacePage } from './components/projects/workspace/ProjectWorkspace';
 import { ArchivedProjectsPage } from './pages/ArchivedProjectsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -69,6 +70,7 @@ const HelpDeskPage = lazy(() => import('./pages/HelpDeskPage'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 const TrainingPage = lazy(() => import('./pages/TrainingPage'));
 const ExitProcessPage = lazy(() => import('./pages/ExitProcessPage'));
+const PastEmployeesPage = lazy(() => import('./pages/PastEmployeesPage'));
 const HrProcessAuditPage = lazy(() =>
   import('./pages/HrProcessAuditPage').then((module) => ({
     default: module.HrProcessAuditPage,
@@ -127,6 +129,8 @@ const TaskTypesAdminPage = lazy(() => import('./pages/admin/TaskTypesPage'));
 const NonProductiveCodesAdminPage = lazy(() => import('./pages/admin/NonProductiveCodesPage'));
 const UsersAdminPage = lazy(() => import('./pages/admin/UsersPage'));
 const BrandingPage = lazy(() => import('./pages/admin/BrandingPage'));
+const CommercialSettingsPage = lazy(() => import('./pages/admin/CommercialSettingsPage'));
+const CommercialReadinessPage = lazy(() => import('./pages/admin/CommercialReadinessPage'));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
 const HistoricalImportPage = lazy(() =>
   import('./pages/HistoricalImportPage').then((module) => ({
@@ -217,6 +221,7 @@ export default function App() {
               <Routes>
                 <Route element={<PublicRoute />}>
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/login/sso" element={<SsoCallbackPage />} />
                 </Route>
 
                 <Route element={<ProtectedRoute />}>
@@ -363,6 +368,14 @@ export default function App() {
                         }
                       />
                       <Route
+                        path="/hr/past-employees"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading past employees…" />}>
+                            <PastEmployeesPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
                         path="/hr/process-audit"
                         element={
                           <Suspense fallback={<LoadingState message="Loading process audit…" />}>
@@ -458,6 +471,22 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <BrandingPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/commercial"
+                        element={
+                          <LazyAdminPage>
+                            <CommercialSettingsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/commercial-readiness"
+                        element={
+                          <LazyAdminPage>
+                            <CommercialReadinessPage />
                           </LazyAdminPage>
                         }
                       />

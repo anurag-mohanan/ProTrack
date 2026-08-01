@@ -8,6 +8,7 @@ from app.api.v1 import (
     analytics,
     auth,
     calendar,
+    commercial,
     dashboard,
     documents,
     emails,
@@ -160,6 +161,7 @@ api_router.include_router(onboarding.router)
 api_router.include_router(exit_process.router)
 api_router.include_router(analytics.router)
 api_router.include_router(system.router)
+api_router.include_router(commercial.router)
 api_router.include_router(tickets.router)
 api_router.include_router(security.router)
 api_router.include_router(imports.router)

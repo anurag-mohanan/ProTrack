@@ -8,6 +8,7 @@ two so enforcement code has a single source of truth.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -27,11 +28,23 @@ class EffectiveSecurityPolicy:
     lockout_duration_minutes: int
     session_idle_timeout_minutes: int
     audit_retention_days: int
+    require_sso_for_admins: bool
 
 
 # Baseline password minimum enforced by the password policy module.
 _DEFAULT_PASSWORD_MIN_LENGTH = 8
 _DEFAULT_AUDIT_RETENTION_DAYS = 365
+
+SSO_PRIVILEGED_ROLES = frozenset({"Admin", "System Admin"})
+
+
+def sso_break_glass() -> bool:
+    return os.getenv("PROTRACK_SSO_BREAK_GLASS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def get_policy_row(db: Session) -> SecurityPolicySetting | None:
@@ -53,6 +66,7 @@ def get_effective_policy(db: Session) -> EffectiveSecurityPolicy:
             lockout_duration_minutes=config.LOCKOUT_DURATION_MINUTES,
             session_idle_timeout_minutes=config.SESSION_IDLE_TIMEOUT_MINUTES,
             audit_retention_days=_DEFAULT_AUDIT_RETENTION_DAYS,
+            require_sso_for_admins=False,
         )
     return EffectiveSecurityPolicy(
         password_min_length=_pick(row.password_min_length, _DEFAULT_PASSWORD_MIN_LENGTH),
@@ -68,15 +82,20 @@ def get_effective_policy(db: Session) -> EffectiveSecurityPolicy:
             row.session_idle_timeout_minutes, config.SESSION_IDLE_TIMEOUT_MINUTES
         ),
         audit_retention_days=_pick(row.audit_retention_days, _DEFAULT_AUDIT_RETENTION_DAYS),
+        require_sso_for_admins=bool(getattr(row, "require_sso_for_admins", False)),
     )
 
 
-def update_policy(db: Session, updates: dict[str, int | None], updated_by: User | None) -> EffectiveSecurityPolicy:
+def update_policy(
+    db: Session,
+    updates: dict[str, int | bool | None],
+    updated_by: User | None,
+) -> EffectiveSecurityPolicy:
     row = get_policy_row(db)
     if row is None:
         row = SecurityPolicySetting()
         db.add(row)
-    allowed = {
+    int_keys = {
         "password_min_length",
         "password_expiry_days",
         "password_history_count",
@@ -86,8 +105,10 @@ def update_policy(db: Session, updates: dict[str, int | None], updated_by: User 
         "audit_retention_days",
     }
     for key, value in updates.items():
-        if key in allowed:
+        if key in int_keys:
             setattr(row, key, value)
+        elif key == "require_sso_for_admins" and value is not None:
+            row.require_sso_for_admins = bool(value)
     row.updated_at = datetime.now(UTC)
     row.updated_by_id = updated_by.id if updated_by is not None else None
     db.commit()

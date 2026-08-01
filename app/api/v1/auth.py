@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
 from app.core.auth import create_access_token, decode_access_token
-from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES
+from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES, FRONTEND_URL
 from app.core.request_context import get_client_ip, get_user_agent
 from app.core.permissions import get_role_name, get_user_permission_keys
 from app.core.timesheet_eligibility import (
@@ -292,6 +292,25 @@ def _handle_login(db: Session, email: str, password: str) -> Token:
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    from app.services.security_policy_service import (
+        SSO_PRIVILEGED_ROLES,
+        get_effective_policy,
+        sso_break_glass,
+    )
+
+    policy = get_effective_policy(db)
+    if policy.require_sso_for_admins and not sso_break_glass():
+        role_name = get_role_name(db, user)
+        if role_name in SSO_PRIVILEGED_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Administrator password login is disabled. "
+                    "Sign in with Microsoft SSO, or set PROTRACK_SSO_BREAK_GLASS=true."
+                ),
+            )
+
     return _complete_login(db, user)
 
 
@@ -498,3 +517,149 @@ def stop_impersonation(
         new_value=impersonated.email if impersonated is not None else str(token_payload.sub),
     )
     return _issue_token(db, admin)
+
+
+# --- OIDC / Azure AD (R10 spike) ---------------------------------------------
+
+def _oidc_sso_allowed(db: Session) -> bool:
+    from app.core.oidc import oidc_available
+    from app.models.commercial import PROSOHM_TENANT_ID
+    from app.services import feature_flag_service, tenant_service
+
+    if not oidc_available():
+        return False
+    tenant_service.ensure_prosohm_tenant(db)
+    return feature_flag_service.is_enabled(db, "feature.sso", tenant_id=PROSOHM_TENANT_ID)
+
+
+@router.get("/oidc/status")
+def oidc_status(db: Session = Depends(get_db)):
+    from app.core.oidc import oidc_enabled, oidc_testing
+
+    return {
+        "enabled": _oidc_sso_allowed(db),
+        "oidc_enabled_env": oidc_enabled(),
+        "testing": oidc_testing(),
+    }
+
+
+@router.get("/oidc/login")
+def oidc_login(request: Request, db: Session = Depends(get_db)):
+    from fastapi.responses import RedirectResponse
+
+    from app.core.oidc import build_authorize_url, make_state, new_nonce
+
+    if not _oidc_sso_allowed(db):
+        raise HTTPException(status_code=404, detail="SSO is not enabled")
+    nonce = new_nonce()
+    state = make_state(nonce)
+    target = build_authorize_url(state, nonce)
+    if target.startswith("/"):
+        target = str(request.base_url).rstrip("/") + target
+    return RedirectResponse(url=target, status_code=302)
+
+
+@router.get("/oidc/testing-authorize")
+def oidc_testing_authorize(
+    request: Request,
+    state: str,
+    nonce: str = "testing",
+    email: str = "admin@prosohm.com",
+    sub: str = "oidc-test-subject",
+):
+    """Dev/test IdP stand-in — only when OIDC_TESTING is on."""
+    from fastapi.responses import RedirectResponse
+    from urllib.parse import urlencode
+
+    from app.core.oidc import oidc_testing
+
+    if not oidc_testing():
+        raise HTTPException(status_code=404, detail="OIDC testing mode is off")
+    code = f"oidc-test:{sub}:{email.lower()}"
+    callback = str(request.base_url).rstrip("/") + "/api/v1/auth/oidc/callback"
+    return RedirectResponse(
+        url=f"{callback}?{urlencode({'code': code, 'state': state})}",
+        status_code=302,
+    )
+
+
+@router.get("/oidc/callback")
+def oidc_callback(
+    request: Request,
+    db: Session = Depends(get_db),
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+):
+    from fastapi.responses import RedirectResponse
+    from urllib.parse import urlencode
+
+    from app.core.oidc import (
+        claims_email,
+        claims_subject,
+        exchange_code,
+        frontend_sso_landing,
+        oidc_available,
+        parse_state,
+        verify_id_token,
+    )
+    from app.services import oidc_service
+
+    landing = frontend_sso_landing()
+    login_error = f"{FRONTEND_URL.rstrip('/')}/login"
+
+    def _fail(reason: str) -> RedirectResponse:
+        return RedirectResponse(
+            url=f"{login_error}?{urlencode({'sso_error': reason})}",
+            status_code=302,
+        )
+
+    if not oidc_available() or not _oidc_sso_allowed(db):
+        return _fail("sso_disabled")
+    if error:
+        logger.warning("OIDC IdP error: %s %s", error, error_description)
+        return _fail(error)
+    if not code or not state:
+        return _fail("missing_code")
+
+    try:
+        state_payload = parse_state(state)
+        if state_payload.get("purpose") != "oidc":
+            return _fail("invalid_state")
+        expected_nonce = state_payload.get("nonce")
+        tokens = exchange_code(code)
+        id_token = tokens.get("id_token")
+        if not id_token:
+            return _fail("missing_id_token")
+        claims = verify_id_token(id_token, expected_nonce=expected_nonce)
+        subject = claims_subject(claims)
+        email = claims_email(claims)
+        if not subject:
+            return _fail("missing_subject")
+        user, reason = oidc_service.resolve_user_for_oidc(
+            db, subject=subject, email=email
+        )
+        if user is None:
+            return _fail(reason or "link_failed")
+        token = _complete_login(db, user)
+        # Re-log with SSO context (activity already logged in _complete_login).
+        log_activity(
+            db,
+            user=user,
+            entity_type=EntityType.user,
+            entity_id=user.id,
+            action=ActivityAction.user_logged_in,
+            new_value=f"sso:{email or subject}",
+            outcome=OUTCOME_SUCCESS,
+            module="auth.oidc",
+        )
+        db.commit()
+        fragment = urlencode(
+            {"access_token": token.access_token, "token_type": token.token_type}
+        )
+        return RedirectResponse(url=f"{landing}#{fragment}", status_code=302)
+    except Exception:
+        logger.exception("OIDC callback failed")
+        db.rollback()
+        return _fail("callback_failed")

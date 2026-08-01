@@ -9,6 +9,7 @@ from fastapi.openapi.utils import get_openapi
 import app.models  # noqa: F401 — register all models with Base.metadata
 import app.models.finance  # noqa: F401 — register finance models
 from app.api.v1.api import api_router
+from app.api.public_v1 import router as public_api_router
 from app.core.config import APP_VERSION, CORS_ORIGINS, ENABLE_DEMO_SEED, INTERNAL_RELEASE, RELEASE_CANDIDATE, UPLOAD_DIR
 from app.core.openapi import fix_ref_siblings
 from app.db.base import Base
@@ -171,6 +172,21 @@ from app.db.phase67_employee_offboard_schema_sync import (
 from app.db.phase68_exit_interview_assessment_schema_sync import (
     ensure_phase68_exit_interview_assessment_foundation,
 )
+from app.db.phase69_commercial_tenancy_schema_sync import (
+    ensure_phase69_commercial_tenancy_foundation,
+)
+from app.db.phase70_tenant_id_schema_sync import ensure_phase70_tenant_id_foundation
+from app.db.phase71_tenant_unique_schema_sync import (
+    ensure_phase71_tenant_unique_foundation,
+)
+from app.db.phase72_public_api_webhooks_schema_sync import (
+    ensure_phase72_public_api_webhooks_foundation,
+)
+from app.db.phase73_webhook_retry_schema_sync import ensure_phase73_webhook_retry_foundation
+from app.db.phase74_pg_rls_schema_sync import ensure_phase74_pg_rls_foundation
+from app.db.phase75_commercial_readiness_schema_sync import (
+    ensure_phase75_commercial_readiness_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -300,6 +316,13 @@ async def lifespan(app: FastAPI):
         ("phase66_stream_numbering", ensure_phase66_stream_numbering_foundation),
         ("phase67_employee_offboard", ensure_phase67_employee_offboard_foundation),
         ("phase68_exit_interview_assessment", ensure_phase68_exit_interview_assessment_foundation),
+        ("phase69_commercial_tenancy", ensure_phase69_commercial_tenancy_foundation),
+        ("phase70_tenant_id", ensure_phase70_tenant_id_foundation),
+        ("phase71_tenant_unique", ensure_phase71_tenant_unique_foundation),
+        ("phase72_public_api_webhooks", ensure_phase72_public_api_webhooks_foundation),
+        ("phase73_webhook_retry", ensure_phase73_webhook_retry_foundation),
+        ("phase74_pg_rls", ensure_phase74_pg_rls_foundation),
+        ("phase75_commercial_readiness", ensure_phase75_commercial_readiness_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 
@@ -381,6 +404,23 @@ async def lifespan(app: FastAPI):
         logger.exception("Apply-due lifecycle / compensation / offboard sweep failed")
     finally:
         lifecycle_session.close()
+
+    commercial_session = sessionmaker(bind=engine)()
+    try:
+        from app.models.commercial import PROSOHM_TENANT_ID
+        from app.services import feature_flag_service, tenant_service
+
+        tenant_service.ensure_prosohm_tenant(commercial_session)
+        from app.services import tenant_pack_service
+
+        tenant_pack_service.ensure_tenant_config_defaults(commercial_session)
+        feature_flag_service.ensure_tenant_flags(commercial_session, PROSOHM_TENANT_ID)
+        commercial_session.commit()
+    except Exception:
+        commercial_session.rollback()
+        logger.exception("Commercial tenant / feature-flag seed failed")
+    finally:
+        commercial_session.close()
 
     reminder_session = sessionmaker(bind=engine)()
     try:
@@ -465,6 +505,7 @@ if TRUSTED_HOSTS:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=TRUSTED_HOSTS)
 
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(public_api_router, prefix="/api/public/v1")
 
 # The uploads directory is intentionally NOT mounted as a public static route.
 # Serving it unauthenticated exposed every stored file (and enabled stored-XSS

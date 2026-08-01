@@ -960,6 +960,22 @@ def complete_training_assignment(
     return _training_assignment_read(loaded or row)
 
 
+from app.schemas.past_employees import PastEmployeeRead
+from app.services.past_employees_service import list_past_employees as list_past_employees_svc
+
+
+@router.get("/past-employees", response_model=list[PastEmployeeRead])
+def list_past_employees(
+    search: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Employees with a last working day — HR historical roster (history retained)."""
+    _require_hr_view(db, current_user)
+    rows = list_past_employees_svc(db, search=search)
+    return [PastEmployeeRead.model_validate(row) for row in rows]
+
+
 @router.get("/dashboard")
 def hr_dashboard(
     db: Session = Depends(get_db),

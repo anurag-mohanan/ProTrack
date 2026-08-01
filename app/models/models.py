@@ -47,19 +47,20 @@ from app.models.enums import (
     ContributionReason,
     WorkingModelCode,
 )
-from app.models.mixins import TimestampMixin
+from app.models.mixins import TenantMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.foundation import Department, UserPreferences
 
 
-class Role(Base, TimestampMixin):
+class Role(Base, TimestampMixin, TenantMixin):
     __tablename__ = "roles"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_roles_tenant_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     # Org hierarchy placement (standardized roles). Lower rank = more senior.
     org_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -80,15 +81,18 @@ class Role(Base, TimestampMixin):
     )
 
 
-class OperationalRoleType(Base, TimestampMixin):
+class OperationalRoleType(Base, TimestampMixin, TenantMixin):
     """Configurable operational role classification for KPI participation."""
 
     __tablename__ = "operational_role_types"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_operational_role_types_tenant_code"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -116,8 +120,9 @@ class OperationalRoleType(Base, TimestampMixin):
     users: Mapped[list["User"]] = relationship(back_populates="operational_role_type")
 
 
-class User(Base, TimestampMixin):
+class User(Base, TimestampMixin, TenantMixin):
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -125,7 +130,7 @@ class User(Base, TimestampMixin):
     role_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("roles.id"), nullable=False
     )
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -302,13 +307,14 @@ class User(Base, TimestampMixin):
     )
 
 
-class WorkingModel(Base, TimestampMixin):
+class WorkingModel(Base, TimestampMixin, TenantMixin):
     __tablename__ = "working_models"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_working_models_tenant_code"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
     strategy_key: Mapped[WorkingModelCode] = mapped_column(
         Enum(WorkingModelCode, name="working_model_code", native_enum=False),
         nullable=False,
@@ -330,13 +336,14 @@ class WorkingModel(Base, TimestampMixin):
     projects: Mapped[list["Project"]] = relationship(back_populates="working_model")
 
 
-class Stream(Base, TimestampMixin):
+class Stream(Base, TimestampMixin, TenantMixin):
     __tablename__ = "streams"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_streams_tenant_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     use_project_prefix: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -352,7 +359,7 @@ class Stream(Base, TimestampMixin):
     )
 
 
-class StreamSkill(Base, TimestampMixin):
+class StreamSkill(Base, TimestampMixin, TenantMixin):
     """Technical skill column for a stream skill matrix (e.g. Mold Design)."""
 
     __tablename__ = "stream_skills"
@@ -374,7 +381,7 @@ class StreamSkill(Base, TimestampMixin):
     )
 
 
-class UserSkillRating(Base, TimestampMixin):
+class UserSkillRating(Base, TimestampMixin, TenantMixin):
     """Per-person proficiency on a stream skill (team skillset chart cell)."""
 
     __tablename__ = "user_skill_ratings"
@@ -413,19 +420,23 @@ class UserSkillRating(Base, TimestampMixin):
     assessed_by: Mapped[Optional[User]] = relationship(foreign_keys=[assessed_by_id])
 
 
-class OrgDepartment(Base, TimestampMixin):
+class OrgDepartment(Base, TimestampMixin, TenantMixin):
     """Company org units for the organization chart (Management, Engineering, …).
 
     Distinct from HR ``departments`` (Mold Design, Surfacing, …).
     """
 
     __tablename__ = "org_departments"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_org_departments_tenant_code"),
+        UniqueConstraint("tenant_id", "name", name="uq_org_departments_tenant_name"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
-    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     colour: Mapped[str] = mapped_column(String(20), nullable=False, default="#1976d2")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
@@ -442,13 +453,14 @@ class OrgDepartment(Base, TimestampMixin):
     )
 
 
-class Team(Base, TimestampMixin):
+class Team(Base, TimestampMixin, TenantMixin):
     __tablename__ = "teams"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_teams_tenant_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     team_lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
@@ -482,7 +494,7 @@ class Team(Base, TimestampMixin):
     projects: Mapped[list[Project]] = relationship(back_populates="team")
 
 
-class TeamMember(Base, TimestampMixin):
+class TeamMember(Base, TimestampMixin, TenantMixin):
     __tablename__ = "team_members"
     __table_args__ = (UniqueConstraint("team_id", "user_id"),)
 
@@ -515,7 +527,7 @@ class TeamMember(Base, TimestampMixin):
     user: Mapped[User] = relationship(foreign_keys=[user_id])
 
 
-class TeamMembershipPeriod(Base, TimestampMixin):
+class TeamMembershipPeriod(Base, TimestampMixin, TenantMixin):
     """Primary-home history for finance — day-prorated salary by team."""
 
     __tablename__ = "team_membership_periods"
@@ -545,9 +557,9 @@ class TeamMembershipPeriod(Base, TimestampMixin):
     team: Mapped[Team] = relationship(foreign_keys=[team_id])
 
 
-class PerformanceReviewTemplate(Base, TimestampMixin):
+class PerformanceReviewTemplate(Base, TimestampMixin, TenantMixin):
     __tablename__ = "performance_review_templates"
-    __table_args__ = (UniqueConstraint("code", "version", name="uq_review_template_code_version"),)
+    __table_args__ = (UniqueConstraint("tenant_id", "code", "version", name="uq_review_template_tenant_code_version"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -564,7 +576,7 @@ class PerformanceReviewTemplate(Base, TimestampMixin):
     )
 
 
-class PerformanceReviewCycle(Base, TimestampMixin):
+class PerformanceReviewCycle(Base, TimestampMixin, TenantMixin):
     __tablename__ = "performance_review_cycles"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -598,7 +610,7 @@ class PerformanceReviewCycle(Base, TimestampMixin):
     )
 
 
-class PerformanceReviewSheet(Base, TimestampMixin):
+class PerformanceReviewSheet(Base, TimestampMixin, TenantMixin):
     __tablename__ = "performance_review_sheets"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -676,7 +688,7 @@ class PerformanceReviewSheet(Base, TimestampMixin):
     )
 
 
-class PerformanceReviewProject(Base, TimestampMixin):
+class PerformanceReviewProject(Base, TimestampMixin, TenantMixin):
     __tablename__ = "performance_review_projects"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -711,7 +723,7 @@ class PerformanceReviewProject(Base, TimestampMixin):
     project: Mapped[Optional["Project"]] = relationship(foreign_keys=[project_id])
 
 
-class PerformanceReviewSection(Base, TimestampMixin):
+class PerformanceReviewSection(Base, TimestampMixin, TenantMixin):
     __tablename__ = "performance_review_sections"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -735,7 +747,7 @@ class PerformanceReviewSection(Base, TimestampMixin):
     )
 
 
-class PerformanceReviewItem(Base, TimestampMixin):
+class PerformanceReviewItem(Base, TimestampMixin, TenantMixin):
     __tablename__ = "performance_review_items"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -757,14 +769,15 @@ class PerformanceReviewItem(Base, TimestampMixin):
     section: Mapped[PerformanceReviewSection] = relationship(back_populates="items")
 
 
-class Customer(Base, TimestampMixin):
+class Customer(Base, TimestampMixin, TenantMixin):
     __tablename__ = "customers"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_customers_tenant_code"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    code: Mapped[Optional[str]] = mapped_column(String(20), unique=True)
+    code: Mapped[Optional[str]] = mapped_column(String(20))
     address: Mapped[Optional[str]] = mapped_column(Text)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -808,7 +821,7 @@ class Customer(Base, TimestampMixin):
     )
 
 
-class Contact(Base, TimestampMixin):
+class Contact(Base, TimestampMixin, TenantMixin):
     __tablename__ = "contacts"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -837,13 +850,14 @@ class Contact(Base, TimestampMixin):
     projects: Mapped[list[Project]] = relationship(back_populates="customer_contact")
 
 
-class ProjectType(Base, TimestampMixin):
+class ProjectType(Base, TimestampMixin, TenantMixin):
     __tablename__ = "project_types"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_project_types_tenant_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -853,7 +867,7 @@ class ProjectType(Base, TimestampMixin):
     projects: Mapped[list[Project]] = relationship(back_populates="project_type")
 
 
-class ProjectTemplate(Base, TimestampMixin):
+class ProjectTemplate(Base, TimestampMixin, TenantMixin):
     __tablename__ = "project_templates"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -889,7 +903,7 @@ class ProjectTemplate(Base, TimestampMixin):
     projects: Mapped[list[Project]] = relationship(back_populates="project_template")
 
 
-class ProjectTemplateMilestone(Base, TimestampMixin):
+class ProjectTemplateMilestone(Base, TimestampMixin, TenantMixin):
     __tablename__ = "project_template_milestones"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -922,7 +936,7 @@ class ProjectTemplateMilestone(Base, TimestampMixin):
     )
 
 
-class TaskType(Base, TimestampMixin):
+class TaskType(Base, TimestampMixin, TenantMixin):
     __tablename__ = "task_types"
     __table_args__ = (UniqueConstraint("stream_id", "name"),)
 
@@ -948,13 +962,17 @@ class TaskType(Base, TimestampMixin):
     )
 
 
-class Project(Base, TimestampMixin):
+class Project(Base, TimestampMixin, TenantMixin):
     __tablename__ = "projects"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "tool_number", name="uq_projects_tenant_tool_number"),
+        UniqueConstraint("tenant_id", "code", name="uq_projects_tenant_code"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    tool_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    tool_number: Mapped[str] = mapped_column(String(50), nullable=False)
     part_description: Mapped[str] = mapped_column(String(255), nullable=False)
     customer_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=False
@@ -986,7 +1004,7 @@ class Project(Base, TimestampMixin):
     working_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("working_models.id"), nullable=True
     )
-    code: Mapped[Optional[str]] = mapped_column(String(50), unique=True, nullable=True)
+    code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     quoted_hours: Mapped[Decimal] = mapped_column(
         Numeric(8, 2), nullable=False, default=Decimal("0")
     )
@@ -1083,7 +1101,7 @@ class Project(Base, TimestampMixin):
     )
 
 
-class Milestone(Base, TimestampMixin):
+class Milestone(Base, TimestampMixin, TenantMixin):
     __tablename__ = "milestones"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -1131,13 +1149,14 @@ class Milestone(Base, TimestampMixin):
     )
 
 
-class NonProductiveCode(Base, TimestampMixin):
+class NonProductiveCode(Base, TimestampMixin, TenantMixin):
     __tablename__ = "non_productive_codes"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_non_productive_codes_tenant_code"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[NonProductiveCodeCategory] = mapped_column(
         Enum(
@@ -1157,7 +1176,7 @@ class NonProductiveCode(Base, TimestampMixin):
     )
 
 
-class Timesheet(Base, TimestampMixin):
+class Timesheet(Base, TimestampMixin, TenantMixin):
     __tablename__ = "timesheets"
     __table_args__ = (UniqueConstraint("user_id", "week_start"),)
 
@@ -1191,7 +1210,7 @@ class Timesheet(Base, TimestampMixin):
     )
 
 
-class TimesheetEntry(Base, TimestampMixin):
+class TimesheetEntry(Base, TimestampMixin, TenantMixin):
     __tablename__ = "timesheet_entries"
     __table_args__ = (
         CheckConstraint("hours >= 0 AND hours <= 24", name="ck_timesheet_entry_hours"),
@@ -1255,7 +1274,7 @@ class TimesheetEntry(Base, TimestampMixin):
     )
 
 
-class TimesheetEntryDeletionLog(Base, TimestampMixin):
+class TimesheetEntryDeletionLog(Base, TimestampMixin, TenantMixin):
     __tablename__ = "timesheet_entry_deletion_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -1283,7 +1302,7 @@ class TimesheetEntryDeletionLog(Base, TimestampMixin):
     )
 
 
-class TimesheetImportHistory(Base, TimestampMixin):
+class TimesheetImportHistory(Base, TimestampMixin, TenantMixin):
     __tablename__ = "timesheet_import_history"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -1312,7 +1331,7 @@ class TimesheetImportHistory(Base, TimestampMixin):
     designer_user: Mapped[Optional[User]] = relationship(foreign_keys=[designer_user_id])
 
 
-class Activity(Base, TimestampMixin):
+class Activity(Base, TimestampMixin, TenantMixin):
     __tablename__ = "activities"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -1341,7 +1360,7 @@ class Activity(Base, TimestampMixin):
     user: Mapped[Optional[User]] = relationship(back_populates="activities")
 
 
-class PasswordHistory(Base):
+class PasswordHistory(Base, TenantMixin):
     """Historical password hashes, used to block password reuse."""
 
     __tablename__ = "password_history"
@@ -1358,7 +1377,7 @@ class PasswordHistory(Base):
     )
 
 
-class SecurityPolicySetting(Base):
+class SecurityPolicySetting(Base, TenantMixin):
     """Singleton, admin-editable security policy overrides.
 
     NULL columns fall back to the environment/config defaults, so an unset
@@ -1366,6 +1385,7 @@ class SecurityPolicySetting(Base):
     """
 
     __tablename__ = "security_policy_settings"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_security_policy_settings_tenant"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -1377,13 +1397,16 @@ class SecurityPolicySetting(Base):
     lockout_duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     session_idle_timeout_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     audit_retention_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    require_sso_for_admins: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     updated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
 
 
-class LoginSession(Base):
+class LoginSession(Base, TenantMixin):
     """A record of an issued login session for active-device visibility.
 
     ProTrack auth is stateless JWT; this table is an audit/visibility layer and
@@ -1410,7 +1433,7 @@ class LoginSession(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-class Notification(Base, TimestampMixin):
+class Notification(Base, TimestampMixin, TenantMixin):
     __tablename__ = "notifications"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -1439,7 +1462,7 @@ class Notification(Base, TimestampMixin):
     user: Mapped[User] = relationship(back_populates="notifications")
 
 
-class UserWorkingModelPeriod(Base, TimestampMixin):
+class UserWorkingModelPeriod(Base, TimestampMixin, TenantMixin):
     """Dated person-level billing / working-model history (apply-forward)."""
 
     __tablename__ = "user_working_model_periods"
@@ -1466,7 +1489,7 @@ class UserWorkingModelPeriod(Base, TimestampMixin):
     )
 
 
-class UserJobEvent(Base, TimestampMixin):
+class UserJobEvent(Base, TimestampMixin, TenantMixin):
     """Dated audit log of transfers / promotions / billing changes."""
 
     __tablename__ = "user_job_events"
@@ -1494,7 +1517,7 @@ class UserJobEvent(Base, TimestampMixin):
     created_by: Mapped[Optional[User]] = relationship(foreign_keys=[created_by_id])
 
 
-class CompensationChangeRequest(Base, TimestampMixin):
+class CompensationChangeRequest(Base, TimestampMixin, TenantMixin):
     """Hike / promotion suggestion routed through a 2-level approval chain.
 
     Stage flow: ``suggested`` -> ``l1_approved`` -> ``l2_approved`` -> ``applied``
@@ -1550,7 +1573,7 @@ class CompensationChangeRequest(Base, TimestampMixin):
     l2_approver: Mapped[Optional[User]] = relationship(foreign_keys=[l2_approver_id])
 
 
-class Ticket(Base, TimestampMixin):
+class Ticket(Base, TimestampMixin, TenantMixin):
     """Help-desk / service-desk ticket (IT, Facility, Admin, HR, …).
 
     A company-wide request tracker: any employee raises a ticket, which is
@@ -1560,12 +1583,15 @@ class Ticket(Base, TimestampMixin):
     """
 
     __tablename__ = "tickets"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "ticket_number", name="uq_tickets_tenant_ticket_number"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     ticket_number: Mapped[str] = mapped_column(
-        String(20), unique=True, nullable=False, index=True
+        String(20), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -1596,7 +1622,7 @@ class Ticket(Base, TimestampMixin):
     )
 
 
-class TicketComment(Base, TimestampMixin):
+class TicketComment(Base, TimestampMixin, TenantMixin):
     """A note / reply on a ticket. ``is_internal`` hides agent-only notes."""
 
     __tablename__ = "ticket_comments"
@@ -1617,7 +1643,7 @@ class TicketComment(Base, TimestampMixin):
     author: Mapped[User] = relationship(foreign_keys=[author_id])
 
 
-class TicketCategoryRoute(Base, TimestampMixin):
+class TicketCategoryRoute(Base, TimestampMixin, TenantMixin):
     """Admin-configured default contact / owner for each ticket category.
 
     When set, new tickets in that category are auto-assigned to the contact and
@@ -1626,11 +1652,14 @@ class TicketCategoryRoute(Base, TimestampMixin):
     """
 
     __tablename__ = "ticket_category_routes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "category", name="uq_ticket_category_routes_tenant_category"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    category: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
     assignee_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
@@ -1642,22 +1671,25 @@ class TicketCategoryRoute(Base, TimestampMixin):
     assignee: Mapped[Optional[User]] = relationship(foreign_keys=[assignee_user_id])
 
 
-class OnboardingChecklistTemplate(Base, TimestampMixin):
+class OnboardingChecklistTemplate(Base, TimestampMixin, TenantMixin):
     """Master onboarding form (e.g. PP-HRD-FO-14). Structure is JSON sections/items."""
 
     __tablename__ = "onboarding_checklist_templates"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_onboarding_checklist_templates_tenant_code"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     structure_json: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class OnboardingChecklist(Base, TimestampMixin):
+class OnboardingChecklist(Base, TimestampMixin, TenantMixin):
     """A new-hire onboarding checklist instance (one per joining employee)."""
 
     __tablename__ = "onboarding_checklists"
@@ -1722,7 +1754,7 @@ class OnboardingChecklist(Base, TimestampMixin):
     )
 
 
-class OnboardingChecklistItem(Base, TimestampMixin):
+class OnboardingChecklistItem(Base, TimestampMixin, TenantMixin):
     """One checklist line item with owner responsibility and completion status."""
 
     __tablename__ = "onboarding_checklist_items"
@@ -1756,7 +1788,7 @@ class OnboardingChecklistItem(Base, TimestampMixin):
     completed_by: Mapped[Optional[User]] = relationship(foreign_keys=[completed_by_id])
 
 
-class ExitInterview(Base, TimestampMixin):
+class ExitInterview(Base, TimestampMixin, TenantMixin):
     """Generic employee exit interview (PP-HRD-FO-30) — one per departing employee."""
 
     __tablename__ = "exit_interviews"
@@ -1827,7 +1859,7 @@ class ExitInterview(Base, TimestampMixin):
     role: Mapped[Optional["Role"]] = relationship(foreign_keys=[role_id])
 
 
-class BackgroundJob(Base, TimestampMixin):
+class BackgroundJob(Base, TimestampMixin, TenantMixin):
     """Durable background work queue (R1 platform)."""
 
     __tablename__ = "background_jobs"
@@ -1881,4 +1913,18 @@ from app.models.enterprise import (  # noqa: E402, F401
 from app.models.training import (  # noqa: E402, F401
     TrainingAssignment,
     TrainingCourse,
+)
+from app.models.commercial import (  # noqa: E402, F401
+    FeatureFlag,
+    Tenant,
+)
+from app.models.integrations import (  # noqa: E402, F401
+    ApiKey,
+    WebhookDelivery,
+    WebhookEndpoint,
+)
+from app.models.commercial_readiness import (  # noqa: E402, F401
+    CommercialSignoff,
+    DesignPartner,
+    TrustControlCheck,
 )

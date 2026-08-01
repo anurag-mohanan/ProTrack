@@ -1,30 +1,56 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
   Card,
   CardContent,
+  Divider,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import EngineeringIcon from '@mui/icons-material/Engineering';
-import { useNavigate } from 'react-router-dom';
-import { getErrorMessage } from '../api/client';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient, getErrorMessage } from '../api/client';
 import { CompanyLogo } from '../components/branding/CompanyLogo';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { PasswordField } from '../components/ui/design-system';
 import { COPYRIGHT_NOTICE, PRODUCT_NAME, VERSION_DISPLAY } from '../config/appMeta';
-import { requiresForcedPasswordChange } from '../config/env';
+import { getApiBaseUrl, requiresForcedPasswordChange } from '../config/env';
 import { useAuth } from '../context/AuthContext';
+
+const SSO_ERROR_MESSAGES: Record<string, string> = {
+  no_local_user: 'No ProTrack account matches that Microsoft sign-in. Ask an admin to create your user first.',
+  account_inactive: 'Your ProTrack account is inactive.',
+  sso_subject_conflict: 'This Microsoft account is linked to a different ProTrack user.',
+  sso_disabled: 'SSO is not enabled on this server.',
+  missing_code: 'SSO callback was incomplete. Try again.',
+  callback_failed: 'SSO sign-in failed. Try again or use email/password.',
+};
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const oidcQuery = useQuery({
+    queryKey: ['auth', 'oidc-status'],
+    queryFn: async () =>
+      (await apiClient.get<{ enabled: boolean; testing: boolean }>('/auth/oidc/status')).data,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    const ssoError = searchParams.get('sso_error');
+    if (ssoError) {
+      setError(SSO_ERROR_MESSAGES[ssoError] || `SSO error: ${ssoError}`);
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -43,6 +69,11 @@ export function LoginPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSso = () => {
+    // Full navigation so cookies/redirects from the API host work.
+    window.location.href = `${getApiBaseUrl()}/auth/oidc/login`;
   };
 
   return (
@@ -141,6 +172,25 @@ export function LoginPage() {
                 >
                   Sign In
                 </ProsohmButton>
+
+                {oidcQuery.data?.enabled ? (
+                  <>
+                    <Divider>
+                      <Typography variant="caption" color="text.secondary">
+                        or
+                      </Typography>
+                    </Divider>
+                    <ProsohmButton
+                      type="button"
+                      buttonVariant="outlined"
+                      size="large"
+                      fullWidth
+                      onClick={handleSso}
+                    >
+                      Sign in with Microsoft
+                    </ProsohmButton>
+                  </>
+                ) : null}
               </Stack>
             </CardContent>
           </Card>

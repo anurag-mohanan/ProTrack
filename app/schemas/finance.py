@@ -202,6 +202,7 @@ class EmployeeCostRosterItem(BaseModel):
 
 class EmployeeLeavingDateUpdate(BaseModel):
     leaving_date: date | None = None
+    confirm_left_organisation: bool = False
 
 
 class TeamCommercialFeeBandInput(BaseModel):

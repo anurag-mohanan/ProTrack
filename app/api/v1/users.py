@@ -77,6 +77,10 @@ def list_users(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         )
+    from app.services.employee_offboard_service import apply_due_offboards
+
+    apply_due_offboards(db)
+    db.commit()
     result = user_crud.query_users_paginated(
         db,
         page=pagination.page,
@@ -190,13 +194,45 @@ def update_user(
     record_id: UUID,
     obj_in: UserUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    from app.services.employee_offboard_service import (
+        apply_due_offboards,
+        confirm_and_set_leaving_date,
+    )
+
+    apply_due_offboards(db)
     db_obj = get_object_or_404(user_crud, db, record_id)
+    payload = obj_in.model_dump(exclude_unset=True)
+    confirm_left = bool(payload.pop("confirm_left_organisation", False))
+    has_leaving = "leaving_date" in payload
+    leaving_date = payload.pop("leaving_date", None) if has_leaving else None
     try:
-        updated = user_crud.update(db, db_obj=db_obj, obj_in=obj_in)
+        if has_leaving:
+            confirm_and_set_leaving_date(
+                db,
+                user_id=record_id,
+                leaving_date=leaving_date,
+                actor=current_user,
+                confirm_left_organisation=confirm_left,
+                commit=False,
+            )
+            db.refresh(db_obj)
+            # Do not let the same save re-attach teams / reactivate after live offboard.
+            if db_obj.offboard_applied_at is not None:
+                payload.pop("team_assignments", None)
+                payload.pop("team_id", None)
+                payload["is_active"] = False
+        if payload:
+            updated = user_crud.update(db, db_obj=db_obj, obj_in=payload)
+        else:
+            db.commit()
+            db.refresh(db_obj)
+            updated = db_obj
     except ProTrackValidationError as exc:
         import logging
 
+        db.rollback()
         logging.getLogger("protrack.sod").warning(
             "SoD / validation reject on update user=%s: %s", record_id, exc
         )

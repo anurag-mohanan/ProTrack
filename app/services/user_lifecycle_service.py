@@ -87,16 +87,24 @@ def _require_user(db: Session, user_id: UUID) -> User:
     return user
 
 
-def archive_user(db: Session, user_id: UUID) -> User:
-    user = _require_user(db, user_id)
+def mark_user_archived(db: Session, user: User) -> User:
+    """Archive in-session without committing (for composed workflows)."""
     if user.is_deleted:
         raise ProTrackValidationError("Deleted users cannot be archived")
     if user.is_archived:
-        raise ProTrackValidationError("User is already archived")
+        return user
     user.is_archived = True
     user.archived_at = _utcnow()
     user.is_active = False
     db.add(user)
+    return user
+
+
+def archive_user(db: Session, user_id: UUID) -> User:
+    user = _require_user(db, user_id)
+    if user.is_archived:
+        raise ProTrackValidationError("User is already archived")
+    mark_user_archived(db, user)
     db.commit()
     db.refresh(user)
     return user

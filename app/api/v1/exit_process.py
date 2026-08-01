@@ -60,6 +60,9 @@ def _read(row) -> ExitInterviewRead:
         status_label=exit_svc.STATUS_LABELS.get(row.status, row.status),
         answers=exit_svc.parse_answers(row.answers_json),
         notes=row.notes,
+        attitude_was_good=getattr(row, "attitude_was_good", None),
+        skillset_rating=getattr(row, "skillset_rating", None),
+        eligible_for_rehire=getattr(row, "eligible_for_rehire", None),
         created_by_id=row.created_by_id,
         completed_at=row.completed_at,
         is_published=bool(getattr(row, "is_published", False)),
@@ -145,7 +148,13 @@ def update_exit_interview(
     if row is None:
         raise HTTPException(status_code=404, detail="Exit interview not found")
     data = payload.model_dump(exclude_unset=True)
-    row = exit_svc.update_exit_interview(db, row, data=data)
+    try:
+        row = exit_svc.update_exit_interview(
+            db, row, data=data, actor=current_user
+        )
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
     return _read(row)
 
 

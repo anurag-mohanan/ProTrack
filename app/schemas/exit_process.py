@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 ExitInterviewStatus = Literal["draft", "in_progress", "completed", "cancelled"]
+EligibleForRehire = Literal["yes", "no", "conditional"]
 
 
 class ExitInterviewQuestion(BaseModel):
@@ -42,6 +43,9 @@ class ExitInterviewCreate(BlankOptionalFieldsMixin, BaseModel):
     interviewer_user_id: Optional[UUID] = None
     interviewer_name: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
+    attitude_was_good: Optional[bool] = None
+    skillset_rating: Optional[int] = Field(default=None, ge=1, le=5)
+    eligible_for_rehire: Optional[EligibleForRehire] = None
     answers: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -62,8 +66,12 @@ class ExitInterviewUpdate(BlankOptionalFieldsMixin, BaseModel):
     interviewer_user_id: Optional[UUID] = None
     interviewer_name: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
+    attitude_was_good: Optional[bool] = None
+    skillset_rating: Optional[int] = Field(default=None, ge=1, le=5)
+    eligible_for_rehire: Optional[EligibleForRehire] = None
     status: Optional[ExitInterviewStatus] = None
     answers: Optional[dict[str, Any]] = None
+    confirm_left_organisation: bool = False
 
 
 class ExitInterviewRead(TimestampSchema):
@@ -90,6 +98,9 @@ class ExitInterviewRead(TimestampSchema):
     status_label: str
     answers: dict[str, Any] = Field(default_factory=dict)
     notes: Optional[str] = None
+    attitude_was_good: Optional[bool] = None
+    skillset_rating: Optional[int] = None
+    eligible_for_rehire: Optional[str] = None
     created_by_id: Optional[UUID] = None
     completed_at: Optional[datetime] = None
     is_published: bool = False

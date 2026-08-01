@@ -85,6 +85,7 @@ export default function ExitProcessPage() {
   const [createForm, setCreateForm] = useState<ExitInterviewCreate>(emptyCreate());
   const [deleteTarget, setDeleteTarget] = useState<ExitInterview | null>(null);
   const [publishTarget, setPublishTarget] = useState<ExitInterview | null>(null);
+  const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
   const [meta, setMeta] = useState({
     last_working_date: '',
@@ -92,6 +93,9 @@ export default function ExitProcessPage() {
     interview_date: '',
     notes: '',
     status: 'draft' as ExitInterviewStatus,
+    attitude_was_good: '' as '' | 'true' | 'false',
+    skillset_rating: '' as '' | number,
+    eligible_for_rehire: '' as '' | 'yes' | 'no' | 'conditional',
   });
 
   const listQuery = useQuery({
@@ -138,12 +142,28 @@ export default function ExitProcessPage() {
       interview_date: selected.interview_date ?? '',
       notes: selected.notes ?? '',
       status: selected.status,
+      attitude_was_good:
+        selected.attitude_was_good === null || selected.attitude_was_good === undefined
+          ? ''
+          : selected.attitude_was_good
+            ? 'true'
+            : 'false',
+      skillset_rating: selected.skillset_rating ?? '',
+      eligible_for_rehire: selected.eligible_for_rehire ?? '',
     });
   }, [selected]);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['exit-process'] });
   };
+
+  const assessmentPayload = () => ({
+    attitude_was_good:
+      meta.attitude_was_good === '' ? null : meta.attitude_was_good === 'true',
+    skillset_rating:
+      meta.skillset_rating === '' ? null : Number(meta.skillset_rating),
+    eligible_for_rehire: meta.eligible_for_rehire === '' ? null : meta.eligible_for_rehire,
+  });
 
   const createMutation = useMutation({
     mutationFn: exitProcessApi.create,
@@ -164,7 +184,9 @@ export default function ExitProcessPage() {
         last_working_date: meta.last_working_date || null,
         resignation_date: meta.resignation_date || null,
         interview_date: meta.interview_date || null,
+        ...assessmentPayload(),
         answers,
+        status: meta.status === 'completed' ? selected?.status : meta.status,
       }),
     onSuccess: () => {
       showSuccess('Exit interview saved');
@@ -176,19 +198,53 @@ export default function ExitProcessPage() {
   const completeMutation = useMutation({
     mutationFn: () =>
       exitProcessApi.update(selectedId!, {
-        ...meta,
         last_working_date: meta.last_working_date || null,
         resignation_date: meta.resignation_date || null,
         interview_date: meta.interview_date || null,
+        notes: meta.notes,
+        ...assessmentPayload(),
         answers,
         status: 'completed',
+        confirm_left_organisation: true,
       }),
     onSuccess: () => {
-      showSuccess('Exit interview marked completed');
+      setCompleteConfirmOpen(false);
+      showSuccess(
+        'Exit interview completed. Last working day synced from interview date; employee soft-offboarded when linked.',
+      );
       invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (error) => showError(getErrorMessage(error) || 'Could not complete exit interview'),
   });
+
+  const requestComplete = () => {
+    if (!meta.interview_date && !meta.last_working_date) {
+      showError('Set interview date (becomes last working day) before completing.');
+      return;
+    }
+    if (meta.attitude_was_good === '') {
+      showError('Record whether attitude was good before completing.');
+      return;
+    }
+    if (meta.skillset_rating === '') {
+      showError('Rate skillset (1–5) before completing.');
+      return;
+    }
+    if (!meta.eligible_for_rehire) {
+      showError('Select rehire eligibility before completing.');
+      return;
+    }
+    setCompleteConfirmOpen(true);
+  };
+
+  const requestSave = () => {
+    if (meta.status === 'completed' && selected?.status !== 'completed') {
+      requestComplete();
+      return;
+    }
+    saveMutation.mutate();
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => exitProcessApi.remove(id),
@@ -392,8 +448,15 @@ export default function ExitProcessPage() {
                     size="small"
                     type="date"
                     label="Interview date"
+                    helperText="Becomes last working day on complete"
                     value={meta.interview_date}
-                    onChange={(e) => setMeta((p) => ({ ...p, interview_date: e.target.value }))}
+                    onChange={(e) =>
+                      setMeta((p) => ({
+                        ...p,
+                        interview_date: e.target.value,
+                        last_working_date: e.target.value || p.last_working_date,
+                      }))
+                    }
                     slotProps={{ inputLabel: { shrink: true } }}
                     sx={{ minWidth: 160 }}
                   />
@@ -413,6 +476,79 @@ export default function ExitProcessPage() {
                     <MenuItem value="cancelled">Cancelled</MenuItem>
                   </TextField>
                 </Stack>
+
+                <Box>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ fontWeight: 700, mb: 1.25, color: 'text.secondary' }}
+                  >
+                    Talent / HR assessment
+                  </Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                    <TextField
+                      size="small"
+                      select
+                      label="Attitude was good"
+                      required
+                      value={meta.attitude_was_good}
+                      onChange={(e) =>
+                        setMeta((p) => ({
+                          ...p,
+                          attitude_was_good: e.target.value as '' | 'true' | 'false',
+                        }))
+                      }
+                      sx={{ minWidth: 180 }}
+                    >
+                      <MenuItem value="">—</MenuItem>
+                      <MenuItem value="true">Yes</MenuItem>
+                      <MenuItem value="false">No</MenuItem>
+                    </TextField>
+                    <TextField
+                      size="small"
+                      select
+                      label="Skillset rating"
+                      required
+                      value={meta.skillset_rating}
+                      onChange={(e) =>
+                        setMeta((p) => ({
+                          ...p,
+                          skillset_rating: e.target.value ? Number(e.target.value) : '',
+                        }))
+                      }
+                      sx={{ minWidth: 140 }}
+                    >
+                      <MenuItem value="">—</MenuItem>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <MenuItem key={n} value={n}>
+                          {n}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      size="small"
+                      select
+                      label="Eligible for rehire"
+                      required
+                      value={meta.eligible_for_rehire}
+                      onChange={(e) =>
+                        setMeta((p) => ({
+                          ...p,
+                          eligible_for_rehire: e.target.value as
+                            | ''
+                            | 'yes'
+                            | 'no'
+                            | 'conditional',
+                        }))
+                      }
+                      sx={{ minWidth: 200 }}
+                    >
+                      <MenuItem value="">—</MenuItem>
+                      <MenuItem value="yes">Yes</MenuItem>
+                      <MenuItem value="no">No</MenuItem>
+                      <MenuItem value="conditional">Conditional</MenuItem>
+                    </TextField>
+                  </Stack>
+                </Box>
 
                 <Divider />
 
@@ -503,14 +639,14 @@ export default function ExitProcessPage() {
                   <ProsohmButton
                     buttonVariant="outlined"
                     disabled={saveMutation.isPending}
-                    onClick={() => saveMutation.mutate()}
+                    onClick={() => requestSave()}
                   >
                     Save
                   </ProsohmButton>
                   <ProsohmButton
                     buttonVariant="primary"
-                    disabled={completeMutation.isPending}
-                    onClick={() => completeMutation.mutate()}
+                    disabled={completeMutation.isPending || selected.status === 'completed'}
+                    onClick={() => requestComplete()}
                   >
                     Mark completed
                   </ProsohmButton>
@@ -659,6 +795,22 @@ export default function ExitProcessPage() {
           </ProsohmButton>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={completeConfirmOpen}
+        title="Confirm employee has left"
+        message={
+          'Are you sure this employee has left / is leaving the organisation? '
+          + 'Completing will set last working day from the interview date and soft-offboard '
+          + 'the linked employee (history retained).'
+        }
+        recordName={selected?.employee_name}
+        confirmLabel="Yes, complete & offboard"
+        danger
+        loading={completeMutation.isPending}
+        onClose={() => setCompleteConfirmOpen(false)}
+        onConfirm={() => completeMutation.mutate()}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

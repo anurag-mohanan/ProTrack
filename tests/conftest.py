@@ -139,6 +139,12 @@ from app.db.phase65_hr_form_publish_schema_sync import (
 from app.db.phase66_stream_numbering_schema_sync import (
     ensure_phase66_stream_numbering_foundation,
 )
+from app.db.phase67_employee_offboard_schema_sync import (
+    ensure_phase67_employee_offboard_foundation,
+)
+from app.db.phase68_exit_interview_assessment_schema_sync import (
+    ensure_phase68_exit_interview_assessment_foundation,
+)
 from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_user_auth_schema, ensure_user_access_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_timesheet_entry_leave_count, ensure_timesheet_entry_soft_delete, ensure_team_schema, ensure_user_team_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -463,6 +469,8 @@ def test_engine():
     ensure_phase64_finance_planning_scenarios_foundation(engine)
     ensure_phase65_hr_form_publish_foundation(engine)
     ensure_phase66_stream_numbering_foundation(engine)
+    ensure_phase67_employee_offboard_foundation(engine)
+    ensure_phase68_exit_interview_assessment_foundation(engine)
     ensure_project_complexity(engine)
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)

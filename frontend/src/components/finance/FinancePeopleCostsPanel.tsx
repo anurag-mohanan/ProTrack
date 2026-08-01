@@ -30,6 +30,7 @@ import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { toFiniteNumber } from '../../utils/format';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { LoadingState } from '../common/LoadingState';
 import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
 import { teamQueryParam } from './FinanceTeamFilter';
@@ -96,6 +97,11 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [leavingConfirm, setLeavingConfirm] = useState<{
+    userId: string;
+    draft: Draft;
+    name: string;
+  } | null>(null);
   const q = rosterQueryString(teamId, showExempt, showInactive);
 
   const rosterQuery = useQuery({
@@ -110,9 +116,14 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (payload: { userId: string; draft: Draft }) => {
+    mutationFn: async (payload: {
+      userId: string;
+      draft: Draft;
+      confirmLeftOrganisation?: boolean;
+    }) => {
       await apiClient.patch(`/finance/employee-costs/roster/${payload.userId}/leaving-date`, {
         leaving_date: payload.draft.leaving_date || null,
+        confirm_left_organisation: Boolean(payload.confirmLeftOrganisation),
       });
       return (
         await apiClient.post('/finance/employee-costs', {
@@ -124,8 +135,19 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
         })
       ).data;
     },
-    onSuccess: () => {
-      showSuccess('Salary / last working day saved');
+    onSuccess: (_data, variables) => {
+      const leaving = variables.draft.leaving_date || '';
+      const todayIso = new Date().toISOString().slice(0, 10);
+      if (variables.confirmLeftOrganisation && leaving) {
+        showSuccess(
+          leaving <= todayIso
+            ? 'Last working day saved. Employee removed from teams and archived; history retained.'
+            : `Last working day saved. Employee will be removed from teams after ${leaving}; history retained.`,
+        );
+      } else {
+        showSuccess('Salary / last working day saved');
+      }
+      setLeavingConfirm(null);
       void queryClient.invalidateQueries({ queryKey: ['finance-employee-roster'] });
       void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
     },
@@ -133,6 +155,21 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
       showError(apiErrorMessage(error, 'Could not save salary'));
     },
   });
+
+  const requestSave = (row: RosterItem, draft: Draft) => {
+    const nextLeaving = draft.leaving_date.trim();
+    const previousLeaving = row.leaving_date ?? '';
+    const needsConfirm = Boolean(nextLeaving && nextLeaving !== previousLeaving);
+    if (needsConfirm) {
+      setLeavingConfirm({
+        userId: row.user_id,
+        draft,
+        name: `${row.first_name} ${row.last_name}`.trim(),
+      });
+      return;
+    }
+    saveMutation.mutate({ userId: row.user_id, draft });
+  };
 
   const allRows = rosterQuery.data ?? [];
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -589,7 +626,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
                           onClick={() => {
                             const next = ensureDraft(row);
                             setDrafts((prev) => ({ ...prev, [row.user_id]: next }));
-                            saveMutation.mutate({ userId: row.user_id, draft: next });
+                            requestSave(row, next);
                           }}
                         >
                           Save
@@ -603,6 +640,29 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
           </Table>
         </TableContainer>
       </FinanceSection>
+
+      <ConfirmDialog
+        open={Boolean(leavingConfirm)}
+        title="Confirm employee has left"
+        message={
+          'Are you sure this employee has left / is leaving the organisation? '
+          + 'They will be removed from their team(s) on or after the last working day. '
+          + 'All history (teams, projects, timesheets) is retained.'
+        }
+        recordName={leavingConfirm?.name}
+        confirmLabel="Yes, confirm left"
+        danger
+        onConfirm={() => {
+          if (!leavingConfirm) return;
+          saveMutation.mutate({
+            userId: leavingConfirm.userId,
+            draft: leavingConfirm.draft,
+            confirmLeftOrganisation: true,
+          });
+        }}
+        onClose={() => setLeavingConfirm(null)}
+        loading={saveMutation.isPending}
+      />
     </Stack>
   );
 }

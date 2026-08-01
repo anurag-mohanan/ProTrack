@@ -181,6 +181,7 @@ export default function UsersPage() {
   const [archiveTarget, setArchiveTarget] = useState<User | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [toggleTarget, setToggleTarget] = useState<User | null>(null);
+  const [leavingConfirmOpen, setLeavingConfirmOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   const roleMap = useMemo(
@@ -438,7 +439,14 @@ export default function UsersPage() {
     max_allocation_percent: form.max_allocation_percent,
   });
 
-  const handleSave = async () => {
+  const leavingDateRequiresConfirm = (): boolean => {
+    const next = form.leaving_date.trim();
+    if (!next) return false;
+    const previous = editingUser?.leaving_date ?? '';
+    return next !== previous;
+  };
+
+  const handleSave = () => {
     const requiredFields = [
       { key: 'first_name', label: 'First name' },
       { key: 'last_name', label: 'Last name' },
@@ -469,8 +477,15 @@ export default function UsersPage() {
       showError('Select at least one team for the user.');
       return;
     }
-    // Primary team is optional (EM / Design Leaders often oversee multiple teams).
 
+    if (leavingDateRequiresConfirm()) {
+      setLeavingConfirmOpen(true);
+      return;
+    }
+    void persistUser(false);
+  };
+
+  const persistUser = async (confirmLeftOrganisation: boolean) => {
     setSaving(true);
     try {
       const teamAssignmentsPayload = form.team_assignments.map((row) => ({
@@ -486,6 +501,8 @@ export default function UsersPage() {
         designation: optionalString(form.designation),
         manager_id: optionalUuid(form.manager_id),
       };
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const leaving = optionalString(form.leaving_date);
       if (editingUser) {
         await usersApi.update(editingUser.id, {
           first_name: form.first_name,
@@ -503,8 +520,17 @@ export default function UsersPage() {
           requires_salary: form.requires_salary,
           module_access: form.module_access,
           special_permissions: form.special_permissions,
-        });
-        showSuccess('User updated successfully.');
+          ...(confirmLeftOrganisation ? { confirm_left_organisation: true } : {}),
+        } as Partial<User> & { confirm_left_organisation?: boolean });
+        if (confirmLeftOrganisation && leaving) {
+          showSuccess(
+            leaving <= todayIso
+              ? 'Last working day saved. Employee removed from teams and archived; history retained.'
+              : `Last working day saved. Employee will be removed from teams after ${leaving}; history retained.`,
+          );
+        } else {
+          showSuccess('User updated successfully.');
+        }
       } else {
         const password = form.generate_temporary_password
           ? generateTempPassword()
@@ -527,13 +553,19 @@ export default function UsersPage() {
           requires_salary: form.requires_salary,
           module_access: form.module_access,
           special_permissions: form.special_permissions,
-        } as Partial<User> & { password: string; must_change_password?: boolean });
+          ...(confirmLeftOrganisation ? { confirm_left_organisation: true } : {}),
+        } as Partial<User> & {
+          password: string;
+          must_change_password?: boolean;
+          confirm_left_organisation?: boolean;
+        });
         showSuccess(
           form.generate_temporary_password
             ? `User created. Temporary password: ${password}`
             : 'User created successfully.',
         );
       }
+      setLeavingConfirmOpen(false);
       setFormOpen(false);
       await refreshUsers();
     } catch (error) {
@@ -1520,6 +1552,26 @@ export default function UsersPage() {
         onConfirm={() => void handleImpersonate()}
         onClose={() => setImpersonateTarget(null)}
         loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={leavingConfirmOpen}
+        title="Confirm employee has left"
+        message={
+          'Are you sure this employee has left / is leaving the organisation? '
+          + 'They will be removed from their team(s) on or after the last working day. '
+          + 'All history (teams, projects, timesheets) is retained.'
+        }
+        recordName={
+          editingUser
+            ? `${editingUser.first_name} ${editingUser.last_name}`.trim()
+            : `${form.first_name} ${form.last_name}`.trim() || undefined
+        }
+        confirmLabel="Yes, confirm left"
+        danger
+        onConfirm={() => void persistUser(true)}
+        onClose={() => setLeavingConfirmOpen(false)}
+        loading={saving}
       />
 
       <ConfirmDialog

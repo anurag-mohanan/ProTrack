@@ -780,7 +780,11 @@ def employee_cost_roster(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.services.employee_offboard_service import apply_due_offboards
+
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    apply_due_offboards(db)
+    db.commit()
     rows = get_employee_cost_roster(
         db,
         team_id=team_id,
@@ -801,12 +805,23 @@ def update_employee_leaving_date(
     current_user: User = Depends(get_current_user),
 ):
     """Set last working day — salaries/headcount honor this for P&L."""
+    from app.services.employee_offboard_service import confirm_and_set_leaving_date
+
     _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    user.leaving_date = payload.leaving_date
-    db.flush()
+    try:
+        user = confirm_and_set_leaving_date(
+            db,
+            user_id=user_id,
+            leaving_date=payload.leaving_date,
+            actor=current_user,
+            confirm_left_organisation=bool(payload.confirm_left_organisation),
+            commit=False,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail) from exc
     _audit(
         db,
         user=current_user,

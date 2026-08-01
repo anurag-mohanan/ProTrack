@@ -165,6 +165,12 @@ from app.db.phase65_hr_form_publish_schema_sync import (
 from app.db.phase66_stream_numbering_schema_sync import (
     ensure_phase66_stream_numbering_foundation,
 )
+from app.db.phase67_employee_offboard_schema_sync import (
+    ensure_phase67_employee_offboard_foundation,
+)
+from app.db.phase68_exit_interview_assessment_schema_sync import (
+    ensure_phase68_exit_interview_assessment_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -292,6 +298,8 @@ async def lifespan(app: FastAPI):
         ("phase64_finance_planning_scenarios", ensure_phase64_finance_planning_scenarios_foundation),
         ("phase65_hr_form_publish", ensure_phase65_hr_form_publish_foundation),
         ("phase66_stream_numbering", ensure_phase66_stream_numbering_foundation),
+        ("phase67_employee_offboard", ensure_phase67_employee_offboard_foundation),
+        ("phase68_exit_interview_assessment", ensure_phase68_exit_interview_assessment_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 
@@ -358,6 +366,7 @@ async def lifespan(app: FastAPI):
 
     lifecycle_session = sessionmaker(bind=engine)()
     try:
+        from app.services.employee_offboard_service import apply_due_offboards
         from app.services.user_change_service import (
             apply_due_compensation,
             apply_due_lifecycle,
@@ -365,10 +374,11 @@ async def lifespan(app: FastAPI):
 
         apply_due_lifecycle(lifecycle_session)
         apply_due_compensation(lifecycle_session)
+        apply_due_offboards(lifecycle_session)
         lifecycle_session.commit()
     except Exception:
         lifecycle_session.rollback()
-        logger.exception("Apply-due lifecycle / compensation sweep failed")
+        logger.exception("Apply-due lifecycle / compensation / offboard sweep failed")
     finally:
         lifecycle_session.close()
 

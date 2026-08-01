@@ -183,6 +183,7 @@ class UserCreate(BlankOptionalFieldsMixin, UserBase):
     special_permissions: list[str] | None = None
     module_actions: dict[str, list[str]] | None = None
     team_assignments: list[UserTeamAssignmentWrite] | None = None
+    confirm_left_organisation: bool = False
 
 
 class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
@@ -203,6 +204,7 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     joining_date: date | None = None
     first_job_date: date | None = None
     leaving_date: date | None = None
+    confirm_left_organisation: bool = False
     stream_id: UUID | None = None
     primary_tool: str | None = Field(default=None, max_length=80)
     work_function: str | None = Field(default=None, max_length=120)
@@ -259,6 +261,7 @@ class UserRead(UserBase, TimestampSchema):
     last_login: datetime | None = None
     is_archived: bool = False
     archived_at: datetime | None = None
+    offboard_applied_at: datetime | None = None
     is_deleted: bool = False
     deleted_at: datetime | None = None
     deleted_by_id: UUID | None = None

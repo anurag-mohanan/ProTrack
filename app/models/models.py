@@ -174,6 +174,7 @@ class User(Base, TimestampMixin):
     joining_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     first_job_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     leaving_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    offboard_applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     stream_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("streams.id"), nullable=True, index=True
     )
@@ -1799,6 +1800,9 @@ class ExitInterview(Base, TimestampMixin):
     # JSON map of question_id -> answer (string / number / choice).
     answers_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    attitude_was_good: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    skillset_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    eligible_for_rehire: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )

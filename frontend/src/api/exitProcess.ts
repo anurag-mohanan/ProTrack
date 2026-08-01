@@ -40,6 +40,9 @@ export interface ExitInterview {
   status_label: string;
   answers: Record<string, string | number>;
   notes: string | null;
+  attitude_was_good: boolean | null;
+  skillset_rating: number | null;
+  eligible_for_rehire: 'yes' | 'no' | 'conditional' | null;
   created_by_id: string | null;
   completed_at: string | null;
   is_published: boolean;
@@ -67,11 +70,15 @@ export interface ExitInterviewCreate {
   interviewer_user_id?: string | null;
   interviewer_name?: string | null;
   notes?: string | null;
+  attitude_was_good?: boolean | null;
+  skillset_rating?: number | null;
+  eligible_for_rehire?: 'yes' | 'no' | 'conditional' | null;
   answers?: Record<string, string | number>;
 }
 
 export type ExitInterviewUpdate = Partial<ExitInterviewCreate> & {
   status?: ExitInterviewStatus;
+  confirm_left_organisation?: boolean;
 };
 
 export const exitProcessApi = {

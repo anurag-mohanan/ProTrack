@@ -170,6 +170,8 @@ class ActivityAction(enum.Enum):
     user_deleted = "user_deleted"
     user_restored_from_deleted = "user_restored_from_deleted"
     user_department_changed = "user_department_changed"
+    employee_offboard_scheduled = "employee_offboard_scheduled"
+    employee_offboard_applied = "employee_offboard_applied"
     record_deleted = "record_deleted"
     record_restored = "record_restored"
     record_archived = "record_archived"

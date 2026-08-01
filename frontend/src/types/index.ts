@@ -208,6 +208,7 @@ export interface User {
   joining_date?: string | null;
   first_job_date?: string | null;
   leaving_date?: string | null;
+  offboard_applied_at?: string | null;
   phone?: string | null;
   designation?: string | null;
   manager_id?: string | null;

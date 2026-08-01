@@ -269,7 +269,17 @@ def update_exit_interview(
     row: ExitInterview,
     *,
     data: dict[str, Any],
+    actor: User | None = None,
 ) -> ExitInterview:
+    from app.core.exceptions import ProTrackValidationError
+    from app.services.employee_offboard_service import confirm_and_set_leaving_date
+
+    confirm_left = bool(data.pop("confirm_left_organisation", False))
+    previous_status = row.status
+    transitioning_to_completed = (
+        data.get("status") == "completed" and previous_status != "completed"
+    )
+
     for key, value in data.items():
         if key == "answers":
             existing = parse_answers(row.answers_json)
@@ -286,6 +296,45 @@ def update_exit_interview(
             continue
         if hasattr(row, key):
             setattr(row, key, value)
+
+    if transitioning_to_completed:
+        if not confirm_left:
+            raise ProTrackValidationError(
+                "Confirm that the employee has left / is leaving the organisation "
+                "before completing the exit interview."
+            )
+        if row.attitude_was_good is None:
+            raise ProTrackValidationError(
+                "Record whether the employee's attitude was good before completing."
+            )
+        if row.skillset_rating is None or not (1 <= int(row.skillset_rating) <= 5):
+            raise ProTrackValidationError(
+                "Skillset rating (1–5) is required before completing the exit interview."
+            )
+        if row.eligible_for_rehire not in {"yes", "no", "conditional"}:
+            raise ProTrackValidationError(
+                "Eligible for rehire (yes / no / conditional) is required before completing."
+            )
+
+        # Interview conduct date becomes last working day when set.
+        if row.interview_date is not None:
+            row.last_working_date = row.interview_date
+
+        if row.employee_user_id is not None:
+            if row.last_working_date is None:
+                raise ProTrackValidationError(
+                    "Set interview date (or last working day) before completing "
+                    "so the linked employee can be soft-offboarded."
+                )
+            confirm_and_set_leaving_date(
+                db,
+                user_id=row.employee_user_id,
+                leaving_date=row.last_working_date,
+                actor=actor,
+                confirm_left_organisation=True,
+                commit=False,
+            )
+
     _resolve_lookups(db, row)
     db.add(row)
     db.commit()

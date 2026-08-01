@@ -328,7 +328,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         )
 
     def create(self, db: Session, *, obj_in: UserCreate) -> User:
-        data = _apply_access_payload(obj_in.model_dump(exclude={"password"}))
+        data = _apply_access_payload(
+            obj_in.model_dump(exclude={"password", "confirm_left_organisation"})
+        )
         team_assignments = data.pop("team_assignments", None)
         team_id = data.pop("team_id", None)
         role = db.get(Role, data["role_id"])
@@ -382,6 +384,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             update_data = dict(obj_in)
         else:
             update_data = obj_in.model_dump(exclude_unset=True)
+        update_data.pop("confirm_left_organisation", None)
         password = update_data.pop("password", None)
         if password is not None:
             update_data["password_hash"] = hash_password(password)

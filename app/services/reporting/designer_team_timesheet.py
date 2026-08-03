@@ -14,6 +14,7 @@ from app.models.finance import TeamCommercialTerms
 from app.models.models import User, WorkingModel
 from app.schemas.reporting import DesignerTeamTimesheetPayload
 from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
+from app.services.reporting.cross_team_hours import build_cross_team_hours
 from app.services.reporting.data_service import build_engineering_report
 from app.services.reporting.report_scope import ReportScope, resolve_report_scope
 
@@ -136,6 +137,23 @@ def build_designer_team_timesheet(
     total_designer = sum((row.total_hours for row in designers), Decimal("0"))
     total_project = sum((row.actual_hours for row in projects), Decimal("0"))
 
+    scoped_team_id = team_id
+    if (
+        scoped_team_id is None
+        and report_scope.team_ids is not None
+        and len(report_scope.team_ids) == 1
+    ):
+        scoped_team_id = next(iter(report_scope.team_ids))
+
+    cross_rows, outbound_hours, inbound_hours = build_cross_team_hours(
+        db,
+        start_date=full.period.start_date,
+        end_date=full.period.end_date,
+        team_id=scoped_team_id,
+        customer_id=report_scope.customer_id or customer_id,
+        user_ids=None,
+    )
+
     return DesignerTeamTimesheetPayload(
         report_id=full.report_id,
         title=_PERIOD_TITLES.get(resolved_period, "Timesheet Report"),
@@ -155,4 +173,7 @@ def build_designer_team_timesheet(
             team_id=team_id,
             as_of=full.period.end_date if full.period else None,
         ),
+        cross_team_hours=cross_rows,
+        cross_team_hours_outbound=outbound_hours,
+        cross_team_hours_inbound=inbound_hours,
     )

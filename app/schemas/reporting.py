@@ -216,6 +216,23 @@ class CustomerTimesheetPackPayload(BaseModel):
     overall_utilization_percent: Decimal = Decimal("0")
 
 
+class CrossTeamHoursRow(BaseModel):
+    """One designer–project aggregate where home team ≠ project team."""
+
+    direction: str  # outbound | inbound | cross
+    user_id: UUID
+    designer_name: str
+    home_team_id: UUID | None = None
+    home_team_name: str | None = None
+    project_id: UUID
+    tool_number: str
+    project_team_id: UUID | None = None
+    project_team_name: str | None = None
+    customer_name: str | None = None
+    hours: Decimal = Decimal("0")
+    contribution_reason: str | None = None
+
+
 class DesignerTeamTimesheetPayload(BaseModel):
     """Simplified timesheet report: period designer hours by team + lifetime project hours."""
 
@@ -233,6 +250,10 @@ class DesignerTeamTimesheetPayload(BaseModel):
     project_count: int = 0
     # False when scoped to one customer, or a retainer/subscription team (column is redundant).
     include_customer_columns: bool = True
+    # Members booking hours on another team's projects (and vice versa when team-scoped).
+    cross_team_hours: list[CrossTeamHoursRow] = Field(default_factory=list)
+    cross_team_hours_outbound: Decimal = Decimal("0")
+    cross_team_hours_inbound: Decimal = Decimal("0")
 
 
 class ChartSeries(BaseModel):

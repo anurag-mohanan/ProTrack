@@ -26,7 +26,7 @@ import {
   fetchEngineeringReportPreview,
   isDesignerTeamTimesheetReport,
 } from '../../api/engineeringReporting';
-import type { DesignerTeamTimesheetPayload, DesignerProductivityRow, ToolHoursRow } from '../../types/EngineeringReporting';
+import type { DesignerTeamTimesheetPayload, DesignerProductivityRow, ToolHoursRow, CrossTeamHoursRow } from '../../types/EngineeringReporting';
 import type { Customer } from '../../types';
 import type { Team } from '../../types/Team';
 import { ensureArray } from '../../types/pagination';
@@ -107,6 +107,9 @@ export function DesignerTeamTimesheetPanel({
       : null;
   const designers = ensureArray<DesignerProductivityRow>(payload?.designers);
   const projects = ensureArray<ToolHoursRow>(payload?.projects);
+  const crossTeam = ensureArray<CrossTeamHoursRow>(payload?.cross_team_hours);
+  const outboundRows = crossTeam.filter((r) => r.direction === 'outbound' || r.direction === 'cross');
+  const inboundRows = crossTeam.filter((r) => r.direction === 'inbound');
 
   const handlePeriodChange = (nextId: (typeof PERIOD_REPORTS)[number]['id']) => {
     setReportId(nextId);
@@ -254,7 +257,7 @@ export function DesignerTeamTimesheetPanel({
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
               gap: 2,
             }}
           >
@@ -282,6 +285,20 @@ export function DesignerTeamTimesheetPanel({
             <KpiMetricCard
               title="Project hours to date"
               value={formatNumber(payload.total_project_actual_hours)}
+              icon={AssessmentRoundedIcon}
+              accent="primary"
+              compact
+            />
+            <KpiMetricCard
+              title="Cross-team hours out"
+              value={formatNumber(payload.cross_team_hours_outbound ?? 0)}
+              icon={AssessmentRoundedIcon}
+              accent="primary"
+              compact
+            />
+            <KpiMetricCard
+              title="Cross-team hours in"
+              value={formatNumber(payload.cross_team_hours_inbound ?? 0)}
               icon={AssessmentRoundedIcon}
               accent="primary"
               compact
@@ -340,6 +357,123 @@ export function DesignerTeamTimesheetPanel({
                 </TableBody>
               </Table>
             </TableContainer>
+          </Paper>
+
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
+              Cross-team hours (extra effort)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Productive hours where the designer&apos;s home team differs from the project&apos;s
+              team. Use a team filter to separate outbound (our people helping elsewhere) vs
+              inbound (other teams helping us).
+            </Typography>
+            {outboundRows.length === 0 && inboundRows.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No cross-team project hours in this period.
+              </Typography>
+            ) : (
+              <Stack spacing={2}>
+                {outboundRows.length > 0 ? (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
+                      {teamId
+                        ? 'Outbound — our members on other teams’ projects'
+                        : 'Cross-team bookings'}
+                    </Typography>
+                    <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Designer</TableCell>
+                            <TableCell>Home team</TableCell>
+                            <TableCell>Tool</TableCell>
+                            <TableCell>Project team</TableCell>
+                            <TableCell align="right">Hours</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {outboundRows.map((row) => (
+                            <TableRow
+                              key={`out-${row.user_id}-${row.project_id}-${row.direction}`}
+                              hover
+                            >
+                              <TableCell>
+                                <RouterLink
+                                  to={`/dashboard?user=${row.user_id}`}
+                                  style={{ textDecoration: 'none', color: 'inherit' }}
+                                >
+                                  {row.designer_name}
+                                </RouterLink>
+                              </TableCell>
+                              <TableCell>{row.home_team_name ?? '—'}</TableCell>
+                              <TableCell>
+                                <RouterLink
+                                  to={`/projects/${row.project_id}`}
+                                  style={{ textDecoration: 'none', color: 'inherit' }}
+                                >
+                                  {row.tool_number}
+                                </RouterLink>
+                              </TableCell>
+                              <TableCell>{row.project_team_name ?? '—'}</TableCell>
+                              <TableCell align="right">{formatNumber(row.hours)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
+                ) : null}
+                {inboundRows.length > 0 ? (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
+                      Inbound — other teams on our projects
+                    </Typography>
+                    <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Designer</TableCell>
+                            <TableCell>Home team</TableCell>
+                            <TableCell>Tool</TableCell>
+                            <TableCell>Project team</TableCell>
+                            <TableCell align="right">Hours</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {inboundRows.map((row) => (
+                            <TableRow
+                              key={`in-${row.user_id}-${row.project_id}-${row.direction}`}
+                              hover
+                            >
+                              <TableCell>
+                                <RouterLink
+                                  to={`/dashboard?user=${row.user_id}`}
+                                  style={{ textDecoration: 'none', color: 'inherit' }}
+                                >
+                                  {row.designer_name}
+                                </RouterLink>
+                              </TableCell>
+                              <TableCell>{row.home_team_name ?? '—'}</TableCell>
+                              <TableCell>
+                                <RouterLink
+                                  to={`/projects/${row.project_id}`}
+                                  style={{ textDecoration: 'none', color: 'inherit' }}
+                                >
+                                  {row.tool_number}
+                                </RouterLink>
+                              </TableCell>
+                              <TableCell>{row.project_team_name ?? '—'}</TableCell>
+                              <TableCell align="right">{formatNumber(row.hours)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
+                ) : null}
+              </Stack>
+            )}
           </Paper>
 
           <Paper sx={{ p: 2 }}>

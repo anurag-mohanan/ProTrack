@@ -168,7 +168,11 @@ def test_timesheet_excel_has_two_sheets(session):
     content = generate_designer_team_timesheet_excel(payload)
     assert content[:2] == b"PK"
     workbook = load_workbook(filename=__import__("io").BytesIO(content))
-    assert workbook.sheetnames == ["Designer Hours by Team", "Project Hours To Date"]
+    assert workbook.sheetnames == [
+        "Designer Hours by Team",
+        "Project Hours To Date",
+        "Cross-Team Hours",
+    ]
 
 
 def test_omit_customer_column_for_customer_filter(session):

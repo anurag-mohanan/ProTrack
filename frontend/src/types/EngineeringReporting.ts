@@ -95,6 +95,25 @@ export interface DesignerTeamTimesheetPayload {
   project_count: number;
   /** False for single-customer or retainer/subscription team reports. */
   include_customer_columns?: boolean;
+  /** Hours where the designer's home team differs from the project's team. */
+  cross_team_hours?: CrossTeamHoursRow[];
+  cross_team_hours_outbound?: number;
+  cross_team_hours_inbound?: number;
+}
+
+export interface CrossTeamHoursRow {
+  direction: 'outbound' | 'inbound' | 'cross' | string;
+  user_id: string;
+  designer_name: string;
+  home_team_id?: string | null;
+  home_team_name?: string | null;
+  project_id: string;
+  tool_number: string;
+  project_team_id?: string | null;
+  project_team_name?: string | null;
+  customer_name?: string | null;
+  hours: number;
+  contribution_reason?: string | null;
 }
 
 export interface DesignerToolBreakdownRow {

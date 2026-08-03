@@ -25,6 +25,7 @@ def generate_designer_team_timesheet_excel(payload: DesignerTeamTimesheetPayload
     workbook = Workbook()
     _write_designers_sheet(workbook, payload)
     _write_projects_sheet(workbook, payload)
+    _write_cross_team_sheet(workbook, payload)
 
     buffer = BytesIO()
     workbook.save(buffer)
@@ -186,6 +187,68 @@ def _write_projects_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayl
         actual_col = 5 if include_customer else 4
         sheet.cell(row=total_row, column=actual_col, value=float(payload.total_project_actual_hours))
         style_total_row(sheet, total_row, len(headers), emphasize_cols={1, actual_col})
+
+    freeze_and_filter(sheet, header_row, len(headers))
+    autofit_columns(sheet)
+    set_print_layout(sheet)
+
+
+def _write_cross_team_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayload) -> None:
+    sheet = workbook.create_sheet("Cross-Team Hours"[:31])
+    headers = [
+        "Direction",
+        "Designer",
+        "Home team",
+        "Tool #",
+        "Project team",
+        "Customer",
+        "Hours",
+        "Contribution reason",
+    ]
+    next_row = write_report_letterhead(
+        sheet,
+        company_name=payload.company_name,
+        report_title="Cross-Team Hours (extra effort)",
+        period_label=f"Period: {payload.period.label}",
+        extra_lines=[
+            (
+                f"Outbound (our people on other teams' projects): "
+                f"{float(payload.cross_team_hours_outbound):.2f} · "
+                f"Inbound (other teams on our projects): "
+                f"{float(payload.cross_team_hours_inbound):.2f}"
+            ),
+        ],
+        col_span=len(headers),
+    )
+    header_row = next_row
+    for col, header in enumerate(headers, start=1):
+        sheet.cell(row=header_row, column=col, value=header)
+    style_header_row(sheet, header_row, len(headers))
+
+    for offset, row in enumerate(payload.cross_team_hours):
+        excel_row = header_row + 1 + offset
+        values = [
+            row.direction,
+            row.designer_name,
+            row.home_team_name or "—",
+            row.tool_number,
+            row.project_team_name or "—",
+            row.customer_name or "—",
+            float(row.hours),
+            row.contribution_reason or "",
+        ]
+        for col, value in enumerate(values, start=1):
+            cell = sheet.cell(row=excel_row, column=col, value=value)
+            if col == 7:
+                cell.alignment = Alignment(horizontal="right")
+
+    if payload.cross_team_hours:
+        style_body_rows(
+            sheet,
+            header_row + 1,
+            header_row + len(payload.cross_team_hours),
+            len(headers),
+        )
 
     freeze_and_filter(sheet, header_row, len(headers))
     autofit_columns(sheet)

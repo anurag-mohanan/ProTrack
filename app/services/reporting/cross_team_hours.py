@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -13,6 +12,10 @@ from sqlalchemy.orm import Session
 from app.models.enums import TimesheetStatus, WorkCategory
 from app.models.models import Customer, Project, Team, Timesheet, TimesheetEntry, User
 from app.schemas.reporting import CrossTeamHoursRow
+from app.services.reporting.team_membership_windows import (
+    home_team_id_on,
+    primary_home_team_timeline,
+)
 
 
 def _decimal(value) -> Decimal:
@@ -30,7 +33,8 @@ def build_cross_team_hours(
 ) -> tuple[list[CrossTeamHoursRow], Decimal, Decimal]:
     """Return (rows, outbound_hours, inbound_hours).
 
-    Cross-team = contributor's home ``User.team_id`` differs from ``Project.team_id``.
+    Cross-team = contributor's **primary home team as of the entry date** differs
+    from ``Project.team_id`` (transfers must not rewrite historical home team).
     When ``team_id`` is set:
       - outbound: home team is scoped team, project team is different
       - inbound: project team is scoped team, home team is different
@@ -42,6 +46,7 @@ def build_cross_team_hours(
             User.first_name,
             User.last_name,
             User.team_id,
+            TimesheetEntry.entry_date,
             TimesheetEntry.project_id,
             TimesheetEntry.hours,
             TimesheetEntry.contribution_reason,
@@ -68,9 +73,7 @@ def build_cross_team_hours(
             ),
             User.is_deleted.is_(False),
             Project.is_deleted.is_(False),
-            User.team_id.is_not(None),
             Project.team_id.is_not(None),
-            User.team_id != Project.team_id,
         )
     )
     if customer_id is not None:
@@ -79,11 +82,18 @@ def build_cross_team_hours(
         if not user_ids:
             return [], Decimal("0"), Decimal("0")
         stmt = stmt.where(User.id.in_(tuple(user_ids)))
-    if team_id is not None:
-        stmt = stmt.where(
-            (User.team_id == team_id) | (Project.team_id == team_id)
-        )
 
+    raw_rows = list(db.execute(stmt).all())
+    if not raw_rows:
+        return [], Decimal("0"), Decimal("0")
+
+    contributor_ids = {row[0] for row in raw_rows}
+    timelines = primary_home_team_timeline(
+        db,
+        contributor_ids,
+        range_start=start_date,
+        range_end=end_date,
+    )
     team_names = {
         row.id: row.name
         for row in db.scalars(select(Team).where(Team.is_active.is_(True))).all()
@@ -98,18 +108,25 @@ def build_cross_team_hours(
         user_id,
         first_name,
         last_name,
-        home_team_id,
+        current_team_id,
+        entry_date,
         project_id,
         hours,
         reason,
         tool_number,
         project_team_id,
         customer_name,
-    ) in db.execute(stmt).all():
-        if project_id is None or home_team_id is None or project_team_id is None:
+    ) in raw_rows:
+        if project_id is None or project_team_id is None or entry_date is None:
             continue
         hour_value = _decimal(hours)
         if hour_value <= 0:
+            continue
+
+        home_team_id = home_team_id_on(timelines.get(user_id), entry_date)
+        if home_team_id is None:
+            home_team_id = current_team_id
+        if home_team_id is None or home_team_id == project_team_id:
             continue
 
         if team_id is not None:
@@ -149,7 +166,7 @@ def build_cross_team_hours(
         elif direction == "inbound":
             inbound_total += hour_value
         else:
-            # Unscoped: count once toward both totals for KPI symmetry
+            # Unscoped: count once toward outbound KPI for totals display
             outbound_total += hour_value
 
     rows = [

@@ -53,6 +53,7 @@ class ExecutiveSummary(BaseModel):
 class DesignerProductivityRow(BaseModel):
     user_id: UUID
     designer_name: str
+    team_id: UUID | None = None
     team_name: str | None = None
     productive_hours: Decimal
     non_productive_hours: Decimal

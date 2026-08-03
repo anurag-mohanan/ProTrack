@@ -160,6 +160,25 @@ def test_team_timesheet_hours_start_from_transfer_date(client, session):
     )
     assert windows[designer.id][0][0] == transfer_on
 
+    # Source report must label the designer under the source team — not the
+    # post-transfer User.team_id.
+    assert source_row.team_id == source.id
+    assert source_row.team_name == source.name
+    assert target_row.team_id == target.id
+    assert target_row.team_name == target.name
+
+    # Org-wide (no team filter): same person appears once per home team stint.
+    all_teams = build_designer_team_timesheet(
+        session,
+        current_user=admin,
+        report_id="monthly-timesheet",
+        anchor=date(2026, 7, 1),
+    )
+    designer_rows = [row for row in all_teams.designers if row.user_id == designer.id]
+    by_team = {row.team_id: float(row.productive_hours) for row in designer_rows}
+    assert by_team.get(source.id) == 8.0
+    assert by_team.get(target.id) == 6.0
+
 
 def test_future_transfer_not_listed_on_target_timesheet(client, session):
     source, target, designer, member = _seed_transfer_scenario(

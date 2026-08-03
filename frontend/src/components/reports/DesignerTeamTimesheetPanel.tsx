@@ -310,7 +310,8 @@ export function DesignerTeamTimesheetPanel({
               Individual designer hours by team
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              {payload.period.label} · Includes draft / submitted / approved
+              {payload.period.label} · Includes draft / submitted / approved. Hours follow the
+              designer&apos;s home team as of each entry date (transfers split pre/post).
             </Typography>
             <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
               <Table size="small">
@@ -336,7 +337,7 @@ export function DesignerTeamTimesheetPanel({
                     </TableRow>
                   ) : (
                     designers.map((row) => (
-                      <TableRow key={row.user_id} hover>
+                      <TableRow key={`${row.user_id}-${row.team_id ?? row.team_name ?? ''}`} hover>
                         <TableCell>{row.team_name ?? '—'}</TableCell>
                         <TableCell>
                           <RouterLink

@@ -42,6 +42,7 @@ export interface ExecutiveSummary {
 export interface DesignerProductivityRow {
   user_id: string;
   designer_name: string;
+  team_id?: string | null;
   team_name?: string | null;
   productive_hours: number;
   non_productive_hours: number;

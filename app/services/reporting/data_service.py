@@ -349,14 +349,38 @@ def _designer_productivity(
     daily_hours: Decimal,
     scope: ReportScope,
 ) -> list[DesignerProductivityRow]:
+    from app.services.reporting.team_membership_windows import (
+        home_team_id_on,
+        primary_home_team_timeline,
+    )
+
     excluded = users_excluded_from_timesheet_reports(db, team_ids=scope.team_ids)
     designers = [
         person
         for person in _active_designers(db)
         if user_matches_scope(db, person, scope) and person.id not in excluded
     ]
-    rows: list[DesignerProductivityRow] = []
+    if not designers:
+        return []
+
     expected_per_person = Decimal(period.working_days) * daily_hours
+    timelines = primary_home_team_timeline(
+        db,
+        {person.id for person in designers},
+        range_start=period.start_date,
+        range_end=period.end_date,
+    )
+    team_names = {
+        row.id: row.name for row in db.scalars(select(Team).order_by(Team.name)).all()
+    }
+
+    # Single-team scope: label with that team (hours already window-filtered).
+    scoped_team_id: UUID | None = None
+    if scope.team_ids is not None and len(scope.team_ids) == 1:
+        scoped_team_id = next(iter(scope.team_ids))
+
+    # Aggregate by (user, home team as-of entry) so mid-period transfers split rows.
+    buckets: dict[tuple[UUID, UUID | None], dict] = {}
 
     for person in designers:
         entries = db.scalars(
@@ -368,47 +392,96 @@ def _designer_productivity(
                 *_entry_scope_clauses(scope),
             )
         ).all()
+        if not entries:
+            # Still show roster members with zero hours under scoped / current home.
+            home_team = scoped_team_id
+            if home_team is None:
+                home_team = home_team_id_on(
+                    timelines.get(person.id), period.end_date
+                ) or person.team_id
+            key = (person.id, home_team)
+            buckets.setdefault(
+                key,
+                {
+                    "user_id": person.id,
+                    "designer_name": f"{person.first_name} {person.last_name}".strip(),
+                    "team_id": home_team,
+                    "productive": Decimal("0"),
+                    "np_hours": Decimal("0"),
+                    "leave_days": Decimal("0"),
+                    "leave_hours": Decimal("0"),
+                    "billable": Decimal("0"),
+                    "project_ids": set(),
+                    "customer_ids": set(),
+                },
+            )
+            continue
 
-        productive = np_hours = leave_days = leave_hours = billable = Decimal("0")
-        project_ids: set[UUID] = set()
-        customer_ids: set[UUID] = set()
         for entry in entries:
+            if scoped_team_id is not None:
+                home_team = scoped_team_id
+            else:
+                home_team = home_team_id_on(
+                    timelines.get(person.id), entry.entry_date
+                )
+                if home_team is None:
+                    home_team = person.team_id
+
+            key = (person.id, home_team)
+            bucket = buckets.get(key)
+            if bucket is None:
+                bucket = {
+                    "user_id": person.id,
+                    "designer_name": f"{person.first_name} {person.last_name}".strip(),
+                    "team_id": home_team,
+                    "productive": Decimal("0"),
+                    "np_hours": Decimal("0"),
+                    "leave_days": Decimal("0"),
+                    "leave_hours": Decimal("0"),
+                    "billable": Decimal("0"),
+                    "project_ids": set(),
+                    "customer_ids": set(),
+                }
+                buckets[key] = bucket
+
             hours = _decimal(entry.hours)
             if is_leave_entry(entry):
-                leave_days += _decimal(entry.leave_count) or Decimal("1")
-                leave_hours += hours
+                bucket["leave_days"] += _decimal(entry.leave_count) or Decimal("1")
+                bucket["leave_hours"] += hours
                 continue
             if entry.work_category == WorkCategory.non_productive:
-                np_hours += hours
+                bucket["np_hours"] += hours
             else:
-                productive += hours
+                bucket["productive"] += hours
                 if entry.is_billable:
-                    billable += hours
+                    bucket["billable"] += hours
             if entry.project_id:
-                project_ids.add(entry.project_id)
+                bucket["project_ids"].add(entry.project_id)
             if entry.customer_id:
-                customer_ids.add(entry.customer_id)
+                bucket["customer_ids"].add(entry.customer_id)
 
+    rows: list[DesignerProductivityRow] = []
+    for bucket in buckets.values():
+        productive = bucket["productive"]
+        np_hours = bucket["np_hours"]
+        leave_hours = bucket["leave_hours"]
         worked = productive + np_hours
         total = worked + leave_hours
-        team_name = None
-        if person.team_id:
-            team = db.get(Team, person.team_id)
-            team_name = team.name if team else None
-
+        team_id = bucket["team_id"]
         rows.append(
             DesignerProductivityRow(
-                user_id=person.id,
-                designer_name=f"{person.first_name} {person.last_name}".strip(),
-                team_name=team_name,
+                user_id=bucket["user_id"],
+                designer_name=bucket["designer_name"],
+                team_id=team_id,
+                team_name=team_names.get(team_id) if team_id else None,
                 productive_hours=_round_hours(productive),
                 non_productive_hours=_round_hours(np_hours),
-                leave_days=leave_days,
+                leave_days=bucket["leave_days"],
                 total_hours=_round_hours(total),
-                billable_percent=_pct(billable, worked),
+                billable_percent=_pct(bucket["billable"], worked),
                 utilization_percent=_pct(worked, expected_per_person),
-                project_count=len(project_ids),
-                customer_count=len(customer_ids),
+                project_count=len(bucket["project_ids"]),
+                customer_count=len(bucket["customer_ids"]),
             )
         )
 
@@ -631,30 +704,37 @@ def _team_summary(
     daily_hours: Decimal,
     scope: ReportScope,
 ) -> list[TeamSummaryRow]:
+    from app.services.reporting.team_membership_windows import (
+        membership_windows_for_teams,
+    )
+
     teams = list(db.scalars(select(Team).order_by(Team.name)).all())
     if scope.team_ids is not None:
         teams = [team for team in teams if team.id in scope.team_ids]
     rows: list[TeamSummaryRow] = []
     for team in teams:
-        members = list(
-            db.scalars(
-                select(User).where(
-                    User.team_id == team.id,
-                    User.is_active.is_(True),
-                    User.is_deleted.is_(False),
-                )
-            ).all()
+        # Per-team membership windows so pre-transfer hours stay on the previous team.
+        windows = membership_windows_for_teams(
+            db,
+            frozenset({team.id}),
+            range_start=period.start_date,
+            range_end=period.end_date,
         )
-        if not members:
+        if not windows:
             continue
-        member_ids = [member.id for member in members]
+        member_ids = list(windows.keys())
+        team_scope = ReportScope(
+            customer_id=scope.customer_id,
+            team_ids=None,
+            user_ids=None,
+            membership_windows=windows,
+        )
         entries = db.scalars(
             select(TimesheetEntry)
             .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
             .where(
-                Timesheet.user_id.in_(member_ids),
                 *_entry_base_filters(period.start_date, period.end_date),
-                *_entry_scope_clauses(scope),
+                *_entry_scope_clauses(team_scope),
             )
         ).all()
         productive = np_hours = leave_days = Decimal("0")
@@ -671,12 +751,12 @@ def _team_summary(
             if entry.project_id:
                 project_ids.add(entry.project_id)
         total = productive + np_hours
-        expected = Decimal(period.working_days) * daily_hours * Decimal(len(members))
+        expected = Decimal(period.working_days) * daily_hours * Decimal(len(member_ids))
         rows.append(
             TeamSummaryRow(
                 team_id=team.id,
                 team_name=team.name,
-                designer_count=len(members),
+                designer_count=len(member_ids),
                 project_count=len(project_ids),
                 productive_hours=_round_hours(productive),
                 np_hours=_round_hours(np_hours),
@@ -874,6 +954,11 @@ def _project_performance(
 def _detailed_entries(
     db: Session, period: ReportPeriod, scope: ReportScope
 ) -> list[DetailedTimesheetRow]:
+    from app.services.reporting.team_membership_windows import (
+        home_team_id_on,
+        primary_home_team_timeline,
+    )
+
     # Historical imports often leave TimesheetEntry.customer_id null while Project.customer_id is set.
     entry_customer = aliased(Customer, name="entry_customer")
     project_customer = aliased(Customer, name="project_customer")
@@ -881,7 +966,6 @@ def _detailed_entries(
         select(
             TimesheetEntry,
             User,
-            Team.name,
             entry_customer.name,
             project_customer.name,
             Project.tool_number,
@@ -889,7 +973,6 @@ def _detailed_entries(
         )
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .join(User, Timesheet.user_id == User.id)
-        .outerjoin(Team, User.team_id == Team.id)
         .outerjoin(Project, TimesheetEntry.project_id == Project.id)
         .outerjoin(entry_customer, TimesheetEntry.customer_id == entry_customer.id)
         .outerjoin(project_customer, Project.customer_id == project_customer.id)
@@ -901,16 +984,29 @@ def _detailed_entries(
         .order_by(TimesheetEntry.entry_date, User.first_name)
     ).all()
 
+    timelines = primary_home_team_timeline(
+        db,
+        {user.id for _, user, *_ in rows},
+        range_start=period.start_date,
+        range_end=period.end_date,
+    )
+    team_names = {
+        row.id: row.name for row in db.scalars(select(Team).order_by(Team.name)).all()
+    }
+
     result: list[DetailedTimesheetRow] = []
-    for entry, user, team_name, entry_customer_name, project_customer_name, tool_number, task_name in rows:
+    for entry, user, entry_customer_name, project_customer_name, tool_number, task_name in rows:
         category = "Leave" if is_leave_entry(entry) else (
             "Non-Productive" if entry.work_category == WorkCategory.non_productive else "Productive"
         )
+        home_team_id = home_team_id_on(timelines.get(user.id), entry.entry_date)
+        if home_team_id is None:
+            home_team_id = user.team_id
         result.append(
             DetailedTimesheetRow(
                 entry_date=entry.entry_date,
                 designer_name=f"{user.first_name} {user.last_name}".strip(),
-                team_name=team_name,
+                team_name=team_names.get(home_team_id) if home_team_id else None,
                 customer_name=entry_customer_name or project_customer_name,
                 tool_number=tool_number,
                 task_name=task_name,

@@ -181,6 +181,142 @@ def entry_date_in_windows(entry_date: date, windows: list[tuple[date, date]] | N
     return any(start <= entry_date <= end for start, end in windows)
 
 
+def home_team_id_on(
+    timeline: list[tuple[date, date, UUID]] | None,
+    as_of: date,
+) -> UUID | None:
+    """Return primary home team on ``as_of`` from a user timeline."""
+    if not timeline:
+        return None
+    for start, end, team_id in timeline:
+        if start <= as_of <= end:
+            return team_id
+    return None
+
+
+def primary_home_team_timeline(
+    db: Session,
+    user_ids: set[UUID] | frozenset[UUID],
+    *,
+    range_start: date,
+    range_end: date,
+) -> dict[UUID, list[tuple[date, date, UUID]]]:
+    """
+    Map user_id → ordered primary-home intervals ``(start, end, team_id)`` clipped
+    to ``[range_start, range_end]``.
+
+    Uses ``TeamMembershipPeriod`` (same flooring rules as membership windows) so
+    hours before a transfer stay on the previous team and hours from the transfer
+    date onward attribute to the new team — even when ``User.team_id`` already
+    points at the destination.
+    """
+    if not user_ids or range_start > range_end:
+        return {}
+
+    user_tuple = tuple(user_ids)
+    members = list(
+        db.scalars(
+            select(TeamMember).where(
+                TeamMember.user_id.in_(user_tuple),
+                TeamMember.is_primary.is_(True),
+            )
+        ).all()
+    )
+    member_floors: dict[tuple[UUID, UUID], date] = {}
+    team_ids_for_floors: set[UUID] = set()
+    for member in members:
+        team_ids_for_floors.add(member.team_id)
+        floor = _member_start_floor(member)
+        if floor is not None:
+            member_floors[(member.user_id, member.team_id)] = floor
+
+    transfer_floors = _transfer_start_floors(
+        db, team_ids_for_floors, range_end=range_end
+    )
+    for key, transfer_on in transfer_floors.items():
+        prev = member_floors.get(key)
+        if prev is None or transfer_on > prev:
+            member_floors[key] = transfer_on
+
+    periods = db.scalars(
+        select(TeamMembershipPeriod).where(
+            TeamMembershipPeriod.user_id.in_(user_tuple),
+            TeamMembershipPeriod.is_primary.is_(True),
+            TeamMembershipPeriod.effective_from <= range_end,
+        )
+    ).all()
+
+    timelines: dict[UUID, list[tuple[date, date, UUID]]] = {}
+    users_with_period: set[UUID] = set()
+    for period in periods:
+        p_end = period.effective_to or range_end
+        if p_end < range_start:
+            continue
+        period_start = period.effective_from
+        if period.effective_to is None:
+            floor = member_floors.get((period.user_id, period.team_id))
+            if floor is not None and floor > period_start:
+                period_start = floor
+        if period_start > range_end:
+            continue
+        start = max(period_start, range_start)
+        end = min(p_end, range_end)
+        if start > end:
+            continue
+        users_with_period.add(period.user_id)
+        timelines.setdefault(period.user_id, []).append(
+            (start, end, period.team_id)
+        )
+
+    # Live primary membership without a covering period (legacy / backfill gaps).
+    for member in members:
+        if member.user_id in users_with_period:
+            continue
+        start_raw = member_floors.get((member.user_id, member.team_id))
+        if start_raw is not None and start_raw > range_end:
+            continue
+        start = max(start_raw or range_start, range_start)
+        end = range_end
+        if start > end:
+            continue
+        timelines.setdefault(member.user_id, []).append(
+            (start, end, member.team_id)
+        )
+        users_with_period.add(member.user_id)
+
+    # Fallback: current User.team_id when no membership history exists.
+    missing = [uid for uid in user_ids if uid not in users_with_period]
+    if missing:
+        for person in db.scalars(select(User).where(User.id.in_(tuple(missing)))).all():
+            if person.team_id is None:
+                continue
+            timelines[person.id] = [(range_start, range_end, person.team_id)]
+
+    return {
+        uid: _merge_team_intervals(intervals)
+        for uid, intervals in timelines.items()
+    }
+
+
+def _merge_team_intervals(
+    intervals: list[tuple[date, date, UUID]],
+) -> list[tuple[date, date, UUID]]:
+    """Merge adjacent/overlapping intervals only when they share the same team."""
+    if not intervals:
+        return []
+    ordered = sorted(intervals, key=lambda row: (row[0], row[1], str(row[2])))
+    merged: list[tuple[date, date, UUID]] = [ordered[0]]
+    for start, end, team_id in ordered[1:]:
+        prev_start, prev_end, prev_team = merged[-1]
+        if team_id == prev_team and (
+            start <= prev_end or (start - prev_end).days == 1
+        ):
+            merged[-1] = (prev_start, max(prev_end, end), team_id)
+        else:
+            merged.append((start, end, team_id))
+    return merged
+
+
 def membership_entry_sql_clause(
     windows: dict[UUID, list[tuple[date, date]]],
 ) -> ColumnElement[bool]:

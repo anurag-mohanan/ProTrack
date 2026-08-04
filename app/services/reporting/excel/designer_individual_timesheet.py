@@ -16,6 +16,7 @@ from app.crud.foundation import get_or_create_company_settings
 from app.crud.timesheet_entry_metrics import build_timesheet_entry_reads
 from app.models.enums import TimesheetStatus, WorkCategory
 from app.models.models import Timesheet, TimesheetEntry, User
+from app.services.reporting.export_filenames import designer_timesheet_download_filename
 from app.services.reporting.excel.letterhead import (
     set_print_layout,
     style_total_row,
@@ -177,10 +178,9 @@ def generate_designer_individual_timesheet_excel(
 
     buffer = BytesIO()
     workbook.save(buffer)
-    safe_name = "".join(
-        ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in designer_name
-    ).strip("_") or "designer"
-    filename = (
-        f"timesheet-{safe_name}-{period_start.isoformat()}_to_{period_end.isoformat()}.xlsx"
+    filename = designer_timesheet_download_filename(
+        designer_name=designer_name,
+        period_start=period_start,
+        period_end=period_end,
     )
     return buffer.getvalue(), filename

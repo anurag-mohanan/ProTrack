@@ -40,7 +40,7 @@ from app.crud.team_reports import (
 )
 from app.models.enums import ActivityAction, EntityType, ProjectStage
 from app.crud.dashboard import get_designer_workload
-from app.models.models import Customer, User
+from app.models.models import Customer, Team, User
 from app.services.activity_service import log_activity
 from app.schemas.dashboard import DesignerWorkload
 from app.schemas.reports import (
@@ -87,7 +87,11 @@ from app.services.reporting.designer_team_timesheet import (
 )
 from app.services.reporting.excel.customer_timesheet import generate_customer_timesheet_excel
 from app.services.reporting.excel.designer_team_timesheet import generate_designer_team_timesheet_excel
-from app.services.reporting.export_filenames import customer_timesheet_download_filename
+from app.services.reporting.export_filenames import (
+    customer_timesheet_download_filename,
+    engineering_report_download_filename,
+    team_timesheet_download_filename,
+)
 from app.services.reporting.schedule_store import list_schedules, upsert_schedule
 
 router = APIRouter(
@@ -292,15 +296,15 @@ def engineering_report_export(
                 scope=scope,  # type: ignore[arg-type]
             )
             content = generate_designer_team_timesheet_excel(timesheet_payload)
+            period_type = str(options.get("period_type") or timesheet_payload.period.period_type)
+            week_number = (
+                timesheet_payload.period.start_date.isocalendar()[1]
+                if period_type == "weekly"
+                else None
+            )
             if customer_id is not None:
                 customer = db.get(Customer, customer_id)
                 customer_name = customer.name if customer else "Customer"
-                period_type = str(options.get("period_type") or timesheet_payload.period.period_type)
-                week_number = (
-                    timesheet_payload.period.start_date.isocalendar()[1]
-                    if period_type == "weekly"
-                    else None
-                )
                 filename = customer_timesheet_download_filename(
                     customer_name=customer_name,
                     period_type=period_type,
@@ -308,11 +312,51 @@ def engineering_report_export(
                     week_number=week_number,
                 )
             else:
-                filename = f"{report_id}-{timesheet_payload.period.start_date.isoformat()}.xlsx"
+                team_name = "All_Teams"
+                scoped_team_id = getattr(scope, "team_id", None) if scope is not None else None
+                if scoped_team_id is None and scope is not None:
+                    team_ids = getattr(scope, "team_ids", None)
+                    if team_ids is not None and len(team_ids) == 1:
+                        scoped_team_id = next(iter(team_ids))
+                if scoped_team_id is not None:
+                    team = db.get(Team, scoped_team_id)
+                    if team is not None:
+                        team_name = team.name
+                elif timesheet_payload.team_count == 1 and timesheet_payload.designers:
+                    team_name = timesheet_payload.designers[0].team_name or "All_Teams"
+                filename = team_timesheet_download_filename(
+                    team_name=team_name,
+                    period_type=period_type,
+                    period_start=timesheet_payload.period.start_date,
+                    week_number=week_number,
+                )
         else:
             payload = reporting_engine.build_report(db, report_id=report_id, **options)
             content = reporting_engine.export_excel(payload)
-            filename = f"{report_id}-{payload.period.start_date.isoformat()}.xlsx"
+            period_type = str(options.get("period_type") or payload.period.period_type)
+            week_number = (
+                payload.period.start_date.isocalendar()[1]
+                if period_type == "weekly"
+                else None
+            )
+            scope = options.get("scope")
+            subject = None
+            scoped_team_id = getattr(scope, "team_id", None) if scope is not None else None
+            if scoped_team_id is None and scope is not None:
+                team_ids = getattr(scope, "team_ids", None)
+                if team_ids is not None and len(team_ids) == 1:
+                    scoped_team_id = next(iter(team_ids))
+            if scoped_team_id is not None:
+                team = db.get(Team, scoped_team_id)
+                if team is not None:
+                    subject = team.name
+            filename = engineering_report_download_filename(
+                report_id=report_id,
+                period_type=period_type,
+                period_start=payload.period.start_date,
+                subject=subject,
+                week_number=week_number,
+            )
     except KeyError as exc:
         if "Unknown report" in str(exc) or "not registered" in str(exc):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

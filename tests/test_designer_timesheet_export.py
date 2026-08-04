@@ -45,8 +45,7 @@ def test_generate_designer_individual_timesheet_excel(session):
         period_label="July 2026",
     )
     assert content[:2] == b"PK"
-    assert "2026-07-01" in filename
-    assert "2026-07-31" in filename
+    assert filename == "Prosohm_Binil_JR_July_2026.xlsx"
 
 
 def test_export_designer_timesheet_endpoint(client, auth_headers, session):

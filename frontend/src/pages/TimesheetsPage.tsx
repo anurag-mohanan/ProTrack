@@ -8,6 +8,10 @@ import { TimesheetEntryEditDialog } from '../components/timesheets/TimesheetEntr
 import { TimesheetEntryDeleteDialog } from '../components/timesheets/TimesheetEntryDeleteDialog';
 import { TimesheetEntriesTable } from '../components/timesheets/TimesheetEntriesTable';
 import { TimesheetMonthNavigation } from '../components/timesheets/TimesheetMonthNavigation';
+import {
+  OverviewGroupingToggle,
+  TimesheetPeriodNavigation,
+} from '../components/timesheets/TimesheetPeriodNavigation';
 import { TimesheetMonthSummaryBar } from '../components/timesheets/TimesheetMonthSummaryBar';
 import { TimesheetNpReferencePanel } from '../components/timesheets/TimesheetNpReferencePanel';
 import { TimesheetQuickActions } from '../components/timesheets/TimesheetQuickActions';
@@ -46,12 +50,19 @@ import {
   weekWorkingDayCount,
 } from '../utils/timesheetMonth';
 import {
+  buildDesignerTimesheetSections,
   buildScopedOverviewSummary,
   buildTeamTimesheetSections,
   buildTodayScopedSummary,
   buildWeeklyScopedSummary,
   teamSectionBreakdownLabel,
 } from '../utils/timesheetOverview';
+import {
+  defaultAnchorForPeriod,
+  normalizeAnchor,
+  periodDateBounds,
+  type ReportPeriodType,
+} from '../utils/reportPeriodSelection';
 import {
   getTimesheetLockPolicy,
   isTimesheetMonthCalendarLocked,
@@ -68,6 +79,9 @@ export function TimesheetsPage() {
   const { user } = useAuth();
   const { showError, showSuccess } = useToast();
   const [monthValue, setMonthValue] = useState(currentMonthValue());
+  const [periodType, setPeriodType] = useState<ReportPeriodType>('monthly');
+  const [periodAnchor, setPeriodAnchor] = useState(() => defaultAnchorForPeriod('monthly'));
+  const [overviewGrouping, setOverviewGrouping] = useState<'designer' | 'team'>('designer');
   const [editDialogEntry, setEditDialogEntry] = useState<TimesheetEntry | null>(null);
   const [deleteDialogEntry, setDeleteDialogEntry] = useState<TimesheetEntry | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
@@ -91,8 +105,27 @@ export function TimesheetsPage() {
   const showEntryForm = canEnterOwn && !viewAllUsers;
   const needsEntryLookups = showEntryForm;
 
-  const workspace = useTimesheetMonthWorkspace(user, monthValue, viewAllUsers, needsEntryLookups);
+  const allUsersPeriodBounds = useMemo(
+    () => (viewAllUsers ? periodDateBounds(periodType, periodAnchor) : null),
+    [viewAllUsers, periodType, periodAnchor],
+  );
+
+  // Keep My Entries month in sync when jumping periods in All Users.
+  useEffect(() => {
+    if (allUsersPeriodBounds?.monthValue) {
+      setMonthValue(allUsersPeriodBounds.monthValue);
+    }
+  }, [allUsersPeriodBounds?.monthValue]);
+
+  const workspace = useTimesheetMonthWorkspace(
+    user,
+    monthValue,
+    viewAllUsers,
+    needsEntryLookups,
+    allUsersPeriodBounds,
+  );
   const monthLabel = formatMonthLabel(monthValue);
+  const periodLabel = allUsersPeriodBounds?.label ?? monthLabel;
 
   useEffect(() => {
     void fetchTimesheetPolicySettings().catch(() => {
@@ -118,17 +151,27 @@ export function TimesheetsPage() {
   const overviewSections = useMemo<TimesheetOverviewSection[]>(() => {
     if (!viewAllUsers || !workspace.overviewContext) return [];
 
-    const teamSections = buildTeamTimesheetSections(
-      workspace.overviewContext.teams,
-      workspace.overviewContext.users,
-      workspace.entries,
-      workspace.workingDayCount,
-    );
+    const teamSections =
+      overviewGrouping === 'designer'
+        ? buildDesignerTimesheetSections(
+            workspace.overviewContext.users,
+            workspace.entries,
+            workspace.workingDayCount,
+          )
+        : buildTeamTimesheetSections(
+            workspace.overviewContext.teams,
+            workspace.overviewContext.users,
+            workspace.entries,
+            workspace.workingDayCount,
+          );
 
     return teamSections.map((section) => ({
       title: section.teamName,
       subtitle: teamSectionBreakdownLabel(section.summary),
-      emptyText: 'No team members required to fill timesheets',
+      emptyText:
+        overviewGrouping === 'designer'
+          ? 'No designers required to fill timesheets'
+          : 'No team members required to fill timesheets',
       users: section.users.map((person) => ({
         id: person.id,
         name: `${person.first_name} ${person.last_name}`.trim(),
@@ -141,6 +184,7 @@ export function TimesheetsPage() {
     workspace.overviewContext,
     workspace.entries,
     workspace.workingDayCount,
+    overviewGrouping,
   ]);
 
   const scopedOverviewUsers = workspace.overviewContext?.users ?? [];
@@ -393,38 +437,69 @@ export function TimesheetsPage() {
     (sheet) => sheet.status === 'submitted',
   );
 
+  const modeToggle =
+    canViewAll && canEnterOwn ? (
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={viewMode}
+        onChange={(_, next) => {
+          if (next) setViewMode(next);
+        }}
+      >
+        <ToggleButton value="mine">My Entries</ToggleButton>
+        <ToggleButton value="all">All Users</ToggleButton>
+      </ToggleButtonGroup>
+    ) : null;
+
+  const submitButton = showSubmit ? (
+    <ProsohmButton
+      buttonVariant="primary"
+      loading={workspace.submitMonthMutation.isPending}
+      onClick={() => void handleSubmitMonth()}
+    >
+      Submit Timesheet
+    </ProsohmButton>
+  ) : null;
+
   return (
     <PageContainer>
-      <TimesheetMonthNavigation
-        monthValue={monthValue}
-        onMonthChange={setMonthValue}
-        endAdornment={
-          <>
-            {canViewAll && canEnterOwn ? (
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={viewMode}
-                onChange={(_, next) => {
-                  if (next) setViewMode(next);
-                }}
-              >
-                <ToggleButton value="mine">My Entries</ToggleButton>
-                <ToggleButton value="all">All Users</ToggleButton>
-              </ToggleButtonGroup>
-            ) : null}
-            {showSubmit ? (
-              <ProsohmButton
-                buttonVariant="primary"
-                loading={workspace.submitMonthMutation.isPending}
-                onClick={() => void handleSubmitMonth()}
-              >
-                Submit Timesheet
-              </ProsohmButton>
-            ) : null}
-          </>
-        }
-      />
+      {viewAllUsers ? (
+        <TimesheetPeriodNavigation
+          periodType={periodType}
+          anchor={periodAnchor}
+          periodLabel={periodLabel}
+          onPeriodTypeChange={(next) => {
+            setPeriodType(next);
+            setPeriodAnchor(normalizeAnchor(next, periodAnchor));
+          }}
+          onAnchorChange={setPeriodAnchor}
+          endAdornment={
+            <>
+              {modeToggle}
+              {submitButton}
+            </>
+          }
+          secondaryAdornment={
+            <OverviewGroupingToggle value={overviewGrouping} onChange={setOverviewGrouping} />
+          }
+        />
+      ) : (
+        <TimesheetMonthNavigation
+          monthValue={monthValue}
+          onMonthChange={(next) => {
+            setMonthValue(next);
+            setPeriodType('monthly');
+            setPeriodAnchor(normalizeAnchor('monthly', `${next}-01`));
+          }}
+          endAdornment={
+            <>
+              {modeToggle}
+              {submitButton}
+            </>
+          }
+        />
+      )}
 
       {viewAllUsers && isComplianceViewer ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
@@ -434,11 +509,18 @@ export function TimesheetsPage() {
         </Alert>
       ) : null}
 
-      {viewAllUsers ? (
+      {viewAllUsers && overviewGrouping === 'team' ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
-          Hours under each team only cover days that person belonged to that team. After a
-          transfer, earlier days stay on the previous team section — open both to see the full
-          month for that designer.
+          By team: hours under each team only cover days that person belonged to that team. Use{' '}
+          <strong>By designer (full hours)</strong> to see every entry in the selected period in one
+          place.
+        </Alert>
+      ) : null}
+
+      {viewAllUsers && overviewGrouping === 'designer' ? (
+        <Alert severity="info" sx={{ mb: 1.5 }}>
+          Showing full hours for each designer in {periodLabel.toLowerCase()}. Switch period above
+          (week / month / quarter / year) to change the range.
         </Alert>
       ) : null}
 
@@ -457,7 +539,7 @@ export function TimesheetsPage() {
 
       {viewAllUsers && overviewSummary.remainingHours < 0 ? (
         <Alert severity="warning" sx={{ mb: 1.5 }}>
-          Team entered hours exceed expected hours for this month.
+          Team entered hours exceed expected hours for this period.
         </Alert>
       ) : null}
 
@@ -546,7 +628,7 @@ export function TimesheetsPage() {
       {viewAllUsers ? (
         <>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
-            Timesheets for {monthLabel}
+            Timesheets for {periodLabel}
           </Typography>
           <TimesheetUsersOverview
             sections={overviewSections}

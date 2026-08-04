@@ -29,6 +29,7 @@ import {
   summarizeMonthEntries,
   weekStartMonday,
 } from '../utils/timesheetMonth';
+import type { PeriodDateBounds } from '../utils/reportPeriodSelection';
 import { invalidateTimesheetRelatedQueries } from '../utils/queryInvalidation';
 
 export function useTimesheetMonthWorkspace(
@@ -36,9 +37,13 @@ export function useTimesheetMonthWorkspace(
   monthValue: string,
   viewAllUsers = false,
   needsEntryLookups = true,
+  /** When set (All Users), loads this inclusive date range instead of the month only. */
+  periodBounds?: PeriodDateBounds | null,
 ) {
   const queryClient = useQueryClient();
-  const bounds = useMemo(() => monthBounds(monthValue), [monthValue]);
+  const monthRange = useMemo(() => monthBounds(monthValue), [monthValue]);
+  const bounds = periodBounds ?? monthRange;
+  const rangeKey = `${bounds.start}:${bounds.end}`;
   const userId = user?.id;
   const dailyLimit = user?.working_hours_per_day ?? 8;
 
@@ -70,8 +75,12 @@ export function useTimesheetMonthWorkspace(
   });
 
   const usersQuery = useQuery({
-    queryKey: ['timesheets', 'overview', monthValue],
-    queryFn: () => fetchTimesheetOverview(monthValue),
+    queryKey: ['timesheets', 'overview', rangeKey],
+    queryFn: () =>
+      fetchTimesheetOverview({
+        period_start: bounds.start,
+        period_end: bounds.end,
+      }),
     enabled: viewAllUsers,
     staleTime: QUERY_STALE_TIMES.lookups,
   });
@@ -79,11 +88,13 @@ export function useTimesheetMonthWorkspace(
   const scopeUserId = viewAllUsers ? undefined : userId;
 
   const timesheetsQuery = useQuery({
-    queryKey: [...timesheetQueryKeys.month(monthValue, userId), viewAllUsers ? 'all' : 'self'],
+    queryKey: [...timesheetQueryKeys.month(rangeKey, userId), viewAllUsers ? 'all' : 'self'],
     queryFn: () =>
       fetchAllTimesheets({
         user_id: scopeUserId,
-        month: monthValue,
+        ...(viewAllUsers || periodBounds
+          ? { period_start: bounds.start, period_end: bounds.end }
+          : { month: monthValue }),
         limit: 2000,
       }),
     enabled: Boolean(userId),
@@ -93,7 +104,7 @@ export function useTimesheetMonthWorkspace(
 
   const entriesQuery = useQuery({
     queryKey: [
-      ...timesheetQueryKeys.monthEntries(monthValue, userId),
+      ...timesheetQueryKeys.monthEntries(rangeKey, userId),
       viewAllUsers ? 'all' : 'self',
     ],
     queryFn: () =>
@@ -150,12 +161,12 @@ export function useTimesheetMonthWorkspace(
   const invalidateMonth = useCallback(() => {
     invalidateTimesheetRelatedQueries(queryClient);
     void queryClient.invalidateQueries({
-      queryKey: timesheetQueryKeys.month(monthValue, userId),
+      queryKey: timesheetQueryKeys.month(rangeKey, userId),
     });
     void queryClient.invalidateQueries({
-      queryKey: timesheetQueryKeys.monthEntries(monthValue, userId),
+      queryKey: timesheetQueryKeys.monthEntries(rangeKey, userId),
     });
-  }, [monthValue, queryClient, userId]);
+  }, [rangeKey, queryClient, userId]);
 
   const saveEntryMutation = useMutation({
     mutationFn: async (payload: {
@@ -288,6 +299,7 @@ export function useTimesheetMonthWorkspace(
     holidaysQuery.isLoading ||
     (needsEntryLookups &&
       (projectsQuery.isLoading || npCodesQuery.isLoading || taskTypesQuery.isLoading)) ||
+    (viewAllUsers && usersQuery.isLoading) ||
     timesheetsQuery.isLoading ||
     entriesQuery.isLoading;
 
@@ -295,6 +307,7 @@ export function useTimesheetMonthWorkspace(
     holidaysQuery.error ??
     timesheetsQuery.error ??
     entriesQuery.error ??
+    (viewAllUsers ? usersQuery.error : null) ??
     (needsEntryLookups
       ? projectsQuery.error ?? npCodesQuery.error ?? taskTypesQuery.error
       : null);

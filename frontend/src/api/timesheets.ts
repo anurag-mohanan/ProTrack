@@ -33,7 +33,13 @@ export interface TimesheetEntryBulkResponse {
   deleted: string[];
 }
 
-export async function fetchTimesheets(params?: ListParams & { month?: string }): Promise<Timesheet[]> {
+export async function fetchTimesheets(
+  params?: ListParams & {
+    month?: string;
+    period_start?: string;
+    period_end?: string;
+  },
+): Promise<Timesheet[]> {
   const { data } = await apiClient.get<Timesheet[]>(
     `/timesheets${buildQuery(params)}`,
   );
@@ -42,7 +48,11 @@ export async function fetchTimesheets(params?: ListParams & { month?: string }):
 
 /** Load every page for a month / filter — avoids silent truncation at API limit. */
 export async function fetchAllTimesheets(
-  params?: ListParams & { month?: string },
+  params?: ListParams & {
+    month?: string;
+    period_start?: string;
+    period_end?: string;
+  },
 ): Promise<Timesheet[]> {
   const pageSize = Math.min(params?.limit ?? 2000, 10000);
   const all: Timesheet[] = [];
@@ -56,11 +66,17 @@ export async function fetchAllTimesheets(
   return all;
 }
 
-export async function fetchTimesheetOverview(
-  month?: string,
-): Promise<TimesheetOverviewContext> {
+export async function fetchTimesheetOverview(params?: {
+  month?: string;
+  period_start?: string;
+  period_end?: string;
+}): Promise<TimesheetOverviewContext> {
   const { data } = await apiClient.get<TimesheetOverviewContext>('/timesheets/overview', {
-    params: month ? { month } : undefined,
+    params: params?.period_start && params?.period_end
+      ? { period_start: params.period_start, period_end: params.period_end }
+      : params?.month
+        ? { month: params.month }
+        : undefined,
   });
   return data;
 }

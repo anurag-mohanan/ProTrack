@@ -133,3 +133,33 @@ def test_month_entries_support_high_limit_and_pagination(client, session):
     assert second.status_code == 200
     ids = {row["id"] for row in first.json()} | {row["id"] for row in second.json()}
     assert len(ids) == 4
+
+
+def test_overview_accepts_explicit_period_range(client, session):
+    response = client.get(
+        "/api/v1/timesheets/overview",
+        params={
+            "period_start": "2026-07-01",
+            "period_end": "2026-09-30",
+        },
+        headers=client.auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["month_start"] == "2026-07-01"
+    assert body["month_end"] == "2026-09-30"
+    assert "teams" in body
+    assert "users" in body
+
+
+def test_timesheets_list_by_period_range(client, session):
+    response = client.get(
+        "/api/v1/timesheets",
+        params={
+            "period_start": "2026-07-01",
+            "period_end": "2026-07-31",
+            "limit": 50,
+        },
+        headers=client.auth_headers,
+    )
+    assert response.status_code == 200, response.text

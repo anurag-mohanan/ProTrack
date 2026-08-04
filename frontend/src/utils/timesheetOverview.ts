@@ -117,6 +117,43 @@ export function buildTeamTimesheetSections(
     .filter((section) => section.users.length > 0);
 }
 
+/**
+ * One section with every tracked designer and their full period hours
+ * (no membership-date clipping). Use this when managers need complete totals.
+ */
+export function buildDesignerTimesheetSections(
+  users: TimesheetOverviewUser[],
+  entries: TimesheetEntry[],
+  workingDayCount: number,
+): TimesheetTeamSection[] {
+  const trackedUsers = [...users]
+    .filter((user) => user.requires_timesheet !== false)
+    .sort((left, right) => {
+      const leftName = `${left.last_name} ${left.first_name}`.toLowerCase();
+      const rightName = `${right.last_name} ${right.first_name}`.toLowerCase();
+      return leftName.localeCompare(rightName);
+    });
+  const userIdSet = new Set(trackedUsers.map((user) => user.id));
+  const scopedEntries = filterEntriesForUsers(entries, userIdSet);
+  const entriesByUserId = new Map<string, TimesheetEntry[]>();
+  for (const entry of scopedEntries) {
+    const key = entry.user_id ?? 'unknown';
+    const list = entriesByUserId.get(key);
+    if (list) list.push(entry);
+    else entriesByUserId.set(key, [entry]);
+  }
+  const expectedHours = expectedHoursForUsers(trackedUsers, workingDayCount);
+  return [
+    {
+      teamId: null,
+      teamName: 'All designers',
+      users: trackedUsers,
+      summary: summarizeMonthEntries(scopedEntries, expectedHours),
+      entriesByUserId,
+    },
+  ];
+}
+
 export function buildScopedOverviewSummary(
   users: TimesheetOverviewUser[],
   entries: TimesheetEntryLike[],

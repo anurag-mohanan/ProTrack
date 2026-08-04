@@ -176,6 +176,24 @@ def month_bounds_from_value(month: str | None = None) -> tuple[date, date]:
     return start, end
 
 
+def resolve_overview_bounds(
+    *,
+    month: str | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> tuple[date, date]:
+    """Resolve inclusive overview window from explicit dates or a YYYY-MM month."""
+    if period_start is not None and period_end is not None:
+        if period_end < period_start:
+            raise ValueError("period_end must be on or after period_start")
+        return period_start, period_end
+    if period_start is not None:
+        return period_start, period_start
+    if period_end is not None:
+        return period_end, period_end
+    return month_bounds_from_value(month)
+
+
 def _serialize_membership_windows(
     windows: dict[UUID, list[tuple[date, date]]],
     user_ids: list[UUID],
@@ -196,6 +214,8 @@ def build_timesheet_overview(
     actor: User,
     *,
     month: str | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
 ) -> dict:
     """Return team groupings and user metadata for the timesheet overview UI.
 
@@ -203,10 +223,14 @@ def build_timesheet_overview(
     Office Admin, Planning Board, System Admin, and other monitor-only accounts
     are omitted so completion chasing stays focused.
 
-    Team sections use dated membership windows for the overview month so line
+    Team sections use dated membership windows for the overview range so line
     items (and roster) only cover days the person belonged to that team.
     """
-    month_start, month_end = month_bounds_from_value(month)
+    month_start, month_end = resolve_overview_bounds(
+        month=month,
+        period_start=period_start,
+        period_end=period_end,
+    )
     team_scope = get_timesheet_leader_team_ids(db, actor)
     visible_user_ids = get_timesheet_visible_user_ids(
         db, actor, range_start=month_start, range_end=month_end

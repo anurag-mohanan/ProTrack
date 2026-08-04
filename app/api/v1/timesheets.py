@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -42,22 +42,34 @@ def list_timesheets(
     user_id: UUID | None = None,
     status: TimesheetStatus | None = None,
     month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    period_start: date | None = None,
+    period_end: date | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     from app.services.timesheet_overview_service import (
         get_timesheet_visible_user_ids,
-        month_bounds_from_value,
+        resolve_overview_bounds,
     )
 
-    # Month-scoped list must filter in SQL before limit. Fetching a global page
+    # Range-scoped list must filter in SQL before limit. Fetching a global page
     # then filtering in Python silently drops most designers' weeks.
-    if month is not None:
-        month_start, month_end = month_bounds_from_value(month)
-        week_overlap_start = month_start - timedelta(days=6)
+    if month is not None or period_start is not None or period_end is not None:
+        try:
+            range_start, range_end = resolve_overview_bounds(
+                month=month,
+                period_start=period_start,
+                period_end=period_end,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        week_overlap_start = range_start - timedelta(days=6)
         stmt = select(Timesheet).where(
             Timesheet.week_start >= week_overlap_start,
-            Timesheet.week_start <= month_end,
+            Timesheet.week_start <= range_end,
         )
         if status is not None:
             stmt = stmt.where(Timesheet.status == status)
@@ -67,23 +79,25 @@ def list_timesheets(
             visible = get_timesheet_visible_user_ids(
                 db,
                 current_user,
-                range_start=month_start,
-                range_end=month_end,
+                range_start=range_start,
+                range_end=range_end,
             )
             if visible is not None:
                 if not visible:
                     return []
                 stmt = stmt.where(Timesheet.user_id.in_(tuple(visible)))
-        stmt = stmt.order_by(Timesheet.week_start.desc(), Timesheet.user_id).offset(skip).limit(limit)
+        stmt = (
+            stmt.order_by(Timesheet.week_start.desc(), Timesheet.user_id)
+            .offset(skip)
+            .limit(limit)
+        )
         candidates = list(db.scalars(stmt).all())
-        # Keep weeks that actually overlap the calendar month.
-        rows = [
+        return [
             row
             for row in candidates
-            if row.week_start <= month_end
-            and (row.week_start + timedelta(days=6)) >= month_start
+            if row.week_start <= range_end
+            and (row.week_start + timedelta(days=6)) >= range_start
         ]
-        return rows
 
     filters = {
         key: value
@@ -102,11 +116,32 @@ def list_timesheets(
 @router.get("/overview", response_model=TimesheetOverviewContext)
 def get_timesheet_overview(
     month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    period_start: date | None = None,
+    period_end: date | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.services.timesheet_overview_service import resolve_overview_bounds
+
+    try:
+        resolve_overview_bounds(
+            month=month,
+            period_start=period_start,
+            period_end=period_end,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     return TimesheetOverviewContext(
-        **build_timesheet_overview(db, current_user, month=month)
+        **build_timesheet_overview(
+            db,
+            current_user,
+            month=month,
+            period_start=period_start,
+            period_end=period_end,
+        )
     )
 
 

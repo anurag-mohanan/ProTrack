@@ -162,3 +162,90 @@ export function selectionFromAnchor(
     weekMonday: toIsoDate(mondayOf(date)),
   };
 }
+
+export interface PeriodDateBounds {
+  start: string;
+  end: string;
+  days: string[];
+  label: string;
+  /** YYYY-MM of the period start — used for calendar lock / month jump. */
+  monthValue: string;
+}
+
+/** Inclusive calendar bounds for week / month / quarter / year. */
+export function periodDateBounds(
+  periodType: ReportPeriodType,
+  anchor: string,
+): PeriodDateBounds {
+  const normalized = normalizeAnchor(periodType, anchor);
+  const startDate = parseIsoDate(normalized);
+  let endDate = new Date(startDate);
+
+  if (periodType === 'weekly') {
+    endDate.setDate(startDate.getDate() + 6);
+  } else if (periodType === 'monthly') {
+    endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
+  } else if (periodType === 'quarterly') {
+    endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 3, 0);
+  } else if (periodType === 'yearly') {
+    endDate = new Date(startDate.getFullYear(), 11, 31);
+  }
+
+  const start = toIsoDate(startDate);
+  const end = toIsoDate(endDate);
+  const days: string[] = [];
+  const cursor = new Date(startDate);
+  while (cursor <= endDate) {
+    days.push(toIsoDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const fmt = (iso: string) =>
+    parseIsoDate(iso).toLocaleDateString(undefined, {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  const typeLabel =
+    periodType === 'weekly'
+      ? 'Week'
+      : periodType === 'quarterly'
+        ? 'Quarter'
+        : periodType === 'yearly'
+          ? 'Year'
+          : 'Month';
+
+  return {
+    start,
+    end,
+    days,
+    label: `${typeLabel}: ${fmt(start)} – ${fmt(end)}`,
+    monthValue: `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`,
+  };
+}
+
+export function shiftPeriodAnchor(
+  periodType: ReportPeriodType,
+  anchor: string,
+  delta: number,
+): string {
+  const normalized = normalizeAnchor(periodType, anchor);
+  const date = parseIsoDate(normalized);
+  if (periodType === 'weekly') {
+    date.setDate(date.getDate() + delta * 7);
+  } else if (periodType === 'monthly') {
+    date.setMonth(date.getMonth() + delta);
+  } else if (periodType === 'quarterly') {
+    date.setMonth(date.getMonth() + delta * 3);
+  } else if (periodType === 'yearly') {
+    date.setFullYear(date.getFullYear() + delta);
+  }
+  return normalizeAnchor(periodType, toIsoDate(date));
+}
+
+export const TIMESHEET_PERIOD_OPTIONS: { value: ReportPeriodType; label: string }[] = [
+  { value: 'weekly', label: 'Week' },
+  { value: 'monthly', label: 'Month' },
+  { value: 'quarterly', label: 'Quarter' },
+  { value: 'yearly', label: 'Year' },
+];

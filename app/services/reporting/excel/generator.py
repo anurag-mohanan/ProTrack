@@ -13,14 +13,11 @@ from openpyxl.workbook.properties import CalcProperties
 from app.schemas.reporting import EngineeringReportPayload
 from app.services.reporting.excel.letterhead import write_report_letterhead, set_print_layout
 from app.services.reporting.excel.styles import (
-    BODY_FONT,
     DANGER,
     KPI_FILL,
     KPI_LABEL_FONT,
     KPI_VALUE_FONT,
-    SUBTITLE_FONT,
     SUCCESS,
-    TITLE_FONT,
     WARNING,
     autofit_columns,
     freeze_and_filter,
@@ -99,15 +96,17 @@ def _write_table_sheet(
     headers: list[str],
     rows: list[list],
     *,
+    company_name: str = "",
+    period_label: str | None = None,
     variance_col: int | None = None,
 ) -> None:
     sheet = workbook.create_sheet(title[:31])
     next_row = write_report_letterhead(
         sheet,
-        company_name="",
+        company_name=company_name,
         report_title=title,
-        period_label=None,
-        col_span=max(len(headers), 4),
+        period_label=period_label,
+        col_span=max(len(headers), 6),
     )
     header_row = next_row
     for col, header in enumerate(headers, start=1):
@@ -171,7 +170,7 @@ def _write_designer_productivity(workbook: Workbook, payload: EngineeringReportP
         ]
         for row in payload.designer_productivity
     ]
-    _write_table_sheet(workbook, "Designer Productivity", headers, rows)
+    _write_table_sheet(workbook, "Designer Productivity", headers, rows, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_designer_tool_breakdown(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -204,7 +203,7 @@ def _write_designer_tool_breakdown(workbook: Workbook, payload: EngineeringRepor
         ]
         for row in payload.designer_tool_breakdown
     ]
-    _write_table_sheet(workbook, "Designer Tool Breakdown", headers, rows)
+    _write_table_sheet(workbook, "Designer Tool Breakdown", headers, rows, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_tool_hours(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -241,7 +240,7 @@ def _write_tool_hours(workbook: Workbook, payload: EngineeringReportPayload) -> 
         ]
         for row in payload.tool_hours
     ]
-    _write_table_sheet(workbook, "Tool Hours", headers, rows, variance_col=9)
+    _write_table_sheet(workbook, "Tool Hours", headers, rows, variance_col=9, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_customer_summary(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -266,7 +265,7 @@ def _write_customer_summary(workbook: Workbook, payload: EngineeringReportPayloa
         ]
         for row in payload.customer_summary
     ]
-    _write_table_sheet(workbook, "Customer Summary", headers, rows)
+    _write_table_sheet(workbook, "Customer Summary", headers, rows, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_team_summary(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -293,19 +292,19 @@ def _write_team_summary(workbook: Workbook, payload: EngineeringReportPayload) -
         ]
         for row in payload.team_summary
     ]
-    _write_table_sheet(workbook, "Team Summary", headers, rows)
+    _write_table_sheet(workbook, "Team Summary", headers, rows, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_function_hours(workbook: Workbook, payload: EngineeringReportPayload) -> None:
     headers = ["Function", "Hours", "%"]
     rows = [[row.function_group, float(row.hours), float(row.percent)] for row in payload.function_hours]
-    _write_table_sheet(workbook, "Function Hours", headers, rows)
+    _write_table_sheet(workbook, "Function Hours", headers, rows, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_np_analysis(workbook: Workbook, payload: EngineeringReportPayload) -> None:
     headers = ["Code", "Description", "Hours", "%"]
     rows = [[row.code, row.description, float(row.hours), float(row.percent)] for row in payload.np_analysis]
-    _write_table_sheet(workbook, "Non-Productive Analysis", headers, rows)
+    _write_table_sheet(workbook, "Non-Productive Analysis", headers, rows, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_leave_analysis(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -314,7 +313,7 @@ def _write_leave_analysis(workbook: Workbook, payload: EngineeringReportPayload)
         [row.designer_name, float(row.leave_days), float(row.leave_hours)]
         for row in payload.leave_analysis
     ]
-    _write_table_sheet(workbook, "Leave Analysis", headers, rows)
+    _write_table_sheet(workbook, "Leave Analysis", headers, rows, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_quoted_vs_actual(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -343,7 +342,7 @@ def _write_quoted_vs_actual(workbook: Workbook, payload: EngineeringReportPayloa
         ]
         for row in payload.quoted_vs_actual
     ]
-    _write_table_sheet(workbook, "Quoted vs Actual", headers, rows, variance_col=6)
+    _write_table_sheet(workbook, "Quoted vs Actual", headers, rows, variance_col=6, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_project_performance(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -374,7 +373,7 @@ def _write_project_performance(workbook: Workbook, payload: EngineeringReportPay
         ]
         for row in payload.project_performance
     ]
-    _write_table_sheet(workbook, "Project Performance", headers, rows)
+    _write_table_sheet(workbook, "Project Performance", headers, rows, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_detailed_entries(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -405,14 +404,19 @@ def _write_detailed_entries(workbook: Workbook, payload: EngineeringReportPayloa
         ]
         for row in payload.detailed_entries
     ]
-    _write_table_sheet(workbook, "Detailed Entries", headers, rows)
+    _write_table_sheet(workbook, "Detailed Entries", headers, rows, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_charts_sheet(workbook: Workbook, payload: EngineeringReportPayload) -> None:
     sheet = workbook.create_sheet("Charts")
-    sheet["A1"] = "Report Charts"
-    sheet["A1"].font = Font(name="Calibri", size=13, bold=True)
-    row = 3
+    next_row = write_report_letterhead(
+        sheet,
+        company_name=payload.company_name,
+        report_title="Report Charts",
+        period_label=payload.period.label,
+        col_span=8,
+    )
+    row = next_row
     for chart_data in payload.charts:
         sheet.cell(row=row, column=1, value=chart_data.title)
         sheet.cell(row=row, column=1).font = Font(bold=True)
@@ -445,17 +449,23 @@ def _write_charts_sheet(workbook: Workbook, payload: EngineeringReportPayload) -
             chart.set_categories(labels)
             sheet.add_chart(chart, f"D{start}")
         row += 16
+    set_print_layout(sheet)
 
 
 def _write_ai_insights(workbook: Workbook, payload: EngineeringReportPayload) -> None:
     sheet = workbook.create_sheet("AI Insights")
-    sheet["A1"] = "AI Engineering Insights"
-    sheet["A1"].font = Font(name="Calibri", size=13, bold=True)
-    sheet["A2"] = "Generated from live database analytics"
-    sheet["A2"].font = SUBTITLE_FONT
-    row = 4
+    next_row = write_report_letterhead(
+        sheet,
+        company_name=payload.company_name,
+        report_title="AI Engineering Insights",
+        period_label=payload.period.label,
+        extra_lines=["Generated from live database analytics"],
+        col_span=6,
+    )
+    row = next_row
     for insight in payload.ai_insights:
         sheet.cell(row=row, column=1, value=f"• {insight}")
         sheet.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
         row += 1
     sheet.column_dimensions["A"].width = 100
+    set_print_layout(sheet, landscape=False)

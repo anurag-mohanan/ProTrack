@@ -1,4 +1,4 @@
-"""Branded Excel letterhead — logo, title block, borders."""
+"""Branded Excel letterhead — logo (top-right), title block, borders."""
 
 from __future__ import annotations
 
@@ -17,8 +17,12 @@ from app.services.reporting.excel.styles import (
     TITLE_FONT,
 )
 
+_LOGO_MAX_WIDTH = 120
+_LOGO_MAX_HEIGHT = 52
+
 
 def resolve_company_logo_path() -> Path | None:
+    """Resolve the uploaded company logo from the Company Information settings folder."""
     if not COMPANY_LOGO_DIR.exists():
         return None
     for name in (
@@ -30,12 +34,46 @@ def resolve_company_logo_path() -> Path | None:
         candidate = COMPANY_LOGO_DIR / name
         if candidate.is_file():
             return candidate
-    # Fallback: first raster image in the folder
+    # Fallback: first raster image in the folder (matches /settings/company/logo)
     for pattern in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
         matches = sorted(COMPANY_LOGO_DIR.glob(pattern))
         if matches:
             return matches[0]
     return None
+
+
+def _fit_logo(image: XLImage) -> None:
+    """Scale logo to fit branding box while preserving aspect ratio."""
+    width = float(getattr(image, "width", 0) or _LOGO_MAX_WIDTH)
+    height = float(getattr(image, "height", 0) or _LOGO_MAX_HEIGHT)
+    if width <= 0 or height <= 0:
+        image.width = _LOGO_MAX_WIDTH
+        image.height = _LOGO_MAX_HEIGHT
+        return
+    scale = min(_LOGO_MAX_WIDTH / width, _LOGO_MAX_HEIGHT / height, 1.0)
+    image.width = max(int(width * scale), 24)
+    image.height = max(int(height * scale), 16)
+
+
+def add_company_logo_top_right(sheet, *, col_span: int = 8) -> bool:
+    """Embed company logo in the top-right of the sheet. Returns True when added."""
+    logo_path = resolve_company_logo_path()
+    if logo_path is None:
+        return False
+    try:
+        image = XLImage(str(logo_path))
+        _fit_logo(image)
+        anchor_col = max(col_span, 4)
+        sheet.add_image(image, f"{get_column_letter(anchor_col)}1")
+        sheet.row_dimensions[1].height = max(float(sheet.row_dimensions[1].height or 15), 40)
+        sheet.column_dimensions[get_column_letter(anchor_col)].width = max(
+            float(sheet.column_dimensions[get_column_letter(anchor_col)].width or 10),
+            18,
+        )
+        return True
+    except Exception:
+        # Missing Pillow or unsupported image format must not break exports.
+        return False
 
 
 def write_report_letterhead(
@@ -51,44 +89,31 @@ def write_report_letterhead(
     Write a branded header block and return the next free row index (1-based).
 
     Layout:
-      Row 1-3: logo (optional) + company name / report title / period
-      Row 4: spacer / accent bar
-      Row 5+: content starts
+      Left: company name / report title / period
+      Top-right: company logo (from Company Information upload)
+      Accent bar under letterhead, then content
     """
-    logo_path = resolve_company_logo_path()
-    text_col = 1
-    if logo_path is not None:
-        try:
-            image = XLImage(str(logo_path))
-            # Keep logo readable but compact
-            image.width = 96
-            image.height = 48
-            sheet.add_image(image, "A1")
-            text_col = 3
-            sheet.row_dimensions[1].height = 22
-            sheet.row_dimensions[2].height = 20
-            sheet.row_dimensions[3].height = 18
-        except Exception:
-            # Missing Pillow or unsupported image format must not break exports.
-            text_col = 1
+    logo_placed = add_company_logo_top_right(sheet, col_span=col_span)
+    # Leave the rightmost columns free so the logo is not covered by merged title text.
+    text_end = max(col_span - (2 if logo_placed else 0), 4)
 
     sheet.merge_cells(
         start_row=1,
-        start_column=text_col,
+        start_column=1,
         end_row=1,
-        end_column=max(col_span, text_col + 3),
+        end_column=text_end,
     )
-    title_cell = sheet.cell(row=1, column=text_col, value=company_name or "Prosohm")
+    title_cell = sheet.cell(row=1, column=1, value=company_name or "Prosohm")
     title_cell.font = TITLE_FONT
     title_cell.alignment = Alignment(vertical="center")
 
     sheet.merge_cells(
         start_row=2,
-        start_column=text_col,
+        start_column=1,
         end_row=2,
-        end_column=max(col_span, text_col + 3),
+        end_column=text_end,
     )
-    report_cell = sheet.cell(row=2, column=text_col, value=report_title)
+    report_cell = sheet.cell(row=2, column=1, value=report_title)
     report_cell.font = Font(name="Calibri", size=13, bold=True, color="1F2937")
     report_cell.alignment = Alignment(vertical="center")
 
@@ -96,27 +121,27 @@ def write_report_letterhead(
     if period_label:
         sheet.merge_cells(
             start_row=line,
-            start_column=text_col,
+            start_column=1,
             end_row=line,
-            end_column=max(col_span, text_col + 3),
+            end_column=text_end,
         )
-        period_cell = sheet.cell(row=line, column=text_col, value=period_label)
+        period_cell = sheet.cell(row=line, column=1, value=period_label)
         period_cell.font = SUBTITLE_FONT
         line += 1
 
     for extra in extra_lines or []:
         sheet.merge_cells(
             start_row=line,
-            start_column=text_col,
+            start_column=1,
             end_row=line,
-            end_column=max(col_span, text_col + 3),
+            end_column=text_end,
         )
-        cell = sheet.cell(row=line, column=text_col, value=extra)
+        cell = sheet.cell(row=line, column=1, value=extra)
         cell.font = BODY_FONT
         line += 1
 
     # Accent bar under letterhead
-    bar_row = line
+    bar_row = max(line, 4 if logo_placed else line)
     for col in range(1, col_span + 1):
         cell = sheet.cell(row=bar_row, column=col, value="")
         cell.fill = PatternFill("solid", fgColor=PRIMARY)
@@ -129,10 +154,7 @@ def write_report_letterhead(
         cell.fill = PatternFill("solid", fgColor=PRIMARY_SOFT)
     sheet.row_dimensions[soft_row].height = 8
 
-    # Ensure early columns have room for logo
     sheet.column_dimensions["A"].width = max(sheet.column_dimensions["A"].width or 12, 14)
-    if text_col > 1:
-        sheet.column_dimensions["B"].width = max(sheet.column_dimensions["B"].width or 3, 3)
 
     return soft_row + 1
 

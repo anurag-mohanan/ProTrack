@@ -29,8 +29,9 @@ import { ProjectFilterPanel } from '../components/projects/command-center/Projec
 import { ProjectKpiBar } from '../components/projects/command-center/ProjectKpiBar';
 import { ProjectListSection } from '../components/projects/command-center/ProjectListSection';
 import { ProjectQuickFilterStrip } from '../components/projects/command-center/ProjectQuickFilterStrip';
-import { ProjectStreamFilterBar } from '../components/projects/command-center/ProjectStreamFilterBar';
+import { ProjectStreamCards } from '../components/projects/command-center/ProjectStreamCards';
 import { ProjectStreamPanel } from '../components/projects/command-center/ProjectStreamPanel';
+import { ProjectTeamFilterRail } from '../components/projects/command-center/ProjectTeamFilterRail';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { FilterDrawer, FilterToolbar } from '../components/ui/design-system';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
@@ -46,7 +47,7 @@ import {
 } from '../services/projectService';
 import type { ProjectStage } from '../types';
 import { exportToCsv } from '../utils/exportData';
-import { filterProjectsForAccessibleTeams, groupProjectsByTeam } from '../utils/projectTeamGroups';
+import { filterProjectsForAccessibleTeams, groupProjectsByTeam, resolveEffectiveProjectTeamId } from '../utils/projectTeamGroups';
 import { getLeaderTeamScopeIds, shouldGroupProjectsByTeamForUser, shouldScopeProjectsByLeaderTeams } from '../utils/projectTeamScope';
 import {
   canSelectAllProjectsScope,
@@ -68,7 +69,6 @@ import {
   defaultProjectCommandCenterFilters,
   filterProjectsForCommandCenter,
   getProjectActiveFilterChips,
-  hasActiveProjectListNarrowing,
   isArchivedProject,
   isCompletedProject,
   isLiveProject,
@@ -84,6 +84,10 @@ function initialFiltersFromSession(): ProjectCommandCenterFilters {
 
 function initialSelectedStreamIdsFromSession(): string[] {
   return loadProjectsPageSession()?.selectedStreamIds ?? [];
+}
+
+function initialSelectedTeamIdsFromSession(): string[] {
+  return loadProjectsPageSession()?.selectedTeamIds ?? [];
 }
 
 function searchParamsHaveDeepLinks(params: URLSearchParams): boolean {
@@ -113,6 +117,9 @@ export function ProjectsPage() {
   const [selectedStreamIds, setSelectedStreamIds] = useState<string[]>(
     initialSelectedStreamIdsFromSession,
   );
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>(
+    initialSelectedTeamIdsFromSession,
+  );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState<ProjectCommandCenterFilters>(
     initialFiltersFromSession,
@@ -136,10 +143,14 @@ export function ProjectsPage() {
     setPortfolioScope(next);
   }, [preferences?.projects_portfolio_scope, allowAllScope]);
 
-  // Persist filters + stream selection so navigating away and back restores them.
+  // Persist filters + stream/team selection so navigating away and back restores them.
   useEffect(() => {
-    saveProjectsPageSession({ filters: appliedFilters, selectedStreamIds });
-  }, [appliedFilters, selectedStreamIds]);
+    saveProjectsPageSession({
+      filters: appliedFilters,
+      selectedStreamIds,
+      selectedTeamIds,
+    });
+  }, [appliedFilters, selectedStreamIds, selectedTeamIds]);
 
   useEffect(() => {
     if (deepLinkAppliedRef.current) return;
@@ -326,19 +337,29 @@ export function ProjectsPage() {
     );
   }, [scopedFilteredProjects, selectedStreamIds]);
 
+  const teamFilteredProjects = useMemo(() => {
+    if (!selectedTeamIds.length) return streamFilteredProjects;
+    const allowed = new Set(selectedTeamIds);
+    const usersById = new Map(lookupUsers.map((item) => [item.id, item]));
+    return streamFilteredProjects.filter((project) => {
+      const teamId = resolveEffectiveProjectTeamId(project, usersById);
+      return teamId != null && allowed.has(teamId);
+    });
+  }, [streamFilteredProjects, selectedTeamIds, lookupUsers]);
+
   const liveProjects = useMemo(
-    () => sortLiveProjects(streamFilteredProjects.filter(isLiveProject)),
-    [streamFilteredProjects],
+    () => sortLiveProjects(teamFilteredProjects.filter(isLiveProject)),
+    [teamFilteredProjects],
   );
 
   const completedProjects = useMemo(
-    () => sortCompletedProjects(streamFilteredProjects.filter(isCompletedProject)),
-    [streamFilteredProjects],
+    () => sortCompletedProjects(teamFilteredProjects.filter(isCompletedProject)),
+    [teamFilteredProjects],
   );
 
   const archivedProjects = useMemo(
-    () => streamFilteredProjects.filter(isArchivedProject),
-    [streamFilteredProjects],
+    () => teamFilteredProjects.filter(isArchivedProject),
+    [teamFilteredProjects],
   );
 
   const displayLiveProjects =
@@ -348,10 +369,8 @@ export function ProjectsPage() {
 
   const leaderTeamIds = getLeaderTeamScopeIds(user);
   const scopeByLeaderTeams = shouldScopeProjectsByLeaderTeams(user?.role_name ?? '', user);
-  const hideEmptySections =
-    hasActiveProjectListNarrowing(appliedFilters) || selectedStreamIds.length > 0;
-  const includeEmptyLeaderTeams =
-    scopeByLeaderTeams && !hideEmptySections && portfolioScope === 'my_teams';
+  // Always hide empty team shells — card filters + list filters make zero-count sections noise.
+  const includeEmptyLeaderTeams = false;
 
   const teamScopedLiveProjects = useMemo(
     () =>
@@ -365,46 +384,37 @@ export function ProjectsPage() {
     [displayLiveProjects, scopeByLeaderTeams, isAdmin, leaderTeamIds, lookupUsers, user?.id],
   );
 
+  /** Streams with active and/or past projects only (never empty streams). */
   const streamFilterOptions = useMemo(() => {
     const activeStreams = (streamsQuery.data ?? []).filter(
       (stream) => stream.is_active !== false,
     );
-    const counts = new Map<string, number>();
+    const activeCounts = new Map<string, number>();
+    const pastCounts = new Map<string, number>();
     for (const project of scopedFilteredProjects) {
       if (!project.stream_id) continue;
-      const isArchivedView =
-        appliedFilters.showArchived || appliedFilters.quickFilter === 'archived';
-      if (isArchivedView) {
-        if (!isArchivedProject(project)) continue;
-      } else if (isArchivedProject(project) || isCompletedProject(project)) {
+      if (isArchivedProject(project)) {
+        pastCounts.set(project.stream_id, (pastCounts.get(project.stream_id) ?? 0) + 1);
         continue;
       }
-      counts.set(project.stream_id, (counts.get(project.stream_id) ?? 0) + 1);
+      if (isCompletedProject(project)) {
+        pastCounts.set(project.stream_id, (pastCounts.get(project.stream_id) ?? 0) + 1);
+        continue;
+      }
+      if (isLiveProject(project)) {
+        activeCounts.set(project.stream_id, (activeCounts.get(project.stream_id) ?? 0) + 1);
+      }
     }
-    const selected = new Set(selectedStreamIds);
     return activeStreams
-      .filter((stream) => {
-        const name = stream.name.toLowerCase();
-        return (
-          (counts.get(stream.id) ?? 0) > 0 ||
-          selected.has(stream.id) ||
-          name.includes('mold design') ||
-          name.includes('cad development')
-        );
-      })
       .map((stream) => ({
         id: stream.id,
         label: stream.name,
-        count: counts.get(stream.id) ?? 0,
+        activeCount: activeCounts.get(stream.id) ?? 0,
+        pastCount: pastCounts.get(stream.id) ?? 0,
       }))
+      .filter((option) => option.activeCount > 0 || option.pastCount > 0)
       .sort((left, right) => left.label.localeCompare(right.label));
-  }, [
-    streamsQuery.data,
-    scopedFilteredProjects,
-    appliedFilters.showArchived,
-    appliedFilters.quickFilter,
-    selectedStreamIds,
-  ]);
+  }, [streamsQuery.data, scopedFilteredProjects]);
 
   useEffect(() => {
     if (!selectedStreamIds.length) return;
@@ -414,6 +424,37 @@ export function ProjectsPage() {
       setSelectedStreamIds(next);
     }
   }, [selectedStreamIds, streamFilterOptions]);
+
+  /** Teams with projects in the current stream-scoped portfolio (before team card filter). */
+  const teamFilterOptions = useMemo(() => {
+    const usersById = new Map(lookupUsers.map((item) => [item.id, item]));
+    const teamNameById = new Map((teamsQuery.data ?? []).map((team) => [team.id, team.name]));
+    const counts = new Map<string, number>();
+    for (const project of streamFilteredProjects) {
+      if (isArchivedProject(project) || isCompletedProject(project)) continue;
+      if (!isLiveProject(project)) continue;
+      const teamId = resolveEffectiveProjectTeamId(project, usersById);
+      if (!teamId) continue;
+      counts.set(teamId, (counts.get(teamId) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([id, count]) => ({
+        id,
+        label: teamNameById.get(id) ?? 'Unknown team',
+        count,
+      }))
+      .filter((option) => option.count > 0)
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [streamFilteredProjects, lookupUsers, teamsQuery.data]);
+
+  useEffect(() => {
+    if (!selectedTeamIds.length) return;
+    const valid = new Set(teamFilterOptions.map((option) => option.id));
+    const next = selectedTeamIds.filter((id) => valid.has(id));
+    if (next.length !== selectedTeamIds.length) {
+      setSelectedTeamIds(next);
+    }
+  }, [selectedTeamIds, teamFilterOptions]);
 
   const liveStreamSections = useMemo(
     () =>
@@ -445,7 +486,6 @@ export function ProjectsPage() {
   );
 
   const visibleStreamSections = liveStreamSections;
-  // Prefer stream sections whenever the stream toggle is available (Mold + CAD, etc.).
   const multiStreamView = streamFilterOptions.length >= 1;
   const showStreamChrome =
     streamFilterOptions.length > 1 &&
@@ -456,17 +496,9 @@ export function ProjectsPage() {
     () =>
       groupProjectsByTeam(teamScopedLiveProjects, teamsQuery.data ?? [], lookupUsers, {
         leaderTeamIds: scopeByLeaderTeams ? leaderTeamIds : undefined,
-        // Never keep empty team shells when the list is narrowed by filters/streams.
-        includeEmptyLeaderTeams: scopeByLeaderTeams && !hideEmptySections,
+        includeEmptyLeaderTeams: false,
       }).filter((group) => group.projects.length > 0),
-    [
-      teamScopedLiveProjects,
-      teamsQuery.data,
-      lookupUsers,
-      scopeByLeaderTeams,
-      leaderTeamIds,
-      hideEmptySections,
-    ],
+    [teamScopedLiveProjects, teamsQuery.data, lookupUsers, scopeByLeaderTeams, leaderTeamIds],
   );
 
   const distinctTeamGroupCount = useMemo(
@@ -486,6 +518,7 @@ export function ProjectsPage() {
       if (next === 'all' && !allowAllScope) return;
       setPortfolioScope(next);
       setSelectedStreamIds([]);
+      setSelectedTeamIds([]);
       void updatePreferences({ projects_portfolio_scope: next });
     },
     [allowAllScope, updatePreferences],
@@ -551,6 +584,7 @@ export function ProjectsPage() {
     setDraftFilters(defaultProjectCommandCenterFilters);
     setAppliedFilters(defaultProjectCommandCenterFilters);
     setSelectedStreamIds([]);
+    setSelectedTeamIds([]);
     clearProjectsPageSession();
     setSearchParams({});
     setFiltersOpen(false);
@@ -703,6 +737,15 @@ export function ProjectsPage() {
           </Box>
         </Box>
 
+        <ProjectStreamCards
+          options={streamFilterOptions}
+          selectedIds={selectedStreamIds}
+          onChange={(next) => {
+            setSelectedStreamIds(next);
+            setSelectedTeamIds([]);
+          }}
+        />
+
         <Box
           sx={{
             position: 'sticky',
@@ -762,12 +805,6 @@ export function ProjectsPage() {
             </ToggleButtonGroup>
           </FilterToolbar>
 
-          <ProjectStreamFilterBar
-            options={streamFilterOptions}
-            selectedIds={selectedStreamIds}
-            onChange={setSelectedStreamIds}
-          />
-
           <ProjectKpiBar
             metrics={portfolioMetrics}
             loading={tableLoading}
@@ -782,6 +819,15 @@ export function ProjectsPage() {
           />
         </Box>
 
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', lg: 'row' },
+            alignItems: 'flex-start',
+            gap: 1.5,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
           {tableLoading ? (
             <TableSkeleton rows={8} columns={8} />
           ) : !displayLiveProjects.length && !completedProjects.length ? (
@@ -932,6 +978,21 @@ export function ProjectsPage() {
               ) : null}
             </>
           )}
+          </Box>
+
+          <Box
+            sx={{
+              width: { xs: '100%', lg: 'auto' },
+              order: { xs: -1, lg: 0 },
+            }}
+          >
+            <ProjectTeamFilterRail
+              options={teamFilterOptions}
+              selectedIds={selectedTeamIds}
+              onChange={setSelectedTeamIds}
+            />
+          </Box>
+        </Box>
       </Box>
 
       <FilterDrawer

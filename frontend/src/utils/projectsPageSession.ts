@@ -8,6 +8,8 @@ export interface ProjectsPageSessionState {
   filters: ProjectCommandCenterFilters;
   /** Empty = all streams. */
   selectedStreamIds: string[];
+  /** Empty = all teams. */
+  selectedTeamIds: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -64,10 +66,13 @@ function normalizeFilters(raw: unknown): ProjectCommandCenterFilters {
   };
 }
 
+function normalizeIdList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
 function normalizeSelectedStreamIds(raw: unknown, legacyStreamTab?: unknown): string[] {
-  if (Array.isArray(raw)) {
-    return raw.filter((id): id is string => typeof id === 'string' && id.length > 0);
-  }
+  if (Array.isArray(raw)) return normalizeIdList(raw);
   if (typeof legacyStreamTab === 'string' && legacyStreamTab && legacyStreamTab !== 'all') {
     return [legacyStreamTab];
   }
@@ -89,6 +94,7 @@ export function loadProjectsPageSession(): ProjectsPageSessionState | null {
         parsed.selectedStreamIds,
         parsed.streamTab,
       ),
+      selectedTeamIds: normalizeIdList(parsed.selectedTeamIds),
     };
   } catch {
     return null;
@@ -103,6 +109,7 @@ export function saveProjectsPageSession(state: ProjectsPageSessionState): void {
       JSON.stringify({
         filters: state.filters,
         selectedStreamIds: state.selectedStreamIds,
+        selectedTeamIds: state.selectedTeamIds,
       }),
     );
   } catch {

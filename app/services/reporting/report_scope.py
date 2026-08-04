@@ -25,6 +25,7 @@ class ReportScope:
     user_ids: frozenset[UUID] | None = None
     # When team-scoped reports are built for a period: entry dates must fall in these windows.
     membership_windows: dict[UUID, list[tuple[date, date]]] | None = None
+    stream_id: UUID | None = None
 
 
 class ReportScopeForbidden(Exception):
@@ -37,6 +38,7 @@ def resolve_report_scope(
     *,
     customer_id: UUID | None = None,
     team_id: UUID | None = None,
+    stream_id: UUID | None = None,
     range_start: date | None = None,
     range_end: date | None = None,
 ) -> ReportScope:
@@ -66,6 +68,7 @@ def resolve_report_scope(
         team_ids=team_ids,
         user_ids=user_ids,
         membership_windows=membership_windows,
+        stream_id=stream_id,
     )
 
 

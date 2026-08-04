@@ -73,6 +73,18 @@ def test_engineering_report_filename_with_team_subject():
     assert name == "Prosohm_Eng_1_Prosohm_Eng_July_2026.xlsx"
 
 
+def test_stream_scoped_download_filename_includes_stream():
+    from app.services.reporting.export_filenames import stream_scoped_download_filename
+
+    name = stream_scoped_download_filename(
+        stream_name="CAD Development",
+        subject="Eng 1",
+        period_type="monthly",
+        period_start=date(2026, 8, 1),
+    )
+    assert name == "Prosohm_CAD_Development_Eng_1_August_2026.xlsx"
+
+
 def test_quarterly_and_yearly_tokens():
     q = team_timesheet_download_filename(
         team_name="Prosohm Eng",

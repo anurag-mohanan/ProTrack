@@ -70,6 +70,28 @@ def prosohm_report_download_filename(
     return f"Prosohm_{subject_part}_{period_part}.xlsx"
 
 
+def stream_scoped_download_filename(
+    *,
+    stream_name: str,
+    subject: str | None = None,
+    period_type: str,
+    period_start: date,
+    week_number: int | None = None,
+) -> str:
+    """Include stream in the subject when the export is stream-scoped."""
+    stream_part = sanitize_filename_part(stream_name)
+    if subject:
+        combined = f"{stream_part}_{sanitize_filename_part(subject)}"
+    else:
+        combined = stream_part
+    return prosohm_report_download_filename(
+        subject=combined,
+        period_type=period_type,
+        period_start=period_start,
+        week_number=week_number,
+    )
+
+
 def customer_timesheet_download_filename(
     *,
     customer_name: str,

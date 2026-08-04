@@ -17,6 +17,7 @@ class UserPreferencesRead(TimestampSchema):
     animations_enabled: bool = True
     reduced_motion: bool = False
     default_landing_page: str = "dashboard"
+    projects_portfolio_scope: str = "my_streams"
     email_notifications_enabled: bool = True
     email_assignment_enabled: bool = True
     email_reminder_enabled: bool = True
@@ -36,6 +37,7 @@ class UserPreferencesUpdate(BaseModel):
     animations_enabled: bool | None = None
     reduced_motion: bool | None = None
     default_landing_page: str | None = Field(default=None, max_length=32)
+    projects_portfolio_scope: str | None = Field(default=None, max_length=32)
     email_notifications_enabled: bool | None = None
     email_assignment_enabled: bool | None = None
     email_reminder_enabled: bool | None = None

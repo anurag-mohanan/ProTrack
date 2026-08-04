@@ -247,6 +247,13 @@ def _build_current_user_read(
             impersonator_name = f"{impersonator.first_name} {impersonator.last_name}"
     role_name = get_role_name(db, user)
     _, team_name, team_ids, team_names = _team_context(db, user)
+    from app.services.stream_scope_service import (
+        can_view_all_streams,
+        get_user_relevant_stream_ids,
+        stream_display_name,
+    )
+
+    relevant_stream_ids = sorted(get_user_relevant_stream_ids(db, user), key=str)
     return CurrentUserRead(
         id=user.id,
         email=user.email,
@@ -258,6 +265,10 @@ def _build_current_user_read(
         team_name=team_name,
         team_ids=team_ids,
         team_names=team_names,
+        stream_id=user.stream_id,
+        stream_name=stream_display_name(db, user.stream_id),
+        relevant_stream_ids=relevant_stream_ids,
+        can_view_all_streams=can_view_all_streams(db, user),
         is_active=user.is_active,
         must_change_password=effective_must_change_password(user.must_change_password),
         last_login=user.last_login,

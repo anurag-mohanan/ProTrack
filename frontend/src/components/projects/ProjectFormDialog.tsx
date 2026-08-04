@@ -38,8 +38,14 @@ import { ProjectDocumentsPanel } from './ProjectDocumentsPanel';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import { fetchAssignmentSkillFit } from '../../api/assignmentSkillFit';
 import { getErrorMessage } from '../../api/client';
+import {
+  isMoldStreamName,
+  projectReferenceLabel,
+  projectReferenceTooltip,
+} from '../../utils/projectStreamScope';
 
 interface ProjectFormValues {
   tool_number: string;
@@ -171,6 +177,7 @@ export function ProjectFormDialog({
 }: ProjectFormDialogProps) {
   const isEdit = Boolean(project);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { showError, showSuccess } = useToast();
   const [form, setForm] = useState<ProjectFormValues>(emptyForm);
   const [skillFitWarning, setSkillFitWarning] = useState<string | null>(null);
@@ -302,9 +309,26 @@ export function ProjectFormDialog({
     [activeStreams, form.stream_id],
   );
 
+  const referenceLabel = projectReferenceLabel(selectedStream?.name);
+  const referenceTooltip = projectReferenceTooltip(selectedStream?.name);
+  const showMoldToolingFields = isMoldStreamName(selectedStream?.name) || !selectedStream;
+
   const streamManagesCodes = Boolean(
     selectedStream?.use_project_numbering || selectedStream?.use_project_prefix,
   );
+
+  useEffect(() => {
+    if (!open || isEdit) return;
+    if (form.stream_id) return;
+    const preferred =
+      user?.stream_id && activeStreams.some((stream) => stream.id === user.stream_id)
+        ? user.stream_id
+        : activeStreams.find((stream) => isMoldStreamName(stream.name))?.id ??
+          activeStreams[0]?.id ??
+          '';
+    if (!preferred) return;
+    setForm((current) => ({ ...current, stream_id: preferred }));
+  }, [open, isEdit, form.stream_id, activeStreams, user?.stream_id]);
 
   useEffect(() => {
     if (!open || isEdit) return;
@@ -485,8 +509,9 @@ export function ProjectFormDialog({
     () =>
       !isBlankDisplayValue(form.tool_number) &&
       !isBlankDisplayValue(form.part_description) &&
-      !isBlankDisplayValue(form.customer_id),
-    [form.tool_number, form.part_description, form.customer_id],
+      !isBlankDisplayValue(form.customer_id) &&
+      (isEdit || !isBlankDisplayValue(form.stream_id)),
+    [form.tool_number, form.part_description, form.customer_id, form.stream_id, isEdit],
   );
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -497,13 +522,18 @@ export function ProjectFormDialog({
         tool_number: form.tool_number,
         part_description: form.part_description,
         customer_id: form.customer_id,
-        ...(isEdit ? {} : { team_id: form.team_id }),
+        ...(isEdit ? {} : { team_id: form.team_id, stream_id: form.stream_id }),
       },
       [
-        { key: 'tool_number', label: 'Tool number' },
+        { key: 'tool_number', label: referenceLabel },
         { key: 'part_description', label: 'Part description' },
         { key: 'customer_id', label: 'Customer' },
-        ...(isEdit ? [] : [{ key: 'team_id', label: 'Team' }]),
+        ...(isEdit
+          ? []
+          : [
+              { key: 'team_id', label: 'Team' },
+              { key: 'stream_id', label: 'Stream' },
+            ]),
       ],
     );
 
@@ -670,15 +700,15 @@ export function ProjectFormDialog({
           sectionId="general-information"
           storageKey={PROJECT_SECTION_STORAGE_KEY}
           title="General Information"
-          subtitle="Tool identification and description"
+          subtitle={`${referenceLabel} and description`}
           icon={AssignmentOutlinedIcon}
         >
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormField
-              label="Tool Number"
+              label={referenceLabel}
               required
               value={form.tool_number}
-              tooltip="Customer tool or mold number used to uniquely identify the project."
+              tooltip={referenceTooltip}
               validationState={toolNumberValidationState}
               validationMessage={toolNumberValidationMessage}
               onChange={(event) =>
@@ -947,9 +977,12 @@ export function ProjectFormDialog({
           <Grid size={{ xs: 12 }}>
             <FormSelect
               label="Stream"
+              required={!isEdit}
               value={form.stream_id}
               options={[
-                { value: '', label: 'None' },
+                ...(isEdit
+                  ? [{ value: '', label: 'None' }]
+                  : [{ value: '', label: 'Select stream' }]),
                 ...activeStreams.map((stream) => ({
                   value: stream.id,
                   label: stream.name,
@@ -1236,8 +1269,12 @@ export function ProjectFormDialog({
         <CollapsibleFormSection
           sectionId="workorder"
           storageKey={PROJECT_SECTION_STORAGE_KEY}
-          title="Workorder / tooling"
-          subtitle="Searchable attributes from customer workorders"
+          title={showMoldToolingFields ? 'Workorder / tooling' : 'Workorder'}
+          subtitle={
+            showMoldToolingFields
+              ? 'Searchable attributes from customer workorders'
+              : 'Optional workorder reference'
+          }
           icon={PrecisionManufacturingOutlinedIcon}
         >
           <Grid size={{ xs: 12, md: 6 }}>
@@ -1248,6 +1285,8 @@ export function ProjectFormDialog({
               maxLength={100}
             />
           </Grid>
+          {showMoldToolingFields ? (
+            <>
           <Grid size={{ xs: 12, md: 6 }}>
             <FormField
               label="Press tonnage"
@@ -1280,6 +1319,8 @@ export function ProjectFormDialog({
               maxLength={100}
             />
           </Grid>
+            </>
+          ) : null}
           <Grid size={{ xs: 12 }}>
             <FormField
               label="Customer specs / other details"

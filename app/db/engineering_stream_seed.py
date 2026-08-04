@@ -9,6 +9,7 @@ from app.models.models import Stream
 
 DEFAULT_ENGINEERING_STREAMS: list[tuple[str, str]] = [
     ("Mold Design", "Mold design engineering stream"),
+    ("CAD Development", "CAD / product design engineering stream"),
     ("Fixture Design", "Fixture design engineering stream"),
     ("Electrode Design", "Electrode design engineering stream"),
     ("Product Design", "Product design engineering stream"),

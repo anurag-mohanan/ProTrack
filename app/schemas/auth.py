@@ -45,6 +45,10 @@ class CurrentUserRead(BaseModel):
     team_name: str | None = None
     team_ids: list[UUID] = Field(default_factory=list)
     team_names: list[str] = Field(default_factory=list)
+    stream_id: UUID | None = None
+    stream_name: str | None = None
+    relevant_stream_ids: list[UUID] = Field(default_factory=list)
+    can_view_all_streams: bool = False
     is_active: bool
     must_change_password: bool
     last_login: datetime | None = None

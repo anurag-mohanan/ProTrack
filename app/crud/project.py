@@ -159,6 +159,8 @@ def _validate_code_unique(
 
 
 def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate:
+    from app.services.stream_scope_service import resolve_default_project_stream_id
+
     customer = db.get(Customer, obj_in.customer_id)
     if customer is None:
         raise ProTrackValidationError(
@@ -183,13 +185,23 @@ def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate
     if data.get("working_model_id") is None and customer.default_working_model_id is not None:
         data["working_model_id"] = customer.default_working_model_id
 
+    if data.get("stream_id") is None:
+        data["stream_id"] = resolve_default_project_stream_id(db)
+    if data.get("stream_id") is None:
+        raise ProTrackValidationError(
+            "stream_id is required — select a stream (e.g. Mold Design or CAD Development)"
+        )
+    stream = db.get(Stream, data["stream_id"])
+    if stream is None or not stream.is_active:
+        raise ProTrackValidationError(
+            "stream_id must reference an active stream"
+        )
+
     data["code"] = _normalize_optional_code(data.get("code"))
 
-    if data.get("code") is None and data.get("stream_id") is not None:
-        stream = db.get(Stream, data["stream_id"])
-        if stream is not None and (
-            bool(getattr(stream, "use_project_numbering", False))
-            or bool(getattr(stream, "use_project_prefix", False))
+    if data.get("code") is None:
+        if bool(getattr(stream, "use_project_numbering", False)) or bool(
+            getattr(stream, "use_project_prefix", False)
         ):
             generated = generate_stream_project_code(
                 db,

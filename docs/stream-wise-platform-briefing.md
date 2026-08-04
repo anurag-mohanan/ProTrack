@@ -1,17 +1,15 @@
 # Stream-wise projects — engineering service platform briefing
 
-**Status:** Proposal for leadership alignment → Development → Testing → QC → UVT/UAT  
-**Date:** 2026-08-04  
+**Status:** APPROVED for Phase A → Development → Testing → QC → UVT/UAT  
+**Approved:** 2026-08-04 (leadership)  
 **Owner (product):** Operations + Engineering (joint)  
 **Platform context:** ProTrack today is strong on mold delivery teams; Streams already exist in data (`Project.stream_id`, task types, skill matrices, numbering) but product UX still reads as a single mold-centric command center.
 
 ---
 
-## 1. Decision asked of leadership
+## 1. Approved decision
 
 Treat ProTrack as a **company-wide engineering services platform** organized primarily by **Stream** (business line), with Teams remaining the delivery / capacity unit inside each stream.
-
-Proposed initial streams (illustrative — finalize with Ops/Eng):
 
 | Stream | Intent |
 |--------|--------|
@@ -19,28 +17,35 @@ Proposed initial streams (illustrative — finalize with Ops/Eng):
 | CAD Development | Upcoming CAD / product design / digital engineering work |
 | *(future)* | Additional fields as Prosohm expands (e.g. CAM, inspection, consulting) |
 
-**Ask:** Approve the stream-first product model and a gated delivery plan below before UVT/UAT.
+### Approved addition — relevant stream / team scope per user
+
+Users must be able to **view only projects relevant to them**:
+
+1. **My stream(s)** — projects in streams tied to the user (primary stream and any assigned streams).
+2. **My team(s)** — projects on teams they belong to / lead (existing team access).
+3. **Leaders / admins** — optional **All streams** / org-wide view when they already have company or multi-team scope.
+4. Default for designers and most operators: land on **My stream + My team** filter, not the full company list.
+
+This is a **Phase A requirement**, not deferred to Phase B.
 
 ---
 
-## 2. Stakeholder perspectives
+## 2. Stakeholder perspectives (aligned)
 
 ### Head of Operations
-- Needs **one portfolio view per stream** (load, WIP, delays) without mixing mold KPIs with CAD WIP.
-- Resource moves across streams must stay visible (cross-stream support), not invisible “borrowed” hours.
-- Customer packs / exports should be labelable by stream so client reporting stays clean.
-- Careful cutover: existing mold projects must not break numbering, templates, or timesheets.
+- Portfolio per stream without mixing mold KPIs with CAD WIP.
+- Cross-stream support stays visible.
+- Cutover must not break mold numbering, templates, or timesheets.
+- Staff only see the queues they own (stream/team scope).
 
 ### Head of Engineering
-- Task types, milestones, skill matrices, and templates are **stream-owned**, not global one-size-fits-all.
-- Designers may work mostly in one stream but occasionally support another — same transfer / membership dating rules should apply at stream attribution where relevant.
-- CAD stream will need different task taxonomy and possibly different project stages than mold.
-- Avoid forcing mold stage language (“tool number”, “BOM”) onto CAD projects in UI copy and required fields.
+- Task types, templates, and skills stay stream-owned.
+- CAD taxonomy separate from mold stages / jargon.
+- Engineers default to their stream so CAD and mold work do not collide in one list.
 
 ### CEO
-- Narrative shift: Prosohm is an **engineering services company**, not only a mold shop — the system should reflect that in navigation, reports, and board metrics.
-- Stream P&L and utilization become comparable units for growth decisions (open CAD without diluting mold metrics).
-- Low-risk path: reuse existing Stream entity; do not invent a parallel hierarchy.
+- Platform narrative: multi-stream engineering services.
+- Stream metrics comparable for growth; company roll-up for leadership only.
 
 ---
 
@@ -49,14 +54,13 @@ Proposed initial streams (illustrative — finalize with Ops/Eng):
 - **Stream** master data with optional project prefix / numbering.
 - **Projects** already carry `stream_id` (nullable).
 - **Task types** and **stream skills** are stream-scoped.
+- Team-scoped project access already exists for many roles.
 - Projects UI still groups primarily **by team**; stream is a form field / filter, not a first-class navigation axis.
 - Seed / templates heavily biased to **Mold Design**.
 
-Implication: this is mostly a **product & reporting reframe** plus hardening of stream as a required, first-class dimension — not a greenfield rebuild.
-
 ---
 
-## 4. Recommended product model
+## 4. Approved product model
 
 ```
 Company (tenant)
@@ -68,34 +72,33 @@ Company (tenant)
 
 **Rules of thumb**
 1. Every new project **must** have a stream.
-2. Default project list / command center: **group or tab by Stream**, then by Team.
-3. Reports & Excel names already use `Prosohm_<Subject>_<Month>_<Year>` — extend subject to include stream when scoped (e.g. `Prosohm_CAD_Development_July_2026`).
-4. Cross-stream hours (person’s home stream ≠ project stream) surface like today’s cross-team support badges.
-5. Templates, task types, and skill matrices stay stream-specific; no silent reuse of mold templates on CAD.
+2. Command center: **Stream tabs / sections**, then Team groups.
+3. **Default scope = relevant streams + teams for the signed-in user**; “All” only for entitled roles.
+4. Reports / Excel: `Prosohm_<Subject>_<Month>_<Year>` — include stream when scoped.
+5. Cross-stream hours surface like today’s cross-team support badges.
+6. Templates / task types / skills stay stream-specific.
 
 ---
 
-## 5. Ideas for the development team (phased)
+## 5. Development — Phase A (UVT candidate) — APPROVED
 
-### Phase A — Foundation (UVT candidate)
 - Make `stream_id` required on project create; backfill existing projects to Mold Design where null.
-- Projects command center: **Stream tabs / sections** (Mold | CAD | All), keep team grouping inside.
-- Filters: stream sticky in URL; remember last stream per user.
-- Soften mold-only labels when stream ≠ Mold (tool number optional / “Reference code”).
-- Seed CAD Development stream + starter task types (no fake projects in prod without Ops sign-off).
+- Projects command center: **Stream tabs / sections** (Mold | CAD | All*), keep team grouping inside.
+- **Relevant-scope controls (required):**
+  - Toggle / default: **My stream(s)** | **My team(s)** | **All** (All gated by permission).
+  - Resolve “my streams” from `User.stream_id` plus any explicit stream assignments (if none, derive from projects/teams the user can already access).
+  - Persist preference (last used scope) per user.
+- Soften mold-only labels when stream ≠ Mold.
+- Seed CAD Development stream + starter task types.
+- Export names include stream when report is stream-scoped.
+- Automated tests for scope defaults (designer sees only relevant; admin can see All).
 
-### Phase B — Operating model
-- Stream-scoped dashboards (utilization, WIP, leave) with company roll-up toggle.
-- Report catalog: stream filter on designer/team timesheets and exports.
-- Template picker filtered by stream; block wrong-stream template apply.
-- Permissions: stream-level viewers (optional) without granting all teams.
+\* “All” visible only to roles that already have org-wide / multi-team project access.
 
-### Phase C — Platform expansion
-- Stream-specific workflow stages / milestone packs.
-- Quote / commercial terms tagged by stream for P&L.
-- Skills matrix UI defaulted to user’s primary stream with multi-stream view for leaders.
+### Phase B / C (deferred until Phase A UAT)
+- Stream dashboards, stream report catalog filters, stream-level viewer roles, stream-specific stages, stream P&L tagging.
 
-**Non-goals for Phase A:** rewriting finance formulas, multi-tenant SaaS branding, or forcing team hierarchy under stream in org chart (teams can remain org-wide with primary stream affinity).
+**Non-goals for Phase A:** finance formula rewrite, multi-tenant SaaS branding, forcing org-chart team hierarchy under stream.
 
 ---
 
@@ -103,20 +106,20 @@ Company (tenant)
 
 | Risk | Mitigation |
 |------|------------|
-| Null / wrong `stream_id` on legacy projects | One-time backfill to Mold + audit report before UAT |
+| Null / wrong `stream_id` on legacy projects | Backfill to Mold + audit before UAT |
 | CAD forced into mold fields | Stream-aware field requirements & copy |
-| Double-counting hours across stream views | Same membership-dating discipline as teams; clear “home vs support” |
-| Report filename / customer pack confusion | Stream token in export names when filtered |
-| Scope creep into finance rewrite | Keep Phase A UI + data integrity only |
+| Users see other streams’ WIP | Default My stream/team; All permission-gated |
+| Double-counting across stream views | Same membership-dating discipline; home vs support |
+| Scope creep into finance | Phase A UI + data integrity + access only |
 
 ---
 
-## 7. Gate path (mandatory)
+## 7. Gate path (APPROVED — Development in progress)
 
 ```
-Leadership sign-off (Ops + Eng + CEO)
+Leadership sign-off (Ops + Eng + CEO)     ← DONE 2026-08-04
         ↓
-Development (Phase A build + unit/API tests)
+Development (Phase A build + unit/API tests)  ← IN PROGRESS
         ↓
 Testing team (functional + regression script)
         ↓
@@ -128,44 +131,50 @@ Production release
 ```
 
 ### Development exit criteria
-- [ ] `stream_id` required on create; legacy backfill script + dry-run report
-- [ ] Projects UI stream sections/tabs; mold regression unchanged for Eng teams
-- [ ] CAD stream seeded; create project in CAD without mold-only hard fails
-- [ ] Automated tests for stream filter, backfill, and export naming with stream subject
-- [ ] Feature flag or config for “stream tabs” if staged rollout preferred
+- [x] `stream_id` required on create; legacy backfill script + dry-run report
+- [x] Projects UI stream sections/tabs; mold regression unchanged for Eng teams
+- [x] **Relevant stream/team scope default; All permission-gated; preference persisted**
+- [x] CAD stream seeded; create project in CAD without mold-only hard fails
+- [x] Automated tests for stream filter, backfill, user scope defaults, export naming
+- [ ] Feature flag for stream tabs if staged rollout preferred
 
 ### Testing team exit criteria
-- [ ] Script: create Mold vs CAD project; verify list separation and team grouping
-- [ ] Transfer / cross-team cases still correct inside mold; CAD isolated
-- [ ] Timesheets All Users + reports still pass prior July attribution cases
-- [ ] Export filenames include stream when report scoped to one stream
-- [ ] Negative: apply mold template to CAD project blocked or warned
+- [ ] Script: Mold vs CAD list separation and team grouping
+- [ ] Designer (single stream) cannot browse other stream’s full portfolio by default
+- [ ] Leader/admin with All can switch to company view
+- [ ] Transfer / timesheet attribution regressions still pass
+- [ ] Export filenames include stream when scoped
+- [ ] Wrong-stream template apply blocked or warned
 
 ### QC audit exit criteria
-- [ ] Data audit: 0 projects with null stream after backfill (or documented exceptions)
-- [ ] Copy/UI audit: no mold jargon on CAD create path
-- [ ] Access audit: leaders see only permitted streams/teams
-- [ ] Traceability: test evidence pack attached for UVT
-- [ ] Rollback plan documented (flag off / revert tabs)
+- [ ] 0 projects with null stream after backfill (or documented exceptions)
+- [ ] No mold jargon on CAD create path
+- [ ] Access audit: scoped users vs All viewers
+- [ ] Test evidence pack for UVT
+- [ ] Rollback plan documented
 
 ### UVT / UAT exit criteria
-- [ ] Ops walks portfolio “by stream” and signs load visibility
-- [ ] Eng creates sample CAD project end-to-end (tasks, timesheet entry)
-- [ ] CEO reviews company roll-up vs stream split narrative
+- [ ] Ops walks stream portfolio + confirms staff only see relevant queues
+- [ ] Eng creates sample CAD project end-to-end
+- [ ] CEO reviews company roll-up vs stream split
 - [ ] Written UAT sign-off before production
 
 ---
 
-## 8. Open questions for the leadership meeting
+## 8. Open questions (remaining)
 
-1. Confirm stream list for launch: **Mold Design + CAD Development** only, or more?
+1. Launch streams: **Mold Design + CAD Development** only for Phase A? *(Recommended: yes)*
 2. Are delivery teams **exclusive** to a stream, or shared with a primary stream affinity?
-3. Should stream be **required** on users as well as projects?
-4. CAD project identifier: separate numbering prefix (e.g. `CAD-####`) vs shared tool number space?
-5. Who owns stream master data day-to-day — Ops Admin or Engineering Admin?
+3. CAD project identifier: separate numbering prefix (e.g. `CAD-####`) vs shared tool number space?
+4. Who owns stream master data day-to-day — Ops Admin or Engineering Admin?
+
+**Resolved**
+- Workflow / Phase A gate path: **approved**.
+- Users must view **only relevant stream and/or team projects** by default: **approved**.
+- Stream on users: **yes for relevance** (`User.stream_id` + assignments used for “My stream(s)”).
 
 ---
 
-## 9. Suggested meeting outcome
+## 9. Meeting outcome (recorded)
 
-**Approve Phase A** with Mold + CAD streams, required `stream_id`, stream-first projects UX, and the gate path above. Defer Phase B/C until UAT of Phase A is signed.
+**Approved Phase A** with Mold + CAD streams, required `stream_id`, stream-first projects UX, **per-user relevant stream/team project scope**, and the gate path above. Defer Phase B/C until UAT of Phase A is signed. Development may proceed.

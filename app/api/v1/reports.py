@@ -40,7 +40,7 @@ from app.crud.team_reports import (
 )
 from app.models.enums import ActivityAction, EntityType, ProjectStage
 from app.crud.dashboard import get_designer_workload
-from app.models.models import Customer, Team, User
+from app.models.models import Customer, Stream, Team, User
 from app.services.activity_service import log_activity
 from app.schemas.dashboard import DesignerWorkload
 from app.schemas.reports import (
@@ -90,6 +90,7 @@ from app.services.reporting.excel.designer_team_timesheet import generate_design
 from app.services.reporting.export_filenames import (
     customer_timesheet_download_filename,
     engineering_report_download_filename,
+    stream_scoped_download_filename,
     team_timesheet_download_filename,
 )
 from app.services.reporting.schedule_store import list_schedules, upsert_schedule
@@ -131,6 +132,7 @@ def _engineering_report_options(
     anchor: date | None = Query(None),
     customer_id: UUID | None = Query(None),
     team_id: UUID | None = Query(None),
+    stream_id: UUID | None = Query(None),
     include_archived: bool = Query(True),
     include_deleted: bool = Query(False),
     db: Session = Depends(get_db),
@@ -144,6 +146,7 @@ def _engineering_report_options(
             current_user,
             customer_id=customer_id,
             team_id=team_id,
+            stream_id=stream_id,
         )
     except ReportScopeForbidden as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
@@ -324,12 +327,24 @@ def engineering_report_export(
                         team_name = team.name
                 elif timesheet_payload.team_count == 1 and timesheet_payload.designers:
                     team_name = timesheet_payload.designers[0].team_name or "All_Teams"
-                filename = team_timesheet_download_filename(
-                    team_name=team_name,
-                    period_type=period_type,
-                    period_start=timesheet_payload.period.start_date,
-                    week_number=week_number,
-                )
+                scoped_stream_id = getattr(scope, "stream_id", None) if scope is not None else None
+                if scoped_stream_id is not None:
+                    stream = db.get(Stream, scoped_stream_id)
+                    stream_name = stream.name if stream is not None else "Stream"
+                    filename = stream_scoped_download_filename(
+                        stream_name=stream_name,
+                        subject=team_name,
+                        period_type=period_type,
+                        period_start=timesheet_payload.period.start_date,
+                        week_number=week_number,
+                    )
+                else:
+                    filename = team_timesheet_download_filename(
+                        team_name=team_name,
+                        period_type=period_type,
+                        period_start=timesheet_payload.period.start_date,
+                        week_number=week_number,
+                    )
         else:
             payload = reporting_engine.build_report(db, report_id=report_id, **options)
             content = reporting_engine.export_excel(payload)
@@ -350,13 +365,25 @@ def engineering_report_export(
                 team = db.get(Team, scoped_team_id)
                 if team is not None:
                     subject = team.name
-            filename = engineering_report_download_filename(
-                report_id=report_id,
-                period_type=period_type,
-                period_start=payload.period.start_date,
-                subject=subject,
-                week_number=week_number,
-            )
+            scoped_stream_id = getattr(scope, "stream_id", None) if scope is not None else None
+            if scoped_stream_id is not None:
+                stream = db.get(Stream, scoped_stream_id)
+                stream_name = stream.name if stream is not None else "Stream"
+                filename = stream_scoped_download_filename(
+                    stream_name=stream_name,
+                    subject=subject,
+                    period_type=period_type,
+                    period_start=payload.period.start_date,
+                    week_number=week_number,
+                )
+            else:
+                filename = engineering_report_download_filename(
+                    report_id=report_id,
+                    period_type=period_type,
+                    period_start=payload.period.start_date,
+                    subject=subject,
+                    week_number=week_number,
+                )
     except KeyError as exc:
         if "Unknown report" in str(exc) or "not registered" in str(exc):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

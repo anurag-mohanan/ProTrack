@@ -41,6 +41,10 @@ export interface CurrentUser {
   team_name?: string | null;
   team_ids?: string[];
   team_names?: string[];
+  stream_id?: string | null;
+  stream_name?: string | null;
+  relevant_stream_ids?: string[];
+  can_view_all_streams?: boolean;
   requires_timesheet?: boolean;
   can_enter_own_timesheet?: boolean;
   can_view_organization_chart?: boolean;

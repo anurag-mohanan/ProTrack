@@ -101,6 +101,9 @@ class UserPreferences(Base, TimestampMixin, TenantMixin):
     default_landing_page: Mapped[str] = mapped_column(
         String(32), nullable=False, default="dashboard"
     )
+    projects_portfolio_scope: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="my_streams"
+    )
     email_notifications_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )

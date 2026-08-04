@@ -3,6 +3,7 @@ export type DashboardLayoutPreference = 'compact' | 'comfortable' | 'default';
 export type TableDensityPreference = 'compact' | 'comfortable';
 export type FontSizePreference = 'small' | 'medium' | 'large';
 export type LandingPagePreference = 'dashboard' | 'projects' | 'timesheets' | 'admin';
+export type ProjectsPortfolioScopePreference = 'my_streams' | 'my_teams' | 'all';
 
 export interface UserPreferences {
   id: string;
@@ -16,6 +17,7 @@ export interface UserPreferences {
   animations_enabled: boolean;
   reduced_motion: boolean;
   default_landing_page: LandingPagePreference;
+  projects_portfolio_scope?: ProjectsPortfolioScopePreference;
   email_notifications_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -31,4 +33,5 @@ export const DEFAULT_USER_PREFERENCES: Omit<UserPreferences, 'id' | 'user_id'> =
   animations_enabled: true,
   reduced_motion: false,
   default_landing_page: 'dashboard',
+  projects_portfolio_scope: 'my_streams',
 };

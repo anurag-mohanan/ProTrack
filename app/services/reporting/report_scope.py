@@ -54,7 +54,7 @@ def resolve_report_scope(
     if team_ids is not None:
         if range_start is not None and range_end is not None:
             membership_windows = membership_windows_for_teams(
-                db, team_ids, range_start=range_start, range_end=range_end
+                db, team_ids, range_start=range_start, range_end=range_end, primary_only=True
             )
             user_ids = frozenset(membership_windows.keys())
         else:
@@ -80,7 +80,7 @@ def refine_scope_for_period(
     if scope.team_ids is None:
         return scope
     windows = membership_windows_for_teams(
-        db, scope.team_ids, range_start=range_start, range_end=range_end
+        db, scope.team_ids, range_start=range_start, range_end=range_end, primary_only=True
     )
     return replace(
         scope,

@@ -251,3 +251,120 @@ def test_open_period_floored_to_member_effective_from(session):
     overview = build_timesheet_overview(session, admin, month="2026-07")
     section = next(team for team in overview["teams"] if team["team_id"] == target.id)
     assert section["membership_windows"][str(designer.id)][0]["start"] == transfer_on
+
+
+def test_overview_excludes_secondary_membership_from_team_windows(session):
+    """Secondary multi-team rows must not duplicate full hours under every team."""
+    home = Team(id=uuid.uuid4(), name="Primary Home Team", is_active=True)
+    secondary = Team(id=uuid.uuid4(), name="Secondary Overlay Team", is_active=True)
+    session.add_all([home, secondary])
+    session.flush()
+
+    designer = session.get(User, IDS["user_binil"])
+    assert designer is not None
+    designer.team_id = home.id
+    designer.requires_timesheet = True
+    designer.is_active = True
+    session.add(
+        TeamMember(
+            team_id=home.id,
+            user_id=designer.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2020, 1, 1),
+        )
+    )
+    session.add(
+        TeamMember(
+            team_id=secondary.id,
+            user_id=designer.id,
+            is_primary=False,
+            is_billable_headcount=False,
+            effective_from=date(2020, 1, 1),
+        )
+    )
+    session.commit()
+    backfill_membership_periods(session)
+    session.commit()
+
+    admin = session.get(User, IDS["user_admin"])
+    assert admin is not None
+    overview = build_timesheet_overview(session, admin, month="2026-07")
+
+    home_section = next(team for team in overview["teams"] if team["team_id"] == home.id)
+    secondary_section = next(
+        (team for team in overview["teams"] if team["team_id"] == secondary.id),
+        None,
+    )
+
+    assert designer.id in home_section["user_ids"]
+    assert str(designer.id) in home_section["membership_windows"]
+    # Secondary-only affiliation must not place the designer on that team section.
+    if secondary_section is not None:
+        assert designer.id not in secondary_section["user_ids"]
+
+
+def test_overview_management_section_holds_full_unsplit_hours(session):
+    """Leaders / Corporate home appear only under Management — not delivery teams."""
+    corporate = session.scalar(select(Team).where(Team.name == "Corporate / Management"))
+    if corporate is None:
+        corporate = Team(id=uuid.uuid4(), name="Corporate / Management", is_active=True)
+        session.add(corporate)
+        session.flush()
+    delivery = Team(id=uuid.uuid4(), name="Delivery Team Alpha Mgmt", is_active=True)
+    session.add(delivery)
+    session.flush()
+
+    leader = session.get(User, IDS["user_binil"])
+    assert leader is not None
+    leader.team_id = corporate.id
+    leader.role_id = IDS["role_design_leader"]
+    leader.requires_timesheet = True
+    leader.is_active = True
+    session.add(
+        TeamMember(
+            team_id=corporate.id,
+            user_id=leader.id,
+            is_primary=True,
+            is_billable_headcount=False,
+            effective_from=date(2020, 1, 1),
+        )
+    )
+    # Secondary membership on a delivery team must not pull them into that section.
+    session.add(
+        TeamMember(
+            team_id=delivery.id,
+            user_id=leader.id,
+            is_primary=False,
+            is_billable_headcount=False,
+            effective_from=date(2020, 1, 1),
+        )
+    )
+    session.commit()
+    backfill_membership_periods(session)
+    session.commit()
+
+    admin = session.get(User, IDS["user_admin"])
+    assert admin is not None
+    overview = build_timesheet_overview(session, admin, month="2026-07")
+
+    management = next(
+        team for team in overview["teams"] if team.get("section_kind") == "management"
+    )
+    assert management["team_name"] == "Management / Leadership"
+    assert management["team_id"] is None
+    assert management["membership_windows"] == {}
+    assert leader.id in management["user_ids"]
+
+    delivery_section = next(
+        (team for team in overview["teams"] if team["team_id"] == delivery.id),
+        None,
+    )
+    if delivery_section is not None:
+        assert leader.id not in delivery_section["user_ids"]
+
+    corporate_section = next(
+        (team for team in overview["teams"] if team["team_id"] == corporate.id),
+        None,
+    )
+    assert corporate_section is None

@@ -1,14 +1,15 @@
 from datetime import date, timedelta
 from uuid import UUID
 
+from fastapi.responses import Response
 from sqlalchemy import select
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, HTTPException, Query, Session, get_db, status
 from app.core.exceptions import ProTrackValidationError
 from app.crud.timesheet import timesheet
+from app.models.enums import ActivityAction, EntityType, TimesheetStatus
 from app.models.models import Timesheet, User
-from app.models.enums import TimesheetStatus
 from app.schemas.timesheet import (
     TimesheetApprovalRequest,
     TimesheetCreate,
@@ -19,6 +20,10 @@ from app.schemas.timesheet import (
     TimesheetRead,
     TimesheetRejectRequest,
     TimesheetUpdate,
+)
+from app.services.activity_service import log_activity
+from app.services.reporting.excel.designer_individual_timesheet import (
+    generate_designer_individual_timesheet_excel,
 )
 from app.services.timesheet_overview_service import build_timesheet_overview
 from app.services.timesheet_workflow_service import (
@@ -142,6 +147,72 @@ def get_timesheet_overview(
             period_start=period_start,
             period_end=period_end,
         )
+    )
+
+
+@router.get("/export/designer.xlsx")
+def export_designer_timesheet_excel(
+    user_id: UUID = Query(...),
+    period_start: date = Query(...),
+    period_end: date = Query(...),
+    period_label: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download one designer's timesheet entries for the selected period as Excel."""
+    from app.services.timesheet_overview_service import get_timesheet_visible_user_ids
+
+    if period_end < period_start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="period_end must be on or after period_start",
+        )
+
+    visible = get_timesheet_visible_user_ids(
+        db,
+        current_user,
+        range_start=period_start,
+        range_end=period_end,
+    )
+    if user_id != current_user.id and visible is not None and user_id not in visible:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not allowed to export this designer's timesheet",
+        )
+
+    try:
+        content, filename = generate_designer_individual_timesheet_excel(
+            db,
+            user_id=user_id,
+            period_start=period_start,
+            period_end=period_end,
+            period_label=period_label,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.user,
+        entity_id=user_id,
+        action=ActivityAction.data_exported,
+        new_value={
+            "report": "designer-timesheet",
+            "filename": filename,
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+        },
+        outcome="success",
+        module="timesheets",
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

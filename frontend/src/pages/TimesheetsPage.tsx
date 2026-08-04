@@ -25,6 +25,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useTimesheetMonthWorkspace } from '../hooks/useTimesheetMonthWorkspace';
 import { fetchTimesheetPolicySettings } from '../api/settings';
+import { downloadDesignerTimesheetExcel } from '../api/timesheets';
 import type { TimesheetEntry } from '../types';
 import {
   canApproveTimesheet,
@@ -86,6 +87,7 @@ export function TimesheetsPage() {
   const [deleteDialogEntry, setDeleteDialogEntry] = useState<TimesheetEntry | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
+  const [exportingUserId, setExportingUserId] = useState<string | null>(null);
   const [toolbarDate, setToolbarDate] = useState(todayIsoDate());
 
   const roleName = user?.role_name ?? '';
@@ -157,6 +159,7 @@ export function TimesheetsPage() {
             workspace.overviewContext.users,
             workspace.entries,
             workspace.workingDayCount,
+            workspace.overviewContext.teams,
           )
         : buildTeamTimesheetSections(
             workspace.overviewContext.teams,
@@ -165,20 +168,30 @@ export function TimesheetsPage() {
             workspace.workingDayCount,
           );
 
-    return teamSections.map((section) => ({
-      title: section.teamName,
-      subtitle: teamSectionBreakdownLabel(section.summary),
-      emptyText:
-        overviewGrouping === 'designer'
-          ? 'No designers required to fill timesheets'
-          : 'No team members required to fill timesheets',
-      users: section.users.map((person) => ({
-        id: person.id,
-        name: `${person.first_name} ${person.last_name}`.trim(),
-        requiresTimesheet: Boolean(person.requires_timesheet),
-        entries: section.entriesByUserId.get(person.id) ?? [],
-      })),
-    }));
+    return teamSections.map((section) => {
+      const breakdown = teamSectionBreakdownLabel(section.summary);
+      const managementNote =
+        section.sectionKind === 'management'
+          ? ' · Full hours — not split across teams they manage'
+          : '';
+      return {
+        title: section.teamName,
+        subtitle: `${breakdown}${managementNote}`,
+        emptyText:
+          overviewGrouping === 'designer'
+            ? 'No designers required to fill timesheets'
+            : 'No team members required to fill timesheets',
+        teamId: section.teamId,
+        sectionKind: section.sectionKind,
+        users: section.users.map((person) => ({
+          id: person.id,
+          name: `${person.first_name} ${person.last_name}`.trim(),
+          requiresTimesheet: Boolean(person.requires_timesheet),
+          homeTeamId: section.teamId ?? person.team_id ?? null,
+          entries: section.entriesByUserId.get(person.id) ?? [],
+        })),
+      };
+    });
   }, [
     viewAllUsers,
     workspace.overviewContext,
@@ -187,6 +200,35 @@ export function TimesheetsPage() {
     overviewGrouping,
   ]);
 
+  const handleExportDesigner = useCallback(
+    async (userId: string, userName: string) => {
+      const start = allUsersPeriodBounds?.start ?? workspace.bounds.start;
+      const end = allUsersPeriodBounds?.end ?? workspace.bounds.end;
+      setExportingUserId(userId);
+      try {
+        await downloadDesignerTimesheetExcel({
+          userId,
+          periodStart: start,
+          periodEnd: end,
+          periodLabel,
+        });
+        showSuccess(`Exported timesheet for ${userName}.`);
+      } catch (error) {
+        showError(error instanceof Error ? error.message : 'Export failed.');
+      } finally {
+        setExportingUserId(null);
+      }
+    },
+    [
+      allUsersPeriodBounds?.start,
+      allUsersPeriodBounds?.end,
+      workspace.bounds.start,
+      workspace.bounds.end,
+      periodLabel,
+      showError,
+      showSuccess,
+    ],
+  );
   const scopedOverviewUsers = workspace.overviewContext?.users ?? [];
 
   const overviewSummary = useMemo(() => {
@@ -511,16 +553,18 @@ export function TimesheetsPage() {
 
       {viewAllUsers && overviewGrouping === 'team' ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
-          By team: hours under each team only cover days that person belonged to that team. Use{' '}
-          <strong>By designer (full hours)</strong> to see every entry in the selected period in one
-          place.
+          By team: delivery teams only show hours for days each person belonged there.{' '}
+          <strong>Management / Leadership</strong> keeps leaders&apos; full hours in one place (not
+          split across teams they manage). Use <strong>By designer (full hours)</strong> for a flat
+          designer list with the same Management block first.
         </Alert>
       ) : null}
 
       {viewAllUsers && overviewGrouping === 'designer' ? (
         <Alert severity="info" sx={{ mb: 1.5 }}>
-          Showing full hours for each designer in {periodLabel.toLowerCase()}. Switch period above
-          (week / month / quarter / year) to change the range.
+          Full hours for each person in {periodLabel.toLowerCase()}. Leaders appear under{' '}
+          <strong>Management / Leadership</strong>; other designers under All designers. Use Export
+          on each row for Excel (follows the week / month / quarter / year selector above).
         </Alert>
       ) : null}
 
@@ -597,6 +641,7 @@ export function TimesheetsPage() {
               dailyLimit={workspace.dailyLimit}
               saving={workspace.saveEntryMutation.isPending}
               currentUserId={user?.id}
+              currentUserTeamId={user?.team_id}
               onSubmit={(values) => handleSaveEntry(values)}
               onCancelEdit={() => undefined}
               onEntryDateChange={setToolbarDate}
@@ -633,6 +678,9 @@ export function TimesheetsPage() {
           <TimesheetUsersOverview
             sections={overviewSections}
             timesheetById={workspace.timesheetById}
+            periodLabel={periodLabel}
+            onExportDesigner={handleExportDesigner}
+            exportingUserId={exportingUserId}
           />
         </>
       ) : (
@@ -670,6 +718,7 @@ export function TimesheetsPage() {
         dailyLimit={workspace.dailyLimit}
         saving={workspace.saveEntryMutation.isPending}
         currentUserId={user?.id}
+        currentUserTeamId={user?.team_id}
         onSave={(values) => handleSaveEntry(values, editDialogEntry?.id)}
         onClose={() => setEditDialogEntry(null)}
       />

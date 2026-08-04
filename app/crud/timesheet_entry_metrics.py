@@ -9,6 +9,7 @@ from app.models.models import (
     NonProductiveCode,
     Project,
     TaskType,
+    Team,
     Timesheet,
     TimesheetEntry,
     User,
@@ -36,6 +37,8 @@ def _entry_owner(db: Session, entry: TimesheetEntry) -> tuple[UUID | None, str |
 def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetEntryRead:
     project_tool_number = None
     project_code = None
+    project_team_id = None
+    project_team_name = None
     customer_name = None
     task_type_name = None
     milestone_name = None
@@ -49,6 +52,10 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
         if project is not None:
             project_tool_number = project.tool_number
             project_code = project.code
+            project_team_id = project.team_id
+            if project.team_id is not None:
+                team = db.get(Team, project.team_id)
+                project_team_name = team.name if team is not None else None
     if entry.customer_id is not None:
         customer = db.get(Customer, entry.customer_id)
         if customer is not None:
@@ -87,6 +94,8 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
         contribution_reason=entry.contribution_reason,
         project_tool_number=project_tool_number,
         project_code=project_code,
+        project_team_id=project_team_id,
+        project_team_name=project_team_name,
         customer_name=customer_name,
         task_type_name=task_type_name,
         milestone_name=milestone_name,

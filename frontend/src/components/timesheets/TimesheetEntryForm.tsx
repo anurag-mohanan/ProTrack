@@ -59,6 +59,7 @@ interface TimesheetEntryFormProps {
   editingEntry: TimesheetEntry | null;
   saving: boolean;
   currentUserId?: string;
+  currentUserTeamId?: string | null;
   onSubmit: (values: TimesheetEntryFormValues) => Promise<void>;
   onCancelEdit: () => void;
   onEntryDateChange?: (entryDate: string) => void;
@@ -114,6 +115,7 @@ export function TimesheetEntryForm({
   dailyLimit,
   saving,
   currentUserId: _currentUserId,
+  currentUserTeamId,
   onSubmit,
   onCancelEdit,
   onEntryDateChange,
@@ -282,6 +284,11 @@ export function TimesheetEntryForm({
 
   // Owners and contributors both need rework tagging for design-efficiency analysis.
   const showContributionReason = selectedTool?.kind === 'project' && Boolean(selectedProject);
+  const isCrossTeamSupport = Boolean(
+    selectedProject?.team_id &&
+      currentUserTeamId &&
+      selectedProject.team_id !== currentUserTeamId,
+  );
 
   return (
     <Box
@@ -304,6 +311,14 @@ export function TimesheetEntryForm({
         <Typography variant="caption" color="primary.main" sx={{ display: 'block', mb: 1, fontWeight: 700 }}>
           Editing entry — save or cancel to return to quick entry
         </Typography>
+      ) : null}
+
+      {isCrossTeamSupport ? (
+        <Alert severity="info" sx={{ mb: 1.25 }}>
+          This tool belongs to {selectedProject?.team_name ?? 'another team'}. Hours still count on
+          your home team, and will appear under cross-team / extra-effort reporting. Add a
+          contribution reason when you can.
+        </Alert>
       ) : null}
 
       {toolOptions.length === 0 ? (

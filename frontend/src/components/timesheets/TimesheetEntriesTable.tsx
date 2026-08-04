@@ -72,7 +72,7 @@ export function TimesheetEntriesTable({
   monthLabel,
   entries,
   timesheetById,
-  dailyTotals,
+  dailyTotals: _dailyTotals,
   dailyLimit,
   readOnly,
   showUser = false,
@@ -136,10 +136,15 @@ export function TimesheetEntriesTable({
 
   const dailySubtotals = useMemo(() => {
     const counts = new Map<string, number>();
+    const hours = new Map<string, number>();
     for (const entry of entries) {
       counts.set(entry.entry_date, (counts.get(entry.entry_date) ?? 0) + 1);
+      hours.set(
+        entry.entry_date,
+        (hours.get(entry.entry_date) ?? 0) + Number(entry.hours),
+      );
     }
-    return counts;
+    return { counts, hours };
   }, [entries]);
 
   const rowCategoryBg = (entry: TimesheetEntry) => {
@@ -210,8 +215,8 @@ export function TimesheetEntriesTable({
         >
           {sortedEntries.map((entry) => {
             const editable = !readOnly && isEntryEditable(entry);
-            const dayTotal = dailyTotals.get(entry.entry_date) ?? 0;
-            const showDayTotal = (dailySubtotals.get(entry.entry_date) ?? 0) > 1;
+            const dayTotal = dailySubtotals.hours.get(entry.entry_date) ?? 0;
+            const showDayTotal = (dailySubtotals.counts.get(entry.entry_date) ?? 0) > 1;
             const dayOverLimit = dayTotal > dailyLimit;
             const sheet = timesheetById.get(entry.timesheet_id);
             const categoryBg = rowCategoryBg(entry);

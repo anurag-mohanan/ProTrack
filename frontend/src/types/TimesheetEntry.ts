@@ -19,6 +19,9 @@ export interface TimesheetEntry extends Timestamped {
   description: string | null;
   project_tool_number?: string | null;
   project_code?: string | null;
+  /** Owning team of the project (for cross-team support detection). */
+  project_team_id?: string | null;
+  project_team_name?: string | null;
   customer_name?: string | null;
   task_type_name?: string | null;
   milestone_name?: string | null;
@@ -180,6 +183,8 @@ export interface TimesheetOverviewTeam {
   user_ids: string[];
   /** Inclusive intervals when each user belonged to this team in the overview month. */
   membership_windows?: Record<string, MembershipDateWindow[]>;
+  /** management = full unsplit hours; delivery = membership-dated; unassigned = no team */
+  section_kind?: 'management' | 'delivery' | 'unassigned' | string;
 }
 
 export interface TimesheetOverviewUser {

@@ -76,6 +76,7 @@ def membership_windows_for_teams(
     *,
     range_start: date,
     range_end: date,
+    primary_only: bool = False,
 ) -> dict[UUID, list[tuple[date, date]]]:
     """
     Map user_id → inclusive date intervals overlapping [range_start, range_end]
@@ -87,6 +88,10 @@ def membership_windows_for_teams(
     ``joined_at``, then the latest transfer job event onto that team) so a
     mid-month move never attributes earlier hours to the destination team —
     even when a backfilled period still starts at hire date.
+
+    When ``primary_only`` is True, only primary-home memberships / periods are
+    used — required for timesheet hour attribution so secondary multi-team
+    memberships do not duplicate the same hours under every team.
     """
     if not team_ids or range_start > range_end:
         return {}
@@ -94,9 +99,10 @@ def membership_windows_for_teams(
     team_tuple = tuple(team_ids)
     windows: dict[UUID, list[tuple[date, date]]] = {}
 
-    members = list(
-        db.scalars(select(TeamMember).where(TeamMember.team_id.in_(team_tuple))).all()
-    )
+    member_stmt = select(TeamMember).where(TeamMember.team_id.in_(team_tuple))
+    if primary_only:
+        member_stmt = member_stmt.where(TeamMember.is_primary.is_(True))
+    members = list(db.scalars(member_stmt).all())
     member_floors: dict[tuple[UUID, UUID], date] = {}
     for member in members:
         floor = _member_start_floor(member)
@@ -109,12 +115,13 @@ def membership_windows_for_teams(
         if prev is None or transfer_on > prev:
             member_floors[key] = transfer_on
 
-    periods = db.scalars(
-        select(TeamMembershipPeriod).where(
-            TeamMembershipPeriod.team_id.in_(team_tuple),
-            TeamMembershipPeriod.effective_from <= range_end,
-        )
-    ).all()
+    period_stmt = select(TeamMembershipPeriod).where(
+        TeamMembershipPeriod.team_id.in_(team_tuple),
+        TeamMembershipPeriod.effective_from <= range_end,
+    )
+    if primary_only:
+        period_stmt = period_stmt.where(TeamMembershipPeriod.is_primary.is_(True))
+    periods = db.scalars(period_stmt).all()
 
     users_with_period_on_team: set[tuple[UUID, UUID]] = set()
     for period in periods:

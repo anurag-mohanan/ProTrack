@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.fixed_resource_eligibility import role_is_management_overhead_default
 from app.core.permissions import (
     DESIGN_LEADER,
     ENGINEERING_MANAGER,
@@ -18,6 +19,7 @@ from app.core.permissions import (
     normalize_role_name,
 )
 from app.core.timesheet_eligibility import user_requires_timesheet
+from app.db.phase33_management_team_schema_sync import is_overhead_home_team
 from app.models.enums import TeamRelationshipType
 from app.models.models import Project, Team, TeamMember, User
 from app.services.reporting.team_membership_windows import membership_windows_for_teams
@@ -209,6 +211,20 @@ def _serialize_membership_windows(
     return serialized
 
 
+def _is_management_timesheet_user(
+    db: Session,
+    user: User,
+    *,
+    teams_by_id: dict[UUID, Team],
+) -> bool:
+    """Leaders / Corporate home — hours must not be split across delivery teams."""
+    home = teams_by_id.get(user.team_id) if user.team_id else None
+    if is_overhead_home_team(home):
+        return True
+    role_name = get_role_name(db, user)
+    return role_is_management_overhead_default(role_name)
+
+
 def build_timesheet_overview(
     db: Session,
     actor: User,
@@ -264,7 +280,22 @@ def build_timesheet_overview(
     users = [user for user in users if user_requires_timesheet(user)]
     required_ids = {user.id for user in users}
 
-    team_name_by_id = {team.id: team.name for team in teams}
+    teams_by_id = {team.id: team for team in teams}
+    # Need overhead-home classification even when the corporate team is out of scope.
+    for user in users:
+        if user.team_id and user.team_id not in teams_by_id:
+            home = db.get(Team, user.team_id)
+            if home is not None:
+                teams_by_id[home.id] = home
+
+    management_ids = sorted(
+        user.id
+        for user in users
+        if _is_management_timesheet_user(db, user, teams_by_id=teams_by_id)
+    )
+    management_id_set = set(management_ids)
+
+    team_name_by_id = {team.id: team.name for team in teams_by_id.values()}
     user_team_ids: dict[UUID, set[UUID]] = {user.id: set() for user in users}
     for user in users:
         if user.team_id is not None:
@@ -277,17 +308,40 @@ def build_timesheet_overview(
 
     overview_teams = []
     assigned_user_ids: set[UUID] = set()
+
+    # Leaders / Corporate home: full period hours in one place — never split across
+    # delivery teams they also manage or hold secondary membership on.
+    if management_ids:
+        assigned_user_ids.update(management_ids)
+        overview_teams.append(
+            {
+                "team_id": None,
+                "team_name": "Management / Leadership",
+                "user_ids": management_ids,
+                "membership_windows": {},
+                "section_kind": "management",
+            }
+        )
+
     for team in teams:
+        if is_overhead_home_team(team):
+            # Corporate roster is covered by the Management / Leadership section.
+            continue
         windows = membership_windows_for_teams(
             db,
             frozenset({team.id}),
             range_start=month_start,
             range_end=month_end,
+            # Hour attribution must follow primary home only — secondary
+            # multi-team memberships previously duplicated the same hours
+            # under every team section.
+            primary_only=True,
         )
         member_ids = sorted(
             user_id
             for user_id in windows
             if user_id in required_ids
+            and user_id not in management_id_set
             and (visible_user_ids is None or user_id in visible_user_ids)
         )
         if not member_ids:
@@ -299,6 +353,7 @@ def build_timesheet_overview(
                 "team_name": team.name,
                 "user_ids": member_ids,
                 "membership_windows": _serialize_membership_windows(windows, member_ids),
+                "section_kind": "delivery",
             }
         )
 
@@ -310,6 +365,7 @@ def build_timesheet_overview(
                 "team_name": "Unassigned",
                 "user_ids": unassigned_users,
                 "membership_windows": {},
+                "section_kind": "unassigned",
             }
         )
 

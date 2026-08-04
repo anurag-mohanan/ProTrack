@@ -21,6 +21,7 @@ interface TimesheetEntryEditDialogProps {
   dailyLimit: number;
   saving: boolean;
   currentUserId?: string;
+  currentUserTeamId?: string | null;
   onSave: (values: TimesheetEntryFormValues) => Promise<void>;
   onClose: () => void;
 }
@@ -36,6 +37,7 @@ export function TimesheetEntryEditDialog({
   dailyLimit,
   saving,
   currentUserId,
+  currentUserTeamId,
   onSave,
   onClose,
 }: TimesheetEntryEditDialogProps) {
@@ -55,6 +57,7 @@ export function TimesheetEntryEditDialog({
             dailyLimit={dailyLimit}
             saving={saving}
             currentUserId={currentUserId}
+            currentUserTeamId={currentUserTeamId}
             onSubmit={onSave}
             onCancelEdit={onClose}
             variant="dialog"

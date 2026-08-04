@@ -3,6 +3,7 @@ import {
   AccordionDetails,
   AccordionSummary,
   Box,
+  Button,
   Chip,
   Table,
   TableBody,
@@ -13,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import type { Timesheet, TimesheetEntry } from '../../types';
 import { TimesheetStatusChip } from '../common/StatusChip';
 import { EmptyState } from '../common/EmptyState';
@@ -22,6 +24,8 @@ export interface OverviewUser {
   id: string;
   name: string;
   requiresTimesheet?: boolean;
+  /** Designer's primary / section home team for cross-team badges. */
+  homeTeamId?: string | null;
   entries?: TimesheetEntry[];
 }
 
@@ -29,12 +33,20 @@ export interface TimesheetOverviewSection {
   title: string;
   subtitle?: string;
   emptyText?: string;
+  /** When set, entries whose project team differs are flagged as other-team support. */
+  teamId?: string | null;
+  sectionKind?: string;
   users: OverviewUser[];
 }
 
 interface TimesheetUsersOverviewProps {
   sections: TimesheetOverviewSection[];
   timesheetById: Map<string, Timesheet>;
+  periodStart?: string;
+  periodEnd?: string;
+  periodLabel?: string;
+  onExportDesigner?: (userId: string, userName: string) => void | Promise<void>;
+  exportingUserId?: string | null;
 }
 
 function toolLabel(entry: TimesheetEntry): string {
@@ -51,17 +63,39 @@ function taskLabel(entry: TimesheetEntry): string {
   return formatCellValue(entry.task_type_name) || '—';
 }
 
+function isOtherTeamSupport(
+  entry: TimesheetEntry,
+  homeTeamId: string | null | undefined,
+): boolean {
+  if (entry.work_category !== 'productive' || !entry.project_team_id || !homeTeamId) {
+    return false;
+  }
+  return entry.project_team_id !== homeTeamId;
+}
+
+function otherTeamSupportHours(
+  entries: TimesheetEntry[],
+  homeTeamId: string | null | undefined,
+): number {
+  return entries.reduce((sum, entry) => {
+    if (!isOtherTeamSupport(entry, homeTeamId)) return sum;
+    return sum + Number(entry.hours);
+  }, 0);
+}
+
 function UserEntries({
   entries,
   timesheetById,
+  homeTeamId,
 }: {
   entries: TimesheetEntry[];
   timesheetById: Map<string, Timesheet>;
+  homeTeamId?: string | null;
 }) {
   if (!entries.length) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-        No entries for this month.
+        No entries for this period.
       </Typography>
     );
   }
@@ -85,21 +119,40 @@ function UserEntries({
           </TableRow>
         </TableHead>
         <TableBody>
-          {sorted.map((entry) => (
-            <TableRow key={entry.id}>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(entry.entry_date)}</TableCell>
-              <TableCell>{toolLabel(entry)}</TableCell>
-              <TableCell>{taskLabel(entry)}</TableCell>
-              <TableCell align="right">{formatNumber(entry.hours, 1)}</TableCell>
-              <TableCell>{entry.is_billable ? 'Yes' : 'No'}</TableCell>
-              <TableCell>{formatCellValue(entry.description) || '—'}</TableCell>
-              <TableCell>
-                <TimesheetStatusChip
-                  status={timesheetById.get(entry.timesheet_id)?.status ?? 'draft'}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
+          {sorted.map((entry) => {
+            const otherTeam = isOtherTeamSupport(entry, homeTeamId);
+            return (
+              <TableRow key={entry.id}>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(entry.entry_date)}</TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                    <span>{toolLabel(entry)}</span>
+                    {otherTeam ? (
+                      <Chip
+                        size="small"
+                        color="info"
+                        variant="outlined"
+                        label={
+                          entry.project_team_name
+                            ? `Other team: ${entry.project_team_name}`
+                            : 'Other team support'
+                        }
+                      />
+                    ) : null}
+                  </Box>
+                </TableCell>
+                <TableCell>{taskLabel(entry)}</TableCell>
+                <TableCell align="right">{formatNumber(entry.hours, 1)}</TableCell>
+                <TableCell>{entry.is_billable ? 'Yes' : 'No'}</TableCell>
+                <TableCell>{formatCellValue(entry.description) || '—'}</TableCell>
+                <TableCell>
+                  <TimesheetStatusChip
+                    status={timesheetById.get(entry.timesheet_id)?.status ?? 'draft'}
+                  />
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </TableContainer>
@@ -109,6 +162,9 @@ function UserEntries({
 export function TimesheetUsersOverview({
   sections,
   timesheetById,
+  periodLabel,
+  onExportDesigner,
+  exportingUserId,
 }: TimesheetUsersOverviewProps) {
   return (
     <Box>
@@ -132,6 +188,8 @@ export function TimesheetUsersOverview({
             section.users.map((overviewUser) => {
               const entries = overviewUser.entries ?? [];
               const totalHours = entries.reduce((sum, entry) => sum + Number(entry.hours), 0);
+              const homeTeamId = overviewUser.homeTeamId ?? section.teamId ?? null;
+              const supportHours = otherTeamSupportHours(entries, homeTeamId);
               const missingRequired =
                 Boolean(overviewUser.requiresTimesheet) && totalHours <= 0;
               return (
@@ -155,6 +213,7 @@ export function TimesheetUsersOverview({
                         gap: 1.5,
                         flexWrap: 'wrap',
                         width: '100%',
+                        pr: 1,
                       }}
                     >
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
@@ -171,13 +230,44 @@ export function TimesheetUsersOverview({
                         variant="outlined"
                         label={`${formatNumber(totalHours, 1)} h`}
                       />
+                      {supportHours > 0 ? (
+                        <Chip
+                          size="small"
+                          color="info"
+                          variant="outlined"
+                          label={`${formatNumber(supportHours, 1)} h other-team support`}
+                        />
+                      ) : null}
                       {missingRequired ? (
-                        <Chip size="small" color="warning" label="No hours this month" />
+                        <Chip size="small" color="warning" label="No hours this period" />
+                      ) : null}
+                      {onExportDesigner ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<FileDownloadOutlinedIcon />}
+                          disabled={exportingUserId === overviewUser.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void onExportDesigner(overviewUser.id, overviewUser.name);
+                          }}
+                          sx={{ ml: 'auto' }}
+                        >
+                          {exportingUserId === overviewUser.id
+                            ? 'Exporting…'
+                            : periodLabel
+                              ? `Export ${periodLabel}`
+                              : 'Export'}
+                        </Button>
                       ) : null}
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails sx={{ pt: 0 }}>
-                    <UserEntries entries={entries} timesheetById={timesheetById} />
+                    <UserEntries
+                      entries={entries}
+                      timesheetById={timesheetById}
+                      homeTeamId={homeTeamId}
+                    />
                   </AccordionDetails>
                 </Accordion>
               );

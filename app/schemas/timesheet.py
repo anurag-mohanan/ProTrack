@@ -116,6 +116,8 @@ class TimesheetEntryUpdate(BlankOptionalFieldsMixin, BaseModel):
 class TimesheetEntryRead(TimesheetEntryBase, TimestampSchema):
     project_tool_number: str | None = None
     project_code: str | None = None
+    project_team_id: UUID | None = None
+    project_team_name: str | None = None
     customer_name: str | None = None
     task_type_name: str | None = None
     milestone_name: str | None = None
@@ -285,6 +287,8 @@ class TimesheetOverviewTeam(BaseModel):
     user_ids: list[UUID] = Field(default_factory=list)
     # user_id → intervals on this team overlapping the overview month
     membership_windows: dict[str, list[MembershipDateWindow]] = Field(default_factory=dict)
+    # management = full unsplit hours; delivery = membership-dated; unassigned = no team
+    section_kind: str = "delivery"
 
 
 class TimesheetOverviewUser(BaseModel):

@@ -5,7 +5,8 @@ import type {
   TimesheetEntryCreate,
 } from '../types';
 import type { ContributionReason, TimesheetOverviewContext } from '../types/TimesheetEntry';
-import { apiClient, buildQuery, type ListParams } from './client';
+import { apiClient, buildQuery, type ListParams, API_BASE_URL } from './client';
+import { getAccessToken } from '../services/authStorage';
 
 export interface TimesheetEntryBulkUpsert {
   id?: string | null;
@@ -79,6 +80,39 @@ export async function fetchTimesheetOverview(params?: {
         : undefined,
   });
   return data;
+}
+
+export async function downloadDesignerTimesheetExcel(params: {
+  userId: string;
+  periodStart: string;
+  periodEnd: string;
+  periodLabel?: string;
+}): Promise<void> {
+  const token = getAccessToken();
+  const query = buildQuery({
+    user_id: params.userId,
+    period_start: params.periodStart,
+    period_end: params.periodEnd,
+    period_label: params.periodLabel,
+  });
+  const response = await fetch(`${API_BASE_URL}/timesheets/export/designer.xlsx${query}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    throw new Error('Failed to download designer timesheet.');
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match?.[1] ?? `timesheet-${params.userId}.xlsx`;
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 export async function ensureWeekTimesheet(payload: TimesheetCreate): Promise<Timesheet> {

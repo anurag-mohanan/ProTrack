@@ -19,6 +19,8 @@ export interface TimesheetTeamSection {
   summary: TimesheetMonthSummary;
   /** Entries clipped to each user's membership windows on this team. */
   entriesByUserId: Map<string, TimesheetEntry[]>;
+  /** management | delivery | unassigned | designer */
+  sectionKind?: string;
 }
 
 export function expectedHoursForUsers(
@@ -67,8 +69,10 @@ export function filterEntriesForTeamMembership(
   return entries.filter((entry) => {
     if (entry.user_id == null || !userIds.has(entry.user_id)) return false;
     const windows = membershipWindows?.[entry.user_id];
-    // Rostered on the team but windows missing — never hide their hours.
-    if (!windows?.length) return true;
+    // Named teams: missing windows means this day does not belong here.
+    // Never fall back to "all hours" — that duplicates the same person under
+    // every team they have a secondary membership on.
+    if (!windows?.length) return !requireMembershipDates;
     return entryDateInWindows(entry.entry_date, windows);
   });
 }
@@ -90,12 +94,15 @@ export function buildTeamTimesheetSections(
         .filter((user): user is TimesheetOverviewUser => user != null)
         .filter((user) => user.requires_timesheet !== false);
       const userIdSet = new Set(teamUsers.map((user) => user.id));
-      // Named teams must clip to membership start — never fall back to full history.
+      // Management / unassigned: full period hours. Delivery teams: membership dates.
+      const clipToMembership =
+        team.section_kind === 'delivery' ||
+        (team.section_kind == null && team.team_id != null);
       const teamEntries = filterEntriesForTeamMembership(
         entries,
         userIdSet,
         team.membership_windows,
-        { requireMembershipDates: team.team_id != null },
+        { requireMembershipDates: clipToMembership },
       );
       const entriesByUserId = new Map<string, TimesheetEntry[]>();
       for (const entry of teamEntries) {
@@ -112,28 +119,21 @@ export function buildTeamTimesheetSections(
         users: teamUsers,
         summary: summarizeMonthEntries(teamEntries, expectedHours),
         entriesByUserId,
+        sectionKind: team.section_kind ?? (team.team_id != null ? 'delivery' : 'unassigned'),
       };
     })
     .filter((section) => section.users.length > 0);
 }
 
-/**
- * One section with every tracked designer and their full period hours
- * (no membership-date clipping). Use this when managers need complete totals.
- */
-export function buildDesignerTimesheetSections(
+function sectionFromUsers(
+  teamName: string,
   users: TimesheetOverviewUser[],
   entries: TimesheetEntry[],
   workingDayCount: number,
-): TimesheetTeamSection[] {
-  const trackedUsers = [...users]
-    .filter((user) => user.requires_timesheet !== false)
-    .sort((left, right) => {
-      const leftName = `${left.last_name} ${left.first_name}`.toLowerCase();
-      const rightName = `${right.last_name} ${right.first_name}`.toLowerCase();
-      return leftName.localeCompare(rightName);
-    });
-  const userIdSet = new Set(trackedUsers.map((user) => user.id));
+  sectionKind: string,
+  teamId: string | null = null,
+): TimesheetTeamSection {
+  const userIdSet = new Set(users.map((user) => user.id));
   const scopedEntries = filterEntriesForUsers(entries, userIdSet);
   const entriesByUserId = new Map<string, TimesheetEntry[]>();
   for (const entry of scopedEntries) {
@@ -142,16 +142,62 @@ export function buildDesignerTimesheetSections(
     if (list) list.push(entry);
     else entriesByUserId.set(key, [entry]);
   }
-  const expectedHours = expectedHoursForUsers(trackedUsers, workingDayCount);
-  return [
-    {
-      teamId: null,
-      teamName: 'All designers',
-      users: trackedUsers,
-      summary: summarizeMonthEntries(scopedEntries, expectedHours),
-      entriesByUserId,
-    },
-  ];
+  return {
+    teamId,
+    teamName,
+    users,
+    summary: summarizeMonthEntries(scopedEntries, expectedHoursForUsers(users, workingDayCount)),
+    entriesByUserId,
+    sectionKind,
+  };
+}
+
+/**
+ * Full period hours per person (no membership clipping). Leaders from the
+ * Management overview section stay in their own block so multi-team managers
+ * are not mixed into the delivery designer list.
+ */
+export function buildDesignerTimesheetSections(
+  users: TimesheetOverviewUser[],
+  entries: TimesheetEntry[],
+  workingDayCount: number,
+  teams?: TimesheetOverviewTeam[],
+): TimesheetTeamSection[] {
+  const trackedUsers = [...users]
+    .filter((user) => user.requires_timesheet !== false)
+    .sort((left, right) => {
+      const leftName = `${left.last_name} ${left.first_name}`.toLowerCase();
+      const rightName = `${right.last_name} ${right.first_name}`.toLowerCase();
+      return leftName.localeCompare(rightName);
+    });
+
+  const managementTeam = teams?.find((team) => team.section_kind === 'management');
+  const managementIds = new Set(managementTeam?.user_ids ?? []);
+  const sections: TimesheetTeamSection[] = [];
+
+  if (managementIds.size > 0) {
+    const managementUsers = trackedUsers.filter((user) => managementIds.has(user.id));
+    if (managementUsers.length > 0) {
+      sections.push(
+        sectionFromUsers(
+          managementTeam?.team_name ?? 'Management / Leadership',
+          managementUsers,
+          entries,
+          workingDayCount,
+          'management',
+        ),
+      );
+    }
+  }
+
+  const deliveryUsers = trackedUsers.filter((user) => !managementIds.has(user.id));
+  if (deliveryUsers.length > 0) {
+    sections.push(
+      sectionFromUsers('All designers', deliveryUsers, entries, workingDayCount, 'designer'),
+    );
+  }
+
+  return sections;
 }
 
 export function buildScopedOverviewSummary(

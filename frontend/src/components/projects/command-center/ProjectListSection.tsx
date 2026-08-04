@@ -22,6 +22,8 @@ interface ProjectListSectionProps {
   defaultExpanded?: boolean;
   collapsible?: boolean;
   primary?: boolean;
+  /** Quieter header for team groups nested under a stream panel. */
+  nested?: boolean;
   gridSessionKey?: number;
   splitActiveHold?: boolean;
   onRowOpen?: (row: ProjectTableRow) => void;
@@ -43,6 +45,7 @@ export function ProjectListSection({
   teams,
   defaultExpanded = true,
   collapsible = false,
+  nested = false,
   splitActiveHold = true,
   onRowOpen,
   onEdit,
@@ -75,10 +78,22 @@ export function ProjectListSection({
 
   if (!collapsible) {
     return (
-      <Box sx={{ mb: 1 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.4, fontSize: '0.78rem' }}>
-          {sectionTitle}
-        </Typography>
+      <Box sx={{ mb: nested ? 0.75 : 1, pt: nested ? 0.35 : 0 }}>
+        {title.trim() ? (
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: nested ? 600 : 700,
+              mb: 0.4,
+              fontSize: nested ? '0.72rem' : '0.78rem',
+              color: nested ? 'text.secondary' : 'text.primary',
+              letterSpacing: nested ? '0.02em' : undefined,
+              textTransform: nested ? 'uppercase' : 'none',
+            }}
+          >
+            {sectionTitle}
+          </Typography>
+        ) : null}
         {projects.length ? (
           board
         ) : (

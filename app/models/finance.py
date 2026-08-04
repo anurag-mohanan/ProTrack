@@ -37,7 +37,7 @@ from app.models.enums import (
     TeamBillingMode,
     TeamBillingPeriod,
 )
-from app.models.mixins import TimestampMixin
+from app.models.mixins import TenantMixin, TimestampMixin
 
 
 class Currency(Base, TimestampMixin):
@@ -50,14 +50,15 @@ class Currency(Base, TimestampMixin):
     is_base: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-class FxRate(Base, TimestampMixin):
+class FxRate(Base, TimestampMixin, TenantMixin):
     __tablename__ = "fx_rates"
     __table_args__ = (
         UniqueConstraint(
+            "tenant_id",
             "from_currency",
             "to_currency",
             "effective_date",
-            name="uq_fx_rates_pair_date",
+            name="uq_fx_rates_tenant_pair_date",
         ),
     )
 
@@ -75,8 +76,9 @@ class FxRate(Base, TimestampMixin):
     source: Mapped[str] = mapped_column(String(50), nullable=False, default="manual")
 
 
-class CompanyFinanceSettings(Base, TimestampMixin):
+class CompanyFinanceSettings(Base, TimestampMixin, TenantMixin):
     __tablename__ = "company_finance_settings"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_company_finance_settings_tenant"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -92,13 +94,14 @@ class CompanyFinanceSettings(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class CostCentre(Base, TimestampMixin):
+class CostCentre(Base, TimestampMixin, TenantMixin):
     __tablename__ = "cost_centres"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_cost_centres_tenant_code"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     nature: Mapped[CostNature] = mapped_column(
@@ -115,7 +118,7 @@ class CostCentre(Base, TimestampMixin):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
-class EmployeeCostProfile(Base, TimestampMixin):
+class EmployeeCostProfile(Base, TimestampMixin, TenantMixin):
     __tablename__ = "employee_cost_profiles"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -142,7 +145,7 @@ class EmployeeCostProfile(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class Expense(Base, TimestampMixin):
+class Expense(Base, TimestampMixin, TenantMixin):
     __tablename__ = "expenses"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -193,7 +196,7 @@ class Expense(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class TeamCommercialTerms(Base, TimestampMixin):
+class TeamCommercialTerms(Base, TimestampMixin, TenantMixin):
     """Per-team engagement model and customer fee used by finance rollups."""
 
     __tablename__ = "team_commercial_terms"
@@ -239,7 +242,7 @@ class TeamCommercialTerms(Base, TimestampMixin):
     )
 
 
-class TeamCommercialFeeBand(Base, TimestampMixin):
+class TeamCommercialFeeBand(Base, TimestampMixin, TenantMixin):
     """Per-skill customer fee for fixed-cost / retainer headcount on a terms row."""
 
     __tablename__ = "team_commercial_fee_bands"
@@ -267,7 +270,7 @@ class TeamCommercialFeeBand(Base, TimestampMixin):
     )
 
 
-class Quote(Base, TimestampMixin):
+class Quote(Base, TimestampMixin, TenantMixin):
     __tablename__ = "quotes"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -320,7 +323,7 @@ class Quote(Base, TimestampMixin):
     )
 
 
-class QuoteInvoiceLine(Base, TimestampMixin):
+class QuoteInvoiceLine(Base, TimestampMixin, TenantMixin):
     """Partial or full invoice entry against an awarded quote."""
 
     __tablename__ = "quote_invoice_lines"
@@ -339,7 +342,7 @@ class QuoteInvoiceLine(Base, TimestampMixin):
     quote: Mapped[Quote] = relationship(back_populates="invoice_lines")
 
 
-class QuotePaymentLine(Base, TimestampMixin):
+class QuotePaymentLine(Base, TimestampMixin, TenantMixin):
     """Partial or full customer payment against invoiced amounts."""
 
     __tablename__ = "quote_payment_lines"
@@ -359,7 +362,7 @@ class QuotePaymentLine(Base, TimestampMixin):
     quote: Mapped[Quote] = relationship(back_populates="payment_lines")
 
 
-class QuoteRevision(Base, TimestampMixin):
+class QuoteRevision(Base, TimestampMixin, TenantMixin):
     __tablename__ = "quote_revisions"
     __table_args__ = (
         UniqueConstraint("quote_id", "version", "revision", name="uq_quote_version_revision"),
@@ -398,7 +401,7 @@ class QuoteRevision(Base, TimestampMixin):
     quote: Mapped[Quote] = relationship(back_populates="revisions")
 
 
-class Budget(Base, TimestampMixin):
+class Budget(Base, TimestampMixin, TenantMixin):
     __tablename__ = "budgets"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -440,7 +443,7 @@ class Budget(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class ProjectFinancialSnapshot(Base, TimestampMixin):
+class ProjectFinancialSnapshot(Base, TimestampMixin, TenantMixin):
     __tablename__ = "project_financial_snapshots"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -477,7 +480,7 @@ class ProjectFinancialSnapshot(Base, TimestampMixin):
     )
 
 
-class AiForecastPlaceholder(Base, TimestampMixin):
+class AiForecastPlaceholder(Base, TimestampMixin, TenantMixin):
     __tablename__ = "ai_forecast_placeholders"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -493,7 +496,7 @@ class AiForecastPlaceholder(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class FinancePlan(Base, TimestampMixin):
+class FinancePlan(Base, TimestampMixin, TenantMixin):
     """Annual financial plan (Apr–Mar FY) aligned to the legacy Excel workbook."""
 
     __tablename__ = "finance_plans"
@@ -523,7 +526,7 @@ class FinancePlan(Base, TimestampMixin):
     )
 
 
-class FinancePlanLine(Base, TimestampMixin):
+class FinancePlanLine(Base, TimestampMixin, TenantMixin):
     """One editable row in an annual plan section (month_01=Apr … month_12=Mar)."""
 
     __tablename__ = "finance_plan_lines"
@@ -562,7 +565,7 @@ class FinancePlanLine(Base, TimestampMixin):
     plan: Mapped[FinancePlan] = relationship("FinancePlan", back_populates="lines")
 
 
-class FinancePlanningScenario(Base, TimestampMixin):
+class FinancePlanningScenario(Base, TimestampMixin, TenantMixin):
     """Persisted finance what-if scenario (simulation worksheet; does not alter live books)."""
 
     __tablename__ = "finance_planning_scenarios"

@@ -22,10 +22,10 @@ from app.db.base import (
     relationship,
 )
 from app.models.enums import DecisionCategory, EngineeringChangeStatus
-from app.models.mixins import TimestampMixin
+from app.models.mixins import TenantMixin, TimestampMixin
 
 
-class ProjectDecision(Base, TimestampMixin):
+class ProjectDecision(Base, TimestampMixin, TenantMixin):
     __tablename__ = "project_decisions"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -54,7 +54,7 @@ class ProjectDecision(Base, TimestampMixin):
     milestone: Mapped[Optional["Milestone"]] = relationship(foreign_keys=[milestone_id])
 
 
-class EngineeringChange(Base, TimestampMixin):
+class EngineeringChange(Base, TimestampMixin, TenantMixin):
     __tablename__ = "engineering_changes"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -80,7 +80,7 @@ class EngineeringChange(Base, TimestampMixin):
     project: Mapped["Project"] = relationship(back_populates="engineering_changes")
 
 
-class LessonLearned(Base, TimestampMixin):
+class LessonLearned(Base, TimestampMixin, TenantMixin):
     __tablename__ = "lessons_learned"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -103,7 +103,7 @@ class LessonLearned(Base, TimestampMixin):
     created_by: Mapped["User"] = relationship(foreign_keys=[created_by_id])
 
 
-class ProjectKnowledgeRecord(Base, TimestampMixin):
+class ProjectKnowledgeRecord(Base, TimestampMixin, TenantMixin):
     """Searchable knowledge index for completed projects."""
 
     __tablename__ = "project_knowledge_records"

@@ -155,6 +155,34 @@ def _clip_period(
     return clipped_start, clipped_end
 
 
+def _open_period_start_for_report(
+    *,
+    period_start: date,
+    floor: date | None,
+    joining_date: date | None,
+    range_start: date,
+    notes: str | None,
+) -> date:
+    """Resolve the open-stint start used for timesheet hour attribution.
+
+    Phase-36 backfill / reconcile often copied ``TeamMember.joined_at`` into
+    ``effective_from``, which then raised the open period start mid-month and
+    hid early-month entries for people who never transferred. Without a
+    verified transfer floor, only trust a mid-range start when joining_date or
+    period notes show an intentional dated assign/transfer.
+    """
+    if floor is not None:
+        return period_start
+    if period_start <= range_start:
+        return period_start
+    notes_l = (notes or "").lower()
+    if "transfer" in notes_l or "primary assign" in notes_l:
+        return period_start
+    if joining_date is not None and joining_date > range_start:
+        return max(period_start, joining_date)
+    return range_start
+
+
 def membership_windows_for_teams(
     db: Session,
     team_ids: frozenset[UUID] | set[UUID],
@@ -207,6 +235,13 @@ def membership_windows_for_teams(
     if primary_only:
         period_stmt = period_stmt.where(TeamMembershipPeriod.is_primary.is_(True))
     periods = db.scalars(period_stmt).all()
+    period_user_ids = {period.user_id for period in periods} | {
+        member.user_id for member in members
+    }
+    joining_by_user: dict[UUID, date | None] = {}
+    if period_user_ids:
+        for person in db.scalars(select(User).where(User.id.in_(tuple(period_user_ids)))).all():
+            joining_by_user[person.id] = person.joining_date
 
     users_with_period_on_team: set[tuple[UUID, UUID]] = set()
     for period in periods:
@@ -221,8 +256,17 @@ def membership_windows_for_teams(
         ):
             continue
         floor = stint_floors.get((period.user_id, period.team_id))
+        period_start = period.effective_from
+        if period.effective_to is None:
+            period_start = _open_period_start_for_report(
+                period_start=period.effective_from,
+                floor=floor,
+                joining_date=joining_by_user.get(period.user_id),
+                range_start=range_start,
+                notes=period.notes,
+            )
         clipped = _clip_period(
-            period_start=period.effective_from,
+            period_start=period_start,
             period_to=period.effective_to,
             floor=floor,
             range_start=range_start,
@@ -334,6 +378,10 @@ def primary_home_team_timeline(
             TeamMembershipPeriod.effective_from <= range_end,
         )
     ).all()
+    joining_by_user: dict[UUID, date | None] = {
+        person.id: person.joining_date
+        for person in db.scalars(select(User).where(User.id.in_(user_tuple))).all()
+    }
 
     timelines: dict[UUID, list[tuple[date, date, UUID]]] = {}
     users_with_period: set[UUID] = set()
@@ -346,8 +394,17 @@ def primary_home_team_timeline(
         ):
             continue
         floor = stint_floors.get((period.user_id, period.team_id))
+        period_start = period.effective_from
+        if period.effective_to is None:
+            period_start = _open_period_start_for_report(
+                period_start=period.effective_from,
+                floor=floor,
+                joining_date=joining_by_user.get(period.user_id),
+                range_start=range_start,
+                notes=period.notes,
+            )
         clipped = _clip_period(
-            period_start=period.effective_from,
+            period_start=period_start,
             period_to=period.effective_to,
             floor=floor,
             range_start=range_start,

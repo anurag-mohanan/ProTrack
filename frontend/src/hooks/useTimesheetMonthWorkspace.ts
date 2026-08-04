@@ -112,7 +112,7 @@ export function useTimesheetMonthWorkspace(
         user_id: scopeUserId,
         entry_date_from: bounds.start,
         entry_date_to: bounds.end,
-        limit: 2000,
+        limit: 10000,
       }),
     enabled: Boolean(userId),
     staleTime: QUERY_STALE_TIMES.timesheetMonth,

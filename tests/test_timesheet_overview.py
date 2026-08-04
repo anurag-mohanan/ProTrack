@@ -473,6 +473,7 @@ def test_joined_at_style_effective_from_does_not_clip_non_transfer(session):
     assert designer is not None
     designer.team_id = home.id
     designer.requires_timesheet = True
+    designer.joining_date = date(2024, 3, 1)
     # Simulates backfill that copied joined_at into effective_from.
     session.add(
         TeamMember(
@@ -489,8 +490,9 @@ def test_joined_at_style_effective_from_does_not_clip_non_transfer(session):
             team_id=home.id,
             is_primary=True,
             is_billable_headcount=True,
-            effective_from=date(2020, 4, 1),
+            effective_from=date(2026, 7, 15),
             effective_to=None,
+            notes="Backfilled from live primary membership",
         )
     )
     session.commit()
@@ -502,6 +504,55 @@ def test_joined_at_style_effective_from_does_not_clip_non_transfer(session):
         range_end=date(2026, 7, 31),
     )
     assert windows[designer.id] == [(date(2026, 7, 1), date(2026, 7, 31))]
+
+
+def test_backfilled_mid_month_period_shows_early_month_entries(session):
+    """Regression: Sandrarag/Binil-style mid-month backfill must not hide July 1–N."""
+    home = Team(id=uuid.uuid4(), name="Eng 1 Stable Backfill", is_active=True)
+    session.add(home)
+    session.flush()
+
+    designer = session.get(User, IDS["user_binil"])
+    assert designer is not None
+    designer.team_id = home.id
+    designer.requires_timesheet = True
+    designer.joining_date = None
+    session.add(
+        TeamMember(
+            team_id=home.id,
+            user_id=designer.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2026, 7, 12),
+        )
+    )
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=home.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2026, 7, 12),
+            effective_to=None,
+            notes="Backfilled from live primary membership",
+        )
+    )
+    session.commit()
+
+    windows = membership_windows_for_teams(
+        session,
+        frozenset({home.id}),
+        range_start=date(2026, 7, 1),
+        range_end=date(2026, 7, 31),
+        primary_only=True,
+    )
+    assert windows[designer.id][0][0] == date(2026, 7, 1)
+
+    admin = session.get(User, IDS["user_admin"])
+    assert admin is not None
+    overview = build_timesheet_overview(session, admin, month="2026-07")
+    section = next(team for team in overview["teams"] if team["team_id"] == home.id)
+    assert section["membership_windows"][str(designer.id)][0]["start"] == date(2026, 7, 1)
 
 
 def test_overview_excludes_secondary_membership_from_team_windows(session):

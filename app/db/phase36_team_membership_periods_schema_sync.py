@@ -80,14 +80,38 @@ def backfill_membership_periods(session: Session) -> None:
 def reconcile_open_periods_to_member_effective_from(session: Session) -> int:
     """Raise open period starts to match TeamMember.effective_from when later.
 
+    Only adjusts when ``effective_from`` is a verified transfer-onto date (a
+    prior primary home ended the day before). Blindly copying joined_at-style
+    effective_from dates was hiding early-month timesheet hours for stable
+    team members.
+
     Returns the number of periods adjusted.
     """
+    from datetime import timedelta
+
     adjusted = 0
     members = session.scalars(
         select(TeamMember).where(TeamMember.effective_from.is_not(None))
     ).all()
+    if not members:
+        return 0
+
+    user_ids = {member.user_id for member in members}
+    prior_ends = session.scalars(
+        select(TeamMembershipPeriod).where(
+            TeamMembershipPeriod.user_id.in_(tuple(user_ids)),
+            TeamMembershipPeriod.is_primary.is_(True),
+            TeamMembershipPeriod.effective_to.is_not(None),
+        )
+    ).all()
+    transfer_starts = {
+        (row.user_id, row.effective_to + timedelta(days=1)) for row in prior_ends
+    }
+
     for member in members:
         assert member.effective_from is not None
+        if (member.user_id, member.effective_from) not in transfer_starts:
+            continue
         open_periods = session.scalars(
             select(TeamMembershipPeriod).where(
                 TeamMembershipPeriod.user_id == member.user_id,

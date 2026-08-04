@@ -129,11 +129,17 @@ def membership_windows_for_teams(
         if p_end < range_start:
             continue
         period_start = period.effective_from
-        # Current (open) stints must not start before the live membership /
-        # transfer date — fixes hire-date backfills after a mid-month move.
-        if period.effective_to is None:
-            floor = member_floors.get((period.user_id, period.team_id))
-            if floor is not None and floor > period_start:
+        # Floor every stint to the live membership / transfer-onto date.
+        # Closing a hire-date backfill on the destination (effective_to =
+        # day-before-transfer) used to leave a closed period that merged with
+        # the real post-transfer stint and pulled pre-transfer hours onto the
+        # new team — apply the floor to closed rows too and skip rows that end
+        # entirely before the floor.
+        floor = member_floors.get((period.user_id, period.team_id))
+        if floor is not None:
+            if p_end < floor:
+                continue
+            if floor > period_start:
                 period_start = floor
         if period_start > range_end:
             continue
@@ -260,9 +266,11 @@ def primary_home_team_timeline(
         if p_end < range_start:
             continue
         period_start = period.effective_from
-        if period.effective_to is None:
-            floor = member_floors.get((period.user_id, period.team_id))
-            if floor is not None and floor > period_start:
+        floor = member_floors.get((period.user_id, period.team_id))
+        if floor is not None:
+            if p_end < floor:
+                continue
+            if floor > period_start:
                 period_start = floor
         if period_start > range_end:
             continue

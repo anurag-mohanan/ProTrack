@@ -36,6 +36,29 @@ def _close_open_primary_periods(
             row.effective_to = effective_to
 
 
+def _delete_open_primary_periods(
+    db: Session,
+    *,
+    user_id: UUID,
+    team_id: UUID,
+) -> None:
+    """Drop open primary periods on a team (stale hire-date backfills on destination).
+
+    Closing them to ``day-before-transfer`` still left a historical window that
+    merged with the new stint and attributed pre-transfer hours to the new team.
+    """
+    rows = db.scalars(
+        select(TeamMembershipPeriod).where(
+            TeamMembershipPeriod.user_id == user_id,
+            TeamMembershipPeriod.team_id == team_id,
+            TeamMembershipPeriod.is_primary.is_(True),
+            TeamMembershipPeriod.effective_to.is_(None),
+        )
+    ).all()
+    for row in rows:
+        db.delete(row)
+
+
 def _close_all_open_primary_periods_for_user(
     db: Session, *, user_id: UUID, effective_to: date
 ) -> None:
@@ -189,13 +212,13 @@ def transfer_primary_membership(
         team_id=source_team_id,
         effective_to=last_on_source,
     )
-    # Stale open periods on the destination (e.g. hire-date backfills) would
-    # otherwise merge with the new stint and attribute pre-transfer hours.
-    _close_open_primary_periods(
+    # Stale open periods on the destination (e.g. hire-date backfills) must be
+    # removed — closing them still left a closed window that merged with the
+    # new stint and attributed pre-transfer hours to the new team.
+    _delete_open_primary_periods(
         db,
         user_id=user.id,
         team_id=target_team_id,
-        effective_to=last_on_source,
     )
 
     target_member = db.scalar(

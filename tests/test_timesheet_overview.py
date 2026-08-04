@@ -1,7 +1,7 @@
 """Timesheet overview team scoping for leaders and managers."""
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -245,6 +245,68 @@ def test_open_period_floored_to_member_effective_from(session):
         range_end=date(2026, 7, 31),
     )
     assert windows[designer.id][0][0] == transfer_on
+
+    admin = session.get(User, IDS["user_admin"])
+    assert admin is not None
+    overview = build_timesheet_overview(session, admin, month="2026-07")
+    section = next(team for team in overview["teams"] if team["team_id"] == target.id)
+    assert section["membership_windows"][str(designer.id)][0]["start"] == transfer_on
+
+
+def test_closed_pre_transfer_period_on_destination_does_not_merge(session):
+    """Closed hire→day-before-transfer on the new team must not cover early month days.
+
+    Reproduces Logesh / Eng 3-Redoe: transfer closed a stale destination backfill
+    instead of deleting it; merged windows then showed July 1–30 on Redoe.
+    """
+    target = Team(id=uuid.uuid4(), name="Eng 3 - Redoe Floor", is_active=True)
+    session.add(target)
+    session.flush()
+
+    designer = session.get(User, IDS["user_binil"])
+    assert designer is not None
+    designer.team_id = target.id
+    designer.requires_timesheet = True
+    transfer_on = date(2026, 7, 31)
+    session.add(
+        TeamMember(
+            team_id=target.id,
+            user_id=designer.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=transfer_on,
+        )
+    )
+    # Artifact from the old "close open destination periods" transfer path.
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=target.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2020, 1, 1),
+            effective_to=transfer_on - timedelta(days=1),
+        )
+    )
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=target.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=transfer_on,
+            effective_to=None,
+        )
+    )
+    session.commit()
+
+    windows = membership_windows_for_teams(
+        session,
+        frozenset({target.id}),
+        range_start=date(2026, 7, 1),
+        range_end=date(2026, 7, 31),
+    )
+    assert windows[designer.id] == [(transfer_on, date(2026, 7, 31))]
 
     admin = session.get(User, IDS["user_admin"])
     assert admin is not None

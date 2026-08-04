@@ -16,7 +16,7 @@ import {
   StickyHeaderCell,
   StickyTableCell,
 } from '../../ui/design-system';
-import { fetchTimesheetEntries } from '../../../api/timesheets';
+import { fetchAllTimesheetEntries } from '../../../api/timesheets';
 import type { TimesheetEntry } from '../../../types';
 import {
   CONTRIBUTION_REASON_LABELS,
@@ -56,7 +56,7 @@ export function ProjectTimesheetsPanel({
 }: ProjectTimesheetsPanelProps) {
   const entriesQuery = useQuery({
     queryKey: ['timesheet-entries', 'project', projectId],
-    queryFn: () => fetchTimesheetEntries({ project_id: projectId, limit: 500 }),
+    queryFn: () => fetchAllTimesheetEntries({ project_id: projectId, limit: 2000 }),
   });
 
   const entries = useMemo(

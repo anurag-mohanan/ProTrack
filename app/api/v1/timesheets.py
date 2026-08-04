@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -38,39 +38,65 @@ router = APIRouter(
 @router.get("", response_model=list[TimesheetRead])
 def list_timesheets(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=10000),
     user_id: UUID | None = None,
     status: TimesheetStatus | None = None,
     month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.services.timesheet_overview_service import (
+        get_timesheet_visible_user_ids,
+        month_bounds_from_value,
+    )
+
+    # Month-scoped list must filter in SQL before limit. Fetching a global page
+    # then filtering in Python silently drops most designers' weeks.
+    if month is not None:
+        month_start, month_end = month_bounds_from_value(month)
+        week_overlap_start = month_start - timedelta(days=6)
+        stmt = select(Timesheet).where(
+            Timesheet.week_start >= week_overlap_start,
+            Timesheet.week_start <= month_end,
+        )
+        if status is not None:
+            stmt = stmt.where(Timesheet.status == status)
+        if user_id is not None:
+            stmt = stmt.where(Timesheet.user_id == user_id)
+        else:
+            visible = get_timesheet_visible_user_ids(
+                db,
+                current_user,
+                range_start=month_start,
+                range_end=month_end,
+            )
+            if visible is not None:
+                if not visible:
+                    return []
+                stmt = stmt.where(Timesheet.user_id.in_(tuple(visible)))
+        stmt = stmt.order_by(Timesheet.week_start.desc(), Timesheet.user_id).offset(skip).limit(limit)
+        candidates = list(db.scalars(stmt).all())
+        # Keep weeks that actually overlap the calendar month.
+        rows = [
+            row
+            for row in candidates
+            if row.week_start <= month_end
+            and (row.week_start + timedelta(days=6)) >= month_start
+        ]
+        return rows
+
     filters = {
         key: value
         for key, value in {"user_id": user_id, "status": status}.items()
         if value is not None
     }
-    rows = timesheet.get_multi_for_user(
+    return timesheet.get_multi_for_user(
         db,
         actor=current_user,
         skip=skip,
         limit=limit,
         filters=filters or None,
     )
-    if month is None:
-        return rows
-    year, month_num = map(int, month.split("-"))
-    month_start = date(year, month_num, 1)
-    if month_num == 12:
-        month_end = date(year + 1, 1, 1)
-    else:
-        month_end = date(year, month_num + 1, 1)
-    month_end = month_end - timedelta(days=1)
-    return [
-        row
-        for row in rows
-        if row.week_start <= month_end and (row.week_start + timedelta(days=6)) >= month_start
-    ]
 
 
 @router.get("/overview", response_model=TimesheetOverviewContext)

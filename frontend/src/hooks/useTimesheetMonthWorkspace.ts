@@ -4,9 +4,9 @@ import {
   bulkSaveTimesheetEntries,
   deleteTimesheetEntry,
   ensureWeekTimesheet,
-  fetchTimesheetEntries,
+  fetchAllTimesheetEntries,
+  fetchAllTimesheets,
   fetchTimesheetOverview,
-  fetchTimesheets,
 } from '../api/timesheets';
 import { fetchNonProductiveCodes, fetchTaskTypes, fetchTimesheetProjects } from '../api/lookups';
 import { fetchHolidays } from '../api/settings';
@@ -81,10 +81,10 @@ export function useTimesheetMonthWorkspace(
   const timesheetsQuery = useQuery({
     queryKey: [...timesheetQueryKeys.month(monthValue, userId), viewAllUsers ? 'all' : 'self'],
     queryFn: () =>
-      fetchTimesheets({
+      fetchAllTimesheets({
         user_id: scopeUserId,
         month: monthValue,
-        limit: viewAllUsers ? 500 : 20,
+        limit: 2000,
       }),
     enabled: Boolean(userId),
     staleTime: QUERY_STALE_TIMES.timesheetMonth,
@@ -97,11 +97,11 @@ export function useTimesheetMonthWorkspace(
       viewAllUsers ? 'all' : 'self',
     ],
     queryFn: () =>
-      fetchTimesheetEntries({
+      fetchAllTimesheetEntries({
         user_id: scopeUserId,
         entry_date_from: bounds.start,
         entry_date_to: bounds.end,
-        limit: 500,
+        limit: 2000,
       }),
     enabled: Boolean(userId),
     staleTime: QUERY_STALE_TIMES.timesheetMonth,

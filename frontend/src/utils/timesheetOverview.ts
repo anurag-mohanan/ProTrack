@@ -66,7 +66,10 @@ export function filterEntriesForTeamMembership(
   }
   return entries.filter((entry) => {
     if (entry.user_id == null || !userIds.has(entry.user_id)) return false;
-    return entryDateInWindows(entry.entry_date, membershipWindows?.[entry.user_id]);
+    const windows = membershipWindows?.[entry.user_id];
+    // Rostered on the team but windows missing — never hide their hours.
+    if (!windows?.length) return true;
+    return entryDateInWindows(entry.entry_date, windows);
   });
 }
 

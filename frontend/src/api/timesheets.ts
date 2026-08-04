@@ -40,6 +40,22 @@ export async function fetchTimesheets(params?: ListParams & { month?: string }):
   return data;
 }
 
+/** Load every page for a month / filter — avoids silent truncation at API limit. */
+export async function fetchAllTimesheets(
+  params?: ListParams & { month?: string },
+): Promise<Timesheet[]> {
+  const pageSize = Math.min(params?.limit ?? 2000, 10000);
+  const all: Timesheet[] = [];
+  let skip = params?.skip ?? 0;
+  for (let page = 0; page < 50; page += 1) {
+    const batch = await fetchTimesheets({ ...params, skip, limit: pageSize });
+    all.push(...batch);
+    if (batch.length < pageSize) break;
+    skip += pageSize;
+  }
+  return all;
+}
+
 export async function fetchTimesheetOverview(
   month?: string,
 ): Promise<TimesheetOverviewContext> {
@@ -72,6 +88,28 @@ export async function fetchTimesheetEntries(
     `/timesheet-entries${buildQuery(params)}`,
   );
   return data;
+}
+
+/** Paginate until exhausted so org-wide month views never drop designer hours. */
+export async function fetchAllTimesheetEntries(
+  params?: ListParams & {
+    project_id?: string;
+    timesheet_id?: string;
+    entry_date_from?: string;
+    entry_date_to?: string;
+    user_id?: string;
+  },
+): Promise<TimesheetEntry[]> {
+  const pageSize = Math.min(params?.limit ?? 2000, 10000);
+  const all: TimesheetEntry[] = [];
+  let skip = params?.skip ?? 0;
+  for (let page = 0; page < 50; page += 1) {
+    const batch = await fetchTimesheetEntries({ ...params, skip, limit: pageSize });
+    all.push(...batch);
+    if (batch.length < pageSize) break;
+    skip += pageSize;
+  }
+  return all;
 }
 
 export async function createTimesheetEntry(

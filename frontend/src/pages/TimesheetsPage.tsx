@@ -434,6 +434,14 @@ export function TimesheetsPage() {
         </Alert>
       ) : null}
 
+      {viewAllUsers ? (
+        <Alert severity="info" sx={{ mb: 1.5 }}>
+          Hours under each team only cover days that person belonged to that team. After a
+          transfer, earlier days stay on the previous team section — open both to see the full
+          month for that designer.
+        </Alert>
+      ) : null}
+
       {/* All Users: keep rollup near the top for monitoring. My Entries: place under entry actions. */}
       {viewAllUsers ? (
         <TimesheetMonthSummaryBar

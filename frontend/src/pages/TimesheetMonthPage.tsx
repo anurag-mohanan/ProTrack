@@ -16,8 +16,8 @@ import { fetchTaskTypes, fetchTimesheetProjects } from '../api/lookups';
 import {
   bulkSaveTimesheetEntries,
   ensureWeekTimesheet,
-  fetchTimesheetEntries,
-  fetchTimesheets,
+  fetchAllTimesheetEntries,
+  fetchAllTimesheets,
 } from '../api/timesheets';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
@@ -113,10 +113,10 @@ export function TimesheetMonthPage() {
   const timesheetsQuery = useQuery({
     queryKey: [...timesheetQueryKeys.all, monthValue, user?.id],
     queryFn: () =>
-      fetchTimesheets({
+      fetchAllTimesheets({
         user_id: user?.id,
         month: monthValue,
-        limit: 20,
+        limit: 2000,
       }),
     enabled: Boolean(user?.id),
   });
@@ -124,11 +124,11 @@ export function TimesheetMonthPage() {
   const entriesQuery = useQuery({
     queryKey: ['timesheet-entries', monthValue, user?.id],
     queryFn: () =>
-      fetchTimesheetEntries({
+      fetchAllTimesheetEntries({
         user_id: user?.id,
         entry_date_from: bounds.start,
         entry_date_to: bounds.end,
-        limit: 500,
+        limit: 2000,
       }),
     enabled: Boolean(user?.id),
   });

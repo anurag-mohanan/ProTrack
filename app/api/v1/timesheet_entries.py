@@ -26,7 +26,7 @@ router = APIRouter(
 @router.get("", response_model=list[TimesheetEntryRead])
 def list_timesheet_entries(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=10000),
     timesheet_id: UUID | None = None,
     project_id: UUID | None = None,
     user_id: UUID | None = None,
@@ -38,7 +38,14 @@ def list_timesheet_entries(
     if entry_date_from is not None or entry_date_to is not None or user_id is not None:
         visible_user_ids = None
         if user_id is None:
-            visible_user_ids = get_timesheet_visible_user_ids(db, current_user)
+            # Use the same dated roster as the overview so mid-month transfers
+            # stay visible for the requested entry window.
+            visible_user_ids = get_timesheet_visible_user_ids(
+                db,
+                current_user,
+                range_start=entry_date_from,
+                range_end=entry_date_to,
+            )
         return timesheet_entry.get_multi_read_for_range(
             db,
             entry_date_from=entry_date_from,

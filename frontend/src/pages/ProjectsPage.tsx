@@ -29,8 +29,8 @@ import { ProjectFilterPanel } from '../components/projects/command-center/Projec
 import { ProjectKpiBar } from '../components/projects/command-center/ProjectKpiBar';
 import { ProjectListSection } from '../components/projects/command-center/ProjectListSection';
 import { ProjectQuickFilterStrip } from '../components/projects/command-center/ProjectQuickFilterStrip';
+import { ProjectStreamFilterBar } from '../components/projects/command-center/ProjectStreamFilterBar';
 import { ProjectStreamPanel } from '../components/projects/command-center/ProjectStreamPanel';
-import { ProjectStreamTabBar } from '../components/projects/command-center/ProjectStreamTabBar';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { FilterDrawer, FilterToolbar } from '../components/ui/design-system';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
@@ -68,6 +68,7 @@ import {
   defaultProjectCommandCenterFilters,
   filterProjectsForCommandCenter,
   getProjectActiveFilterChips,
+  hasActiveProjectListNarrowing,
   isArchivedProject,
   isCompletedProject,
   isLiveProject,
@@ -81,8 +82,8 @@ function initialFiltersFromSession(): ProjectCommandCenterFilters {
   return loadProjectsPageSession()?.filters ?? defaultProjectCommandCenterFilters;
 }
 
-function initialStreamTabFromSession(): string {
-  return loadProjectsPageSession()?.streamTab ?? 'all';
+function initialSelectedStreamIdsFromSession(): string[] {
+  return loadProjectsPageSession()?.selectedStreamIds ?? [];
 }
 
 function searchParamsHaveDeepLinks(params: URLSearchParams): boolean {
@@ -109,7 +110,9 @@ export function ProjectsPage() {
   const allowAllScope = canSelectAllProjectsScope(user) || isAdmin;
 
   const [portfolioScope, setPortfolioScope] = useState<ProjectsPortfolioScope>('my_streams');
-  const [streamTab, setStreamTab] = useState<string>(initialStreamTabFromSession);
+  const [selectedStreamIds, setSelectedStreamIds] = useState<string[]>(
+    initialSelectedStreamIdsFromSession,
+  );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState<ProjectCommandCenterFilters>(
     initialFiltersFromSession,
@@ -133,10 +136,10 @@ export function ProjectsPage() {
     setPortfolioScope(next);
   }, [preferences?.projects_portfolio_scope, allowAllScope]);
 
-  // Persist filters + stream tab so navigating away and back restores them.
+  // Persist filters + stream selection so navigating away and back restores them.
   useEffect(() => {
-    saveProjectsPageSession({ filters: appliedFilters, streamTab });
-  }, [appliedFilters, streamTab]);
+    saveProjectsPageSession({ filters: appliedFilters, selectedStreamIds });
+  }, [appliedFilters, selectedStreamIds]);
 
   useEffect(() => {
     if (deepLinkAppliedRef.current) return;
@@ -315,19 +318,27 @@ export function ProjectsPage() {
     [filteredProjects, portfolioScope, user, lookupUsers, isAdmin],
   );
 
+  const streamFilteredProjects = useMemo(() => {
+    if (!selectedStreamIds.length) return scopedFilteredProjects;
+    const allowed = new Set(selectedStreamIds);
+    return scopedFilteredProjects.filter(
+      (project) => project.stream_id != null && allowed.has(project.stream_id),
+    );
+  }, [scopedFilteredProjects, selectedStreamIds]);
+
   const liveProjects = useMemo(
-    () => sortLiveProjects(scopedFilteredProjects.filter(isLiveProject)),
-    [scopedFilteredProjects],
+    () => sortLiveProjects(streamFilteredProjects.filter(isLiveProject)),
+    [streamFilteredProjects],
   );
 
   const completedProjects = useMemo(
-    () => sortCompletedProjects(scopedFilteredProjects.filter(isCompletedProject)),
-    [scopedFilteredProjects],
+    () => sortCompletedProjects(streamFilteredProjects.filter(isCompletedProject)),
+    [streamFilteredProjects],
   );
 
   const archivedProjects = useMemo(
-    () => scopedFilteredProjects.filter(isArchivedProject),
-    [scopedFilteredProjects],
+    () => streamFilteredProjects.filter(isArchivedProject),
+    [streamFilteredProjects],
   );
 
   const displayLiveProjects =
@@ -337,6 +348,10 @@ export function ProjectsPage() {
 
   const leaderTeamIds = getLeaderTeamScopeIds(user);
   const scopeByLeaderTeams = shouldScopeProjectsByLeaderTeams(user?.role_name ?? '', user);
+  const hideEmptySections =
+    hasActiveProjectListNarrowing(appliedFilters) || selectedStreamIds.length > 0;
+  const includeEmptyLeaderTeams =
+    scopeByLeaderTeams && !hideEmptySections && portfolioScope === 'my_teams';
 
   const teamScopedLiveProjects = useMemo(
     () =>
@@ -350,6 +365,56 @@ export function ProjectsPage() {
     [displayLiveProjects, scopeByLeaderTeams, isAdmin, leaderTeamIds, lookupUsers, user?.id],
   );
 
+  const streamFilterOptions = useMemo(() => {
+    const activeStreams = (streamsQuery.data ?? []).filter(
+      (stream) => stream.is_active !== false,
+    );
+    const counts = new Map<string, number>();
+    for (const project of scopedFilteredProjects) {
+      if (!project.stream_id) continue;
+      const isArchivedView =
+        appliedFilters.showArchived || appliedFilters.quickFilter === 'archived';
+      if (isArchivedView) {
+        if (!isArchivedProject(project)) continue;
+      } else if (isArchivedProject(project) || isCompletedProject(project)) {
+        continue;
+      }
+      counts.set(project.stream_id, (counts.get(project.stream_id) ?? 0) + 1);
+    }
+    const selected = new Set(selectedStreamIds);
+    return activeStreams
+      .filter((stream) => {
+        const name = stream.name.toLowerCase();
+        return (
+          (counts.get(stream.id) ?? 0) > 0 ||
+          selected.has(stream.id) ||
+          name.includes('mold design') ||
+          name.includes('cad development')
+        );
+      })
+      .map((stream) => ({
+        id: stream.id,
+        label: stream.name,
+        count: counts.get(stream.id) ?? 0,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [
+    streamsQuery.data,
+    scopedFilteredProjects,
+    appliedFilters.showArchived,
+    appliedFilters.quickFilter,
+    selectedStreamIds,
+  ]);
+
+  useEffect(() => {
+    if (!selectedStreamIds.length) return;
+    const valid = new Set(streamFilterOptions.map((option) => option.id));
+    const next = selectedStreamIds.filter((id) => valid.has(id));
+    if (next.length !== selectedStreamIds.length) {
+      setSelectedStreamIds(next);
+    }
+  }, [selectedStreamIds, streamFilterOptions]);
+
   const liveStreamSections = useMemo(
     () =>
       groupProjectsByStreamThenTeam(
@@ -359,9 +424,13 @@ export function ProjectsPage() {
         lookupUsers,
         {
           leaderTeamIds: scopeByLeaderTeams ? leaderTeamIds : undefined,
-          includeEmptyLeaderTeams: scopeByLeaderTeams && portfolioScope === 'my_teams',
+          includeEmptyLeaderTeams,
+          preferredStreamOrder:
+            selectedStreamIds.length > 0
+              ? selectedStreamIds
+              : streamFilterOptions.map((option) => option.id),
         },
-      ),
+      ).filter((section) => section.projectCount > 0),
     [
       teamScopedLiveProjects,
       streamsQuery.data,
@@ -369,55 +438,39 @@ export function ProjectsPage() {
       lookupUsers,
       scopeByLeaderTeams,
       leaderTeamIds,
-      portfolioScope,
+      includeEmptyLeaderTeams,
+      selectedStreamIds,
+      streamFilterOptions,
     ],
   );
 
-  const streamTabOptions = useMemo(() => {
-    const options = liveStreamSections
-      .filter((section) => section.projectCount > 0)
-      .map((section) => ({
-        id: section.streamId ?? 'unassigned',
-        label: section.streamName,
-        count: section.projectCount,
-      }));
-    if (options.length <= 1) {
-      return options;
-    }
-    return [{ id: 'all', label: 'All', count: teamScopedLiveProjects.length }, ...options];
-  }, [liveStreamSections, teamScopedLiveProjects.length]);
-
-  useEffect(() => {
-    if (!streamTabOptions.length) {
-      if (streamTab !== 'all') setStreamTab('all');
-      return;
-    }
-    if (!streamTabOptions.some((option) => option.id === streamTab)) {
-      setStreamTab(streamTabOptions[0]?.id ?? 'all');
-    }
-  }, [streamTab, streamTabOptions]);
-
-  const visibleStreamSections = useMemo(() => {
-    const populated = liveStreamSections.filter((section) => section.projectCount > 0);
-    if (streamTab === 'all' || streamTabOptions.length <= 1) return populated;
-    return populated.filter((section) => (section.streamId ?? 'unassigned') === streamTab);
-  }, [liveStreamSections, streamTab, streamTabOptions.length]);
-
-  const multiStreamView = streamTabOptions.length > 1;
-  const showStreamChrome = multiStreamView && streamTab === 'all';
+  const visibleStreamSections = liveStreamSections;
+  // Prefer stream sections whenever the stream toggle is available (Mold + CAD, etc.).
+  const multiStreamView = streamFilterOptions.length >= 1;
+  const showStreamChrome =
+    streamFilterOptions.length > 1 &&
+    (selectedStreamIds.length === 0 || selectedStreamIds.length > 1);
   const shouldGroupByStream = multiStreamView;
 
   const liveProjectTeamGroups = useMemo(
     () =>
       groupProjectsByTeam(teamScopedLiveProjects, teamsQuery.data ?? [], lookupUsers, {
         leaderTeamIds: scopeByLeaderTeams ? leaderTeamIds : undefined,
-        includeEmptyLeaderTeams: scopeByLeaderTeams,
-      }),
-    [teamScopedLiveProjects, teamsQuery.data, lookupUsers, scopeByLeaderTeams, leaderTeamIds],
+        // Never keep empty team shells when the list is narrowed by filters/streams.
+        includeEmptyLeaderTeams: scopeByLeaderTeams && !hideEmptySections,
+      }).filter((group) => group.projects.length > 0),
+    [
+      teamScopedLiveProjects,
+      teamsQuery.data,
+      lookupUsers,
+      scopeByLeaderTeams,
+      leaderTeamIds,
+      hideEmptySections,
+    ],
   );
 
   const distinctTeamGroupCount = useMemo(
-    () => liveProjectTeamGroups.filter((group) => group.projects.length > 0).length,
+    () => liveProjectTeamGroups.length,
     [liveProjectTeamGroups],
   );
 
@@ -432,7 +485,7 @@ export function ProjectsPage() {
       if (!next) return;
       if (next === 'all' && !allowAllScope) return;
       setPortfolioScope(next);
-      setStreamTab('all');
+      setSelectedStreamIds([]);
       void updatePreferences({ projects_portfolio_scope: next });
     },
     [allowAllScope, updatePreferences],
@@ -497,7 +550,7 @@ export function ProjectsPage() {
   const clearFilters = useCallback(() => {
     setDraftFilters(defaultProjectCommandCenterFilters);
     setAppliedFilters(defaultProjectCommandCenterFilters);
-    setStreamTab('all');
+    setSelectedStreamIds([]);
     clearProjectsPageSession();
     setSearchParams({});
     setFiltersOpen(false);
@@ -709,10 +762,10 @@ export function ProjectsPage() {
             </ToggleButtonGroup>
           </FilterToolbar>
 
-          <ProjectStreamTabBar
-            options={streamTabOptions}
-            value={streamTab}
-            onChange={setStreamTab}
+          <ProjectStreamFilterBar
+            options={streamFilterOptions}
+            selectedIds={selectedStreamIds}
+            onChange={setSelectedStreamIds}
           />
 
           <ProjectKpiBar

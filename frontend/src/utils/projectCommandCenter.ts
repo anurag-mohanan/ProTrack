@@ -417,6 +417,15 @@ export function countActiveSidebarFilters(filters: ProjectCommandCenterFilters):
   return count;
 }
 
+/** True when list is narrowed by search, sidebar filters, or KPI quick filter. */
+export function hasActiveProjectListNarrowing(filters: ProjectCommandCenterFilters): boolean {
+  return (
+    countActiveSidebarFilters(filters) > 0 ||
+    Boolean(filters.search.trim()) ||
+    filters.quickFilter !== 'none'
+  );
+}
+
 export interface ProjectFilterChipDef {
   key: string;
   label: string;

@@ -1,11 +1,13 @@
 import type { ProjectCommandCenterFilters } from './projectCommandCenter';
 import { defaultProjectCommandCenterFilters } from './projectCommandCenter';
 
-const STORAGE_KEY = 'protrack.projects.commandCenter.v1';
+const STORAGE_KEY = 'protrack.projects.commandCenter.v2';
+const LEGACY_STORAGE_KEY = 'protrack.projects.commandCenter.v1';
 
 export interface ProjectsPageSessionState {
   filters: ProjectCommandCenterFilters;
-  streamTab: string;
+  /** Empty = all streams. */
+  selectedStreamIds: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -62,16 +64,31 @@ function normalizeFilters(raw: unknown): ProjectCommandCenterFilters {
   };
 }
 
+function normalizeSelectedStreamIds(raw: unknown, legacyStreamTab?: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  }
+  if (typeof legacyStreamTab === 'string' && legacyStreamTab && legacyStreamTab !== 'all') {
+    return [legacyStreamTab];
+  }
+  return [];
+}
+
 export function loadProjectsPageSession(): ProjectsPageSessionState | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const raw =
+      window.sessionStorage.getItem(STORAGE_KEY) ??
+      window.sessionStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) return null;
     return {
       filters: normalizeFilters(parsed.filters),
-      streamTab: typeof parsed.streamTab === 'string' ? parsed.streamTab : 'all',
+      selectedStreamIds: normalizeSelectedStreamIds(
+        parsed.selectedStreamIds,
+        parsed.streamTab,
+      ),
     };
   } catch {
     return null;
@@ -85,7 +102,7 @@ export function saveProjectsPageSession(state: ProjectsPageSessionState): void {
       STORAGE_KEY,
       JSON.stringify({
         filters: state.filters,
-        streamTab: state.streamTab || 'all',
+        selectedStreamIds: state.selectedStreamIds,
       }),
     );
   } catch {
@@ -97,6 +114,7 @@ export function clearProjectsPageSession(): void {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch {
     // Ignore.
   }

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_TYPE_NAMES = (
     "Mold Design",
+    "CAD Development",
     "Engineering Change",
     "DFM",
     "Surfacing",
@@ -42,6 +43,29 @@ TEMPLATE_DEFINITIONS: list[dict] = [
             ("Final Review", None, 35, True, "Designer"),
             ("File Release", None, 42, True, "Designer"),
             ("BOM Release", None, 49, True, "Designer"),
+        ],
+    },
+    {
+        "name": "CAD Development",
+        "project_type": "CAD Development",
+        "customer": None,
+        "is_default": True,
+        "milestones": [
+            ("Requirements Review", None, 7, True, "Designer"),
+            ("Reference Data Collection", None, 14, True, "Designer"),
+            ("Library Folder Structure Created", None, 21, True, "Designer"),
+            ("Base Template Created", None, 28, True, "Designer"),
+            ("3D Component Modeling Complete", None, 35, True, "Designer"),
+            ("Component Attributes Added", None, 42, True, "Designer"),
+            ("Material and Metadata Assigned", None, 49, True, "Designer"),
+            ("Preview Icons Generated", None, 56, True, "Designer"),
+            ("Assembly Integration Tested", None, 63, True, "Designer"),
+            ("Documentation Completed", None, 70, True, "Designer"),
+            ("User Acceptance Testing (UAT)", None, 77, True, "Designer"),
+            ("Library Packaging Completed", None, 84, True, "Designer"),
+            ("Production Library Release", None, 91, True, "Designer"),
+            ("Version & Revision Published", None, 98, True, "Designer"),
+            ("Lessons Learned / Project Closure", None, 105, True, "Designer"),
         ],
     },
     {

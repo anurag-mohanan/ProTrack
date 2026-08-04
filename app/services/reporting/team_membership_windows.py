@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 
 from sqlalchemy import and_, or_, select
@@ -22,14 +22,9 @@ from app.models.models import (
 _TRANSFER_EVENT = "transfer"
 
 
-def _member_start_floor(member: TeamMember) -> date | None:
-    """Earliest day this live membership row should count for the current stint."""
-    if member.effective_from is not None:
-        return member.effective_from
-    joined = getattr(member, "joined_at", None)
-    if joined is not None:
-        return joined.date() if hasattr(joined, "date") else joined
-    return None
+def _member_effective_from(member: TeamMember) -> date | None:
+    """Explicit membership start only — never ``joined_at`` (row-created / rewritten)."""
+    return member.effective_from
 
 
 def _transfer_start_floors(
@@ -38,7 +33,7 @@ def _transfer_start_floors(
     *,
     range_end: date,
 ) -> dict[tuple[UUID, UUID], date]:
-    """Latest recorded transfer onto each (user, team), used to correct stale periods."""
+    """Latest recorded transfer onto each (user, team)."""
     team_set = set(team_ids)
     if not team_set:
         return {}
@@ -70,6 +65,96 @@ def _transfer_start_floors(
     return floors
 
 
+def _prior_home_ended_day_before(
+    db: Session,
+    *,
+    user_ids: set[UUID],
+) -> set[tuple[UUID, date]]:
+    """Pairs (user_id, day_after_prior_end) where a primary stint ended the day before.
+
+    Used to confirm ``TeamMember.effective_from`` is a real transfer onto a new
+    home rather than a stale joined_at-style backfill that must not clip hours.
+    """
+    if not user_ids:
+        return set()
+    rows = db.scalars(
+        select(TeamMembershipPeriod).where(
+            TeamMembershipPeriod.user_id.in_(tuple(user_ids)),
+            TeamMembershipPeriod.is_primary.is_(True),
+            TeamMembershipPeriod.effective_to.is_not(None),
+        )
+    ).all()
+    return {(row.user_id, row.effective_to + timedelta(days=1)) for row in rows}
+
+
+def _stint_floors_for_members(
+    db: Session,
+    members: list[TeamMember],
+    *,
+    team_ids: frozenset[UUID] | set[UUID],
+    range_end: date,
+) -> dict[tuple[UUID, UUID], date]:
+    """Floors that may raise open stints / exclude future roster rows.
+
+    Sources:
+    - ``UserJobEvent`` transfers onto the team
+    - ``TeamMember.effective_from`` only when a prior primary home ended the day
+      before (dated transfer via Teams UI without a job event)
+    """
+    floors = _transfer_start_floors(db, team_ids, range_end=range_end)
+    user_ids = {member.user_id for member in members}
+    prior_starts = _prior_home_ended_day_before(db, user_ids=user_ids)
+    for member in members:
+        effective = _member_effective_from(member)
+        if effective is None:
+            continue
+        key = (member.user_id, member.team_id)
+        if key in floors:
+            if effective > floors[key]:
+                floors[key] = effective
+            continue
+        if (member.user_id, effective) in prior_starts:
+            floors[key] = effective
+    return floors
+
+
+def _clip_period(
+    *,
+    period_start: date,
+    period_to: date | None,
+    floor: date | None,
+    range_start: date,
+    range_end: date,
+) -> tuple[date, date] | None:
+    """Clip one membership period into the report range.
+
+    - Open stints are raised to ``floor`` (transfer onto this team).
+    - Closed periods ending the day before ``floor`` are destination backfill
+      artifacts and are skipped.
+    - Other closed history is kept so prior stints (and non-transfer teams)
+      are not rewritten by a live ``effective_from``.
+    """
+    is_open = period_to is None
+    p_end = range_end if is_open else period_to
+    assert p_end is not None
+    start = period_start
+
+    if floor is not None:
+        if not is_open and period_to == floor - timedelta(days=1):
+            return None
+        if is_open or p_end >= floor:
+            if start < floor:
+                start = floor
+
+    if p_end < range_start or start > range_end:
+        return None
+    clipped_start = max(start, range_start)
+    clipped_end = min(p_end, range_end)
+    if clipped_start > clipped_end:
+        return None
+    return clipped_start, clipped_end
+
+
 def membership_windows_for_teams(
     db: Session,
     team_ids: frozenset[UUID] | set[UUID],
@@ -84,10 +169,13 @@ def membership_windows_for_teams(
 
     Future-dated transfers (effective_from after range_end) produce no window.
 
-    Open / current stints are floored to ``TeamMember.effective_from`` (then
-    ``joined_at``, then the latest transfer job event onto that team) so a
+    Open / current stints may be floored to a verified transfer-onto date so a
     mid-month move never attributes earlier hours to the destination team —
     even when a backfilled period still starts at hire date.
+
+    ``User.team_id`` alone never invents full-range coverage for a month the
+    person had not yet joined (that duplicated July hours onto Eng 3 after an
+    August transfer).
 
     When ``primary_only`` is True, only primary-home memberships / periods are
     used — required for timesheet hour attribution so secondary multi-team
@@ -103,17 +191,14 @@ def membership_windows_for_teams(
     if primary_only:
         member_stmt = member_stmt.where(TeamMember.is_primary.is_(True))
     members = list(db.scalars(member_stmt).all())
-    member_floors: dict[tuple[UUID, UUID], date] = {}
-    for member in members:
-        floor = _member_start_floor(member)
-        if floor is not None:
-            member_floors[(member.user_id, member.team_id)] = floor
-
-    transfer_floors = _transfer_start_floors(db, team_ids, range_end=range_end)
-    for key, transfer_on in transfer_floors.items():
-        prev = member_floors.get(key)
-        if prev is None or transfer_on > prev:
-            member_floors[key] = transfer_on
+    stint_floors = _stint_floors_for_members(
+        db, members, team_ids=team_ids, range_end=range_end
+    )
+    live_starts = {
+        (member.user_id, member.team_id): member.effective_from
+        for member in members
+        if member.effective_from is not None
+    }
 
     period_stmt = select(TeamMembershipPeriod).where(
         TeamMembershipPeriod.team_id.in_(team_tuple),
@@ -125,51 +210,48 @@ def membership_windows_for_teams(
 
     users_with_period_on_team: set[tuple[UUID, UUID]] = set()
     for period in periods:
-        p_end = period.effective_to or range_end
-        if p_end < range_start:
+        live_start = live_starts.get((period.user_id, period.team_id))
+        # Open stint on a team the person only joins after this report window
+        # (e.g. Aug 1 transfer while viewing July) must not cover the month —
+        # including hire-date backfills that never got floored.
+        if (
+            period.effective_to is None
+            and live_start is not None
+            and live_start > range_end
+        ):
             continue
-        period_start = period.effective_from
-        # Floor every stint to the live membership / transfer-onto date.
-        # Closing a hire-date backfill on the destination (effective_to =
-        # day-before-transfer) used to leave a closed period that merged with
-        # the real post-transfer stint and pulled pre-transfer hours onto the
-        # new team — apply the floor to closed rows too and skip rows that end
-        # entirely before the floor.
-        floor = member_floors.get((period.user_id, period.team_id))
-        if floor is not None:
-            if p_end < floor:
-                continue
-            if floor > period_start:
-                period_start = floor
-        if period_start > range_end:
+        floor = stint_floors.get((period.user_id, period.team_id))
+        clipped = _clip_period(
+            period_start=period.effective_from,
+            period_to=period.effective_to,
+            floor=floor,
+            range_start=range_start,
+            range_end=range_end,
+        )
+        if clipped is None:
             continue
-        start = max(period_start, range_start)
-        end = min(p_end, range_end)
-        if start > end:
-            continue
+        start, end = clipped
         users_with_period_on_team.add((period.user_id, period.team_id))
         windows.setdefault(period.user_id, []).append((start, end))
 
-    # Fallback: live TeamMember rows without a covering period (legacy / backfill gaps).
+    # Fallback: live TeamMember rows without a covering period (legacy gaps).
     for member in members:
         if (member.user_id, member.team_id) in users_with_period_on_team:
             continue
-        start_raw = member_floors.get((member.user_id, member.team_id))
-        if start_raw is not None and start_raw > range_end:
-            # Future transfer onto this team — not yet in roster.
+        floor = stint_floors.get((member.user_id, member.team_id))
+        if floor is not None and floor > range_end:
+            # Transfer onto this team is after the report window.
             continue
-        start = max(start_raw or range_start, range_start)
+        # Without a verified transfer floor, cover the full report range.
+        # Do not use raw effective_from alone — backfills often copied joined_at.
+        start = max(floor or range_start, range_start)
         end = range_end
         if start > end:
             continue
         windows.setdefault(member.user_id, []).append((start, end))
 
-    # Primary User.team_id with no membership row (rare) — treat as open membership.
-    primary_users = db.scalars(select(User).where(User.team_id.in_(team_tuple))).all()
-    for person in primary_users:
-        if person.id in windows:
-            continue
-        windows[person.id] = [(range_start, range_end)]
+    # Do not invent windows from User.team_id. Current home after a later
+    # transfer must not receive full historical months with no overlapping stint.
 
     return {uid: _merge_intervals(intervals) for uid, intervals in windows.items()}
 
@@ -235,21 +317,15 @@ def primary_home_team_timeline(
             )
         ).all()
     )
-    member_floors: dict[tuple[UUID, UUID], date] = {}
-    team_ids_for_floors: set[UUID] = set()
-    for member in members:
-        team_ids_for_floors.add(member.team_id)
-        floor = _member_start_floor(member)
-        if floor is not None:
-            member_floors[(member.user_id, member.team_id)] = floor
-
-    transfer_floors = _transfer_start_floors(
-        db, team_ids_for_floors, range_end=range_end
+    team_ids_for_floors = {member.team_id for member in members}
+    stint_floors = _stint_floors_for_members(
+        db, members, team_ids=team_ids_for_floors, range_end=range_end
     )
-    for key, transfer_on in transfer_floors.items():
-        prev = member_floors.get(key)
-        if prev is None or transfer_on > prev:
-            member_floors[key] = transfer_on
+    live_starts = {
+        (member.user_id, member.team_id): member.effective_from
+        for member in members
+        if member.effective_from is not None
+    }
 
     periods = db.scalars(
         select(TeamMembershipPeriod).where(
@@ -262,35 +338,36 @@ def primary_home_team_timeline(
     timelines: dict[UUID, list[tuple[date, date, UUID]]] = {}
     users_with_period: set[UUID] = set()
     for period in periods:
-        p_end = period.effective_to or range_end
-        if p_end < range_start:
+        live_start = live_starts.get((period.user_id, period.team_id))
+        if (
+            period.effective_to is None
+            and live_start is not None
+            and live_start > range_end
+        ):
             continue
-        period_start = period.effective_from
-        floor = member_floors.get((period.user_id, period.team_id))
-        if floor is not None:
-            if p_end < floor:
-                continue
-            if floor > period_start:
-                period_start = floor
-        if period_start > range_end:
+        floor = stint_floors.get((period.user_id, period.team_id))
+        clipped = _clip_period(
+            period_start=period.effective_from,
+            period_to=period.effective_to,
+            floor=floor,
+            range_start=range_start,
+            range_end=range_end,
+        )
+        if clipped is None:
             continue
-        start = max(period_start, range_start)
-        end = min(p_end, range_end)
-        if start > end:
-            continue
+        start, end = clipped
         users_with_period.add(period.user_id)
         timelines.setdefault(period.user_id, []).append(
             (start, end, period.team_id)
         )
 
-    # Live primary membership without a covering period (legacy / backfill gaps).
     for member in members:
         if member.user_id in users_with_period:
             continue
-        start_raw = member_floors.get((member.user_id, member.team_id))
-        if start_raw is not None and start_raw > range_end:
+        floor = stint_floors.get((member.user_id, member.team_id))
+        if floor is not None and floor > range_end:
             continue
-        start = max(start_raw or range_start, range_start)
+        start = max(floor or range_start, range_start)
         end = range_end
         if start > end:
             continue
@@ -299,10 +376,20 @@ def primary_home_team_timeline(
         )
         users_with_period.add(member.user_id)
 
-    # Fallback: current User.team_id when no membership history exists.
+    # Fallback: current User.team_id only when no membership history exists at all.
     missing = [uid for uid in user_ids if uid not in users_with_period]
     if missing:
+        period_users = set(
+            db.scalars(
+                select(TeamMembershipPeriod.user_id).where(
+                    TeamMembershipPeriod.user_id.in_(tuple(missing))
+                )
+            ).all()
+        )
         for person in db.scalars(select(User).where(User.id.in_(tuple(missing)))).all():
+            if person.id in period_users:
+                # Has history elsewhere / outside range — do not invent coverage.
+                continue
             if person.team_id is None:
                 continue
             timelines[person.id] = [(range_start, range_end, person.team_id)]

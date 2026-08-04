@@ -40,8 +40,8 @@ export function entryDateInWindows(
   if (!windows?.length) return false;
   const day = entryDate.slice(0, 10);
   return windows.some((window) => {
-    const start = window.start.slice(0, 10);
-    const end = window.end.slice(0, 10);
+    const start = String(window.start).slice(0, 10);
+    const end = String(window.end).slice(0, 10);
     return day >= start && day <= end;
   });
 }

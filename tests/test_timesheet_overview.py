@@ -208,8 +208,9 @@ def test_overview_team_membership_windows_start_from_transfer(session, client):
 
 def test_open_period_floored_to_member_effective_from(session):
     """Hire-date backfill must not leak pre-transfer hours onto the new team."""
+    source = Team(id=uuid.uuid4(), name="Floor Source Team", is_active=True)
     target = Team(id=uuid.uuid4(), name="Floor Target Team", is_active=True)
-    session.add(target)
+    session.add_all([source, target])
     session.flush()
 
     designer = session.get(User, IDS["user_binil"])
@@ -224,6 +225,17 @@ def test_open_period_floored_to_member_effective_from(session):
             is_primary=True,
             is_billable_headcount=True,
             effective_from=transfer_on,
+        )
+    )
+    # Prior home closed the day before transfer — verifies effective_from is a real move.
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=source.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2020, 4, 1),
+            effective_to=transfer_on - timedelta(days=1),
         )
     )
     session.add(
@@ -259,8 +271,9 @@ def test_closed_pre_transfer_period_on_destination_does_not_merge(session):
     Reproduces Logesh / Eng 3-Redoe: transfer closed a stale destination backfill
     instead of deleting it; merged windows then showed July 1–30 on Redoe.
     """
+    source = Team(id=uuid.uuid4(), name="Prosohm Eng Floor", is_active=True)
     target = Team(id=uuid.uuid4(), name="Eng 3 - Redoe Floor", is_active=True)
-    session.add(target)
+    session.add_all([source, target])
     session.flush()
 
     designer = session.get(User, IDS["user_binil"])
@@ -275,6 +288,16 @@ def test_closed_pre_transfer_period_on_destination_does_not_merge(session):
             is_primary=True,
             is_billable_headcount=True,
             effective_from=transfer_on,
+        )
+    )
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=source.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2020, 1, 1),
+            effective_to=transfer_on - timedelta(days=1),
         )
     )
     # Artifact from the old "close open destination periods" transfer path.
@@ -313,6 +336,172 @@ def test_closed_pre_transfer_period_on_destination_does_not_merge(session):
     overview = build_timesheet_overview(session, admin, month="2026-07")
     section = next(team for team in overview["teams"] if team["team_id"] == target.id)
     assert section["membership_windows"][str(designer.id)][0]["start"] == transfer_on
+
+
+def test_august_transfer_excludes_destination_from_july_overview(session):
+    """Current User.team_id on Eng 3 must not invent full July coverage after an Aug 1 move."""
+    source = Team(id=uuid.uuid4(), name="Prosohm Eng July Home", is_active=True)
+    target = Team(id=uuid.uuid4(), name="Eng 3 Redoe August Home", is_active=True)
+    session.add_all([source, target])
+    session.flush()
+
+    designer = session.get(User, IDS["user_binil"])
+    assert designer is not None
+    designer.team_id = target.id  # live home after August transfer
+    designer.requires_timesheet = True
+    transfer_on = date(2026, 8, 1)
+    session.add(
+        TeamMember(
+            team_id=target.id,
+            user_id=designer.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=transfer_on,
+        )
+    )
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=source.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2020, 1, 1),
+            effective_to=date(2026, 7, 31),
+        )
+    )
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=target.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=transfer_on,
+            effective_to=None,
+        )
+    )
+    session.commit()
+
+    target_windows = membership_windows_for_teams(
+        session,
+        frozenset({target.id}),
+        range_start=date(2026, 7, 1),
+        range_end=date(2026, 7, 31),
+    )
+    assert designer.id not in target_windows
+
+    source_windows = membership_windows_for_teams(
+        session,
+        frozenset({source.id}),
+        range_start=date(2026, 7, 1),
+        range_end=date(2026, 7, 31),
+    )
+    assert source_windows[designer.id] == [(date(2026, 7, 1), date(2026, 7, 31))]
+
+    admin = session.get(User, IDS["user_admin"])
+    assert admin is not None
+    overview = build_timesheet_overview(session, admin, month="2026-07")
+    target_section = next(
+        (team for team in overview["teams"] if team["team_id"] == target.id),
+        None,
+    )
+    if target_section is not None:
+        assert designer.id not in target_section["user_ids"]
+    source_section = next(team for team in overview["teams"] if team["team_id"] == source.id)
+    assert designer.id in source_section["user_ids"]
+
+
+def test_august_transfer_ignores_open_hire_backfill_on_destination(session):
+    """Aug 1 effective_from must drop an open hire-date period from July on Eng 3."""
+    source = Team(id=uuid.uuid4(), name="Prosohm Eng Backfill Src", is_active=True)
+    target = Team(id=uuid.uuid4(), name="Eng 3 Backfill Dst", is_active=True)
+    session.add_all([source, target])
+    session.flush()
+
+    designer = session.get(User, IDS["user_binil"])
+    assert designer is not None
+    designer.team_id = target.id
+    designer.requires_timesheet = True
+    transfer_on = date(2026, 8, 1)
+    session.add(
+        TeamMember(
+            team_id=target.id,
+            user_id=designer.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=transfer_on,
+        )
+    )
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=source.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2020, 1, 1),
+            effective_to=date(2026, 7, 31),
+        )
+    )
+    # Bad open backfill still pointing at destination from hire date.
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=target.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2020, 1, 1),
+            effective_to=None,
+        )
+    )
+    session.commit()
+
+    target_windows = membership_windows_for_teams(
+        session,
+        frozenset({target.id}),
+        range_start=date(2026, 7, 1),
+        range_end=date(2026, 7, 31),
+    )
+    assert designer.id not in target_windows
+
+
+def test_joined_at_style_effective_from_does_not_clip_non_transfer(session):
+    """Stale effective_from without a prior-home end must not shrink July hours."""
+    home = Team(id=uuid.uuid4(), name="Stable Home No Transfer", is_active=True)
+    session.add(home)
+    session.flush()
+
+    designer = session.get(User, IDS["user_binil"])
+    assert designer is not None
+    designer.team_id = home.id
+    designer.requires_timesheet = True
+    # Simulates backfill that copied joined_at into effective_from.
+    session.add(
+        TeamMember(
+            team_id=home.id,
+            user_id=designer.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2026, 7, 15),
+        )
+    )
+    session.add(
+        TeamMembershipPeriod(
+            user_id=designer.id,
+            team_id=home.id,
+            is_primary=True,
+            is_billable_headcount=True,
+            effective_from=date(2020, 4, 1),
+            effective_to=None,
+        )
+    )
+    session.commit()
+
+    windows = membership_windows_for_teams(
+        session,
+        frozenset({home.id}),
+        range_start=date(2026, 7, 1),
+        range_end=date(2026, 7, 31),
+    )
+    assert windows[designer.id] == [(date(2026, 7, 1), date(2026, 7, 31))]
 
 
 def test_overview_excludes_secondary_membership_from_team_windows(session):

@@ -60,6 +60,7 @@ class CurrentUserRead(BaseModel):
     requires_timesheet: bool = False
     can_enter_own_timesheet: bool = False
     can_view_organization_chart: bool = False
+    data_scope: dict | None = None
 
     @property
     def password_changed(self) -> bool:

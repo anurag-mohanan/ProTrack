@@ -40,7 +40,15 @@ from app.crud.command_center import (
 )
 from app.crud import project
 from app.crud.dashboard import get_project_dashboard
-from app.models.enums import ActivityAction, EntityType, ExecutionStatus, ProjectLifecycleFilter, ProjectStage
+from app.models.enums import (
+    ActivityAction,
+    EntityType,
+    ExecutionStatus,
+    ProjectHealth,
+    ProjectLifecycleFilter,
+    ProjectPriority,
+    ProjectStage,
+)
 from app.models.models import User
 from app.schemas.command_center import (
     EngineeringChangeCreate,
@@ -61,6 +69,14 @@ from app.schemas.project import (
     ProjectRead,
     ProjectUpdate,
     WorkorderPdfExtractResult,
+)
+from app.schemas.workstream import (
+    ProjectPortfolioSummary,
+    ProjectSavedViewCreate,
+    ProjectSavedViewRead,
+    ProjectSavedViewUpdate,
+    ProjectWorkstreamRead,
+    ProjectWorkstreamsReplace,
 )
 from app.schemas.communication import EmailMessageRead
 from app.services.email.engine import list_email_messages
@@ -123,6 +139,20 @@ def _normalize_project_filters(filters: ProjectFilters) -> tuple[ProjectLifecycl
     if team_ids:
         data["team_ids"] = team_ids
 
+    stream_ids = list(data.pop("stream_ids") or [])
+    if data.get("stream_id"):
+        sid = data.pop("stream_id")
+        if sid not in stream_ids:
+            stream_ids.append(sid)
+    else:
+        data.pop("stream_id", None)
+    if stream_ids:
+        data["stream_ids"] = stream_ids
+
+    workstream_ids = list(data.pop("workstream_ids") or [])
+    if workstream_ids:
+        data["workstream_ids"] = workstream_ids
+
     active_filters = {key: value for key, value in data.items() if value is not None}
     return lifecycle, active_filters
 
@@ -182,11 +212,17 @@ def list_projects(
     designer_id: UUID | None = None,
     surfacer_id: UUID | None = None,
     stream_id: UUID | None = None,
+    stream_ids: list[UUID] | None = Query(None),
+    workstream_ids: list[UUID] | None = Query(None),
     team_id: UUID | None = None,
     team_ids: list[UUID] | None = Query(None),
     project_type_id: UUID | None = None,
     execution_status: ExecutionStatus | None = None,
     project_stage: ProjectStage | None = None,
+    health: ProjectHealth | None = None,
+    priority: ProjectPriority | None = None,
+    q: str | None = None,
+    due: str | None = None,
     lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -199,11 +235,17 @@ def list_projects(
         designer_id=designer_id,
         surfacer_id=surfacer_id,
         stream_id=stream_id,
+        stream_ids=stream_ids,
+        workstream_ids=workstream_ids,
         team_id=team_id,
         team_ids=team_ids,
         project_type_id=project_type_id,
         execution_status=execution_status,
         project_stage=project_stage,
+        health=health,
+        priority=priority,
+        q=q,
+        due=due,
         lifecycle=lifecycle,
     )
     return _list_projects(db, current_user, pagination=pagination, filters=filters)
@@ -252,6 +294,164 @@ def list_deleted_projects(
     return _list_projects(db, current_user, pagination=pagination, filters=filters)
 
 
+@router.get("/summary", response_model=ProjectPortfolioSummary)
+def projects_summary(
+    customer_id: UUID | None = None,
+    customer_ids: list[UUID] | None = Query(None),
+    stream_id: UUID | None = None,
+    stream_ids: list[UUID] | None = Query(None),
+    workstream_ids: list[UUID] | None = Query(None),
+    team_id: UUID | None = None,
+    team_ids: list[UUID] | None = Query(None),
+    project_type_id: UUID | None = None,
+    execution_status: ExecutionStatus | None = None,
+    project_stage: ProjectStage | None = None,
+    health: ProjectHealth | None = None,
+    priority: ProjectPriority | None = None,
+    q: str | None = None,
+    due: str | None = None,
+    lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.active,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from datetime import date, timedelta
+    from decimal import Decimal
+
+    from app.core.team_access import project_visibility_clause
+    from app.models.workstream import ProjectWorkstream
+
+    filters = ProjectFilters(
+        customer_id=customer_id,
+        customer_ids=customer_ids,
+        stream_id=stream_id,
+        stream_ids=stream_ids,
+        workstream_ids=workstream_ids,
+        team_id=team_id,
+        team_ids=team_ids,
+        project_type_id=project_type_id,
+        execution_status=execution_status,
+        project_stage=project_stage,
+        health=health,
+        priority=priority,
+        q=q,
+        due=due,
+        lifecycle=lifecycle,
+    )
+    lifecycle_f, active_filters = _normalize_project_filters(filters)
+    visibility_clause = project_visibility_clause(db, current_user)
+    rows = project.query_projects(
+        db,
+        lifecycle=lifecycle_f,
+        skip=0,
+        limit=5000,
+        filters=active_filters,
+        assignment_clause=visibility_clause,
+    )
+    rows = [row for row in rows if can_read_project(db, current_user, row)]
+    today = date.today()
+    week_end = today + timedelta(days=7)
+    active_count = 0
+    due_week = 0
+    overdue = 0
+    at_risk = 0
+    for row in rows:
+        if row.execution_status not in (ExecutionStatus.completed, ExecutionStatus.cancelled):
+            active_count += 1
+            if row.due_date and today <= row.due_date <= week_end:
+                due_week += 1
+            if row.due_date and row.due_date < today:
+                overdue += 1
+            if row.health == ProjectHealth.red:
+                at_risk += 1
+    project_ids = [row.id for row in rows]
+    estimated = Decimal("0")
+    actual = Decimal("0")
+    if project_ids:
+        from sqlalchemy import func, select
+
+        est = db.scalar(
+            select(func.coalesce(func.sum(ProjectWorkstream.estimated_hours), 0)).where(
+                ProjectWorkstream.project_id.in_(project_ids)
+            )
+        )
+        act = db.scalar(
+            select(func.coalesce(func.sum(ProjectWorkstream.actual_hours), 0)).where(
+                ProjectWorkstream.project_id.in_(project_ids)
+            )
+        )
+        estimated = Decimal(str(est or 0))
+        actual = Decimal(str(act or 0))
+        if estimated == 0:
+            estimated = sum((row.current_planned_hours or Decimal("0")) for row in rows)
+            actual = sum((row.actual_hours or Decimal("0")) for row in rows)
+    return ProjectPortfolioSummary(
+        active_count=active_count,
+        due_week_count=due_week,
+        overdue_count=overdue,
+        at_risk_count=at_risk,
+        estimated_hours=estimated,
+        actual_hours=actual,
+        remaining_hours=estimated - actual,
+    )
+
+
+@router.get("/views", response_model=list[ProjectSavedViewRead])
+def list_project_views(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.crud.workstream import list_saved_views
+
+    return list_saved_views(db, current_user)
+
+
+@router.post(
+    "/views",
+    response_model=ProjectSavedViewRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_project_view(
+    payload: ProjectSavedViewCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.crud.workstream import create_saved_view
+
+    try:
+        return create_saved_view(db, current_user, payload)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.patch("/views/{view_id}", response_model=ProjectSavedViewRead)
+def update_project_view(
+    view_id: UUID,
+    payload: ProjectSavedViewUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.crud.workstream import update_saved_view
+
+    try:
+        return update_saved_view(db, current_user, view_id, payload)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.delete("/views/{view_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project_view(
+    view_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.crud.workstream import delete_saved_view
+
+    try:
+        delete_saved_view(db, current_user, view_id)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
 @router.get("/{record_id}", response_model=ProjectRead)
 def get_project(
     record_id: UUID,
@@ -269,6 +469,42 @@ def get_project(
             detail="Insufficient permissions",
         )
     return project.get_read(db, record_id)
+
+
+@router.get("/{record_id}/workstreams", response_model=list[ProjectWorkstreamRead])
+def get_project_workstreams(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.crud.workstream import list_project_workstreams
+
+    db_project = project.get(db, record_id)
+    if db_project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
+    if not can_read_project(db, current_user, db_project):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    return list_project_workstreams(db, record_id)
+
+
+@router.put("/{record_id}/workstreams", response_model=list[ProjectWorkstreamRead])
+def put_project_workstreams(
+    record_id: UUID,
+    payload: ProjectWorkstreamsReplace,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.crud.workstream import replace_project_workstreams
+
+    db_project = project.get(db, record_id)
+    if db_project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
+    if not can_update_project(db, current_user, db_project):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    try:
+        return replace_project_workstreams(db, db_project, payload)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
 
 
 @router.get("/{record_id}/detail", response_model=ProjectDashboard)

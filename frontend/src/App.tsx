@@ -124,6 +124,7 @@ const RoleHierarchyAdminPage = lazy(() => import('./pages/admin/RoleHierarchyPag
 const OrgDepartmentsAdminPage = lazy(() => import('./pages/admin/OrgDepartmentsPage'));
 const TicketRoutingAdminPage = lazy(() => import('./pages/admin/TicketRoutingPage'));
 const StreamsAdminPage = lazy(() => import('./pages/admin/StreamsPage'));
+const WorkstreamsAdminPage = lazy(() => import('./pages/admin/WorkstreamsPage'));
 const WorkingModelsAdminPage = lazy(() => import('./pages/admin/WorkingModelsPage'));
 const TeamsAdminPage = lazy(() => import('./pages/admin/TeamsPage'));
 const TaskTypesAdminPage = lazy(() => import('./pages/admin/TaskTypesPage'));
@@ -627,6 +628,14 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <StreamsAdminPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/workstreams"
+                        element={
+                          <LazyAdminPage>
+                            <WorkstreamsAdminPage />
                           </LazyAdminPage>
                         }
                       />

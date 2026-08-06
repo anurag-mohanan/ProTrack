@@ -11,8 +11,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.non_productive_categories import is_leave_entry
-from app.core.team_access import get_accessible_team_ids
 from app.crud.dashboard import _decimal, _round_hours
+from app.services.reporting.report_authorization import resolve_report_authority
+from app.services.reporting.report_scope import ReportScopeForbidden
 from app.crud.foundation import get_or_create_company_settings
 from app.models.enums import TimesheetStatus, WorkCategory, WorkingModelCode
 from app.models.models import (
@@ -159,9 +160,13 @@ def _scoped_user_ids(
     range_end: date,
 ) -> set[UUID] | None:
     """None = org-wide; set = restrict to these user IDs (membership during period)."""
-    accessible = get_accessible_team_ids(db, current_user)
+    auth = resolve_report_authority(db, current_user)
+    if auth.own_only:
+        return {current_user.id}
+
+    accessible = auth.team_ids
     if accessible is not None and team_id is not None and team_id not in accessible:
-        return set()
+        raise ReportScopeForbidden("Team is outside your accessible scope")
     if accessible is None and team_id is None:
         return None
 

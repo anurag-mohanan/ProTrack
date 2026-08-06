@@ -28,8 +28,10 @@ TENANT_SCOPED_TABLES: tuple[str, ...] = (
     "performance_review_sections",
     "performance_review_sheets",
     "performance_review_templates",
+    "project_saved_views",
     "project_template_milestones",
     "project_templates",
+    "project_workstreams",
     "projects",
     "roles",
     "security_policy_settings",
@@ -49,6 +51,7 @@ TENANT_SCOPED_TABLES: tuple[str, ...] = (
     "user_skill_ratings",
     "user_working_model_periods",
     "users",
+    "workstreams",
     # Lookups / settings
     "non_productive_codes",
     "operational_role_types",

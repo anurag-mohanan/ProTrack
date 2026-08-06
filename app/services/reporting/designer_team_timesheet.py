@@ -151,7 +151,7 @@ def build_designer_team_timesheet(
         end_date=full.period.end_date,
         team_id=scoped_team_id,
         customer_id=report_scope.customer_id or customer_id,
-        user_ids=None,
+        user_ids=set(report_scope.user_ids) if report_scope.user_ids is not None else None,
     )
 
     return DesignerTeamTimesheetPayload(

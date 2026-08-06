@@ -104,6 +104,21 @@ class UserPreferences(Base, TimestampMixin, TenantMixin):
     projects_portfolio_scope: Mapped[str] = mapped_column(
         String(32), nullable=False, default="my_streams"
     )
+    projects_cc_layout: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="list"
+    )
+    projects_cc_default_view_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    projects_cc_show_workstreams: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    projects_cc_show_teams: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    projects_cc_show_status: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     email_notifications_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )

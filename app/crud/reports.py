@@ -653,6 +653,7 @@ def get_timesheet_export_report(
     date_from: date | None = None,
     date_to: date | None = None,
     user_id=None,
+    user_ids=None,
     team_id=None,
     customer_id=None,
     project_id=None,
@@ -690,6 +691,10 @@ def get_timesheet_export_report(
     )
     if user_id is not None:
         stmt = stmt.where(Timesheet.user_id == user_id)
+    elif user_ids is not None:
+        if not user_ids:
+            return []
+        stmt = stmt.where(Timesheet.user_id.in_(user_ids))
     if team_id is not None:
         stmt = stmt.where(User.team_id == team_id)
     if customer_id is not None:

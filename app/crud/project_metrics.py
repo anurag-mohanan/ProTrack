@@ -5,13 +5,62 @@ from sqlalchemy.orm import Session
 from app.core.field_normalization import normalize_optional_text
 from app.crud.base import select
 from app.models.models import Customer, Project, ProjectType, Team, User, WorkingModel
-from app.schemas.project import ProjectRead
+from app.schemas.project import ProjectRead, ProjectWorkstreamSummary
 from app.services.dashboard_service import _batch_current_milestones
 from app.services.project_calculation_service import (
     batch_calculate_progress,
     calculate_progress,
 )
 from app.services.project_template_service import can_change_project_template
+
+
+def _batch_workstream_summaries(
+    db: Session, project_ids: list[UUID]
+) -> dict[UUID, list[ProjectWorkstreamSummary]]:
+    if not project_ids:
+        return {}
+    from decimal import Decimal
+
+    from app.models.workstream import ProjectWorkstream, Workstream
+
+    links = list(
+        db.scalars(
+            select(ProjectWorkstream).where(ProjectWorkstream.project_id.in_(project_ids))
+        ).all()
+    )
+    if not links:
+        return {pid: [] for pid in project_ids}
+    ws_ids = {link.workstream_id for link in links}
+    team_ids = {link.team_id for link in links if link.team_id}
+    workstreams = {
+        w.id: w for w in db.scalars(select(Workstream).where(Workstream.id.in_(ws_ids)))
+    }
+    teams = (
+        {t.id: t for t in db.scalars(select(Team).where(Team.id.in_(team_ids)))}
+        if team_ids
+        else {}
+    )
+    by_project: dict[UUID, list[ProjectWorkstreamSummary]] = {pid: [] for pid in project_ids}
+    for link in links:
+        ws = workstreams.get(link.workstream_id)
+        team = teams.get(link.team_id) if link.team_id else None
+        remaining = None
+        if link.estimated_hours is not None:
+            remaining = Decimal(link.estimated_hours) - Decimal(link.actual_hours or 0)
+        by_project.setdefault(link.project_id, []).append(
+            ProjectWorkstreamSummary(
+                workstream_id=link.workstream_id,
+                workstream_name=ws.name if ws else None,
+                workstream_code=ws.code if ws else None,
+                team_id=link.team_id,
+                team_name=getattr(team, "name", None),
+                estimated_hours=link.estimated_hours,
+                actual_hours=link.actual_hours,
+                remaining_hours=remaining,
+                progress_percent=link.progress_percent,
+            )
+        )
+    return by_project
 
 
 def _full_name(user: User | None) -> str | None:
@@ -99,6 +148,7 @@ def build_project_read(db: Session, project: Project) -> ProjectRead:
     progress = calculate_progress(db, project)
     milestone_names = _batch_current_milestones(db, [project.id])
     names = _batch_display_names(db, [project])
+    workstreams = _batch_workstream_summaries(db, [project.id])
     can_change, blocked_reason = can_change_project_template(db, project.id)
     gaps = project_setup_gaps(project)
     return ProjectRead.model_validate(project, from_attributes=True).model_copy(
@@ -110,6 +160,7 @@ def build_project_read(db: Session, project: Project) -> ProjectRead:
             "template_change_blocked_reason": blocked_reason,
             "needs_setup": project_needs_setup(project),
             "setup_gaps": gaps,
+            "workstreams": workstreams.get(project.id, []),
             **_name_updates(project, names),
         }
     )
@@ -128,6 +179,7 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
     progress_by_project = batch_calculate_progress(db, project_ids)
     milestone_names = _batch_current_milestones(db, project_ids)
     names = _batch_display_names(db, projects)
+    workstreams = _batch_workstream_summaries(db, project_ids)
     reads: list[ProjectRead] = []
     for project in projects:
         can_change, blocked_reason = can_change_project_template(db, project.id)
@@ -142,6 +194,7 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
                     "template_change_blocked_reason": blocked_reason,
                     "needs_setup": project_needs_setup(project),
                     "setup_gaps": gaps,
+                    "workstreams": workstreams.get(project.id, []),
                     **_name_updates(project, names),
                 }
             )

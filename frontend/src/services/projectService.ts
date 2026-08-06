@@ -23,10 +23,64 @@ export interface ProjectListParams extends ListParams {
   customer_ids?: string[];
   team_ids?: string[];
   team_id?: string;
+  stream_ids?: string[];
+  workstream_ids?: string[];
   project_type_id?: string;
   design_leader_id?: string;
   designer_id?: string;
   surfacer_id?: string;
+  health?: string;
+  priority?: string;
+  q?: string;
+  due?: string;
+}
+
+export async function getProjectsSummary(
+  params?: ProjectListParams,
+): Promise<import('../types').ProjectPortfolioSummary> {
+  const { data } = await apiClient.get<import('../types').ProjectPortfolioSummary>(
+    `/projects/summary${buildQuery(params)}`,
+  );
+  return data;
+}
+
+export async function getProjectViews(): Promise<import('../types').ProjectSavedView[]> {
+  const { data } = await apiClient.get<import('../types').ProjectSavedView[]>('/projects/views');
+  return data;
+}
+
+export async function createProjectView(
+  payload: Partial<import('../types').ProjectSavedView>,
+): Promise<import('../types').ProjectSavedView> {
+  const { data } = await apiClient.post<import('../types').ProjectSavedView>(
+    '/projects/views',
+    payload,
+  );
+  return data;
+}
+
+export async function deleteProjectView(viewId: string): Promise<void> {
+  await apiClient.delete(`/projects/views/${viewId}`);
+}
+
+export async function getProjectWorkstreams(
+  projectId: string,
+): Promise<import('../types').ProjectWorkstreamSummary[]> {
+  const { data } = await apiClient.get<import('../types').ProjectWorkstreamSummary[]>(
+    `/projects/${projectId}/workstreams`,
+  );
+  return data;
+}
+
+export async function replaceProjectWorkstreams(
+  projectId: string,
+  items: Array<{ workstream_id: string }>,
+): Promise<import('../types').ProjectWorkstreamSummary[]> {
+  const { data } = await apiClient.put<import('../types').ProjectWorkstreamSummary[]>(
+    `/projects/${projectId}/workstreams`,
+    { items },
+  );
+  return data;
 }
 
 export async function getProjects(params?: ProjectListParams): Promise<Project[]> {

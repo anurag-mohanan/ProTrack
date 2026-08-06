@@ -18,6 +18,11 @@ class UserPreferencesRead(TimestampSchema):
     reduced_motion: bool = False
     default_landing_page: str = "dashboard"
     projects_portfolio_scope: str = "my_streams"
+    projects_cc_layout: str = "list"
+    projects_cc_default_view_id: UUID | None = None
+    projects_cc_show_workstreams: bool = True
+    projects_cc_show_teams: bool = True
+    projects_cc_show_status: bool = True
     email_notifications_enabled: bool = True
     email_assignment_enabled: bool = True
     email_reminder_enabled: bool = True
@@ -38,6 +43,11 @@ class UserPreferencesUpdate(BaseModel):
     reduced_motion: bool | None = None
     default_landing_page: str | None = Field(default=None, max_length=32)
     projects_portfolio_scope: str | None = Field(default=None, max_length=32)
+    projects_cc_layout: str | None = Field(default=None, max_length=20)
+    projects_cc_default_view_id: UUID | None = None
+    projects_cc_show_workstreams: bool | None = None
+    projects_cc_show_teams: bool | None = None
+    projects_cc_show_status: bool | None = None
     email_notifications_enabled: bool | None = None
     email_assignment_enabled: bool | None = None
     email_reminder_enabled: bool | None = None

@@ -4,6 +4,7 @@ export interface ProjectType extends Timestamped {
   name: string;
   description: string | null;
   is_active: boolean;
+  default_workstream_id?: string | null;
 }
 
 export interface ProjectTemplateMilestone extends Timestamped {

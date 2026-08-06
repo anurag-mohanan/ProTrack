@@ -23,6 +23,8 @@ export interface ProjectCommandCenterFilters {
   customerIds: string[];
   projectTypeId: string;
   teamIds: string[];
+  workstreamIds: string[];
+  statusBucketIds: string[];
   businessUnit: string;
   projectStage: ProjectStage | 'all';
   executionStatus: ExecutionStatus | 'all';
@@ -34,6 +36,8 @@ export interface ProjectCommandCenterFilters {
   dueDate: ProjectDueFilter;
   showArchived: boolean;
   groupByTeam: boolean;
+  groupBy: 'none' | 'team' | 'workstream' | 'customer' | 'pm' | 'status' | 'health' | 'due';
+  layout: 'list' | 'card' | 'grouped';
   quickFilter: ProjectQuickFilter;
   customerId?: string;
   designerUserId?: string;
@@ -44,6 +48,8 @@ export const defaultProjectCommandCenterFilters: ProjectCommandCenterFilters = {
   customerIds: [],
   projectTypeId: 'all',
   teamIds: [],
+  workstreamIds: [],
+  statusBucketIds: [],
   businessUnit: 'all',
   projectStage: 'all',
   executionStatus: 'all',
@@ -55,6 +61,8 @@ export const defaultProjectCommandCenterFilters: ProjectCommandCenterFilters = {
   dueDate: 'all',
   showArchived: false,
   groupByTeam: false,
+  groupBy: 'workstream',
+  layout: 'grouped',
   quickFilter: 'none',
 };
 
@@ -102,6 +110,12 @@ function isOverdue(project: Project, today: Date): boolean {
   return new Date(`${project.due_date}T00:00:00`) < today;
 }
 
+export function isOverdueProject(project: Project, today: Date = new Date()): boolean {
+  const day = new Date(today);
+  day.setHours(0, 0, 0, 0);
+  return isOverdue(project, day);
+}
+
 function isDueThisWeek(project: Project, today: Date): boolean {
   if (!isLiveProject(project) || !project.due_date) return false;
   const rangeStart = new Date(today);
@@ -112,6 +126,12 @@ function isDueThisWeek(project: Project, today: Date): boolean {
   rangeEnd.setDate(rangeEnd.getDate() + 6);
   const due = new Date(`${project.due_date}T00:00:00`);
   return due >= rangeStart && due <= rangeEnd;
+}
+
+export function isDueSoonProject(project: Project, today: Date = new Date()): boolean {
+  const day = new Date(today);
+  day.setHours(0, 0, 0, 0);
+  return isDueThisWeek(project, day) || isDueNext7Days(project, day);
 }
 
 function isDueNext7Days(project: Project, today: Date): boolean {
@@ -234,6 +254,21 @@ export function filterProjectsForCommandCenter(
 
     if (filters.teamIds.length > 0) {
       if (!project.team_id || !filters.teamIds.includes(project.team_id)) return false;
+    }
+
+    if (filters.workstreamIds.length > 0) {
+      const ids = (project.workstreams ?? []).map((ws) => ws.workstream_id);
+      if (!filters.workstreamIds.some((id) => ids.includes(id))) return false;
+    }
+
+    if (filters.statusBucketIds.length > 0) {
+      const buckets = new Set(filters.statusBucketIds);
+      const matchesStatus =
+        (buckets.has(project.execution_status) ||
+          (buckets.has('overdue') && isOverdue(project, today)) ||
+          (buckets.has('at_risk') && project.health === 'red') ||
+          (buckets.has('due_week') && isDueThisWeek(project, today)));
+      if (!matchesStatus) return false;
     }
 
     if (filters.businessUnit && filters.businessUnit !== 'all') {

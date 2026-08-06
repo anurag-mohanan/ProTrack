@@ -13,6 +13,18 @@ export type ProjectLifecycleFilter =
   | 'archived'
   | 'deleted';
 
+export interface ProjectWorkstreamSummary {
+  workstream_id: string;
+  workstream_name?: string | null;
+  workstream_code?: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
+  estimated_hours?: number | null;
+  actual_hours?: number | null;
+  remaining_hours?: number | null;
+  progress_percent?: number | null;
+}
+
 export interface Project extends Timestamped {
   tool_number: string;
   part_description: string;
@@ -64,6 +76,7 @@ export interface Project extends Timestamped {
   needs_setup?: boolean;
   setup_gaps?: string[];
   qa_gate_enabled?: boolean;
+  workstreams?: ProjectWorkstreamSummary[];
 }
 
 export interface ArchivedProjectListItem extends Omit<Project, 'design_leader_name'> {

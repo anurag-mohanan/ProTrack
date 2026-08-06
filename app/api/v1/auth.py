@@ -252,8 +252,10 @@ def _build_current_user_read(
         get_user_relevant_stream_ids,
         stream_display_name,
     )
+    from app.core.data_scope import data_scope_to_dict, resolve_data_scope
 
     relevant_stream_ids = sorted(get_user_relevant_stream_ids(db, user), key=str)
+    scope_ctx = resolve_data_scope(db, user)
     return CurrentUserRead(
         id=user.id,
         email=user.email,
@@ -282,6 +284,7 @@ def _build_current_user_read(
         requires_timesheet=user_requires_timesheet(user),
         can_enter_own_timesheet=user_can_enter_own_timesheet(db, user),
         can_view_organization_chart=user_can_view_organization_chart(db, user),
+        data_scope=data_scope_to_dict(scope_ctx),
     )
 
 

@@ -13,7 +13,14 @@ from app.api.deps import get_db, get_object_or_404
 from app.core.exceptions import ProTrackValidationError
 from app.core.pagination import PaginatedResponse, pagination_query, PaginationParams
 from app.crud.base import CRUDBase
-from app.models.enums import ExecutionStatus, ProjectLifecycleFilter, ProjectStage, TimesheetStatus
+from app.models.enums import (
+    ExecutionStatus,
+    ProjectHealth,
+    ProjectLifecycleFilter,
+    ProjectPriority,
+    ProjectStage,
+    TimesheetStatus,
+)
 from app.models.models import User
 from app.schemas.common import BaseModel
 from app.schemas.delete_check import DeleteCheckResponse
@@ -45,11 +52,17 @@ class ProjectFilters(BaseModel):
     designer_id: UUID | None = None
     surfacer_id: UUID | None = None
     stream_id: UUID | None = None
+    stream_ids: list[UUID] | None = None
+    workstream_ids: list[UUID] | None = None
     team_id: UUID | None = None
     team_ids: list[UUID] | None = None
     project_type_id: UUID | None = None
     execution_status: ExecutionStatus | None = None
     project_stage: ProjectStage | None = None
+    health: ProjectHealth | None = None
+    priority: ProjectPriority | None = None
+    q: str | None = None
+    due: str | None = None  # week | overdue | 7days
     lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all
 
 

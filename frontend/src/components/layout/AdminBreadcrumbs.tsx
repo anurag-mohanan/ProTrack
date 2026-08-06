@@ -23,6 +23,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/admin/teams': 'Teams',
   '/organization': 'Organization Chart',
   '/admin/streams': 'Streams',
+  '/admin/workstreams': 'Workstreams',
   '/admin/task-types': 'Task Types',
   '/admin/non-productive-codes': 'NP Codes',
   '/admin/project-types': 'Project Types',

@@ -1,4 +1,4 @@
-"""Resolve customer/team scope for engineering report filters."""
+"""Resolve customer/team/user scope for engineering & timesheet report filters."""
 
 from __future__ import annotations
 
@@ -8,8 +8,12 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.core.team_access import get_accessible_team_ids
 from app.models.models import User
+from app.services.reporting.report_authorization import (
+    ReportSubjectMode,
+    actor_membership_team_ids,
+    resolve_report_authority,
+)
 from app.services.reporting.team_membership_windows import (
     membership_windows_for_teams,
     users_on_teams_during,
@@ -18,7 +22,13 @@ from app.services.reporting.team_membership_windows import (
 
 @dataclass(frozen=True)
 class ReportScope:
-    """None team/user sets mean unrestricted (org-wide). Empty set means deny-all."""
+    """None team/user sets mean unrestricted (org-wide). Empty set means deny-all.
+
+    ``subject_mode``:
+      - unrestricted — no people/team clip
+      - teams — roster is members of ``team_ids`` (refined by membership windows)
+      - own — always ``user_ids == {actor_user_id}`` (never expand via refine)
+    """
 
     customer_id: UUID | None = None
     team_ids: frozenset[UUID] | None = None
@@ -26,10 +36,12 @@ class ReportScope:
     # When team-scoped reports are built for a period: entry dates must fall in these windows.
     membership_windows: dict[UUID, list[tuple[date, date]]] | None = None
     stream_id: UUID | None = None
+    subject_mode: ReportSubjectMode = ReportSubjectMode.teams
+    actor_user_id: UUID | None = None
 
 
 class ReportScopeForbidden(Exception):
-    """Requested team is outside the caller's accessible teams."""
+    """Requested team/user is outside the caller's report authority."""
 
 
 def resolve_report_scope(
@@ -42,14 +54,32 @@ def resolve_report_scope(
     range_start: date | None = None,
     range_end: date | None = None,
 ) -> ReportScope:
-    accessible = get_accessible_team_ids(db, user)
+    auth = resolve_report_authority(db, user)
 
-    if accessible is not None:
+    if auth.own_only:
+        if team_id is not None:
+            membership = actor_membership_team_ids(db, user)
+            if team_id not in membership:
+                raise ReportScopeForbidden("Team is outside your accessible scope")
+        return ReportScope(
+            customer_id=customer_id,
+            # None when no team filter so project clauses are not deny-all;
+            # people are always clipped via user_ids.
+            team_ids=frozenset({team_id}) if team_id is not None else None,
+            user_ids=frozenset({user.id}),
+            membership_windows=None,
+            stream_id=stream_id,
+            subject_mode=ReportSubjectMode.own,
+            actor_user_id=user.id,
+        )
+
+    if auth.unrestricted:
+        team_ids: frozenset[UUID] | None = frozenset({team_id}) if team_id is not None else None
+    else:
+        accessible = auth.team_ids or frozenset()
         if team_id is not None and team_id not in accessible:
             raise ReportScopeForbidden("Team is outside your accessible scope")
-        team_ids: frozenset[UUID] | None = frozenset({team_id}) if team_id else frozenset(accessible)
-    else:
-        team_ids = frozenset({team_id}) if team_id is not None else None
+        team_ids = frozenset({team_id}) if team_id else frozenset(accessible)
 
     user_ids: frozenset[UUID] | None = None
     membership_windows: dict[UUID, list[tuple[date, date]]] | None = None
@@ -69,6 +99,12 @@ def resolve_report_scope(
         user_ids=user_ids,
         membership_windows=membership_windows,
         stream_id=stream_id,
+        subject_mode=(
+            ReportSubjectMode.unrestricted
+            if auth.unrestricted and team_id is None
+            else ReportSubjectMode.teams
+        ),
+        actor_user_id=user.id,
     )
 
 
@@ -80,6 +116,12 @@ def refine_scope_for_period(
     range_end: date,
 ) -> ReportScope:
     """Clip team roster + entry windows to membership dates overlapping the report period."""
+    if scope.subject_mode == ReportSubjectMode.own:
+        actor_id = scope.actor_user_id
+        if actor_id is None:
+            return scope
+        return replace(scope, user_ids=frozenset({actor_id}))
+
     if scope.team_ids is None:
         return scope
     windows = membership_windows_for_teams(

@@ -32,6 +32,9 @@ import { ProjectQuickFilterStrip } from '../components/projects/command-center/P
 import { ProjectStreamCards } from '../components/projects/command-center/ProjectStreamCards';
 import { ProjectStreamPanel } from '../components/projects/command-center/ProjectStreamPanel';
 import { ProjectTeamFilterRail } from '../components/projects/command-center/ProjectTeamFilterRail';
+import { ProjectViewControlCards } from '../components/projects/command-center/ProjectViewControlCards';
+import { ProjectWorkstreamSection } from '../components/projects/command-center/ProjectWorkstreamSection';
+import { WorkstreamSectionsManager } from '../components/projects/command-center/WorkstreamSectionsManager';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { FilterDrawer, FilterToolbar } from '../components/ui/design-system';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
@@ -40,14 +43,24 @@ import { usePreferences } from '../context/PreferencesContext';
 import { useToast } from '../context/ToastContext';
 import {
   archiveProject,
+  createProjectView,
+  getProjectViews,
   getProjectsPaginated,
+  getProjectsSummary,
   projectQueryKeys,
   restoreProject,
   softDeleteProject,
 } from '../services/projectService';
-import type { ProjectStage } from '../types';
+import type { ProjectSavedView, ProjectStage, Workstream } from '../types';
+import { workstreamsApi } from '../api/resources';
 import { exportToCsv } from '../utils/exportData';
 import { filterProjectsForAccessibleTeams, groupProjectsByTeam, resolveEffectiveProjectTeamId } from '../utils/projectTeamGroups';
+import {
+  groupProjectsByWorkstream,
+  loadWorkstreamSectionPrefs,
+  persistWorkstreamSectionPrefs,
+  type WorkstreamSectionPrefs,
+} from '../utils/projectWorkstreamGroups';
 import { getLeaderTeamScopeIds, shouldGroupProjectsByTeamForUser, shouldScopeProjectsByLeaderTeams } from '../utils/projectTeamScope';
 import {
   canSelectAllProjectsScope,
@@ -120,6 +133,11 @@ export function ProjectsPage() {
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>(
     initialSelectedTeamIdsFromSession,
   );
+  const [selectedStatusIds, setSelectedStatusIds] = useState<string[]>([]);
+  const [showWorkstreamCards, setShowWorkstreamCards] = useState(true);
+  const [showTeamCards, setShowTeamCards] = useState(true);
+  const [showStatusCards, setShowStatusCards] = useState(true);
+  const [savedViews, setSavedViews] = useState<ProjectSavedView[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState<ProjectCommandCenterFilters>(
     initialFiltersFromSession,
@@ -134,14 +152,38 @@ export function ProjectsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [gridSessionKey, setGridSessionKey] = useState(0);
+  const [workstreamPrefs, setWorkstreamPrefs] = useState<WorkstreamSectionPrefs>(() =>
+    loadWorkstreamSectionPrefs(),
+  );
+  const [workstreamManagerOpen, setWorkstreamManagerOpen] = useState(false);
   const deepLinkAppliedRef = useRef(false);
+
+  const updateWorkstreamPrefs = useCallback((next: WorkstreamSectionPrefs) => {
+    setWorkstreamPrefs(next);
+    persistWorkstreamSectionPrefs(next);
+  }, []);
 
   useEffect(() => {
     const saved = normalizeProjectsPortfolioScope(preferences?.projects_portfolio_scope);
     const next =
       saved === 'all' && !allowAllScope ? 'my_streams' : saved;
     setPortfolioScope(next);
-  }, [preferences?.projects_portfolio_scope, allowAllScope]);
+    if (typeof preferences?.projects_cc_show_workstreams === 'boolean') {
+      setShowWorkstreamCards(preferences.projects_cc_show_workstreams);
+    }
+    if (typeof preferences?.projects_cc_show_teams === 'boolean') {
+      setShowTeamCards(preferences.projects_cc_show_teams);
+    }
+    if (typeof preferences?.projects_cc_show_status === 'boolean') {
+      setShowStatusCards(preferences.projects_cc_show_status);
+    }
+    if (preferences?.projects_cc_layout) {
+      setAppliedFilters((current) => ({
+        ...current,
+        layout: preferences.projects_cc_layout ?? current.layout,
+      }));
+    }
+  }, [preferences?.projects_portfolio_scope, preferences?.projects_cc_show_workstreams, preferences?.projects_cc_show_teams, preferences?.projects_cc_show_status, preferences?.projects_cc_layout, allowAllScope]);
 
   // Persist filters + stream/team selection so navigating away and back restores them.
   useEffect(() => {
@@ -151,6 +193,38 @@ export function ProjectsPage() {
       selectedTeamIds,
     });
   }, [appliedFilters, selectedStreamIds, selectedTeamIds]);
+
+  // Shareable URL state (non-sensitive filters only).
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    const setOrDelete = (key: string, value: string | undefined) => {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    };
+    setOrDelete('search', appliedFilters.search.trim() || undefined);
+    setOrDelete(
+      'execution_status',
+      appliedFilters.executionStatus === 'all' ? undefined : appliedFilters.executionStatus,
+    );
+    setOrDelete('health', appliedFilters.health === 'all' ? undefined : appliedFilters.health);
+    setOrDelete('due', appliedFilters.dueDate === 'all' ? undefined : appliedFilters.dueDate);
+    setOrDelete('layout', appliedFilters.layout === 'list' ? undefined : appliedFilters.layout);
+    setOrDelete('group_by', appliedFilters.groupBy === 'none' ? undefined : appliedFilters.groupBy);
+    if (selectedStreamIds.length === 1) next.set('stream_id', selectedStreamIds[0]);
+    else next.delete('stream_id');
+    if (selectedTeamIds.length === 1) next.set('team_id', selectedTeamIds[0]);
+    else next.delete('team_id');
+    if (appliedFilters.workstreamIds.length === 1) {
+      next.set('workstream_id', appliedFilters.workstreamIds[0]);
+    } else {
+      next.delete('workstream_id');
+    }
+    const current = searchParams.toString();
+    const upcoming = next.toString();
+    if (current !== upcoming) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [appliedFilters, selectedStreamIds, selectedTeamIds, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (deepLinkAppliedRef.current) return;
@@ -204,9 +278,19 @@ export function ProjectsPage() {
     () => ({
       project_stage:
         appliedFilters.projectStage === 'all' ? undefined : appliedFilters.projectStage,
+      execution_status:
+        appliedFilters.executionStatus === 'all' ? undefined : appliedFilters.executionStatus,
       customer_ids:
         appliedFilters.customerIds.length > 0 ? appliedFilters.customerIds : undefined,
-      team_ids: appliedFilters.teamIds.length > 0 ? appliedFilters.teamIds : undefined,
+      team_ids:
+        selectedTeamIds.length > 0
+          ? selectedTeamIds
+          : appliedFilters.teamIds.length > 0
+            ? appliedFilters.teamIds
+            : undefined,
+      stream_ids: selectedStreamIds.length > 0 ? selectedStreamIds : undefined,
+      workstream_ids:
+        appliedFilters.workstreamIds.length > 0 ? appliedFilters.workstreamIds : undefined,
       project_type_id:
         appliedFilters.projectTypeId === 'all' ? undefined : appliedFilters.projectTypeId,
       design_leader_id:
@@ -215,10 +299,14 @@ export function ProjectsPage() {
         appliedFilters.designerId === 'all' ? undefined : appliedFilters.designerId,
       surfacer_id:
         appliedFilters.surfacerId === 'all' ? undefined : appliedFilters.surfacerId,
+      health: appliedFilters.health === 'all' ? undefined : appliedFilters.health,
+      priority: appliedFilters.priority === 'all' ? undefined : appliedFilters.priority,
+      q: appliedFilters.search.trim() || undefined,
+      due: appliedFilters.dueDate === 'all' ? undefined : appliedFilters.dueDate,
       page: 1,
-      page_size: 500,
+      page_size: 100,
     }),
-    [appliedFilters],
+    [appliedFilters, selectedStreamIds, selectedTeamIds],
   );
 
   const projectsQuery = useQuery({
@@ -253,6 +341,24 @@ export function ProjectsPage() {
     queryFn: fetchTeams,
     staleTime: QUERY_STALE_TIMES.lookups,
   });
+
+  const workstreamsQuery = useQuery({
+    queryKey: ['lookups', 'workstreams'],
+    queryFn: () => workstreamsApi.list({ limit: 500, is_active: true }),
+    staleTime: QUERY_STALE_TIMES.lookups,
+  });
+
+  const summaryQuery = useQuery({
+    queryKey: ['projects', 'summary', listParams],
+    queryFn: () => getProjectsSummary(listParams),
+    staleTime: QUERY_STALE_TIMES.projects,
+  });
+
+  useEffect(() => {
+    void getProjectViews()
+      .then(setSavedViews)
+      .catch(() => setSavedViews([]));
+  }, []);
 
   const projectTypesQuery = useQuery({
     queryKey: ['project-types'],
@@ -501,16 +607,57 @@ export function ProjectsPage() {
     [teamScopedLiveProjects, teamsQuery.data, lookupUsers, scopeByLeaderTeams, leaderTeamIds],
   );
 
+  const liveWorkstreamGroups = useMemo(
+    () =>
+      groupProjectsByWorkstream(teamScopedLiveProjects, workstreamsQuery.data ?? [], {
+        includeEmpty: false,
+        projectTypes: projectTypesQuery.data ?? [],
+        prefs: workstreamPrefs,
+      }),
+    [teamScopedLiveProjects, workstreamsQuery.data, projectTypesQuery.data, workstreamPrefs],
+  );
+
+  /** Workstream sections are the default Command Center layout when catalog exists. */
+  const useWorkstreamSections =
+    appliedFilters.groupBy === 'workstream' ||
+    (appliedFilters.groupBy === 'none' && (workstreamsQuery.data?.length ?? 0) > 0);
+
+  const liveCustomerGroups = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; projects: typeof teamScopedLiveProjects }>();
+    for (const project of teamScopedLiveProjects) {
+      const id = project.customer_id;
+      const label = project.customer_name ?? 'Customer';
+      const existing = map.get(id);
+      if (existing) existing.projects.push(project);
+      else map.set(id, { id, label, projects: [project] });
+    }
+    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [teamScopedLiveProjects]);
+
+  const liveHealthGroups = useMemo(() => {
+    const order = ['red', 'amber', 'green'] as const;
+    return order
+      .map((health) => ({
+        id: health,
+        label: health === 'red' ? 'At risk' : health === 'amber' ? 'Watch' : 'On track',
+        projects: teamScopedLiveProjects.filter((p) => p.health === health),
+      }))
+      .filter((g) => g.projects.length > 0);
+  }, [teamScopedLiveProjects]);
+
   const distinctTeamGroupCount = useMemo(
     () => liveProjectTeamGroups.length,
     [liveProjectTeamGroups],
   );
 
-  const shouldGroupLiveProjectsByTeam = shouldGroupProjectsByTeamForUser(
-    user?.role_name ?? '',
-    user,
-    distinctTeamGroupCount,
-  );
+  const shouldGroupLiveProjectsByTeam =
+    appliedFilters.groupBy === 'team' ||
+    (appliedFilters.groupBy === 'none' &&
+      shouldGroupProjectsByTeamForUser(user?.role_name ?? '', user, distinctTeamGroupCount));
+
+  const shouldGroupByWorkstream = useWorkstreamSections;
+  const shouldGroupByCustomer = appliedFilters.groupBy === 'customer';
+  const shouldGroupByHealth = appliedFilters.groupBy === 'health';
 
   const handlePortfolioScopeChange = useCallback(
     (_event: React.MouseEvent<HTMLElement>, next: ProjectsPortfolioScope | null) => {
@@ -746,6 +893,196 @@ export function ProjectsPage() {
           }}
         />
 
+        <ProjectViewControlCards
+          workstreams={(workstreamsQuery.data ?? []).map((ws: Workstream) => ({
+            id: ws.id,
+            label: ws.name,
+            count: (projectsQuery.data ?? []).filter((project) =>
+              (project.workstreams ?? []).some((link) => link.workstream_id === ws.id),
+            ).length,
+          }))}
+          teams={teamFilterOptions}
+          statusBuckets={[
+            { id: 'currently_being_worked_on', label: 'In Progress' },
+            { id: 'planning', label: 'Planning' },
+            { id: 'on_hold', label: 'On Hold' },
+            { id: 'due_week', label: 'Due Soon' },
+            { id: 'overdue', label: 'Overdue' },
+            { id: 'at_risk', label: 'At Risk' },
+          ]}
+          selectedWorkstreamIds={appliedFilters.workstreamIds}
+          selectedTeamIds={selectedTeamIds}
+          selectedStatusIds={appliedFilters.statusBucketIds}
+          onWorkstreamsChange={(ids) => {
+            setAppliedFilters((current) => ({ ...current, workstreamIds: ids }));
+            setDraftFilters((current) => ({ ...current, workstreamIds: ids }));
+          }}
+          onTeamsChange={setSelectedTeamIds}
+          onStatusChange={(ids) => {
+            setSelectedStatusIds(ids);
+            setAppliedFilters((current) => ({ ...current, statusBucketIds: ids }));
+            setDraftFilters((current) => ({ ...current, statusBucketIds: ids }));
+          }}
+          showWorkstreams={showWorkstreamCards}
+          showTeams={showTeamCards}
+          showStatus={showStatusCards}
+          onShowWorkstreamsChange={(value) => {
+            setShowWorkstreamCards(value);
+            void updatePreferences({ projects_cc_show_workstreams: value });
+          }}
+          onShowTeamsChange={(value) => {
+            setShowTeamCards(value);
+            void updatePreferences({ projects_cc_show_teams: value });
+          }}
+          onShowStatusChange={(value) => {
+            setShowStatusCards(value);
+            void updatePreferences({ projects_cc_show_status: value });
+          }}
+        />
+
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            alignItems: 'center',
+            mb: 1,
+          }}
+        >
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={appliedFilters.layout}
+            onChange={(_e, value) => {
+              if (!value) return;
+              setAppliedFilters((current) => ({ ...current, layout: value }));
+              void updatePreferences({ projects_cc_layout: value });
+            }}
+            aria-label="Projects layout"
+          >
+            <ToggleButton value="list">List</ToggleButton>
+            <ToggleButton value="card">Cards</ToggleButton>
+            <ToggleButton value="grouped">Grouped</ToggleButton>
+          </ToggleButtonGroup>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={appliedFilters.groupBy}
+            onChange={(_e, value) => {
+              if (!value) return;
+              setAppliedFilters((current) => ({
+                ...current,
+                groupBy: value,
+                groupByTeam: value === 'team',
+                layout: value === 'none' ? current.layout : 'grouped',
+              }));
+            }}
+            aria-label="Group projects by"
+          >
+            <ToggleButton value="none">No group</ToggleButton>
+            <ToggleButton value="team">Team</ToggleButton>
+            <ToggleButton value="workstream">Workstream</ToggleButton>
+            <ToggleButton value="customer">Customer</ToggleButton>
+            <ToggleButton value="health">Health</ToggleButton>
+          </ToggleButtonGroup>
+          {shouldGroupByWorkstream ? (
+            <ProsohmButton
+              size="small"
+              variant="outlined"
+              onClick={() => setWorkstreamManagerOpen(true)}
+            >
+              Sections
+            </ProsohmButton>
+          ) : null}
+          {savedViews.length > 0 ? (
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={null}
+              onChange={(_e, viewId) => {
+                if (!viewId) return;
+                const view = savedViews.find((item) => item.id === viewId);
+                if (!view) return;
+                const fj = view.filter_json ?? {};
+                setAppliedFilters((current) => ({
+                  ...current,
+                  workstreamIds: Array.isArray(fj.workstreamIds)
+                    ? (fj.workstreamIds as string[])
+                    : current.workstreamIds,
+                  statusBucketIds: Array.isArray(fj.statusBucketIds)
+                    ? (fj.statusBucketIds as string[])
+                    : current.statusBucketIds,
+                  health:
+                    fj.health === 'red' || fj.health === 'amber' || fj.health === 'green'
+                      ? fj.health
+                      : current.health,
+                  dueDate:
+                    fj.dueDate === 'week' ||
+                    fj.dueDate === 'overdue' ||
+                    fj.dueDate === '7days' ||
+                    fj.dueDate === 'all'
+                      ? fj.dueDate
+                      : current.dueDate,
+                  search: typeof fj.search === 'string' ? fj.search : current.search,
+                  layout:
+                    (view.display_json?.layout as ProjectCommandCenterFilters['layout']) ??
+                    current.layout,
+                  groupBy:
+                    (view.display_json?.groupBy as ProjectCommandCenterFilters['groupBy']) ??
+                    current.groupBy,
+                }));
+                if (Array.isArray(fj.teamIds)) {
+                  setSelectedTeamIds(fj.teamIds as string[]);
+                }
+              }}
+              aria-label="Saved views"
+            >
+              {savedViews.slice(0, 6).map((view) => (
+                <ToggleButton key={view.id} value={view.id}>
+                  {view.name}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+          ) : null}
+          <ProsohmButton
+            buttonVariant="outlined"
+            size="small"
+            onClick={() => {
+              void createProjectView({
+                name: `View ${new Date().toLocaleDateString()}`,
+                filter_json: {
+                  workstreamIds: appliedFilters.workstreamIds,
+                  teamIds: selectedTeamIds,
+                  statusBucketIds: appliedFilters.statusBucketIds,
+                  health: appliedFilters.health,
+                  dueDate: appliedFilters.dueDate,
+                  search: appliedFilters.search,
+                },
+                display_json: {
+                  layout: appliedFilters.layout,
+                  groupBy: appliedFilters.groupBy,
+                },
+              })
+                .then((view) => {
+                  setSavedViews((current) => [...current, view]);
+                  showSuccess('Saved view created');
+                })
+                .catch((error: Error) => showError(error.message));
+            }}
+          >
+            Save view
+          </ProsohmButton>
+          {summaryQuery.data ? (
+            <Typography variant="caption" color="text.secondary">
+              Active {summaryQuery.data.active_count} · Due week {summaryQuery.data.due_week_count} ·
+              Overdue {summaryQuery.data.overdue_count} · At risk {summaryQuery.data.at_risk_count}
+              {summaryQuery.data.estimated_hours
+                ? ` · Hours ${summaryQuery.data.actual_hours}/${summaryQuery.data.estimated_hours}`
+                : ''}
+            </Typography>
+          ) : null}
+        </Box>
+
         <Box
           sx={{
             position: 'sticky',
@@ -838,7 +1175,57 @@ export function ProjectsPage() {
           ) : (
             <>
               {teamScopedLiveProjects.length ? (
-                shouldGroupByStream ? (
+                shouldGroupByWorkstream ? (
+                  liveWorkstreamGroups.map((group) => (
+                    <ProjectWorkstreamSection
+                      key={group.id}
+                      group={group}
+                      customers={customersQuery.data ?? []}
+                      users={usersQuery.data ?? []}
+                      streams={streamsQuery.data ?? []}
+                      teams={teamsQuery.data ?? []}
+                      pinned={workstreamPrefs.pinned.includes(group.id)}
+                      collapsed={workstreamPrefs.collapsed[group.id] === true}
+                      onCollapsedChange={(collapsed) => {
+                        updateWorkstreamPrefs({
+                          ...workstreamPrefs,
+                          collapsed: {
+                            ...workstreamPrefs.collapsed,
+                            ...(collapsed
+                              ? { [group.id]: true }
+                              : (() => {
+                                  const next = { ...workstreamPrefs.collapsed };
+                                  delete next[group.id];
+                                  return next;
+                                })()),
+                          },
+                        });
+                      }}
+                      onTogglePin={(workstreamId) => {
+                        const pinned = workstreamPrefs.pinned.includes(workstreamId)
+                          ? workstreamPrefs.pinned.filter((id) => id !== workstreamId)
+                          : [...workstreamPrefs.pinned, workstreamId];
+                        updateWorkstreamPrefs({ ...workstreamPrefs, pinned });
+                      }}
+                      onHide={(workstreamId) => {
+                        updateWorkstreamPrefs({
+                          ...workstreamPrefs,
+                          hidden: workstreamPrefs.hidden.includes(workstreamId)
+                            ? workstreamPrefs.hidden
+                            : [...workstreamPrefs.hidden, workstreamId],
+                        });
+                      }}
+                      gridSessionKey={gridSessionKey}
+                      onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
+                      onEdit={setEditProject}
+                      onArchive={showArchiveActions ? setArchiveId : undefined}
+                      onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                      onExport={handleExport}
+                      onDelete={isAdmin ? setDeleteId : undefined}
+                      canDelete={isAdmin}
+                    />
+                  ))
+                ) : shouldGroupByStream ? (
                   visibleStreamSections.map((streamSection) => {
                     const teamGroupsWithProjects = streamSection.teamGroups.filter(
                       (group) => group.projects.length > 0,
@@ -906,6 +1293,50 @@ export function ProjectsPage() {
                       </ProjectStreamPanel>
                     );
                   })
+                ) : shouldGroupByCustomer ? (
+                  liveCustomerGroups.map((group) => (
+                    <ProjectListSection
+                      key={group.id}
+                      title={group.label}
+                      count={group.projects.length}
+                      projects={group.projects}
+                      primary
+                      customers={customersQuery.data ?? []}
+                      users={usersQuery.data ?? []}
+                      streams={streamsQuery.data ?? []}
+                      teams={teamsQuery.data ?? []}
+                      gridSessionKey={gridSessionKey}
+                      onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
+                      onEdit={setEditProject}
+                      onArchive={showArchiveActions ? setArchiveId : undefined}
+                      onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                      onExport={handleExport}
+                      onDelete={isAdmin ? setDeleteId : undefined}
+                      canDelete={isAdmin}
+                    />
+                  ))
+                ) : shouldGroupByHealth ? (
+                  liveHealthGroups.map((group) => (
+                    <ProjectListSection
+                      key={group.id}
+                      title={group.label}
+                      count={group.projects.length}
+                      projects={group.projects}
+                      primary
+                      customers={customersQuery.data ?? []}
+                      users={usersQuery.data ?? []}
+                      streams={streamsQuery.data ?? []}
+                      teams={teamsQuery.data ?? []}
+                      gridSessionKey={gridSessionKey}
+                      onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
+                      onEdit={setEditProject}
+                      onArchive={showArchiveActions ? setArchiveId : undefined}
+                      onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                      onExport={handleExport}
+                      onDelete={isAdmin ? setDeleteId : undefined}
+                      canDelete={isAdmin}
+                    />
+                  ))
                 ) : shouldGroupLiveProjectsByTeam ? (
                   liveProjectTeamGroups.map((group) => (
                     <ProjectListSection
@@ -1074,6 +1505,14 @@ export function ProjectsPage() {
         loading={deleteMutation.isPending}
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+      />
+
+      <WorkstreamSectionsManager
+        open={workstreamManagerOpen}
+        onClose={() => setWorkstreamManagerOpen(false)}
+        catalog={workstreamsQuery.data ?? []}
+        prefs={workstreamPrefs}
+        onChange={updateWorkstreamPrefs}
       />
     </PageContainer>
   );

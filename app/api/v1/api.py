@@ -39,6 +39,7 @@ from app.api.v1 import (
     timesheets,
     teams,
     users,
+    workstreams,
 )
 from app.api.v1.router_factory import (
     APIRouter,
@@ -82,6 +83,7 @@ api_router.include_router(roles.router)
 api_router.include_router(org_departments.router)
 api_router.include_router(users.router)
 api_router.include_router(teams.router)
+api_router.include_router(workstreams.router)
 api_router.include_router(
     build_crud_router(
         prefix="/streams",

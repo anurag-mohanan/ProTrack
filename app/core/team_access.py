@@ -4,6 +4,10 @@ Ops rule (client confidentiality):
 - Admin / unscoped Engineering Manager: org-wide.
 - Everyone else: projects on accessible teams OR personally assigned
   (cross-utilization), never other teams' unassigned client work.
+
+Prefer ``app.core.data_scope.resolve_data_scope`` for new call sites — it is the
+Layer-2 authorization facade. This module remains the SQL/team resolution engine
+used underneath that facade.
 """
 
 from __future__ import annotations

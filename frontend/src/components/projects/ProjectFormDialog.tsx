@@ -13,12 +13,14 @@ import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchContacts, fetchCustomers, fetchStreams, fetchTeams, fetchUsers, fetchWorkingModels } from '../../api/lookups';
 import { fetchMatchingProjectTemplates, fetchProjectTemplate, fetchProjectTypes } from '../../api/projectTemplates';
+import type { ExecutionStatus, Project, ProjectCreate, ProjectHealth, ProjectStage, ProjectUpdate, Workstream } from '../../types';
+import { workstreamsApi } from '../../api/resources';
 import {
   createProject,
   invalidateProjectCalculationQueries,
+  replaceProjectWorkstreams,
   updateProject,
 } from '../../services/projectService';
-import type { ExecutionStatus, Project, ProjectCreate, ProjectHealth, ProjectStage, ProjectUpdate } from '../../types';
 import {
   EXECUTION_STATUS_LABELS,
   PROJECT_STAGE_LABELS,
@@ -60,6 +62,7 @@ interface ProjectFormValues {
   project_template_id: string;
   working_model_id: string;
   team_id: string;
+  workstream_ids: string[];
   code: string;
   quoted_hours: number | '';
   due_date: string;
@@ -93,6 +96,7 @@ const emptyForm: ProjectFormValues = {
   project_template_id: '',
   working_model_id: '',
   team_id: '',
+  workstream_ids: [],
   code: '',
   quoted_hours: '',
   due_date: '',
@@ -126,6 +130,7 @@ function projectToForm(project: Project): ProjectFormValues {
     project_template_id: id(project.project_template_id),
     working_model_id: id(project.working_model_id),
     team_id: id(project.team_id),
+    workstream_ids: (project.workstreams ?? []).map((ws) => ws.workstream_id),
     code: project.code ?? '',
     quoted_hours: project.quoted_hours,
     due_date: project.due_date ?? '',
@@ -210,6 +215,12 @@ export function ProjectFormDialog({
   const streamsQuery = useQuery({
     queryKey: ['streams'],
     queryFn: fetchStreams,
+    enabled: open,
+  });
+
+  const workstreamsQuery = useQuery({
+    queryKey: ['workstreams', 'active'],
+    queryFn: () => workstreamsApi.list({ limit: 500, is_active: true }),
     enabled: open,
   });
 
@@ -345,6 +356,7 @@ export function ProjectFormDialog({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      let saved: Project;
       if (isEdit && project) {
         const updatePayload: ProjectUpdate = {
           tool_number: form.tool_number.trim(),
@@ -375,36 +387,41 @@ export function ProjectFormDialog({
           working_model_id: optionalUuid(form.working_model_id),
           qa_gate_enabled: form.qa_gate_enabled,
         };
-        return updateProject(project.id, updatePayload);
+        saved = await updateProject(project.id, updatePayload);
+      } else {
+        const createPayload: ProjectCreate = {
+          tool_number: form.tool_number.trim(),
+          part_description: form.part_description.trim(),
+          customer_id: form.customer_id,
+          customer_contact_id: optionalUuid(form.customer_contact_id),
+          design_leader_id: optionalUuid(form.design_leader_id),
+          designer_id: optionalUuid(form.designer_id),
+          surfacer_id: optionalUuid(form.surfacer_id),
+          stream_id: optionalUuid(form.stream_id),
+          team_id: optionalUuid(form.team_id),
+          project_type_id: optionalUuid(form.project_type_id),
+          project_template_id: optionalUuid(form.project_template_id),
+          working_model_id: optionalUuid(form.working_model_id),
+          code: optionalString(form.code),
+          quoted_hours: optionalNumber(form.quoted_hours),
+          due_date: optionalString(form.due_date),
+          priority: form.priority,
+          complexity: form.complexity,
+          notes: optionalString(form.notes),
+          work_order_number: optionalString(form.work_order_number),
+          press_tonnage: optionalString(form.press_tonnage),
+          plastic_material: optionalString(form.plastic_material),
+          cavity_count: optionalNumber(form.cavity_count),
+          tool_type: optionalString(form.tool_type),
+          customer_specs: optionalString(form.customer_specs),
+        };
+        saved = await createProject(createPayload);
       }
-
-      const createPayload: ProjectCreate = {
-        tool_number: form.tool_number.trim(),
-        part_description: form.part_description.trim(),
-        customer_id: form.customer_id,
-        customer_contact_id: optionalUuid(form.customer_contact_id),
-        design_leader_id: optionalUuid(form.design_leader_id),
-        designer_id: optionalUuid(form.designer_id),
-        surfacer_id: optionalUuid(form.surfacer_id),
-        stream_id: optionalUuid(form.stream_id),
-        team_id: optionalUuid(form.team_id),
-        project_type_id: optionalUuid(form.project_type_id),
-        project_template_id: optionalUuid(form.project_template_id),
-        working_model_id: optionalUuid(form.working_model_id),
-        code: optionalString(form.code),
-        quoted_hours: optionalNumber(form.quoted_hours),
-        due_date: optionalString(form.due_date),
-        priority: form.priority,
-        complexity: form.complexity,
-        notes: optionalString(form.notes),
-        work_order_number: optionalString(form.work_order_number),
-        press_tonnage: optionalString(form.press_tonnage),
-        plastic_material: optionalString(form.plastic_material),
-        cavity_count: optionalNumber(form.cavity_count),
-        tool_type: optionalString(form.tool_type),
-        customer_specs: optionalString(form.customer_specs),
-      };
-      return createProject(createPayload);
+      await replaceProjectWorkstreams(
+        saved.id,
+        form.workstream_ids.map((workstream_id) => ({ workstream_id })),
+      );
+      return saved;
     },
     onSuccess: (savedProject) => {
       invalidateProjectCalculationQueries(queryClient, savedProject.id);
@@ -992,6 +1009,36 @@ export function ProjectFormDialog({
                 setForm({ ...form, stream_id: String(event.target.value) })
               }
             />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Workstreams (optional — projects can have zero or many)
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {(workstreamsQuery.data ?? []).map((ws: Workstream) => {
+                const checked = form.workstream_ids.includes(ws.id);
+                return (
+                  <FormControlLabel
+                    key={ws.id}
+                    control={
+                      <Switch
+                        size="small"
+                        checked={checked}
+                        onChange={() => {
+                          setForm((current) => ({
+                            ...current,
+                            workstream_ids: checked
+                              ? current.workstream_ids.filter((id) => id !== ws.id)
+                              : [...current.workstream_ids, ws.id],
+                          }));
+                        }}
+                      />
+                    }
+                    label={ws.name}
+                  />
+                );
+              })}
+            </Box>
           </Grid>
         </CollapsibleFormSection>
 

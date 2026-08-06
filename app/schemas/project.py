@@ -10,6 +10,18 @@ from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectComplexity
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
 
+class ProjectWorkstreamSummary(BaseModel):
+    workstream_id: UUID
+    workstream_name: str | None = None
+    workstream_code: str | None = None
+    team_id: UUID | None = None
+    team_name: str | None = None
+    estimated_hours: Decimal | None = None
+    actual_hours: Decimal | None = None
+    remaining_hours: Decimal | None = None
+    progress_percent: Decimal | None = None
+
+
 class ProjectBase(BaseModel):
     tool_number: str = Field(max_length=50)
     part_description: str = Field(max_length=255)
@@ -132,6 +144,7 @@ class ProjectRead(ProjectBase, TimestampSchema):
     needs_setup: bool = False
     setup_gaps: list[str] = Field(default_factory=list)
     qa_gate_enabled: bool = False
+    workstreams: list[ProjectWorkstreamSummary] = Field(default_factory=list)
 
 
 class ProjectDeleteCheck(BaseModel):

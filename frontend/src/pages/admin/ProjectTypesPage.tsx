@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Box, Chip, FormControlLabel, Switch } from '@mui/material';
+import { Box, Chip, FormControlLabel, MenuItem, Switch } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined';
 import type { GridColDef } from '@mui/x-data-grid';
@@ -15,7 +15,9 @@ import {
   fetchAdminProjectTypes,
   updateProjectType,
 } from '../../api/projectTemplates';
+import { workstreamsApi } from '../../api/resources';
 import type { ProjectType } from '../../types/ProjectTemplate';
+import type { Workstream } from '../../types';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
@@ -38,12 +40,14 @@ interface ProjectTypeFormState {
   name: string;
   description: string;
   is_active: boolean;
+  default_workstream_id: string;
 }
 
 const emptyForm: ProjectTypeFormState = {
   name: '',
   description: '',
   is_active: true,
+  default_workstream_id: '',
 };
 
 export default function ProjectTypesPage() {
@@ -51,6 +55,7 @@ export default function ProjectTypesPage() {
   const isAdmin = canDeleteRecords(user?.role_name ?? '');
   const { showSuccess, showError } = useToast();
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
+  const [workstreams, setWorkstreams] = useState<Workstream[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -59,10 +64,20 @@ export default function ProjectTypesPage() {
   const [editingType, setEditingType] = useState<ProjectType | null>(null);
   const [form, setForm] = useState<ProjectTypeFormState>(emptyForm);
 
+  const workstreamNameById = useMemo(
+    () => new Map(workstreams.map((ws) => [ws.id, ws.name])),
+    [workstreams],
+  );
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      setProjectTypes(await fetchAdminProjectTypes());
+      const [types, streams] = await Promise.all([
+        fetchAdminProjectTypes(),
+        workstreamsApi.list(),
+      ]);
+      setProjectTypes(types);
+      setWorkstreams(Array.isArray(streams) ? streams : []);
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -97,6 +112,7 @@ export default function ProjectTypesPage() {
       name: projectType.name,
       description: projectType.description ?? '',
       is_active: projectType.is_active,
+      default_workstream_id: projectType.default_workstream_id ?? '',
     });
     setFormOpen(true);
   };
@@ -114,6 +130,7 @@ export default function ProjectTypesPage() {
         name: form.name.trim(),
         description: optionalString(form.description),
         is_active: form.is_active,
+        default_workstream_id: form.default_workstream_id || null,
       };
       if (editingType) {
         await updateProjectType(editingType.id, payload);
@@ -139,6 +156,16 @@ export default function ProjectTypesPage() {
       flex: 2,
       minWidth: 180,
       valueFormatter: (value) => formatCellValue(value as string | null),
+    },
+    {
+      field: 'default_workstream_id',
+      headerName: 'Default workstream',
+      flex: 1.2,
+      minWidth: 160,
+      valueGetter: (_value, row) =>
+        row.default_workstream_id
+          ? workstreamNameById.get(row.default_workstream_id) ?? '—'
+          : '—',
     },
     {
       field: 'is_active',
@@ -187,7 +214,7 @@ export default function ProjectTypesPage() {
     <PageContainer>
       <PageHeader
         title="Project Types"
-        subtitle="Manage project classification types used by templates"
+        subtitle="Classify projects and map each type to a Command Center workstream section"
         action={
           <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
             Create Project Type
@@ -249,6 +276,27 @@ export default function ProjectTypesPage() {
               multiline
               minRows={3}
             />
+            <FormField
+              select
+              label="Default workstream"
+              value={form.default_workstream_id}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  default_workstream_id: String(event.target.value),
+                }))
+              }
+              helperText="Projects of this type appear in this section when no workstream is assigned"
+            >
+              <MenuItem value="">None</MenuItem>
+              {workstreams
+                .filter((ws) => ws.is_active !== false)
+                .map((ws) => (
+                  <MenuItem key={ws.id} value={ws.id}>
+                    {ws.name}
+                  </MenuItem>
+                ))}
+            </FormField>
             <FormControlLabel
               control={
                 <Switch
@@ -322,6 +370,15 @@ export default function ProjectTypesPage() {
               value={formatCellValue(selectedType.description) || '—'}
               multiline
               minRows={2}
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <FormField
+              label="Default workstream"
+              value={
+                selectedType.default_workstream_id
+                  ? workstreamNameById.get(selectedType.default_workstream_id) ?? '—'
+                  : '—'
+              }
               slotProps={{ input: { readOnly: true } }}
             />
           </FormSection>

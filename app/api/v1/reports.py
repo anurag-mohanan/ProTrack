@@ -7,6 +7,10 @@ from fastapi.responses import Response
 from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
 from app.core.permissions import can_view_deleted_projects
+from app.services.reporting.report_authorization import (
+    assert_report_user_allowed,
+    log_report_generation,
+)
 from app.services.reporting.report_scope import ReportScopeForbidden, resolve_report_scope
 from app.crud.reports import (
     get_billable_utilization_report,
@@ -38,10 +42,9 @@ from app.crud.team_reports import (
     get_team_profitability_report,
     get_team_utilization_report,
 )
-from app.models.enums import ActivityAction, EntityType, ProjectStage
+from app.models.enums import ProjectStage
 from app.crud.dashboard import get_designer_workload
 from app.models.models import Customer, Stream, Team, User
-from app.services.activity_service import log_activity
 from app.schemas.dashboard import DesignerWorkload
 from app.schemas.reports import (
     BillableUtilizationReportRow,
@@ -189,6 +192,8 @@ def customer_timesheet_pack_preview(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ReportScopeForbidden as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 @router.get("/customer-timesheet-pack/export.xlsx")
@@ -213,6 +218,8 @@ def customer_timesheet_pack_export(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ReportScopeForbidden as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
     content = generate_customer_timesheet_excel(payload)
     filename = customer_timesheet_download_filename(
@@ -221,15 +228,18 @@ def customer_timesheet_pack_export(
         period_start=payload.period.start_date,
         week_number=payload.week_number,
     )
-    log_activity(
+    log_report_generation(
         db,
         user=current_user,
-        entity_type=EntityType.customer,
-        entity_id=customer_id,
-        action=ActivityAction.data_exported,
-        new_value={"report": "customer-timesheet-pack", "filename": filename},
-        outcome="success",
-        module="reports_analytics",
+        report_type="customer-timesheet-pack",
+        filters={
+            "customer_id": str(customer_id),
+            "period_type": period_type,
+            "anchor": anchor.isoformat() if anchor else None,
+            "team_id": str(team_id) if team_id else None,
+        },
+        team_id=team_id,
+        filename=filename,
     )
     return Response(
         content=content,
@@ -389,15 +399,30 @@ def engineering_report_export(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         raise
 
-    log_activity(
+    scope = options.get("scope")
+    scoped_team_id = None
+    if scope is not None:
+        team_ids = getattr(scope, "team_ids", None)
+        if team_ids is not None and len(team_ids) == 1:
+            scoped_team_id = next(iter(team_ids))
+    anchor = options.get("anchor")
+    log_report_generation(
         db,
         user=current_user,
-        entity_type=EntityType.settings,
-        entity_id=current_user.id,
-        action=ActivityAction.data_exported,
-        new_value={"report": report_id, "filename": filename},
-        outcome="success",
-        module="reports_analytics",
+        report_type=report_id,
+        filters={
+            "period_type": str(options.get("period_type") or ""),
+            "anchor": anchor.isoformat() if hasattr(anchor, "isoformat") else anchor,
+            "customer_id": str(getattr(scope, "customer_id", None))
+            if scope is not None and getattr(scope, "customer_id", None)
+            else None,
+            "team_id": str(scoped_team_id) if scoped_team_id else None,
+            "stream_id": str(getattr(scope, "stream_id", None))
+            if scope is not None and getattr(scope, "stream_id", None)
+            else None,
+        },
+        team_id=scoped_team_id,
+        filename=filename,
     )
     return Response(
         content=content,
@@ -518,19 +543,53 @@ def timesheet_export_report(
     task_type_id: UUID | None = None,
     billable: str | None = Query(None, pattern="^(billable|non_billable)$"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return get_timesheet_export_report(
+    try:
+        scope = resolve_report_scope(
+            db,
+            current_user,
+            customer_id=customer_id,
+            team_id=team_id,
+            range_start=date_from,
+            range_end=date_to,
+        )
+        assert_report_user_allowed(db, current_user, user_id, roster=scope.user_ids)
+    except ReportScopeForbidden as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    rows = get_timesheet_export_report(
         db,
         period=period,
         date_from=date_from,
         date_to=date_to,
         user_id=user_id,
+        user_ids=None if user_id is not None else scope.user_ids,
         team_id=team_id,
         customer_id=customer_id,
         project_id=project_id,
         task_type_id=task_type_id,
         billable=billable,
     )
+
+    log_report_generation(
+        db,
+        user=current_user,
+        report_type="timesheet-export",
+        filters={
+            "period": period,
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+            "user_id": str(user_id) if user_id else None,
+            "team_id": str(team_id) if team_id else None,
+            "customer_id": str(customer_id) if customer_id else None,
+            "project_id": str(project_id) if project_id else None,
+            "task_type_id": str(task_type_id) if task_type_id else None,
+            "billable": billable,
+        },
+        team_id=team_id,
+    )
+    return rows
 
 
 @router.get("/project-portfolio", response_model=list[ProjectPortfolioReportRow])

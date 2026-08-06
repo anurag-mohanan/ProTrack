@@ -860,6 +860,10 @@ class ProjectType(Base, TimestampMixin, TenantMixin):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Command Center: projects of this type land in this workstream when none assigned.
+    default_workstream_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("workstreams.id"), nullable=True
+    )
 
     templates: Mapped[list[ProjectTemplate]] = relationship(
         back_populates="project_type"
@@ -1097,6 +1101,9 @@ class Project(Base, TimestampMixin, TenantMixin):
         back_populates="project", cascade="all, delete-orphan"
     )
     engineering_changes: Mapped[list["EngineeringChange"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    workstream_links: Mapped[list["ProjectWorkstream"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
 
@@ -1927,4 +1934,9 @@ from app.models.commercial_readiness import (  # noqa: E402, F401
     CommercialSignoff,
     DesignPartner,
     TrustControlCheck,
+)
+from app.models.workstream import (  # noqa: E402, F401
+    ProjectSavedView,
+    ProjectWorkstream,
+    Workstream,
 )

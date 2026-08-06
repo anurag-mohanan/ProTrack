@@ -1,4 +1,4 @@
-"""R4 documents API — DMS metadata + local upload path."""
+"""R4 documents API — DMS metadata + local upload path (data-scoped)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
+from app.core.data_scope import can_access_document_entity
 from app.core.uploads import enforce_upload_size
 from app.models.enterprise import DocumentAsset
 from app.models.models import User
@@ -19,6 +20,18 @@ from app.services.document_asset_service import list_documents, resolve_local_pa
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
+def _require_entity_access(
+    db: Session, user: User, *, entity_type: str, entity_id: UUID
+) -> None:
+    if not can_access_document_entity(
+        db, user, entity_type=entity_type, entity_id=entity_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions for this document entity",
+        )
+
+
 @router.get("", response_model=list[DocumentAssetRead])
 def list_document_assets(
     entity_type: str | None = Query(None),
@@ -26,7 +39,20 @@ def list_document_assets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user
+    if entity_type and entity_id:
+        _require_entity_access(
+            db, current_user, entity_type=entity_type, entity_id=entity_id
+        )
+        return list_documents(db, entity_type=entity_type, entity_id=entity_id)
+
+    # Unscoped list: only unrestricted actors; otherwise require entity filters.
+    from app.core.data_scope import resolve_data_scope
+
+    if not resolve_data_scope(db, current_user).unrestricted:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="entity_type and entity_id are required for your data scope",
+        )
     return list_documents(db, entity_type=entity_type, entity_id=entity_id)
 
 
@@ -40,6 +66,9 @@ async def upload_document_asset(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_entity_access(
+        db, current_user, entity_type=entity_type.strip().lower(), entity_id=entity_id
+    )
     content = await file.read()
     enforce_upload_size(content)
     row = store_document(
@@ -62,10 +91,15 @@ def download_document_asset(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user
     asset = db.get(DocumentAsset, document_id)
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    _require_entity_access(
+        db,
+        current_user,
+        entity_type=asset.entity_type,
+        entity_id=asset.entity_id,
+    )
     path = resolve_local_path(asset)
     if path is None:
         raise HTTPException(

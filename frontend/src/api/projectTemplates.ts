@@ -28,6 +28,7 @@ export async function createProjectType(payload: {
   name: string;
   description?: string | null;
   is_active?: boolean;
+  default_workstream_id?: string | null;
 }): Promise<ProjectType> {
   const { data } = await apiClient.post<ProjectType>('/project-types', payload);
   return data;
@@ -35,7 +36,12 @@ export async function createProjectType(payload: {
 
 export async function updateProjectType(
   id: string,
-  payload: Partial<{ name: string; description: string | null; is_active: boolean }>,
+  payload: Partial<{
+    name: string;
+    description: string | null;
+    is_active: boolean;
+    default_workstream_id: string | null;
+  }>,
 ): Promise<ProjectType> {
   const { data } = await apiClient.patch<ProjectType>(`/project-types/${id}`, payload);
   return data;

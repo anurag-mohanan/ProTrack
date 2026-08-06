@@ -40,6 +40,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/admin/contacts': 'Contacts',
   '/admin/teams': 'Teams',
   '/admin/streams': 'Streams',
+  '/admin/workstreams': 'Workstreams',
   '/admin/task-types': 'Task Types',
   '/admin/non-productive-codes': 'NP Codes',
   '/admin/project-types': 'Project Types',

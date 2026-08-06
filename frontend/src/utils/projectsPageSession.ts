@@ -29,6 +29,12 @@ function normalizeFilters(raw: unknown): ProjectCommandCenterFilters {
     teamIds: Array.isArray(raw.teamIds)
       ? raw.teamIds.filter((id): id is string => typeof id === 'string')
       : base.teamIds,
+    workstreamIds: Array.isArray(raw.workstreamIds)
+      ? raw.workstreamIds.filter((id): id is string => typeof id === 'string')
+      : base.workstreamIds,
+    statusBucketIds: Array.isArray(raw.statusBucketIds)
+      ? raw.statusBucketIds.filter((id): id is string => typeof id === 'string')
+      : base.statusBucketIds,
     businessUnit: typeof raw.businessUnit === 'string' ? raw.businessUnit : base.businessUnit,
     projectStage:
       typeof raw.projectStage === 'string'
@@ -56,6 +62,14 @@ function normalizeFilters(raw: unknown): ProjectCommandCenterFilters {
         : base.dueDate,
     showArchived: typeof raw.showArchived === 'boolean' ? raw.showArchived : base.showArchived,
     groupByTeam: typeof raw.groupByTeam === 'boolean' ? raw.groupByTeam : base.groupByTeam,
+    groupBy:
+      typeof raw.groupBy === 'string'
+        ? (raw.groupBy as ProjectCommandCenterFilters['groupBy'])
+        : base.groupBy,
+    layout:
+      typeof raw.layout === 'string'
+        ? (raw.layout as ProjectCommandCenterFilters['layout'])
+        : base.layout,
     quickFilter:
       typeof raw.quickFilter === 'string'
         ? (raw.quickFilter as ProjectCommandCenterFilters['quickFilter'])

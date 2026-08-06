@@ -553,6 +553,11 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         filters: dict[str, Any] | None = None,
         assignment_clause=None,
     ) -> Select[tuple[Project]]:
+        from datetime import date, timedelta
+
+        from app.models.enums import ProjectPriority
+        from app.models.workstream import ProjectWorkstream
+
         stmt: Select[tuple[Project]] = select(Project)
         stmt = apply_lifecycle_filter(stmt, lifecycle)
         if assignment_clause is not None:
@@ -561,15 +566,69 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             multi_map = {
                 "customer_ids": Project.customer_id,
                 "team_ids": Project.team_id,
+                "stream_ids": Project.stream_id,
             }
+            workstream_ids = filters.get("workstream_ids")
+            if isinstance(workstream_ids, list) and workstream_ids:
+                stmt = stmt.where(
+                    Project.id.in_(
+                        select(ProjectWorkstream.project_id).where(
+                            ProjectWorkstream.workstream_id.in_(workstream_ids)
+                        )
+                    )
+                )
+
+            q = filters.get("q")
+            if isinstance(q, str) and q.strip():
+                term = f"%{q.strip()}%"
+                stmt = stmt.where(
+                    Project.tool_number.ilike(term)
+                    | Project.part_description.ilike(term)
+                    | Project.code.ilike(term)
+                    | Project.work_order_number.ilike(term)
+                )
+
+            due = filters.get("due")
+            today = date.today()
+            if due == "overdue":
+                stmt = stmt.where(
+                    Project.due_date.is_not(None),
+                    Project.due_date < today,
+                    Project.execution_status.notin_(
+                        [ExecutionStatus.completed, ExecutionStatus.cancelled]
+                    ),
+                )
+            elif due in ("week", "7days"):
+                end = today + timedelta(days=7)
+                stmt = stmt.where(
+                    Project.due_date.is_not(None),
+                    Project.due_date >= today,
+                    Project.due_date <= end,
+                )
+
             for field, value in filters.items():
-                if field == "lifecycle" or value is None:
+                if field in {
+                    "lifecycle",
+                    "workstream_ids",
+                    "q",
+                    "due",
+                } or value is None:
                     continue
                 if field in multi_map and isinstance(value, list) and value:
                     stmt = stmt.where(multi_map[field].in_(value))
                     continue
                 if field.endswith("_ids"):
                     continue
+                if field == "priority" and isinstance(value, str):
+                    try:
+                        value = ProjectPriority(value)
+                    except ValueError:
+                        continue
+                if field == "health" and isinstance(value, str):
+                    try:
+                        value = ProjectHealth(value)
+                    except ValueError:
+                        continue
                 if not hasattr(Project, field):
                     continue
                 stmt = stmt.where(getattr(Project, field) == value)

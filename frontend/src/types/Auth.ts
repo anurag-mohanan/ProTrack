@@ -48,4 +48,12 @@ export interface CurrentUser {
   requires_timesheet?: boolean;
   can_enter_own_timesheet?: boolean;
   can_view_organization_chart?: boolean;
+  data_scope?: {
+    level: 'own' | 'own_team' | 'multiple_teams' | 'department' | 'company' | 'administrator';
+    unrestricted: boolean;
+    team_ids: string[] | null;
+    department_id?: string | null;
+    tenant_id?: string | null;
+    notes?: string[];
+  } | null;
 }

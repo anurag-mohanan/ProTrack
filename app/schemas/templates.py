@@ -11,6 +11,7 @@ class ProjectTypeBase(BaseModel):
     name: str = Field(max_length=100)
     description: str | None = None
     is_active: bool = True
+    default_workstream_id: UUID | None = None
 
 
 class ProjectTypeCreate(BlankOptionalFieldsMixin, ProjectTypeBase):
@@ -21,6 +22,7 @@ class ProjectTypeUpdate(BlankOptionalFieldsMixin, BaseModel):
     name: str | None = Field(default=None, max_length=100)
     description: str | None = None
     is_active: bool | None = None
+    default_workstream_id: UUID | None = None
 
 
 class ProjectTypeRead(ProjectTypeBase, TimestampSchema):

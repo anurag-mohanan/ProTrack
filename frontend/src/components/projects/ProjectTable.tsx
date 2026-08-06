@@ -294,6 +294,19 @@ function buildColumns(
               />
             </Tooltip>
           ) : null}
+          {(params.row.workstreams ?? []).slice(0, 3).map((ws: { workstream_id: string; workstream_name?: string | null; remaining_hours?: number | null }) => (
+            <Chip
+              key={ws.workstream_id}
+              label={
+                ws.remaining_hours != null
+                  ? `${ws.workstream_name ?? 'WS'} (${ws.remaining_hours}h left)`
+                  : (ws.workstream_name ?? 'WS')
+              }
+              size="small"
+              variant="outlined"
+              sx={{ height: 20, fontSize: '0.62rem', flexShrink: 0 }}
+            />
+          ))}
         </Box>
       ),
     },

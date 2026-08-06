@@ -292,6 +292,40 @@ export interface Stream {
   next_project_sequence?: number;
 }
 
+export interface Workstream {
+  id: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  display_order: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProjectSavedView {
+  id: string;
+  user_id?: string | null;
+  name: string;
+  is_system: boolean;
+  filter_json: Record<string, unknown>;
+  display_json: Record<string, unknown>;
+  is_default: boolean;
+  display_order: number;
+}
+
+export interface ProjectPortfolioSummary {
+  active_count: number;
+  due_week_count: number;
+  overdue_count: number;
+  at_risk_count: number;
+  estimated_hours: number;
+  actual_hours: number;
+  remaining_hours: number;
+}
+
 export type WorkingModelStrategyKey =
   | 'project_based'
   | 'time_materials'

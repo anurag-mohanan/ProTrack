@@ -163,6 +163,11 @@ export const ticketsApi = {
 
 export const usersApi = createResourceApi<User>('users');
 export const streamsApi = createResourceApi<Stream>('streams');
+export const workstreamsApi = createResourceApi<
+  import('../types').Workstream,
+  Partial<import('../types').Workstream>,
+  Partial<import('../types').Workstream>
+>('workstreams');
 export const workingModelsApi = createResourceApi<
   WorkingModel,
   Partial<WorkingModel>,

@@ -32,10 +32,14 @@ def list_operational_roles(
 
 @router.get("/users")
 def list_lookup_users(
+    for_reports: bool = Query(False),
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    users = db.scalars(
+    from app.core.data_scope import scoped_user_ids_for_actor
+    from app.services.reporting.report_authorization import resolve_report_subject_user_ids
+
+    query = (
         select(User)
         .where(
             User.is_active.is_(True),
@@ -43,7 +47,17 @@ def list_lookup_users(
             User.is_deleted.is_(False),
         )
         .order_by(User.last_name, User.first_name)
-    ).all()
+    )
+    visible = (
+        resolve_report_subject_user_ids(db, current_user)
+        if for_reports
+        else scoped_user_ids_for_actor(db, current_user)
+    )
+    if visible is not None:
+        if not visible:
+            return []
+        query = query.where(User.id.in_(visible))
+    users = db.scalars(query).all()
     return [
         {
             "id": user.id,
@@ -61,11 +75,17 @@ def list_lookup_users(
 @router.get("/customers", response_model=list[CustomerRead])
 def list_lookup_customers(
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    return db.scalars(
-        select(Customer).where(Customer.is_active.is_(True)).order_by(Customer.name)
-    ).all()
+    from app.core.data_scope import scoped_customer_ids
+
+    query = select(Customer).where(Customer.is_active.is_(True)).order_by(Customer.name)
+    allowed = scoped_customer_ids(db, current_user)
+    if allowed is not None:
+        if not allowed:
+            return []
+        query = query.where(Customer.id.in_(allowed))
+    return list(db.scalars(query).all())
 
 
 @router.get("/contacts", response_model=list[ContactRead])
@@ -218,17 +238,26 @@ def get_lookup_timesheet_project_context(
 
 @router.get("/teams", response_model=list[TeamRead])
 def list_lookup_teams(
+    for_reports: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from app.core.team_access import get_accessible_team_ids
+    from app.core.data_scope import resolve_data_scope
     from app.crud.team import build_team_read
+    from app.services.reporting.report_authorization import resolve_report_team_ids
 
     query = select(Team).where(Team.is_active.is_(True)).order_by(Team.name)
-    accessible = get_accessible_team_ids(db, current_user)
-    if accessible is not None:
-        if not accessible:
-            return []
-        query = query.where(Team.id.in_(accessible))
+    if for_reports:
+        team_ids = resolve_report_team_ids(db, current_user)
+        if team_ids is not None:
+            if not team_ids:
+                return []
+            query = query.where(Team.id.in_(team_ids))
+    else:
+        scope = resolve_data_scope(db, current_user)
+        if not scope.unrestricted:
+            if not scope.team_ids:
+                return []
+            query = query.where(Team.id.in_(scope.team_ids))
     teams = db.scalars(query).all()
     return [build_team_read(db, team) for team in teams]

@@ -64,8 +64,8 @@ export function CustomerTimesheetPackPanel({
     staleTime: 5 * 60 * 1000,
   });
   const teamsQuery = useQuery({
-    queryKey: ['lookups', 'teams'],
-    queryFn: fetchTeams,
+    queryKey: ['lookups', 'teams', 'reports'],
+    queryFn: () => fetchTeams({ forReports: true }),
     staleTime: 5 * 60 * 1000,
   });
 

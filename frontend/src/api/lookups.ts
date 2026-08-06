@@ -21,8 +21,10 @@ export async function fetchStreams(): Promise<Stream[]> {
   return ensureArray<Stream>(data);
 }
 
-export async function fetchUsers(): Promise<User[]> {
-  const { data } = await apiClient.get<unknown>('/lookups/users');
+export async function fetchUsers(options?: { forReports?: boolean }): Promise<User[]> {
+  const { data } = await apiClient.get<unknown>(
+    `/lookups/users${buildQuery(options?.forReports ? { for_reports: true } : undefined)}`,
+  );
   return ensureArray<User>(data);
 }
 
@@ -48,8 +50,10 @@ export async function fetchOperationalRoles() {
   }>(data);
 }
 
-export async function fetchTeams() {
-  const { data } = await apiClient.get<unknown>('/lookups/teams');
+export async function fetchTeams(options?: { forReports?: boolean }) {
+  const { data } = await apiClient.get<unknown>(
+    `/lookups/teams${buildQuery(options?.forReports ? { for_reports: true } : undefined)}`,
+  );
   return ensureArray<import('../types/Team').Team>(data);
 }
 

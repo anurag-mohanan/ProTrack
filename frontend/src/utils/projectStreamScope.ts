@@ -54,9 +54,9 @@ export function filterProjectsByPortfolioScope(
   scope: ProjectsPortfolioScope,
   user: CurrentUser | null | undefined,
   users: User[],
-  *,
-  isAdmin: boolean,
+  options: { isAdmin: boolean },
 ): Project[] {
+  const { isAdmin } = options;
   if (scope === 'all') {
     if (!canSelectAllProjectsScope(user) && !isAdmin) {
       return filterProjectsByPortfolioScope(projects, 'my_streams', user, users, {

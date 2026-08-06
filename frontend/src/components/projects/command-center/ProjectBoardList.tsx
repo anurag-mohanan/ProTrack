@@ -16,11 +16,14 @@ import { formatDate, formatDisplayValue, formatNumber } from '../../../utils/for
 import { buildProjectTableRows, type ProjectTableRow } from '../ProjectTable';
 
 /**
- * Fixed tracks only — no `fr` columns. The board sizes to content (~720px)
- * instead of stretching across the viewport and leaving a dead middle gap.
+ * Fixed tracks only — no `fr` columns. Sized for readable two-line cells
+ * with standard gaps between columns (avoids a cramped ops-board feel).
  */
-const BOARD_COLUMNS = '52px 220px 120px 88px 76px 28px';
-const BOARD_WIDTH = 660;
+const BOARD_COLUMNS = '64px 260px 132px 100px 92px 36px';
+const BOARD_WIDTH = 760;
+const BOARD_COLUMN_GAP = 1.75;
+const BOARD_ROW_PY = 1;
+const BOARD_ROW_PX = 1.5;
 
 function healthTone(health?: string | null) {
   if (health === 'red') return designTokens.health.red;
@@ -82,12 +85,12 @@ function BoardHeader() {
       sx={{
         display: 'grid',
         gridTemplateColumns: BOARD_COLUMNS,
-        columnGap: 1,
+        columnGap: BOARD_COLUMN_GAP,
         alignItems: 'center',
         width: BOARD_WIDTH,
         maxWidth: '100%',
-        px: 1,
-        py: 0.45,
+        px: BOARD_ROW_PX,
+        py: 0.85,
         borderBottom: '1px solid',
         borderColor: 'divider',
         bgcolor: 'action.hover',
@@ -107,11 +110,11 @@ function SubLabel({ label, count }: { label: string; count: number }) {
   return (
     <Stack
       direction="row"
-      spacing={0.5}
+      spacing={0.75}
       sx={{
         alignItems: 'center',
-        px: 1,
-        py: 0.35,
+        px: BOARD_ROW_PX,
+        py: 0.65,
         bgcolor: 'action.hover',
         borderBottom: '1px solid',
         borderColor: 'divider',
@@ -172,11 +175,12 @@ function ProjectBoardRow({
     <Box
       onClick={() => onRowOpen?.(row)}
       sx={{
-        px: 1,
-        py: 0.55,
+        px: BOARD_ROW_PX,
+        py: BOARD_ROW_PY,
         display: 'grid',
         gridTemplateColumns: BOARD_COLUMNS,
-        columnGap: 1,
+        columnGap: BOARD_COLUMN_GAP,
+        rowGap: 0.35,
         alignItems: 'center',
         width: BOARD_WIDTH,
         maxWidth: '100%',
@@ -190,12 +194,12 @@ function ProjectBoardRow({
         '&:hover': { bgcolor: 'action.hover' },
       }}
     >
-      <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', lineHeight: 1.2 }} noWrap>
+      <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', lineHeight: 1.35 }} noWrap>
         {row.tool_number}
       </Typography>
 
-      <Box sx={{ minWidth: 0 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', lineHeight: 1.25 }} noWrap>
+      <Box sx={{ minWidth: 0, pr: 0.5 }}>
+        <Typography sx={{ fontWeight: 700, fontSize: '0.8rem', lineHeight: 1.35 }} noWrap>
           {formatDisplayValue(stage)}
           {row.customerName ? (
             <Box component="span" sx={{ color: 'text.secondary', fontWeight: 600 }}>
@@ -207,7 +211,7 @@ function ProjectBoardRow({
         <Typography
           variant="caption"
           color="text.secondary"
-          sx={{ display: 'block', fontWeight: 600, lineHeight: 1.2, fontSize: '0.68rem' }}
+          sx={{ display: 'block', fontWeight: 600, lineHeight: 1.35, fontSize: '0.7rem', mt: 0.25 }}
           noWrap
           title={peopleLabel}
         >
@@ -215,14 +219,14 @@ function ProjectBoardRow({
         </Typography>
       </Box>
 
-      <Box sx={{ minWidth: 0 }}>
+      <Box sx={{ minWidth: 0, pr: 0.5 }}>
         <Typography
           variant="caption"
           sx={{
             display: 'block',
             fontWeight: 700,
             fontVariantNumeric: 'tabular-nums',
-            lineHeight: 1.2,
+            lineHeight: 1.35,
             color: 'text.secondary',
             whiteSpace: 'nowrap',
           }}
@@ -232,26 +236,28 @@ function ProjectBoardRow({
         <Typography
           variant="caption"
           sx={{
+            display: 'block',
             fontWeight: 800,
             fontVariantNumeric: 'tabular-nums',
-            lineHeight: 1.2,
+            lineHeight: 1.35,
             color: varianceColor,
+            mt: 0.25,
           }}
         >
           {varianceLabel}
         </Typography>
       </Box>
 
-      <Box sx={{ minWidth: 0 }}>
+      <Box sx={{ minWidth: 0, pr: 0.5 }}>
         <Typography
           variant="caption"
           sx={{
             display: 'block',
             fontWeight: 800,
             fontVariantNumeric: 'tabular-nums',
-            fontSize: '0.68rem',
-            lineHeight: 1.1,
-            mb: 0.2,
+            fontSize: '0.72rem',
+            lineHeight: 1.3,
+            mb: 0.4,
           }}
         >
           {Math.round(percent)}%
@@ -260,7 +266,7 @@ function ProjectBoardRow({
           variant="determinate"
           value={percent}
           sx={{
-            height: 5,
+            height: 6,
             borderRadius: 999,
             bgcolor: health.soft,
             '& .MuiLinearProgress-bar': { bgcolor: health.main, borderRadius: 999 },
@@ -275,8 +281,9 @@ function ProjectBoardRow({
           fontWeight: 700,
           textAlign: 'right',
           fontVariantNumeric: 'tabular-nums',
-          fontSize: '0.72rem',
-          lineHeight: 1.2,
+          fontSize: '0.75rem',
+          lineHeight: 1.35,
+          pr: 0.25,
         }}
         noWrap
       >
@@ -287,7 +294,7 @@ function ProjectBoardRow({
         size="small"
         aria-label="Project actions"
         onClick={openMenu}
-        sx={{ justifySelf: 'end', p: 0.25 }}
+        sx={{ justifySelf: 'end', p: 0.5 }}
       >
         <MoreVertIcon fontSize="small" />
       </IconButton>

@@ -30,7 +30,7 @@ Project/timesheet: `create_projects`, `edit_projects`, `archive_projects`,
 `delete_projects`, `approve_projects`, `approve_timesheets`, `import_timesheets`,
 `export_reports`, `view_reports`, `view_resource_planning`,
 `manage_customers`, `manage_contacts`, `manage_teams`, `manage_users`,
-`manage_company_settings`.
+`manage_company_settings`, `manage_project_settings`.
 
 Field-level & governance (security foundation): `view_salary`,
 `view_financial_cost`, `view_budget`, `view_profitability`,

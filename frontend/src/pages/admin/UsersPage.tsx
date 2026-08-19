@@ -3,16 +3,23 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Avatar,
   Box,
+  Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
   Grid,
   IconButton,
+  InputAdornment,
   Switch,
   Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PersonIcon from '@mui/icons-material/Person';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
@@ -182,6 +189,11 @@ export default function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [toggleTarget, setToggleTarget] = useState<User | null>(null);
   const [leavingConfirmOpen, setLeavingConfirmOpen] = useState(false);
+  const [historicalOpen, setHistoricalOpen] = useState(false);
+  const [historicalJoining, setHistoricalJoining] = useState('');
+  const [historicalFirstJob, setHistoricalFirstJob] = useState('');
+  const [historicalReason, setHistoricalReason] = useState('');
+  const [historicalSaving, setHistoricalSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   const roleMap = useMemo(
@@ -432,8 +444,12 @@ export default function UsersPage() {
     stream_id: optionalUuid(form.stream_id),
     primary_tool: optionalString(form.primary_tool),
     work_function: optionalString(form.work_function),
-    joining_date: optionalString(form.joining_date),
-    first_job_date: optionalString(form.first_job_date),
+    ...(!editingUser || !editingUser.joining_date
+      ? { joining_date: optionalString(form.joining_date) }
+      : {}),
+    ...(!editingUser || !editingUser.first_job_date
+      ? { first_job_date: optionalString(form.first_job_date) }
+      : {}),
     leaving_date: optionalString(form.leaving_date),
     availability_status: form.availability_status as User['availability_status'],
     max_allocation_percent: form.max_allocation_percent,
@@ -999,6 +1015,27 @@ export default function UsersPage() {
                 }
               />
             </Grid>
+            {editingUser ? (
+              <Grid size={{ xs: 12 }}>
+                <Tooltip title="System identifier. It cannot be changed.">
+                  <FormField
+                    label="User ID"
+                    value={editingUser.id}
+                    slotProps={{
+                      input: {
+                        readOnly: true,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <LockOutlinedIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                    helper="Generated when the employee record was created."
+                  />
+                </Tooltip>
+              </Grid>
+            ) : null}
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormSelect
                 label="Role"
@@ -1383,28 +1420,70 @@ export default function UsersPage() {
                   />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <FormField
-                    label="Joining Date"
-                    type="date"
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    value={form.joining_date}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, joining_date: event.target.value }))
+                  <Tooltip
+                    title={
+                      editingUser?.joining_date
+                        ? 'Joining date is a historical fact. Use Correct historical dates if it was entered wrongly.'
+                        : ''
                     }
-                    helper="Company experience on Performance."
-                  />
+                  >
+                    <FormField
+                      label="Joining Date"
+                      type="date"
+                      slotProps={{
+                        inputLabel: { shrink: true },
+                        input: editingUser?.joining_date
+                          ? {
+                              readOnly: true,
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <LockOutlinedIcon fontSize="small" />
+                                </InputAdornment>
+                              ),
+                            }
+                          : undefined,
+                      }}
+                      value={form.joining_date}
+                      onChange={(event) => {
+                        if (editingUser?.joining_date) return;
+                        setForm((current) => ({ ...current, joining_date: event.target.value }));
+                      }}
+                      helper="Company experience on Performance. Locked after first save."
+                    />
+                  </Tooltip>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <FormField
-                    label="First job date"
-                    type="date"
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    value={form.first_job_date}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, first_job_date: event.target.value }))
+                  <Tooltip
+                    title={
+                      editingUser?.first_job_date
+                        ? 'First job date is a historical fact. Use Correct historical dates if it was entered wrongly.'
+                        : ''
                     }
-                    helper="Industry experience on Performance."
-                  />
+                  >
+                    <FormField
+                      label="First job date"
+                      type="date"
+                      slotProps={{
+                        inputLabel: { shrink: true },
+                        input: editingUser?.first_job_date
+                          ? {
+                              readOnly: true,
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <LockOutlinedIcon fontSize="small" />
+                                </InputAdornment>
+                              ),
+                            }
+                          : undefined,
+                      }}
+                      value={form.first_job_date}
+                      onChange={(event) => {
+                        if (editingUser?.first_job_date) return;
+                        setForm((current) => ({ ...current, first_job_date: event.target.value }));
+                      }}
+                      helper="Industry experience on Performance. Locked after first save."
+                    />
+                  </Tooltip>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
                   <FormField
@@ -1418,6 +1497,21 @@ export default function UsersPage() {
                     helper="Salaries and overhead headcount count only through this date."
                   />
                 </Grid>
+                {editingUser && (editingUser.joining_date || editingUser.first_job_date) ? (
+                  <Grid size={{ xs: 12 }}>
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setHistoricalJoining(form.joining_date);
+                        setHistoricalFirstJob(form.first_job_date);
+                        setHistoricalReason('');
+                        setHistoricalOpen(true);
+                      }}
+                    >
+                      Correct historical dates
+                    </Button>
+                  </Grid>
+                ) : null}
               </FormSection>
             </>
           ) : null}
@@ -1553,6 +1647,78 @@ export default function UsersPage() {
         onClose={() => setImpersonateTarget(null)}
         loading={actionLoading}
       />
+
+      <Dialog open={historicalOpen} onClose={() => setHistoricalOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Correct historical dates</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            This is an audited correction, not a normal edit. Enter the accurate dates and why the
+            previous values were wrong.
+          </Typography>
+          <FormField
+            label="Joining date"
+            type="date"
+            slotProps={{ inputLabel: { shrink: true } }}
+            value={historicalJoining}
+            onChange={(event) => setHistoricalJoining(event.target.value)}
+          />
+          <FormField
+            label="First job date"
+            type="date"
+            slotProps={{ inputLabel: { shrink: true } }}
+            value={historicalFirstJob}
+            onChange={(event) => setHistoricalFirstJob(event.target.value)}
+          />
+          <FormField
+            label="Reason"
+            required
+            multiline
+            minRows={3}
+            value={historicalReason}
+            onChange={(event) => setHistoricalReason(event.target.value)}
+            helper="Recorded in the audit log with the previous and new values."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHistoricalOpen(false)}>Cancel</Button>
+          <ProsohmButton
+            buttonVariant="primary"
+            disabled={historicalSaving || historicalReason.trim().length < 8}
+            onClick={() => {
+              if (!editingUser) return;
+              setHistoricalSaving(true);
+              const payload: {
+                joining_date?: string | null;
+                first_job_date?: string | null;
+                reason: string;
+              } = { reason: historicalReason.trim() };
+              if (historicalJoining !== (editingUser.joining_date ?? '')) {
+                payload.joining_date = historicalJoining || null;
+              }
+              if (historicalFirstJob !== (editingUser.first_job_date ?? '')) {
+                payload.first_job_date = historicalFirstJob || null;
+              }
+              void usersApi
+                .correctHistorical(editingUser.id, payload)
+                .then((updated) => {
+                  setEditingUser(updated);
+                  setForm((current) => ({
+                    ...current,
+                    joining_date: updated.joining_date ?? '',
+                    first_job_date: updated.first_job_date ?? '',
+                  }));
+                  setHistoricalOpen(false);
+                  showSuccess('Historical dates corrected and audited.');
+                  void queryClient.invalidateQueries({ queryKey: ['users'] });
+                })
+                .catch((error) => showError(getErrorMessage(error)))
+                .finally(() => setHistoricalSaving(false));
+            }}
+          >
+            Save correction
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
 
       <ConfirmDialog
         open={leavingConfirmOpen}

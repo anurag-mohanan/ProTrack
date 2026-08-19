@@ -43,6 +43,13 @@ export interface Project extends Timestamped {
   code: string | null;
   quoted_hours: number;
   actual_hours: number;
+  original_hours?: number;
+  additional_work_hours?: number;
+  rework_hours?: number;
+  customer_change_hours?: number;
+  internal_correction_hours?: number;
+  post_completion_hours?: number;
+  has_post_completion_activity?: boolean;
   progress_percent: number;
   health: ProjectHealth;
   current_milestone?: string | null;

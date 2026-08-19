@@ -326,10 +326,14 @@ function buildColumns(
       field: 'hours_comparison',
       headerName: 'Hours',
       sortable: true,
-      valueGetter: (_value, row) => hoursBurnPercent(Number(row.actual_hours), Number(row.quoted_hours)),
+      valueGetter: (_value, row) =>
+        hoursBurnPercent(
+          Number(row.original_hours ?? row.actual_hours),
+          Number(row.quoted_hours),
+        ),
       renderCell: (params) => (
         <HoursComparisonCell
-          actual={Number(params.row.actual_hours)}
+          actual={Number(params.row.original_hours ?? params.row.actual_hours)}
           quoted={Number(params.row.quoted_hours)}
           progressPercent={Number(params.row.progress_percent)}
         />
@@ -352,8 +356,20 @@ function buildColumns(
       headerName: 'Project Status',
       renderCell: (params) => (
         <Tooltip title="Current execution state for planning, delivery, and reporting.">
-          <Box component="span">
+          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
             <ExecutionStatusBadge status={params.value} />
+            {params.row.execution_status === 'completed' && params.row.has_post_completion_activity ? (
+              <Chip
+                size="small"
+                label="Post-Completion Activity"
+                sx={{
+                  fontWeight: 700,
+                  fontSize: '0.65rem',
+                  bgcolor: designTokens.semantic.warningSoft,
+                  color: designTokens.semantic.warning,
+                }}
+              />
+            ) : null}
           </Box>
         </Tooltip>
       ),

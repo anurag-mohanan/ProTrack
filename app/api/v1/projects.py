@@ -26,7 +26,8 @@ from app.core.exceptions import ProTrackValidationError
 from app.core.uploads import enforce_upload_size
 from app.core.permissions import (
     can_archive_project,
-    can_create_project,
+    can_assign_project_team,
+    can_create_project_for_team,
     can_read_project,
     can_soft_delete_project,
     can_update_project,
@@ -113,6 +114,20 @@ def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=exc.detail,
     )
+
+
+def _forbid() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Insufficient permissions",
+    )
+
+
+def _project_audit_snapshot(db_project, fields: dict[str, object] | None = None) -> dict[str, object]:
+    if fields is None:
+        keys = ("code", "tool_number", "team_id", "stream_id", "part_description")
+        return {key: getattr(db_project, key, None) for key in keys}
+    return {key: getattr(db_project, key, None) for key in fields}
 
 
 def _normalize_project_filters(filters: ProjectFilters) -> tuple[ProjectLifecycleFilter, dict[str, object]]:
@@ -562,10 +577,12 @@ def clone_project_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     db_project = get_object_or_404(project, db, record_id)
-    if not can_create_project(db, current_user):
+    if not can_read_project(db, current_user, db_project):
+        raise _forbid()
+    if not can_create_project_for_team(db, current_user, db_project.team_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
+            detail="You can only create or clone projects for teams you are authorized to access.",
         )
     try:
         cloned = clone_project(db, db_project)
@@ -575,7 +592,9 @@ def clone_project_endpoint(
             entity_type=EntityType.project,
             entity_id=cloned.id,
             action=ActivityAction.project_created,
-            new_value=cloned.code,
+            new_value=_project_audit_snapshot(cloned),
+            module="projects",
+            outcome="success",
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
@@ -761,10 +780,10 @@ def create_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not can_create_project(db, current_user):
+    if not can_create_project_for_team(db, current_user, obj_in.team_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
+            detail="You can only create projects for teams you are authorized to access.",
         )
     try:
         db_obj = project.create(db, obj_in=obj_in)
@@ -774,7 +793,9 @@ def create_project(
             entity_type=EntityType.project,
             entity_id=db_obj.id,
             action=ActivityAction.project_created,
-            new_value=db_obj.code,
+            new_value=_project_audit_snapshot(db_obj),
+            module="projects",
+            outcome="success",
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
@@ -790,10 +811,16 @@ def update_project(
 ):
     db_project = get_object_or_404(project, db, record_id)
     if not can_update_project(db, current_user, db_project):
+        raise _forbid()
+    payload = obj_in.model_dump(exclude_unset=True)
+    if "team_id" in payload and not can_assign_project_team(
+        db, current_user, payload.get("team_id")
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
+            detail="You cannot move a project onto a team you are not authorized to access.",
         )
+    old_value = _project_audit_snapshot(db_project, payload)
     try:
         project.update(db, db_obj=db_project, obj_in=obj_in)
         log_activity(
@@ -802,7 +829,10 @@ def update_project(
             entity_type=EntityType.project,
             entity_id=db_project.id,
             action=ActivityAction.project_updated,
-            new_value=db_project.code,
+            old_value=old_value,
+            new_value=_project_audit_snapshot(db_project, payload),
+            module="projects",
+            outcome="success",
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc

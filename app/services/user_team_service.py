@@ -123,6 +123,56 @@ def sync_user_team_assignments(
     db.flush()
 
 
+def sync_secondary_team_assignments(
+    db: Session,
+    user_id: UUID,
+    assignments: list[UserTeamAssignmentInput],
+) -> None:
+    """Add/remove non-primary teams without wiping the primary membership row."""
+    user = db.get(User, user_id)
+    if user is None:
+        raise ProTrackValidationError("User not found")
+    primary_id = user.team_id
+    desired = [
+        row
+        for row in _validate_assignments(db, assignments)
+        if not row.is_primary and row.team_id != primary_id
+    ]
+    desired_ids = {row.team_id for row in desired}
+    existing = list_user_team_assignments(db, user_id)
+    by_team = {row.team_id: row for row in existing}
+
+    for member in existing:
+        if member.is_primary or member.team_id == primary_id:
+            continue
+        if member.team_id not in desired_ids:
+            db.delete(member)
+
+    from app.core.fixed_resource_eligibility import default_is_billable_headcount_for_user
+
+    for row in desired:
+        current = by_team.get(row.team_id)
+        if current is not None and not current.is_primary:
+            current.relationship_type = row.relationship_type
+            current.include_in_timesheet_reports = row.include_in_timesheet_reports
+            continue
+        team = db.get(Team, row.team_id)
+        billable = default_is_billable_headcount_for_user(db, team=team, user=user)
+        db.add(
+            TeamMember(
+                team_id=row.team_id,
+                user_id=user_id,
+                relationship_type=row.relationship_type,
+                is_primary=False,
+                include_in_timesheet_reports=row.include_in_timesheet_reports,
+                is_billable_headcount=billable,
+                role_within_team=row.relationship_type.value.replace("_", " ").title(),
+                joined_at=_utcnow(),
+            )
+        )
+    db.flush()
+
+
 def sync_user_team_membership(
     db: Session,
     user_id: UUID,

@@ -71,6 +71,7 @@ from app.services.historical_import_service import (
 )
 from app.services.project_calculation_service import recalculate_project
 from app.services.non_productive_entry_service import build_np_timesheet_entry
+from app.services.reporting.timesheet_attribution import stamp_home_team_on_entry
 from app.services.project_template_service import (
     create_milestones_from_template,
     resolve_template_for_import,
@@ -1189,6 +1190,7 @@ def run_timesheet_import(
                 )
                 affected_projects.add(project.id)
 
+            stamp_home_team_on_entry(db, entry)
             dup_key = timesheet_duplicate_key_for_row(
                 user_id=designer.id,
                 entry_date=row.entry_date,

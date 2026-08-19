@@ -193,6 +193,15 @@ from app.db.phase76_stream_platform_schema_sync import (
 from app.db.phase77_command_center_schema_sync import (
     ensure_phase77_command_center_foundation,
 )
+from app.db.phase78_employee_immutable_schema_sync import (
+    ensure_phase78_employee_immutable_foundation,
+)
+from app.db.phase79_timesheet_home_team_schema_sync import (
+    ensure_phase79_timesheet_home_team_foundation,
+)
+from app.db.phase80_post_completion_timesheet_schema_sync import (
+    ensure_phase80_post_completion_timesheet_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -331,6 +340,9 @@ async def lifespan(app: FastAPI):
         ("phase75_commercial_readiness", ensure_phase75_commercial_readiness_foundation),
         ("phase76_stream_platform", ensure_phase76_stream_platform_foundation),
         ("phase77_command_center", ensure_phase77_command_center_foundation),
+        ("phase78_employee_immutable", ensure_phase78_employee_immutable_foundation),
+        ("phase79_timesheet_home_team", ensure_phase79_timesheet_home_team_foundation),
+        ("phase80_post_completion_timesheet", ensure_phase80_post_completion_timesheet_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

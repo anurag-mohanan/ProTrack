@@ -321,7 +321,12 @@ def _write_quoted_vs_actual(workbook: Workbook, payload: EngineeringReportPayloa
         "Tool",
         "Customer",
         "Quoted",
-        "Actual",
+        "Original Hours",
+        "Additional Work",
+        "Rework",
+        "Customer Change",
+        "Internal Correction",
+        "Post-Completion Total",
         "Variance",
         "Variance %",
         "Completion %",
@@ -333,7 +338,12 @@ def _write_quoted_vs_actual(workbook: Workbook, payload: EngineeringReportPayloa
             row.tool_number,
             row.customer_name,
             float(row.quoted_hours),
-            float(row.actual_hours),
+            float(row.original_hours or row.actual_hours),
+            float(row.additional_work_hours),
+            float(row.rework_hours),
+            float(row.customer_change_hours),
+            float(row.internal_correction_hours),
+            float(row.post_completion_hours),
             float(row.variance_hours),
             float(row.variance_percent),
             float(row.completion_percent),
@@ -342,7 +352,7 @@ def _write_quoted_vs_actual(workbook: Workbook, payload: EngineeringReportPayloa
         ]
         for row in payload.quoted_vs_actual
     ]
-    _write_table_sheet(workbook, "Quoted vs Actual", headers, rows, variance_col=6, company_name=payload.company_name, period_label=payload.period.label)
+    _write_table_sheet(workbook, "Quoted vs Actual", headers, rows, variance_col=11, company_name=payload.company_name, period_label=payload.period.label)
 
 
 def _write_project_performance(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -387,6 +397,7 @@ def _write_detailed_entries(workbook: Workbook, payload: EngineeringReportPayloa
         "Hours",
         "Billable",
         "Category",
+        "Post-Completion Type",
         "Notes",
     ]
     rows = [
@@ -400,6 +411,7 @@ def _write_detailed_entries(workbook: Workbook, payload: EngineeringReportPayloa
             float(row.hours),
             "Yes" if row.is_billable else "No",
             row.category,
+            row.post_completion_type or "",
             row.notes or "",
         ]
         for row in payload.detailed_entries

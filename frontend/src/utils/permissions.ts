@@ -43,6 +43,7 @@ import {
   SPECIAL_MANAGE_COMPANY_SETTINGS,
   SPECIAL_MANAGE_CONTACTS,
   SPECIAL_MANAGE_CUSTOMERS,
+  SPECIAL_MANAGE_PROJECT_SETTINGS,
   SPECIAL_MANAGE_TEAMS,
   SPECIAL_MANAGE_USERS,
   SPECIAL_VIEW_REPORTS,
@@ -217,6 +218,7 @@ const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
     SPECIAL_MANAGE_TEAMS,
     SPECIAL_MANAGE_USERS,
     SPECIAL_MANAGE_COMPANY_SETTINGS,
+    SPECIAL_MANAGE_PROJECT_SETTINGS,
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
   ],
@@ -245,7 +247,6 @@ const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
     SPECIAL_EXPORT_REPORTS,
   ],
   [ROLES.SENIOR_DESIGNER]: [SPECIAL_CREATE_PROJECTS, SPECIAL_EDIT_PROJECTS],
-  [ROLES.DESIGNER]: [SPECIAL_EDIT_PROJECTS],
   [ROLES.READ_ONLY]: [],
   [ROLES.PLANNING_BOARD]: [],
   [ROLES.HR]: [SPECIAL_VIEW_REPORTS, SPECIAL_EXPORT_REPORTS],
@@ -452,8 +453,10 @@ export function resolveModules(ctx: AccessContext): ModuleKey[] {
 }
 
 export function resolveSpecialPermissions(ctx: AccessContext): SpecialPermissionKey[] {
-  if (ctx.resolved_special_permissions?.length) {
-    return ctx.resolved_special_permissions as SpecialPermissionKey[];
+  if (ctx.resolved_special_permissions != null) {
+    return ctx.resolved_special_permissions.filter((permission): permission is SpecialPermissionKey =>
+      Boolean(permission),
+    ) as SpecialPermissionKey[];
   }
   return defaultSpecialPermissionsForRole(ctx.role_name);
 }
@@ -655,7 +658,7 @@ export function canViewDeletedProjects(roleNameOrContext: string | AccessContext
 
 export function canCreateProject(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
-  return userHasSpecial(ctx, SPECIAL_CREATE_PROJECTS);
+  return userHasModule(ctx, MODULE_PROJECTS) && userHasSpecial(ctx, SPECIAL_CREATE_PROJECTS);
 }
 
 export function canArchiveProject(roleNameOrContext: string | AccessContext): boolean {
@@ -669,7 +672,12 @@ export function canSoftDeleteProject(roleNameOrContext: string | AccessContext):
 
 export function canEditProject(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
-  return userHasSpecial(ctx, SPECIAL_EDIT_PROJECTS);
+  return userHasModule(ctx, MODULE_PROJECTS) && userHasSpecial(ctx, SPECIAL_EDIT_PROJECTS);
+}
+
+export function canManageProjectSettings(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_PROJECT_SETTINGS);
 }
 
 export function canViewReports(roleNameOrContext: string | AccessContext): boolean {

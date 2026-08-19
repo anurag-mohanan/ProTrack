@@ -302,6 +302,19 @@ def get_dashboard_kpis(
     )
 
     being_worked_on_count = int(project_row[0] or 0)
+    from app.services.post_completion_work import completed_post_completion_metrics
+
+    scoped_teams = None
+    if team_id is not None:
+        scoped_teams = {team_id}
+    elif team_ids:
+        scoped_teams = set(team_ids)
+    post_metrics = completed_post_completion_metrics(
+        db,
+        month_start=month_start,
+        month_end=today,
+        team_ids=scoped_teams,
+    )
     return DashboardKpis(
         being_worked_on_projects=being_worked_on_count,
         on_hold_projects=int(project_row[1] or 0),
@@ -314,6 +327,15 @@ def get_dashboard_kpis(
         total_actual_hours_productive=total_actual_hours,
         np_hours_this_month=np_hours_this_month,
         in_progress_projects=being_worked_on_count,
+        completed_with_additional_work=int(post_metrics["completed_with_additional_work"]),
+        completed_with_rework=int(post_metrics["completed_with_rework"]),
+        post_completion_hours_this_month=_round_hours(
+            _decimal(post_metrics["post_completion_hours_this_month"])
+        ),
+        customers_with_rework=int(post_metrics["customers_with_rework"]),
+        projects_high_post_completion_hours=int(
+            post_metrics["projects_high_post_completion_hours"]
+        ),
     )
 
 

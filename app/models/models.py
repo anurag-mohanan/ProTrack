@@ -45,6 +45,7 @@ from app.models.enums import (
     UserAvailabilityStatus,
     WorkCategory,
     ContributionReason,
+    PostCompletionWorkType,
     WorkingModelCode,
 )
 from app.models.mixins import TenantMixin, TimestampMixin
@@ -346,6 +347,9 @@ class Stream(Base, TimestampMixin, TenantMixin):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    allow_post_completion_timesheet: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     use_project_prefix: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     use_project_numbering: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     project_number_prefix: Mapped[Optional[str]] = mapped_column(String(50))
@@ -467,6 +471,9 @@ class Team(Base, TimestampMixin, TenantMixin):
     )
     colour: Mapped[str] = mapped_column(String(20), nullable=False, default="#1976d2")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    allow_post_completion_timesheet: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     # Future: offices, business units, companies (Part 12)
     organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), nullable=True
@@ -1266,6 +1273,18 @@ class TimesheetEntry(Base, TimestampMixin, TenantMixin):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     delete_reason: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    home_team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=True, index=True
+    )
+    post_completion_type: Mapped[Optional[PostCompletionWorkType]] = mapped_column(
+        Enum(
+            PostCompletionWorkType,
+            name="post_completion_work_type",
+            native_enum=False,
+        ),
+        nullable=True,
+        index=True,
+    )
 
     timesheet: Mapped[Timesheet] = relationship(back_populates="entries")
     project: Mapped[Optional[Project]] = relationship(back_populates="timesheet_entries")

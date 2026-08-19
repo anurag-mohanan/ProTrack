@@ -167,6 +167,15 @@ from app.db.phase76_stream_platform_schema_sync import (
 from app.db.phase77_command_center_schema_sync import (
     ensure_phase77_command_center_foundation,
 )
+from app.db.phase78_employee_immutable_schema_sync import (
+    ensure_phase78_employee_immutable_foundation,
+)
+from app.db.phase79_timesheet_home_team_schema_sync import (
+    ensure_phase79_timesheet_home_team_foundation,
+)
+from app.db.phase80_post_completion_timesheet_schema_sync import (
+    ensure_phase80_post_completion_timesheet_foundation,
+)
 from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_user_auth_schema, ensure_user_access_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_timesheet_entry_leave_count, ensure_timesheet_entry_soft_delete, ensure_team_schema, ensure_user_team_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -506,6 +515,9 @@ def test_engine():
     ensure_phase75_commercial_readiness_foundation(engine)
     ensure_projects_portfolio_scope_column(engine)
     ensure_phase77_command_center_foundation(engine)
+    ensure_phase78_employee_immutable_foundation(engine)
+    ensure_phase79_timesheet_home_team_foundation(engine)
+    ensure_phase80_post_completion_timesheet_foundation(engine)
     ensure_project_complexity(engine)
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
@@ -568,6 +580,9 @@ def seeded_db(test_session_factory, test_engine):
     ensure_phase66_stream_numbering_foundation(test_engine)
     ensure_phase76_stream_platform_foundation(test_engine)
     ensure_phase77_command_center_foundation(test_engine)
+    ensure_phase78_employee_immutable_foundation(test_engine)
+    ensure_phase79_timesheet_home_team_foundation(test_engine)
+    ensure_phase80_post_completion_timesheet_foundation(test_engine)
     ensure_project_complexity(test_engine)
     ensure_standard_task_types(test_engine)
     return milestone

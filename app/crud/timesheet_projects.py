@@ -22,6 +22,7 @@ LOGGABLE_PROJECT_STATUSES = (
     ExecutionStatus.planning,
     ExecutionStatus.currently_being_worked_on,
     ExecutionStatus.on_hold,
+    ExecutionStatus.completed,
 )
 
 DesignerUser = aliased(User)
@@ -103,6 +104,7 @@ def list_timesheet_projects(
         stmt = stmt.limit(limit)
 
     rows = db.execute(stmt).all()
+    from app.services.post_completion_work import post_completion_hours_allowed
 
     return [
         TimesheetProjectLookup(
@@ -135,6 +137,7 @@ def list_timesheet_projects(
             remaining_hours=_remaining_hours(project),
             is_assigned_to_user=user_id is not None
             and user_id in {project.designer_id, project.surfacer_id},
+            post_completion_hours_allowed=post_completion_hours_allowed(db, project),
         )
         for (
             project,
@@ -183,6 +186,11 @@ def get_timesheet_project_context(
     ).all()
 
     contributors = get_project_contributors(db, project_id)
+    from app.services.project_calculation_service import calculate_hours
+    from app.services.post_completion_work import post_completion_hours_allowed
+
+    hours = calculate_hours(db, project)
+    remaining = hours.remaining
 
     return TimesheetProjectContext(
         project_id=project.id,
@@ -194,8 +202,15 @@ def get_timesheet_project_context(
         health=project.health,
         working_model_name=working_model_name,
         quoted_hours=Decimal(str(project.quoted_hours or 0)),
-        actual_hours=Decimal(str(project.actual_hours or 0)),
-        remaining_hours=_remaining_hours(project),
+        actual_hours=hours.actual,
+        remaining_hours=remaining,
+        original_hours=hours.original,
+        additional_work_hours=hours.additional_work,
+        rework_hours=hours.rework,
+        customer_change_hours=hours.customer_change,
+        internal_correction_hours=hours.internal_correction,
+        has_post_completion_activity=hours.post_completion_total > 0,
+        post_completion_hours_allowed=post_completion_hours_allowed(db, project),
         milestones_due=[
             TimesheetProjectMilestoneDue(
                 id=milestone.id,

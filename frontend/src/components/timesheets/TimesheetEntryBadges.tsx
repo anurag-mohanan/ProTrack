@@ -51,6 +51,21 @@ export function BillableBadge({ billable }: { billable: boolean }) {
 }
 
 export function TimesheetWorkCategoryBadge({ entry }: { entry: TimesheetEntry }) {
+  if (entry.post_completion_type) {
+    const labels: Record<string, string> = {
+      additional_work: 'Additional Work',
+      rework: 'Rework',
+      customer_change: 'Customer Change',
+      internal_correction: 'Internal Correction',
+    };
+    return (
+      <BadgeShell
+        label={labels[entry.post_completion_type] ?? 'Post-Completion'}
+        bg="#fff7ed"
+        color="#c2410c"
+      />
+    );
+  }
   if (entry.work_category === 'non_productive') {
     const category = inferNpCategory(entry);
     const style = NP_CATEGORY_STYLES[category] ?? NP_CATEGORY_STYLES.idle;
@@ -70,6 +85,15 @@ export function TimesheetWorkCategoryBadge({ entry }: { entry: TimesheetEntry })
 }
 
 export function TimesheetToolCell({ entry }: { entry: TimesheetEntry }) {
+  if (entry.post_completion_type) {
+    return (
+      <span>
+        {entry.project_tool_number || '—'}
+        {' '}
+        <BadgeShell label="Project Completed" bg="#fff7ed" color="#c2410c" />
+      </span>
+    );
+  }
   if (entry.work_category === 'non_productive') {
     const isLeave = (entry.leave_count ?? 0) > 0 || entry.non_productive_category === 'leave';
     if (isLeave) {

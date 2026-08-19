@@ -7,6 +7,7 @@ export interface Team extends Timestamped {
   team_lead_name: string | null;
   colour: string;
   is_active: boolean;
+  allow_post_completion_timesheet?: boolean;
   organization_id: string | null;
   business_unit?: string | null;
   member_count: number;
@@ -104,6 +105,7 @@ export interface TeamCreate {
   team_lead_id?: string | null;
   colour?: string;
   is_active?: boolean;
+  allow_post_completion_timesheet?: boolean;
   organization_id?: string | null;
   business_unit?: string | null;
 }
@@ -114,6 +116,7 @@ export interface TeamUpdate {
   team_lead_id?: string | null;
   colour?: string;
   is_active?: boolean;
+  allow_post_completion_timesheet?: boolean;
   organization_id?: string | null;
   business_unit?: string | null;
 }

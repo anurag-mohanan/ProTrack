@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth
+from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, PostCompletionWorkType
 from app.models.models import Milestone, Project, TimesheetEntry
 
 
@@ -42,6 +42,12 @@ class ProjectHours:
     actual: Decimal
     remaining: Decimal
     variance: Decimal
+    original: Decimal = Decimal("0")
+    additional_work: Decimal = Decimal("0")
+    rework: Decimal = Decimal("0")
+    customer_change: Decimal = Decimal("0")
+    internal_correction: Decimal = Decimal("0")
+    post_completion_total: Decimal = Decimal("0")
 
 
 def _milestone_counts(db: Session, project_id: UUID) -> tuple[int, int]:
@@ -151,7 +157,7 @@ def calculate_project_health(
         )
         if model_health == ProjectHealth.red:
             return ProjectHealth.red
-        if model_health is None and hours.quoted > 0 and hours.actual > hours.quoted:
+        if model_health is None and hours.quoted > 0 and hours.original > hours.quoted:
             return ProjectHealth.red
 
     if project.due_date is not None:
@@ -164,7 +170,7 @@ def calculate_project_health(
     if db is not None and hours is not None:
         if model_health == ProjectHealth.yellow:
             return ProjectHealth.yellow
-        if model_health is None and hours.quoted > 0 and hours.actual >= hours.quoted * Decimal("0.85"):
+        if model_health is None and hours.quoted > 0 and hours.original >= hours.quoted * Decimal("0.85"):
             return ProjectHealth.yellow
 
         overdue_milestones = int(
@@ -190,23 +196,44 @@ def calculate_project_health(
     return ProjectHealth.green
 
 
-def calculate_hours(db: Session, project: Project) -> ProjectHours:
-    total = db.scalar(
-        select(func.coalesce(func.sum(TimesheetEntry.hours), 0)).where(
-            TimesheetEntry.project_id == project.id,
-            TimesheetEntry.is_deleted.is_(False),
-        )
+def _hours_from_type_buckets(
+    quoted: Decimal, buckets: dict
+) -> ProjectHours:
+    original = _round_hours(_decimal(buckets.get(None, 0)))
+    additional = _round_hours(
+        _decimal(buckets.get(PostCompletionWorkType.additional_work, 0))
     )
-    quoted = _round_hours(_decimal(project.quoted_hours))
-    actual = _round_hours(_decimal(total))
-    remaining = _round_hours(quoted - actual)
-    variance = _round_hours(actual - quoted)
+    rework = _round_hours(_decimal(buckets.get(PostCompletionWorkType.rework, 0)))
+    customer_change = _round_hours(
+        _decimal(buckets.get(PostCompletionWorkType.customer_change, 0))
+    )
+    internal_correction = _round_hours(
+        _decimal(buckets.get(PostCompletionWorkType.internal_correction, 0))
+    )
+    post_total = additional + rework + customer_change + internal_correction
+    actual = _round_hours(original + post_total)
+    remaining = _round_hours(quoted - original)
+    variance = _round_hours(original - quoted)
     return ProjectHours(
         quoted=quoted,
         actual=actual,
         remaining=remaining,
         variance=variance,
+        original=original,
+        additional_work=additional,
+        rework=rework,
+        customer_change=customer_change,
+        internal_correction=internal_correction,
+        post_completion_total=post_total,
     )
+
+
+def calculate_hours(db: Session, project: Project) -> ProjectHours:
+    from app.services.post_completion_work import hours_by_post_completion_type
+
+    buckets = hours_by_post_completion_type(db, [project.id]).get(project.id, {})
+    quoted = _round_hours(_decimal(project.quoted_hours))
+    return _hours_from_type_buckets(quoted, buckets)
 
 
 def batch_calculate_hours(
@@ -215,29 +242,14 @@ def batch_calculate_hours(
 ) -> dict[UUID, ProjectHours]:
     if not projects:
         return {}
+    from app.services.post_completion_work import hours_by_post_completion_type
 
-    project_ids = [project.id for project in projects]
-    actual_rows = db.execute(
-        select(TimesheetEntry.project_id, func.coalesce(func.sum(TimesheetEntry.hours), 0))
-        .where(
-            TimesheetEntry.project_id.in_(project_ids),
-            TimesheetEntry.is_deleted.is_(False),
-        )
-        .group_by(TimesheetEntry.project_id)
-    ).all()
-    actual_by_project = {row[0]: _round_hours(_decimal(row[1])) for row in actual_rows}
-
+    splits = hours_by_post_completion_type(db, [project.id for project in projects])
     hours_by_project: dict[UUID, ProjectHours] = {}
     for project in projects:
         quoted = _round_hours(_decimal(project.quoted_hours))
-        actual = actual_by_project.get(project.id, Decimal("0.00"))
-        remaining = _round_hours(quoted - actual)
-        variance = _round_hours(actual - quoted)
-        hours_by_project[project.id] = ProjectHours(
-            quoted=quoted,
-            actual=actual,
-            remaining=remaining,
-            variance=variance,
+        hours_by_project[project.id] = _hours_from_type_buckets(
+            quoted, splits.get(project.id, {})
         )
     return hours_by_project
 

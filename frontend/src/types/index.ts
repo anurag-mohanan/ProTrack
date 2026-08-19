@@ -285,6 +285,7 @@ export interface Stream {
   name: string;
   description: string | null;
   is_active: boolean;
+  allow_post_completion_timesheet?: boolean;
   use_project_prefix?: boolean;
   use_project_numbering?: boolean;
   project_number_prefix?: string | null;

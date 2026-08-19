@@ -19,7 +19,13 @@ from app.core.salary_eligibility import default_requires_salary_for_role
 from app.core.pagination import PaginatedResponse, apply_sort
 from app.core.security import hash_password
 from app.crud.base import CRUDBase
-from app.crud.team import sync_user_team_membership  # noqa: F401 — re-exported
+from app.services.user_team_service import (
+    UserTeamAssignmentInput,
+    list_user_team_assignments,
+    sync_secondary_team_assignments,
+    sync_user_team_assignments,
+    sync_user_team_membership,
+)
 from app.models.enums import TeamRelationshipType
 from app.models.models import Project, Role, Team, TeamMember, User
 from app.models.foundation import Department
@@ -31,11 +37,6 @@ from app.schemas.identity import (
     UserTeamAssignmentRead,
 )
 from app.services.kpi_participation import apply_defaults_for_user, get_user_dashboard_profile
-from app.services.user_team_service import (
-    UserTeamAssignmentInput,
-    list_user_team_assignments,
-    sync_user_team_assignments,
-)
 
 
 def count_user_active_projects(db: Session, user: User) -> int:
@@ -410,6 +411,18 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
                     new_role.name
                 )
         update_data = _apply_access_payload(update_data)
+        if team_assignments_provided:
+            parsed_assignments = _parse_team_assignments(team_assignments) or []
+            new_primary = next((row.team_id for row in parsed_assignments if row.is_primary), None)
+            if new_primary is None and parsed_assignments:
+                new_primary = parsed_assignments[0].team_id
+        elif team_id_provided:
+            parsed_assignments = None
+            new_primary = team_id
+        else:
+            parsed_assignments = None
+            new_primary = None
+        old_primary = db_obj.team_id
         updated = super().update(db, db_obj=db_obj, obj_in=update_data)
         if reset_kpi_defaults or "operational_role_type_id" in update_data or role_changed:
             apply_defaults_for_user(
@@ -418,7 +431,28 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
                 operational_role_type_id=updated.operational_role_type_id,
                 reset_kpi_flags=reset_kpi_defaults,
             )
-        if team_assignments_provided:
+        primary_changed = (
+            (team_assignments_provided or team_id_provided)
+            and old_primary is not None
+            and new_primary is not None
+            and old_primary != new_primary
+        )
+        if primary_changed:
+            from datetime import date as date_cls
+
+            from app.services.user_change_service import record_transfer
+
+            record_transfer(
+                db,
+                user=updated,
+                target_team_id=new_primary,
+                effective_date=date_cls.today(),
+            )
+            if parsed_assignments is not None:
+                sync_secondary_team_assignments(db, updated.id, parsed_assignments)
+            db.commit()
+            db.refresh(updated)
+        elif team_assignments_provided:
             sync_user_team_assignments(
                 db,
                 updated.id,

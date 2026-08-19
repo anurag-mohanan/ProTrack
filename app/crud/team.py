@@ -58,6 +58,9 @@ def build_team_read(db: Session, team: Team) -> TeamRead:
         team_lead_id=team.team_lead_id,
         colour=team.colour,
         is_active=team.is_active,
+        allow_post_completion_timesheet=bool(
+            getattr(team, "allow_post_completion_timesheet", True)
+        ),
         organization_id=team.organization_id,
         created_at=team.created_at,
         updated_at=team.updated_at,

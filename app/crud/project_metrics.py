@@ -8,7 +8,9 @@ from app.models.models import Customer, Project, ProjectType, Team, User, Workin
 from app.schemas.project import ProjectRead, ProjectWorkstreamSummary
 from app.services.dashboard_service import _batch_current_milestones
 from app.services.project_calculation_service import (
+    batch_calculate_hours,
     batch_calculate_progress,
+    calculate_hours,
     calculate_progress,
 )
 from app.services.project_template_service import can_change_project_template
@@ -146,6 +148,7 @@ def build_project_read(db: Session, project: Project) -> ProjectRead:
     )
 
     progress = calculate_progress(db, project)
+    hours = calculate_hours(db, project)
     milestone_names = _batch_current_milestones(db, [project.id])
     names = _batch_display_names(db, [project])
     workstreams = _batch_workstream_summaries(db, [project.id])
@@ -154,6 +157,14 @@ def build_project_read(db: Session, project: Project) -> ProjectRead:
     return ProjectRead.model_validate(project, from_attributes=True).model_copy(
         update={
             "progress_percent": progress.progress_percent,
+            "actual_hours": hours.actual,
+            "original_hours": hours.original,
+            "additional_work_hours": hours.additional_work,
+            "rework_hours": hours.rework,
+            "customer_change_hours": hours.customer_change,
+            "internal_correction_hours": hours.internal_correction,
+            "post_completion_hours": hours.post_completion_total,
+            "has_post_completion_activity": hours.post_completion_total > 0,
             "health": project.health,
             "current_milestone": milestone_names.get(project.id),
             "can_change_template": can_change,
@@ -177,6 +188,7 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
 
     project_ids = [project.id for project in projects]
     progress_by_project = batch_calculate_progress(db, project_ids)
+    hours_by_project = batch_calculate_hours(db, projects)
     milestone_names = _batch_current_milestones(db, project_ids)
     names = _batch_display_names(db, projects)
     workstreams = _batch_workstream_summaries(db, project_ids)
@@ -188,6 +200,14 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
             ProjectRead.model_validate(project, from_attributes=True).model_copy(
                 update={
                     "progress_percent": progress_by_project[project.id].progress_percent,
+                    "actual_hours": hours_by_project[project.id].actual,
+                    "original_hours": hours_by_project[project.id].original,
+                    "additional_work_hours": hours_by_project[project.id].additional_work,
+                    "rework_hours": hours_by_project[project.id].rework,
+                    "customer_change_hours": hours_by_project[project.id].customer_change,
+                    "internal_correction_hours": hours_by_project[project.id].internal_correction,
+                    "post_completion_hours": hours_by_project[project.id].post_completion_total,
+                    "has_post_completion_activity": hours_by_project[project.id].post_completion_total > 0,
                     "health": project.health,
                     "current_milestone": milestone_names.get(project.id),
                     "can_change_template": can_change,

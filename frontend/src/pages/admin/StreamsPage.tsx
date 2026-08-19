@@ -34,6 +34,7 @@ interface StreamFormState {
   name: string;
   description: string;
   is_active: boolean;
+  allow_post_completion_timesheet: boolean;
   use_project_prefix: boolean;
   use_project_numbering: boolean;
   project_number_prefix: string;
@@ -45,6 +46,7 @@ const emptyForm: StreamFormState = {
   name: '',
   description: '',
   is_active: true,
+  allow_post_completion_timesheet: true,
   use_project_prefix: false,
   use_project_numbering: false,
   project_number_prefix: '',
@@ -143,6 +145,7 @@ export default function StreamsPage() {
       name: stream.name,
       description: stream.description ?? '',
       is_active: stream.is_active,
+      allow_post_completion_timesheet: stream.allow_post_completion_timesheet !== false,
       use_project_prefix: Boolean(stream.use_project_prefix),
       use_project_numbering: Boolean(stream.use_project_numbering),
       project_number_prefix: stream.project_number_prefix ?? '',
@@ -174,6 +177,7 @@ export default function StreamsPage() {
         name: form.name.trim(),
         description: optionalString(form.description),
         is_active: form.is_active,
+        allow_post_completion_timesheet: form.allow_post_completion_timesheet,
         use_project_prefix: form.use_project_prefix,
         use_project_numbering: form.use_project_numbering,
         project_number_prefix: form.use_project_prefix
@@ -339,6 +343,20 @@ export default function StreamsPage() {
                 />
               }
               label="Active"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.allow_post_completion_timesheet}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      allow_post_completion_timesheet: event.target.checked,
+                    }))
+                  }
+                />
+              }
+              label="Allow hours after project completion"
             />
           </FormSection>
 

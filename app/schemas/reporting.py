@@ -94,6 +94,12 @@ class ToolHoursRow(BaseModel):
     variance_hours: Decimal
     variance_percent: Decimal
     completion_percent: Decimal
+    original_hours: Decimal = Decimal("0")
+    additional_work_hours: Decimal = Decimal("0")
+    rework_hours: Decimal = Decimal("0")
+    customer_change_hours: Decimal = Decimal("0")
+    internal_correction_hours: Decimal = Decimal("0")
+    post_completion_hours: Decimal = Decimal("0")
     project_stage: ProjectStage
     execution_status: ExecutionStatus
     health: ProjectHealth | None = None
@@ -108,6 +114,11 @@ class CustomerHoursRow(BaseModel):
     total_hours: Decimal
     designer_count: int
     avg_hours_per_project: Decimal
+    original_hours: Decimal = Decimal("0")
+    additional_work_hours: Decimal = Decimal("0")
+    rework_hours: Decimal = Decimal("0")
+    customer_change_hours: Decimal = Decimal("0")
+    internal_correction_hours: Decimal = Decimal("0")
 
 
 class TeamSummaryRow(BaseModel):
@@ -153,6 +164,12 @@ class QuotedVsActualRow(BaseModel):
     completion_percent: Decimal
     health: ProjectHealth | None = None
     late_milestones: int = 0
+    original_hours: Decimal = Decimal("0")
+    additional_work_hours: Decimal = Decimal("0")
+    rework_hours: Decimal = Decimal("0")
+    customer_change_hours: Decimal = Decimal("0")
+    internal_correction_hours: Decimal = Decimal("0")
+    post_completion_hours: Decimal = Decimal("0")
 
 
 class ProjectPerformanceRow(BaseModel):
@@ -180,6 +197,7 @@ class DetailedTimesheetRow(BaseModel):
     is_billable: bool
     category: str
     notes: str | None = None
+    post_completion_type: str | None = None
 
 
 class CustomerTimesheetAssociateRow(BaseModel):

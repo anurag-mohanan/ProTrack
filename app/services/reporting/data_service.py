@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, aliased
 from app.core.non_productive_categories import is_leave_entry, leave_entry_clause, standard_np_hours_clause
 from app.crud.dashboard import _decimal, _round_hours
 from app.crud.foundation import get_or_create_company_settings
-from app.models.enums import ExecutionStatus, MilestoneStatus, TimesheetStatus, WorkCategory
+from app.models.enums import ExecutionStatus, MilestoneStatus, PostCompletionWorkType, TimesheetStatus, WorkCategory
 from app.models.models import (
     Customer,
     Milestone,
@@ -353,6 +353,7 @@ def _designer_productivity(
         home_team_id_on,
         primary_home_team_timeline,
     )
+    from app.services.reporting.timesheet_attribution import resolve_entry_home_team_id
 
     excluded = users_excluded_from_timesheet_reports(db, team_ids=scope.team_ids)
     designers = [
@@ -421,11 +422,11 @@ def _designer_productivity(
             if scoped_team_id is not None:
                 home_team = scoped_team_id
             else:
-                home_team = home_team_id_on(
-                    timelines.get(person.id), entry.entry_date
+                home_team = resolve_entry_home_team_id(
+                    entry=entry,
+                    user=person,
+                    timeline=timelines.get(person.id),
                 )
-                if home_team is None:
-                    home_team = person.team_id
 
             key = (person.id, home_team)
             bucket = buckets.get(key)
@@ -595,8 +596,9 @@ def _tool_hours(
         hours = calculate_hours(db, project)
         progress = calculate_progress(db, project)
         quoted = hours.quoted
+        original = hours.original
         actual = hours.actual
-        variance_pct = _pct(actual - quoted, quoted) if quoted > 0 else Decimal("0")
+        variance_pct = _pct(hours.variance, quoted) if quoted > 0 else Decimal("0")
 
         def _user_name(user_id: UUID | None) -> str | None:
             if not user_id:
@@ -618,6 +620,12 @@ def _tool_hours(
                 variance_hours=hours.variance,
                 variance_percent=variance_pct,
                 completion_percent=progress.progress_percent,
+                original_hours=original,
+                additional_work_hours=hours.additional_work,
+                rework_hours=hours.rework,
+                customer_change_hours=hours.customer_change,
+                internal_correction_hours=hours.internal_correction,
+                post_completion_hours=hours.post_completion_total,
                 project_stage=project.project_stage,
                 execution_status=project.execution_status,
                 health=project.health,
@@ -666,6 +674,73 @@ def _customer_hours(db: Session, period: ReportPeriod, scope: ReportScope) -> li
                 0,
             ),
             func.count(func.distinct(Timesheet.user_id)),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                TimesheetEntry.work_category == WorkCategory.productive,
+                                TimesheetEntry.post_completion_type.is_(None),
+                            ),
+                            TimesheetEntry.hours,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            TimesheetEntry.post_completion_type
+                            == PostCompletionWorkType.additional_work,
+                            TimesheetEntry.hours,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            TimesheetEntry.post_completion_type
+                            == PostCompletionWorkType.rework,
+                            TimesheetEntry.hours,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            TimesheetEntry.post_completion_type
+                            == PostCompletionWorkType.customer_change,
+                            TimesheetEntry.hours,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            TimesheetEntry.post_completion_type
+                            == PostCompletionWorkType.internal_correction,
+                            TimesheetEntry.hours,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
         )
         .select_from(Customer)
         .join(TimesheetEntry, customer_link)
@@ -678,7 +753,19 @@ def _customer_hours(db: Session, period: ReportPeriod, scope: ReportScope) -> li
     ).all()
 
     result: list[CustomerHoursRow] = []
-    for customer_id, name, projects, productive, np_hours, designers in rows:
+    for (
+        customer_id,
+        name,
+        projects,
+        productive,
+        np_hours,
+        designers,
+        original_hours,
+        additional_hours,
+        rework_hours,
+        customer_change_hours,
+        internal_hours,
+    ) in rows:
         productive_d = _decimal(productive)
         np_d = _decimal(np_hours)
         total = productive_d + np_d
@@ -693,6 +780,11 @@ def _customer_hours(db: Session, period: ReportPeriod, scope: ReportScope) -> li
                 total_hours=_round_hours(total),
                 designer_count=int(designers or 0),
                 avg_hours_per_project=_round_hours(avg),
+                original_hours=_round_hours(_decimal(original_hours)),
+                additional_work_hours=_round_hours(_decimal(additional_hours)),
+                rework_hours=_round_hours(_decimal(rework_hours)),
+                customer_change_hours=_round_hours(_decimal(customer_change_hours)),
+                internal_correction_hours=_round_hours(_decimal(internal_hours)),
             )
         )
     return sorted(result, key=lambda row: row.total_hours, reverse=True)
@@ -903,12 +995,18 @@ def _quoted_vs_actual(
                 tool_number=row.tool_number,
                 customer_name=row.customer_name,
                 quoted_hours=row.quoted_hours,
-                actual_hours=row.actual_hours,
+                actual_hours=row.original_hours,
                 variance_hours=row.variance_hours,
                 variance_percent=row.variance_percent,
                 completion_percent=row.completion_percent,
                 health=row.health,
                 late_milestones=late,
+                original_hours=row.original_hours,
+                additional_work_hours=row.additional_work_hours,
+                rework_hours=row.rework_hours,
+                customer_change_hours=row.customer_change_hours,
+                internal_correction_hours=row.internal_correction_hours,
+                post_completion_hours=row.post_completion_hours,
             )
         )
     return sorted(result, key=lambda row: row.variance_hours, reverse=True)
@@ -958,6 +1056,7 @@ def _detailed_entries(
         home_team_id_on,
         primary_home_team_timeline,
     )
+    from app.services.reporting.timesheet_attribution import resolve_entry_home_team_id
 
     # Historical imports often leave TimesheetEntry.customer_id null while Project.customer_id is set.
     entry_customer = aliased(Customer, name="entry_customer")
@@ -999,9 +1098,11 @@ def _detailed_entries(
         category = "Leave" if is_leave_entry(entry) else (
             "Non-Productive" if entry.work_category == WorkCategory.non_productive else "Productive"
         )
-        home_team_id = home_team_id_on(timelines.get(user.id), entry.entry_date)
-        if home_team_id is None:
-            home_team_id = user.team_id
+        home_team_id = resolve_entry_home_team_id(
+            entry=entry,
+            user=user,
+            timeline=timelines.get(user.id),
+        )
         result.append(
             DetailedTimesheetRow(
                 entry_date=entry.entry_date,
@@ -1014,6 +1115,11 @@ def _detailed_entries(
                 is_billable=entry.is_billable,
                 category=category,
                 notes=entry.description,
+                post_completion_type=(
+                    entry.post_completion_type.value
+                    if getattr(entry, "post_completion_type", None) is not None
+                    else None
+                ),
             )
         )
     return result

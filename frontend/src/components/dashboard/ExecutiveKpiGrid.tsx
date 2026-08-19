@@ -122,6 +122,51 @@ export function buildExecutiveKpiSections({
       ],
     },
     {
+      title: 'Post-Completion Work',
+      cards: [
+        {
+          title: 'Additional Work',
+          value: n(summary?.completed_with_additional_work ?? 0, 0),
+          icon: HandymanRoundedIcon,
+          accent: (summary?.completed_with_additional_work ?? 0) > 0 ? 'warning' : undefined,
+          trend: STABLE_TREND,
+          onClick: () => navigate('/projects?lifecycle=completed'),
+        },
+        {
+          title: 'Rework Projects',
+          value: n(summary?.completed_with_rework ?? 0, 0),
+          icon: WarningAmberRoundedIcon,
+          accent: (summary?.completed_with_rework ?? 0) > 0 ? 'error' : undefined,
+          trend: STABLE_TREND,
+          onClick: () => navigate('/projects?lifecycle=completed'),
+        },
+        {
+          title: 'Hours After Completion',
+          value: n(summary?.post_completion_hours_this_month ?? 0, 1),
+          icon: TimerRoundedIcon,
+          accent: 'info',
+          trend: STABLE_TREND,
+          onClick: () => navigate('/reports?tab=project-hours'),
+        },
+        {
+          title: 'Customers With Rework',
+          value: n(summary?.customers_with_rework ?? 0, 0),
+          icon: DomainRoundedIcon,
+          accent: (summary?.customers_with_rework ?? 0) > 0 ? 'warning' : undefined,
+          trend: STABLE_TREND,
+          onClick: () => navigate('/reports?tab=customer'),
+        },
+        {
+          title: 'High Post-Completion',
+          value: n(summary?.projects_high_post_completion_hours ?? 0, 0),
+          icon: WarningAmberRoundedIcon,
+          accent: (summary?.projects_high_post_completion_hours ?? 0) > 0 ? 'error' : undefined,
+          trend: STABLE_TREND,
+          onClick: () => navigate('/reports?tab=project-hours'),
+        },
+      ],
+    },
+    {
       title: 'Engineering Performance',
       cards: [
         {

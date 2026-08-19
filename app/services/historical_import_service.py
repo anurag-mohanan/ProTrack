@@ -46,6 +46,7 @@ from app.schemas.historical_import import (
     ImportUploadResponse,
 )
 from app.services.non_productive_entry_service import build_np_timesheet_entry
+from app.services.reporting.timesheet_attribution import stamp_home_team_on_entry
 from app.services.project_calculation_service import calculate_project_health
 
 UPLOAD_DIR = Path(gettempdir()) / "protrack_imports"
@@ -832,6 +833,7 @@ def _create_np_entry_from_row(
         hours=row.hours,
         description=row.notes or row.part_description,
     )
+    stamp_home_team_on_entry(db, entry)
     db.add(entry)
     db.commit()
 

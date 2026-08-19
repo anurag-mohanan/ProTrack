@@ -557,6 +557,11 @@ def get_dashboard_summary(
         my_project_rows=my_project_rows,
         collaboration_activity=collaboration_activity,
         widget_errors=widget_errors,
+        completed_with_additional_work=engineering_kpis.completed_with_additional_work,
+        completed_with_rework=engineering_kpis.completed_with_rework,
+        post_completion_hours_this_month=engineering_kpis.post_completion_hours_this_month,
+        customers_with_rework=engineering_kpis.customers_with_rework,
+        projects_high_post_completion_hours=engineering_kpis.projects_high_post_completion_hours,
     )
 
 
@@ -847,6 +852,11 @@ def get_project_dashboard(db: Session, project_id: UUID) -> ProjectDashboard | N
             actual=hours.actual,
             remaining=hours.remaining,
             variance=hours.variance,
+            original=hours.original,
+            additional_work=hours.additional_work,
+            rework=hours.rework,
+            customer_change=hours.customer_change,
+            internal_correction=hours.internal_correction,
         ),
         health=project.health,
         recent_timesheet_entries=[

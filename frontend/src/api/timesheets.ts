@@ -4,7 +4,7 @@ import type {
   TimesheetEntry,
   TimesheetEntryCreate,
 } from '../types';
-import type { ContributionReason, TimesheetOverviewContext } from '../types/TimesheetEntry';
+import type { ContributionReason, PostCompletionWorkType, TimesheetOverviewContext } from '../types/TimesheetEntry';
 import { apiClient, buildQuery, type ListParams, API_BASE_URL } from './client';
 import { getAccessToken } from '../services/authStorage';
 
@@ -22,6 +22,7 @@ export interface TimesheetEntryBulkUpsert {
   is_billable?: boolean;
   description?: string | null;
   contribution_reason?: ContributionReason | null;
+  post_completion_type?: PostCompletionWorkType | null;
 }
 
 export interface TimesheetEntryBulkRequest {

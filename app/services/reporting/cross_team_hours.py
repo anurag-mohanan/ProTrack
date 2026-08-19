@@ -16,6 +16,7 @@ from app.services.reporting.team_membership_windows import (
     home_team_id_on,
     primary_home_team_timeline,
 )
+from app.services.reporting.timesheet_attribution import resolve_home_team_id
 
 
 def _decimal(value) -> Decimal:
@@ -50,6 +51,7 @@ def build_cross_team_hours(
             TimesheetEntry.project_id,
             TimesheetEntry.hours,
             TimesheetEntry.contribution_reason,
+            TimesheetEntry.home_team_id,
             Project.tool_number,
             Project.team_id,
             Customer.name,
@@ -113,6 +115,7 @@ def build_cross_team_hours(
         project_id,
         hours,
         reason,
+        snapshot_home_id,
         tool_number,
         project_team_id,
         customer_name,
@@ -123,8 +126,13 @@ def build_cross_team_hours(
         if hour_value <= 0:
             continue
 
-        home_team_id = home_team_id_on(timelines.get(user_id), entry_date)
-        if home_team_id is None:
+        home_team_id = resolve_home_team_id(
+            snapshot_home_team_id=snapshot_home_id,
+            entry_date=entry_date,
+            user=None,
+            timeline=timelines.get(user_id),
+        )
+        if home_team_id is None and not timelines.get(user_id):
             home_team_id = current_team_id
         if home_team_id is None or home_team_id == project_team_id:
             continue

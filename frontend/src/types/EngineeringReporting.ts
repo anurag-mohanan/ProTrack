@@ -66,6 +66,12 @@ export interface ToolHoursRow {
   actual_hours: number;
   variance_hours: number;
   completion_percent: number;
+  original_hours?: number;
+  additional_work_hours?: number;
+  rework_hours?: number;
+  customer_change_hours?: number;
+  internal_correction_hours?: number;
+  post_completion_hours?: number;
   current_stage?: string | null;
   execution_status?: string | null;
 }
@@ -79,6 +85,11 @@ export interface CustomerHoursRow {
   total_hours: number;
   designer_count: number;
   avg_hours_per_project: number;
+  original_hours?: number;
+  additional_work_hours?: number;
+  rework_hours?: number;
+  customer_change_hours?: number;
+  internal_correction_hours?: number;
 }
 
 export interface DesignerTeamTimesheetPayload {
@@ -171,6 +182,12 @@ export interface QuotedVsActualRow {
   completion_percent: number;
   health?: string | null;
   late_milestones: number;
+  original_hours?: number;
+  additional_work_hours?: number;
+  rework_hours?: number;
+  customer_change_hours?: number;
+  internal_correction_hours?: number;
+  post_completion_hours?: number;
 }
 
 export interface ProjectPerformanceRow {
@@ -197,6 +214,7 @@ export interface DetailedTimesheetRow {
   is_billable: boolean;
   category: string;
   notes?: string | null;
+  post_completion_type?: string | null;
 }
 
 export interface EngineeringReportPayload {

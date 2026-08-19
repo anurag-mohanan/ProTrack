@@ -735,7 +735,10 @@ export function EngineeringReportingSuite({
                         <TableCell>Tool</TableCell>
                         <TableCell>Customer</TableCell>
                         <TableCell align="right">Quoted</TableCell>
-                        <TableCell align="right">Actual</TableCell>
+                        <TableCell align="right">Original</TableCell>
+                        <TableCell align="right">Additional</TableCell>
+                        <TableCell align="right">Rework</TableCell>
+                        <TableCell align="right">Total</TableCell>
                         <TableCell align="right">Variance</TableCell>
                         <TableCell align="right">Completion</TableCell>
                       </TableRow>
@@ -753,6 +756,9 @@ export function EngineeringReportingSuite({
                           <TableCell>{row.tool_number}</TableCell>
                           <TableCell>{row.customer_name}</TableCell>
                           <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.original_hours ?? row.actual_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.additional_work_hours ?? 0)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.rework_hours ?? 0)}</TableCell>
                           <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
                           <TableCell align="right">{formatNumber(row.variance_hours)}</TableCell>
                           <TableCell align="right">{formatNumber(row.completion_percent)}%</TableCell>
@@ -773,10 +779,14 @@ export function EngineeringReportingSuite({
                       <TableRow>
                         <TableCell>Customer</TableCell>
                         <TableCell align="right">Projects</TableCell>
+                        <TableCell align="right">Original</TableCell>
+                        <TableCell align="right">Additional</TableCell>
+                        <TableCell align="right">Rework</TableCell>
+                        <TableCell align="right">Customer Chg</TableCell>
+                        <TableCell align="right">Internal</TableCell>
                         <TableCell align="right">Productive</TableCell>
                         <TableCell align="right">NP</TableCell>
                         <TableCell align="right">Total</TableCell>
-                        <TableCell align="right">Avg / Project</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -788,10 +798,14 @@ export function EngineeringReportingSuite({
                             </RouterLink>
                           </TableCell>
                           <TableCell align="right">{row.project_count}</TableCell>
+                          <TableCell align="right">{formatNumber(row.original_hours ?? 0)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.additional_work_hours ?? 0)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.rework_hours ?? 0)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.customer_change_hours ?? 0)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.internal_correction_hours ?? 0)}</TableCell>
                           <TableCell align="right">{formatNumber(row.productive_hours)}</TableCell>
                           <TableCell align="right">{formatNumber(row.np_hours)}</TableCell>
                           <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
-                          <TableCell align="right">{formatNumber(row.avg_hours_per_project)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -926,7 +940,10 @@ export function EngineeringReportingSuite({
                         <TableCell>Tool</TableCell>
                         <TableCell>Customer</TableCell>
                         <TableCell align="right">Quoted</TableCell>
-                        <TableCell align="right">Actual</TableCell>
+                        <TableCell align="right">Original</TableCell>
+                        <TableCell align="right">Additional</TableCell>
+                        <TableCell align="right">Rework</TableCell>
+                        <TableCell align="right">Total Actual</TableCell>
                         <TableCell align="right">Variance %</TableCell>
                         <TableCell>Health</TableCell>
                       </TableRow>
@@ -937,7 +954,14 @@ export function EngineeringReportingSuite({
                           <TableCell>{row.tool_number}</TableCell>
                           <TableCell>{row.customer_name}</TableCell>
                           <TableCell align="right">{formatNumber(row.quoted_hours)}</TableCell>
-                          <TableCell align="right">{formatNumber(row.actual_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.original_hours ?? row.actual_hours)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.additional_work_hours ?? 0)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.rework_hours ?? 0)}</TableCell>
+                          <TableCell align="right">
+                            {formatNumber(
+                              (row.original_hours ?? row.actual_hours) + (row.post_completion_hours ?? 0),
+                            )}
+                          </TableCell>
                           <TableCell align="right">{formatNumber(row.variance_percent)}%</TableCell>
                           <TableCell>{row.health ?? '—'}</TableCell>
                         </TableRow>
@@ -996,6 +1020,7 @@ export function EngineeringReportingSuite({
                         <TableCell>Task</TableCell>
                         <TableCell align="right">Hours</TableCell>
                         <TableCell>Category</TableCell>
+                        <TableCell>Work Type</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1008,6 +1033,7 @@ export function EngineeringReportingSuite({
                           <TableCell>{row.task_name ?? '—'}</TableCell>
                           <TableCell align="right">{formatNumber(row.hours)}</TableCell>
                           <TableCell>{row.category}</TableCell>
+                          <TableCell>{row.post_completion_type ?? 'Original'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

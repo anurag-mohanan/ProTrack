@@ -78,6 +78,11 @@ export function DashboardQuickActions({
   if (group === 'staff') {
     return (
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+        {canCreateProject(access) ? (
+          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={onNewProject} sx={buttonSx}>
+            Create Project
+          </Button>
+        ) : null}
         {userHasModule(access, MODULE_TIMESHEETS) && canEnterOwnTimesheet(access) ? (
           <>
             <Button variant="contained" size="small" startIcon={<ScheduleIcon />} onClick={onTimesheet} sx={buttonSx}>

@@ -47,6 +47,7 @@ from app.services.historical_timesheet_import_service import (
 )
 from app.services.project_calculation_service import recalculate_project
 from app.services.non_productive_entry_service import build_np_timesheet_entry
+from app.services.reporting.timesheet_attribution import stamp_home_team_on_entry
 from app.services.task_type_matching_service import match_task_type
 
 MASTER_UPLOAD_DIR = Path(gettempdir()) / "protrack_master_timesheet_imports"
@@ -593,6 +594,7 @@ def run_master_import(
                 )
                 affected_projects.add(project.id)
 
+            stamp_home_team_on_entry(db, entry)
             pending_entries.append(entry)
             summary.rows_imported += 1
 

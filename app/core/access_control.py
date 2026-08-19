@@ -117,6 +117,7 @@ SPECIAL_MANAGE_CONTACTS = "manage_contacts"
 SPECIAL_MANAGE_TEAMS = "manage_teams"
 SPECIAL_MANAGE_USERS = "manage_users"
 SPECIAL_MANAGE_COMPANY_SETTINGS = "manage_company_settings"
+SPECIAL_MANAGE_PROJECT_SETTINGS = "manage_project_settings"
 SPECIAL_VIEW_REPORTS = "view_reports"
 SPECIAL_VIEW_RESOURCE_PLANNING = "view_resource_planning"
 # --- Field-level security & governance specials (security foundation) ---
@@ -142,6 +143,7 @@ ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_MANAGE_TEAMS,
     SPECIAL_MANAGE_USERS,
     SPECIAL_MANAGE_COMPANY_SETTINGS,
+    SPECIAL_MANAGE_PROJECT_SETTINGS,
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
     SPECIAL_VIEW_SALARY,
@@ -276,7 +278,7 @@ DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
             SPECIAL_EXPORT_REPORTS,
         }
     ),
-    DESIGNER: frozenset({SPECIAL_EDIT_PROJECTS}),
+    DESIGNER: frozenset(),
     SENIOR_DESIGNER: frozenset({SPECIAL_CREATE_PROJECTS, SPECIAL_EDIT_PROJECTS}),
     JUNIOR_DESIGNER: frozenset(),
     SURFACER: frozenset(),

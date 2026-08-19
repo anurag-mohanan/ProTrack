@@ -74,7 +74,7 @@ import {
   loadProjectsPageSession,
   saveProjectsPageSession,
 } from '../utils/projectsPageSession';
-import { canArchiveProject, canCreateProject, canDeleteRecords, canViewArchivedProjects } from '../utils/permissions';
+import { canArchiveProject, canCreateProject, canDeleteRecords, canEditProject, canViewArchivedProjects, accessContextFromUser } from '../utils/permissions';
 import {
   applyKpiQuickFilter,
   computeProjectPortfolioMetrics,
@@ -122,8 +122,9 @@ export function ProjectsPage() {
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
   const { user } = useAuth();
+  const access = accessContextFromUser(user);
   const { preferences, updatePreferences } = usePreferences();
-  const isAdmin = canDeleteRecords(user?.role_name ?? '');
+  const isAdmin = canDeleteRecords(access);
   const allowAllScope = canSelectAllProjectsScope(user) || isAdmin;
 
   const [portfolioScope, setPortfolioScope] = useState<ProjectsPortfolioScope>('my_streams');
@@ -781,8 +782,13 @@ export function ProjectsPage() {
     [showSuccess],
   );
 
-  const showArchiveActions = canArchiveProject(user?.role_name ?? '');
-  const showCreateProject = canCreateProject(user?.role_name ?? '');
+  const showArchiveActions = canArchiveProject(access);
+  const showCreateProject = canCreateProject(access);
+  const showEditProject = canEditProject(access);
+  const handleEdit = showEditProject ? setEditProject : undefined;
+  const handleDuplicate = showCreateProject
+    ? (projectId: string) => cloneMutation.mutate(projectId)
+    : undefined;
   const showArchivedLink = user ? canViewArchivedProjects(user) : false;
   const tableLoading = projectsQuery.isPending;
 
@@ -1217,9 +1223,9 @@ export function ProjectsPage() {
                       }}
                       gridSessionKey={gridSessionKey}
                       onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                      onEdit={setEditProject}
+                      onEdit={handleEdit}
                       onArchive={showArchiveActions ? setArchiveId : undefined}
-                      onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                      onDuplicate={handleDuplicate}
                       onExport={handleExport}
                       onDelete={isAdmin ? setDeleteId : undefined}
                       canDelete={isAdmin}
@@ -1259,9 +1265,9 @@ export function ProjectsPage() {
                               onRowOpen={(row) =>
                                 navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)
                               }
-                              onEdit={setEditProject}
+                              onEdit={handleEdit}
                               onArchive={showArchiveActions ? setArchiveId : undefined}
-                              onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                              onDuplicate={handleDuplicate}
                               onExport={handleExport}
                               onDelete={isAdmin ? setDeleteId : undefined}
                               canDelete={isAdmin}
@@ -1282,9 +1288,9 @@ export function ProjectsPage() {
                             onRowOpen={(row) =>
                               navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)
                             }
-                            onEdit={setEditProject}
+                            onEdit={handleEdit}
                             onArchive={showArchiveActions ? setArchiveId : undefined}
-                            onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                            onDuplicate={handleDuplicate}
                             onExport={handleExport}
                             onDelete={isAdmin ? setDeleteId : undefined}
                             canDelete={isAdmin}
@@ -1307,9 +1313,9 @@ export function ProjectsPage() {
                       teams={teamsQuery.data ?? []}
                       gridSessionKey={gridSessionKey}
                       onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                      onEdit={setEditProject}
+                      onEdit={handleEdit}
                       onArchive={showArchiveActions ? setArchiveId : undefined}
-                      onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                      onDuplicate={handleDuplicate}
                       onExport={handleExport}
                       onDelete={isAdmin ? setDeleteId : undefined}
                       canDelete={isAdmin}
@@ -1329,9 +1335,9 @@ export function ProjectsPage() {
                       teams={teamsQuery.data ?? []}
                       gridSessionKey={gridSessionKey}
                       onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                      onEdit={setEditProject}
+                      onEdit={handleEdit}
                       onArchive={showArchiveActions ? setArchiveId : undefined}
-                      onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                      onDuplicate={handleDuplicate}
                       onExport={handleExport}
                       onDelete={isAdmin ? setDeleteId : undefined}
                       canDelete={isAdmin}
@@ -1351,9 +1357,9 @@ export function ProjectsPage() {
                       teams={teamsQuery.data ?? []}
                       gridSessionKey={gridSessionKey}
                       onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                      onEdit={setEditProject}
+                      onEdit={handleEdit}
                       onArchive={showArchiveActions ? setArchiveId : undefined}
-                      onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                      onDuplicate={handleDuplicate}
                       onExport={handleExport}
                       onDelete={isAdmin ? setDeleteId : undefined}
                       canDelete={isAdmin}
@@ -1377,9 +1383,9 @@ export function ProjectsPage() {
                     teams={teamsQuery.data ?? []}
                     gridSessionKey={gridSessionKey}
                     onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                    onEdit={setEditProject}
+                              onEdit={handleEdit}
                     onArchive={showArchiveActions ? setArchiveId : undefined}
-                    onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                              onDuplicate={handleDuplicate}
                     onExport={handleExport}
                     onDelete={isAdmin ? setDeleteId : undefined}
                     canDelete={isAdmin}
@@ -1402,8 +1408,8 @@ export function ProjectsPage() {
                   collapsible
                   splitActiveHold={false}
                   onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                  onEdit={setEditProject}
-                  onDuplicate={(projectId) => cloneMutation.mutate(projectId)}
+                              onEdit={handleEdit}
+                              onDuplicate={handleDuplicate}
                   onExport={handleExport}
                 />
               ) : null}
@@ -1468,9 +1474,13 @@ export function ProjectsPage() {
         project={selectedProject}
         open={Boolean(selectedProject)}
         onClose={() => setSelectedProject(null)}
-        onEdit={(project) => {
-          setEditProject(project);
-        }}
+        onEdit={
+          showEditProject
+            ? (project) => {
+                setEditProject(project);
+              }
+            : undefined
+        }
         onArchive={(projectId) => setArchiveId(projectId)}
         canArchive={showArchiveActions}
       />

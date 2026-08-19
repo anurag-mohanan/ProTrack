@@ -226,6 +226,12 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     team_assignments: list[UserTeamAssignmentWrite] | None = None
 
 
+class UserHistoricalCorrectionRequest(BaseModel):
+    joining_date: date | None = None
+    first_job_date: date | None = None
+    reason: str = Field(min_length=8, max_length=2000)
+
+
 class ResetPasswordRequest(BaseModel):
     password: str | None = Field(default=None, min_length=8, max_length=128)
     generate_temporary: bool = False

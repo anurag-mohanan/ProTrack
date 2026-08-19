@@ -4,6 +4,12 @@ export type WorkCategory = 'productive' | 'non_productive';
 
 export type NonProductiveCodeCategory = 'non_productive' | 'leave';
 
+export type PostCompletionWorkType =
+  | 'additional_work'
+  | 'rework'
+  | 'customer_change'
+  | 'internal_correction';
+
 export interface TimesheetEntry extends Timestamped {
   timesheet_id: string;
   work_category: WorkCategory;
@@ -31,6 +37,7 @@ export interface TimesheetEntry extends Timestamped {
   user_id?: string | null;
   user_name?: string | null;
   contribution_reason?: ContributionReason | null;
+  post_completion_type?: PostCompletionWorkType | null;
 }
 
 export type ContributionReason =
@@ -58,6 +65,25 @@ export const CONTRIBUTION_REASON_LABELS: Record<ContributionReason, string> = {
 
 /** Project hours logged as rework from quality issues — always non-billable. */
 export const REWORK_QUALITY_REASON: ContributionReason = 'rework_quality';
+
+export const POST_COMPLETION_WORK_LABELS: Record<PostCompletionWorkType, string> = {
+  additional_work: 'Additional Work',
+  rework: 'Rework',
+  customer_change: 'Customer Change',
+  internal_correction: 'Internal Correction',
+};
+
+export const POST_COMPLETION_COMMENT_TYPES: PostCompletionWorkType[] = [
+  'rework',
+  'customer_change',
+  'internal_correction',
+];
+
+export function isPostCompletionWorkType(
+  value: string | null | undefined,
+): value is PostCompletionWorkType {
+  return Boolean(value && value in POST_COMPLETION_WORK_LABELS);
+}
 
 export function isReworkQualityReason(
   reason: string | null | undefined,
@@ -88,6 +114,7 @@ export interface TimesheetProjectLookup {
   actual_hours?: number | null;
   remaining_hours?: number | null;
   is_assigned_to_user?: boolean;
+  post_completion_hours_allowed?: boolean;
 }
 
 export interface ContributorReasonHours {
@@ -126,6 +153,13 @@ export interface TimesheetProjectContext {
   quoted_hours: number;
   actual_hours: number;
   remaining_hours: number;
+  original_hours?: number;
+  additional_work_hours?: number;
+  rework_hours?: number;
+  customer_change_hours?: number;
+  internal_correction_hours?: number;
+  has_post_completion_activity?: boolean;
+  post_completion_hours_allowed?: boolean;
   milestones_due: TimesheetProjectMilestoneDue[];
   contributor_count: number;
   is_assigned_to_user: boolean;
@@ -144,6 +178,7 @@ export interface TimesheetEntryCreate {
   is_billable?: boolean;
   description?: string | null;
   contribution_reason?: ContributionReason | null;
+  post_completion_type?: PostCompletionWorkType | null;
 }
 
 export interface NonProductiveCode extends Timestamped {

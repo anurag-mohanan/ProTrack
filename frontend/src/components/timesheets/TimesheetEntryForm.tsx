@@ -11,10 +11,12 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import type { TaskType, TimesheetEntry } from '../../types';
-import type { ContributionReason, TimesheetProjectLookup } from '../../types/TimesheetEntry';
+import type { ContributionReason, PostCompletionWorkType, TimesheetProjectLookup } from '../../types/TimesheetEntry';
 import {
   CONTRIBUTION_REASON_LABELS,
   isReworkQualityReason,
+  POST_COMPLETION_COMMENT_TYPES,
+  POST_COMPLETION_WORK_LABELS,
   REWORK_QUALITY_REASON,
 } from '../../types/TimesheetEntry';
 import { ProsohmButton } from '../ui/ProsohmButton';
@@ -46,6 +48,7 @@ export interface TimesheetEntryFormValues {
   notes: string;
   isBillable: boolean;
   contributionReason: string;
+  postCompletionType: string;
 }
 
 interface TimesheetEntryFormProps {
@@ -92,6 +95,7 @@ function emptyForm(): TimesheetEntryFormValues {
     notes: '',
     isBillable: storedBillable ? storedBillable === 'true' : true,
     contributionReason: '',
+    postCompletionType: '',
   };
 }
 
@@ -139,6 +143,7 @@ export function TimesheetEntryForm({
         notes: editingEntry.description ?? '',
         isBillable: editingEntry.is_billable,
         contributionReason: editingEntry.contribution_reason ?? '',
+        postCompletionType: editingEntry.post_completion_type ?? '',
       });
       return;
     }
@@ -199,6 +204,11 @@ export function TimesheetEntryForm({
         toolOptions.find((option) => option.value === saved.toolValue) ?? null,
       ),
       contributionReason: saved.contributionReason,
+      postCompletionType:
+        projects.find((project) => `project:${project.id}` === saved.toolValue)
+          ?.execution_status === 'completed'
+          ? saved.postCompletionType || 'additional_work'
+          : '',
     });
     toolRef.current?.focus();
   };
@@ -231,6 +241,8 @@ export function TimesheetEntryForm({
             ? resolveTaskTypeIdForProject(taskTypes, project?.stream_id, current.taskTypeId)
             : '',
         contributionReason: option?.kind === 'project' ? current.contributionReason : '',
+        postCompletionType:
+          project?.execution_status === 'completed' ? 'additional_work' : '',
         isBillable: isLeaveToolOption(option)
           ? false
           : keepRework
@@ -284,6 +296,12 @@ export function TimesheetEntryForm({
 
   // Owners and contributors both need rework tagging for design-efficiency analysis.
   const showContributionReason = selectedTool?.kind === 'project' && Boolean(selectedProject);
+  const isCompletedProject = selectedProject?.execution_status === 'completed';
+  const postCompletionBlocked =
+    isCompletedProject && selectedProject?.post_completion_hours_allowed === false;
+  const commentRequiredForPostCompletion = POST_COMPLETION_COMMENT_TYPES.includes(
+    form.postCompletionType as PostCompletionWorkType,
+  );
   const isCrossTeamSupport = Boolean(
     selectedProject?.team_id &&
       currentUserTeamId &&
@@ -313,11 +331,12 @@ export function TimesheetEntryForm({
         </Typography>
       ) : null}
 
-      {isCrossTeamSupport ? (
-        <Alert severity="info" sx={{ mb: 1.25 }}>
-          This tool belongs to {selectedProject?.team_name ?? 'another team'}. Hours still count on
-          your home team, and will appear under cross-team / extra-effort reporting. Add a
-          contribution reason when you can.
+      {isCompletedProject ? (
+        <Alert severity="warning" sx={{ mb: 1.25 }}>
+          Project Completed
+          {postCompletionBlocked
+            ? ' — this team or workstream does not allow post-completion timesheet hours.'
+            : ' — hours logged now are post-completion work, not original project hours. Status stays Completed.'}
         </Alert>
       ) : null}
 
@@ -444,6 +463,37 @@ export function TimesheetEntryForm({
           </TextField>
         ) : null}
 
+        {isCompletedProject ? (
+          <TextField
+            select
+            size="small"
+            required
+            label="Work Type"
+            disabled={readOnly || saving || postCompletionBlocked}
+            value={form.postCompletionType || 'additional_work'}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, postCompletionType: event.target.value }))
+            }
+            helperText="Project is completed. Additional Work is the default — change it if this is rework or a customer/internal correction."
+            slotProps={{
+              inputLabel: { shrink: true },
+              formHelperText: { sx: { mx: 0, mt: 0.25, fontSize: '0.65rem' } },
+            }}
+            sx={{ width: 220, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          >
+            <MenuItem value="" disabled>
+              Normal Project Work
+            </MenuItem>
+            {(
+              Object.entries(POST_COMPLETION_WORK_LABELS) as [PostCompletionWorkType, string][]
+            ).map(([value, label]) => (
+              <MenuItem key={value} value={value}>
+                {label}
+              </MenuItem>
+            ))}
+          </TextField>
+        ) : null}
+
         <FormControlLabel
           sx={{ mt: 0.5, mr: 0 }}
           control={
@@ -481,7 +531,12 @@ export function TimesheetEntryForm({
           size="small"
           disabled={readOnly || saving}
           value={form.notes}
-          placeholder="Optional notes…"
+          placeholder={
+            commentRequiredForPostCompletion
+              ? 'Required: explain rework, customer change, or internal correction…'
+              : 'Optional notes…'
+          }
+          required={commentRequiredForPostCompletion}
           inputRef={notesRef}
           onChange={(event) =>
             setForm((current) => ({ ...current, notes: event.target.value }))
@@ -500,7 +555,7 @@ export function TimesheetEntryForm({
           size="small"
           buttonVariant="primary"
           startIcon={editingEntry ? undefined : <AddIcon />}
-          disabled={readOnly || saving}
+          disabled={readOnly || saving || postCompletionBlocked}
           loading={saving}
           sx={{ mt: 0.25, whiteSpace: 'nowrap' }}
         >

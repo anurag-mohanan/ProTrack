@@ -25,6 +25,7 @@ from app.schemas.identity import (
     ResetPasswordResponse,
     UserCreate,
     UserDeleteCheck,
+    UserHistoricalCorrectionRequest,
     UserRead,
     UserUpdate,
 )
@@ -208,6 +209,9 @@ def update_user(
     has_leaving = "leaving_date" in payload
     leaving_date = payload.pop("leaving_date", None) if has_leaving else None
     try:
+        from app.core.employee_immutable import reject_immutable_user_mutations
+
+        payload = reject_immutable_user_mutations(db_obj, payload)
         if has_leaving:
             confirm_and_set_leaving_date(
                 db,
@@ -238,6 +242,38 @@ def update_user(
         )
         raise _handle_validation(exc) from exc
     return build_user_read(db, updated)
+
+
+@router.post("/{record_id}/historical-corrections", response_model=UserRead)
+def correct_user_historical_facts(
+    record_id: UUID,
+    body: UserHistoricalCorrectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not is_admin(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can correct historical employment dates",
+        )
+    db_obj = get_object_or_404(user_crud, db, record_id)
+    from app.services.user_change_service import record_historical_correction
+
+    try:
+        record_historical_correction(
+            db,
+            user=db_obj,
+            joining_date=body.joining_date,
+            first_job_date=body.first_job_date,
+            reason=body.reason,
+            created_by=current_user,
+        )
+        db.commit()
+        db.refresh(db_obj)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise _handle_validation(exc) from exc
+    return build_user_read(db, db_obj)
 
 
 @router.post("/{record_id}/reset-password", response_model=ResetPasswordResponse)

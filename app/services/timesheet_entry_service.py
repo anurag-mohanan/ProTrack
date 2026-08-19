@@ -27,8 +27,10 @@ from app.schemas.timesheet import TimesheetEntryCreate, TimesheetEntryUpdate
 from app.services.task_type_matching_service import resolve_auto_create_stream_id
 
 ACTIVE_PROJECT_STATUSES = (
+    ExecutionStatus.planning,
     ExecutionStatus.currently_being_worked_on,
     ExecutionStatus.on_hold,
+    ExecutionStatus.completed,
 )
 
 
@@ -87,7 +89,7 @@ def apply_productive_billable_rules(
     data["is_billable"] = True
 
 
-def _get_active_project(db: Session, project_id: UUID) -> Project:
+def _get_timesheet_project(db: Session, project_id: UUID) -> Project:
     project = db.get(Project, project_id)
     if project is None:
         raise ProTrackValidationError("Project not found")
@@ -95,7 +97,7 @@ def _get_active_project(db: Session, project_id: UUID) -> Project:
         raise ProTrackValidationError("Project is not available for timesheet entry")
     if project.execution_status not in ACTIVE_PROJECT_STATUSES:
         raise ProTrackValidationError(
-            "Only active projects (Not Started, In Progress, On Hold) can be used"
+            "Only planning, in-progress, on-hold, or completed projects can be used"
         )
     return project
 
@@ -120,6 +122,7 @@ def normalize_entry_payload(
             "hours": existing.hours if existing else None,
             "description": existing.description if existing else None,
             "contribution_reason": existing.contribution_reason if existing else None,
+            "post_completion_type": existing.post_completion_type if existing else None,
             "is_billable": existing.is_billable if existing else True,
             "leave_count": existing.leave_count if existing else None,
         }
@@ -156,10 +159,14 @@ def normalize_entry_payload(
             raise ProTrackValidationError(
                 "Non-productive code cannot be set for productive work"
             )
-        project = _get_active_project(db, project_id)
+        project = _get_timesheet_project(db, project_id)
         data["customer_id"] = project.customer_id
         data["non_productive_code_id"] = None
         data["leave_count"] = None
+
+        from app.services.post_completion_work import apply_post_completion_rules
+
+        apply_post_completion_rules(data, db=db, project=project, existing=existing)
 
         task_type_id = data.get("task_type_id")
         if task_type_id is None:
@@ -205,6 +212,7 @@ def normalize_entry_payload(
         data["project_id"] = None
         data["milestone_id"] = None
         data["task_type_id"] = None
+        data["post_completion_type"] = None
         unset = payload.model_dump(exclude_unset=True)
         allow_billable_override = (
             actor is not None
@@ -221,4 +229,14 @@ def normalize_entry_payload(
             data["is_billable"] = bool(unset["is_billable"])
 
     data["work_category"] = work_category
+    timesheet_id = data.get("timesheet_id")
+    entry_date = data.get("entry_date")
+    if timesheet_id is not None and entry_date is not None:
+        from app.services.reporting.timesheet_attribution import snapshot_home_team_id
+
+        owner_sheet = db.get(Timesheet, timesheet_id)
+        if owner_sheet is not None:
+            data["home_team_id"] = snapshot_home_team_id(
+                db, owner_sheet.user_id, entry_date
+            )
     return data

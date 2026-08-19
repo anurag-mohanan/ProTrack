@@ -256,6 +256,7 @@ export function TimesheetsPage() {
       notes: values.notes,
       isBillable: values.isBillable,
       contributionReason: values.contributionReason || null,
+      postCompletionType: values.postCompletionType || null,
     }),
     [],
   );
@@ -278,6 +279,27 @@ export function TimesheetsPage() {
     if (values.toolValue.startsWith('project:') && !values.taskTypeId) {
       showError('Select a task for project work.');
       throw new Error('Invalid entry');
+    }
+    if (values.toolValue.startsWith('project:')) {
+      const projectId = values.toolValue.replace('project:', '');
+      const project = workspace.activeProjects.find((row) => row.id === projectId);
+      if (project?.execution_status === 'completed') {
+        if (project.post_completion_hours_allowed === false) {
+          showError('This team or workstream does not allow post-completion hours.');
+          throw new Error('Invalid entry');
+        }
+        if (!values.postCompletionType) {
+          showError('Select a work type for this completed project.');
+          throw new Error('Invalid entry');
+        }
+        if (
+          ['rework', 'customer_change', 'internal_correction'].includes(values.postCompletionType) &&
+          values.notes.trim().length < 8
+        ) {
+          showError('Add a comment explaining the rework, customer change, or internal correction.');
+          throw new Error('Invalid entry');
+        }
+      }
     }
 
     try {
@@ -328,6 +350,7 @@ export function TimesheetsPage() {
           notes: entry.description ?? '',
           isBillable: entry.is_billable,
           contributionReason: entry.contribution_reason ?? null,
+          postCompletionType: entry.post_completion_type ?? null,
         });
       }
       showSuccess(`Copied ${sources.length} ${sources.length === 1 ? 'entry' : 'entries'}.`);
@@ -358,6 +381,7 @@ export function TimesheetsPage() {
         notes: selectedEntry.description ?? '',
         isBillable: selectedEntry.is_billable,
         contributionReason: selectedEntry.contribution_reason ?? null,
+        postCompletionType: selectedEntry.post_completion_type ?? null,
       });
       showSuccess('Entry duplicated.');
     } catch (error) {
@@ -390,6 +414,7 @@ export function TimesheetsPage() {
         notes: entry.description ?? '',
         isBillable: entry.is_billable,
         contributionReason: entry.contribution_reason ?? null,
+        postCompletionType: entry.post_completion_type ?? null,
       });
       showSuccess('Entry duplicated.');
     } catch (error) {

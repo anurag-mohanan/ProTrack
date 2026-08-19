@@ -49,6 +49,9 @@ export function TimesheetProjectContextPanel({ projectId }: TimesheetProjectCont
           }
           variant="outlined"
         />
+        {context.execution_status === 'completed' && context.has_post_completion_activity ? (
+          <Chip size="small" color="warning" label="Post-Completion Activity" />
+        ) : null}
         {context.working_model_name ? (
           <Chip size="small" label={context.working_model_name} color="primary" variant="outlined" />
         ) : null}
@@ -62,8 +65,21 @@ export function TimesheetProjectContextPanel({ projectId }: TimesheetProjectCont
           Actual: <strong>{formatNumber(context.actual_hours, 1)}h</strong>
         </Typography>
         <Typography variant="body2">
-          Remaining: <strong>{formatNumber(context.remaining_hours, 1)}h</strong>
+          Remaining (vs original): <strong>{formatNumber(context.remaining_hours, 1)}h</strong>
         </Typography>
+        {context.has_post_completion_activity ? (
+          <Typography variant="body2">
+            Original: <strong>{formatNumber(context.original_hours ?? 0, 1)}h</strong>
+            {' · '}
+            Additional: <strong>{formatNumber(context.additional_work_hours ?? 0, 1)}h</strong>
+            {' · '}
+            Rework: <strong>{formatNumber(context.rework_hours ?? 0, 1)}h</strong>
+            {' · '}
+            Customer change: <strong>{formatNumber(context.customer_change_hours ?? 0, 1)}h</strong>
+            {' · '}
+            Internal: <strong>{formatNumber(context.internal_correction_hours ?? 0, 1)}h</strong>
+          </Typography>
+        ) : null}
         <Typography variant="body2">
           Contributors: <strong>{context.contributor_count}</strong>
         </Typography>

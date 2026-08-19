@@ -161,7 +161,20 @@ export const ticketsApi = {
   },
 };
 
-export const usersApi = createResourceApi<User>('users');
+export const usersApi = {
+  ...createResourceApi<User>('users'),
+  correctHistorical: async (
+    id: string,
+    payload: {
+      joining_date?: string | null;
+      first_job_date?: string | null;
+      reason: string;
+    },
+  ): Promise<User> => {
+    const { data } = await apiClient.post<User>(`/users/${id}/historical-corrections`, payload);
+    return data;
+  },
+};
 export const streamsApi = createResourceApi<Stream>('streams');
 export const workstreamsApi = createResourceApi<
   import('../types').Workstream,

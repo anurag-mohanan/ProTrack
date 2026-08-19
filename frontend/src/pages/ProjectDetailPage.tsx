@@ -63,7 +63,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { archiveProject, invalidateProjectCalculationQueries, restoreProject } from '../services/projectService';
 import { formatCellValue, formatDisplayValue, formatDate, formatNumber } from '../utils/format';
-import { canArchiveProject } from '../utils/permissions';
+import { canArchiveProject, canCreateProject, canEditProject, accessContextFromUser } from '../utils/permissions';
 
 function InfoLine({ label, value }: { label: string; value: string | null | undefined }) {
   return (
@@ -88,6 +88,10 @@ export function ProjectDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const access = accessContextFromUser(user);
+  const canEdit = canEditProject(access);
+  const canCreate = canCreateProject(access);
+  const canArchive = canArchiveProject(access);
   const { showSuccess, showError } = useToast();
   const [editOpen, setEditOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -221,19 +225,23 @@ export function ProjectDetailPage() {
           <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
             {!project.is_deleted ? (
               <>
-                <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setEditOpen(true)}>
-                  Edit
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<FileCopyIcon />}
-                  onClick={() => cloneMutation.mutate()}
-                  disabled={cloneMutation.isPending}
-                >
-                  Clone
-                </Button>
+                {canEdit ? (
+                  <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setEditOpen(true)}>
+                    Edit
+                  </Button>
+                ) : null}
+                {canCreate ? (
+                  <Button
+                    variant="outlined"
+                    startIcon={<FileCopyIcon />}
+                    onClick={() => cloneMutation.mutate()}
+                    disabled={cloneMutation.isPending}
+                  >
+                    Clone
+                  </Button>
+                ) : null}
                 {project.is_archived ? (
-                  canArchiveProject(user?.role_name ?? '') ? (
+                  canArchive ? (
                     <Button
                       variant="outlined"
                       startIcon={<UnarchiveIcon />}
@@ -243,7 +251,7 @@ export function ProjectDetailPage() {
                       Restore
                     </Button>
                   ) : null
-                ) : canArchiveProject(user?.role_name ?? '') ? (
+                ) : canArchive ? (
                   <Button
                     variant="outlined"
                     color="secondary"
@@ -286,20 +294,24 @@ export function ProjectDetailPage() {
             <PriorityBadge priority={header.priority} />
             {!project.is_deleted ? (
               <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap', ml: { sm: 1 } }}>
-                <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => setEditOpen(true)}>
-                  Edit
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<FileCopyIcon />}
-                  onClick={() => cloneMutation.mutate()}
-                  disabled={cloneMutation.isPending}
-                >
-                  Clone
-                </Button>
+                {canEdit ? (
+                  <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => setEditOpen(true)}>
+                    Edit
+                  </Button>
+                ) : null}
+                {canCreate ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<FileCopyIcon />}
+                    onClick={() => cloneMutation.mutate()}
+                    disabled={cloneMutation.isPending}
+                  >
+                    Clone
+                  </Button>
+                ) : null}
                 {project.is_archived ? (
-                  canArchiveProject(user?.role_name ?? '') ? (
+                  canArchive ? (
                     <Button
                       size="small"
                       variant="outlined"
@@ -310,7 +322,7 @@ export function ProjectDetailPage() {
                       Restore
                     </Button>
                   ) : null
-                ) : canArchiveProject(user?.role_name ?? '') ? (
+                ) : canArchive ? (
                   <Button
                     size="small"
                     variant="outlined"
@@ -554,7 +566,7 @@ export function ProjectDetailPage() {
               >
                 Copy Project Path
               </Button>
-              <Button size="small" startIcon={<ContentCopyIcon />} onClick={openFoldersEditor}>
+              <Button size="small" startIcon={<ContentCopyIcon />} onClick={openFoldersEditor} disabled={!canEdit}>
                 Edit Paths
               </Button>
             </Stack>
@@ -574,15 +586,21 @@ export function ProjectDetailPage() {
                 <Button component={Link} to="/timesheets" size="small" variant="outlined">
                   Add Timesheet
                 </Button>
-                <ProsohmButton size="small" onClick={() => setEditOpen(true)}>
-                  Assign Designer
-                </ProsohmButton>
-                <ProsohmButton size="small" onClick={() => setEcOpen(true)}>
-                  Create EC
-                </ProsohmButton>
-                <ProsohmButton size="small" onClick={() => setArchiveOpen(true)}>
-                  Archive
-                </ProsohmButton>
+                {canEdit ? (
+                  <ProsohmButton size="small" onClick={() => setEditOpen(true)}>
+                    Assign Designer
+                  </ProsohmButton>
+                ) : null}
+                {canEdit ? (
+                  <ProsohmButton size="small" onClick={() => setEcOpen(true)}>
+                    Create EC
+                  </ProsohmButton>
+                ) : null}
+                {canArchive ? (
+                  <ProsohmButton size="small" onClick={() => setArchiveOpen(true)}>
+                    Archive
+                  </ProsohmButton>
+                ) : null}
               </Stack>
             }
           >
@@ -606,6 +624,7 @@ export function ProjectDetailPage() {
                 })
               }
               onDelete={(decisionId) => setDeleteDecisionTarget(decisionId)}
+              readOnly={!canEdit}
             />
           </CollapsiblePanel>
         </Grid>

@@ -7,6 +7,7 @@ from app.core.access_control import (
     EXECUTIVE_ROLES,
     HR,
     ROLE_ALIASES,
+    MODULE_PROJECTS,
     MODULE_REPORTS,
     MODULE_RESOURCE_PLANNING,
     MODULE_SYSTEM_ADMINISTRATION,
@@ -14,12 +15,15 @@ from app.core.access_control import (
     MODULE_WORKLOAD,
     OFFICE_ADMINISTRATOR,
     SPECIAL_APPROVE_TIMESHEETS,
+    SPECIAL_ARCHIVE_PROJECTS,
     SPECIAL_CREATE_PROJECTS,
+    SPECIAL_DELETE_PROJECTS,
     SPECIAL_EDIT_PROJECTS,
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
     resolve_user_modules,
     resolve_user_special_permissions,
+    user_has_module,
     user_has_special,
 )
 from app.core.timesheet_locking import is_timesheet_month_calendar_locked
@@ -130,12 +134,54 @@ def can_delete_records(db: Session, user: User) -> bool:
     return is_admin(db, user)
 
 
+def user_holds_special(db: Session, user: User, permission: str) -> bool:
+    """Admin always holds specials; everyone else uses resolved (role-default or override)."""
+    if is_admin(db, user):
+        return True
+    role_name = normalize_role_name(get_role_name(db, user))
+    return user_has_special(user, role_name, permission)
+
+
+def can_access_projects_module(db: Session, user: User) -> bool:
+    if is_admin(db, user):
+        return True
+    role_name = normalize_role_name(get_role_name(db, user))
+    return user_has_module(user, role_name, MODULE_PROJECTS)
+
+
 def can_create_project(db: Session, user: User) -> bool:
-    return has_role(db, user, *PROJECT_CREATE_ROLES)
+    """Create Projects special — independent of Edit. Does not imply company-wide scope."""
+    if not can_access_projects_module(db, user):
+        return False
+    return user_holds_special(db, user, SPECIAL_CREATE_PROJECTS)
+
+
+def can_create_project_for_team(db: Session, user: User, team_id: UUID | None) -> bool:
+    if not can_create_project(db, user):
+        return False
+    from app.core.data_scope import resolve_data_scope
+
+    scope = resolve_data_scope(db, user)
+    if scope.unrestricted:
+        return True
+    if team_id is None:
+        return False
+    return scope.allows_team(team_id)
+
+
+def can_assign_project_team(db: Session, user: User, team_id: UUID | None) -> bool:
+    from app.core.data_scope import resolve_data_scope
+
+    scope = resolve_data_scope(db, user)
+    if scope.unrestricted:
+        return True
+    if team_id is None:
+        return False
+    return scope.allows_team(team_id)
 
 
 def can_delete_project(db: Session, user: User) -> bool:
-    return is_admin(db, user)
+    return user_holds_special(db, user, SPECIAL_DELETE_PROJECTS)
 
 
 def can_view_deleted_projects(db: Session, user: User) -> bool:
@@ -143,16 +189,13 @@ def can_view_deleted_projects(db: Session, user: User) -> bool:
 
 
 def can_archive_project(db: Session, user: User, project: Project) -> bool:
-    role_name = get_role_name(db, user)
-    if role_name in FULL_ACCESS_ROLES:
-        return True
-    if role_name == DESIGN_LEADER:
-        return project.design_leader_id == user.id
-    return False
+    if not user_holds_special(db, user, SPECIAL_ARCHIVE_PROJECTS):
+        return False
+    return can_read_project(db, user, project)
 
 
 def can_soft_delete_project(db: Session, user: User) -> bool:
-    return is_admin(db, user)
+    return user_holds_special(db, user, SPECIAL_DELETE_PROJECTS)
 
 
 def can_update_project_status(db: Session, user: User) -> bool:
@@ -179,14 +222,10 @@ def can_read_project(db: Session, user: User, project: Project) -> bool:
 
 
 def can_update_project(db: Session, user: User, project: Project) -> bool:
-    role_name = get_role_name(db, user)
-    if role_name in FULL_ACCESS_ROLES:
-        return True
-    if role_name == DESIGN_LEADER:
-        return project.design_leader_id == user.id
-    if role_name == SENIOR_DESIGNER:
-        return user.id in {project.designer_id, project.surfacer_id}
-    return False
+    """Edit Projects special plus existing team / assignment data scope."""
+    if not user_holds_special(db, user, SPECIAL_EDIT_PROJECTS):
+        return False
+    return can_read_project(db, user, project)
 
 
 def can_write_milestones(db: Session, user: User, project: Project) -> bool:

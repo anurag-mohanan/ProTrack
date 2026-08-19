@@ -178,6 +178,7 @@ export function useTimesheetMonthWorkspace(
       notes?: string;
       isBillable?: boolean;
       contributionReason?: string | null;
+      postCompletionType?: string | null;
     }) => {
       if (!userId) throw new Error('Not authenticated');
 
@@ -212,6 +213,8 @@ export function useTimesheetMonthWorkspace(
               is_billable: payload.isBillable ?? true,
               description: payload.notes?.trim() || null,
               contribution_reason: (payload.contributionReason || null) as ContributionReason | null,
+              post_completion_type: (payload.postCompletionType ||
+                null) as import('../types/TimesheetEntry').PostCompletionWorkType | null,
             },
           ],
           deletes: [],

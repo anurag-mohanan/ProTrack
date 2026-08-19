@@ -55,6 +55,11 @@ export interface DashboardSummary {
   my_project_rows?: StaffProjectRow[];
   collaboration_activity?: CollaborationActivityDashboard | null;
   widget_errors?: Record<string, string>;
+  completed_with_additional_work?: number;
+  completed_with_rework?: number;
+  post_completion_hours_this_month?: number;
+  customers_with_rework?: number;
+  projects_high_post_completion_hours?: number;
 }
 
 export interface CollaborationProjectRow {
@@ -162,6 +167,11 @@ export interface DashboardKpis {
   total_actual_hours_productive: number;
   np_hours_this_month: number;
   in_progress_projects: number;
+  completed_with_additional_work?: number;
+  completed_with_rework?: number;
+  post_completion_hours_this_month?: number;
+  customers_with_rework?: number;
+  projects_high_post_completion_hours?: number;
 }
 
 export interface ProjectAttentionRow {
@@ -173,6 +183,7 @@ export interface ProjectAttentionRow {
   due_date: string;
   health: ProjectHealth;
   execution_status: ExecutionStatus;
+  has_post_completion_activity?: boolean;
   attention_reason: 'overdue' | 'blocked' | 'due_soon' | 'on_hold';
 }
 
@@ -283,6 +294,11 @@ export interface ProjectHoursSummary {
   actual: number;
   remaining: number;
   variance: number;
+  original?: number;
+  additional_work?: number;
+  rework?: number;
+  customer_change?: number;
+  internal_correction?: number;
 }
 
 export interface ProjectDashboard {

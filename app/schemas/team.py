@@ -13,6 +13,7 @@ class TeamBase(BaseModel):
     team_lead_id: UUID | None = None
     colour: str = Field(default="#1976d2", max_length=20)
     is_active: bool = True
+    allow_post_completion_timesheet: bool = True
     organization_id: UUID | None = None
     business_unit: str | None = Field(default=None, max_length=100)
 
@@ -27,6 +28,7 @@ class TeamUpdate(BlankOptionalFieldsMixin, BaseModel):
     team_lead_id: UUID | None = None
     colour: str | None = Field(default=None, max_length=20)
     is_active: bool | None = None
+    allow_post_completion_timesheet: bool | None = None
     organization_id: UUID | None = None
     business_unit: str | None = Field(default=None, max_length=100)
 

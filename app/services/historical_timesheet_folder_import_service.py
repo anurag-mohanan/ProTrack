@@ -55,6 +55,7 @@ from app.services.historical_timesheet_import_service import (
 )
 from app.services.project_calculation_service import recalculate_project
 from app.services.non_productive_entry_service import build_np_timesheet_entry
+from app.services.reporting.timesheet_attribution import stamp_home_team_on_entry
 from app.services.task_type_matching_service import match_task_type, normalize_task_type_value
 
 FOLDER_BATCH_DIR = Path(gettempdir()) / "protrack_timesheet_folder_imports"
@@ -734,6 +735,7 @@ def run_folder_import(
                     )
                     affected_projects.add(project.id)
 
+                stamp_home_team_on_entry(db, entry)
                 if check_duplicates:
                     dup_key = timesheet_duplicate_key(
                         user_id=designer_user.id,

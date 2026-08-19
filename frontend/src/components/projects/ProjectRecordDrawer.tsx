@@ -272,11 +272,45 @@ export function ProjectRecordDrawer({
             </Grid>
             <Grid size={{ xs: 12, sm: 3 }}>
               <FormField
+                label="Original Hours"
+                value={formatNumber(project.original_hours ?? (project.has_post_completion_activity ? 0 : project.actual_hours))}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <FormField
                 label="Actual Hours"
                 value={formatNumber(detail?.hours.actual ?? project.actual_hours)}
                 slotProps={{ input: { readOnly: true } }}
               />
             </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <FormField
+                label="Additional Work"
+                value={formatNumber(project.additional_work_hours ?? 0)}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <FormField
+                label="Rework"
+                value={formatNumber(project.rework_hours ?? 0)}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            </Grid>
+            {project.has_post_completion_activity ? (
+              <Grid size={{ xs: 12 }}>
+                <Typography variant="body2" color="warning.main">
+                  Completed with post-completion activity
+                  {project.customer_change_hours
+                    ? ` · Customer change ${formatNumber(project.customer_change_hours)}h`
+                    : ''}
+                  {project.internal_correction_hours
+                    ? ` · Internal correction ${formatNumber(project.internal_correction_hours)}h`
+                    : ''}
+                </Typography>
+              </Grid>
+            ) : null}
             <Grid size={{ xs: 12, sm: 3 }}>
               <FormField
                 label="Remaining"

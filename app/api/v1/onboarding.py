@@ -369,6 +369,13 @@ def update_checklist(
     prev_team = checklist.team_id
     prev_manager = checklist.reporting_manager_id
     try:
+        from app.core.employee_immutable import reject_immutable_onboarding_mutations
+
+        data = reject_immutable_onboarding_mutations(
+            current_code=checklist.employee_code,
+            current_joining=checklist.joining_date,
+            fields=data,
+        )
         onboard.apply_checklist_header(db, checklist, data)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

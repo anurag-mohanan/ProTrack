@@ -7,6 +7,7 @@ export type TimesheetToolGroup =
   | 'MY ASSIGNED PROJECTS'
   | 'RECENTLY USED'
   | 'ALL ACTIVE PROJECTS'
+  | 'COMPLETED PROJECTS'
   | 'NON PRODUCTIVE';
 
 export interface TimesheetToolOption {
@@ -165,10 +166,22 @@ export function buildToolOptions(
   }
 
   const placed = new Set(byValue.keys());
-  const remaining = projects
-    .filter((project) => !placed.has(`project:${project.id}`))
+  const remainingActive = projects
+    .filter(
+      (project) =>
+        !placed.has(`project:${project.id}`) && project.execution_status !== 'completed',
+    )
     .map((project) => mapProjectOption(project, 'ALL ACTIVE PROJECTS'));
-  for (const option of remaining) {
+  for (const option of remainingActive) {
+    byValue.set(option.value, option);
+  }
+  const remainingCompleted = projects
+    .filter(
+      (project) =>
+        !placed.has(`project:${project.id}`) && project.execution_status === 'completed',
+    )
+    .map((project) => mapProjectOption(project, 'COMPLETED PROJECTS'));
+  for (const option of remainingCompleted) {
     byValue.set(option.value, option);
   }
 

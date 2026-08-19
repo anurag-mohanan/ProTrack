@@ -161,11 +161,21 @@ def test_hr_can_edit_and_delete_checklist(client, session):
     updated = client.patch(
         f"/api/v1/hr/onboarding/{checklist_id}",
         headers=admin,
-        json={"employee_name": "Editable Hire Updated", "employee_code": "PP101"},
+        json={"employee_name": "Editable Hire Updated", "employee_code": "PP100"},
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["employee_name"] == "Editable Hire Updated"
-    assert updated.json()["employee_code"] == "PP101"
+    assert updated.json()["employee_code"] == "PP100"
+
+    blocked = client.patch(
+        f"/api/v1/hr/onboarding/{checklist_id}",
+        headers=admin,
+        json={"employee_code": "PP101"},
+    )
+    assert blocked.status_code == 422, blocked.text
+    assert client.get(
+        f"/api/v1/hr/onboarding/{checklist_id}", headers=admin
+    ).json()["employee_code"] == "PP100"
 
     deleted = client.delete(f"/api/v1/hr/onboarding/{checklist_id}", headers=admin)
     assert deleted.status_code == 204, deleted.text

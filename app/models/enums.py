@@ -43,6 +43,15 @@ class WorkCategory(enum.Enum):
     non_productive = "non_productive"
 
 
+class PostCompletionWorkType(enum.Enum):
+    """Hours logged after a project is completed (not original contracted work)."""
+
+    additional_work = "additional_work"
+    rework = "rework"
+    customer_change = "customer_change"
+    internal_correction = "internal_correction"
+
+
 class ContributionReason(enum.Enum):
     assisting_designer = "assisting_designer"
     peer_review = "peer_review"
@@ -170,6 +179,7 @@ class ActivityAction(enum.Enum):
     user_deleted = "user_deleted"
     user_restored_from_deleted = "user_restored_from_deleted"
     user_department_changed = "user_department_changed"
+    user_historical_correction = "user_historical_correction"
     employee_offboard_scheduled = "employee_offboard_scheduled"
     employee_offboard_applied = "employee_offboard_applied"
     record_deleted = "record_deleted"

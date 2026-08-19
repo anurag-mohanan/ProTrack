@@ -38,6 +38,7 @@ EVENT_TRANSFER = "transfer"
 EVENT_PROMOTION = "promotion"
 EVENT_BILLING_CHANGE = "billing_change"
 EVENT_HIKE = "hike"
+EVENT_HISTORICAL_CORRECTION = "historical_correction"
 
 
 def _now() -> datetime:
@@ -278,6 +279,79 @@ def record_transfer(
     return event
 
 
+def record_historical_correction(
+    db: Session,
+    *,
+    user: User,
+    joining_date: date | None = None,
+    first_job_date: date | None = None,
+    reason: str,
+    created_by: Optional[User] = None,
+) -> UserJobEvent:
+    """Admin-only correction of hire / first-job dates. Does not run on empty no-ops."""
+    from app.core.employee_immutable import _dates_equal
+    from app.models.enums import ActivityAction, EntityType
+    from app.models.models import OnboardingChecklist
+    from app.services.activity_service import log_activity
+
+    reason_text = (reason or "").strip()
+    if len(reason_text) < 8:
+        raise ProTrackValidationError("A reason of at least 8 characters is required")
+
+    changes: dict[str, dict[str, object | None]] = {}
+    if joining_date is not None and not _dates_equal(user.joining_date, joining_date):
+        changes["joining_date"] = {
+            "old": user.joining_date.isoformat() if user.joining_date else None,
+            "new": joining_date.isoformat(),
+        }
+        user.joining_date = joining_date
+    if first_job_date is not None and not _dates_equal(user.first_job_date, first_job_date):
+        changes["first_job_date"] = {
+            "old": user.first_job_date.isoformat() if user.first_job_date else None,
+            "new": first_job_date.isoformat(),
+        }
+        user.first_job_date = first_job_date
+    if not changes:
+        raise ProTrackValidationError("No historical date changes to apply")
+
+    if "joining_date" in changes:
+        checklists = db.scalars(
+            select(OnboardingChecklist).where(OnboardingChecklist.employee_user_id == user.id)
+        ).all()
+        for row in checklists:
+            row.joining_date = joining_date
+
+    event = UserJobEvent(
+        user_id=user.id,
+        event_type=EVENT_HISTORICAL_CORRECTION,
+        effective_date=date.today(),
+        from_value=_dumps({key: row["old"] for key, row in changes.items()}),
+        to_value=_dumps({key: row["new"] for key, row in changes.items()}),
+        created_by_id=created_by.id if created_by else None,
+        notes=reason_text,
+        applied_at=_now(),
+    )
+    db.add(event)
+    db.add(user)
+    log_activity(
+        db,
+        user=created_by,
+        entity_type=EntityType.user,
+        entity_id=user.id,
+        action=ActivityAction.user_historical_correction,
+        old_value={key: row["old"] for key, row in changes.items()},
+        new_value={
+            **{key: row["new"] for key, row in changes.items()},
+            "reason": reason_text,
+        },
+        outcome="success",
+        module="human_resources",
+        commit=False,
+    )
+    db.flush()
+    return event
+
+
 def _apply_transfer_event(db: Session, *, user: User, event: UserJobEvent) -> None:
     """Flip the live primary-team membership so the org chart reflects the move."""
     payload = json.loads(event.to_value or "{}")
@@ -327,6 +401,9 @@ def apply_due_lifecycle(db: Session, *, as_of: Optional[date] = None) -> int:
             _apply_transfer_event(db, user=user, event=event)
             applied += 1
         elif event.event_type == EVENT_HIKE:
+            event.applied_at = _now()
+            applied += 1
+        elif event.event_type == EVENT_HISTORICAL_CORRECTION:
             event.applied_at = _now()
             applied += 1
         else:

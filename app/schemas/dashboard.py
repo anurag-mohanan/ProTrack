@@ -36,6 +36,11 @@ class ProjectHoursSummary(BaseModel):
     actual: Decimal = Decimal("0")
     remaining: Decimal = Decimal("0")
     variance: Decimal = Decimal("0")
+    original: Decimal = Decimal("0")
+    additional_work: Decimal = Decimal("0")
+    rework: Decimal = Decimal("0")
+    customer_change: Decimal = Decimal("0")
+    internal_correction: Decimal = Decimal("0")
 
 
 class ProjectDashboard(BaseModel):
@@ -74,8 +79,12 @@ class DashboardKpis(BaseModel):
     total_quoted_hours_active: Decimal = Decimal("0")
     total_actual_hours_productive: Decimal = Decimal("0")
     np_hours_this_month: Decimal = Decimal("0")
-    # Legacy alias for older clients
     in_progress_projects: int = 0
+    completed_with_additional_work: int = 0
+    completed_with_rework: int = 0
+    post_completion_hours_this_month: Decimal = Decimal("0")
+    customers_with_rework: int = 0
+    projects_high_post_completion_hours: int = 0
 
 
 class DashboardNpCodeRow(BaseModel):
@@ -306,6 +315,11 @@ class DashboardSummary(BaseModel):
     my_project_rows: list[StaffProjectRow] = Field(default_factory=list)
     collaboration_activity: CollaborationActivityDashboard | None = None
     widget_errors: dict[str, str] = Field(default_factory=dict)
+    completed_with_additional_work: int = 0
+    completed_with_rework: int = 0
+    post_completion_hours_this_month: Decimal = Decimal("0")
+    customers_with_rework: int = 0
+    projects_high_post_completion_hours: int = 0
 
 
 class DashboardFuturePlaceholders(BaseModel):

@@ -92,6 +92,7 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
         leave_count=entry.leave_count,
         description=entry.description,
         contribution_reason=entry.contribution_reason,
+        post_completion_type=getattr(entry, "post_completion_type", None),
         project_tool_number=project_tool_number,
         project_code=project_code,
         project_team_id=project_team_id,
@@ -104,6 +105,7 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
         non_productive_category=np_category,
         user_id=owner_id,
         user_name=owner_name,
+        home_team_id=entry.home_team_id,
     )
 
 

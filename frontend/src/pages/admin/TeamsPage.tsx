@@ -50,6 +50,7 @@ interface TeamFormState {
   team_lead_id: string;
   colour: string;
   is_active: boolean;
+  allow_post_completion_timesheet: boolean;
   business_unit: string;
 }
 
@@ -59,6 +60,7 @@ const emptyForm: TeamFormState = {
   team_lead_id: '',
   colour: '#1976d2',
   is_active: true,
+  allow_post_completion_timesheet: true,
   business_unit: '',
 };
 
@@ -134,6 +136,7 @@ export default function TeamsPage() {
       team_lead_id: team.team_lead_id ?? '',
       colour: team.colour,
       is_active: team.is_active,
+      allow_post_completion_timesheet: team.allow_post_completion_timesheet !== false,
       business_unit: team.business_unit ?? '',
     });
     setFormOpen(true);
@@ -153,6 +156,7 @@ export default function TeamsPage() {
         team_lead_id: optionalUuid(form.team_lead_id),
         colour: form.colour,
         is_active: form.is_active,
+        allow_post_completion_timesheet: form.allow_post_completion_timesheet,
         business_unit: optionalString(form.business_unit),
       };
       if (editingTeam) {
@@ -480,6 +484,22 @@ export default function TeamsPage() {
                   />
                 }
                 label="Active"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={form.allow_post_completion_timesheet}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        allow_post_completion_timesheet: event.target.checked,
+                      })
+                    }
+                  />
+                }
+                label="Allow hours after project completion"
               />
             </Grid>
           </FormSection>

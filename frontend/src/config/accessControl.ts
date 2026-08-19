@@ -82,6 +82,7 @@ export const SPECIAL_MANAGE_CONTACTS = 'manage_contacts';
 export const SPECIAL_MANAGE_TEAMS = 'manage_teams';
 export const SPECIAL_MANAGE_USERS = 'manage_users';
 export const SPECIAL_MANAGE_COMPANY_SETTINGS = 'manage_company_settings';
+export const SPECIAL_MANAGE_PROJECT_SETTINGS = 'manage_project_settings';
 export const SPECIAL_VIEW_REPORTS = 'view_reports';
 export const SPECIAL_VIEW_RESOURCE_PLANNING = 'view_resource_planning';
 
@@ -99,6 +100,7 @@ export type SpecialPermissionKey =
   | typeof SPECIAL_MANAGE_TEAMS
   | typeof SPECIAL_MANAGE_USERS
   | typeof SPECIAL_MANAGE_COMPANY_SETTINGS
+  | typeof SPECIAL_MANAGE_PROJECT_SETTINGS
   | typeof SPECIAL_VIEW_REPORTS
   | typeof SPECIAL_VIEW_RESOURCE_PLANNING;
 
@@ -116,6 +118,7 @@ export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_MANAGE_TEAMS,
   SPECIAL_MANAGE_USERS,
   SPECIAL_MANAGE_COMPANY_SETTINGS,
+  SPECIAL_MANAGE_PROJECT_SETTINGS,
   SPECIAL_VIEW_REPORTS,
   SPECIAL_VIEW_RESOURCE_PLANNING,
 ];
@@ -134,6 +137,7 @@ export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
   [SPECIAL_MANAGE_TEAMS]: 'Manage Teams',
   [SPECIAL_MANAGE_USERS]: 'Manage Users',
   [SPECIAL_MANAGE_COMPANY_SETTINGS]: 'Manage Company Settings',
+  [SPECIAL_MANAGE_PROJECT_SETTINGS]: 'Manage Project Settings',
   [SPECIAL_VIEW_REPORTS]: 'View Reports',
   [SPECIAL_VIEW_RESOURCE_PLANNING]: 'View Resource Planning',
 };

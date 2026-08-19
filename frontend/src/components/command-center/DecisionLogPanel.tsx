@@ -41,6 +41,7 @@ interface DecisionLogPanelProps {
   ) => void;
   onDelete: (id: string) => void;
   loading?: boolean;
+  readOnly?: boolean;
 }
 
 export function DecisionLogPanel({
@@ -49,6 +50,7 @@ export function DecisionLogPanel({
   onUpdate,
   onDelete,
   loading = false,
+  readOnly = false,
 }: DecisionLogPanelProps) {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -96,6 +98,7 @@ export function DecisionLogPanel({
         </TextField>
       </Box>
 
+      {readOnly ? null : (
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
         <TextField
           select
@@ -129,6 +132,7 @@ export function DecisionLogPanel({
           Add Decision
         </Button>
       </Box>
+      )}
 
       {!filtered.length ? (
         <EmptyState title="No decisions logged" />
@@ -141,7 +145,7 @@ export function DecisionLogPanel({
               <TableCell>Category</TableCell>
               <TableCell>Milestone</TableCell>
               <TableCell>Comment</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              {readOnly ? null : <TableCell align="right">Actions</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -165,6 +169,7 @@ export function DecisionLogPanel({
                     formatDisplayValue(row.comment)
                   )}
                 </TableCell>
+                {readOnly ? null : (
                 <TableCell align="right">
                   {editingId === row.id ? (
                     <Button
@@ -193,6 +198,7 @@ export function DecisionLogPanel({
                     </>
                   )}
                 </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

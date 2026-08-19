@@ -117,6 +117,13 @@ class ProjectRead(ProjectBase, TimestampSchema):
     project_template_id: UUID | None = None
     working_model_id: UUID | None = None
     actual_hours: Decimal = Decimal("0")
+    original_hours: Decimal = Decimal("0")
+    additional_work_hours: Decimal = Decimal("0")
+    rework_hours: Decimal = Decimal("0")
+    customer_change_hours: Decimal = Decimal("0")
+    internal_correction_hours: Decimal = Decimal("0")
+    post_completion_hours: Decimal = Decimal("0")
+    has_post_completion_activity: bool = False
     current_planned_hours: Decimal = Decimal("0")
     progress_percent: Decimal = Decimal("0.00")
     health: ProjectHealth = ProjectHealth.green

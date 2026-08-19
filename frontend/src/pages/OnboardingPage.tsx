@@ -9,6 +9,7 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
+  InputAdornment,
   LinearProgress,
   Link,
   MenuItem,
@@ -28,6 +29,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import HowToRegRoundedIcon from '@mui/icons-material/HowToRegRounded';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PublishRoundedIcon from '@mui/icons-material/PublishRounded';
 import RadioButtonUncheckedRoundedIcon from '@mui/icons-material/RadioButtonUncheckedRounded';
 import UnfoldLessRoundedIcon from '@mui/icons-material/UnfoldLessRounded';
@@ -1025,12 +1027,12 @@ function ChecklistFormDialog({
     if (!employeeName.trim()) return;
     if (mode === 'create' && !employeeUserId && !employeeEmail.trim()) return;
     const dept = departmentOptions.find((row) => row.id === departmentId);
+    const codeLocked = mode === 'edit' && Boolean(initial?.employee_code);
+    const joiningLocked = mode === 'edit' && Boolean(initial?.joining_date);
     const payload: FormPayload & { status?: 'in_progress' | 'completed' | 'cancelled' } = {
       employee_name: employeeName.trim(),
       employee_user_id: employeeUserId || null,
       employee_email: mode === 'create' && !employeeUserId ? employeeEmail.trim() || null : null,
-      employee_code: employeeCode.trim() || null,
-      joining_date: joiningDate || null,
       designation: designation.trim() || null,
       department_name: dept?.name ?? null,
       org_department_id: departmentId || null,
@@ -1039,11 +1041,20 @@ function ChecklistFormDialog({
       reporting_manager_id: managerId || null,
       notes: notes.trim() || null,
     };
+    if (!codeLocked) {
+      payload.employee_code = employeeCode.trim() || null;
+    }
+    if (!joiningLocked) {
+      payload.joining_date = joiningDate || null;
+    }
     if (mode === 'edit') {
       payload.status = status;
     }
     onSubmit(payload);
   };
+
+  const codeLocked = mode === 'edit' && Boolean(initial?.employee_code);
+  const joiningLocked = mode === 'edit' && Boolean(initial?.joining_date);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
@@ -1095,23 +1106,71 @@ function ChecklistFormDialog({
             onChange={(event) => setEmployeeName(event.target.value)}
           />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Employee ID"
-              value={employeeCode}
-              onChange={(event) => setEmployeeCode(event.target.value)}
-              placeholder="e.g. PP045"
-            />
-            <TextField
-              fullWidth
-              size="small"
-              type="date"
-              label="Joining date"
-              value={joiningDate}
-              onChange={(event) => setJoiningDate(event.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
+            <Tooltip
+              title={
+                codeLocked
+                  ? 'Employee ID is a historical identifier and cannot be changed here.'
+                  : ''
+              }
+            >
+              <TextField
+                fullWidth
+                size="small"
+                label="Employee ID"
+                value={employeeCode}
+                onChange={(event) => {
+                  if (codeLocked) return;
+                  setEmployeeCode(event.target.value);
+                }}
+                placeholder="e.g. PP045"
+                helperText={codeLocked ? 'Locked after first save.' : undefined}
+                slotProps={{
+                  input: codeLocked
+                    ? {
+                        readOnly: true,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <LockOutlinedIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }
+                    : undefined,
+                }}
+              />
+            </Tooltip>
+            <Tooltip
+              title={
+                joiningLocked
+                  ? 'Joining date is a historical fact. Correct it from Users → Correct historical dates if it was entered wrongly.'
+                  : ''
+              }
+            >
+              <TextField
+                fullWidth
+                size="small"
+                type="date"
+                label="Joining date"
+                value={joiningDate}
+                onChange={(event) => {
+                  if (joiningLocked) return;
+                  setJoiningDate(event.target.value);
+                }}
+                helperText={joiningLocked ? 'Locked after first save.' : undefined}
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  input: joiningLocked
+                    ? {
+                        readOnly: true,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <LockOutlinedIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }
+                    : undefined,
+                }}
+              />
+            </Tooltip>
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
             <TextField

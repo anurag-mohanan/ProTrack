@@ -21,7 +21,13 @@ def _create_draft_timesheet(client):
 def _get_task_type_id(client, name: str) -> str:
     response = client.get("/api/v1/lookups/task-types", headers=client.auth_headers)
     assert response.status_code == 200
-    match = next((row for row in response.json() if row["name"] == name), None)
+    rows = response.json()
+    match = next(
+        (row for row in rows if row["name"] == name and row.get("stream_id") == str(IDS["stream"])),
+        None,
+    )
+    if match is None:
+        match = next((row for row in rows if row["name"] == name), None)
     assert match is not None, f"Task type {name} not found"
     return match["id"]
 

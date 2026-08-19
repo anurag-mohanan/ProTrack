@@ -99,7 +99,9 @@ export function UserAccessControlSection({
       <FormSection title="Special Permissions" icon={SecurityIcon}>
         <Grid size={{ xs: 12 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Independent of role — grant explicit capabilities when needed.
+            Independent of role. Create Projects and Edit Projects are separate — viewing the
+            Projects module does not grant either. They still apply only inside the user's team /
+            data scope.
           </Typography>
           <FormGroup sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0.5 }}>
             {ALL_SPECIAL_PERMISSIONS.map((permission) => (

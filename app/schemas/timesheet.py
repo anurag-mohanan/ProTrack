@@ -11,6 +11,7 @@ from app.models.enums import (
     ExecutionStatus,
     MilestoneStatus,
     NotificationType,
+    PostCompletionWorkType,
     ProjectHealth,
     ProjectStage,
     TimesheetStatus,
@@ -75,6 +76,7 @@ class TimesheetEntryBase(BaseModel):
     leave_count: int | None = None
     description: str | None = None
     contribution_reason: ContributionReason | None = None
+    post_completion_type: PostCompletionWorkType | None = None
 
     @field_validator("hours")
     @classmethod
@@ -102,6 +104,7 @@ class TimesheetEntryUpdate(BlankOptionalFieldsMixin, BaseModel):
     leave_count: int | None = None
     description: str | None = None
     contribution_reason: ContributionReason | None = None
+    post_completion_type: PostCompletionWorkType | None = None
 
     @field_validator("hours")
     @classmethod
@@ -126,6 +129,7 @@ class TimesheetEntryRead(TimesheetEntryBase, TimestampSchema):
     non_productive_category: str | None = None
     user_id: UUID | None = None
     user_name: str | None = None
+    home_team_id: UUID | None = None
 
 
 class TimesheetEntryBulkUpsert(BaseModel):
@@ -143,6 +147,7 @@ class TimesheetEntryBulkUpsert(BaseModel):
     leave_count: int | None = None
     description: str | None = None
     contribution_reason: ContributionReason | None = None
+    post_completion_type: PostCompletionWorkType | None = None
 
     @field_validator("hours")
     @classmethod
@@ -231,6 +236,7 @@ class TimesheetProjectLookup(BaseModel):
     actual_hours: Decimal | None = None
     remaining_hours: Decimal | None = None
     is_assigned_to_user: bool = False
+    post_completion_hours_allowed: bool = True
 
 
 class ContributorReasonHours(BaseModel):
@@ -258,6 +264,13 @@ class TimesheetProjectContext(BaseModel):
     quoted_hours: Decimal
     actual_hours: Decimal
     remaining_hours: Decimal
+    original_hours: Decimal = Decimal("0")
+    additional_work_hours: Decimal = Decimal("0")
+    rework_hours: Decimal = Decimal("0")
+    customer_change_hours: Decimal = Decimal("0")
+    internal_correction_hours: Decimal = Decimal("0")
+    has_post_completion_activity: bool = False
+    post_completion_hours_allowed: bool = True
     milestones_due: list[TimesheetProjectMilestoneDue] = Field(default_factory=list)
     contributor_count: int = 0
     is_assigned_to_user: bool = False

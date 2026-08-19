@@ -10,6 +10,10 @@ import { ModuleHomeButton } from '../components/navigation/ModuleHomeButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import {
+  accessContextFromUser,
+  canCreateProject,
+} from '../utils/permissions';
+import {
   requestOpenGlobalSearch,
   shellMinHeightSx,
   useResponsiveShell,
@@ -18,6 +22,7 @@ import { resolveModuleHome } from '../navigation/moduleHomes';
 
 export function MainLayout() {
   const { user, displayName, logout } = useAuth();
+  const access = accessContextFromUser(user);
   const navigate = useNavigate();
   const location = useLocation();
   const { showInfo } = useToast();
@@ -42,7 +47,9 @@ export function MainLayout() {
 
       if (key === 'n') {
         event.preventDefault();
-        navigate('/projects?create=1');
+        if (canCreateProject(access)) {
+          navigate('/projects?create=1');
+        }
       }
 
       if (key === 's') {
@@ -71,7 +78,7 @@ export function MainLayout() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keydown', onEscape);
     };
-  }, [location.pathname, navigate, showInfo]);
+  }, [access, location.pathname, navigate, showInfo]);
 
   return (
     <Box sx={{ display: 'flex', ...shellMinHeightSx(), bgcolor: 'background.default' }}>

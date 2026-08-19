@@ -30,7 +30,7 @@ import {
   softDeleteProject,
 } from '../services/projectService';
 import type { ArchivedProjectListItem } from '../types';
-import { canSoftDeleteProject } from '../utils/permissions';
+import { canSoftDeleteProject, canEditProject, accessContextFromUser } from '../utils/permissions';
 import { formatCellValue, formatDate } from '../utils/format';
 
 export function ArchivedProjectsPage() {
@@ -69,7 +69,9 @@ export function ArchivedProjectsPage() {
     onError: (error: Error) => showError(error.message),
   });
 
-  const canDelete = canSoftDeleteProject(user?.role_name ?? '');
+  const access = accessContextFromUser(user);
+  const canDelete = canSoftDeleteProject(access);
+  const canRestore = canEditProject(access);
 
   if (archivedQuery.error) return <ErrorState error={archivedQuery.error} />;
 
@@ -142,13 +144,15 @@ export function ArchivedProjectsPage() {
         quickActions={
           selectedProject ? (
             <DrawerQuickActions>
-              <ProsohmButton
-                buttonVariant="outlined"
-                size="small"
-                onClick={() => setRestoreId(selectedProject.id)}
-              >
-                Restore
-              </ProsohmButton>
+              {canRestore ? (
+                <ProsohmButton
+                  buttonVariant="outlined"
+                  size="small"
+                  onClick={() => setRestoreId(selectedProject.id)}
+                >
+                  Restore
+                </ProsohmButton>
+              ) : null}
               {canDelete ? (
                 <ProsohmButton
                   buttonVariant="danger"

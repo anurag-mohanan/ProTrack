@@ -30,15 +30,14 @@ def test_list_projects_lifecycle_all_with_limit_500(client):
     assert len(list_items(response)) >= 1
 
 
-def test_list_projects_lifecycle_all_includes_completed(client):
-    project_id = client.project_id
+def test_list_projects_lifecycle_all_includes_completed(client, session):
+    from app.models.enums import ExecutionStatus
+    from app.models.models import Project
 
-    patch = client.patch(
-        f"/api/v1/projects/{project_id}",
-        json={"execution_status": "completed"},
-        headers=client.auth_headers,
-    )
-    assert patch.status_code == 200
+    project = session.get(Project, IDS["project"])
+    assert project is not None
+    project.execution_status = ExecutionStatus.completed
+    session.commit()
 
     active = client.get(
         "/api/v1/projects?lifecycle=active",

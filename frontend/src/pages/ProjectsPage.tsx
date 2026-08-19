@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { navigateWithBack } from '../hooks/useBackNavigation';
+import { useOpenCreateFromQuery } from '../hooks/useOpenCreateFromQuery';
 import { designTokens } from '../theme/designTokens';
 import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
 import AddIcon from '@mui/icons-material/Add';
@@ -74,7 +75,7 @@ import {
   loadProjectsPageSession,
   saveProjectsPageSession,
 } from '../utils/projectsPageSession';
-import { canArchiveProject, canCreateProject, canDeleteRecords, canEditProject, canViewArchivedProjects, accessContextFromUser } from '../utils/permissions';
+import { canArchiveProject, canCreateProject, canDeleteProject, canEditProject, canViewArchivedProjects, accessContextFromUser, isAdminRole } from '../utils/permissions';
 import {
   applyKpiQuickFilter,
   computeProjectPortfolioMetrics,
@@ -124,7 +125,8 @@ export function ProjectsPage() {
   const { user } = useAuth();
   const access = accessContextFromUser(user);
   const { preferences, updatePreferences } = usePreferences();
-  const isAdmin = canDeleteRecords(access);
+  const canDelete = canDeleteProject(access);
+  const isAdmin = isAdminRole(user?.role_name ?? '');
   const allowAllScope = canSelectAllProjectsScope(user) || isAdmin;
 
   const [portfolioScope, setPortfolioScope] = useState<ProjectsPortfolioScope>('my_streams');
@@ -393,6 +395,11 @@ export function ProjectsPage() {
     },
     onError: (error: Error) => showError(error.message),
   });
+
+  const deleteTarget = useMemo(
+    () => (projectsQuery.data ?? []).find((row) => row.id === deleteId) ?? null,
+    [deleteId, projectsQuery.data],
+  );
 
   const cloneMutation = useMutation({
     mutationFn: cloneProject,
@@ -785,6 +792,9 @@ export function ProjectsPage() {
   const showArchiveActions = canArchiveProject(access);
   const showCreateProject = canCreateProject(access);
   const showEditProject = canEditProject(access);
+  useOpenCreateFromQuery(() => {
+    if (showCreateProject) setCreateOpen(true);
+  });
   const handleEdit = showEditProject ? setEditProject : undefined;
   const handleDuplicate = showCreateProject
     ? (projectId: string) => cloneMutation.mutate(projectId)
@@ -1176,7 +1186,11 @@ export function ProjectsPage() {
           ) : !displayLiveProjects.length && !completedProjects.length ? (
             <EmptyState
               title="No projects found"
-              description="Try adjusting your search, stream scope, or filters, or create a new project."
+              description={
+                showCreateProject
+                  ? 'Try adjusting your search, stream scope, or filters, or create a new project.'
+                  : 'Try adjusting your search, stream scope, or filters.'
+              }
             />
           ) : (
             <>
@@ -1227,8 +1241,8 @@ export function ProjectsPage() {
                       onArchive={showArchiveActions ? setArchiveId : undefined}
                       onDuplicate={handleDuplicate}
                       onExport={handleExport}
-                      onDelete={isAdmin ? setDeleteId : undefined}
-                      canDelete={isAdmin}
+                      onDelete={canDelete ? setDeleteId : undefined}
+                      canDelete={canDelete}
                     />
                   ))
                 ) : shouldGroupByStream ? (
@@ -1269,8 +1283,8 @@ export function ProjectsPage() {
                               onArchive={showArchiveActions ? setArchiveId : undefined}
                               onDuplicate={handleDuplicate}
                               onExport={handleExport}
-                              onDelete={isAdmin ? setDeleteId : undefined}
-                              canDelete={isAdmin}
+                              onDelete={canDelete ? setDeleteId : undefined}
+                              canDelete={canDelete}
                             />
                           ))
                         ) : (
@@ -1292,8 +1306,8 @@ export function ProjectsPage() {
                             onArchive={showArchiveActions ? setArchiveId : undefined}
                             onDuplicate={handleDuplicate}
                             onExport={handleExport}
-                            onDelete={isAdmin ? setDeleteId : undefined}
-                            canDelete={isAdmin}
+                            onDelete={canDelete ? setDeleteId : undefined}
+                            canDelete={canDelete}
                           />
                         )}
                       </ProjectStreamPanel>
@@ -1317,8 +1331,8 @@ export function ProjectsPage() {
                       onArchive={showArchiveActions ? setArchiveId : undefined}
                       onDuplicate={handleDuplicate}
                       onExport={handleExport}
-                      onDelete={isAdmin ? setDeleteId : undefined}
-                      canDelete={isAdmin}
+                      onDelete={canDelete ? setDeleteId : undefined}
+                      canDelete={canDelete}
                     />
                   ))
                 ) : shouldGroupByHealth ? (
@@ -1339,8 +1353,8 @@ export function ProjectsPage() {
                       onArchive={showArchiveActions ? setArchiveId : undefined}
                       onDuplicate={handleDuplicate}
                       onExport={handleExport}
-                      onDelete={isAdmin ? setDeleteId : undefined}
-                      canDelete={isAdmin}
+                      onDelete={canDelete ? setDeleteId : undefined}
+                      canDelete={canDelete}
                     />
                   ))
                 ) : shouldGroupLiveProjectsByTeam ? (
@@ -1361,8 +1375,8 @@ export function ProjectsPage() {
                       onArchive={showArchiveActions ? setArchiveId : undefined}
                       onDuplicate={handleDuplicate}
                       onExport={handleExport}
-                      onDelete={isAdmin ? setDeleteId : undefined}
-                      canDelete={isAdmin}
+                      onDelete={canDelete ? setDeleteId : undefined}
+                      canDelete={canDelete}
                     />
                   ))
                 ) : (
@@ -1387,8 +1401,8 @@ export function ProjectsPage() {
                     onArchive={showArchiveActions ? setArchiveId : undefined}
                               onDuplicate={handleDuplicate}
                     onExport={handleExport}
-                    onDelete={isAdmin ? setDeleteId : undefined}
-                    canDelete={isAdmin}
+                    onDelete={canDelete ? setDeleteId : undefined}
+                    canDelete={canDelete}
                   />
                 )
               ) : null}
@@ -1483,6 +1497,9 @@ export function ProjectsPage() {
         }
         onArchive={(projectId) => setArchiveId(projectId)}
         canArchive={showArchiveActions}
+        canDuplicate={showCreateProject}
+        canDelete={canDelete}
+        onDelete={(projectId) => setDeleteId(projectId)}
       />
 
       <ConfirmDialog
@@ -1509,7 +1526,11 @@ export function ProjectsPage() {
       <ConfirmDialog
         open={deleteId !== null}
         title="Delete project?"
-        message="This project will be soft-deleted and removed from active lists."
+        message={
+          deleteTarget && Number(deleteTarget.actual_hours) > 0
+            ? `This removes ${deleteTarget.tool_number} from active project management. Timesheets, milestones, and post-completion hours are kept for history. Completed projects stay recoverable from Deleted Projects. This does not permanently destroy records.`
+            : 'This removes the project from active project management. Related timesheets, milestones, and history are kept. The project can be restored from Deleted Projects. This is not a permanent erase.'
+        }
         confirmLabel="Delete"
         danger
         loading={deleteMutation.isPending}

@@ -1058,6 +1058,11 @@ def soft_delete_project_legacy(
             detail="Insufficient permissions",
         )
     db_project = get_object_or_404(project, db, record_id)
+    if not can_read_project(db, current_user, db_project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
     try:
         deleted = soft_delete_project(db, record_id, current_user)
         log_activity(

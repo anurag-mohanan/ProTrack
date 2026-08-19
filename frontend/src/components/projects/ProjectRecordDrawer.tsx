@@ -48,9 +48,12 @@ interface ProjectRecordDrawerProps {
   project: ProjectTableRow | null;
   open: boolean;
   onClose: () => void;
-  onEdit: (project: ProjectTableRow) => void;
+  onEdit?: (project: ProjectTableRow) => void;
   onArchive?: (projectId: string) => void;
+  onDelete?: (projectId: string) => void;
   canArchive?: boolean;
+  canDuplicate?: boolean;
+  canDelete?: boolean;
 }
 
 function displayValue(value: string | null | undefined): string {
@@ -63,7 +66,10 @@ export function ProjectRecordDrawer({
   onClose,
   onEdit,
   onArchive,
+  onDelete,
   canArchive = false,
+  canDuplicate = false,
+  canDelete = false,
 }: ProjectRecordDrawerProps) {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
@@ -141,9 +147,11 @@ export function ProjectRecordDrawer({
       quickActions={
         project ? (
           <DrawerQuickActions>
-            <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onEdit(project)}>
-              Edit
-            </ProsohmButton>
+            {onEdit ? (
+              <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onEdit(project)}>
+                Edit
+              </ProsohmButton>
+            ) : null}
             {canArchive && onArchive ? (
               <ProsohmButton
                 buttonVariant="outlined"
@@ -153,14 +161,25 @@ export function ProjectRecordDrawer({
                 Archive
               </ProsohmButton>
             ) : null}
-            <ProsohmButton
-              buttonVariant="outlined"
-              size="small"
-              loading={cloneMutation.isPending}
-              onClick={() => cloneMutation.mutate()}
-            >
-              Duplicate
-            </ProsohmButton>
+            {canDuplicate ? (
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                loading={cloneMutation.isPending}
+                onClick={() => cloneMutation.mutate()}
+              >
+                Duplicate
+              </ProsohmButton>
+            ) : null}
+            {canDelete && onDelete ? (
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                onClick={() => onDelete(project.id)}
+              >
+                Delete
+              </ProsohmButton>
+            ) : null}
             <ProsohmButton
               buttonVariant="outlined"
               size="small"

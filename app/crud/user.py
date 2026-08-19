@@ -130,7 +130,9 @@ def build_user_read(db: Session, user: User) -> UserRead:
     )
 
 
-def _apply_access_payload(data: dict[str, Any]) -> dict[str, Any]:
+def _apply_access_payload(
+    data: dict[str, Any], *, role_name: str | None = None
+) -> dict[str, Any]:
     from app.core.sod import validate_special_permission_sod
 
     payload = dict(data)
@@ -139,9 +141,11 @@ def _apply_access_payload(data: dict[str, Any]) -> dict[str, Any]:
     if "special_permissions" in payload:
         raw_specials = payload.pop("special_permissions")
         if isinstance(raw_specials, str):
-            validate_special_permission_sod(parse_access_list(raw_specials))
+            validate_special_permission_sod(
+                parse_access_list(raw_specials), role_name=role_name
+            )
         else:
-            validate_special_permission_sod(raw_specials)
+            validate_special_permission_sod(raw_specials, role_name=role_name)
         payload["special_permissions"] = serialize_special_permissions(raw_specials)
     if "module_actions" in payload:
         payload["module_actions"] = serialize_module_actions(payload.pop("module_actions"))
@@ -329,13 +333,12 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         )
 
     def create(self, db: Session, *, obj_in: UserCreate) -> User:
-        data = _apply_access_payload(
-            obj_in.model_dump(exclude={"password", "confirm_left_organisation"})
-        )
+        raw = obj_in.model_dump(exclude={"password", "confirm_left_organisation"})
+        role = db.get(Role, raw["role_id"])
+        role_name = role.name if role is not None else ""
+        data = _apply_access_payload(raw, role_name=role_name)
         team_assignments = data.pop("team_assignments", None)
         team_id = data.pop("team_id", None)
-        role = db.get(Role, data["role_id"])
-        role_name = role.name if role is not None else ""
         if data.get("requires_timesheet") is None:
             data["requires_timesheet"] = default_requires_timesheet_for_role(role_name)
         if data.get("requires_salary") is None:
@@ -410,7 +413,14 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
                 update_data["requires_salary"] = default_requires_salary_for_role(
                     new_role.name
                 )
-        update_data = _apply_access_payload(update_data)
+        sod_role_name = None
+        if role_changed:
+            new_role = db.get(Role, update_data["role_id"])
+            sod_role_name = new_role.name if new_role is not None else None
+        else:
+            current_role = db.get(Role, db_obj.role_id)
+            sod_role_name = current_role.name if current_role is not None else None
+        update_data = _apply_access_payload(update_data, role_name=sod_role_name)
         if team_assignments_provided:
             parsed_assignments = _parse_team_assignments(team_assignments) or []
             new_primary = next((row.team_id for row in parsed_assignments if row.is_primary), None)

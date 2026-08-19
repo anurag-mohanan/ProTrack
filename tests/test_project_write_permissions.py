@@ -9,7 +9,12 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.core.access_control import SPECIAL_CREATE_PROJECTS, SPECIAL_EDIT_PROJECTS
+from app.core.access_control import (
+    SPECIAL_APPROVE_PROJECTS,
+    SPECIAL_CREATE_PROJECTS,
+    SPECIAL_DELETE_PROJECTS,
+    SPECIAL_EDIT_PROJECTS,
+)
 from app.models.enums import ActivityAction, EntityType, ExecutionStatus, TeamRelationshipType
 from app.models.models import Activity, Project, Team, TeamMember, User
 from tests.conftest import IDS, list_items, login
@@ -261,3 +266,51 @@ def test_soft_delete_requires_delete_permission(client, session):
     admin = login(client, "admin@prosohm.com")
     allowed = client.post(f"/api/v1/projects/{own.id}/soft-delete", headers=admin)
     assert allowed.status_code == 200, allowed.text
+
+
+def test_create_only_user_cannot_delete(client, session):
+    team_a, _team_b, own, _other = _seed_two_teams(session)
+    designer = session.get(User, IDS["user_binil"])
+    _set_specials(session, designer, [SPECIAL_CREATE_PROJECTS])
+    headers = login(client, "binil@prosohm.com")
+    denied = client.post(f"/api/v1/projects/{own.id}/soft-delete", headers=headers)
+    assert denied.status_code == 403
+    created = client.post(
+        "/api/v1/projects",
+        json=_create_payload(f"CR-{uuid.uuid4().hex[:6]}", str(team_a.id)),
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+
+
+def test_admin_empty_stored_specials_can_still_delete(client, session):
+    admin_user = session.get(User, IDS["user_admin"])
+    assert admin_user is not None
+    _set_specials(session, admin_user, [])
+    team_a, _team_b, own, _other = _seed_two_teams(session)
+    headers = login(client, "admin@prosohm.com")
+    response = client.post(f"/api/v1/projects/{own.id}/soft-delete", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["is_deleted"] is True
+    listed = client.get("/api/v1/projects", headers=headers)
+    ids = {row["id"] for row in list_items(listed)}
+    assert str(own.id) not in ids
+
+
+def test_admin_user_save_allows_delete_and_approve_specials(client, session):
+    admin = login(client, "admin@prosohm.com")
+    admin_user = session.get(User, IDS["user_admin"])
+    assert admin_user is not None
+    response = client.patch(
+        f"/api/v1/users/{admin_user.id}",
+        headers=admin,
+        json={
+            "special_permissions": [
+                SPECIAL_DELETE_PROJECTS,
+                SPECIAL_APPROVE_PROJECTS,
+                SPECIAL_CREATE_PROJECTS,
+                SPECIAL_EDIT_PROJECTS,
+            ]
+        },
+    )
+    assert response.status_code == 200, response.text

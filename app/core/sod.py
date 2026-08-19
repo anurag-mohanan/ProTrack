@@ -38,9 +38,22 @@ SOD_CONFLICT_PAIRS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def validate_special_permission_sod(specials: list[str] | set[str] | None) -> None:
-    """Raise ProTrackValidationError when conflicting specials are combined."""
+def validate_special_permission_sod(
+    specials: list[str] | set[str] | None,
+    *,
+    role_name: str | None = None,
+) -> None:
+    """Raise ProTrackValidationError when conflicting specials are combined.
+
+    The Admin role is exempt: platform administrators hold both maker and
+    checker powers by design. Applying SoD to Admin defaults made it
+    impossible to persist delete_projects together with approve_projects.
+    """
     if not specials:
+        return
+    from app.core.access_control import ADMIN, normalize_role_name
+
+    if role_name and normalize_role_name(role_name) == ADMIN:
         return
     held = {str(s).strip() for s in specials if s}
     for left, right, message in SOD_CONFLICT_PAIRS:

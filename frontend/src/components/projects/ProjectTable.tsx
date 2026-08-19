@@ -459,7 +459,7 @@ function buildColumns(
             onDuplicate={onDuplicate ? () => onDuplicate(String(params.id)) : undefined}
             onExport={onExport ? () => onExport(params.row) : undefined}
             onDelete={onDelete ? () => onDelete(String(params.id)) : undefined}
-            showDelete={Boolean(canDelete && params.row.is_archived)}
+            showDelete={Boolean(canDelete)}
           />
         ) : null}
       </Box>

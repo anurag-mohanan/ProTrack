@@ -61,9 +61,9 @@ import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordH
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { archiveProject, invalidateProjectCalculationQueries, restoreProject } from '../services/projectService';
+import { archiveProject, invalidateProjectCalculationQueries, restoreProject, softDeleteProject } from '../services/projectService';
 import { formatCellValue, formatDisplayValue, formatDate, formatNumber } from '../utils/format';
-import { canArchiveProject, canCreateProject, canEditProject, accessContextFromUser } from '../utils/permissions';
+import { canArchiveProject, canCreateProject, canDeleteProject, canEditProject, accessContextFromUser } from '../utils/permissions';
 
 function InfoLine({ label, value }: { label: string; value: string | null | undefined }) {
   return (
@@ -92,9 +92,11 @@ export function ProjectDetailPage() {
   const canEdit = canEditProject(access);
   const canCreate = canCreateProject(access);
   const canArchive = canArchiveProject(access);
+  const canDelete = canDeleteProject(access);
   const { showSuccess, showError } = useToast();
   const [editOpen, setEditOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
   const [changeTemplateOpen, setChangeTemplateOpen] = useState(false);
   const [folderOpen, setFolderOpen] = useState(false);
@@ -142,6 +144,16 @@ export function ProjectDetailPage() {
     onSuccess: (cloned: { id: string }) => {
       showSuccess('Project cloned');
       navigate(`/projects/${cloned.id}`);
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => softDeleteProject(id),
+    onSuccess: () => {
+      showSuccess('Project removed from active lists. History is retained.');
+      setDeleteOpen(false);
+      navigate('/projects');
     },
     onError: (error: Error) => showError(error.message),
   });
@@ -238,6 +250,15 @@ export function ProjectDetailPage() {
                     disabled={cloneMutation.isPending}
                   >
                     Clone
+                  </Button>
+                ) : null}
+                {canDelete ? (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    Delete
                   </Button>
                 ) : null}
                 {project.is_archived ? (
@@ -709,6 +730,17 @@ export function ProjectDetailPage() {
           />
         </Box>
       </FormDrawer>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete project?"
+        message="This removes the project from active project management. Timesheets, milestones, and post-completion hours are kept. Restore from Deleted Projects if needed."
+        confirmLabel="Delete"
+        danger
+        loading={deleteMutation.isPending}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={() => deleteMutation.mutate()}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteDecisionTarget)}

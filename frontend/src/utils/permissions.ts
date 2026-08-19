@@ -18,6 +18,7 @@ import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import type { CurrentUser } from '../types';
 import {
   ALL_MODULES,
+  ALL_SPECIAL_PERMISSIONS,
   MODULE_ARCHIVED_PROJECTS,
   MODULE_DASHBOARD,
   MODULE_FINANCIAL_PLANNING,
@@ -453,6 +454,9 @@ export function resolveModules(ctx: AccessContext): ModuleKey[] {
 }
 
 export function resolveSpecialPermissions(ctx: AccessContext): SpecialPermissionKey[] {
+  if (normalizeRoleName(ctx.role_name) === ROLES.ADMIN) {
+    return [...ALL_SPECIAL_PERMISSIONS];
+  }
   if (ctx.resolved_special_permissions != null) {
     return ctx.resolved_special_permissions.filter((permission): permission is SpecialPermissionKey =>
       Boolean(permission),
@@ -649,7 +653,7 @@ export function canCreateCustomer(roleNameOrContext: string | AccessContext): bo
 
 export function canDeleteRecords(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
-  return userHasSpecial(ctx, SPECIAL_DELETE_PROJECTS);
+  return isAdminRole(ctx.role_name);
 }
 
 export function canViewDeletedProjects(roleNameOrContext: string | AccessContext): boolean {
@@ -666,8 +670,13 @@ export function canArchiveProject(roleNameOrContext: string | AccessContext): bo
   return userHasSpecial(ctx, SPECIAL_ARCHIVE_PROJECTS);
 }
 
+export function canDeleteProject(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_DELETE_PROJECTS);
+}
+
 export function canSoftDeleteProject(roleNameOrContext: string | AccessContext): boolean {
-  return canDeleteRecords(roleNameOrContext);
+  return canDeleteProject(roleNameOrContext);
 }
 
 export function canEditProject(roleNameOrContext: string | AccessContext): boolean {

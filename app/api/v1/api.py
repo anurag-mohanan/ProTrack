@@ -16,6 +16,7 @@ from app.api.v1 import (
     history_imports,
     hr,
     imports,
+    it_operations,
     timesheet_imports,
     lookups,
     milestones,
@@ -170,3 +171,4 @@ api_router.include_router(security.router)
 api_router.include_router(imports.router)
 api_router.include_router(history_imports.router)
 api_router.include_router(timesheet_imports.router)
+api_router.include_router(it_operations.router)

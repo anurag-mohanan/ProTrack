@@ -21,11 +21,9 @@ import { LoadingState } from '../components/common/LoadingState';
 import { ContentCard } from '../components/ui/cards';
 import { FormField, FormSection, StickyRecordHeader } from '../components/ui/design-system';
 import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordHeader';
-import {
-  changePassword,
-  fetchMyProfile,
-  updateMyPreferences,
-} from '../api/preferences';
+import { changePassword, fetchMyProfile, updateMyPreferences } from '../api/preferences';
+import { fetchMyItProfile, itOperationsKeys } from '../api/itOperations';
+import { ITProfilePanel } from '../components/it/ITProfilePanel';
 import { useToast } from '../context/ToastContext';
 import { formatCellValue, formatNumber } from '../utils/format';
 import type { UserPreferences } from '../types/Preferences';
@@ -48,7 +46,13 @@ export default function UserProfilePage() {
   const [searchParams] = useSearchParams();
   const tabFromQuery = searchParams.get('tab');
   const initialTab =
-    tabFromQuery === 'preferences' ? 1 : tabFromQuery === 'security' || tabFromQuery === 'password' ? 2 : 0;
+    tabFromQuery === 'preferences'
+      ? 1
+      : tabFromQuery === 'security' || tabFromQuery === 'password'
+        ? 2
+        : tabFromQuery === 'it'
+          ? 3
+          : 0;
   const [tab, setTab] = useState(initialTab);
   const [passwordForm, setPasswordForm] = useState({
     current_password: '',
@@ -64,6 +68,12 @@ export default function UserProfilePage() {
   const profileQuery = useQuery({
     queryKey: ['auth', 'profile'],
     queryFn: fetchMyProfile,
+  });
+
+  const itProfileQuery = useQuery({
+    queryKey: itOperationsKeys.profileMe(),
+    queryFn: fetchMyItProfile,
+    enabled: tab === 3,
   });
 
   const passwordMutation = useMutation({
@@ -179,6 +189,7 @@ export default function UserProfilePage() {
               <Tab label="Profile" />
               <Tab label="Preferences" />
               <Tab label="Password" />
+              <Tab label="IT" />
             </Tabs>
 
             <Box sx={{ p: 3 }}>
@@ -382,6 +393,16 @@ export default function UserProfilePage() {
                       />
                     </Grid>
                   </Grid>
+                </FormSection>
+              ) : null}
+
+              {tab === 3 ? (
+                <FormSection title="My IT Profile">
+                  <ITProfilePanel
+                    profile={itProfileQuery.data}
+                    loading={itProfileQuery.isLoading}
+                    emptyMessage="You have no assigned IT assets, accounts, or IP allocations."
+                  />
                 </FormSection>
               ) : null}
             </Box>

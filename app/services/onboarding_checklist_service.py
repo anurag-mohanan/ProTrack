@@ -641,9 +641,74 @@ def set_item_status(
         item.completed_by_id = actor.id
         item.completion_date = completion_date or date.today()
     db.flush()
+    if (
+        status == "completed"
+        and item.responsibility == "it"
+        and item.checklist is not None
+        and item.checklist.employee_user_id is not None
+    ):
+        _maybe_provision_it_account_metadata(db, item=item, actor=actor)
     if item.checklist is not None:
         refresh_checklist_status(item.checklist, db)
     return item
+
+
+def _maybe_provision_it_account_metadata(
+    db: Session,
+    *,
+    item: OnboardingChecklistItem,
+    actor: User,
+) -> None:
+    """Best-effort: create IT account metadata for common provisioning checklist items.
+
+    Never stores credentials. Skips quietly if an equivalent active account exists.
+    """
+    from app.services import it_account_service
+
+    text = (item.item_text or "").lower()
+    account_type: str | None = None
+    if "email" in text:
+        account_type = "email"
+    elif "domain" in text:
+        account_type = "domain"
+    elif "teams" in text:
+        account_type = "application"
+    elif "onedrive" in text:
+        account_type = "application"
+    if account_type is None:
+        return
+
+    user_id = item.checklist.employee_user_id
+    existing = it_account_service.list_accounts(db, user_id=user_id)
+    if any(
+        row.account_type == account_type
+        and row.status == "active"
+        and (row.notes or "").find(item.item_text[:80]) >= 0
+        for row in existing
+    ):
+        return
+    if any(row.account_type == account_type and row.status == "active" for row in existing):
+        # Already have an active account of this type — don't duplicate on re-complete.
+        if account_type in ("email", "domain"):
+            return
+
+    employee = db.get(User, user_id)
+    display = None
+    username = None
+    if employee is not None:
+        display = f"{employee.first_name or ''} {employee.last_name or ''}".strip() or None
+        username = employee.email
+
+    it_account_service.create_account(
+        db,
+        actor=actor,
+        user_id=user_id,
+        account_type=account_type,
+        username=username if account_type == "email" else None,
+        display_name=display,
+        notes=f"Provisioned from onboarding: {item.item_text}",
+        commit=False,
+    )
 
 
 def load_checklist(db: Session, checklist_id: UUID) -> OnboardingChecklist | None:

@@ -24,6 +24,7 @@ import {
   accessContextFromUser,
   canAccessAdministration,
   getHrSectionNavItems,
+  getItSectionNavItems,
   getMainNavItems,
   getOperationsSectionNavItems,
 } from '../../utils/permissions';
@@ -118,11 +119,13 @@ export function AppSidebar({ user, mobileOpen = false, onMobileClose }: AppSideb
   const visibleNavItems = getMainNavItems(ctx);
   const operationsItems = getOperationsSectionNavItems(ctx);
   const hrItems = getHrSectionNavItems(ctx);
+  const itItems = getItSectionNavItems(ctx);
   const showAdministratorEntry = canAccessAdministration(ctx);
   const allNavPaths = [
     ...visibleNavItems.map((item) => item.path),
     ...operationsItems.map((item) => item.path),
     ...hrItems.map((item) => item.path),
+    ...itItems.map((item) => item.path),
   ];
 
   const drawerPaperSx = {
@@ -180,6 +183,25 @@ export function AppSidebar({ user, mobileOpen = false, onMobileClose }: AppSideb
             <SectionLabel>Human Resources</SectionLabel>
             <List disablePadding>
               {hrItems.map((item) => (
+                <NavButton
+                  key={item.path}
+                  path={item.path}
+                  label={item.label}
+                  icon={item.icon}
+                  end={navItemNeedsExactMatch(item.path, allNavPaths)}
+                  onNavigate={onMobileClose}
+                />
+              ))}
+            </List>
+          </>
+        ) : null}
+
+        {itItems.length > 0 ? (
+          <>
+            <Divider sx={{ my: 2, mx: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
+            <SectionLabel>IT Operations</SectionLabel>
+            <List disablePadding>
+              {itItems.map((item) => (
                 <NavButton
                   key={item.path}
                   path={item.path}

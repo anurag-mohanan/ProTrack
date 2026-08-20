@@ -161,6 +161,11 @@ def confirm_and_set_leaving_date(
         _close_all_open_membership_periods(
             db, user_id=user.id, effective_to=leaving_date
         )
+        # Queue IT reclaim work (assets / accounts / IPs) as an open Help Desk ticket.
+        # Non-destructive: IT completes actions via IT Operations workflows.
+        from app.services.it_deprovision_service import ensure_offboard_tasks
+
+        ensure_offboard_tasks(db, user=user, actor=actor)
         today = date.today()
         if leaving_date <= today:
             apply_live_offboard(db, user=user, actor=actor)

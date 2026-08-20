@@ -15,6 +15,7 @@ export const MODULE_PLANNING_BOARD = 'planning_board';
 export const MODULE_CALENDAR = 'calendar';
 export const MODULE_PERFORMANCE = 'performance';
 export const MODULE_TICKETS = 'tickets';
+export const MODULE_IT_OPERATIONS = 'it_operations';
 
 export type ModuleKey =
   | typeof MODULE_DASHBOARD
@@ -31,7 +32,8 @@ export type ModuleKey =
   | typeof MODULE_PLANNING_BOARD
   | typeof MODULE_CALENDAR
   | typeof MODULE_PERFORMANCE
-  | typeof MODULE_TICKETS;
+  | typeof MODULE_TICKETS
+  | typeof MODULE_IT_OPERATIONS;
 
 export const ALL_MODULES: ModuleKey[] = [
   MODULE_DASHBOARD,
@@ -49,6 +51,7 @@ export const ALL_MODULES: ModuleKey[] = [
   MODULE_CALENDAR,
   MODULE_PERFORMANCE,
   MODULE_TICKETS,
+  MODULE_IT_OPERATIONS,
 ];
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
@@ -67,6 +70,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   [MODULE_CALENDAR]: 'Calendar',
   [MODULE_PERFORMANCE]: 'Performance',
   [MODULE_TICKETS]: 'Help Desk',
+  [MODULE_IT_OPERATIONS]: 'IT Operations',
 };
 
 export const SPECIAL_CREATE_PROJECTS = 'create_projects';
@@ -85,6 +89,16 @@ export const SPECIAL_MANAGE_COMPANY_SETTINGS = 'manage_company_settings';
 export const SPECIAL_MANAGE_PROJECT_SETTINGS = 'manage_project_settings';
 export const SPECIAL_VIEW_REPORTS = 'view_reports';
 export const SPECIAL_VIEW_RESOURCE_PLANNING = 'view_resource_planning';
+export const SPECIAL_VIEW_IT_OPERATIONS = 'view_it_operations';
+export const SPECIAL_MANAGE_IT_ASSETS = 'manage_it_assets';
+export const SPECIAL_ASSIGN_IT_ASSETS = 'assign_it_assets';
+export const SPECIAL_MANAGE_IT_NETWORKS = 'manage_it_networks';
+export const SPECIAL_ALLOCATE_IT_IPS = 'allocate_it_ips';
+export const SPECIAL_MANAGE_IT_ACCOUNTS = 'manage_it_accounts';
+export const SPECIAL_GENERATE_IT_CREDENTIALS = 'generate_it_credentials';
+export const SPECIAL_MANAGE_IT_REQUESTS = 'manage_it_requests';
+export const SPECIAL_VIEW_IT_REPORTS = 'view_it_reports';
+export const SPECIAL_MANAGE_IT_SETTINGS = 'manage_it_settings';
 
 export type SpecialPermissionKey =
   | typeof SPECIAL_CREATE_PROJECTS
@@ -102,7 +116,17 @@ export type SpecialPermissionKey =
   | typeof SPECIAL_MANAGE_COMPANY_SETTINGS
   | typeof SPECIAL_MANAGE_PROJECT_SETTINGS
   | typeof SPECIAL_VIEW_REPORTS
-  | typeof SPECIAL_VIEW_RESOURCE_PLANNING;
+  | typeof SPECIAL_VIEW_RESOURCE_PLANNING
+  | typeof SPECIAL_VIEW_IT_OPERATIONS
+  | typeof SPECIAL_MANAGE_IT_ASSETS
+  | typeof SPECIAL_ASSIGN_IT_ASSETS
+  | typeof SPECIAL_MANAGE_IT_NETWORKS
+  | typeof SPECIAL_ALLOCATE_IT_IPS
+  | typeof SPECIAL_MANAGE_IT_ACCOUNTS
+  | typeof SPECIAL_GENERATE_IT_CREDENTIALS
+  | typeof SPECIAL_MANAGE_IT_REQUESTS
+  | typeof SPECIAL_VIEW_IT_REPORTS
+  | typeof SPECIAL_MANAGE_IT_SETTINGS;
 
 export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_CREATE_PROJECTS,
@@ -121,6 +145,16 @@ export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_MANAGE_PROJECT_SETTINGS,
   SPECIAL_VIEW_REPORTS,
   SPECIAL_VIEW_RESOURCE_PLANNING,
+  SPECIAL_VIEW_IT_OPERATIONS,
+  SPECIAL_MANAGE_IT_ASSETS,
+  SPECIAL_ASSIGN_IT_ASSETS,
+  SPECIAL_MANAGE_IT_NETWORKS,
+  SPECIAL_ALLOCATE_IT_IPS,
+  SPECIAL_MANAGE_IT_ACCOUNTS,
+  SPECIAL_GENERATE_IT_CREDENTIALS,
+  SPECIAL_MANAGE_IT_REQUESTS,
+  SPECIAL_VIEW_IT_REPORTS,
+  SPECIAL_MANAGE_IT_SETTINGS,
 ];
 
 export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
@@ -140,6 +174,16 @@ export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
   [SPECIAL_MANAGE_PROJECT_SETTINGS]: 'Manage Project Settings',
   [SPECIAL_VIEW_REPORTS]: 'View Reports',
   [SPECIAL_VIEW_RESOURCE_PLANNING]: 'View Resource Planning',
+  [SPECIAL_VIEW_IT_OPERATIONS]: 'View IT Operations',
+  [SPECIAL_MANAGE_IT_ASSETS]: 'Manage IT Assets',
+  [SPECIAL_ASSIGN_IT_ASSETS]: 'Assign IT Assets',
+  [SPECIAL_MANAGE_IT_NETWORKS]: 'Manage IT Networks',
+  [SPECIAL_ALLOCATE_IT_IPS]: 'Allocate IT IPs',
+  [SPECIAL_MANAGE_IT_ACCOUNTS]: 'Manage IT Accounts',
+  [SPECIAL_GENERATE_IT_CREDENTIALS]: 'Generate IT Credentials',
+  [SPECIAL_MANAGE_IT_REQUESTS]: 'Manage IT Requests',
+  [SPECIAL_VIEW_IT_REPORTS]: 'View IT Reports',
+  [SPECIAL_MANAGE_IT_SETTINGS]: 'Manage IT Settings',
 };
 
 export const PATH_MODULE_MAP: Record<string, ModuleKey> = {
@@ -158,6 +202,7 @@ export const PATH_MODULE_MAP: Record<string, ModuleKey> = {
   '/planning-board': MODULE_PLANNING_BOARD,
   '/performance': MODULE_PERFORMANCE,
   '/help-desk': MODULE_TICKETS,
+  '/it': MODULE_IT_OPERATIONS,
 };
 
 export function moduleForPath(pathname: string): ModuleKey | null {

@@ -20,9 +20,11 @@ import PersonIcon from '@mui/icons-material/Person';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
+import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { fetchUserProfileDetail } from '../../api/resources';
+import { fetchUserItProfile, itOperationsKeys } from '../../api/itOperations';
 import { getProjects } from '../../services/projectService';
 import type { User } from '../../types';
 import type { Activity } from '../../types/Workflow';
@@ -35,6 +37,12 @@ import {
 } from '../ui/design-system';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { LoadingState } from '../common/LoadingState';
+import { ITProfilePanel } from '../it/ITProfilePanel';
+import { useAuth } from '../../context/AuthContext';
+import {
+  accessContextFromUser,
+  canViewItOperations,
+} from '../../utils/permissions';
 import {
   formatCellValue,
   formatDate,
@@ -90,11 +98,20 @@ export function UserDetailsDrawer({
   canImpersonate,
 }: UserDetailsDrawerProps) {
   const [auditExpanded, setAuditExpanded] = useState(false);
+  const { user: currentUser } = useAuth();
+  const access = accessContextFromUser(currentUser);
+  const showItProfile = canViewItOperations(access);
 
   const profileQuery = useQuery({
     queryKey: ['users', user?.id, 'profile'],
     queryFn: () => fetchUserProfileDetail(user!.id),
     enabled: open && Boolean(user?.id),
+  });
+
+  const itProfileQuery = useQuery({
+    queryKey: itOperationsKeys.profileUser(user?.id ?? ''),
+    queryFn: () => fetchUserItProfile(user!.id),
+    enabled: open && Boolean(user?.id) && showItProfile,
   });
 
   const projectsQuery = useQuery({
@@ -285,6 +302,17 @@ export function UserDetailsDrawer({
               />
             </Grid>
           </FormSection>
+
+          {showItProfile ? (
+            <FormSection title="IT profile" icon={DevicesOtherRoundedIcon}>
+              <Grid size={{ xs: 12 }}>
+                <ITProfilePanel
+                  profile={itProfileQuery.data}
+                  loading={itProfileQuery.isLoading}
+                />
+              </Grid>
+            </FormSection>
+          ) : null}
 
           <FormSection title="Assigned Projects" icon={BadgeOutlinedIcon}>
             {projectsQuery.isPending ? (

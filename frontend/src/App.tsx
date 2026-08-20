@@ -45,6 +45,7 @@ import {
   MODULE_ARCHIVED_PROJECTS,
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
+  MODULE_IT_OPERATIONS,
   MODULE_PERFORMANCE,
   MODULE_TICKETS,
   MODULE_PLANNING_BOARD,
@@ -80,6 +81,36 @@ const OrganizationChartPage = lazy(() => import('./pages/OrganizationChartPage')
 const AnalyticsHubPage = lazy(() =>
   import('./pages/AnalyticsHubPage').then((module) => ({
     default: module.AnalyticsHubPage,
+  })),
+);
+const ITDashboardPage = lazy(() =>
+  import('./pages/it/ITDashboardPage').then((module) => ({
+    default: module.ITDashboardPage,
+  })),
+);
+const ITAssetsPage = lazy(() =>
+  import('./pages/it/ITAssetsPage').then((module) => ({
+    default: module.ITAssetsPage,
+  })),
+);
+const ITComputersPage = lazy(() =>
+  import('./pages/it/ITComputersPage').then((module) => ({
+    default: module.ITComputersPage,
+  })),
+);
+const ITNetworksPage = lazy(() =>
+  import('./pages/it/ITNetworksPage').then((module) => ({
+    default: module.ITNetworksPage,
+  })),
+);
+const ITRequestsPage = lazy(() =>
+  import('./pages/it/ITRequestsPage').then((module) => ({
+    default: module.ITRequestsPage,
+  })),
+);
+const ITSettingsPage = lazy(() =>
+  import('./pages/it/ITSettingsPage').then((module) => ({
+    default: module.ITSettingsPage,
   })),
 );
 
@@ -398,6 +429,56 @@ export default function App() {
                     </Route>
                     <Route element={<RoleRoute allowed={canViewResourcePlanning} />}>
                       <Route path="/resource-planning" element={<ResourcePlanningPage />} />
+                    </Route>
+                    <Route element={<ModuleRoute module={MODULE_IT_OPERATIONS} />}>
+                      <Route
+                        path="/it"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading IT operations…" />}>
+                            <ITDashboardPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/assets"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading IT assets…" />}>
+                            <ITAssetsPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/computers"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading computers…" />}>
+                            <ITComputersPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/networks"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading networks…" />}>
+                            <ITNetworksPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/requests"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading IT requests…" />}>
+                            <ITRequestsPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/settings"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading IT settings…" />}>
+                            <ITSettingsPage />
+                          </Suspense>
+                        }
+                      />
                     </Route>
                     </Route>
 

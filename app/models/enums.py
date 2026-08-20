@@ -209,6 +209,22 @@ class ActivityAction(enum.Enum):
     ticket_resolved = "ticket_resolved"
     ticket_closed = "ticket_closed"
     ticket_reopened = "ticket_reopened"
+    it_asset_created = "it_asset_created"
+    it_asset_updated = "it_asset_updated"
+    it_asset_deleted = "it_asset_deleted"
+    it_asset_assigned = "it_asset_assigned"
+    it_asset_returned = "it_asset_returned"
+    it_asset_transferred = "it_asset_transferred"
+    it_computer_created = "it_computer_created"
+    it_computer_updated = "it_computer_updated"
+    it_network_created = "it_network_created"
+    it_network_updated = "it_network_updated"
+    it_ip_allocated = "it_ip_allocated"
+    it_ip_released = "it_ip_released"
+    it_account_created = "it_account_created"
+    it_account_deactivated = "it_account_deactivated"
+    it_credential_generated = "it_credential_generated"
+    it_settings_updated = "it_settings_updated"
 
 
 class NotificationType(enum.Enum):
@@ -262,6 +278,13 @@ class EntityType(enum.Enum):
     ticket = "ticket"
     training_course = "training_course"
     training_assignment = "training_assignment"
+    it_asset_type = "it_asset_type"
+    it_asset = "it_asset"
+    it_computer = "it_computer"
+    it_network = "it_network"
+    it_ip_address = "it_ip_address"
+    it_account = "it_account"
+    it_settings = "it_settings"
 
 
 class CostNature(enum.Enum):

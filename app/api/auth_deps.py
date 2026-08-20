@@ -10,9 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.core.auth import decode_access_token
-from app.core.access_control import user_has_special
 from app.core.module_actions import user_has_module_action
-from app.core.permissions import get_role_name, normalize_role_name
+from app.core.permissions import get_role_name, normalize_role_name, user_holds_special
 from app.models.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
@@ -109,8 +108,7 @@ def require_special(permission: str) -> Callable[..., User]:
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        role_name = normalize_role_name(get_role_name(db, current_user))
-        if not user_has_special(current_user, role_name, permission):
+        if not user_holds_special(db, current_user, permission):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Requires the '{permission}' permission.",

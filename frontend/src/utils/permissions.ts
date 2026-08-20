@@ -15,6 +15,10 @@ import SchoolRoundedIcon from '@mui/icons-material/SchoolRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import HistoryEduRoundedIcon from '@mui/icons-material/HistoryEduRounded';
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
+import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
+import LanRoundedIcon from '@mui/icons-material/LanRounded';
+import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
+import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
 import type { CurrentUser } from '../types';
 import {
   ALL_MODULES,
@@ -23,6 +27,7 @@ import {
   MODULE_DASHBOARD,
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
+  MODULE_IT_OPERATIONS,
   MODULE_PERFORMANCE,
   MODULE_PROJECTS,
   MODULE_REPORTS,
@@ -34,8 +39,10 @@ import {
   MODULE_PLANNING_BOARD,
   MODULE_CALENDAR,
   MODULE_TICKETS,
+  SPECIAL_ALLOCATE_IT_IPS,
   SPECIAL_APPROVE_TIMESHEETS,
   SPECIAL_ARCHIVE_PROJECTS,
+  SPECIAL_ASSIGN_IT_ASSETS,
   SPECIAL_CREATE_PROJECTS,
   SPECIAL_DELETE_PROJECTS,
   SPECIAL_EDIT_PROJECTS,
@@ -44,15 +51,18 @@ import {
   SPECIAL_MANAGE_COMPANY_SETTINGS,
   SPECIAL_MANAGE_CONTACTS,
   SPECIAL_MANAGE_CUSTOMERS,
+  SPECIAL_MANAGE_IT_ASSETS,
+  SPECIAL_MANAGE_IT_NETWORKS,
+  SPECIAL_MANAGE_IT_SETTINGS,
   SPECIAL_MANAGE_PROJECT_SETTINGS,
   SPECIAL_MANAGE_TEAMS,
   SPECIAL_MANAGE_USERS,
+  SPECIAL_VIEW_IT_OPERATIONS,
   SPECIAL_VIEW_REPORTS,
   SPECIAL_VIEW_RESOURCE_PLANNING,
   type ModuleKey,
   type SpecialPermissionKey,
 } from '../config/accessControl';
-
 export const ROLES = {
   ADMIN: 'Admin',
   MANAGING_DIRECTOR: 'Managing Director',
@@ -377,6 +387,45 @@ const HR_SECTION_NAV: SectionNavConfigItem[] = [
   },
 ];
 
+const IT_SECTION_NAV: SectionNavConfigItem[] = [
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'IT Dashboard',
+    path: '/it',
+    icon: DevicesOtherRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Assets',
+    path: '/it/assets',
+    icon: InventoryRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Computers',
+    path: '/it/computers',
+    icon: DevicesOtherRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Networks',
+    path: '/it/networks',
+    icon: LanRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'IT Requests',
+    path: '/it/requests',
+    icon: SupportAgentRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Settings',
+    path: '/it/settings',
+    icon: SettingsRoundedIcon,
+    visible: (ctx: AccessContext) => canManageItSettings(ctx),
+  },
+];
 export const FUTURE_MODULE_PLACEHOLDERS = [
   { label: 'Customer Portal', path: '/future/customer-portal' },
   { label: 'Sales', path: '/future/sales' },
@@ -725,6 +774,36 @@ export function canManageCompanySettings(roleNameOrContext: string | AccessConte
   return userHasSpecial(ctx, SPECIAL_MANAGE_COMPANY_SETTINGS);
 }
 
+export function canViewItOperations(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasModule(ctx, MODULE_IT_OPERATIONS) || userHasSpecial(ctx, SPECIAL_VIEW_IT_OPERATIONS);
+}
+
+export function canManageItAssets(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_IT_ASSETS);
+}
+
+export function canAssignItAssets(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_ASSIGN_IT_ASSETS);
+}
+
+export function canManageItNetworks(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_IT_NETWORKS);
+}
+
+export function canAllocateItIps(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_ALLOCATE_IT_IPS);
+}
+
+export function canManageItSettings(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_IT_SETTINGS);
+}
+
 export function getMainNavItems(roleNameOrContext: string | AccessContext): MainNavItem[] {
   const ctx = toAccessContext(roleNameOrContext);
   if (isPlanningBoardRole(ctx.role_name)) {
@@ -793,6 +872,12 @@ export function getHrSectionNavItems(
   roleNameOrContext: string | AccessContext,
 ): MainNavItem[] {
   return buildSectionNavItems(toAccessContext(roleNameOrContext), HR_SECTION_NAV);
+}
+
+export function getItSectionNavItems(
+  roleNameOrContext: string | AccessContext,
+): MainNavItem[] {
+  return buildSectionNavItems(toAccessContext(roleNameOrContext), IT_SECTION_NAV);
 }
 
 export function canOverrideBillable(roleName: string): boolean {

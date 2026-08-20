@@ -866,9 +866,11 @@ def list_computers(
     db: Session,
     *,
     search: str | None = None,
+    availability: str | None = None,
     skip: int = 0,
     limit: int = 25,
 ) -> tuple[list[Computer], int]:
+    """availability: all|open|assigned|available|reserved|maintenance|retired|disposed"""
     stmt = (
         select(Computer)
         .options(
@@ -877,6 +879,19 @@ def list_computers(
         .join(Asset, Computer.asset_id == Asset.id)
         .where(Asset.is_deleted.is_(False))
     )
+    avail = (availability or "all").strip().lower()
+    if avail == "open" or avail == "available":
+        stmt = stmt.where(Asset.status == "available")
+    elif avail == "assigned":
+        stmt = stmt.where(Asset.status == "assigned")
+    elif avail == "reserved":
+        stmt = stmt.where(Asset.status == "awaiting_return")
+    elif avail == "maintenance":
+        stmt = stmt.where(Asset.status == "maintenance")
+    elif avail == "retired":
+        stmt = stmt.where(Asset.status == "retired")
+    elif avail == "disposed":
+        stmt = stmt.where(Asset.status == "disposed")
     if search:
         q = f"%{search.strip()}%"
         stmt = stmt.where(
@@ -884,11 +899,23 @@ def list_computers(
                 Computer.computer_name.ilike(q),
                 Asset.asset_number.ilike(q),
                 Computer.mac_address.ilike(q),
+                Asset.make.ilike(q),
+                Asset.model.ilike(q),
             )
         )
     rows_all = list(db.scalars(stmt.order_by(Computer.computer_name)).all())
     total = len(rows_all)
     return rows_all[skip : skip + limit], total
+
+
+def get_computer_current_assignee(
+    db: Session, asset_id: UUID
+) -> tuple[AssetAssignment | None, User | None]:
+    assignment = get_current_assignment(db, asset_id)
+    if assignment is None:
+        return None, None
+    user = db.get(User, assignment.assigned_to_user_id)
+    return assignment, user
 
 
 def create_computer(

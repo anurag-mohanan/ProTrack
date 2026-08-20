@@ -40,6 +40,15 @@ export interface ITDashboardSummary {
   networks: number;
   allocated_ips: number;
   pending_onboarding_tasks: number;
+  total_computers?: number;
+  assigned_computers?: number;
+  open_computers?: number;
+  available_computers?: number;
+  reserved_computers?: number;
+  maintenance_computers?: number;
+  retired_computers?: number;
+  disposed_computers?: number;
+  employees_without_computer?: number;
 }
 
 export interface AssetType {
@@ -221,10 +230,67 @@ export interface ITComputer {
   location?: string | null;
   notes?: string | null;
   assigned_to_user_id?: string | null;
+  assigned_to_name?: string | null;
+  assigned_to_team?: string | null;
   assigned_to_user_name?: string | null;
   current_assignee_name?: string | null;
+  is_open?: boolean;
+  assigned_date?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface ITPersonListItem {
+  user_id: string;
+  full_name: string;
+  email?: string | null;
+  designation?: string | null;
+  department?: string | null;
+  team?: string | null;
+  employment_status: string;
+  is_active: boolean;
+  has_protrack_login: boolean;
+  assigned_computer_id?: string | null;
+  assigned_computer_name?: string | null;
+  assigned_asset_number?: string | null;
+  computer_status?: string | null;
+  other_assigned_assets: number;
+  it_account_count: number;
+}
+
+export interface ITPersonDetail {
+  user_id: string;
+  full_name: string;
+  email?: string | null;
+  designation?: string | null;
+  department?: string | null;
+  team?: string | null;
+  employment_status: string;
+  is_active: boolean;
+  joining_date?: string | null;
+  leaving_date?: string | null;
+  assigned_computer?: Record<string, unknown> | null;
+  assigned_assets: Record<string, unknown>[];
+  accounts: Record<string, unknown>[];
+  assignment_history: Record<string, unknown>[];
+}
+
+export interface ITResetPreview {
+  to_delete: Record<string, number>;
+  session_cache_files: number;
+  total_operational_records: number;
+  total_including_session_files: number;
+  will_not_delete: Record<string, number>;
+  preserved_notes: string[];
+  confirm_phrase: string;
+  message: string;
+}
+
+export interface ITResetResult {
+  status: string;
+  deleted: Record<string, number>;
+  will_not_delete: Record<string, number>;
+  message: string;
 }
 
 export interface ITComputerCreate {

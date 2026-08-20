@@ -128,6 +128,11 @@ const ITReportsPage = lazy(() =>
     default: module.ITReportsPage,
   })),
 );
+const ITUsersPage = lazy(() =>
+  import('./pages/it/ITUsersPage').then((module) => ({
+    default: module.ITUsersPage,
+  })),
+);
 const ITModulePlaceholderPage = lazy(() =>
   import('./pages/it/ITModulePlaceholderPage').then((module) => ({
     default: module.ITModulePlaceholderPage,
@@ -494,11 +499,8 @@ export default function App() {
                       <Route
                         path="/it/accounts"
                         element={
-                          <Suspense fallback={<LoadingState message="Loading accounts…" />}>
-                            <ITModulePlaceholderPage
-                              title="Users & Accounts"
-                              description="IT account metadata and secure credential reset workflows."
-                            />
+                          <Suspense fallback={<LoadingState message="Loading IT users…" />}>
+                            <ITUsersPage />
                           </Suspense>
                         }
                       />

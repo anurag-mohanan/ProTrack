@@ -249,6 +249,11 @@ class ComputerRead(TimestampSchema):
     model: Optional[str] = None
     status: Optional[str] = None
     location: Optional[str] = None
+    assigned_to_user_id: Optional[UUID] = None
+    assigned_to_name: Optional[str] = None
+    assigned_to_team: Optional[str] = None
+    is_open: bool = False
+    assigned_date: Optional[date] = None
 
 
 # ---------------------------------------------------------------------------
@@ -408,10 +413,93 @@ class ITDashboardSummary(BaseModel):
     total_assets: int = 0
     assigned_assets: int = 0
     available_assets: int = 0
+    maintenance_assets: int = 0
     open_it_requests: int = 0
     pending_onboarding_tasks: int = 0
     networks: int = 0
     allocated_ips: int = 0
+    total_computers: int = 0
+    assigned_computers: int = 0
+    open_computers: int = 0
+    available_computers: int = 0
+    reserved_computers: int = 0
+    maintenance_computers: int = 0
+    retired_computers: int = 0
+    disposed_computers: int = 0
+    employees_without_computer: int = 0
+
+
+class ITPersonListItem(BaseModel):
+    user_id: UUID
+    full_name: str
+    email: Optional[str] = None
+    designation: Optional[str] = None
+    department: Optional[str] = None
+    team: Optional[str] = None
+    employment_status: str
+    is_active: bool = True
+    has_protrack_login: bool = True
+    assigned_computer_id: Optional[UUID] = None
+    assigned_computer_name: Optional[str] = None
+    assigned_asset_number: Optional[str] = None
+    computer_status: Optional[str] = None
+    other_assigned_assets: int = 0
+    it_account_count: int = 0
+
+
+class ITPersonDetail(BaseModel):
+    user_id: UUID
+    full_name: str
+    email: Optional[str] = None
+    designation: Optional[str] = None
+    department: Optional[str] = None
+    team: Optional[str] = None
+    employment_status: str
+    is_active: bool = True
+    joining_date: Optional[date] = None
+    leaving_date: Optional[date] = None
+    assigned_computer: Optional[dict] = None
+    assigned_assets: list[dict] = Field(default_factory=list)
+    accounts: list[dict] = Field(default_factory=list)
+    assignment_history: list[dict] = Field(default_factory=list)
+
+
+class ITResetPreview(BaseModel):
+    to_delete: dict[str, int] = Field(default_factory=dict)
+    session_cache_files: int = 0
+    total_operational_records: int = 0
+    total_including_session_files: int = 0
+    will_not_delete: dict[str, int] = Field(default_factory=dict)
+    preserved_notes: list[str] = Field(default_factory=list)
+    confirm_phrase: str = "RESET IT DATA"
+    message: str = ""
+
+
+class ITResetResult(BaseModel):
+    status: str
+    deleted: dict[str, int] = Field(default_factory=dict)
+    will_not_delete: dict[str, int] = Field(default_factory=dict)
+    message: str = ""
+
+
+class ComputerAssignRequest(BlankOptionalFieldsMixin, BaseModel):
+    user_id: UUID
+    assigned_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class ComputerUnassignRequest(BlankOptionalFieldsMixin, BaseModel):
+    returned_date: Optional[date] = None
+    return_condition: Optional[str] = None
+    notes: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class ComputerTransferRequest(BlankOptionalFieldsMixin, BaseModel):
+    to_user_id: UUID
+    assigned_date: Optional[date] = None
+    notes: Optional[str] = None
+    reason: Optional[str] = None
 
 
 class AssetRegisterRow(BaseModel):

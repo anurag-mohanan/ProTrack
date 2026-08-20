@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.auth_deps import get_current_user, require_special
+from app.api.auth_deps import get_current_user, require_roles, require_special
 from app.api.deps import get_db
 from app.core.access_control import (
     MODULE_IT_OPERATIONS,
@@ -46,8 +46,11 @@ from app.schemas.it_operations import (
     AssetTypeRead,
     AssetTypeUpdate,
     AssetUpdate,
+    ComputerAssignRequest,
     ComputerCreate,
     ComputerRead,
+    ComputerTransferRequest,
+    ComputerUnassignRequest,
     ComputerUpdate,
     CredentialGenerateRequest,
     CredentialGenerateResponse,
@@ -64,7 +67,11 @@ from app.schemas.it_operations import (
     ITMigrationAnalyzeResult,
     ITMigrationImportResult,
     ITMigrationSourceType,
+    ITPersonDetail,
+    ITPersonListItem,
     ITProfileRead,
+    ITResetPreview,
+    ITResetResult,
     ITSettingsRead,
     ITSettingsUpdate,
     ITUserAccountCreate,
@@ -83,6 +90,8 @@ from app.services import (
     it_data_import_service,
     it_migration_service,
     it_network_service,
+    it_people_service,
+    it_reset_service,
 )
 from app.services.ticketing_service import OPEN_STATUSES
 
@@ -235,9 +244,25 @@ def _customer_return_read(db: Session, row: AssetCustomerReturn) -> AssetCustome
     )
 
 
-def _computer_read(computer) -> ComputerRead:
+def _computer_read(db: Session, computer) -> ComputerRead:
     asset = computer.asset
     at = asset.asset_type if asset else None
+    assignment = None
+    assignee = None
+    team_name = None
+    if asset is not None:
+        assignment, assignee = it_asset_service.get_computer_current_assignee(db, asset.id)
+        if assignee is not None and getattr(assignee, "team", None) is not None:
+            team_name = assignee.team.name
+        elif assignee is not None:
+            # lazy load team if needed
+            from app.models.models import Team
+
+            if assignee.team_id:
+                team = db.get(Team, assignee.team_id)
+                team_name = team.name if team else None
+    status = asset.status if asset else None
+    is_open = status == "available"
     return ComputerRead(
         id=computer.id,
         created_at=computer.created_at,
@@ -258,8 +283,13 @@ def _computer_read(computer) -> ComputerRead:
         serial_number=asset.serial_number if asset else None,
         make=asset.make if asset else None,
         model=asset.model if asset else None,
-        status=asset.status if asset else None,
+        status=status,
         location=asset.location if asset else None,
+        assigned_to_user_id=assignee.id if assignee else None,
+        assigned_to_name=_full_name(assignee) if assignee else None,
+        assigned_to_team=team_name,
+        is_open=is_open,
+        assigned_date=assignment.assigned_date if assignment else None,
     )
 
 
@@ -752,16 +782,25 @@ def list_asset_assignments(
 @router.get("/computers", response_model=PaginatedResponse[ComputerRead])
 def list_computers(
     search: str | None = Query(None),
+    q: str | None = Query(None, description="Alias for search"),
+    availability: str | None = Query(
+        None,
+        description="all|open|assigned|available|reserved|maintenance|retired|disposed",
+    ),
     pagination: PaginationParams = Depends(pagination_query),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_it_access(db, current_user)
     rows, total = it_asset_service.list_computers(
-        db, search=search, skip=pagination.skip, limit=pagination.limit
+        db,
+        search=search or q,
+        availability=availability,
+        skip=pagination.skip,
+        limit=pagination.limit,
     )
     return PaginatedResponse.build(
-        items=[_computer_read(r) for r in rows],
+        items=[_computer_read(db, r) for r in rows],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,
@@ -802,7 +841,7 @@ def create_computer(
             notes=payload.notes,
         )
         computer = it_asset_service.get_computer(db, computer.id) or computer
-        return _computer_read(computer)
+        return _computer_read(db, computer)
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
 
@@ -836,7 +875,102 @@ def update_computer(
             fields_set=set(payload.model_fields_set),
         )
         computer = it_asset_service.get_computer(db, computer.id) or computer
-        return _computer_read(computer)
+        return _computer_read(db, computer)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/computers/{computer_id}/assign",
+    response_model=AssetAssignmentRead,
+    dependencies=[Depends(require_special(SPECIAL_ASSIGN_IT_ASSETS))],
+)
+def assign_computer(
+    computer_id: UUID,
+    payload: ComputerAssignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    computer = it_asset_service.get_computer(db, computer_id)
+    if computer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Computer not found.")
+    asset = it_asset_service.get_asset(db, computer.asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked asset not found.")
+    try:
+        row = it_asset_service.assign_asset(
+            db,
+            asset,
+            user_id=payload.user_id,
+            by_user=current_user,
+            assigned_date=payload.assigned_date,
+            notes=payload.notes,
+        )
+        return _assignment_read(db, row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/computers/{computer_id}/unassign",
+    response_model=AssetAssignmentRead,
+    dependencies=[Depends(require_special(SPECIAL_ASSIGN_IT_ASSETS))],
+)
+def unassign_computer(
+    computer_id: UUID,
+    payload: ComputerUnassignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    computer = it_asset_service.get_computer(db, computer_id)
+    if computer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Computer not found.")
+    asset = it_asset_service.get_asset(db, computer.asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked asset not found.")
+    notes = payload.notes or payload.reason
+    try:
+        row = it_asset_service.return_asset(
+            db,
+            asset,
+            by_user=current_user,
+            returned_date=payload.returned_date,
+            return_condition=payload.return_condition,
+            notes=notes,
+        )
+        return _assignment_read(db, row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/computers/{computer_id}/transfer",
+    response_model=AssetAssignmentRead,
+    dependencies=[Depends(require_special(SPECIAL_ASSIGN_IT_ASSETS))],
+)
+def transfer_computer(
+    computer_id: UUID,
+    payload: ComputerTransferRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    computer = it_asset_service.get_computer(db, computer_id)
+    if computer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Computer not found.")
+    asset = it_asset_service.get_asset(db, computer.asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked asset not found.")
+    notes = payload.notes or payload.reason
+    try:
+        row = it_asset_service.transfer_asset(
+            db,
+            asset,
+            to_user_id=payload.to_user_id,
+            by_user=current_user,
+            assigned_date=payload.assigned_date,
+            notes=notes,
+        )
+        return _assignment_read(db, row)
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
 
@@ -1119,6 +1253,85 @@ def user_it_profile(
     if target is None or target.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     return _profile_for_user(db, user_id)
+
+
+# ---------------------------------------------------------------------------
+# IT Users (ProTrack employees — no duplicate employee DB)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/people", response_model=PaginatedResponse[ITPersonListItem])
+def list_it_people(
+    status: str = Query("active", description="active|inactive|former|all"),
+    search: str | None = Query(None),
+    pagination: PaginationParams = Depends(pagination_query),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    rows, total = it_people_service.list_it_people(
+        db,
+        status=status,
+        search=search,
+        skip=pagination.skip,
+        limit=pagination.limit,
+    )
+    return PaginatedResponse.build(
+        items=[ITPersonListItem(**row) for row in rows],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
+
+
+@router.get("/people/{user_id}", response_model=ITPersonDetail)
+def get_it_person(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    row = it_people_service.get_it_person(db, user_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
+    return ITPersonDetail(**row)
+
+
+# ---------------------------------------------------------------------------
+# Admin IT operational reset
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/data-management/reset-preview",
+    response_model=ITResetPreview,
+    dependencies=[Depends(require_roles("Admin"))],
+)
+def it_reset_preview(db: Session = Depends(get_db)):
+    return ITResetPreview(**it_reset_service.preview_reset(db))
+
+
+@router.post(
+    "/data-management/reset",
+    response_model=ITResetResult,
+    dependencies=[Depends(require_roles("Admin"))],
+)
+def it_reset_execute(
+    confirmation_phrase: str = Form(...),
+    confirm: bool = Form(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = it_reset_service.execute_reset(
+            db,
+            actor=current_user,
+            confirmation_phrase=confirmation_phrase,
+            confirm=confirm,
+        )
+        return ITResetResult(**result)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
 
 
 # ---------------------------------------------------------------------------

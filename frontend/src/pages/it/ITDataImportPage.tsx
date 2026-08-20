@@ -22,8 +22,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   analyzeItDataImport,
   commitItDataImport,
+  executeItReset,
   fetchItDataImportBatches,
   fetchItDataImportTypes,
+  fetchItResetPreview,
   rollbackItDataImport,
   type ITDataImportAnalyzeResult,
   type ITDataImportCommitResult,
@@ -36,12 +38,13 @@ import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
-import { FormSelect } from '../../components/ui/design-system';
+import { FormField, FormSelect } from '../../components/ui/design-system';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import {
   accessContextFromUser,
   canManageItDataImports,
+  ROLES,
 } from '../../utils/permissions';
 
 function statusLabel(status: string): string {
@@ -75,6 +78,7 @@ export function ITDataImportPage() {
   const queryClient = useQueryClient();
   const ctx = accessContextFromUser(user);
   const allowed = canManageItDataImports(ctx);
+  const isAdmin = ctx.role_name === ROLES.ADMIN;
 
   const [importType, setImportType] = useState('assets');
   const [file, setFile] = useState<File | null>(null);
@@ -86,6 +90,8 @@ export function ITDataImportPage() {
   const [depDialogOpen, setDepDialogOpen] = useState(false);
   const [pendingAnalyze, setPendingAnalyze] = useState(false);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
+  const [resetPhrase, setResetPhrase] = useState('');
+  const [resetConfirm, setResetConfirm] = useState(false);
 
   const typesQuery = useQuery({
     queryKey: ['it', 'data-import', 'types'],
@@ -97,6 +103,24 @@ export function ITDataImportPage() {
     queryKey: ['it', 'data-import', 'batches'],
     queryFn: () => fetchItDataImportBatches(),
     enabled: allowed,
+  });
+
+  const resetPreviewQuery = useQuery({
+    queryKey: ['it', 'reset-preview'],
+    queryFn: fetchItResetPreview,
+    enabled: isAdmin,
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: () =>
+      executeItReset({ confirmation_phrase: resetPhrase, confirm: resetConfirm }),
+    onSuccess: (data) => {
+      showSuccess(data.message || 'IT data reset complete.');
+      setResetPhrase('');
+      setResetConfirm(false);
+      void queryClient.invalidateQueries({ queryKey: ['it'] });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
   });
 
   const typeOptions = useMemo(
@@ -226,6 +250,49 @@ export function ITDataImportPage() {
       <PageHeader subtitle="Import one split workbook at a time. Preview and confirm before every commit." />
 
       <Stack spacing={2.5}>
+        {isAdmin && resetPreviewQuery.data && (
+          <ContentCard title="IT operational data reset (Admin)">
+            <Alert severity="error" sx={{ mb: 2 }}>
+              Permanently removes all current IT operational records (assets, computers,
+              inventory, IPs, software, IT accounts, import batches). Does NOT delete
+              employees, users, teams, customers, projects, timesheets, roles, asset types,
+              or IT settings.
+            </Alert>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              Operational rows to delete:{' '}
+              <strong>{resetPreviewQuery.data.total_operational_records}</strong> · Session
+              files: {resetPreviewQuery.data.session_cache_files} · Employees preserved:{' '}
+              {resetPreviewQuery.data.will_not_delete.employees_users}
+            </Typography>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={resetConfirm}
+                  onChange={(e) => setResetConfirm(e.target.checked)}
+                />
+              }
+              label="I understand this permanently deletes IT operational data."
+            />
+            <FormField
+              label={`Type ${resetPreviewQuery.data.confirm_phrase} to confirm`}
+              value={resetPhrase}
+              onChange={(e) => setResetPhrase(e.target.value)}
+              sx={{ maxWidth: 360, my: 1 }}
+            />
+            <ProsohmButton
+              color="error"
+              disabled={
+                !resetConfirm ||
+                resetPhrase !== resetPreviewQuery.data.confirm_phrase ||
+                resetMutation.isPending
+              }
+              onClick={() => resetMutation.mutate()}
+            >
+              {resetMutation.isPending ? 'Resetting…' : 'RESET IT DATA'}
+            </ProsohmButton>
+          </ContentCard>
+        )}
+
         <Alert severity="info">
           Recommended order: Assets → Computers → IP Addresses → Inventory → Software → User
           Accounts → Suppliers. Migration Exceptions are review-only. Passwords are never

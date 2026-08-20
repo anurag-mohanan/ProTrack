@@ -57,6 +57,12 @@ export function ITDashboardPage() {
   const networks = data?.networks ?? 0;
   const allocatedIps = data?.allocated_ips ?? 0;
   const pendingOnboarding = data?.pending_onboarding_tasks ?? 0;
+  const totalComputers = data?.total_computers ?? 0;
+  const assignedComputers = data?.assigned_computers ?? 0;
+  const openComputers = data?.open_computers ?? 0;
+  const maintenanceComputers = data?.maintenance_computers ?? 0;
+  const retiredComputers = data?.retired_computers ?? 0;
+  const employeesWithout = data?.employees_without_computer ?? 0;
   const onboardingTasks = onboardingQuery.data ?? [];
 
   return (
@@ -105,6 +111,65 @@ export function ITDashboardPage() {
             />
           </Grid>
         </Grid>
+
+        <ContentCard title="Computer availability">
+          <Grid container spacing={1.5}>
+            <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+              <KpiMetricCard
+                title="Total"
+                value={String(totalComputers)}
+                icon={DevicesOtherRoundedIcon}
+                accent="primary"
+                onClick={() => navigate('/it/computers')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+              <KpiMetricCard
+                title="Assigned"
+                value={String(assignedComputers)}
+                icon={PersonOutlineRoundedIcon}
+                accent="info"
+                onClick={() => navigate('/it/computers?availability=assigned')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+              <KpiMetricCard
+                title="Open"
+                value={String(openComputers)}
+                icon={CheckCircleOutlineRoundedIcon}
+                accent="success"
+                onClick={() => navigate('/it/computers?availability=open')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+              <KpiMetricCard
+                title="Maintenance"
+                value={String(maintenanceComputers)}
+                icon={BuildRoundedIcon}
+                accent="warning"
+                onClick={() => navigate('/it/computers?availability=maintenance')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+              <KpiMetricCard
+                title="Retired"
+                value={String(retiredComputers)}
+                icon={DevicesOtherRoundedIcon}
+                accent="primary"
+                onClick={() => navigate('/it/computers?availability=retired')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+              <KpiMetricCard
+                title="No computer"
+                value={String(employeesWithout)}
+                icon={HowToRegRoundedIcon}
+                accent="warning"
+                onClick={() => navigate('/it/accounts')}
+              />
+            </Grid>
+          </Grid>
+        </ContentCard>
 
         <Grid container spacing={1.5}>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>

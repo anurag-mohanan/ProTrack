@@ -1,14 +1,29 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { Box, Chip, FormControlLabel, Stack, Switch } from '@mui/material';
+import {
+  Box,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  Stack,
+  Switch,
+  ToggleButton,
+  ToggleButtonGroup,
+} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
 import type { GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  assignComputer,
   createComputer,
   fetchAssetTypes,
   fetchComputersPaginated,
+  fetchItPeoplePaginated,
   itOperationsKeys,
+  unassignComputer,
   updateComputer,
 } from '../../api/itOperations';
 import { getErrorMessage } from '../../api/client';
@@ -31,7 +46,11 @@ import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 import type { ITComputer, ITComputerCreate } from '../../types/itOperations';
 import { formatCellValue } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
-import { accessContextFromUser, canManageItAssets } from '../../utils/permissions';
+import {
+  accessContextFromUser,
+  canAssignItAssets,
+  canManageItAssets,
+} from '../../utils/permissions';
 
 const STORAGE_TYPE_OPTIONS = [
   { value: 'SSD', label: 'SSD' },
@@ -86,14 +105,19 @@ function statusColor(status: string): 'default' | 'success' | 'info' | 'warning'
 
 export function ITComputersPage() {
   const { user } = useAuth();
-  const canManage = canManageItAssets(accessContextFromUser(user));
+  const ctx = accessContextFromUser(user);
+  const canManage = canManageItAssets(ctx);
+  const canAssign = canAssignItAssets(ctx);
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
+  const [availability, setAvailability] = useState('all');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ITComputer | null>(null);
   const [form, setForm] = useState<ComputerFormState>(emptyForm);
+  const [assignTarget, setAssignTarget] = useState<ITComputer | null>(null);
+  const [assignUserId, setAssignUserId] = useState('');
 
   const assetTypesQuery = useQuery({
     queryKey: itOperationsKeys.assetTypes(),
@@ -101,9 +125,18 @@ export function ITComputersPage() {
   });
 
   const listFilters = useMemo(
-    () => ({ q: search.trim() || undefined }),
-    [search],
+    () => ({
+      search: search.trim() || undefined,
+      availability: availability === 'all' ? undefined : availability,
+    }),
+    [search, availability],
   );
+
+  const peopleQuery = useQuery({
+    queryKey: itOperationsKeys.people({ status: 'active', page_size: 200 }),
+    queryFn: () => fetchItPeoplePaginated({ status: 'active', page_size: 200 }),
+    enabled: canAssign && Boolean(assignTarget),
+  });
 
   const computerTypeOptions = useMemo(
     () =>
@@ -154,6 +187,29 @@ export function ITComputersPage() {
       setFormOpen(false);
       setEditing(null);
       setForm(emptyForm);
+      void queryClient.invalidateQueries({ queryKey: itOperationsKeys.all });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: async () => {
+      if (!assignTarget || !assignUserId) throw new Error('Select an employee.');
+      return assignComputer(assignTarget.id, { user_id: assignUserId });
+    },
+    onSuccess: () => {
+      showSuccess('Computer assigned.');
+      setAssignTarget(null);
+      setAssignUserId('');
+      void queryClient.invalidateQueries({ queryKey: itOperationsKeys.all });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const unassignMutation = useMutation({
+    mutationFn: (id: string) => unassignComputer(id, { reason: 'Returned to IT pool' }),
+    onSuccess: () => {
+      showSuccess('Computer unassigned — now Open/Available.');
       void queryClient.invalidateQueries({ queryKey: itOperationsKeys.all });
     },
     onError: (error) => showError(getErrorMessage(error)),
@@ -243,22 +299,56 @@ export function ITComputersPage() {
     },
     {
       field: 'assignee',
-      headerName: 'Assignee',
+      headerName: 'Employee',
       flex: 1,
       minWidth: 140,
       valueGetter: (_value, row) =>
-        row.assigned_to_user_name || row.current_assignee_name || '—',
+        row.assigned_to_name || row.assigned_to_user_name || row.current_assignee_name || '—',
     },
-    ...(canManage
+    {
+      field: 'assigned_to_team',
+      headerName: 'Team',
+      flex: 0.8,
+      minWidth: 110,
+      valueFormatter: (value) => formatCellValue(value) || '—',
+    },
+    {
+      field: 'location',
+      headerName: 'Location',
+      flex: 0.8,
+      minWidth: 110,
+      valueFormatter: (value) => formatCellValue(value) || '—',
+    },
+    ...(canManage || canAssign
       ? [
           {
             field: 'actions',
             headerName: 'Actions',
-            width: DATA_GRID_ACTIONS_COLUMN_WIDTH,
+            width: DATA_GRID_ACTIONS_COLUMN_WIDTH + 40,
             sortable: false,
             filterable: false,
             renderCell: (params) => (
-              <TableRowActions onEdit={() => openEdit(params.row)} />
+              <Stack direction="row" spacing={0.5}>
+                {canManage ? (
+                  <TableRowActions onEdit={() => openEdit(params.row)} />
+                ) : null}
+                {canAssign && params.row.is_open ? (
+                  <ProsohmButton size="small" onClick={() => setAssignTarget(params.row)}>
+                    Assign
+                  </ProsohmButton>
+                ) : null}
+                {canAssign && params.row.status === 'assigned' ? (
+                  <ProsohmButton
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      unassignMutation.mutate(params.row.id);
+                    }}
+                  >
+                    Unassign
+                  </ProsohmButton>
+                ) : null}
+              </Stack>
             ),
           } as GridColDef<ITComputer>,
         ]
@@ -268,8 +358,7 @@ export function ITComputersPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Computers"
-        subtitle="Named workstations linked to the asset register."
+        subtitle="Named workstations. Open = Available with no employee assignment."
         action={
           canManage ? (
             <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
@@ -280,6 +369,18 @@ export function ITComputersPage() {
       />
 
       <SearchToolbar sticky>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={availability}
+          onChange={(_e, value) => value && setAvailability(value)}
+        >
+          <ToggleButton value="all">All</ToggleButton>
+          <ToggleButton value="open">Open</ToggleButton>
+          <ToggleButton value="assigned">Assigned</ToggleButton>
+          <ToggleButton value="maintenance">Maintenance</ToggleButton>
+          <ToggleButton value="retired">Retired</ToggleButton>
+        </ToggleButtonGroup>
         <FormField
           label="Search"
           value={search}
@@ -291,7 +392,7 @@ export function ITComputersPage() {
 
       <ContentCard noPadding>
         <ServerPaginatedDataGrid<ITComputer, ITComputer>
-          queryKey={['it', 'computers']}
+          queryKey={['it', 'computers', listFilters]}
           fetcher={fetchComputersPaginated}
           filters={listFilters}
           columns={columns}
@@ -299,6 +400,38 @@ export function ITComputersPage() {
           autoHeight
         />
       </ContentCard>
+
+      <Dialog
+        open={Boolean(assignTarget)}
+        onClose={() => setAssignTarget(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Assign {assignTarget?.computer_name}</DialogTitle>
+        <DialogContent>
+          <FormSelect
+            label="Employee"
+            value={assignUserId}
+            onChange={(e) => setAssignUserId(String(e.target.value))}
+            options={(peopleQuery.data?.items ?? []).map((p) => ({
+              value: p.user_id,
+              label: `${p.full_name}${p.team ? ` (${p.team})` : ''}`,
+            }))}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton variant="outlined" onClick={() => setAssignTarget(null)}>
+            Cancel
+          </ProsohmButton>
+          <ProsohmButton
+            disabled={!assignUserId || assignMutation.isPending}
+            onClick={() => assignMutation.mutate()}
+          >
+            Confirm assignment
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
 
       <FormDrawer
         open={formOpen}

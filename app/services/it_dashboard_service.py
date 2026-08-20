@@ -79,6 +79,14 @@ def dashboard_summary(db: Session) -> dict[str, int]:
         )
         or 0
     )
+    maintenance_assets = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Asset)
+            .where(Asset.is_deleted.is_(False), Asset.status == "maintenance")
+        )
+        or 0
+    )
     open_it_requests = int(
         db.scalar(
             select(func.count())
@@ -112,14 +120,21 @@ def dashboard_summary(db: Session) -> dict[str, int]:
         )
         or 0
     )
+    from app.services import it_people_service
+
+    computer_stats = it_people_service.computer_availability_summary(db)
+    employees_without = it_people_service.count_active_employees_without_computer(db)
     return {
         "total_assets": total_assets,
         "assigned_assets": assigned_assets,
         "available_assets": available_assets,
+        "maintenance_assets": maintenance_assets,
         "open_it_requests": open_it_requests,
         "pending_onboarding_tasks": pending_onboarding_tasks,
         "networks": networks,
         "allocated_ips": allocated_ips,
+        **computer_stats,
+        "employees_without_computer": employees_without,
     }
 
 

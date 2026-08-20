@@ -50,6 +50,9 @@ export const itOperationsKeys = {
   computers: (filters?: ListParams) =>
     [...itOperationsKeys.all, 'computers', filters ?? {}] as const,
   computer: (id: string) => [...itOperationsKeys.all, 'computers', id] as const,
+  people: (filters?: ListParams) => [...itOperationsKeys.all, 'people', filters ?? {}] as const,
+  person: (id: string) => [...itOperationsKeys.all, 'people', id] as const,
+  resetPreview: () => [...itOperationsKeys.all, 'reset-preview'] as const,
   networks: () => [...itOperationsKeys.all, 'networks'] as const,
   network: (id: string) => [...itOperationsKeys.all, 'networks', id] as const,
   networkIps: (id: string, status?: string) =>
@@ -193,6 +196,61 @@ export async function createComputer(payload: ITComputerCreate): Promise<ITCompu
 
 export async function updateComputer(id: string, payload: ITComputerUpdate): Promise<ITComputer> {
   const { data } = await apiClient.patch<ITComputer>(`/it/computers/${id}`, payload);
+  return data;
+}
+
+export async function assignComputer(
+  id: string,
+  payload: { user_id: string; assigned_date?: string | null; notes?: string | null },
+): Promise<unknown> {
+  const { data } = await apiClient.post(`/it/computers/${id}/assign`, payload);
+  return data;
+}
+
+export async function unassignComputer(
+  id: string,
+  payload?: { reason?: string | null; notes?: string | null },
+): Promise<unknown> {
+  const { data } = await apiClient.post(`/it/computers/${id}/unassign`, payload ?? {});
+  return data;
+}
+
+export async function transferComputer(
+  id: string,
+  payload: { to_user_id: string; reason?: string | null; notes?: string | null },
+): Promise<unknown> {
+  const { data } = await apiClient.post(`/it/computers/${id}/transfer`, payload);
+  return data;
+}
+
+export async function fetchItPeoplePaginated(
+  params?: ListParams & { status?: string },
+): Promise<PaginatedResponse<import('../types/itOperations').ITPersonListItem>> {
+  return getListOrPage('/it/people', params);
+}
+
+export async function fetchItPerson(
+  userId: string,
+): Promise<import('../types/itOperations').ITPersonDetail> {
+  const { data } = await apiClient.get(`/it/people/${userId}`);
+  return data;
+}
+
+export async function fetchItResetPreview(): Promise<import('../types/itOperations').ITResetPreview> {
+  const { data } = await apiClient.get('/it/data-management/reset-preview');
+  return data;
+}
+
+export async function executeItReset(payload: {
+  confirmation_phrase: string;
+  confirm: boolean;
+}): Promise<import('../types/itOperations').ITResetResult> {
+  const form = new FormData();
+  form.append('confirmation_phrase', payload.confirmation_phrase);
+  form.append('confirm', String(payload.confirm));
+  const { data } = await apiClient.post('/it/data-management/reset', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return data;
 }
 

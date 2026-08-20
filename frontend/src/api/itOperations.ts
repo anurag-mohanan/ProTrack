@@ -258,17 +258,22 @@ export interface ITMigrationAnalyzeResult {
   source_type: string;
   filename: string;
   sheet_name: string;
+  workbook_format?: string;
+  column_bindings?: Record<string, string | null>;
   records_found: number;
   new_records: number;
   potential_duplicates: number;
   skipped_records: number;
   requires_review: number;
+  warning_count?: number;
+  error_count?: number;
   sensitive_columns_excluded: string[];
   sensitive_data_excluded_count: number;
   headers: string[];
   duplicates: Array<Record<string, unknown>>;
   exceptions: Array<Record<string, unknown>>;
   preview_rows: Array<Record<string, string>>;
+  first_five_mapped?: Array<Record<string, string>>;
   confirm_required: boolean;
   message: string;
 }

@@ -56,18 +56,92 @@ _SESSIONS_DIR = UPLOAD_DIR / "it_migration"
 
 _SHEET_HINTS: dict[str, list[str]] = {
     "hardware": ["1.hardwares", "hardwares", "hardware"],
-    "accounts": ["2.user_credentials", "user_credentials", "credentials"],
-    "software": ["3.softwares", "softwares", "licenses"],
+    "accounts": ["2.user_credentials", "user_credentials", "credentials", "accounts"],
+    "software": ["3.softwares", "softwares", "licenses", "software"],
     "inventory": ["inventory list", "inventory"],
     "consumables": ["consumables"],
     "suppliers": ["supplier list", "suppliers"],
 }
 
-_HEADER_ROW_OVERRIDES: dict[str, int] = {
+# Fallback header rows for original multi-row inventory layouts only.
+_HEADER_ROW_FALLBACK: dict[str, int] = {
     "inventory": 3,
     "consumables": 3,
     "suppliers": 3,
 }
+
+# Logical field → accepted source header aliases (after _norm_header).
+# Supports Format A (PP-INF-FO-7 / Asset Inventory) and Format B (normalized ProTrack import).
+_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "source_id": (
+        "external_id",
+        "legacy_asset_number",
+        "asset_number",
+        "asset_id",
+        "id_tag",
+        "id",
+    ),
+    "description": ("description",),
+    "name": ("name",),
+    "customer_used_for": ("customer_used_for", "customer_used"),
+    "asset_type": ("asset_type", "type", "category"),
+    "assigned_to": (
+        "assigned_to",
+        "assigned_user",
+        "current_user",
+        "current_designer_user",
+        "current_designer_or_user",
+    ),
+    "make": ("make", "manufacturer"),
+    "model": ("model", "model_number"),
+    "current_status": ("current_status", "status", "condition"),
+    "purchase_date": ("purchase_date", "date_of_purchase", "date"),
+    "warranty_expiry": (
+        "warranty_expiry",
+        "warranty_valid_upto",
+        "warranty_valid_until",
+        "warranty_expiration",
+    ),
+    "warranty": ("warranty",),
+    "service_tag": ("service_tag", "service_tag_number", "service_serial"),
+    "serial_number": ("serial_number", "serial"),
+    "ownership_type": ("ownership_type", "owner_type", "purchased_by"),
+    "owner_customer": ("owner_customer", "owner", "cust_paid", "customer_paid"),
+    "location": ("location", "room", "storage_location"),
+    "team_or_department": ("team_or_department", "department", "team"),
+    "supplier": ("supplier",),
+    "invoice_number": ("invoice_number", "invoice_no", "invoice"),
+    "purchase_value": ("purchase_value", "value"),
+    "computer_name": ("computer_name", "name"),  # Format A NAME = product name
+    "os": ("os",),
+    "ram_gb": ("ram_gb", "ram"),
+    "cpu": ("cpu", "cpu_ghz"),
+    "mac_address": ("mac_address", "mac"),
+    "ip_address": ("ip_address",),
+    "remarks": ("remarks", "remarks_notes", "migration_note", "notes", "return_notes"),
+    "software": ("software",),
+    "seats": ("seats", "no_of_user_license", "no_of_userlicense"),
+    "renewal": ("renewal", "renewal_mode"),
+    "expiry": ("expiry", "license_valid_upto"),
+    "employee_name": ("employee_name", "employee"),
+    "username": ("username",),
+    "email": ("email",),
+    "teams_id": ("ms_teams_id", "teams_id"),
+    "account_status": ("status",),
+    "qty": ("qty", "quantity"),
+    "in_use": ("in_use", "quantity_in_use"),
+    "available": ("available", "quantity_available"),
+}
+
+
+def _norm_header(header: str) -> str:
+    """Normalize header text for alias matching. Does not alter cell values."""
+    s = (header or "").strip().lower()
+    s = s.replace("&", " and ")
+    s = re.sub(r"[?#]+", "", s)
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    return re.sub(r"_+", "_", s).strip("_")
+
 
 
 def _cell_str(value: Any) -> str:
@@ -163,14 +237,244 @@ def _resolve_sheet_name(sheetnames: list[str], source_type: str) -> str | None:
 
 
 def _find_header_row(rows: list[tuple[Any, ...]], source_type: str) -> int:
-    if source_type in _HEADER_ROW_OVERRIDES:
-        return _HEADER_ROW_OVERRIDES[source_type]
+    """Prefer a row that contains known ID / ownership headers (works for Format A + B)."""
+    id_tokens = {
+        "id",
+        "id_tag",
+        "external_id",
+        "asset_number",
+        "legacy_asset_number",
+        "asset_id",
+        "software",
+        "employee_name",
+        "supplier_name",
+        "name",
+    }
+    for i, row in enumerate(rows[:20]):
+        norms = {_norm_header(_cell_str(c)) for c in (row or ()) if _cell_str(c)}
+        if len(norms) >= 3 and norms & id_tokens:
+            return i
+    if source_type in _HEADER_ROW_FALLBACK:
+        return _HEADER_ROW_FALLBACK[source_type]
     for i, row in enumerate(rows[:40]):
         vals = [_cell_str(c) for c in (row or ())]
         nonempty = [v for v in vals if v]
         if len(nonempty) >= 3:
             return i
     return 0
+
+
+def _row_header_index(row: dict[str, str]) -> dict[str, str]:
+    """Map normalized header → original header key in the row dict."""
+    index: dict[str, str] = {}
+    for key in row:
+        norm = _norm_header(key)
+        if norm and norm not in index:
+            index[norm] = key
+    return index
+
+
+def _resolve_field(
+    row: dict[str, str],
+    logical: str,
+    *,
+    header_index: dict[str, str] | None = None,
+    extra_aliases: tuple[str, ...] = (),
+) -> tuple[str, str | None]:
+    """
+    Resolve a logical field from a source row using aliases.
+    Returns (value, matched_original_header_or_None).
+    """
+    index = header_index or _row_header_index(row)
+    aliases = list(extra_aliases) + list(_FIELD_ALIASES.get(logical, ()))
+    for alias in aliases:
+        key = index.get(_norm_header(alias))
+        if key is None:
+            continue
+        return (row.get(key) or "").strip(), key
+    return "", None
+
+
+def _build_column_bindings(headers: list[str], source_type: str) -> dict[str, str | None]:
+    """Show which source header maps to each logical field (for preview/debug)."""
+    index = {_norm_header(h): h for h in headers if h}
+    relevant = [
+        "source_id",
+        "description",
+        "name",
+        "ownership_type",
+        "owner_customer",
+        "customer_used_for",
+        "assigned_to",
+        "asset_type",
+        "service_tag",
+        "serial_number",
+        "current_status",
+        "purchase_date",
+        "location",
+        "supplier",
+        "make",
+        "model",
+    ]
+    if source_type == "software":
+        relevant = ["software", "ownership_type", "owner_customer", "assigned_to", "seats", "expiry"]
+    elif source_type == "accounts":
+        relevant = ["employee_name", "username", "email", "assigned_to", "account_status"]
+    bindings: dict[str, str | None] = {}
+    for logical in relevant:
+        matched = None
+        for alias in _FIELD_ALIASES.get(logical, ()):
+            if _norm_header(alias) in index:
+                matched = index[_norm_header(alias)]
+                break
+        bindings[logical] = matched
+    return bindings
+
+
+def _detect_workbook_format(headers: list[str]) -> str:
+    norms = {_norm_header(h) for h in headers}
+    if {"external_id", "ownership_type", "owner_customer"} & norms:
+        return "normalized_protrack"
+    if {"id", "customer_used_for", "service_tag"} & norms or "id_tag" in norms:
+        return "original_source"
+    if "cust_paid" in norms or "id_tag" in norms:
+        return "original_inventory"
+    return "unknown"
+
+
+def _get_exact(row: dict[str, str], *candidates: str) -> str:
+    """Legacy helper — exact/normalized alias match via _resolve_field path."""
+    index = _row_header_index(row)
+    for cand in candidates:
+        key = index.get(_norm_header(cand))
+        if key is not None:
+            return (row.get(key) or "").strip()
+    return ""
+
+
+def _get(row: dict[str, str], *candidates: str) -> str:
+    return _get_exact(row, *candidates)
+
+
+def _extract_asset_fields(row: dict[str, str]) -> dict[str, str]:
+    """Central hardware/inventory field extraction (Format A + B)."""
+    index = _row_header_index(row)
+    out: dict[str, str] = {}
+    for logical in (
+        "source_id",
+        "description",
+        "name",
+        "customer_used_for",
+        "asset_type",
+        "assigned_to",
+        "make",
+        "model",
+        "current_status",
+        "purchase_date",
+        "warranty_expiry",
+        "warranty",
+        "service_tag",
+        "serial_number",
+        "ownership_type",
+        "owner_customer",
+        "location",
+        "team_or_department",
+        "supplier",
+        "invoice_number",
+        "purchase_value",
+        "computer_name",
+        "os",
+        "ram_gb",
+        "cpu",
+        "mac_address",
+        "ip_address",
+        "remarks",
+    ):
+        value, _hdr = _resolve_field(row, logical, header_index=index)
+        out[logical] = value
+    # Format A inventory: Name is item name, not make.
+    if not out["description"] and out["name"]:
+        out["description"] = out["name"]
+    # Prefer dedicated computer_name; Format A hardware uses NAME for product name.
+    if not out["computer_name"] and out["name"] and out["make"]:
+        out["computer_name"] = out["name"]
+    return out
+
+
+def _resolve_ownership_from_fields(
+    fields: dict[str, str],
+    customers: dict[str, Customer],
+) -> tuple[str, UUID | None, str | None, list[dict[str, str]]]:
+    """
+    ownership_type / owner_customer from explicit source fields only.
+    Returns (purchased_by, owner_customer_id, owner_label, warnings).
+    """
+    warnings: list[dict[str, str]] = []
+    ownership_raw = (fields.get("ownership_type") or "").strip()
+    owner_raw = (fields.get("owner_customer") or "").strip()
+
+    def _as_org() -> tuple[str, UUID | None, str | None, list[dict[str, str]]]:
+        return "organization", None, "Prosohm", warnings
+
+    def _as_customer(label: str) -> tuple[str, UUID | None, str | None, list[dict[str, str]]]:
+        cust = _match_customer(customers, label)
+        if cust:
+            return "customer", cust.id, cust.name, warnings
+        warnings.append(
+            {
+                "code": "CUSTOMER_UNKNOWN",
+                "severity": "review",
+                "detail": f"Owner customer '{label}' not matched; ownership left unknown.",
+            }
+        )
+        return "unknown", None, None, warnings
+
+    if ownership_raw:
+        n = _norm_name(ownership_raw)
+        if n in {"prosohm", "organization", "company", "prosohm eng", "ps"}:
+            return _as_org()
+        if n in {"customer", "client"}:
+            if owner_raw:
+                return _as_customer(owner_raw)
+            warnings.append(
+                {
+                    "code": "OWNERSHIP_UNCLEAR",
+                    "severity": "review",
+                    "detail": "ownership_type=Customer but owner_customer is blank.",
+                }
+            )
+            return "unknown", None, None, warnings
+        # ownership_type may itself be a customer name (e.g. Sybridge / PURCHASED BY)
+        if n not in {"unknown", "n/a", "na", "none", "null"}:
+            return _as_customer(ownership_raw)
+
+    if owner_raw:
+        n = _norm_name(owner_raw)
+        if n in {"yes", "y", "true", "1"}:
+            warnings.append(
+                {
+                    "code": "OWNERSHIP_UNCLEAR",
+                    "severity": "review",
+                    "detail": f"Owner/CUST PAID is '{owner_raw}' without a customer name.",
+                }
+            )
+            return "unknown", None, None, warnings
+        if n in {"prosohm", "organization", "no", "n", "false", "0"}:
+            return _as_org()
+        return _as_customer(owner_raw)
+
+    warnings.append(
+        {
+            "code": "OWNERSHIP_UNCLEAR",
+            "severity": "review",
+            "detail": (
+                "No ownership_type / purchased_by / owner_customer / CUST PAID value "
+                "in source row; ownership left unknown."
+            ),
+        }
+    )
+    return "unknown", None, None, warnings
+
 
 
 def _read_sheet_rows(
@@ -298,28 +602,16 @@ def _existing_asset_keys(db: Session) -> dict[str, set[str]]:
     }
 
 
-def _get_exact(row: dict[str, str], *candidates: str) -> str:
-    """Exact header match only (case-insensitive, trim). Never substring-bind columns."""
-    lower_map = {k.lower().strip(): k for k in row}
-    for cand in candidates:
-        key = lower_map.get(cand.lower().strip())
-        if key is not None:
-            return (row.get(key) or "").strip()
-    return ""
-
-
-def _get(row: dict[str, str], *candidates: str) -> str:
-    """Prefer exact header matches. Avoid loose substring binding that invents values."""
-    return _get_exact(row, *candidates)
-
-
 def list_source_types() -> list[dict[str, str]]:
     return [
         {
             "id": "hardware",
-            "label": "Hardware (IT Records)",
-            "sheet_hint": "1.HARDWARES",
-            "description": "Serialized computers, servers, firewalls, printers.",
+            "label": "Hardware (original or normalized)",
+            "sheet_hint": "1.HARDWARES or hardware",
+            "description": (
+                "Supports PP-INF-FO-7 (ID, Service Tag#) and normalized sheets "
+                "(external_id, ownership_type, service_tag)."
+            ),
         },
         {
             "id": "accounts",
@@ -337,7 +629,7 @@ def list_source_types() -> list[dict[str, str]]:
             "id": "inventory",
             "label": "Asset Inventory",
             "sheet_hint": "INVENTORY LIST",
-            "description": "General / IT inventory list with ownership signals.",
+            "description": "Original inventory list or normalized inventory sheet.",
         },
         {
             "id": "consumables",
@@ -371,6 +663,8 @@ def analyze_upload(
         raise ProTrackValidationError("Uploaded file is empty.")
 
     sheet_name, headers, rows, sensitive = _read_sheet_rows(content, source_type)
+    workbook_format = _detect_workbook_format(headers)
+    column_bindings = _build_column_bindings(headers, source_type)
     customers = _customer_index(db)
     users = _user_index(db)
     existing = _existing_asset_keys(db)
@@ -381,67 +675,99 @@ def analyze_upload(
     new_count = 0
     skip_count = 0
     review_count = 0
+    warning_count = 0
+    error_count = 0
     seen_ids: dict[str, int] = {}
+
+    if column_bindings.get("source_id") is None and source_type in {"hardware", "inventory"}:
+        exceptions.append(
+            {
+                "exception_id": "EX-HEADER_LAYOUT-0000",
+                "id": "EX-HEADER_LAYOUT-0000",
+                "row": None,
+                "source_key": None,
+                "code": "HEADER_LAYOUT",
+                "severity": "error",
+                "detail": (
+                    "No ID column detected among aliases "
+                    "(ID, ID Tag, external_id, asset_number, legacy_asset_number). "
+                    f"Detected headers: {', '.join(headers[:20])}"
+                ),
+            }
+        )
+        error_count += 1
 
     for idx, row in enumerate(rows, start=1):
         row_exceptions: list[dict[str, Any]] = []
         action = "import"
         match_key = None
+        legacy = ""
+        serial = ""
+        service = ""
+        fields: dict[str, str] = {}
+        owner_preview = ""
+        strong = None
 
         if source_type in {"hardware", "inventory"}:
-            legacy = _get(row, "ID", "ID Tag", "Id Tag")
-            serial = _get(row, "SERIAL NUMBER", "Serial Number")
-            service = _get(row, "SERVICE TAG#", "Service Tag", "SERVICE TAG", "Service/Serial")
-            # Intentionally do not copy service → serial; missing stays blank/null.
+            fields = _extract_asset_fields(row)
+            legacy = fields["source_id"]
+            serial = fields["serial_number"]
+            service = fields["service_tag"]
 
-            norm_legacy = _norm_id(legacy)
-            norm_serial = _norm_id(serial)
-            norm_service = _norm_id(service)
-            if norm_legacy:
-                seen_ids[norm_legacy] = seen_ids.get(norm_legacy, 0) + 1
-
-            strong = None
-            if norm_service and norm_service in existing["service_tag"]:
-                strong = "service_tag"
-            elif norm_serial and norm_serial in existing["serial"]:
-                strong = "serial_number"
-            elif norm_legacy and (
-                norm_legacy in existing["legacy"] or norm_legacy in existing["asset_number"]
-            ):
-                strong = "legacy_asset_number"
-
-            if strong:
-                action = "skip_duplicate"
-                skip_count += 1
-                duplicates.append(
-                    {
-                        "row": idx,
-                        "match_type": "strong",
-                        "matched_on": strong,
-                        "legacy_id": legacy or None,
-                        "serial": serial or None,
-                        "service_tag": service or None,
-                    }
-                )
-            else:
-                new_count += 1
-
-            if source_type == "hardware":
-                # Hardware sheet has no Purchased By — flag for review; do not invent ownership.
+            if not legacy:
                 row_exceptions.append(
                     {
-                        "code": "OWNERSHIP_UNCLEAR",
-                        "severity": "review",
-                        "detail": (
-                            f"Hardware ID '{legacy}' has no Purchased By column; "
-                            "ownership will be stored as unknown (not inferred from ID)."
-                        ),
+                        "code": "MISSING_SOURCE_ID",
+                        "severity": "error",
+                        "detail": "Source ID is blank after column mapping.",
                     }
                 )
-                review_count += 1
-                if action == "import":
-                    action = "review"
-                cust_used = _get(row, "CUSTOMER USED FOR")
+                error_count += 1
+                action = "skip"
+                skip_count += 1
+            else:
+                norm_legacy = _norm_id(legacy)
+                norm_serial = _norm_id(serial)
+                norm_service = _norm_id(service)
+                seen_ids[norm_legacy] = seen_ids.get(norm_legacy, 0) + 1
+
+                if norm_service and norm_service in existing["service_tag"]:
+                    strong = "service_tag"
+                elif norm_serial and norm_serial in existing["serial"]:
+                    strong = "serial_number"
+                elif norm_legacy in existing["legacy"] or norm_legacy in existing["asset_number"]:
+                    strong = "legacy_asset_number"
+
+                if strong:
+                    action = "skip_duplicate"
+                    skip_count += 1
+                    duplicates.append(
+                        {
+                            "row": idx,
+                            "match_type": "strong",
+                            "matched_on": strong,
+                            "legacy_id": legacy,
+                            "serial": serial or None,
+                            "service_tag": service or None,
+                        }
+                    )
+                else:
+                    new_count += 1
+
+                purchased_by, _owner_id, owner_label, own_warns = _resolve_ownership_from_fields(
+                    fields, customers
+                )
+                owner_preview = owner_label or purchased_by
+                for w in own_warns:
+                    row_exceptions.append(w)
+                    if w["severity"] == "review":
+                        review_count += 1
+                        if action == "import":
+                            action = "review"
+                    elif w["severity"] == "warning":
+                        warning_count += 1
+
+                cust_used = fields["customer_used_for"]
                 if cust_used and _match_customer(customers, cust_used) is None:
                     if _norm_name(cust_used) not in {
                         "generic",
@@ -452,68 +778,67 @@ def analyze_upload(
                         row_exceptions.append(
                             {
                                 "code": "CUSTOMER_UNKNOWN",
-                                "severity": "review",
-                                "detail": f"CUSTOMER USED FOR '{cust_used}' not matched.",
+                                "severity": "warning",
+                                "detail": f"customer_used_for '{cust_used}' not matched.",
                             }
                         )
-                        review_count += 1
-                assignee = _get(row, "CURRENT USER")
+                        warning_count += 1
+
+                assignee = fields["assigned_to"]
                 if assignee and _match_user(users, assignee) is None:
                     row_exceptions.append(
                         {
                             "code": "USER_UNKNOWN",
                             "severity": "warning",
-                            "detail": f"CURRENT USER '{assignee}' not matched to an employee.",
+                            "detail": f"Assigned user '{assignee}' not matched.",
                         }
                     )
+                    warning_count += 1
+
                 if not service and not serial:
                     row_exceptions.append(
                         {
                             "code": "SERIAL_MISSING",
                             "severity": "warning",
-                            "detail": "No service tag / serial on hardware row (fields stay null).",
+                            "detail": "No service tag / serial in source row (fields stay null).",
                         }
                     )
+                    warning_count += 1
 
-            owner_preview = "unknown"
-            if source_type == "inventory":
-                cust_paid = _get(row, "CUST  PAID  ?", "CUST PAID ?", "Customer Paid")
-                if cust_paid and _match_customer(customers, cust_paid) is not None:
-                    owner_preview = f"customer:{cust_paid}"
-                elif cust_paid:
-                    owner_preview = f"unknown (unmatched CUST PAID '{cust_paid}')"
-                    if action == "import":
-                        action = "review"
-                else:
-                    owner_preview = "unknown (CUST PAID blank)"
-                    if action == "import":
-                        action = "review"
-                    row_exceptions.append(
-                        {
-                            "code": "OWNERSHIP_UNCLEAR",
-                            "severity": "review",
-                            "detail": "CUST PAID blank — ownership left unknown (not defaulted).",
-                        }
-                    )
-                    review_count += 1
-                if cust_paid and _match_customer(customers, cust_paid) is None:
-                    row_exceptions.append(
-                        {
-                            "code": "CUSTOMER_UNKNOWN",
-                            "severity": "review",
-                            "detail": f"CUST PAID '{cust_paid}' not matched to Customer.",
-                        }
-                    )
-                    review_count += 1
-            elif source_type == "hardware":
-                owner_preview = "unknown (no Purchased By column)"
+                if source_type == "inventory":
+                    category = (fields.get("asset_type") or "").upper()
+                    if category in {"FURNITURE", "KITCHEN", "TOOLS"}:
+                        if not strong:
+                            new_count = max(0, new_count - 1)
+                        action = "skip"
+                        skip_count += 1
 
-            match_key = legacy or serial or service
+                match_key = legacy
+
+            if len(preview_rows) < 40 and action != "skip":
+                preview_rows.append(
+                    {
+                        "source_id": legacy or "(missing)",
+                        "description": fields.get("description") or fields.get("name") or "",
+                        "mapped_asset_number": legacy or "",
+                        "owner": owner_preview if legacy else "",
+                        "owner_customer": fields.get("owner_customer") or "",
+                        "customer_used_for": fields.get("customer_used_for") or "",
+                        "status": fields.get("current_status") or "",
+                        "serial": serial or "",
+                        "service_tag": service or "",
+                        "assigned_user": fields.get("assigned_to") or "",
+                        "location": fields.get("location")
+                        or fields.get("team_or_department")
+                        or "",
+                        "import_action": action,
+                    }
+                )
 
         elif source_type == "accounts":
-            name = _get(row, "EMPLOYEE NAME", "Employee")
-            email = _get(row, "EMAIL", "Email")
-            username = _get(row, "USERNAME", "Username")
+            name = _get(row, "EMPLOYEE NAME", "Employee", "employee_name")
+            email = _get(row, "EMAIL", "Email", "email")
+            username = _get(row, "USERNAME", "Username", "username")
             user = (
                 _match_user(users, email)
                 or _match_user(users, name)
@@ -542,11 +867,15 @@ def analyze_upload(
                     }
                 )
             match_key = username or email or name
+            if len(preview_rows) < 40 and action != "skip":
+                preview_rows.append({k: v for k, v in row.items() if v})
 
         elif source_type == "software":
-            software = _get(row, "SOFTWARE", "Software")
-            purchased = _get(row, "PURCHASED BY", "Purchased By")
-            assignee = _get(row, "USER", "User")
+            software = _get(row, "SOFTWARE", "Software", "software")
+            purchased = _get(
+                row, "PURCHASED BY", "Purchased By", "ownership_type", "purchased_by"
+            )
+            assignee = _get(row, "USER", "User", "assigned_to")
             if not software:
                 action = "skip"
                 skip_count += 1
@@ -570,18 +899,23 @@ def analyze_upload(
                         "detail": f"Assigned USER '{assignee}' not matched.",
                     }
                 )
+                warning_count += 1
             match_key = software
+            if len(preview_rows) < 40 and action != "skip":
+                preview_rows.append({k: v for k, v in row.items() if v})
 
         elif source_type == "consumables":
-            name = _get(row, "Name", "NAME")
+            name = _get(row, "Name", "NAME", "name")
             if not name:
                 action = "skip"
                 skip_count += 1
             else:
                 new_count += 1
-                qty = _parse_int(_get(row, "QTY", "Qty"))
-                issued = _parse_int(_get(row, "IN USE", "In Use"))
-                available = _parse_int(_get(row, "AVAILABLE", "Available"))
+                qty = _parse_int(_get(row, "QTY", "Qty", "quantity"))
+                issued = _parse_int(_get(row, "IN USE", "In Use", "quantity_in_use"))
+                available = _parse_int(
+                    _get(row, "AVAILABLE", "Available", "quantity_available")
+                )
                 if (
                     qty is not None
                     and issued is not None
@@ -595,10 +929,13 @@ def analyze_upload(
                             "detail": f"QTY {qty} != IN USE {issued} + AVAILABLE {available}",
                         }
                     )
+                    warning_count += 1
             match_key = name
+            if len(preview_rows) < 40 and action != "skip":
+                preview_rows.append({k: v for k, v in row.items() if v})
 
         elif source_type == "suppliers":
-            name = _get(row, "SUPPLIER NAME", "Supplier Name", "Name")
+            name = _get(row, "SUPPLIER NAME", "Supplier Name", "Name", "name")
             if not name:
                 action = "skip"
                 skip_count += 1
@@ -616,27 +953,6 @@ def analyze_upload(
                     **exc,
                 }
             )
-
-        if len(preview_rows) < 40:
-            if source_type in {"hardware", "inventory"}:
-                preview_rows.append(
-                    {
-                        "source_id": legacy or "",
-                        "description": _get(row, "DESCRIPTION", "Description", "Name"),
-                        "mapped_asset_number": legacy or "",
-                        "owner": owner_preview,
-                        "customer_used_for": _get(row, "CUSTOMER USED FOR"),
-                        "status": _get(row, "CURRENT STATUS", "CONDITION"),
-                        "serial": serial or "",
-                        "service_tag": service or "",
-                        "assigned_user": _get(
-                            row, "CURRENT USER", "Current Designer / user"
-                        ),
-                        "import_action": action,
-                    }
-                )
-            elif action != "skip":
-                preview_rows.append({k: v for k, v in row.items() if v})
 
     for lid, count in seen_ids.items():
         if count > 1:
@@ -656,6 +972,7 @@ def analyze_upload(
     if source_type == "suppliers" and new_count == 0:
         exceptions.append(
             {
+                "exception_id": "EX-SUP-EMPTY",
                 "id": "EX-SUP-EMPTY",
                 "row": None,
                 "source_key": None,
@@ -664,16 +981,20 @@ def analyze_upload(
                 "detail": "Supplier sheet has no data.",
             }
         )
+        warning_count += 1
 
     session_payload = {
         "source_type": source_type,
         "filename": filename,
         "sheet_name": sheet_name,
+        "workbook_format": workbook_format,
+        "column_bindings": column_bindings,
         "headers": headers,
         "sensitive_columns_excluded": sensitive,
         "rows": rows,
         "created_at": datetime.utcnow().isoformat() + "Z",
         "actor_id": str(actor.id),
+        "batch_id": str(uuid4()),
     }
     session_id = _save_session(session_payload)
 
@@ -686,9 +1007,11 @@ def analyze_upload(
         new_value={
             "source_type": source_type,
             "filename": filename,
+            "workbook_format": workbook_format,
             "records": len(rows),
             "sensitive_columns_excluded": sensitive,
             "session_id": session_id,
+            "column_bindings": column_bindings,
         },
         outcome="success",
         module=MODULE,
@@ -700,23 +1023,32 @@ def analyze_upload(
         "source_type": source_type,
         "filename": filename,
         "sheet_name": sheet_name,
+        "workbook_format": workbook_format,
+        "column_bindings": column_bindings,
         "records_found": len(rows),
         "new_records": new_count,
         "potential_duplicates": len(duplicates),
         "skipped_records": skip_count,
         "requires_review": review_count,
+        "warning_count": warning_count,
+        "error_count": error_count,
         "sensitive_columns_excluded": sensitive,
         "sensitive_data_excluded_count": len(sensitive),
         "headers": headers,
         "duplicates": duplicates[:100],
-        "exceptions": exceptions[:200],
+        "exceptions": exceptions[:300],
         "preview_rows": preview_rows,
+        "first_five_mapped": preview_rows[:5],
         "confirm_required": True,
         "message": (
-            "Preview only — no data written. Secrets were excluded. "
-            "Call import with session_id and confirm=true to commit."
+            f"Preview only ({workbook_format}). "
+            f"ID column → {column_bindings.get('source_id')!r}. "
+            f"Ownership → {column_bindings.get('ownership_type')!r}. "
+            f"Service tag → {column_bindings.get('service_tag')!r}. "
+            "Secrets excluded. Confirm to commit."
         ),
     }
+
 
 
 def _resolve_asset_type(db: Session, type_label: str) -> AssetType:
@@ -837,41 +1169,42 @@ def commit_import(
     try:
         if source_type in {"hardware", "inventory"}:
             for idx, row in enumerate(rows, start=1):
-                legacy = _get(row, "ID", "ID Tag")
-                serial = _get(row, "SERIAL NUMBER", "Serial Number")
-                service = _get(
-                    row, "SERVICE TAG#", "Service Tag", "SERVICE TAG", "Service/Serial"
-                )
-                # Do NOT copy service tag into serial_number — blanks stay null.
-                make = _get(row, "MAKE", "Make")
-                model = _get(row, "MODEL", "Model", "MODEL NUMBER", "MODEL NUMBER ")
-                desc = _get(row, "DESCRIPTION", "Description")
-                name_col = _get(row, "Name")
-                if source_type == "inventory" and not desc:
-                    desc = name_col
-                location = _get(row, "ROOM", "LOCATION", "STORAGE LOCATION")
-                type_label = _get(row, "TYPE", "Category")
-                cust_used = _get(row, "CUSTOMER USED FOR")
-                cust_paid = _get(row, "CUST  PAID  ?", "CUST PAID ?")
-                purchase_date = _parse_date(_get(row, "DATE OF PURCHASE", "DATE", "DATE ", "Date"))
-                warranty = _parse_date(_get(row, "WARRANTY VALID UPTO", "WARRANTY/EXPIRATION"))
-                cost = _parse_decimal(_get(row, "VALUE", "Value"))
-                condition = _get(row, "CONDITION", "CURRENT STATUS")
-                supplier_name = _get(row, "SUPPLIER", "SUPPLIER ", "Supplier")
-                invoice = _get(row, "INVOICE NO", "Invoice")
-                computer_name = _get(row, "NAME") if source_type == "hardware" else None
-                os_name = _get(row, "OS")
-                ram = _parse_int(_get(row, "RAM (GB)", "RAM"))
-                cpu = _get(row, "CPU (Ghz)", "CPU")
-                mac = _get(row, "MAC Address", "MAC")
-                current_user_label = _get(row, "CURRENT USER", "Current Designer / user")
-                remarks_only = _get(row, "remarks", "REMARKS/NOTES")
+                fields = _extract_asset_fields(row)
+                legacy = fields["source_id"]
+                serial = fields["serial_number"]
+                service = fields["service_tag"]
+                make = fields["make"] or None
+                model = fields["model"] or None
+                desc = fields["description"] or fields["name"] or None
+                location = fields["location"] or fields["team_or_department"] or None
+                type_label = fields["asset_type"]
+                cust_used = fields["customer_used_for"]
+                purchase_date = _parse_date(fields["purchase_date"])
+                warranty = _parse_date(fields["warranty_expiry"])
+                cost = _parse_decimal(fields["purchase_value"])
+                condition = fields["current_status"] or None
+                supplier_name = fields["supplier"]
+                invoice = fields["invoice_number"] or None
+                computer_name = fields["computer_name"] or None
+                if source_type != "hardware":
+                    computer_name = None
+                os_name = fields["os"] or None
+                ram = _parse_int(fields["ram_gb"])
+                cpu = fields["cpu"] or None
+                mac = fields["mac_address"] or ""
+                current_user_label = fields["assigned_to"]
+                remarks_only = fields["remarks"] or None
 
                 if source_type == "inventory":
-                    category = (_get(row, "Category") or "").upper()
+                    category = (type_label or "").upper()
                     if category in {"FURNITURE", "KITCHEN", "TOOLS"}:
                         skipped += 1
                         continue
+
+                if not legacy:
+                    errors.append(f"Row {idx}: missing source ID after column mapping")
+                    skipped += 1
+                    continue
 
                 norm_legacy = _norm_id(legacy)
                 norm_serial = _norm_id(serial)
@@ -880,11 +1213,8 @@ def commit_import(
                     (norm_service and norm_service in existing["service_tag"])
                     or (norm_serial and norm_serial in existing["serial"])
                     or (
-                        norm_legacy
-                        and (
-                            norm_legacy in existing["legacy"]
-                            or norm_legacy in existing["asset_number"]
-                        )
+                        norm_legacy in existing["legacy"]
+                        or norm_legacy in existing["asset_number"]
                     )
                 ):
                     duplicated += 1
@@ -894,11 +1224,8 @@ def commit_import(
                     conflicted += 1
                     continue
 
-                purchased_by, owner_id, ownership_warnings = _infer_purchased_by(
-                    legacy_id=legacy,
-                    cust_paid=cust_paid,
-                    customers=customers,
-                    source_type=source_type,
+                purchased_by, owner_id, _owner_label, _own_warns = _resolve_ownership_from_fields(
+                    fields, customers
                 )
                 if purchased_by == "customer" and owner_id is None:
                     purchased_by = "unknown"
@@ -908,7 +1235,9 @@ def commit_import(
                     continue
 
                 used_for = _match_customer(customers, cust_used) if cust_used else None
-                supplier_id = _get_or_create_supplier(db, supplier_name) if supplier_name else None
+                supplier_id = (
+                    _get_or_create_supplier(db, supplier_name) if supplier_name else None
+                )
 
                 status = "available"
                 cond_u = (condition or "").upper()
@@ -921,11 +1250,6 @@ def commit_import(
                 elif "RETIRE" in cond_u:
                     status = "retired"
 
-                if not legacy:
-                    errors.append(f"Row {idx}: missing source ID / ID Tag")
-                    skipped += 1
-                    continue
-
                 try:
                     at = _resolve_asset_type(db, type_label)
                     warranty_clean = warranty if warranty and warranty.year < 2090 else None
@@ -936,21 +1260,21 @@ def commit_import(
                         asset_number=legacy,
                         legacy_asset_number=legacy,
                         serial_number=serial or None,
-                        make=make or None,
-                        model=model or None,
+                        make=make,
+                        model=model,
                         purchase_date=purchase_date,
                         purchase_cost=cost,
                         warranty_expiry=warranty_clean,
-                        location=location or None,
-                        notes=remarks_only or None,
-                        description=desc or None,
+                        location=location,
+                        notes=remarks_only,
+                        description=desc,
                         service_tag=service or None,
                         purchased_by=purchased_by,
                         owner_customer_id=owner_id,
                         customer_used_for_id=used_for.id if used_for else None,
                         supplier_id=supplier_id,
-                        invoice_number=invoice or None,
-                        condition=condition or None,
+                        invoice_number=invoice,
+                        condition=condition,
                         commit=False,
                     )
                     if status != "available":
@@ -973,8 +1297,8 @@ def commit_import(
                                     id=uuid4(),
                                     asset_id=asset.id,
                                     computer_name=cname,
-                                    os=os_name or None,
-                                    processor=cpu or None,
+                                    os=os_name,
+                                    processor=cpu,
                                     ram_gb=ram,
                                     mac_address=(mac[:17] if mac else None),
                                 )
@@ -1001,9 +1325,8 @@ def commit_import(
                     elif purchased_by == "organization":
                         owned_org += 1
                     imported += 1
-                    if norm_legacy:
-                        existing["legacy"].add(norm_legacy)
-                        existing["asset_number"].add(norm_legacy)
+                    existing["legacy"].add(norm_legacy)
+                    existing["asset_number"].add(norm_legacy)
                     if norm_serial:
                         existing["serial"].add(norm_serial)
                     if norm_service:

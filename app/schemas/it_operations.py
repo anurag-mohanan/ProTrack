@@ -479,17 +479,22 @@ class ITMigrationAnalyzeResult(BaseModel):
     source_type: str
     filename: str
     sheet_name: str
+    workbook_format: str = "unknown"
+    column_bindings: dict[str, Optional[str]] = Field(default_factory=dict)
     records_found: int
     new_records: int
     potential_duplicates: int
     skipped_records: int
     requires_review: int
+    warning_count: int = 0
+    error_count: int = 0
     sensitive_columns_excluded: list[str] = Field(default_factory=list)
     sensitive_data_excluded_count: int = 0
     headers: list[str] = Field(default_factory=list)
     duplicates: list[dict] = Field(default_factory=list)
     exceptions: list[dict] = Field(default_factory=list)
     preview_rows: list[dict] = Field(default_factory=list)
+    first_five_mapped: list[dict] = Field(default_factory=list)
     confirm_required: bool = True
     message: str = ""
 

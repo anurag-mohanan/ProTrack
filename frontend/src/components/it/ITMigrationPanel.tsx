@@ -157,11 +157,38 @@ export function ITMigrationPanel() {
               <Stat label="New" value={analysis.new_records} />
               <Stat label="Duplicates" value={analysis.potential_duplicates} />
               <Stat label="Needs review" value={analysis.requires_review} />
+              <Stat label="Warnings" value={analysis.warning_count ?? 0} />
+              <Stat label="Errors" value={analysis.error_count ?? 0} />
               <Stat
                 label="Secret columns excluded"
                 value={analysis.sensitive_data_excluded_count}
               />
             </Stack>
+
+            {analysis.column_bindings ? (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Source mapping ({analysis.workbook_format || 'unknown'} · sheet{' '}
+                  {analysis.sheet_name})
+                </Typography>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ProTrack field</TableCell>
+                      <TableCell>Detected source column</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Object.entries(analysis.column_bindings).map(([field, header]) => (
+                      <TableRow key={field}>
+                        <TableCell>{field}</TableCell>
+                        <TableCell>{header || '— not found —'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            ) : null}
 
             {analysis.sensitive_columns_excluded.length > 0 ? (
               <Alert severity="success">

@@ -201,6 +201,147 @@ def test_migration_import_hardware_and_skip_duplicate(client, session):
     assert analyzed2.json()["potential_duplicates"] >= 1
 
 
+def _normalized_hardware_workbook_bytes() -> bytes:
+    """Format B — ProTrack compatible sheet with snake_case headers."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "hardware"
+    ws.append(
+        [
+            "external_id",
+            "asset_number",
+            "legacy_asset_number",
+            "asset_type",
+            "name",
+            "description",
+            "ownership_type",
+            "owner_customer",
+            "customer_used_for",
+            "assigned_to",
+            "team_or_department",
+            "location",
+            "service_tag",
+            "serial_number",
+            "current_status",
+        ]
+    )
+    ws.append(
+        [
+            "IT - 001",
+            "IT - 001",
+            "IT - 001",
+            "IT",
+            "LG DISPLAY 1",
+            "LARGE DISPLAY 60 Inch-Conference-2",
+            "Prosohm",
+            "",
+            "PLATINUM",
+            "",
+            "Sybridge",
+            "Everest at top floor",
+            "",
+            "207PLTV162817",
+            "Working",
+        ]
+    )
+    ws.append(
+        [
+            "IT - 002",
+            "IT - 002",
+            "IT - 002",
+            "IT",
+            "LG DISPLAY 2",
+            "LARGE DISPLAY 60 Inch-Sybridge Job display",
+            "Customer",
+            "Sybridge",
+            "SYBRIDGE",
+            "",
+            "Sybridge",
+            "Ground floor",
+            "",
+            "206PLCD174419",
+            "Working",
+        ]
+    )
+    ws.append(
+        [
+            "IT - 003",
+            "IT - 003",
+            "IT - 003",
+            "IT",
+            "MI DISPLAY 3",
+            "DISPLAY 43 Inch",
+            "Prosohm",
+            "",
+            "",
+            "",
+            "Prosohm",
+            "Trishul",
+            "",
+            "",
+            "Working",
+        ]
+    )
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_normalized_workbook_column_mapping(client, session):
+    from app.models.models import Customer
+
+    # Ensure Sybridge exists for owner match
+    if session.scalar(select(Customer).where(Customer.name.ilike("%sybridge%"))) is None:
+        session.add(Customer(name="Sybridge", code="SYB", is_active=True))
+        session.commit()
+
+    content = _normalized_hardware_workbook_bytes()
+    response = client.post(
+        "/api/v1/it/migration/analyze",
+        headers=client.auth_headers,
+        data={"source_type": "hardware"},
+        files={
+            "file": (
+                "PP-ProTrack_IT_Import_Compatible.xlsx",
+                content,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["workbook_format"] == "normalized_protrack"
+    assert body["column_bindings"]["source_id"] == "external_id"
+    assert body["column_bindings"]["ownership_type"] == "ownership_type"
+    assert body["column_bindings"]["service_tag"] == "service_tag"
+    assert body["records_found"] == 3
+
+    preview = body["preview_rows"]
+    assert preview[0]["source_id"] == "IT - 001"
+    assert preview[0]["owner"] == "Prosohm"
+    assert preview[0]["serial"] == "207PLTV162817"
+    assert preview[1]["source_id"] == "IT - 002"
+    assert "Sybridge" in preview[1]["owner"] or preview[1]["owner"] == "customer"
+    assert preview[2]["source_id"] == "IT - 003"
+
+    # Must NOT claim blank Hardware ID
+    details = " ".join(str(e.get("detail", "")) for e in body["exceptions"])
+    assert "Hardware ID ''" not in details
+    assert "Source ID is blank" not in details
+
+    # Ownership known for Prosohm/Customer rows → not 3x OWNERSHIP_UNCLEAR
+    ownership_unclear = [
+        e for e in body["exceptions"] if e.get("code") == "OWNERSHIP_UNCLEAR"
+    ]
+    assert len(ownership_unclear) == 0
+
+    # SERIAL_MISSING only for row 3 (no serial/service tag) as warning
+    serial_missing = [e for e in body["exceptions"] if e.get("code") == "SERIAL_MISSING"]
+    assert len(serial_missing) == 1
+    assert serial_missing[0]["severity"] == "warning"
+    assert body["requires_review"] == 0
+
+
 def test_migration_accounts_never_store_passwords(client, session):
     admin = session.scalar(select(User).where(User.email == "admin@prosohm.com"))
     assert admin is not None

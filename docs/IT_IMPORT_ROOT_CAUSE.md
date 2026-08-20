@@ -197,7 +197,16 @@ For each hit: review assignments / computers / returns, then choose archive, cor
 
 ---
 
-## 9. Fix status (this change set)
+## 10. Follow-up: normalized workbook column mapping (2026-08-20)
+
+A second failure mode appeared with `PP-ProTrack_IT_Import_Compatible.xlsx`:
+
+- Sheet `hardware` uses snake_case headers (`external_id`, `ownership_type`, `service_tag`, …)
+- Importer only looked for Format A headers (`ID`, `Purchased By`, `SERVICE TAG#`) via exact string match
+- Result: blank source IDs → `Hardware ID ''`, false `OWNERSHIP_UNCLEAR` / `SERIAL_MISSING` for every row
+
+**Fix:** centralized `_norm_header` + `_FIELD_ALIASES` + `_extract_asset_fields` supporting Format A and Format B. Analyze now returns `column_bindings` and `workbook_format` so mapping failures are visible before commit.
+
 
 | Issue | Fix |
 |-------|-----|

@@ -15,15 +15,52 @@ from app.models.enums import ActivityAction, EntityType
 from app.models.it_operations import (
     Asset,
     AssetAssignment,
+    AssetCustomerReturn,
     AssetType,
     Computer,
     ITSettings,
 )
-from app.models.models import User
+from app.models.models import Customer, User
 from app.services.activity_service import log_activity
 
 MODULE = MODULE_IT_OPERATIONS
-ASSET_STATUSES = frozenset({"available", "assigned", "maintenance", "retired", "disposed"})
+ASSET_STATUSES = frozenset(
+    {
+        "available",
+        "assigned",
+        "maintenance",
+        "awaiting_return",
+        "returned_to_customer",
+        "lost",
+        "damaged",
+        "retired",
+        "disposed",
+    }
+)
+CURRENT_INVENTORY_STATUSES = frozenset(
+    {"available", "assigned", "maintenance", "awaiting_return"}
+)
+PURCHASED_BY_CODES = frozenset({"organization", "customer", "vendor", "leased", "other"})
+
+
+def _validate_ownership(
+    *,
+    purchased_by: str,
+    owner_customer_id: UUID | None,
+) -> None:
+    if purchased_by not in PURCHASED_BY_CODES:
+        raise ProTrackValidationError(
+            f"Invalid purchased_by '{purchased_by}'. "
+            f"Allowed: {', '.join(sorted(PURCHASED_BY_CODES))}"
+        )
+    if purchased_by == "customer" and owner_customer_id is None:
+        raise ProTrackValidationError(
+            "owner_customer_id is required when purchased_by is 'customer'."
+        )
+    if purchased_by != "customer" and owner_customer_id is not None:
+        raise ProTrackValidationError(
+            "owner_customer_id is only allowed when purchased_by is 'customer'."
+        )
 
 
 def _full_name(user: User | None) -> str | None:
@@ -209,6 +246,10 @@ def list_assets(
     status: str | None = None,
     asset_type_id: UUID | None = None,
     search: str | None = None,
+    inventory_scope: str = "current",
+    purchased_by: str | None = None,
+    owner_customer_id: UUID | None = None,
+    customer_used_for_id: UUID | None = None,
     skip: int = 0,
     limit: int = 25,
 ) -> tuple[list[Asset], int]:
@@ -217,37 +258,59 @@ def list_assets(
         .options(selectinload(Asset.asset_type), selectinload(Asset.assignments))
         .where(Asset.is_deleted.is_(False))
     )
+    count_filters = [Asset.is_deleted.is_(False)]
+
+    scope = (inventory_scope or "current").strip().lower()
     if status:
         stmt = stmt.where(Asset.status == status)
+        count_filters.append(Asset.status == status)
+    elif scope == "current":
+        stmt = stmt.where(Asset.status.in_(CURRENT_INVENTORY_STATUSES))
+        count_filters.append(Asset.status.in_(CURRENT_INVENTORY_STATUSES))
+    elif scope == "returned":
+        stmt = stmt.where(Asset.status == "returned_to_customer")
+        count_filters.append(Asset.status == "returned_to_customer")
+    elif scope == "historical":
+        stmt = stmt.where(
+            Asset.status.in_(
+                ("returned_to_customer", "retired", "disposed", "lost")
+            )
+        )
+        count_filters.append(
+            Asset.status.in_(
+                ("returned_to_customer", "retired", "disposed", "lost")
+            )
+        )
+    # scope == "all": no extra status filter
+
     if asset_type_id:
         stmt = stmt.where(Asset.asset_type_id == asset_type_id)
+        count_filters.append(Asset.asset_type_id == asset_type_id)
+    if purchased_by:
+        stmt = stmt.where(Asset.purchased_by == purchased_by)
+        count_filters.append(Asset.purchased_by == purchased_by)
+    if owner_customer_id:
+        stmt = stmt.where(Asset.owner_customer_id == owner_customer_id)
+        count_filters.append(Asset.owner_customer_id == owner_customer_id)
+    if customer_used_for_id:
+        stmt = stmt.where(Asset.customer_used_for_id == customer_used_for_id)
+        count_filters.append(Asset.customer_used_for_id == customer_used_for_id)
     if search:
         q = f"%{search.strip()}%"
-        stmt = stmt.where(
-            or_(
-                Asset.asset_number.ilike(q),
-                Asset.serial_number.ilike(q),
-                Asset.make.ilike(q),
-                Asset.model.ilike(q),
-                Asset.location.ilike(q),
-            )
+        search_clause = or_(
+            Asset.asset_number.ilike(q),
+            Asset.legacy_asset_number.ilike(q),
+            Asset.serial_number.ilike(q),
+            Asset.service_tag.ilike(q),
+            Asset.make.ilike(q),
+            Asset.model.ilike(q),
+            Asset.location.ilike(q),
+            Asset.description.ilike(q),
         )
-    count_stmt = select(Asset.id).where(Asset.is_deleted.is_(False))
-    if status:
-        count_stmt = count_stmt.where(Asset.status == status)
-    if asset_type_id:
-        count_stmt = count_stmt.where(Asset.asset_type_id == asset_type_id)
-    if search:
-        q = f"%{search.strip()}%"
-        count_stmt = count_stmt.where(
-            or_(
-                Asset.asset_number.ilike(q),
-                Asset.serial_number.ilike(q),
-                Asset.make.ilike(q),
-                Asset.model.ilike(q),
-                Asset.location.ilike(q),
-            )
-        )
+        stmt = stmt.where(search_clause)
+        count_filters.append(search_clause)
+
+    count_stmt = select(Asset.id).where(*count_filters)
     total = len(list(db.scalars(count_stmt).all()))
     rows = list(
         db.scalars(stmt.order_by(Asset.asset_number).offset(skip).limit(limit)).all()
@@ -286,20 +349,43 @@ def create_asset(
     warranty_expiry: date | None = None,
     location: str | None = None,
     notes: str | None = None,
+    legacy_asset_number: str | None = None,
+    description: str | None = None,
+    service_tag: str | None = None,
+    purchased_by: str = "organization",
+    owner_customer_id: UUID | None = None,
+    customer_used_for_id: UUID | None = None,
+    supplier_id: UUID | None = None,
+    invoice_number: str | None = None,
+    condition: str | None = None,
     commit: bool = True,
 ) -> Asset:
     asset_type = db.get(AssetType, asset_type_id)
     if asset_type is None or not asset_type.is_active:
         raise ProTrackValidationError("Asset type not found or inactive.")
+    _validate_ownership(purchased_by=purchased_by, owner_customer_id=owner_customer_id)
+    if owner_customer_id is not None and db.get(Customer, owner_customer_id) is None:
+        raise ProTrackValidationError("Owner customer not found.")
+    if customer_used_for_id is not None and db.get(Customer, customer_used_for_id) is None:
+        raise ProTrackValidationError("Customer used for not found.")
     number = next_asset_number(db, asset_type)
     asset = Asset(
         id=uuid4(),
         asset_number=number,
+        legacy_asset_number=(legacy_asset_number or "").strip() or None,
         asset_type_id=asset_type.id,
+        description=(description or "").strip() or None,
         serial_number=(serial_number or "").strip() or None,
+        service_tag=(service_tag or "").strip() or None,
         make=(make or "").strip() or None,
         model=(model or "").strip() or None,
         status="available",
+        purchased_by=purchased_by,
+        owner_customer_id=owner_customer_id,
+        customer_used_for_id=customer_used_for_id,
+        supplier_id=supplier_id,
+        invoice_number=(invoice_number or "").strip() or None,
+        condition=(condition or "").strip() or None,
         purchase_date=purchase_date,
         purchase_cost=purchase_cost,
         warranty_expiry=warranty_expiry,
@@ -315,7 +401,12 @@ def create_asset(
         entity_type=EntityType.it_asset,
         entity_id=asset.id,
         action=ActivityAction.it_asset_created,
-        new_value={"asset_number": asset.asset_number, "asset_type_id": str(asset_type.id)},
+        new_value={
+            "asset_number": asset.asset_number,
+            "asset_type_id": str(asset_type.id),
+            "purchased_by": asset.purchased_by,
+            "owner_customer_id": str(owner_customer_id) if owner_customer_id else None,
+        },
         outcome="success",
         module=MODULE,
         commit=False,
@@ -341,11 +432,25 @@ def update_asset(
     warranty_expiry: date | None = None,
     location: str | None = None,
     notes: str | None = None,
+    legacy_asset_number: str | None = None,
+    description: str | None = None,
+    service_tag: str | None = None,
+    purchased_by: str | None = None,
+    owner_customer_id: UUID | None = None,
+    customer_used_for_id: UUID | None = None,
+    supplier_id: UUID | None = None,
+    invoice_number: str | None = None,
+    condition: str | None = None,
     fields_set: set[str] | None = None,
 ) -> Asset:
     if asset.is_deleted:
         raise ProTrackValidationError("Cannot update a deleted asset.")
-    old = {"status": asset.status, "location": asset.location}
+    old = {
+        "status": asset.status,
+        "location": asset.location,
+        "purchased_by": asset.purchased_by,
+        "owner_customer_id": str(asset.owner_customer_id) if asset.owner_customer_id else None,
+    }
     touched = fields_set or set()
 
     if asset_type_id is not None and ("asset_type_id" in touched or fields_set is None):
@@ -373,17 +478,73 @@ def update_asset(
         asset.location = (location or "").strip() or None
     if "notes" in touched or (fields_set is None and notes is not None):
         asset.notes = (notes or "").strip() or None
+    if "legacy_asset_number" in touched or (
+        fields_set is None and legacy_asset_number is not None
+    ):
+        asset.legacy_asset_number = (legacy_asset_number or "").strip() or None
+    if "description" in touched or (fields_set is None and description is not None):
+        asset.description = (description or "").strip() or None
+    if "service_tag" in touched or (fields_set is None and service_tag is not None):
+        asset.service_tag = (service_tag or "").strip() or None
+    if "invoice_number" in touched or (fields_set is None and invoice_number is not None):
+        asset.invoice_number = (invoice_number or "").strip() or None
+    if "condition" in touched or (fields_set is None and condition is not None):
+        asset.condition = (condition or "").strip() or None
+    if "supplier_id" in touched or (fields_set is None and supplier_id is not None):
+        asset.supplier_id = supplier_id
+
+    next_purchased_by = asset.purchased_by
+    next_owner = asset.owner_customer_id
+    if purchased_by is not None and ("purchased_by" in touched or fields_set is None):
+        next_purchased_by = purchased_by
+    if "owner_customer_id" in touched or (
+        fields_set is None and owner_customer_id is not None
+    ):
+        next_owner = owner_customer_id
+    if (
+        ("purchased_by" in touched or "owner_customer_id" in touched)
+        or (
+            fields_set is None
+            and (purchased_by is not None or owner_customer_id is not None)
+        )
+    ):
+        _validate_ownership(purchased_by=next_purchased_by, owner_customer_id=next_owner)
+        if next_owner is not None and db.get(Customer, next_owner) is None:
+            raise ProTrackValidationError("Owner customer not found.")
+        asset.purchased_by = next_purchased_by
+        asset.owner_customer_id = next_owner
+
+    if "customer_used_for_id" in touched or (
+        fields_set is None and customer_used_for_id is not None
+    ):
+        if customer_used_for_id is not None and db.get(Customer, customer_used_for_id) is None:
+            raise ProTrackValidationError("Customer used for not found.")
+        asset.customer_used_for_id = customer_used_for_id
 
     db.add(asset)
     db.flush()
+    ownership_changed = old["purchased_by"] != asset.purchased_by or old[
+        "owner_customer_id"
+    ] != (str(asset.owner_customer_id) if asset.owner_customer_id else None)
     log_activity(
         db,
         user=actor,
         entity_type=EntityType.it_asset,
         entity_id=asset.id,
-        action=ActivityAction.it_asset_updated,
+        action=(
+            ActivityAction.it_asset_ownership_changed
+            if ownership_changed
+            else ActivityAction.it_asset_updated
+        ),
         old_value=old,
-        new_value={"status": asset.status, "location": asset.location},
+        new_value={
+            "status": asset.status,
+            "location": asset.location,
+            "purchased_by": asset.purchased_by,
+            "owner_customer_id": str(asset.owner_customer_id)
+            if asset.owner_customer_id
+            else None,
+        },
         outcome="success",
         module=MODULE,
         commit=False,
@@ -396,6 +557,10 @@ def update_asset(
 def soft_delete_asset(db: Session, asset: Asset, *, actor: User) -> Asset:
     if asset.is_deleted:
         return asset
+    if asset.status == "returned_to_customer":
+        raise ProTrackValidationError(
+            "Returned customer assets must be retained in history and cannot be deleted."
+        )
     open_asg = get_current_assignment(db, asset.id)
     if open_asg is not None:
         raise ProTrackValidationError("Return the asset before deleting it.")
@@ -432,6 +597,10 @@ def assign_asset(
 ) -> AssetAssignment:
     if asset.is_deleted:
         raise ProTrackValidationError("Cannot assign a deleted asset.")
+    if asset.status == "returned_to_customer":
+        raise ProTrackValidationError(
+            "Cannot assign an asset that was returned to the customer."
+        )
     if asset.status != "available":
         raise ProTrackValidationError(
             f"Asset must be available to assign (current status: {asset.status})."
@@ -518,6 +687,100 @@ def return_asset(
         db.commit()
         db.refresh(assignment)
     return assignment
+
+
+def return_asset_to_customer(
+    db: Session,
+    asset: Asset,
+    *,
+    by_user: User,
+    return_date: date | None = None,
+    owner_customer_id: UUID | None = None,
+    received_by_name: str | None = None,
+    condition_at_return: str | None = None,
+    return_reason: str | None = None,
+    notes: str | None = None,
+    commit: bool = True,
+) -> AssetCustomerReturn:
+    """Mark customer-owned asset as returned — keep history, remove from current inventory."""
+    if asset.is_deleted:
+        raise ProTrackValidationError("Cannot return a deleted asset.")
+    if asset.status == "returned_to_customer":
+        raise ProTrackValidationError("Asset is already returned to customer.")
+    if asset.purchased_by != "customer":
+        raise ProTrackValidationError(
+            "Only customer-owned assets can be returned to a customer."
+        )
+    customer_id = owner_customer_id or asset.owner_customer_id
+    if customer_id is None:
+        raise ProTrackValidationError("Customer owner is required for return.")
+    customer = db.get(Customer, customer_id)
+    if customer is None:
+        raise ProTrackValidationError("Owner customer not found.")
+
+    when = return_date or date.today()
+    assignment = get_current_assignment(db, asset.id)
+    original_assignee = assignment.assigned_to_user_id if assignment else None
+    if assignment is not None:
+        assignment.returned_date = when
+        assignment.return_condition = (condition_at_return or "").strip() or None
+        db.add(assignment)
+
+    event = AssetCustomerReturn(
+        id=uuid4(),
+        asset_id=asset.id,
+        owner_customer_id=customer_id,
+        return_date=when,
+        returned_by_user_id=by_user.id,
+        received_by_name=(received_by_name or "").strip() or None,
+        condition_at_return=(condition_at_return or "").strip() or None,
+        return_reason=(return_reason or "").strip() or None,
+        notes=(notes or "").strip() or None,
+        original_assignee_user_id=original_assignee,
+    )
+    asset.status = "returned_to_customer"
+    asset.owner_customer_id = customer_id
+    db.add(event)
+    db.add(asset)
+    db.flush()
+    log_activity(
+        db,
+        user=by_user,
+        entity_type=EntityType.it_asset,
+        entity_id=asset.id,
+        action=ActivityAction.it_asset_returned_to_customer,
+        new_value={
+            "asset_number": asset.asset_number,
+            "owner_customer_id": str(customer_id),
+            "return_date": str(when),
+            "condition_at_return": event.condition_at_return,
+            "received_by_name": event.received_by_name,
+        },
+        outcome="success",
+        module=MODULE,
+        commit=False,
+    )
+    if commit:
+        db.commit()
+        db.refresh(event)
+    return event
+
+
+def list_customer_returns(
+    db: Session,
+    *,
+    owner_customer_id: UUID | None = None,
+    limit: int = 500,
+) -> list[AssetCustomerReturn]:
+    stmt = (
+        select(AssetCustomerReturn)
+        .options(selectinload(AssetCustomerReturn.asset).selectinload(Asset.asset_type))
+        .order_by(AssetCustomerReturn.return_date.desc())
+        .limit(limit)
+    )
+    if owner_customer_id is not None:
+        stmt = stmt.where(AssetCustomerReturn.owner_customer_id == owner_customer_id)
+    return list(db.scalars(stmt).all())
 
 
 def transfer_asset(

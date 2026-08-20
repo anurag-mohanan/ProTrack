@@ -1,4 +1,4 @@
-"""CRUD helpers for per-user preferences."""
+import json
 
 from uuid import UUID
 
@@ -12,6 +12,9 @@ from app.schemas.preferences import UserPreferencesUpdate
 
 _VALID_PORTFOLIO_SCOPES = frozenset({"my_streams", "my_teams", "all"})
 _VALID_CC_LAYOUTS = frozenset({"list", "card", "grouped"})
+_VALID_SIDEBAR_SECTIONS = frozenset(
+    {"engineering", "operations", "hr", "it", "future", "admin"}
+)
 
 
 def get_or_create_user_preferences(db: Session, user: User) -> UserPreferences:
@@ -42,6 +45,24 @@ def update_user_preferences(
         raise ProTrackValidationError(
             "projects_cc_layout must be one of: list, card, grouped"
         )
+    if "sidebar_section_state" in data and data["sidebar_section_state"] is not None:
+        raw = data["sidebar_section_state"]
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+        except json.JSONDecodeError as exc:
+            raise ProTrackValidationError(
+                "sidebar_section_state must be a JSON object of section→bool"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ProTrackValidationError(
+                "sidebar_section_state must be a JSON object of section→bool"
+            )
+        cleaned: dict[str, bool] = {}
+        for key, value in parsed.items():
+            if key not in _VALID_SIDEBAR_SECTIONS:
+                continue
+            cleaned[key] = bool(value)
+        data["sidebar_section_state"] = json.dumps(cleaned)
     for key, value in data.items():
         setattr(prefs, key, value)
     db.add(prefs)

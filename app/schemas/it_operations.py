@@ -56,6 +56,15 @@ class AssetCreate(BlankOptionalFieldsMixin, BaseModel):
     warranty_expiry: Optional[date] = None
     location: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
+    legacy_asset_number: Optional[str] = Field(default=None, max_length=40)
+    description: Optional[str] = Field(default=None, max_length=255)
+    service_tag: Optional[str] = Field(default=None, max_length=100)
+    purchased_by: str = Field(default="organization", max_length=40)
+    owner_customer_id: Optional[UUID] = None
+    customer_used_for_id: Optional[UUID] = None
+    supplier_id: Optional[UUID] = None
+    invoice_number: Optional[str] = Field(default=None, max_length=80)
+    condition: Optional[str] = Field(default=None, max_length=40)
 
 
 class AssetUpdate(BlankOptionalFieldsMixin, BaseModel):
@@ -63,23 +72,43 @@ class AssetUpdate(BlankOptionalFieldsMixin, BaseModel):
     serial_number: Optional[str] = Field(default=None, max_length=100)
     make: Optional[str] = Field(default=None, max_length=100)
     model: Optional[str] = Field(default=None, max_length=100)
-    status: Optional[str] = Field(default=None, max_length=20)
+    status: Optional[str] = Field(default=None, max_length=40)
     purchase_date: Optional[date] = None
     purchase_cost: Optional[Decimal] = None
     warranty_expiry: Optional[date] = None
     location: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
+    legacy_asset_number: Optional[str] = Field(default=None, max_length=40)
+    description: Optional[str] = Field(default=None, max_length=255)
+    service_tag: Optional[str] = Field(default=None, max_length=100)
+    purchased_by: Optional[str] = Field(default=None, max_length=40)
+    owner_customer_id: Optional[UUID] = None
+    customer_used_for_id: Optional[UUID] = None
+    supplier_id: Optional[UUID] = None
+    invoice_number: Optional[str] = Field(default=None, max_length=80)
+    condition: Optional[str] = Field(default=None, max_length=40)
 
 
 class AssetRead(TimestampSchema):
     asset_number: str
+    legacy_asset_number: Optional[str] = None
     asset_type_id: UUID
     asset_type_name: Optional[str] = None
     asset_type_code: Optional[str] = None
+    description: Optional[str] = None
     serial_number: Optional[str] = None
+    service_tag: Optional[str] = None
     make: Optional[str] = None
     model: Optional[str] = None
     status: str
+    purchased_by: str = "organization"
+    owner_customer_id: Optional[UUID] = None
+    owner_customer_name: Optional[str] = None
+    customer_used_for_id: Optional[UUID] = None
+    customer_used_for_name: Optional[str] = None
+    supplier_id: Optional[UUID] = None
+    invoice_number: Optional[str] = None
+    condition: Optional[str] = None
     purchase_date: Optional[date] = None
     purchase_cost: Optional[Decimal] = None
     warranty_expiry: Optional[date] = None
@@ -100,6 +129,52 @@ class AssetReturnRequest(BlankOptionalFieldsMixin, BaseModel):
     returned_date: Optional[date] = None
     return_condition: Optional[str] = Field(default=None, max_length=40)
     notes: Optional[str] = None
+
+
+class AssetCustomerReturnRequest(BlankOptionalFieldsMixin, BaseModel):
+    return_date: Optional[date] = None
+    owner_customer_id: Optional[UUID] = None
+    received_by_name: Optional[str] = Field(default=None, max_length=200)
+    condition_at_return: Optional[str] = Field(default=None, max_length=40)
+    return_reason: Optional[str] = Field(default=None, max_length=120)
+    notes: Optional[str] = None
+
+
+class AssetCustomerReturnRead(TimestampSchema):
+    asset_id: UUID
+    asset_number: Optional[str] = None
+    asset_type_name: Optional[str] = None
+    description: Optional[str] = None
+    serial_number: Optional[str] = None
+    purchased_by: Optional[str] = None
+    owner_customer_id: UUID
+    owner_customer_name: Optional[str] = None
+    return_date: date
+    returned_by_user_id: UUID
+    returned_by_user_name: Optional[str] = None
+    received_by_name: Optional[str] = None
+    condition_at_return: Optional[str] = None
+    return_reason: Optional[str] = None
+    notes: Optional[str] = None
+    original_assignee_user_id: Optional[UUID] = None
+    original_assignee_name: Optional[str] = None
+
+
+class CustomerAssetReturnReportRow(BaseModel):
+    id: UUID
+    customer: Optional[str] = None
+    asset_number: Optional[str] = None
+    asset_type: Optional[str] = None
+    description: Optional[str] = None
+    serial_number: Optional[str] = None
+    purchase_owner: Optional[str] = None
+    assigned_employee: Optional[str] = None
+    return_date: date
+    condition: Optional[str] = None
+    returned_by: Optional[str] = None
+    received_by: Optional[str] = None
+    notes: Optional[str] = None
+    return_reason: Optional[str] = None
 
 
 class AssetTransferRequest(BlankOptionalFieldsMixin, BaseModel):
@@ -385,3 +460,52 @@ class PendingITOnboardingTask(BaseModel):
     joining_date: Optional[date] = None
     help_ticket_id: Optional[UUID] = None
     owner_user_id: Optional[UUID] = None
+
+
+# ---------------------------------------------------------------------------
+# Data migration
+# ---------------------------------------------------------------------------
+
+
+class ITMigrationSourceType(BaseModel):
+    id: str
+    label: str
+    sheet_hint: str
+    description: str
+
+
+class ITMigrationAnalyzeResult(BaseModel):
+    session_id: str
+    source_type: str
+    filename: str
+    sheet_name: str
+    records_found: int
+    new_records: int
+    potential_duplicates: int
+    skipped_records: int
+    requires_review: int
+    sensitive_columns_excluded: list[str] = Field(default_factory=list)
+    sensitive_data_excluded_count: int = 0
+    headers: list[str] = Field(default_factory=list)
+    duplicates: list[dict] = Field(default_factory=list)
+    exceptions: list[dict] = Field(default_factory=list)
+    preview_rows: list[dict] = Field(default_factory=list)
+    confirm_required: bool = True
+    message: str = ""
+
+
+class ITMigrationImportResult(BaseModel):
+    session_id: str
+    source_type: str
+    filename: Optional[str] = None
+    imported: int = 0
+    skipped: int = 0
+    duplicated: int = 0
+    conflicted: int = 0
+    requires_review: int = 0
+    sensitive_data_excluded: int = 0
+    organization_owned: int = 0
+    customer_owned: int = 0
+    returned_assets: int = 0
+    errors: list[str] = Field(default_factory=list)
+    message: str = ""

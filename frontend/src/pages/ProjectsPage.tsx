@@ -136,7 +136,7 @@ export function ProjectsPage() {
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>(
     initialSelectedTeamIdsFromSession,
   );
-  const [selectedStatusIds, setSelectedStatusIds] = useState<string[]>([]);
+  const [, setSelectedStatusIds] = useState<string[]>([]);
   const [showWorkstreamCards, setShowWorkstreamCards] = useState(true);
   const [showTeamCards, setShowTeamCards] = useState(true);
   const [showStatusCards, setShowStatusCards] = useState(true);
@@ -643,11 +643,11 @@ export function ProjectsPage() {
   }, [teamScopedLiveProjects]);
 
   const liveHealthGroups = useMemo(() => {
-    const order = ['red', 'amber', 'green'] as const;
+    const order = ['red', 'yellow', 'green'] as const;
     return order
       .map((health) => ({
         id: health,
-        label: health === 'red' ? 'At risk' : health === 'amber' ? 'Watch' : 'On track',
+        label: health === 'red' ? 'At risk' : health === 'yellow' ? 'Watch' : 'On track',
         projects: teamScopedLiveProjects.filter((p) => p.health === health),
       }))
       .filter((g) => g.projects.length > 0);
@@ -1004,7 +1004,7 @@ export function ProjectsPage() {
           {shouldGroupByWorkstream ? (
             <ProsohmButton
               size="small"
-              variant="outlined"
+              buttonVariant="outlined"
               onClick={() => setWorkstreamManagerOpen(true)}
             >
               Sections
@@ -1029,7 +1029,7 @@ export function ProjectsPage() {
                     ? (fj.statusBucketIds as string[])
                     : current.statusBucketIds,
                   health:
-                    fj.health === 'red' || fj.health === 'amber' || fj.health === 'green'
+                    fj.health === 'red' || fj.health === 'yellow' || fj.health === 'green'
                       ? fj.health
                       : current.health,
                   dueDate:

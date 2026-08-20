@@ -205,6 +205,9 @@ from app.db.phase80_post_completion_timesheet_schema_sync import (
 from app.db.phase81_it_operations_schema_sync import (
     ensure_phase81_it_operations_foundation,
 )
+from app.db.phase82_it_ownership_schema_sync import (
+    ensure_phase82_it_ownership_foundation,
+)
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -347,6 +350,7 @@ async def lifespan(app: FastAPI):
         ("phase79_timesheet_home_team", ensure_phase79_timesheet_home_team_foundation),
         ("phase80_post_completion_timesheet", ensure_phase80_post_completion_timesheet_foundation),
         ("phase81_it_operations", ensure_phase81_it_operations_foundation),
+        ("phase82_it_ownership", ensure_phase82_it_ownership_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

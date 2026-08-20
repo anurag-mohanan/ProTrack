@@ -11,6 +11,7 @@ class UserPreferencesRead(TimestampSchema):
     theme_mode: str = "company_default"
     sidebar_expanded: bool = True
     sidebar_auto_collapse: bool = False
+    sidebar_section_state: str | None = None
     dashboard_layout: str = "default"
     table_density: str = "comfortable"
     font_size: str = "medium"
@@ -36,6 +37,7 @@ class UserPreferencesUpdate(BaseModel):
     theme_mode: str | None = Field(default=None, max_length=32)
     sidebar_expanded: bool | None = None
     sidebar_auto_collapse: bool | None = None
+    sidebar_section_state: str | None = None
     dashboard_layout: str | None = Field(default=None, max_length=20)
     table_density: str | None = Field(default=None, max_length=20)
     font_size: str | None = Field(default=None, max_length=20)

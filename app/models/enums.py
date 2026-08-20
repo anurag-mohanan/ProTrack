@@ -214,7 +214,9 @@ class ActivityAction(enum.Enum):
     it_asset_deleted = "it_asset_deleted"
     it_asset_assigned = "it_asset_assigned"
     it_asset_returned = "it_asset_returned"
+    it_asset_returned_to_customer = "it_asset_returned_to_customer"
     it_asset_transferred = "it_asset_transferred"
+    it_asset_ownership_changed = "it_asset_ownership_changed"
     it_computer_created = "it_computer_created"
     it_computer_updated = "it_computer_updated"
     it_network_created = "it_network_created"
@@ -225,6 +227,8 @@ class ActivityAction(enum.Enum):
     it_account_deactivated = "it_account_deactivated"
     it_credential_generated = "it_credential_generated"
     it_settings_updated = "it_settings_updated"
+    it_migration_analyzed = "it_migration_analyzed"
+    it_migration_imported = "it_migration_imported"
 
 
 class NotificationType(enum.Enum):

@@ -364,3 +364,86 @@ def test_special_permission_constants_registered():
         SPECIAL_GENERATE_IT_CREDENTIALS,
     ):
         assert key in ALL_SPECIAL_PERMISSIONS
+
+
+def test_customer_owned_asset_return_excludes_from_current(client, session):
+    from app.core.access_control import SPECIAL_RETURN_CUSTOMER_ASSETS
+    from app.models.models import Customer
+
+    customer = session.scalar(select(Customer).limit(1))
+    assert customer is not None
+
+    type_id = _first_asset_type_id(client, client.auth_headers)
+    created = client.post(
+        "/api/v1/it/assets",
+        headers=client.auth_headers,
+        json={
+            "asset_type_id": type_id,
+            "make": "Dell",
+            "model": "CustOwned",
+            "purchased_by": "customer",
+            "owner_customer_id": str(customer.id),
+        },
+    )
+    assert created.status_code == 201, created.text
+    asset = created.json()
+    assert asset["purchased_by"] == "customer"
+    assert asset["owner_customer_id"] == str(customer.id)
+
+    current = client.get(
+        "/api/v1/it/assets",
+        headers=client.auth_headers,
+        params={"inventory_scope": "current"},
+    )
+    assert current.status_code == 200
+    assert any(row["id"] == asset["id"] for row in current.json()["items"])
+
+    returned = client.post(
+        f"/api/v1/it/assets/{asset['id']}/return-to-customer",
+        headers=client.auth_headers,
+        json={
+            "condition_at_return": "good",
+            "received_by_name": "Customer receiver",
+            "return_reason": "Project ended",
+        },
+    )
+    assert returned.status_code == 200, returned.text
+    assert returned.json()["owner_customer_id"] == str(customer.id)
+
+    current2 = client.get(
+        "/api/v1/it/assets",
+        headers=client.auth_headers,
+        params={"inventory_scope": "current"},
+    )
+    assert current2.status_code == 200
+    assert all(row["id"] != asset["id"] for row in current2.json()["items"])
+
+    hist = client.get(
+        "/api/v1/it/assets",
+        headers=client.auth_headers,
+        params={"inventory_scope": "returned"},
+    )
+    assert hist.status_code == 200
+    assert any(row["id"] == asset["id"] for row in hist.json()["items"])
+
+    events = client.get(
+        "/api/v1/it/assets/customer-returns",
+        headers=client.auth_headers,
+    )
+    assert events.status_code == 200, events.text
+    assert any(row["asset_id"] == asset["id"] for row in events.json())
+
+    report = client.get(
+        "/api/v1/it/reports/customer-returns",
+        headers=client.auth_headers,
+    )
+    assert report.status_code == 200, report.text
+    assert any(row["asset_number"] == asset["asset_number"] for row in report.json())
+
+    delete = client.delete(
+        f"/api/v1/it/assets/{asset['id']}",
+        headers=client.auth_headers,
+    )
+    assert delete.status_code == 422
+
+    assert SPECIAL_RETURN_CUSTOMER_ASSETS in ALL_SPECIAL_PERMISSIONS

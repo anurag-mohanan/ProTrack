@@ -93,6 +93,8 @@ class UserPreferences(Base, TimestampMixin, TenantMixin):
     )
     sidebar_expanded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sidebar_auto_collapse: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # JSON map of nav section id → expanded bool, e.g. {"engineering":true,"it":false}
+    sidebar_section_state: Mapped[Optional[str]] = mapped_column(Text)
     dashboard_layout: Mapped[str] = mapped_column(String(20), nullable=False, default="default")
     table_density: Mapped[str] = mapped_column(String(20), nullable=False, default="comfortable")
     font_size: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")

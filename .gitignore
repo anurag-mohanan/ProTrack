@@ -25,6 +25,10 @@ venv/
 uploads/
 import_sources/
 
+# IT migration source workbooks (may contain plaintext credentials)
+docs/migration-sources/*.xlsx
+docs/migration-sources/_analyze_output.txt
+
 # Node / frontend build
 node_modules/
 frontend/dist/

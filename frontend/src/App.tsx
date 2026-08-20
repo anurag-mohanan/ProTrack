@@ -113,6 +113,21 @@ const ITSettingsPage = lazy(() =>
     default: module.ITSettingsPage,
   })),
 );
+const ITReturnedAssetsPage = lazy(() =>
+  import('./pages/it/ITReturnedAssetsPage').then((module) => ({
+    default: module.ITReturnedAssetsPage,
+  })),
+);
+const ITReportsPage = lazy(() =>
+  import('./pages/it/ITReportsPage').then((module) => ({
+    default: module.ITReportsPage,
+  })),
+);
+const ITModulePlaceholderPage = lazy(() =>
+  import('./pages/it/ITModulePlaceholderPage').then((module) => ({
+    default: module.ITModulePlaceholderPage,
+  })),
+);
 
 const AdminCreatePage = lazy(() => import('./pages/admin/AdminCreatePage'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
@@ -448,6 +463,14 @@ export default function App() {
                         }
                       />
                       <Route
+                        path="/it/returned-assets"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading returned assets…" />}>
+                            <ITReturnedAssetsPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
                         path="/it/computers"
                         element={
                           <Suspense fallback={<LoadingState message="Loading computers…" />}>
@@ -464,10 +487,62 @@ export default function App() {
                         }
                       />
                       <Route
+                        path="/it/accounts"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading accounts…" />}>
+                            <ITModulePlaceholderPage
+                              title="Users & Accounts"
+                              description="IT account metadata and secure credential reset workflows."
+                            />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/software"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading software…" />}>
+                            <ITModulePlaceholderPage
+                              title="Software & Licenses"
+                              description="Software catalog, license pools, and assignments."
+                            />
+                          </Suspense>
+                        }
+                      />
+                      <Route
                         path="/it/requests"
                         element={
                           <Suspense fallback={<LoadingState message="Loading IT requests…" />}>
                             <ITRequestsPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/maintenance"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading maintenance…" />}>
+                            <ITModulePlaceholderPage
+                              title="Maintenance"
+                              description="Maintenance schedules and warranty follow-up."
+                            />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/suppliers"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading suppliers…" />}>
+                            <ITModulePlaceholderPage
+                              title="Suppliers"
+                              description="IT and inventory vendor master data."
+                            />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/reports"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading IT reports…" />}>
+                            <ITReportsPage />
                           </Suspense>
                         }
                       />

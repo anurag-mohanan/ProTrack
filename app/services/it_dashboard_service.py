@@ -52,7 +52,14 @@ def list_pending_it_onboarding_tasks(db: Session, *, limit: int = 50) -> list[di
 def dashboard_summary(db: Session) -> dict[str, int]:
     total_assets = int(
         db.scalar(
-            select(func.count()).select_from(Asset).where(Asset.is_deleted.is_(False))
+            select(func.count())
+            .select_from(Asset)
+            .where(
+                Asset.is_deleted.is_(False),
+                Asset.status.in_(
+                    ("available", "assigned", "maintenance", "awaiting_return")
+                ),
+            )
         )
         or 0
     )

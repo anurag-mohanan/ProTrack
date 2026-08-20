@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -19,6 +19,7 @@ from app.core.access_control import (
     SPECIAL_MANAGE_IT_ASSETS,
     SPECIAL_MANAGE_IT_NETWORKS,
     SPECIAL_MANAGE_IT_SETTINGS,
+    SPECIAL_RETURN_CUSTOMER_ASSETS,
     SPECIAL_VIEW_IT_OPERATIONS,
     SPECIAL_VIEW_IT_REPORTS,
     user_has_module,
@@ -27,12 +28,15 @@ from app.core.access_control import (
 from app.core.exceptions import ProTrackValidationError
 from app.core.pagination import PaginatedResponse, PaginationParams, pagination_query
 from app.core.permissions import get_role_name, normalize_role_name
-from app.models.it_operations import Asset, AssetAssignment, IPAddress, Network
-from app.models.models import Ticket, User
+from app.core.uploads import enforce_upload_size
+from app.models.it_operations import Asset, AssetAssignment, AssetCustomerReturn, IPAddress, Network
+from app.models.models import Customer, Ticket, User
 from app.schemas.it_operations import (
     AssetAssignRequest,
     AssetAssignmentRead,
     AssetCreate,
+    AssetCustomerReturnRead,
+    AssetCustomerReturnRequest,
     AssetRead,
     AssetRegisterRow,
     AssetReturnRequest,
@@ -46,11 +50,15 @@ from app.schemas.it_operations import (
     ComputerUpdate,
     CredentialGenerateRequest,
     CredentialGenerateResponse,
+    CustomerAssetReturnReportRow,
     IPAllocateRequest,
     IPAllocationReportRow,
     IPAddressRead,
     IPReleaseRequest,
     ITDashboardSummary,
+    ITMigrationAnalyzeResult,
+    ITMigrationImportResult,
+    ITMigrationSourceType,
     ITProfileRead,
     ITSettingsRead,
     ITSettingsUpdate,
@@ -63,7 +71,13 @@ from app.schemas.it_operations import (
     OpenITRequestRow,
     PendingITOnboardingTask,
 )
-from app.services import it_account_service, it_asset_service, it_dashboard_service, it_network_service
+from app.services import (
+    it_account_service,
+    it_asset_service,
+    it_dashboard_service,
+    it_migration_service,
+    it_network_service,
+)
 from app.services.ticketing_service import OPEN_STATUSES
 
 router = APIRouter(
@@ -118,18 +132,33 @@ def _require_reports(db: Session, user: User) -> None:
 def _asset_read(db: Session, asset: Asset) -> AssetRead:
     assignee_id, assignee_name = it_asset_service.assignee_name_for_asset(db, asset)
     at = asset.asset_type
+    owner = db.get(Customer, asset.owner_customer_id) if asset.owner_customer_id else None
+    used_for = (
+        db.get(Customer, asset.customer_used_for_id) if asset.customer_used_for_id else None
+    )
     return AssetRead(
         id=asset.id,
         created_at=asset.created_at,
         updated_at=asset.updated_at,
         asset_number=asset.asset_number,
+        legacy_asset_number=asset.legacy_asset_number,
         asset_type_id=asset.asset_type_id,
         asset_type_name=at.name if at else None,
         asset_type_code=at.code if at else None,
+        description=asset.description,
         serial_number=asset.serial_number,
+        service_tag=asset.service_tag,
         make=asset.make,
         model=asset.model,
         status=asset.status,
+        purchased_by=getattr(asset, "purchased_by", None) or "organization",
+        owner_customer_id=asset.owner_customer_id,
+        owner_customer_name=owner.name if owner else None,
+        customer_used_for_id=asset.customer_used_for_id,
+        customer_used_for_name=used_for.name if used_for else None,
+        supplier_id=asset.supplier_id,
+        invoice_number=asset.invoice_number,
+        condition=asset.condition,
         purchase_date=asset.purchase_date,
         purchase_cost=asset.purchase_cost,
         warranty_expiry=asset.warranty_expiry,
@@ -157,6 +186,46 @@ def _assignment_read(db: Session, row: AssetAssignment) -> AssetAssignmentRead:
         returned_date=row.returned_date,
         return_condition=row.return_condition,
         notes=row.notes,
+    )
+
+
+def _customer_return_read(db: Session, row: AssetCustomerReturn) -> AssetCustomerReturnRead:
+    asset = row.asset if getattr(row, "asset", None) is not None else db.get(Asset, row.asset_id)
+    customer = db.get(Customer, row.owner_customer_id)
+    by_user = db.get(User, row.returned_by_user_id)
+    original = (
+        db.get(User, row.original_assignee_user_id) if row.original_assignee_user_id else None
+    )
+    at = asset.asset_type if asset is not None else None
+    return AssetCustomerReturnRead(
+        id=row.id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        asset_id=row.asset_id,
+        asset_number=asset.asset_number if asset else None,
+        asset_type_name=at.name if at else None,
+        description=(
+            (asset.description if asset and asset.description else None)
+            or (
+                " ".join(
+                    part for part in [asset.make if asset else None, asset.model if asset else None] if part
+                )
+                or None
+            )
+        ),
+        serial_number=asset.serial_number if asset else None,
+        purchased_by=asset.purchased_by if asset else None,
+        owner_customer_id=row.owner_customer_id,
+        owner_customer_name=customer.name if customer else None,
+        return_date=row.return_date,
+        returned_by_user_id=row.returned_by_user_id,
+        returned_by_user_name=_full_name(by_user),
+        received_by_name=row.received_by_name,
+        condition_at_return=row.condition_at_return,
+        return_reason=row.return_reason,
+        notes=row.notes,
+        original_assignee_user_id=row.original_assignee_user_id,
+        original_assignee_name=_full_name(original),
     )
 
 
@@ -374,6 +443,10 @@ def list_assets(
     status_filter: str | None = Query(None, alias="status"),
     asset_type_id: UUID | None = Query(None),
     search: str | None = Query(None),
+    inventory_scope: str = Query("current"),
+    purchased_by: str | None = Query(None),
+    owner_customer_id: UUID | None = Query(None),
+    customer_used_for_id: UUID | None = Query(None),
     pagination: PaginationParams = Depends(pagination_query),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -384,6 +457,10 @@ def list_assets(
         status=status_filter,
         asset_type_id=asset_type_id,
         search=search,
+        inventory_scope=inventory_scope,
+        purchased_by=purchased_by,
+        owner_customer_id=owner_customer_id,
+        customer_used_for_id=customer_used_for_id,
         skip=pagination.skip,
         limit=pagination.limit,
     )
@@ -393,6 +470,22 @@ def list_assets(
         page=pagination.page,
         page_size=pagination.page_size,
     )
+
+
+@router.get(
+    "/assets/customer-returns",
+    response_model=list[AssetCustomerReturnRead],
+)
+def list_customer_return_events(
+    owner_customer_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    events = it_asset_service.list_customer_returns(
+        db, owner_customer_id=owner_customer_id, limit=500
+    )
+    return [_customer_return_read(db, e) for e in events]
 
 
 @router.post(
@@ -419,6 +512,15 @@ def create_asset(
             warranty_expiry=payload.warranty_expiry,
             location=payload.location,
             notes=payload.notes,
+            legacy_asset_number=payload.legacy_asset_number,
+            description=payload.description,
+            service_tag=payload.service_tag,
+            purchased_by=payload.purchased_by,
+            owner_customer_id=payload.owner_customer_id,
+            customer_used_for_id=payload.customer_used_for_id,
+            supplier_id=payload.supplier_id,
+            invoice_number=payload.invoice_number,
+            condition=payload.condition,
         )
         asset = it_asset_service.get_asset(db, asset.id) or asset
         return _asset_read(db, asset)
@@ -468,6 +570,15 @@ def update_asset(
             warranty_expiry=payload.warranty_expiry,
             location=payload.location,
             notes=payload.notes,
+            legacy_asset_number=payload.legacy_asset_number,
+            description=payload.description,
+            service_tag=payload.service_tag,
+            purchased_by=payload.purchased_by,
+            owner_customer_id=payload.owner_customer_id,
+            customer_used_for_id=payload.customer_used_for_id,
+            supplier_id=payload.supplier_id,
+            invoice_number=payload.invoice_number,
+            condition=payload.condition,
             fields_set=set(payload.model_fields_set),
         )
         asset = it_asset_service.get_asset(db, asset.id) or asset
@@ -548,6 +659,37 @@ def return_asset(
             notes=payload.notes,
         )
         return _assignment_read(db, row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/assets/{asset_id}/return-to-customer",
+    response_model=AssetCustomerReturnRead,
+    dependencies=[Depends(require_special(SPECIAL_RETURN_CUSTOMER_ASSETS))],
+)
+def return_asset_to_customer(
+    asset_id: UUID,
+    payload: AssetCustomerReturnRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    asset = it_asset_service.get_asset(db, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+    try:
+        event = it_asset_service.return_asset_to_customer(
+            db,
+            asset,
+            by_user=current_user,
+            return_date=payload.return_date,
+            owner_customer_id=payload.owner_customer_id,
+            received_by_name=payload.received_by_name,
+            condition_at_return=payload.condition_at_return,
+            return_reason=payload.return_reason,
+            notes=payload.notes,
+        )
+        return _customer_return_read(db, event)
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
 
@@ -1012,6 +1154,75 @@ def put_settings(
 
 
 # ---------------------------------------------------------------------------
+# Data migration (admin / manage_it_settings)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/migration/source-types",
+    response_model=list[ITMigrationSourceType],
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SETTINGS))],
+)
+def migration_source_types():
+    return [ITMigrationSourceType(**row) for row in it_migration_service.list_source_types()]
+
+
+@router.post(
+    "/migration/analyze",
+    response_model=ITMigrationAnalyzeResult,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SETTINGS))],
+)
+async def migration_analyze(
+    source_type: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    enforce_upload_size(content)
+    try:
+        result = it_migration_service.analyze_upload(
+            db,
+            actor=current_user,
+            content=content,
+            filename=file.filename or "upload.xlsx",
+            source_type=source_type,
+        )
+        return ITMigrationAnalyzeResult(**result)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/migration/import",
+    response_model=ITMigrationImportResult,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SETTINGS))],
+)
+def migration_import(
+    session_id: str = Form(...),
+    confirm: bool = Form(False),
+    skip_duplicates: bool = Form(True),
+    skip_review_rows: bool = Form(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = it_migration_service.commit_import(
+            db,
+            actor=current_user,
+            session_id=session_id,
+            confirm=confirm,
+            skip_duplicates=skip_duplicates,
+            skip_review_rows=skip_review_rows,
+        )
+        return ITMigrationImportResult(**result)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+# ---------------------------------------------------------------------------
 # Reports
 # ---------------------------------------------------------------------------
 
@@ -1041,6 +1252,50 @@ def report_asset_register(
                 purchase_cost=asset.purchase_cost,
                 warranty_expiry=asset.warranty_expiry,
                 current_assignee_name=assignee_name,
+            )
+        )
+    return out
+
+
+@router.get(
+    "/reports/customer-returns",
+    response_model=list[CustomerAssetReturnReportRow],
+)
+def report_customer_returns(
+    owner_customer_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_reports(db, current_user)
+    events = it_asset_service.list_customer_returns(
+        db, owner_customer_id=owner_customer_id, limit=500
+    )
+    out: list[CustomerAssetReturnReportRow] = []
+    for event in events:
+        read = _customer_return_read(db, event)
+        owner_label = read.owner_customer_name
+        if read.purchased_by == "organization":
+            purchase_owner = "Organization"
+        elif read.purchased_by == "customer":
+            purchase_owner = owner_label or "Customer"
+        else:
+            purchase_owner = read.purchased_by
+        out.append(
+            CustomerAssetReturnReportRow(
+                id=read.id,
+                customer=owner_label,
+                asset_number=read.asset_number,
+                asset_type=read.asset_type_name,
+                description=read.description,
+                serial_number=read.serial_number,
+                purchase_owner=purchase_owner,
+                assigned_employee=read.original_assignee_name,
+                return_date=read.return_date,
+                condition=read.condition_at_return,
+                returned_by=read.returned_by_user_name,
+                received_by=read.received_by_name,
+                notes=read.notes,
+                return_reason=read.return_reason,
             )
         )
     return out

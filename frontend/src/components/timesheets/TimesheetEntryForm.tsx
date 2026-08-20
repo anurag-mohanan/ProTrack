@@ -119,7 +119,7 @@ export function TimesheetEntryForm({
   dailyLimit,
   saving,
   currentUserId: _currentUserId,
-  currentUserTeamId,
+  currentUserTeamId: _currentUserTeamId,
   onSubmit,
   onCancelEdit,
   onEntryDateChange,
@@ -301,11 +301,6 @@ export function TimesheetEntryForm({
     isCompletedProject && selectedProject?.post_completion_hours_allowed === false;
   const commentRequiredForPostCompletion = POST_COMPLETION_COMMENT_TYPES.includes(
     form.postCompletionType as PostCompletionWorkType,
-  );
-  const isCrossTeamSupport = Boolean(
-    selectedProject?.team_id &&
-      currentUserTeamId &&
-      selectedProject.team_id !== currentUserTeamId,
   );
 
   return (

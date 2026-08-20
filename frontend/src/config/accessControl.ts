@@ -92,6 +92,7 @@ export const SPECIAL_VIEW_RESOURCE_PLANNING = 'view_resource_planning';
 export const SPECIAL_VIEW_IT_OPERATIONS = 'view_it_operations';
 export const SPECIAL_MANAGE_IT_ASSETS = 'manage_it_assets';
 export const SPECIAL_ASSIGN_IT_ASSETS = 'assign_it_assets';
+export const SPECIAL_RETURN_CUSTOMER_ASSETS = 'return_customer_assets';
 export const SPECIAL_MANAGE_IT_NETWORKS = 'manage_it_networks';
 export const SPECIAL_ALLOCATE_IT_IPS = 'allocate_it_ips';
 export const SPECIAL_MANAGE_IT_ACCOUNTS = 'manage_it_accounts';
@@ -99,6 +100,9 @@ export const SPECIAL_GENERATE_IT_CREDENTIALS = 'generate_it_credentials';
 export const SPECIAL_MANAGE_IT_REQUESTS = 'manage_it_requests';
 export const SPECIAL_VIEW_IT_REPORTS = 'view_it_reports';
 export const SPECIAL_MANAGE_IT_SETTINGS = 'manage_it_settings';
+export const SPECIAL_MANAGE_IT_INVENTORY = 'manage_it_inventory';
+export const SPECIAL_MANAGE_IT_SOFTWARE = 'manage_it_software';
+export const SPECIAL_MANAGE_IT_SUPPLIERS = 'manage_it_suppliers';
 
 export type SpecialPermissionKey =
   | typeof SPECIAL_CREATE_PROJECTS
@@ -120,13 +124,17 @@ export type SpecialPermissionKey =
   | typeof SPECIAL_VIEW_IT_OPERATIONS
   | typeof SPECIAL_MANAGE_IT_ASSETS
   | typeof SPECIAL_ASSIGN_IT_ASSETS
+  | typeof SPECIAL_RETURN_CUSTOMER_ASSETS
   | typeof SPECIAL_MANAGE_IT_NETWORKS
   | typeof SPECIAL_ALLOCATE_IT_IPS
   | typeof SPECIAL_MANAGE_IT_ACCOUNTS
   | typeof SPECIAL_GENERATE_IT_CREDENTIALS
   | typeof SPECIAL_MANAGE_IT_REQUESTS
   | typeof SPECIAL_VIEW_IT_REPORTS
-  | typeof SPECIAL_MANAGE_IT_SETTINGS;
+  | typeof SPECIAL_MANAGE_IT_SETTINGS
+  | typeof SPECIAL_MANAGE_IT_INVENTORY
+  | typeof SPECIAL_MANAGE_IT_SOFTWARE
+  | typeof SPECIAL_MANAGE_IT_SUPPLIERS;
 
 export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_CREATE_PROJECTS,
@@ -148,6 +156,7 @@ export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_VIEW_IT_OPERATIONS,
   SPECIAL_MANAGE_IT_ASSETS,
   SPECIAL_ASSIGN_IT_ASSETS,
+  SPECIAL_RETURN_CUSTOMER_ASSETS,
   SPECIAL_MANAGE_IT_NETWORKS,
   SPECIAL_ALLOCATE_IT_IPS,
   SPECIAL_MANAGE_IT_ACCOUNTS,
@@ -155,6 +164,9 @@ export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_MANAGE_IT_REQUESTS,
   SPECIAL_VIEW_IT_REPORTS,
   SPECIAL_MANAGE_IT_SETTINGS,
+  SPECIAL_MANAGE_IT_INVENTORY,
+  SPECIAL_MANAGE_IT_SOFTWARE,
+  SPECIAL_MANAGE_IT_SUPPLIERS,
 ];
 
 export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
@@ -177,6 +189,7 @@ export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
   [SPECIAL_VIEW_IT_OPERATIONS]: 'View IT Operations',
   [SPECIAL_MANAGE_IT_ASSETS]: 'Manage IT Assets',
   [SPECIAL_ASSIGN_IT_ASSETS]: 'Assign IT Assets',
+  [SPECIAL_RETURN_CUSTOMER_ASSETS]: 'Return Customer Assets',
   [SPECIAL_MANAGE_IT_NETWORKS]: 'Manage IT Networks',
   [SPECIAL_ALLOCATE_IT_IPS]: 'Allocate IT IPs',
   [SPECIAL_MANAGE_IT_ACCOUNTS]: 'Manage IT Accounts',
@@ -184,6 +197,9 @@ export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
   [SPECIAL_MANAGE_IT_REQUESTS]: 'Manage IT Requests',
   [SPECIAL_VIEW_IT_REPORTS]: 'View IT Reports',
   [SPECIAL_MANAGE_IT_SETTINGS]: 'Manage IT Settings',
+  [SPECIAL_MANAGE_IT_INVENTORY]: 'Manage IT Inventory',
+  [SPECIAL_MANAGE_IT_SOFTWARE]: 'Manage IT Software',
+  [SPECIAL_MANAGE_IT_SUPPLIERS]: 'Manage IT Suppliers',
 };
 
 export const PATH_MODULE_MAP: Record<string, ModuleKey> = {

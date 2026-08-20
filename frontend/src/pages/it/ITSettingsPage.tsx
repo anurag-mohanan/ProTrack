@@ -20,6 +20,7 @@ import { useToast } from '../../context/ToastContext';
 import type { ITSettingsUpdate } from '../../types/itOperations';
 import { optionalString } from '../../utils/formValues';
 import { accessContextFromUser, canManageItSettings } from '../../utils/permissions';
+import { ITMigrationPanel } from '../../components/it/ITMigrationPanel';
 
 type SettingsFormState = {
   asset_numbering_pattern: string;
@@ -188,6 +189,10 @@ export function ITSettingsPage() {
           />
         </Box>
       </ContentCard>
+
+      <Box sx={{ mt: 3 }}>
+        <ITMigrationPanel />
+      </Box>
     </PageContainer>
   );
 }

@@ -1,8 +1,28 @@
 # IT Operations Module — Architecture & Design
 
-> **Status:** Draft for stakeholder review
-> **Module key:** `it_operations`
-> **Routes prefix:** `/it`
+> **Status:** Active — ownership / inventory / nav expansion in progress  
+> **Module key:** `it_operations`  
+> **Routes prefix:** `/it`  
+> **Related:** `IT_DATA_MIGRATION_MAPPING.md`, `IT_MIGRATION_EXCEPTIONS.md`, `PERMISSION_AUDIT.md` § IT
+
+---
+
+## 0. Enhancement roadmap (nav + ownership + migration)
+
+| Phase | Focus | Status |
+|-------|--------|--------|
+| 1 | Collapsible left-nav section groups + per-user preference | In progress |
+| 2 | IT / inventory data architecture (serialized vs consumables, suppliers, software) | In progress |
+| 3 | Ownership (`purchased_by` / owner customer) + lifecycle statuses | In progress |
+| 4 | Spreadsheet migration / import (analyze → preview → confirm) | Scaffolding |
+| 5 | Customer return workflow + Returned Assets view | In progress |
+| 6 | Computers + IP (extend) | Existing MVP |
+| 7 | Users / accounts / software | Partial |
+| 8 | Reports (ownership, returns) | Planned |
+
+**Navigation:** Major sidebar sections (Engineering Operations, Operations, HR, IT Operations, Future, Admin) collapse independently. State is stored per user in `user_preferences.sidebar_section_state` (JSON). Existing `sidebar_expanded` / `sidebar_auto_collapse` remain reserved for a future compact icon rail — same `AppSidebar` component, not a second nav system.
+
+**Do not hardcode** organization names, customer names, asset prefixes, or IP ranges in application logic; use `ITSettings` / company profile / lookups.
 
 ---
 
@@ -131,18 +151,69 @@ All authenticated employees can:
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID PK | |
-| asset_number | varchar(40) | Unique per tenant, server-generated |
+| asset_number | varchar(40) | Unique per tenant, ProTrack number (server-generated when needed) |
+| legacy_asset_number | varchar(40) | Preserved source ID (e.g. `SY-IT031`, `PP-FW-01`) |
 | asset_type_id | UUID FK → asset_types | |
-| serial_number | varchar(100) | Optional, unique per tenant if provided |
+| description | varchar(255) | Short item description |
+| serial_number | varchar(100) | Optional |
+| service_tag | varchar(100) | Strong match key for migration |
 | make | varchar(100) | Manufacturer |
 | model | varchar(100) | Model name |
-| status | varchar(20) | `available`, `assigned`, `maintenance`, `retired`, `disposed` |
+| status | varchar(40) | Lifecycle — see §5 / ownership |
+| purchased_by | varchar(40) | Ownership code: `organization`, `customer`, `vendor`, `leased`, `other` (labels configurable) |
+| owner_customer_id | UUID FK → customers | Required when `purchased_by=customer` |
+| customer_used_for_id | UUID FK → customers | Usage/work customer — **not** ownership |
+| supplier_id | UUID FK → it_suppliers | Optional |
+| invoice_number | varchar(80) | |
+| condition | varchar(40) | Physical condition |
 | purchase_date | date | |
 | purchase_cost | decimal(12,2) | |
 | warranty_expiry | date | |
-| location | varchar(120) | Physical location |
+| location | varchar(120) | Physical location / room |
 | notes | text | |
-| is_deleted | bool | Soft delete |
+| is_deleted | bool | Soft delete — returned assets are **not** deleted |
+
+#### `AssetCustomerReturn` (append-only history for customer-owned returns)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| asset_id | UUID FK → assets | |
+| owner_customer_id | UUID FK → customers | Owner at time of return |
+| return_date | date | |
+| returned_by_user_id | UUID FK → users | Who processed the return |
+| received_by_name | varchar(200) | Customer-side receiver (free text) |
+| condition_at_return | varchar(40) | |
+| return_reason | varchar(120) | |
+| notes | text | |
+| original_assignee_user_id | UUID FK → users | Snapshot of last assignee |
+
+#### `ITSupplier`
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| name | varchar(200) | Unique per tenant (normalized) |
+| website / phone / email / address | optional | |
+| products / notes | text | |
+
+#### `InventoryItem` (consumables / non-serialized stock)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| name / category / sku | | |
+| purchased_by / owner_customer_id | | Same ownership model as assets |
+| total_qty / issued_qty | int | `available = total - issued` |
+| unit_cost / location / supplier_id / status | | |
+
+#### `SoftwareCatalog` / `SoftwareLicensePool` / `SoftwareAssignment`
+License seats, expiry, renewal mode, assignments — no license secret storage in MVP.
+
+#### Separated concepts (mandatory)
+| Concept | Field |
+|---------|--------|
+| Who owns it | `purchased_by` + `owner_customer_id` |
+| Who uses it | current `AssetAssignment` |
+| Customer work | `customer_used_for_id` |
+| Where it is | `location` |
 
 #### `Computer` (1:1 extension of Asset)
 | Column | Type | Notes |
@@ -238,8 +309,20 @@ All authenticated employees can:
 ### Asset States
 ```
 available → assigned → maintenance → available (cycle)
-                    → retired → disposed
+         → awaiting_return → returned_to_customer  (customer-owned)
+         → lost | damaged | retired → disposed
 ```
+
+### Current inventory (default lists & counts)
+Statuses in `CURRENT_INVENTORY_STATUSES` (default: `available`, `assigned`, `maintenance`, `awaiting_return`).
+
+**Excluded from Current Assets by default:** `returned_to_customer`, `retired`, `disposed`, soft-deleted, and (optionally) `lost`.
+
+Historical / Returned views and `include_historical=true` expose the full record. **Never delete** an asset solely because it was returned to a customer.
+
+### Ownership vs employee return
+- **Employee return** (`AssetAssignment.returned_date`): asset stays in Current inventory as `available`.
+- **Customer return** (`AssetCustomerReturn` + status `returned_to_customer`): removed from Current Assets; history retained forever.
 
 ### Assignment History
 - Every assign/transfer/return creates a new `AssetAssignment` row

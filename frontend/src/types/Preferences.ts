@@ -12,6 +12,8 @@ export interface UserPreferences {
   theme_mode: ThemeModePreference;
   sidebar_expanded: boolean;
   sidebar_auto_collapse: boolean;
+  /** JSON string map of nav section id → expanded */
+  sidebar_section_state?: string | null;
   dashboard_layout: DashboardLayoutPreference;
   table_density: TableDensityPreference;
   font_size: FontSizePreference;
@@ -33,6 +35,7 @@ export const DEFAULT_USER_PREFERENCES: Omit<UserPreferences, 'id' | 'user_id'> =
   theme_mode: 'company_default',
   sidebar_expanded: true,
   sidebar_auto_collapse: false,
+  sidebar_section_state: null,
   dashboard_layout: 'default',
   table_density: 'comfortable',
   font_size: 'medium',

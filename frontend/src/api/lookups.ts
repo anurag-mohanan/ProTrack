@@ -21,9 +21,25 @@ export async function fetchStreams(): Promise<Stream[]> {
   return ensureArray<Stream>(data);
 }
 
-export async function fetchUsers(options?: { forReports?: boolean }): Promise<User[]> {
+type LookupReportOptions = { forReports?: boolean };
+
+function lookupForReports(arg: unknown): boolean {
+  return Boolean(
+    arg != null &&
+      typeof arg === 'object' &&
+      'forReports' in arg &&
+      !('queryKey' in arg) &&
+      (arg as LookupReportOptions).forReports,
+  );
+}
+
+/** Accepts options or a React Query context when used as `queryFn`. */
+export async function fetchUsers(options?: LookupReportOptions): Promise<User[]>;
+export async function fetchUsers(queryContext: { queryKey: readonly unknown[] }): Promise<User[]>;
+export async function fetchUsers(arg?: unknown): Promise<User[]> {
+  const forReports = lookupForReports(arg);
   const { data } = await apiClient.get<unknown>(
-    `/lookups/users${buildQuery(options?.forReports ? { for_reports: true } : undefined)}`,
+    `/lookups/users${buildQuery(forReports ? { for_reports: true } : undefined)}`,
   );
   return ensureArray<User>(data);
 }
@@ -50,9 +66,13 @@ export async function fetchOperationalRoles() {
   }>(data);
 }
 
-export async function fetchTeams(options?: { forReports?: boolean }) {
+/** Accepts options or a React Query context when used as `queryFn`. */
+export async function fetchTeams(options?: LookupReportOptions): Promise<import('../types/Team').Team[]>;
+export async function fetchTeams(queryContext: { queryKey: readonly unknown[] }): Promise<import('../types/Team').Team[]>;
+export async function fetchTeams(arg?: unknown) {
+  const forReports = lookupForReports(arg);
   const { data } = await apiClient.get<unknown>(
-    `/lookups/teams${buildQuery(options?.forReports ? { for_reports: true } : undefined)}`,
+    `/lookups/teams${buildQuery(forReports ? { for_reports: true } : undefined)}`,
   );
   return ensureArray<import('../types/Team').Team>(data);
 }

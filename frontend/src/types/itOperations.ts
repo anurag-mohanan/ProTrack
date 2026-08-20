@@ -2,8 +2,20 @@ export type AssetStatus =
   | 'available'
   | 'assigned'
   | 'maintenance'
+  | 'awaiting_return'
+  | 'returned_to_customer'
+  | 'lost'
+  | 'damaged'
   | 'retired'
   | 'disposed';
+
+export type PurchasedBy =
+  | 'organization'
+  | 'customer'
+  | 'vendor'
+  | 'leased'
+  | 'other'
+  | string;
 
 export type AssetTypeCategory =
   | 'computer'
@@ -59,13 +71,24 @@ export interface AssetTypeUpdate {
 export interface ITAsset {
   id: string;
   asset_number: string;
+  legacy_asset_number?: string | null;
   asset_type_id: string;
   asset_type_name?: string | null;
   asset_type_code?: string | null;
+  description?: string | null;
   serial_number?: string | null;
+  service_tag?: string | null;
   make?: string | null;
   model?: string | null;
   status: AssetStatus | string;
+  purchased_by?: PurchasedBy;
+  owner_customer_id?: string | null;
+  owner_customer_name?: string | null;
+  customer_used_for_id?: string | null;
+  customer_used_for_name?: string | null;
+  supplier_id?: string | null;
+  invoice_number?: string | null;
+  condition?: string | null;
   purchase_date?: string | null;
   purchase_cost?: number | string | null;
   warranty_expiry?: string | null;
@@ -76,6 +99,46 @@ export interface ITAsset {
   current_assignee_name?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface AssetCustomerReturn {
+  id: string;
+  asset_id: string;
+  asset_number?: string | null;
+  asset_type_name?: string | null;
+  description?: string | null;
+  serial_number?: string | null;
+  purchased_by?: string | null;
+  owner_customer_id: string;
+  owner_customer_name?: string | null;
+  return_date: string;
+  returned_by_user_id: string;
+  returned_by_user_name?: string | null;
+  received_by_name?: string | null;
+  condition_at_return?: string | null;
+  return_reason?: string | null;
+  notes?: string | null;
+  original_assignee_user_id?: string | null;
+  original_assignee_name?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CustomerAssetReturnReportRow {
+  id: string;
+  customer?: string | null;
+  asset_number?: string | null;
+  asset_type?: string | null;
+  description?: string | null;
+  serial_number?: string | null;
+  purchase_owner?: string | null;
+  assigned_employee?: string | null;
+  return_date: string;
+  condition?: string | null;
+  returned_by?: string | null;
+  received_by?: string | null;
+  notes?: string | null;
+  return_reason?: string | null;
 }
 
 export interface ITAssetCreate {

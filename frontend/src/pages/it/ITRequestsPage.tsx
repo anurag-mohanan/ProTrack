@@ -109,13 +109,9 @@ export function ITRequestsPage() {
         title="IT Requests"
         subtitle="Open IT-category tickets from Help Desk."
         action={
-          <ProsohmButton
-            buttonVariant="outlined"
-            component={RouterLink}
-            to="/help-desk"
-          >
-            Open Help Desk
-          </ProsohmButton>
+          <RouterLink to="/help-desk" style={{ textDecoration: 'none' }}>
+            <ProsohmButton buttonVariant="outlined">Open Help Desk</ProsohmButton>
+          </RouterLink>
         }
       />
 
@@ -180,7 +176,7 @@ export function ITRequestsPage() {
             </TableBody>
           </Table>
         )}
-        <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
+        <Stack direction="row" sx={{ justifyContent: 'flex-end', mt: 2 }}>
           <Typography variant="body2" color="text.secondary">
             Manage full ticket workflows in{' '}
             <Link component={RouterLink} to="/help-desk">

@@ -9,7 +9,8 @@ import {
   Stack,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import AssignmentReturnRoundedIcon from '@mui/icons-material/AssignmentReturnRounded';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded';
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
@@ -24,10 +25,11 @@ import {
   fetchAssetsPaginated,
   itOperationsKeys,
   returnAsset,
+  returnAssetToCustomer,
   transferAsset,
   updateAsset,
 } from '../../api/itOperations';
-import { fetchUsers } from '../../api/lookups';
+import { fetchCustomers, fetchUsers } from '../../api/lookups';
 import { getErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PageContainer } from '../../components/common/PageContainer';
@@ -53,6 +55,7 @@ import {
   accessContextFromUser,
   canAssignItAssets,
   canManageItAssets,
+  canReturnCustomerAssets,
 } from '../../utils/permissions';
 
 const ASSET_STATUS_OPTIONS = [
@@ -60,14 +63,38 @@ const ASSET_STATUS_OPTIONS = [
   { value: 'available', label: 'Available' },
   { value: 'assigned', label: 'Assigned' },
   { value: 'maintenance', label: 'Maintenance' },
+  { value: 'awaiting_return', label: 'Awaiting return' },
+  { value: 'returned_to_customer', label: 'Returned to customer' },
   { value: 'retired', label: 'Retired' },
   { value: 'disposed', label: 'Disposed' },
+];
+
+const INVENTORY_SCOPE_OPTIONS = [
+  { value: 'current', label: 'Current assets' },
+  { value: 'returned', label: 'Returned to customer' },
+  { value: 'historical', label: 'Historical (returned / retired / disposed)' },
+  { value: 'all', label: 'Include all (incl. historical)' },
+];
+
+const OWNERSHIP_OPTIONS = [
+  { value: '', label: 'All ownership' },
+  { value: 'organization', label: 'Organization owned' },
+  { value: 'customer', label: 'Customer owned' },
 ];
 
 const RETURN_CONDITION_OPTIONS = [
   { value: 'good', label: 'Good' },
   { value: 'damaged', label: 'Damaged' },
   { value: 'needs_repair', label: 'Needs repair' },
+];
+
+const CUSTOMER_RETURN_REASON_OPTIONS = [
+  { value: '', label: 'Select reason' },
+  { value: 'project_ended', label: 'Project ended' },
+  { value: 'contract_complete', label: 'Contract complete' },
+  { value: 'customer_request', label: 'Customer request' },
+  { value: 'replaced', label: 'Replaced' },
+  { value: 'other', label: 'Other' },
 ];
 
 type AssetFormState = {
@@ -105,7 +132,9 @@ function statusColor(
     case 'assigned':
       return 'info';
     case 'maintenance':
+    case 'awaiting_return':
       return 'warning';
+    case 'returned_to_customer':
     case 'retired':
     case 'disposed':
       return 'default';
@@ -122,16 +151,23 @@ function assigneeName(asset: ITAsset): string {
   );
 }
 
-export function ITAssetsPage() {
+export function ITAssetsPage({
+  defaultInventoryScope = 'current',
+}: {
+  defaultInventoryScope?: 'current' | 'returned' | 'historical' | 'all';
+}) {
   const { user } = useAuth();
   const access = accessContextFromUser(user);
   const canManage = canManageItAssets(access);
   const canAssign = canAssignItAssets(access);
+  const canReturnToCustomer = canReturnCustomerAssets(access);
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [inventoryScope, setInventoryScope] = useState(defaultInventoryScope);
+  const [ownershipFilter, setOwnershipFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ITAsset | null>(null);
   const [form, setForm] = useState<AssetFormState>(emptyForm);
@@ -139,6 +175,7 @@ export function ITAssetsPage() {
   const [assignTarget, setAssignTarget] = useState<ITAsset | null>(null);
   const [returnTarget, setReturnTarget] = useState<ITAsset | null>(null);
   const [transferTarget, setTransferTarget] = useState<ITAsset | null>(null);
+  const [customerReturnTarget, setCustomerReturnTarget] = useState<ITAsset | null>(null);
   const [assignUserId, setAssignUserId] = useState('');
   const [assignDate, setAssignDate] = useState(new Date().toISOString().slice(0, 10));
   const [assignNotes, setAssignNotes] = useState('');
@@ -148,6 +185,14 @@ export function ITAssetsPage() {
   const [transferUserId, setTransferUserId] = useState('');
   const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10));
   const [transferNotes, setTransferNotes] = useState('');
+  const [customerReturnDate, setCustomerReturnDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+  const [customerReturnOwnerId, setCustomerReturnOwnerId] = useState('');
+  const [customerReturnReceivedBy, setCustomerReturnReceivedBy] = useState('');
+  const [customerReturnCondition, setCustomerReturnCondition] = useState('good');
+  const [customerReturnReason, setCustomerReturnReason] = useState('');
+  const [customerReturnNotes, setCustomerReturnNotes] = useState('');
 
   const assetTypesQuery = useQuery({
     queryKey: itOperationsKeys.assetTypes(),
@@ -160,12 +205,20 @@ export function ITAssetsPage() {
     enabled: canAssign,
   });
 
+  const customersQuery = useQuery({
+    queryKey: ['lookups', 'customers'],
+    queryFn: fetchCustomers,
+    enabled: canReturnToCustomer,
+  });
+
   const listFilters = useMemo(
     () => ({
       status: statusFilter || undefined,
       q: search.trim() || undefined,
+      inventory_scope: statusFilter ? 'all' : inventoryScope,
+      purchased_by: ownershipFilter || undefined,
     }),
-    [search, statusFilter],
+    [search, statusFilter, inventoryScope, ownershipFilter],
   );
 
   const invalidateAssets = () => {
@@ -263,6 +316,27 @@ export function ITAssetsPage() {
     onError: (error) => showError(getErrorMessage(error)),
   });
 
+  const customerReturnMutation = useMutation({
+    mutationFn: () =>
+      returnAssetToCustomer(customerReturnTarget!.id, {
+        return_date: optionalString(customerReturnDate),
+        owner_customer_id: optionalString(customerReturnOwnerId),
+        received_by_name: optionalString(customerReturnReceivedBy),
+        condition_at_return: customerReturnCondition,
+        return_reason: optionalString(customerReturnReason),
+        notes: optionalString(customerReturnNotes),
+      }),
+    onSuccess: () => {
+      showSuccess('Asset returned to customer and removed from current inventory.');
+      setCustomerReturnTarget(null);
+      setCustomerReturnReceivedBy('');
+      setCustomerReturnReason('');
+      setCustomerReturnNotes('');
+      invalidateAssets();
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
   const assetTypeOptions = useMemo(
     () =>
       (assetTypesQuery.data ?? [])
@@ -279,6 +353,31 @@ export function ITAssetsPage() {
       })),
     [usersQuery.data],
   );
+
+  const customerOptions = useMemo(
+    () =>
+      (customersQuery.data ?? []).map((customer) => ({
+        value: customer.id,
+        label: customer.name,
+      })),
+    [customersQuery.data],
+  );
+
+  const openCustomerReturn = (asset: ITAsset) => {
+    setCustomerReturnTarget(asset);
+    setCustomerReturnDate(new Date().toISOString().slice(0, 10));
+    setCustomerReturnOwnerId(asset.owner_customer_id ?? '');
+    setCustomerReturnReceivedBy('');
+    setCustomerReturnCondition('good');
+    setCustomerReturnReason('');
+    setCustomerReturnNotes('');
+  };
+
+  const canShowCustomerReturn = (asset: ITAsset) =>
+    canReturnToCustomer &&
+    defaultInventoryScope !== 'returned' &&
+    asset.purchased_by === 'customer' &&
+    asset.status !== 'returned_to_customer';
 
   const openCreate = () => {
     setEditing(null);
@@ -343,6 +442,17 @@ export function ITAssetsPage() {
         [row.make, row.model].filter(Boolean).join(' ') || '—',
     },
     {
+      field: 'purchased_by',
+      headerName: 'Owned by',
+      width: 140,
+      valueGetter: (_value, row) =>
+        row.purchased_by === 'customer'
+          ? row.owner_customer_name || 'Customer'
+          : row.purchased_by === 'organization'
+            ? 'Organization'
+            : row.purchased_by || '—',
+    },
+    {
       field: 'status',
       headerName: 'Status',
       width: 130,
@@ -372,30 +482,33 @@ export function ITAssetsPage() {
     {
       field: 'actions',
       headerName: 'Actions',
-      width: DATA_GRID_ACTIONS_COLUMN_WIDTH + (canAssign ? 72 : 0),
+      width:
+        DATA_GRID_ACTIONS_COLUMN_WIDTH +
+        (canAssign ? 72 : 0) +
+        (canReturnToCustomer ? 40 : 0),
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <Stack direction="row" spacing={0.25} alignItems="center" onClick={(e) => e.stopPropagation()}>
+        <Stack direction="row" spacing={0.25} onClick={(e) => e.stopPropagation()} sx={{ alignItems: 'center' }}>
           {canManage ? (
             <TableRowActions
               onEdit={() => openEdit(params.row)}
               deleteAction={
                 <ProsohmButton
-                  buttonVariant="ghost"
+                  buttonVariant="outlined"
                   size="small"
                   aria-label="Delete asset"
                   onClick={() => setDeleteTarget(params.row)}
                   sx={{ minWidth: 0, px: 0.75 }}
                 >
-                  <DeleteOutlineIcon fontSize="small" />
+                  <DeleteOutlineRoundedIcon fontSize="small" />
                 </ProsohmButton>
               }
             />
           ) : null}
           {canAssign && params.row.status === 'available' ? (
             <ProsohmButton
-              buttonVariant="ghost"
+              buttonVariant="outlined"
               size="small"
               aria-label="Assign"
               onClick={() => {
@@ -412,7 +525,7 @@ export function ITAssetsPage() {
           {canAssign && params.row.status === 'assigned' ? (
             <>
               <ProsohmButton
-                buttonVariant="ghost"
+                buttonVariant="outlined"
                 size="small"
                 aria-label="Return"
                 onClick={() => {
@@ -426,7 +539,7 @@ export function ITAssetsPage() {
                 <UndoRoundedIcon fontSize="small" />
               </ProsohmButton>
               <ProsohmButton
-                buttonVariant="ghost"
+                buttonVariant="outlined"
                 size="small"
                 aria-label="Transfer"
                 onClick={() => {
@@ -441,6 +554,18 @@ export function ITAssetsPage() {
               </ProsohmButton>
             </>
           ) : null}
+          {canShowCustomerReturn(params.row) ? (
+            <ProsohmButton
+              buttonVariant="outlined"
+              size="small"
+              aria-label="Return to customer"
+              title="Return to customer"
+              onClick={() => openCustomerReturn(params.row)}
+              sx={{ minWidth: 0, px: 0.75 }}
+            >
+              <AssignmentReturnRoundedIcon fontSize="small" />
+            </ProsohmButton>
+          ) : null}
         </Stack>
       ),
     },
@@ -449,10 +574,16 @@ export function ITAssetsPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="IT Assets"
-        subtitle="Track hardware inventory, ownership, and lifecycle status."
+        title={
+          defaultInventoryScope === 'returned' ? 'Returned Assets' : 'Assets & Inventory'
+        }
+        subtitle={
+          defaultInventoryScope === 'returned'
+            ? 'Customer-owned assets returned from Prosohm custody (historical record retained).'
+            : 'Current inventory by default. Ownership is separate from who uses the asset.'
+        }
         action={
-          canManage ? (
+          canManage && defaultInventoryScope !== 'returned' ? (
             <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
               Add asset
             </ProsohmButton>
@@ -467,6 +598,24 @@ export function ITAssetsPage() {
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Asset number, serial, make…"
           sx={{ minWidth: 240, flex: 1, maxWidth: 420 }}
+        />
+        {defaultInventoryScope !== 'returned' ? (
+          <FormSelect
+            label="Inventory"
+            value={inventoryScope}
+            onChange={(event) =>
+              setInventoryScope(String(event.target.value) as typeof inventoryScope)
+            }
+            options={INVENTORY_SCOPE_OPTIONS}
+            sx={{ minWidth: 220 }}
+          />
+        ) : null}
+        <FormSelect
+          label="Ownership"
+          value={ownershipFilter}
+          onChange={(event) => setOwnershipFilter(String(event.target.value))}
+          options={OWNERSHIP_OPTIONS}
+          sx={{ minWidth: 180 }}
         />
         <FormSelect
           label="Status"
@@ -560,7 +709,7 @@ export function ITAssetsPage() {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, purchase_date: event.target.value }))
                 }
-                InputLabelProps={{ shrink: true }}
+                slotProps={{ inputLabel: { shrink: true } }}
                 sx={{ flex: 1 }}
               />
               <FormField
@@ -579,7 +728,7 @@ export function ITAssetsPage() {
               onChange={(event) =>
                 setForm((current) => ({ ...current, warranty_expiry: event.target.value }))
               }
-              InputLabelProps={{ shrink: true }}
+              slotProps={{ inputLabel: { shrink: true } }}
             />
             <FormField
               label="Location"
@@ -630,7 +779,7 @@ export function ITAssetsPage() {
             type="date"
             value={assignDate}
             onChange={(event) => setAssignDate(event.target.value)}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           <FormField
             label="Notes"
@@ -641,7 +790,7 @@ export function ITAssetsPage() {
           />
         </DialogContent>
         <DialogActions>
-          <ProsohmButton buttonVariant="ghost" onClick={() => setAssignTarget(null)}>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setAssignTarget(null)}>
             Cancel
           </ProsohmButton>
           <ProsohmButton
@@ -663,7 +812,7 @@ export function ITAssetsPage() {
             type="date"
             value={returnDate}
             onChange={(event) => setReturnDate(event.target.value)}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           <FormSelect
             label="Condition"
@@ -680,7 +829,7 @@ export function ITAssetsPage() {
           />
         </DialogContent>
         <DialogActions>
-          <ProsohmButton buttonVariant="ghost" onClick={() => setReturnTarget(null)}>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setReturnTarget(null)}>
             Cancel
           </ProsohmButton>
           <ProsohmButton
@@ -708,7 +857,7 @@ export function ITAssetsPage() {
             type="date"
             value={transferDate}
             onChange={(event) => setTransferDate(event.target.value)}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           <FormField
             label="Notes"
@@ -719,7 +868,7 @@ export function ITAssetsPage() {
           />
         </DialogContent>
         <DialogActions>
-          <ProsohmButton buttonVariant="ghost" onClick={() => setTransferTarget(null)}>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setTransferTarget(null)}>
             Cancel
           </ProsohmButton>
           <ProsohmButton
@@ -729,6 +878,73 @@ export function ITAssetsPage() {
             onClick={() => transferMutation.mutate()}
           >
             Transfer
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(customerReturnTarget)}
+        onClose={() => setCustomerReturnTarget(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Return to customer</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Box sx={{ color: 'text.secondary', fontSize: 14 }}>
+            Removes {customerReturnTarget?.asset_number ?? 'this asset'} from current inventory.
+            The asset and this return event stay in history forever.
+          </Box>
+          <FormSelect
+            label="Customer owner"
+            required
+            value={customerReturnOwnerId}
+            onChange={(event) => setCustomerReturnOwnerId(String(event.target.value))}
+            options={customerOptions}
+          />
+          <FormField
+            label="Return date"
+            type="date"
+            value={customerReturnDate}
+            onChange={(event) => setCustomerReturnDate(event.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+          />
+          <FormSelect
+            label="Condition at return"
+            value={customerReturnCondition}
+            onChange={(event) => setCustomerReturnCondition(String(event.target.value))}
+            options={RETURN_CONDITION_OPTIONS}
+          />
+          <FormField
+            label="Received by (customer contact)"
+            value={customerReturnReceivedBy}
+            onChange={(event) => setCustomerReturnReceivedBy(event.target.value)}
+            placeholder="Name of person who received the asset"
+          />
+          <FormSelect
+            label="Return reason"
+            value={customerReturnReason}
+            onChange={(event) => setCustomerReturnReason(String(event.target.value))}
+            options={CUSTOMER_RETURN_REASON_OPTIONS}
+          />
+          <FormField
+            label="Notes"
+            value={customerReturnNotes}
+            onChange={(event) => setCustomerReturnNotes(event.target.value)}
+            multiline
+            minRows={2}
+          />
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setCustomerReturnTarget(null)}>
+            Cancel
+          </ProsohmButton>
+          <ProsohmButton
+            buttonVariant="primary"
+            loading={customerReturnMutation.isPending}
+            disabled={!customerReturnOwnerId}
+            onClick={() => customerReturnMutation.mutate()}
+          >
+            Return to customer
           </ProsohmButton>
         </DialogActions>
       </Dialog>

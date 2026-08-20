@@ -128,7 +128,7 @@ export function WorkstreamSectionsManager({
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
               Hidden sections
             </Typography>
-            <Stack direction="row" flexWrap="wrap" gap={1}>
+            <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
               {prefs.hidden.map((id) => {
                 const ws = byId.get(id);
                 return (

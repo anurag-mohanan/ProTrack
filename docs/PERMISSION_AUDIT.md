@@ -217,3 +217,48 @@ See the implementation commit / files. Intent:
 5. Permission changes require re-login / `/me` refresh (no push). Document for operators.
 6. Do not alias IT **System Administrator** to **Admin** without an explicit product decision.
 7. Permanent delete will remain blocked for projects with timesheet history — by design.
+
+---
+
+## 13. IT Operations permission audit (ownership / migration)
+
+Date: 2026-08-20  
+Module gate: `it_operations`  
+Specials live in `app/core/access_control.py` and `frontend/src/config/accessControl.ts`.
+
+### Existing specials
+
+| Key | Purpose |
+|-----|---------|
+| `view_it_operations` | Read IT surfaces |
+| `manage_it_assets` | Create/edit/archive assets & types |
+| `assign_it_assets` | Assign / employee-return / transfer |
+| `manage_it_networks` | Networks |
+| `allocate_it_ips` | IP allocate/release |
+| `manage_it_accounts` | Account metadata |
+| `generate_it_credentials` | One-time password generation (never stored) |
+| `manage_it_requests` | IT tickets beyond own |
+| `view_it_reports` | IT reports |
+| `manage_it_settings` | Naming / numbering / migration admin |
+
+### Added / planned specials (granular)
+
+| Key | Purpose |
+|-----|---------|
+| `return_customer_assets` | Return customer-owned assets (lifecycle) |
+| `manage_it_inventory` | Consumables / stock qty |
+| `manage_it_software` | Software catalog & licenses |
+| `manage_it_suppliers` | Supplier master |
+
+Do **not** grant all IT specials merely because the user has the `it_operations` module.
+
+### Security non-negotiables
+
+- Plaintext passwords from spreadsheet migration are never stored, previewed, logged, exported, or returned by API.
+- Credential import marks `migration_required`; reset via `generate_it_credentials`.
+- Frontend and backend both enforce specials; reports/search/export use the same checks.
+- Customer returns are audited (`it_asset_returned_to_customer`); secrets are never in audit payloads.
+
+### Navigation preference
+
+`user_preferences.sidebar_section_state` is **per user** (not global). Collapsing a section does not revoke module access — items reappear on expand.

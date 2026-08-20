@@ -542,7 +542,7 @@ export function ITNetworksPage() {
           />
         </DialogContent>
         <DialogActions>
-          <ProsohmButton buttonVariant="ghost" onClick={() => setAllocateOpen(false)}>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setAllocateOpen(false)}>
             Cancel
           </ProsohmButton>
           <ProsohmButton
@@ -568,7 +568,7 @@ export function ITNetworksPage() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <ProsohmButton buttonVariant="ghost" onClick={() => setReleaseTarget(null)}>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setReleaseTarget(null)}>
             Cancel
           </ProsohmButton>
           <ProsohmButton

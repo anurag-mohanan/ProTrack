@@ -19,6 +19,11 @@ import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
 import LanRoundedIcon from '@mui/icons-material/LanRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
+import PeopleAltRoundedIcon from '@mui/icons-material/PeopleAltRounded';
+import AppsRoundedIcon from '@mui/icons-material/AppsRounded';
+import BuildRoundedIcon from '@mui/icons-material/BuildRounded';
+import LocalShippingRoundedIcon from '@mui/icons-material/LocalShippingRounded';
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import type { CurrentUser } from '../types';
 import {
   ALL_MODULES,
@@ -54,10 +59,15 @@ import {
   SPECIAL_MANAGE_IT_ASSETS,
   SPECIAL_MANAGE_IT_NETWORKS,
   SPECIAL_MANAGE_IT_SETTINGS,
+  SPECIAL_MANAGE_IT_SOFTWARE,
+  SPECIAL_MANAGE_IT_SUPPLIERS,
+  SPECIAL_MANAGE_IT_ACCOUNTS,
   SPECIAL_MANAGE_PROJECT_SETTINGS,
   SPECIAL_MANAGE_TEAMS,
   SPECIAL_MANAGE_USERS,
+  SPECIAL_RETURN_CUSTOMER_ASSETS,
   SPECIAL_VIEW_IT_OPERATIONS,
+  SPECIAL_VIEW_IT_REPORTS,
   SPECIAL_VIEW_REPORTS,
   SPECIAL_VIEW_RESOURCE_PLANNING,
   type ModuleKey,
@@ -396,9 +406,15 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'Assets',
+    label: 'Assets & Inventory',
     path: '/it/assets',
     icon: InventoryRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Returned Assets',
+    path: '/it/returned-assets',
+    icon: HistoryRoundedIcon,
   },
   {
     module: MODULE_IT_OPERATIONS,
@@ -408,9 +424,25 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'Networks',
+    label: 'Network / IP',
     path: '/it/networks',
     icon: LanRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Users & Accounts',
+    path: '/it/accounts',
+    icon: PeopleAltRoundedIcon,
+    visible: (ctx: AccessContext) =>
+      userHasSpecial(ctx, SPECIAL_MANAGE_IT_ACCOUNTS) || canViewItOperations(ctx),
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Software & Licenses',
+    path: '/it/software',
+    icon: AppsRoundedIcon,
+    visible: (ctx: AccessContext) =>
+      userHasSpecial(ctx, SPECIAL_MANAGE_IT_SOFTWARE) || canViewItOperations(ctx),
   },
   {
     module: MODULE_IT_OPERATIONS,
@@ -420,7 +452,29 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'Settings',
+    label: 'Maintenance',
+    path: '/it/maintenance',
+    icon: BuildRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Suppliers',
+    path: '/it/suppliers',
+    icon: LocalShippingRoundedIcon,
+    visible: (ctx: AccessContext) =>
+      userHasSpecial(ctx, SPECIAL_MANAGE_IT_SUPPLIERS) || canViewItOperations(ctx),
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Reports',
+    path: '/it/reports',
+    icon: AssessmentRoundedIcon,
+    visible: (ctx: AccessContext) =>
+      userHasSpecial(ctx, SPECIAL_VIEW_IT_REPORTS) || canViewItOperations(ctx),
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'IT Settings',
     path: '/it/settings',
     icon: SettingsRoundedIcon,
     visible: (ctx: AccessContext) => canManageItSettings(ctx),
@@ -787,6 +841,11 @@ export function canManageItAssets(roleNameOrContext: string | AccessContext): bo
 export function canAssignItAssets(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
   return userHasSpecial(ctx, SPECIAL_ASSIGN_IT_ASSETS);
+}
+
+export function canReturnCustomerAssets(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_RETURN_CUSTOMER_ASSETS);
 }
 
 export function canManageItNetworks(roleNameOrContext: string | AccessContext): boolean {

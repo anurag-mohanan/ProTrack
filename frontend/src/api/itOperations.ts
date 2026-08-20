@@ -17,6 +17,8 @@ import type {
   ITAsset,
   ITAssetCreate,
   ITAssetUpdate,
+  AssetCustomerReturn,
+  CustomerAssetReturnReportRow,
   ITComputer,
   ITComputerCreate,
   ITComputerUpdate,
@@ -39,6 +41,10 @@ export const itOperationsKeys = {
   assetTypes: () => [...itOperationsKeys.all, 'asset-types'] as const,
   assets: (filters?: ListParams) => [...itOperationsKeys.all, 'assets', filters ?? {}] as const,
   asset: (id: string) => [...itOperationsKeys.all, 'assets', id] as const,
+  customerReturns: (filters?: ListParams) =>
+    [...itOperationsKeys.all, 'customer-returns', filters ?? {}] as const,
+  customerReturnsReport: (filters?: ListParams) =>
+    [...itOperationsKeys.all, 'reports', 'customer-returns', filters ?? {}] as const,
   assetAssignments: (id: string) =>
     [...itOperationsKeys.all, 'assets', id, 'assignments'] as const,
   computers: (filters?: ListParams) =>
@@ -128,6 +134,36 @@ export async function returnAsset(id: string, payload: AssetReturnPayload = {}):
   return data;
 }
 
+export async function returnAssetToCustomer(
+  id: string,
+  payload: {
+    return_date?: string | null;
+    owner_customer_id?: string | null;
+    received_by_name?: string | null;
+    condition_at_return?: string | null;
+    return_reason?: string | null;
+    notes?: string | null;
+  } = {},
+): Promise<AssetCustomerReturn> {
+  const { data } = await apiClient.post<AssetCustomerReturn>(
+    `/it/assets/${id}/return-to-customer`,
+    payload,
+  );
+  return data;
+}
+
+export async function fetchCustomerReturns(
+  params?: ListParams & { owner_customer_id?: string },
+): Promise<AssetCustomerReturn[]> {
+  return getList<AssetCustomerReturn>('/it/assets/customer-returns', params);
+}
+
+export async function fetchCustomerReturnsReport(
+  params?: ListParams & { owner_customer_id?: string },
+): Promise<CustomerAssetReturnReportRow[]> {
+  return getList<CustomerAssetReturnReportRow>('/it/reports/customer-returns', params);
+}
+
 export async function transferAsset(id: string, payload: AssetTransferPayload): Promise<ITAsset> {
   const { data } = await apiClient.post<ITAsset>(`/it/assets/${id}/transfer`, payload);
   return data;
@@ -207,6 +243,85 @@ export async function fetchItSettings(): Promise<ITSettings> {
 
 export async function updateItSettings(payload: ITSettingsUpdate): Promise<ITSettings> {
   const { data } = await apiClient.put<ITSettings>('/it/settings', payload);
+  return data;
+}
+
+export interface ITMigrationSourceType {
+  id: string;
+  label: string;
+  sheet_hint: string;
+  description: string;
+}
+
+export interface ITMigrationAnalyzeResult {
+  session_id: string;
+  source_type: string;
+  filename: string;
+  sheet_name: string;
+  records_found: number;
+  new_records: number;
+  potential_duplicates: number;
+  skipped_records: number;
+  requires_review: number;
+  sensitive_columns_excluded: string[];
+  sensitive_data_excluded_count: number;
+  headers: string[];
+  duplicates: Array<Record<string, unknown>>;
+  exceptions: Array<Record<string, unknown>>;
+  preview_rows: Array<Record<string, string>>;
+  confirm_required: boolean;
+  message: string;
+}
+
+export interface ITMigrationImportResult {
+  session_id: string;
+  source_type: string;
+  filename?: string | null;
+  imported: number;
+  skipped: number;
+  duplicated: number;
+  conflicted: number;
+  requires_review: number;
+  sensitive_data_excluded: number;
+  organization_owned: number;
+  customer_owned: number;
+  returned_assets: number;
+  errors: string[];
+  message: string;
+}
+
+export async function fetchMigrationSourceTypes(): Promise<ITMigrationSourceType[]> {
+  const { data } = await apiClient.get<ITMigrationSourceType[]>('/it/migration/source-types');
+  return data;
+}
+
+export async function analyzeItMigration(
+  sourceType: string,
+  file: File,
+): Promise<ITMigrationAnalyzeResult> {
+  const form = new FormData();
+  form.append('source_type', sourceType);
+  form.append('file', file);
+  const { data } = await apiClient.post<ITMigrationAnalyzeResult>('/it/migration/analyze', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export async function commitItMigration(payload: {
+  session_id: string;
+  confirm: boolean;
+  skip_duplicates?: boolean;
+  skip_review_rows?: boolean;
+}): Promise<ITMigrationImportResult> {
+  const form = new FormData();
+  form.append('session_id', payload.session_id);
+  form.append('confirm', String(payload.confirm));
+  form.append('skip_duplicates', String(payload.skip_duplicates ?? true));
+  form.append('skip_review_rows', String(payload.skip_review_rows ?? false));
+  const { data } = await apiClient.post<ITMigrationImportResult>('/it/migration/import', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return data;
 }
 

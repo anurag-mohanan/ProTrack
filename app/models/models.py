@@ -1962,11 +1962,17 @@ from app.models.workstream import (  # noqa: E402, F401
 from app.models.it_operations import (  # noqa: E402, F401
     Asset,
     AssetAssignment,
+    AssetCustomerReturn,
     AssetType,
     Computer,
+    InventoryItem,
     IPAddress,
     IPAssignmentHistory,
     ITSettings,
+    ITSupplier,
     ITUserAccount,
     Network,
+    SoftwareAssignment,
+    SoftwareCatalog,
+    SoftwareLicensePool,
 )

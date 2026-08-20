@@ -229,6 +229,9 @@ class ActivityAction(enum.Enum):
     it_settings_updated = "it_settings_updated"
     it_migration_analyzed = "it_migration_analyzed"
     it_migration_imported = "it_migration_imported"
+    it_data_import_analyzed = "it_data_import_analyzed"
+    it_data_import_committed = "it_data_import_committed"
+    it_data_import_rolled_back = "it_data_import_rolled_back"
 
 
 class NotificationType(enum.Enum):

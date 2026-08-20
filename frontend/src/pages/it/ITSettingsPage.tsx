@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Box, Stack } from '@mui/material';
+import { Box, Stack, Alert, Typography } from '@mui/material';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
+import { Link as RouterLink } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchItSettings,
@@ -19,7 +20,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import type { ITSettingsUpdate } from '../../types/itOperations';
 import { optionalString } from '../../utils/formValues';
-import { accessContextFromUser, canManageItSettings } from '../../utils/permissions';
+import {
+  accessContextFromUser,
+  canManageItDataImports,
+  canManageItSettings,
+} from '../../utils/permissions';
 import { ITMigrationPanel } from '../../components/it/ITMigrationPanel';
 
 type SettingsFormState = {
@@ -191,7 +196,27 @@ export function ITSettingsPage() {
       </ContentCard>
 
       <Box sx={{ mt: 3 }}>
-        <ITMigrationPanel />
+        <ContentCard title="Data Import">
+          <Stack spacing={1.5}>
+            <Alert severity="info">
+              Use the sequential IT Data Import center for the split workbooks (
+              01_Assets.xlsx … 08_Migration_Exceptions.xlsx). Preview each file before commit.
+            </Alert>
+            {canManageItDataImports(accessContextFromUser(user)) ? (
+              <ProsohmButton component={RouterLink} to="/it/data-import">
+                Open IT Data Import
+              </ProsohmButton>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Manage IT Data Imports permission is required.
+              </Typography>
+            )}
+            <Typography variant="subtitle2" sx={{ pt: 1 }}>
+              Legacy multi-sheet migration (optional)
+            </Typography>
+            <ITMigrationPanel />
+          </Stack>
+        </ContentCard>
       </Box>
     </PageContainer>
   );

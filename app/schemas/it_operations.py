@@ -514,3 +514,79 @@ class ITMigrationImportResult(BaseModel):
     returned_assets: int = 0
     errors: list[str] = Field(default_factory=list)
     message: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Sequential IT Data Import
+# ---------------------------------------------------------------------------
+
+
+class ITDataImportTypeStatus(BaseModel):
+    id: str
+    label: str
+    expected_filename: str
+    recommended_order: int
+    depends_on: list[str] = Field(default_factory=list)
+    review_only: bool = False
+    canonical_sheet: str = ""
+    status: str = "not_started"
+    latest_batch_id: Optional[str] = None
+    latest_batch_code: Optional[str] = None
+    latest_committed_at: Optional[str] = None
+    success_count: int = 0
+
+
+class ITImportBatchRead(TimestampSchema):
+    batch_code: str
+    import_type: str
+    filename: str
+    sheet_name: Optional[str] = None
+    uploaded_by_user_id: UUID
+    status: str
+    record_count: int = 0
+    success_count: int = 0
+    skipped_count: int = 0
+    error_count: int = 0
+    warning_count: int = 0
+    session_id: Optional[str] = None
+    summary_json: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ITDataImportAnalyzeResult(BaseModel):
+    batch_id: str
+    batch_code: str
+    session_id: str
+    import_type: str
+    filename: str
+    sheet_name: str
+    other_sheets: list[str] = Field(default_factory=list)
+    canonical_sheet: str = ""
+    review_only: bool = False
+    headers: list[str] = Field(default_factory=list)
+    column_bindings: dict[str, Optional[str]] = Field(default_factory=dict)
+    unmapped_columns: list[str] = Field(default_factory=list)
+    sensitive_columns_excluded: list[str] = Field(default_factory=list)
+    stats: dict = Field(default_factory=dict)
+    first_10_records: list[dict] = Field(default_factory=list)
+    dependency_warnings: list[str] = Field(default_factory=list)
+    fidelity_note: Optional[str] = None
+    block_commit: bool = False
+    commit_allowed: bool = True
+    confirm_required: bool = True
+    message: str = ""
+
+
+class ITDataImportCommitResult(BaseModel):
+    batch_id: str
+    batch_code: str
+    import_type: str
+    filename: Optional[str] = None
+    status: str = "committed"
+    imported: int = 0
+    skipped: int = 0
+    duplicated: int = 0
+    errors: list[str] = Field(default_factory=list)
+    deleted: dict[str, int] = Field(default_factory=dict)
+    confirm_required: bool = False
+    message: str = ""

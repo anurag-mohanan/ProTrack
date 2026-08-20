@@ -45,6 +45,53 @@ class ITSettings(Base, TimestampMixin, TenantMixin):
     settings_json: Mapped[Optional[str]] = mapped_column(Text)
 
 
+class ITImportBatch(Base, TimestampMixin, TenantMixin):
+    """One controlled IT Data Import run (preview → commit → optional rollback)."""
+
+    __tablename__ = "it_import_batches"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "batch_code", name="uq_it_import_batches_tenant_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_code: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    import_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    sheet_name: Mapped[Optional[str]] = mapped_column(String(120))
+    uploaded_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    # preview | committed | failed | rolled_back | cancelled
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="preview", index=True)
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    warning_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    session_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    summary_json: Mapped[Optional[str]] = mapped_column(Text)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class ITMigrationException(Base, TimestampMixin, TenantMixin):
+    """Review-only migration exception rows (not assets)."""
+
+    __tablename__ = "it_migration_exceptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
+    )
+    exception_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    source: Mapped[Optional[str]] = mapped_column(String(200))
+    source_row: Mapped[Optional[str]] = mapped_column(String(40))
+    identifier: Mapped[Optional[str]] = mapped_column(String(120))
+    issue: Mapped[Optional[str]] = mapped_column(Text)
+    action: Mapped[Optional[str]] = mapped_column(Text)
+    # open | resolved | dismissed
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open", index=True)
+
+
 class ITSupplier(Base, TimestampMixin, TenantMixin):
     __tablename__ = "it_suppliers"
     __table_args__ = (
@@ -60,6 +107,10 @@ class ITSupplier(Base, TimestampMixin, TenantMixin):
     products: Mapped[Optional[str]] = mapped_column(Text)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
+    )
+    source_system: Mapped[Optional[str]] = mapped_column(String(120))
 
 
 class AssetType(Base, TimestampMixin, TenantMixin):
@@ -115,6 +166,13 @@ class Asset(Base, TimestampMixin, TenantMixin):
     location: Mapped[Optional[str]] = mapped_column(String(120))
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Durable import lineage (sequential IT Data Import)
+    import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
+    )
+    source_system: Mapped[Optional[str]] = mapped_column(String(120))
+    source_record_id: Mapped[Optional[str]] = mapped_column(String(80), index=True)
+    source_row: Mapped[Optional[int]] = mapped_column(Integer)
 
     asset_type: Mapped[AssetType] = relationship(back_populates="assets")
     computer: Mapped[Optional["Computer"]] = relationship(back_populates="asset", uselist=False)
@@ -180,6 +238,11 @@ class InventoryItem(Base, TimestampMixin, TenantMixin):
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="current")
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
+    )
+    source_system: Mapped[Optional[str]] = mapped_column(String(120))
+    source_record_id: Mapped[Optional[str]] = mapped_column(String(80), index=True)
 
 
 class Computer(Base, TimestampMixin, TenantMixin):
@@ -201,6 +264,10 @@ class Computer(Base, TimestampMixin, TenantMixin):
     storage_gb: Mapped[Optional[int]] = mapped_column(Integer)
     domain_joined: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     mac_address: Mapped[Optional[str]] = mapped_column(String(17))
+    import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
+    )
+    source_system: Mapped[Optional[str]] = mapped_column(String(120))
 
     asset: Mapped[Asset] = relationship(back_populates="computer")
 
@@ -257,6 +324,9 @@ class IPAddress(Base, TimestampMixin, TenantMixin):
     address: Mapped[str] = mapped_column(String(15), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="available", index=True)
     allocation_type: Mapped[Optional[str]] = mapped_column(String(20))
+    import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
+    )
 
     network: Mapped[Network] = relationship(back_populates="ip_addresses")
     assignment_history: Mapped[list["IPAssignmentHistory"]] = relationship(
@@ -308,6 +378,10 @@ class ITUserAccount(Base, TimestampMixin, TenantMixin):
     created_date: Mapped[Optional[date]] = mapped_column(Date)
     deactivated_date: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
+    )
+    source_system: Mapped[Optional[str]] = mapped_column(String(120))
 
 
 class SoftwareCatalog(Base, TimestampMixin, TenantMixin):
@@ -340,6 +414,10 @@ class SoftwareLicensePool(Base, TimestampMixin, TenantMixin):
     expiry_date: Mapped[Optional[date]] = mapped_column(Date)
     renewal_mode: Mapped[Optional[str]] = mapped_column(String(80))
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
+    )
+    source_system: Mapped[Optional[str]] = mapped_column(String(120))
 
 
 class SoftwareAssignment(Base, TimestampMixin, TenantMixin):
@@ -355,3 +433,6 @@ class SoftwareAssignment(Base, TimestampMixin, TenantMixin):
     assigned_date: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     department: Mapped[Optional[str]] = mapped_column(String(100))
+    import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
+    )

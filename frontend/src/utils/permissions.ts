@@ -18,6 +18,7 @@ import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
 import LanRoundedIcon from '@mui/icons-material/LanRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
+import CloudUploadRoundedIcon from '@mui/icons-material/CloudUploadRounded';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
 import PeopleAltRoundedIcon from '@mui/icons-material/PeopleAltRounded';
 import AppsRoundedIcon from '@mui/icons-material/AppsRounded';
@@ -59,6 +60,7 @@ import {
   SPECIAL_MANAGE_IT_ASSETS,
   SPECIAL_MANAGE_IT_NETWORKS,
   SPECIAL_MANAGE_IT_SETTINGS,
+  SPECIAL_MANAGE_IT_DATA_IMPORTS,
   SPECIAL_MANAGE_IT_SOFTWARE,
   SPECIAL_MANAGE_IT_SUPPLIERS,
   SPECIAL_MANAGE_IT_ACCOUNTS,
@@ -474,6 +476,13 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
   },
   {
     module: MODULE_IT_OPERATIONS,
+    label: 'Data Import',
+    path: '/it/data-import',
+    icon: CloudUploadRoundedIcon,
+    visible: (ctx: AccessContext) => canManageItDataImports(ctx),
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
     label: 'IT Settings',
     path: '/it/settings',
     icon: SettingsRoundedIcon,
@@ -861,6 +870,11 @@ export function canAllocateItIps(roleNameOrContext: string | AccessContext): boo
 export function canManageItSettings(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
   return userHasSpecial(ctx, SPECIAL_MANAGE_IT_SETTINGS);
+}
+
+export function canManageItDataImports(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_IT_DATA_IMPORTS);
 }
 
 export function getMainNavItems(roleNameOrContext: string | AccessContext): MainNavItem[] {

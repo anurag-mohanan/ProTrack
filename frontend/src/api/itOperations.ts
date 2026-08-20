@@ -330,6 +330,141 @@ export async function commitItMigration(payload: {
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Sequential IT Data Import
+// ---------------------------------------------------------------------------
+
+export interface ITDataImportTypeStatus {
+  id: string;
+  label: string;
+  expected_filename: string;
+  recommended_order: number;
+  depends_on: string[];
+  review_only: boolean;
+  canonical_sheet: string;
+  status: string;
+  latest_batch_id: string | null;
+  latest_batch_code: string | null;
+  latest_committed_at: string | null;
+  success_count: number;
+}
+
+export interface ITImportBatchRead {
+  id: string;
+  batch_code: string;
+  import_type: string;
+  filename: string;
+  sheet_name: string | null;
+  uploaded_by_user_id: string;
+  status: string;
+  record_count: number;
+  success_count: number;
+  skipped_count: number;
+  error_count: number;
+  warning_count: number;
+  session_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ITDataImportAnalyzeResult {
+  batch_id: string;
+  batch_code: string;
+  session_id: string;
+  import_type: string;
+  filename: string;
+  sheet_name: string;
+  other_sheets: string[];
+  canonical_sheet: string;
+  review_only: boolean;
+  headers: string[];
+  column_bindings: Record<string, string | null>;
+  unmapped_columns: string[];
+  sensitive_columns_excluded: string[];
+  stats: Record<string, number>;
+  first_10_records: Record<string, unknown>[];
+  dependency_warnings: string[];
+  fidelity_note: string | null;
+  block_commit: boolean;
+  commit_allowed: boolean;
+  confirm_required: boolean;
+  message: string;
+}
+
+export interface ITDataImportCommitResult {
+  batch_id: string;
+  batch_code: string;
+  import_type: string;
+  filename?: string | null;
+  status: string;
+  imported: number;
+  skipped: number;
+  duplicated: number;
+  errors: string[];
+  deleted?: Record<string, number>;
+  message: string;
+}
+
+export async function fetchItDataImportTypes(): Promise<ITDataImportTypeStatus[]> {
+  const { data } = await apiClient.get<ITDataImportTypeStatus[]>('/it/data-import/types');
+  return data;
+}
+
+export async function fetchItDataImportBatches(params?: {
+  import_type?: string;
+  status?: string;
+}): Promise<ITImportBatchRead[]> {
+  const { data } = await apiClient.get<ITImportBatchRead[]>('/it/data-import/batches', {
+    params,
+  });
+  return data;
+}
+
+export async function analyzeItDataImport(
+  importType: string,
+  file: File,
+  sheetName?: string | null,
+): Promise<ITDataImportAnalyzeResult> {
+  const form = new FormData();
+  form.append('import_type', importType);
+  form.append('file', file);
+  if (sheetName) form.append('sheet_name', sheetName);
+  const { data } = await apiClient.post<ITDataImportAnalyzeResult>('/it/data-import/analyze', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export async function commitItDataImport(payload: {
+  batch_id: string;
+  confirm: boolean;
+  skip_duplicates?: boolean;
+}): Promise<ITDataImportCommitResult> {
+  const form = new FormData();
+  form.append('batch_id', payload.batch_id);
+  form.append('confirm', String(payload.confirm));
+  form.append('skip_duplicates', String(payload.skip_duplicates ?? true));
+  const { data } = await apiClient.post<ITDataImportCommitResult>('/it/data-import/commit', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export async function rollbackItDataImport(payload: {
+  batch_id: string;
+  confirm: boolean;
+}): Promise<ITDataImportCommitResult> {
+  const form = new FormData();
+  form.append('batch_id', payload.batch_id);
+  form.append('confirm', String(payload.confirm));
+  const { data } = await apiClient.post<ITDataImportCommitResult>(
+    '/it/data-import/rollback',
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return data;
+}
+
 export async function fetchMyItProfile(): Promise<ITProfile> {
   const { data } = await apiClient.get<ITProfile>('/it/profile/me');
   return data;

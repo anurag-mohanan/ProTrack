@@ -113,6 +113,11 @@ const ITSettingsPage = lazy(() =>
     default: module.ITSettingsPage,
   })),
 );
+const ITDataImportPage = lazy(() =>
+  import('./pages/it/ITDataImportPage').then((module) => ({
+    default: module.ITDataImportPage,
+  })),
+);
 const ITReturnedAssetsPage = lazy(() =>
   import('./pages/it/ITReturnedAssetsPage').then((module) => ({
     default: module.ITReturnedAssetsPage,
@@ -551,6 +556,14 @@ export default function App() {
                         element={
                           <Suspense fallback={<LoadingState message="Loading IT settings…" />}>
                             <ITSettingsPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/data-import"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading IT Data Import…" />}>
+                            <ITDataImportPage />
                           </Suspense>
                         }
                       />

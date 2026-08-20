@@ -17,6 +17,7 @@ from app.core.access_control import (
     SPECIAL_GENERATE_IT_CREDENTIALS,
     SPECIAL_MANAGE_IT_ACCOUNTS,
     SPECIAL_MANAGE_IT_ASSETS,
+    SPECIAL_MANAGE_IT_DATA_IMPORTS,
     SPECIAL_MANAGE_IT_NETWORKS,
     SPECIAL_MANAGE_IT_SETTINGS,
     SPECIAL_RETURN_CUSTOMER_ASSETS,
@@ -56,6 +57,10 @@ from app.schemas.it_operations import (
     IPAddressRead,
     IPReleaseRequest,
     ITDashboardSummary,
+    ITDataImportAnalyzeResult,
+    ITDataImportCommitResult,
+    ITDataImportTypeStatus,
+    ITImportBatchRead,
     ITMigrationAnalyzeResult,
     ITMigrationImportResult,
     ITMigrationSourceType,
@@ -75,6 +80,7 @@ from app.services import (
     it_account_service,
     it_asset_service,
     it_dashboard_service,
+    it_data_import_service,
     it_migration_service,
     it_network_service,
 )
@@ -1218,6 +1224,127 @@ def migration_import(
             skip_review_rows=skip_review_rows,
         )
         return ITMigrationImportResult(**result)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+# ---------------------------------------------------------------------------
+# Sequential IT Data Import (manage_it_data_imports)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/data-import/types",
+    response_model=list[ITDataImportTypeStatus],
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_DATA_IMPORTS))],
+)
+def data_import_types(db: Session = Depends(get_db)):
+    return [ITDataImportTypeStatus(**row) for row in it_data_import_service.list_import_types(db)]
+
+
+@router.get(
+    "/data-import/batches",
+    response_model=list[ITImportBatchRead],
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_DATA_IMPORTS))],
+)
+def data_import_batches(
+    import_type: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+    db: Session = Depends(get_db),
+):
+    return [
+        ITImportBatchRead(**it_data_import_service._batch_to_dict(row))
+        for row in it_data_import_service.list_batches(
+            db, import_type=import_type, status=status_filter
+        )
+    ]
+
+
+@router.get(
+    "/data-import/batches/{batch_id}",
+    response_model=ITImportBatchRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_DATA_IMPORTS))],
+)
+def data_import_batch(batch_id: UUID, db: Session = Depends(get_db)):
+    return ITImportBatchRead(**it_data_import_service._batch_to_dict(
+        it_data_import_service.get_batch(db, batch_id)
+    ))
+
+
+@router.post(
+    "/data-import/analyze",
+    response_model=ITDataImportAnalyzeResult,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_DATA_IMPORTS))],
+)
+async def data_import_analyze(
+    import_type: str = Form(...),
+    file: UploadFile = File(...),
+    sheet_name: str | None = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    enforce_upload_size(content)
+    try:
+        result = it_data_import_service.analyze_upload(
+            db,
+            actor=current_user,
+            content=content,
+            filename=file.filename or "upload.xlsx",
+            import_type=import_type,
+            sheet_name=sheet_name,
+        )
+        return ITDataImportAnalyzeResult(**result)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/data-import/commit",
+    response_model=ITDataImportCommitResult,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_DATA_IMPORTS))],
+)
+def data_import_commit(
+    batch_id: UUID = Form(...),
+    confirm: bool = Form(False),
+    skip_duplicates: bool = Form(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = it_data_import_service.commit_import(
+            db,
+            actor=current_user,
+            batch_id=batch_id,
+            confirm=confirm,
+            skip_duplicates=skip_duplicates,
+        )
+        return ITDataImportCommitResult(**result)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/data-import/rollback",
+    response_model=ITDataImportCommitResult,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_DATA_IMPORTS))],
+)
+def data_import_rollback(
+    batch_id: UUID = Form(...),
+    confirm: bool = Form(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = it_data_import_service.rollback_batch(
+            db,
+            actor=current_user,
+            batch_id=batch_id,
+            confirm=confirm,
+        )
+        return ITDataImportCommitResult(**result)
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
 

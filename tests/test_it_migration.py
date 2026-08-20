@@ -168,10 +168,21 @@ def test_migration_import_hardware_and_skip_duplicate(client, session):
     assets = list(session.scalars(select(Asset).where(Asset.is_deleted.is_(False))).all())
     legacy_ids = {a.legacy_asset_number for a in assets}
     assert "PP-MIG-01" in legacy_ids
+    by_legacy = {a.legacy_asset_number: a for a in assets if a.legacy_asset_number}
+    mig = by_legacy["PP-MIG-01"]
+    assert mig.asset_number == "PP-MIG-01"
+    assert mig.purchased_by == "unknown"
+    assert mig.serial_number is None or mig.serial_number == ""
+    assert mig.service_tag == "MIGTAG001"
+    assert mig.serial_number != "SERIAL_MISSING"
+    assert "OWNERSHIP_UNCLEAR" not in (mig.asset_number or "")
+    assert "OWNERSHIP_UNCLEAR" not in (mig.notes or "")
     # No password anywhere on notes
     for a in assets:
         assert a.notes is None or "should-never-appear" not in (a.notes or "")
         assert a.notes is None or "tv-secret" not in (a.notes or "")
+        assert "EX-HAR" not in (a.asset_number or "")
+        assert "SERIAL_MISSING" not in (a.serial_number or "")
 
     # Re-analyze same file → duplicates detected against DB
     analyzed2 = client.post(

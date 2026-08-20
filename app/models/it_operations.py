@@ -15,7 +15,9 @@ from app.db.base import Base, UniqueConstraint
 from app.models.mixins import TenantMixin, TimestampMixin
 
 # Ownership codes (labels are tenant-configurable via ITSettings.settings_json).
-PURCHASED_BY_CODES = frozenset({"organization", "customer", "vendor", "leased", "other"})
+PURCHASED_BY_CODES = frozenset(
+    {"organization", "customer", "vendor", "leased", "other", "unknown"}
+)
 
 # Default "current inventory" statuses (returned/disposed/retired excluded).
 CURRENT_INVENTORY_STATUSES = frozenset(

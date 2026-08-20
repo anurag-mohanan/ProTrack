@@ -15,6 +15,7 @@ export type PurchasedBy =
   | 'vendor'
   | 'leased'
   | 'other'
+  | 'unknown'
   | string;
 
 export type AssetTypeCategory =

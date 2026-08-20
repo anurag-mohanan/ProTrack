@@ -40,7 +40,9 @@ ASSET_STATUSES = frozenset(
 CURRENT_INVENTORY_STATUSES = frozenset(
     {"available", "assigned", "maintenance", "awaiting_return"}
 )
-PURCHASED_BY_CODES = frozenset({"organization", "customer", "vendor", "leased", "other"})
+PURCHASED_BY_CODES = frozenset(
+    {"organization", "customer", "vendor", "leased", "other", "unknown"}
+)
 
 
 def _validate_ownership(
@@ -350,6 +352,7 @@ def create_asset(
     location: str | None = None,
     notes: str | None = None,
     legacy_asset_number: str | None = None,
+    asset_number: str | None = None,
     description: str | None = None,
     service_tag: str | None = None,
     purchased_by: str = "organization",
@@ -368,11 +371,25 @@ def create_asset(
         raise ProTrackValidationError("Owner customer not found.")
     if customer_used_for_id is not None and db.get(Customer, customer_used_for_id) is None:
         raise ProTrackValidationError("Customer used for not found.")
-    number = next_asset_number(db, asset_type)
+    preferred = (asset_number or legacy_asset_number or "").strip() or None
+    if preferred:
+        clash = db.scalar(
+            select(Asset).where(
+                Asset.is_deleted.is_(False),
+                Asset.asset_number == preferred,
+            )
+        )
+        if clash is not None:
+            raise ProTrackValidationError(
+                f"Asset number '{preferred}' already exists."
+            )
+        number = preferred
+    else:
+        number = next_asset_number(db, asset_type)
     asset = Asset(
         id=uuid4(),
         asset_number=number,
-        legacy_asset_number=(legacy_asset_number or "").strip() or None,
+        legacy_asset_number=(legacy_asset_number or preferred or "").strip() or None,
         asset_type_id=asset_type.id,
         description=(description or "").strip() or None,
         serial_number=(serial_number or "").strip() or None,

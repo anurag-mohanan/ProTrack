@@ -191,12 +191,13 @@ export function ITMigrationPanel() {
             {analysis.exceptions.length > 0 ? (
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  Exceptions (first {analysis.exceptions.length})
+                  Validation warnings (separate from source data — not written into asset fields)
                 </Typography>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>ID</TableCell>
+                      <TableCell>Exception #</TableCell>
+                      <TableCell>Source key</TableCell>
                       <TableCell>Severity</TableCell>
                       <TableCell>Code</TableCell>
                       <TableCell>Detail</TableCell>
@@ -204,8 +205,9 @@ export function ITMigrationPanel() {
                   </TableHead>
                   <TableBody>
                     {analysis.exceptions.slice(0, 25).map((row) => (
-                      <TableRow key={String(row.id)}>
-                        <TableCell>{String(row.id)}</TableCell>
+                      <TableRow key={String(row.exception_id || row.id)}>
+                        <TableCell>{String(row.exception_id || row.id)}</TableCell>
+                        <TableCell>{String(row.source_key || '—')}</TableCell>
                         <TableCell>{String(row.severity)}</TableCell>
                         <TableCell>{String(row.code)}</TableCell>
                         <TableCell>{String(row.detail)}</TableCell>
@@ -219,28 +221,56 @@ export function ITMigrationPanel() {
             {analysis.preview_rows.length > 0 ? (
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  Preview (sanitized — no secrets)
+                  Mapped preview (source values — no secrets)
                 </Typography>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      {Object.keys(analysis.preview_rows[0])
-                        .slice(0, 8)
-                        .map((key) => (
-                          <TableCell key={key}>{key}</TableCell>
-                        ))}
+                      {(
+                        analysis.preview_rows[0].source_id !== undefined
+                          ? [
+                              'source_id',
+                              'mapped_asset_number',
+                              'description',
+                              'owner',
+                              'customer_used_for',
+                              'status',
+                              'serial',
+                              'service_tag',
+                              'assigned_user',
+                              'import_action',
+                            ]
+                          : Object.keys(analysis.preview_rows[0]).slice(0, 8)
+                      ).map((key) => (
+                        <TableCell key={key}>{key}</TableCell>
+                      ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {analysis.preview_rows.slice(0, 8).map((row, index) => (
-                      <TableRow key={index}>
-                        {Object.keys(analysis.preview_rows[0])
-                          .slice(0, 8)
-                          .map((key) => (
+                    {analysis.preview_rows.slice(0, 12).map((row, index) => {
+                      const keys =
+                        row.source_id !== undefined
+                          ? [
+                              'source_id',
+                              'mapped_asset_number',
+                              'description',
+                              'owner',
+                              'customer_used_for',
+                              'status',
+                              'serial',
+                              'service_tag',
+                              'assigned_user',
+                              'import_action',
+                            ]
+                          : Object.keys(analysis.preview_rows[0]).slice(0, 8);
+                      return (
+                        <TableRow key={index}>
+                          {keys.map((key) => (
                             <TableCell key={key}>{row[key] || '—'}</TableCell>
                           ))}
-                      </TableRow>
-                    ))}
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </Box>

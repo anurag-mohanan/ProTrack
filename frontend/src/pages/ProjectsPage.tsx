@@ -1172,15 +1172,18 @@ export function ProjectsPage() {
           />
         </Box>
 
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', lg: 'row' },
-            alignItems: 'flex-start',
-            gap: 1.5,
-          }}
-        >
-          <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
+        <Box sx={{ width: '100%' }}>
+          {teamFilterOptions.length ? (
+            <Box sx={{ mb: 1.25 }}>
+              <ProjectTeamFilterRail
+                options={teamFilterOptions}
+                selectedIds={selectedTeamIds}
+                onChange={setSelectedTeamIds}
+                orientation="horizontal"
+              />
+            </Box>
+          ) : null}
+
           {tableLoading ? (
             <TableSkeleton rows={8} columns={8} />
           ) : !displayLiveProjects.length && !completedProjects.length ? (
@@ -1226,14 +1229,6 @@ export function ProjectsPage() {
                           ? workstreamPrefs.pinned.filter((id) => id !== workstreamId)
                           : [...workstreamPrefs.pinned, workstreamId];
                         updateWorkstreamPrefs({ ...workstreamPrefs, pinned });
-                      }}
-                      onHide={(workstreamId) => {
-                        updateWorkstreamPrefs({
-                          ...workstreamPrefs,
-                          hidden: workstreamPrefs.hidden.includes(workstreamId)
-                            ? workstreamPrefs.hidden
-                            : [...workstreamPrefs.hidden, workstreamId],
-                        });
                       }}
                       gridSessionKey={gridSessionKey}
                       onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
@@ -1429,20 +1424,6 @@ export function ProjectsPage() {
               ) : null}
             </>
           )}
-          </Box>
-
-          <Box
-            sx={{
-              width: { xs: '100%', lg: 'auto' },
-              order: { xs: -1, lg: 0 },
-            }}
-          >
-            <ProjectTeamFilterRail
-              options={teamFilterOptions}
-              selectedIds={selectedTeamIds}
-              onChange={setSelectedTeamIds}
-            />
-          </Box>
         </Box>
       </Box>
 

@@ -16,14 +16,13 @@ import { formatDate, formatDisplayValue, formatNumber } from '../../../utils/for
 import { buildProjectTableRows, type ProjectTableRow } from '../ProjectTable';
 
 /**
- * Fixed tracks only — no `fr` columns. Sized for readable two-line cells
- * with standard gaps between columns (avoids a cramped ops-board feel).
+ * Fluid tracks — fill the section width. Project name column grows;
+ * metric columns stay readable without a fixed board width.
  */
-const BOARD_COLUMNS = '64px 260px 132px 100px 92px 36px';
-const BOARD_WIDTH = 760;
-const BOARD_COLUMN_GAP = 1.75;
-const BOARD_ROW_PY = 1;
-const BOARD_ROW_PX = 1.5;
+const BOARD_COLUMNS = '72px minmax(180px, 2.4fr) minmax(120px, 1fr) minmax(88px, 0.7fr) 96px 40px';
+const BOARD_COLUMN_GAP = 2;
+const BOARD_ROW_PY = 1.1;
+const BOARD_ROW_PX = 1.75;
 
 function healthTone(health?: string | null) {
   if (health === 'red') return designTokens.health.red;
@@ -87,8 +86,7 @@ function BoardHeader() {
         gridTemplateColumns: BOARD_COLUMNS,
         columnGap: BOARD_COLUMN_GAP,
         alignItems: 'center',
-        width: BOARD_WIDTH,
-        maxWidth: '100%',
+        width: '100%',
         px: BOARD_ROW_PX,
         py: 0.85,
         borderBottom: '1px solid',
@@ -182,8 +180,7 @@ function ProjectBoardRow({
         columnGap: BOARD_COLUMN_GAP,
         rowGap: 0.35,
         alignItems: 'center',
-        width: BOARD_WIDTH,
-        maxWidth: '100%',
+        width: '100%',
         borderBottom: '1px solid',
         borderColor: 'divider',
         borderLeft: `3px solid ${health.main}`,
@@ -370,12 +367,11 @@ function BoardShell({ children }: { children: ReactNode }) {
   return (
     <Box
       sx={{
-        width: BOARD_WIDTH,
-        maxWidth: '100%',
+        width: '100%',
         border: '1px solid',
         borderColor: 'divider',
         borderRadius: 1.5,
-        overflow: 'auto',
+        overflow: 'hidden',
         bgcolor: 'background.paper',
       }}
     >
@@ -447,7 +443,7 @@ export function ProjectBoardList({
     ));
 
   return (
-    <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
+    <Stack spacing={1} sx={{ width: '100%' }}>
       {working.length ? (
         <BoardShell>
           {splitActiveHold ? <SubLabel label="Active" count={working.length} /> : null}

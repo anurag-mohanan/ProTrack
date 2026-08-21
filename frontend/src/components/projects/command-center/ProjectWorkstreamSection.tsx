@@ -11,7 +11,6 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PushPinIcon from '@mui/icons-material/PushPin';
 import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
-import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined';
 import ArchitectureIcon from '@mui/icons-material/Architecture';
 import BuildOutlinedIcon from '@mui/icons-material/BuildOutlined';
@@ -54,7 +53,6 @@ interface ProjectWorkstreamSectionProps {
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
   onTogglePin?: (workstreamId: string) => void;
-  onHide?: (workstreamId: string) => void;
   gridSessionKey?: number;
   onRowOpen?: (row: ProjectTableRow) => void;
   onEdit?: (row: ProjectTableRow) => void;
@@ -103,7 +101,6 @@ export function ProjectWorkstreamSection({
   collapsed,
   onCollapsedChange,
   onTogglePin,
-  onHide,
   gridSessionKey: _gridSessionKey,
   onRowOpen,
   onEdit,
@@ -200,17 +197,6 @@ export function ProjectWorkstreamSection({
                 </IconButton>
               </Tooltip>
             ) : null}
-            {onHide && group.id !== 'unassigned' ? (
-              <Tooltip title="Hide section">
-                <IconButton
-                  size="small"
-                  aria-label="Hide section"
-                  onClick={() => onHide(group.id)}
-                >
-                  <VisibilityOffOutlinedIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            ) : null}
           </Box>
         </Box>
         <Box
@@ -234,7 +220,7 @@ export function ProjectWorkstreamSection({
           />
         </Box>
       </AccordionSummary>
-      <AccordionDetails sx={{ p: 1, pt: 0 }}>
+      <AccordionDetails sx={{ p: 1.25, pt: 0, width: '100%' }}>
         {group.projects.length ? (
           <ProjectBoardList
             projects={group.projects as Project[]}

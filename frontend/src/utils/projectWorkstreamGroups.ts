@@ -59,15 +59,20 @@ export function loadWorkstreamSectionPrefs(): WorkstreamSectionPrefs {
     const raw = window.localStorage.getItem(WORKSTREAM_SECTION_PREFS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<WorkstreamSectionPrefs>;
-      return {
+      const prefs: WorkstreamSectionPrefs = {
         order: Array.isArray(parsed.order) ? parsed.order.map(String) : [],
-        hidden: Array.isArray(parsed.hidden) ? parsed.hidden.map(String) : [],
+        // Hide-section was removed from the UI (no restore path). Clear any stored hides.
+        hidden: [],
         pinned: Array.isArray(parsed.pinned) ? parsed.pinned.map(String) : [],
         collapsed:
           parsed.collapsed && typeof parsed.collapsed === 'object' && !Array.isArray(parsed.collapsed)
             ? (parsed.collapsed as Record<string, boolean>)
             : {},
       };
+      if (Array.isArray(parsed.hidden) && parsed.hidden.length) {
+        persistWorkstreamSectionPrefs(prefs);
+      }
+      return prefs;
     }
     // Migrate legacy collapse map
     const legacy = window.localStorage.getItem(LEGACY_COLLAPSE_KEY);

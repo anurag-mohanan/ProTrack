@@ -1,7 +1,5 @@
 import {
-  Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -15,7 +13,6 @@ import {
 } from '@mui/material';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import VisibilityIcon from '@mui/icons-material/Visibility';
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 import type { Workstream } from '../../../types';
 import type { WorkstreamSectionPrefs } from '../../../utils/projectWorkstreamGroups';
@@ -62,10 +59,6 @@ export function WorkstreamSectionsManager({
     onChange({ ...prefs, order: next });
   };
 
-  const unhide = (id: string) => {
-    onChange({ ...prefs, hidden: prefs.hidden.filter((hid) => hid !== id) });
-  };
-
   const reset = () => {
     onChange({
       order: [],
@@ -83,8 +76,8 @@ export function WorkstreamSectionsManager({
       </DialogTitle>
       <DialogContent dividers>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Reorder and restore hidden engineering disciplines. Favourites stay pinned at the top of
-          the Projects Command Center. New workstreams from admin appear automatically.
+          Reorder engineering disciplines. Favourites stay pinned at the top of the Projects Command
+          Center. New workstreams from admin appear automatically.
         </Typography>
         <List dense disablePadding>
           {orderedIds.map((id, index) => {
@@ -123,31 +116,10 @@ export function WorkstreamSectionsManager({
             );
           })}
         </List>
-        {prefs.hidden.length ? (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Hidden sections
-            </Typography>
-            <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
-              {prefs.hidden.map((id) => {
-                const ws = byId.get(id);
-                return (
-                  <Chip
-                    key={id}
-                    label={ws?.name ?? id}
-                    onDelete={() => unhide(id)}
-                    deleteIcon={<VisibilityIcon />}
-                    variant="outlined"
-                  />
-                );
-              })}
-            </Stack>
-          </Box>
-        ) : null}
       </DialogContent>
       <DialogActions>
         <Button onClick={reset} color="inherit">
-          Reset order &amp; visibility
+          Reset order
         </Button>
         <Button onClick={onClose} variant="contained">
           Done

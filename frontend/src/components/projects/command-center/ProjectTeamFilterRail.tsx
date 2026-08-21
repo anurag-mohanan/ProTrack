@@ -13,18 +13,22 @@ interface ProjectTeamFilterRailProps {
   /** Empty selection = all teams. */
   selectedIds: string[];
   onChange: (nextIds: string[]) => void;
+  /** horizontal = chip strip above the list (full-width layout). */
+  orientation?: 'vertical' | 'horizontal';
 }
 
 export function ProjectTeamFilterRail({
   options,
   selectedIds,
   onChange,
+  orientation = 'vertical',
 }: ProjectTeamFilterRailProps) {
   if (!options.length) return null;
 
   const allSelected = selectedIds.length === 0;
   const selectedSet = new Set(selectedIds);
   const total = options.reduce((sum, option) => sum + option.count, 0);
+  const horizontal = orientation === 'horizontal';
 
   const selectAll = () => onChange([]);
 
@@ -45,11 +49,16 @@ export function ProjectTeamFilterRail({
   return (
     <Box
       sx={{
-        width: { xs: '100%', lg: 220 },
+        width: '100%',
         flexShrink: 0,
-        position: { lg: 'sticky' },
-        top: { lg: 88 },
-        alignSelf: 'flex-start',
+        ...(horizontal
+          ? {}
+          : {
+              width: { xs: '100%', lg: 220 },
+              position: { lg: 'sticky' },
+              top: { lg: 88 },
+              alignSelf: 'flex-start',
+            }),
       }}
     >
       <Typography
@@ -69,10 +78,11 @@ export function ProjectTeamFilterRail({
       <Box
         sx={{
           display: 'flex',
-          flexDirection: { xs: 'row', lg: 'column' },
+          flexDirection: horizontal ? 'row' : { xs: 'row', lg: 'column' },
+          flexWrap: horizontal ? 'wrap' : undefined,
           gap: 0.75,
-          overflowX: { xs: 'auto', lg: 'visible' },
-          pb: { xs: 0.5, lg: 0 },
+          overflowX: horizontal ? 'visible' : { xs: 'auto', lg: 'visible' },
+          pb: horizontal ? 0 : { xs: 0.5, lg: 0 },
         }}
       >
         <ButtonBase

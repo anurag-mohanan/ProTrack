@@ -9,7 +9,6 @@ import {
   Typography,
   Box,
 } from '@mui/material';
-import PeopleAltRoundedIcon from '@mui/icons-material/PeopleAltRounded';
 import type { GridColDef } from '@mui/x-data-grid';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -24,7 +23,7 @@ import { ContentCard } from '../../components/ui/cards';
 import { FormSelect, SearchToolbar, FormField } from '../../components/ui/design-system';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { formatCellValue } from '../../utils/format';
-import type { ITPersonDetail, ITPersonListItem } from '../../types/itOperations';
+import type { ITPersonListItem } from '../../types/itOperations';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -135,7 +134,7 @@ export function ITUsersPage() {
         />
       </SearchToolbar>
 
-      <ContentCard title="Users & Accounts" icon={<PeopleAltRoundedIcon />} noPadding>
+      <ContentCard title="Users & Accounts" noPadding>
         <ServerPaginatedDataGrid<ITPersonListItem, ITPersonListItem>
           queryKey={itOperationsKeys.people(listFilters)}
           fetcher={fetchItPeoplePaginated}
@@ -163,7 +162,7 @@ export function ITUsersPage() {
                 </Typography>
               </Box>
               <Box>
-                <Typography fontWeight={600}>Computer</Typography>
+                <Typography sx={{ fontWeight: 600 }}>Computer</Typography>
                 {detail.assigned_computer ? (
                   <Typography>
                     {String(detail.assigned_computer.computer_name ?? '')} (
@@ -175,7 +174,7 @@ export function ITUsersPage() {
                 )}
               </Box>
               <Box>
-                <Typography fontWeight={600}>Other assets</Typography>
+                <Typography sx={{ fontWeight: 600 }}>Other assets</Typography>
                 {detail.assigned_assets.filter((a) => !a.is_computer).length === 0 ? (
                   <Typography color="text.secondary">None</Typography>
                 ) : (
@@ -189,7 +188,7 @@ export function ITUsersPage() {
                 )}
               </Box>
               <Box>
-                <Typography fontWeight={600}>IT accounts</Typography>
+                <Typography sx={{ fontWeight: 600 }}>IT accounts</Typography>
                 {detail.accounts.length === 0 ? (
                   <Typography color="text.secondary">No IT account metadata yet</Typography>
                 ) : (
@@ -205,7 +204,7 @@ export function ITUsersPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <ProsohmButton variant="outlined" onClick={() => setSelectedId(null)}>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setSelectedId(null)}>
             Close
           </ProsohmButton>
         </DialogActions>

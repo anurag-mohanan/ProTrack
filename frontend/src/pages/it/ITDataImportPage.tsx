@@ -208,7 +208,7 @@ export function ITDataImportPage() {
   if (!allowed) {
     return (
       <PageContainer>
-        <ErrorState message="Manage IT Data Imports permission is required." />
+        <ErrorState error={new Error('Manage IT Data Imports permission is required.')} title="Access denied" />
       </PageContainer>
     );
   }
@@ -280,7 +280,7 @@ export function ITDataImportPage() {
               sx={{ maxWidth: 360, my: 1 }}
             />
             <ProsohmButton
-              color="error"
+              buttonVariant="danger"
               disabled={
                 !resetConfirm ||
                 resetPhrase !== resetPreviewQuery.data.confirm_phrase ||
@@ -305,12 +305,16 @@ export function ITDataImportPage() {
               <Stack
                 key={t.id}
                 direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}
+                sx={{
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  py: 0.5,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                }}
               >
                 <Box>
-                  <Typography fontWeight={600}>
+                  <Typography sx={{ fontWeight: 600 }}>
                     {t.status === 'imported' ? '✓ ' : '○ '}
                     {t.label}
                   </Typography>
@@ -318,7 +322,7 @@ export function ITDataImportPage() {
                     Expected file: {t.expected_filename} · Sheet: {t.canonical_sheet}
                   </Typography>
                 </Box>
-                <Stack direction="row" spacing={1} alignItems="center">
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                   {t.status === 'imported' && (
                     <Typography variant="body2">{t.success_count} records</Typography>
                   )}
@@ -358,7 +362,7 @@ export function ITDataImportPage() {
               </Typography>
             )}
 
-            <ProsohmButton component="label" variant="outlined" startIcon={<CloudUploadRoundedIcon />}>
+            <ProsohmButton component="label" buttonVariant="outlined" startIcon={<CloudUploadRoundedIcon />}>
               {file ? file.name : 'Select Excel file'}
               <input
                 hidden
@@ -389,7 +393,7 @@ export function ITDataImportPage() {
               />
             )}
 
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
               <ProsohmButton
                 onClick={onAnalyzeClick}
                 disabled={!file || analyzeMutation.isPending}
@@ -398,7 +402,7 @@ export function ITDataImportPage() {
               </ProsohmButton>
               {sheetOverride && sheetOverride !== analysis?.sheet_name && (
                 <ProsohmButton
-                  variant="outlined"
+                  buttonVariant="outlined"
                   onClick={() => analyzeMutation.mutate()}
                   disabled={!file || analyzeMutation.isPending}
                 >
@@ -434,7 +438,7 @@ export function ITDataImportPage() {
                 Review: {analysis.stats.reviews ?? 0}
               </Typography>
 
-              <Typography fontWeight={600}>Column mapping</Typography>
+              <Typography sx={{ fontWeight: 600 }}>Column mapping</Typography>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -459,7 +463,7 @@ export function ITDataImportPage() {
                 </Alert>
               )}
 
-              <Typography fontWeight={600}>First 10 records (critical fidelity check)</Typography>
+              <Typography sx={{ fontWeight: 600 }}>First 10 records (critical fidelity check)</Typography>
               <Box sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
@@ -617,8 +621,7 @@ export function ITDataImportPage() {
                       {b.status === 'committed' && (
                         <ProsohmButton
                           size="small"
-                          variant="outlined"
-                          color="warning"
+                          buttonVariant="outlined"
                           onClick={() => setRollbackId(b.id)}
                         >
                           Roll back batch
@@ -642,7 +645,7 @@ export function ITDataImportPage() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <ProsohmButton variant="outlined" onClick={() => setDepDialogOpen(false)}>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setDepDialogOpen(false)}>
             Cancel
           </ProsohmButton>
           <ProsohmButton
@@ -666,11 +669,11 @@ export function ITDataImportPage() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <ProsohmButton variant="outlined" onClick={() => setRollbackId(null)}>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setRollbackId(null)}>
             Cancel
           </ProsohmButton>
           <ProsohmButton
-            color="warning"
+            buttonVariant="outlined"
             disabled={rollbackMutation.isPending}
             onClick={() => rollbackId && rollbackMutation.mutate(rollbackId)}
           >

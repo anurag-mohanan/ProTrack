@@ -237,11 +237,10 @@ export function AssetBulkActionBar({
         <Stack
           direction={{ xs: 'column', md: 'row' }}
           spacing={1.5}
-          alignItems={{ md: 'center' }}
-          justifyContent="space-between"
+          sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between' }}
         >
           <Stack spacing={0.25}>
-            <Typography variant="subtitle2" fontWeight={700}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               {count} asset{count === 1 ? '' : 's'} selected
             </Typography>
             {showSelectAllMatching ? (
@@ -277,7 +276,7 @@ export function AssetBulkActionBar({
               Changing filters keeps your current selection.
             </Typography>
           </Stack>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
             {canAssign ? (
               <ProsohmButton
                 buttonVariant="outlined"

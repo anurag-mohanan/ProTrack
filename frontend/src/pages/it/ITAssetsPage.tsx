@@ -495,7 +495,7 @@ export function ITAssetsPage({
             if (allPageSelected) deselectAllVisible();
             else selectAllVisible();
           }}
-          inputProps={{ 'aria-label': 'Select all on this page' }}
+          slotProps={{ input: { 'aria-label': 'Select all on this page' } }}
           onClick={(e) => e.stopPropagation()}
         />
       ),
@@ -504,7 +504,7 @@ export function ITAssetsPage({
           size="small"
           checked={selectedIds.has(params.row.id)}
           onChange={() => toggleAssetSelection(params.row.id)}
-          inputProps={{ 'aria-label': `Select ${params.row.asset_number}` }}
+          slotProps={{ input: { 'aria-label': `Select ${params.row.asset_number}` } }}
           onClick={(e) => e.stopPropagation()}
         />
       ),

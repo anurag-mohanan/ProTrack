@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Box, Stack, Alert, Typography } from '@mui/material';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
-import { Link as RouterLink } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchItSettings,
@@ -50,6 +50,7 @@ const STRATEGY_OPTIONS = [
 
 export function ITSettingsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canManage = canManageItSettings(accessContextFromUser(user));
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
@@ -203,7 +204,10 @@ export function ITSettingsPage() {
               01_Assets.xlsx … 08_Migration_Exceptions.xlsx). Preview each file before commit.
             </Alert>
             {canManageItDataImports(accessContextFromUser(user)) ? (
-              <ProsohmButton component={RouterLink} to="/it/data-import">
+              <ProsohmButton
+                buttonVariant="outlined"
+                onClick={() => navigate('/it/data-import')}
+              >
                 Open IT Data Import
               </ProsohmButton>
             ) : (

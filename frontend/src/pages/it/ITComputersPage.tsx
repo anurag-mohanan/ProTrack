@@ -340,7 +340,7 @@ export function ITComputersPage() {
                 {canAssign && params.row.status === 'assigned' ? (
                   <ProsohmButton
                     size="small"
-                    variant="outlined"
+                    buttonVariant="outlined"
                     onClick={() => {
                       unassignMutation.mutate(params.row.id);
                     }}
@@ -421,7 +421,7 @@ export function ITComputersPage() {
           />
         </DialogContent>
         <DialogActions>
-          <ProsohmButton variant="outlined" onClick={() => setAssignTarget(null)}>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setAssignTarget(null)}>
             Cancel
           </ProsohmButton>
           <ProsohmButton

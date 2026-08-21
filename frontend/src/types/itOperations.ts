@@ -102,6 +102,8 @@ export interface ITAsset {
   purchase_date?: string | null;
   purchase_cost?: number | string | null;
   warranty_expiry?: string | null;
+  /** Derived: none | active | expiring_soon | expired */
+  warranty_status?: string | null;
   location?: string | null;
   notes?: string | null;
   assigned_to_user_id?: string | null;

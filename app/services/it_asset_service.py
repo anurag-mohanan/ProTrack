@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -43,6 +43,21 @@ CURRENT_INVENTORY_STATUSES = frozenset(
 PURCHASED_BY_CODES = frozenset(
     {"organization", "customer", "vendor", "leased", "other", "unknown"}
 )
+WARRANTY_STATUSES = frozenset({"none", "active", "expiring_soon", "expired"})
+# Days before expiry counted as "expiring soon"
+WARRANTY_EXPIRING_SOON_DAYS = 30
+
+
+def warranty_status_for(expiry: date | None, *, today: date | None = None) -> str:
+    """Derive warranty status from warranty_expiry (warranty upto)."""
+    if expiry is None:
+        return "none"
+    ref = today or date.today()
+    if expiry < ref:
+        return "expired"
+    if expiry <= ref + timedelta(days=WARRANTY_EXPIRING_SOON_DAYS):
+        return "expiring_soon"
+    return "active"
 
 
 def _validate_ownership(
@@ -252,6 +267,7 @@ def list_assets(
     purchased_by: str | None = None,
     owner_customer_id: UUID | None = None,
     customer_used_for_id: UUID | None = None,
+    warranty_status: str | None = None,
     skip: int = 0,
     limit: int = 25,
 ) -> tuple[list[Asset], int]:
@@ -311,6 +327,30 @@ def list_assets(
         )
         stmt = stmt.where(search_clause)
         count_filters.append(search_clause)
+
+    warranty_key = (warranty_status or "").strip().lower() or None
+    if warranty_key:
+        if warranty_key not in WARRANTY_STATUSES:
+            raise ProTrackValidationError(
+                f"Invalid warranty_status '{warranty_status}'. "
+                f"Allowed: {', '.join(sorted(WARRANTY_STATUSES))}"
+            )
+        today = date.today()
+        soon = today + timedelta(days=WARRANTY_EXPIRING_SOON_DAYS)
+        if warranty_key == "none":
+            w_clause = Asset.warranty_expiry.is_(None)
+        elif warranty_key == "expired":
+            w_clause = Asset.warranty_expiry.is_not(None) & (Asset.warranty_expiry < today)
+        elif warranty_key == "expiring_soon":
+            w_clause = (
+                Asset.warranty_expiry.is_not(None)
+                & (Asset.warranty_expiry >= today)
+                & (Asset.warranty_expiry <= soon)
+            )
+        else:  # active
+            w_clause = Asset.warranty_expiry.is_not(None) & (Asset.warranty_expiry > soon)
+        stmt = stmt.where(w_clause)
+        count_filters.append(w_clause)
 
     count_stmt = select(Asset.id).where(*count_filters)
     total = len(list(db.scalars(count_stmt).all()))

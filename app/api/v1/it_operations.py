@@ -183,6 +183,7 @@ def _asset_read(db: Session, asset: Asset) -> AssetRead:
         purchase_date=asset.purchase_date,
         purchase_cost=asset.purchase_cost,
         warranty_expiry=asset.warranty_expiry,
+        warranty_status=it_asset_service.warranty_status_for(asset.warranty_expiry),
         location=asset.location,
         notes=asset.notes,
         is_deleted=asset.is_deleted,
@@ -490,23 +491,31 @@ def list_assets(
     purchased_by: str | None = Query(None),
     owner_customer_id: UUID | None = Query(None),
     customer_used_for_id: UUID | None = Query(None),
+    warranty_status: str | None = Query(
+        None,
+        description="none | active | expiring_soon | expired",
+    ),
     pagination: PaginationParams = Depends(pagination_query),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_it_access(db, current_user)
-    rows, total = it_asset_service.list_assets(
-        db,
-        status=status_filter,
-        asset_type_id=asset_type_id,
-        search=search or q,
-        inventory_scope=inventory_scope,
-        purchased_by=purchased_by,
-        owner_customer_id=owner_customer_id,
-        customer_used_for_id=customer_used_for_id,
-        skip=pagination.skip,
-        limit=pagination.limit,
-    )
+    try:
+        rows, total = it_asset_service.list_assets(
+            db,
+            status=status_filter,
+            asset_type_id=asset_type_id,
+            search=search or q,
+            inventory_scope=inventory_scope,
+            purchased_by=purchased_by,
+            owner_customer_id=owner_customer_id,
+            customer_used_for_id=customer_used_for_id,
+            warranty_status=warranty_status,
+            skip=pagination.skip,
+            limit=pagination.limit,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
     return PaginatedResponse.build(
         items=[_asset_read(db, r) for r in rows],
         total=total,
@@ -525,23 +534,28 @@ def list_asset_ids(
     purchased_by: str | None = Query(None),
     owner_customer_id: UUID | None = Query(None),
     customer_used_for_id: UUID | None = Query(None),
+    warranty_status: str | None = Query(None),
     limit: int = Query(2000, ge=1, le=2000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """IDs for the current filter — used by Select all matching results."""
     _require_it_access(db, current_user)
-    ids, total = it_asset_bulk_service.list_asset_ids(
-        db,
-        status=status_filter,
-        asset_type_id=asset_type_id,
-        search=search or q,
-        inventory_scope=inventory_scope,
-        purchased_by=purchased_by,
-        owner_customer_id=owner_customer_id,
-        customer_used_for_id=customer_used_for_id,
-        limit=limit,
-    )
+    try:
+        ids, total = it_asset_bulk_service.list_asset_ids(
+            db,
+            status=status_filter,
+            asset_type_id=asset_type_id,
+            search=search or q,
+            inventory_scope=inventory_scope,
+            purchased_by=purchased_by,
+            owner_customer_id=owner_customer_id,
+            customer_used_for_id=customer_used_for_id,
+            warranty_status=warranty_status,
+            limit=limit,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
     return AssetBulkIdsResponse(
         ids=ids,
         total=total,
@@ -1673,6 +1687,7 @@ def report_asset_register(
                 purchase_date=asset.purchase_date,
                 purchase_cost=asset.purchase_cost,
                 warranty_expiry=asset.warranty_expiry,
+                warranty_status=it_asset_service.warranty_status_for(asset.warranty_expiry),
                 current_assignee_name=assignee_name,
             )
         )

@@ -52,7 +52,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 import type { ITAsset, ITAssetCreate } from '../../types/itOperations';
-import { formatCellValue, userDisplayName } from '../../utils/format';
+import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
 import {
   accessContextFromUser,
@@ -83,6 +83,14 @@ const OWNERSHIP_OPTIONS = [
   { value: '', label: 'All ownership' },
   { value: 'organization', label: 'Organization owned' },
   { value: 'customer', label: 'Customer owned' },
+];
+
+const WARRANTY_STATUS_OPTIONS = [
+  { value: '', label: 'All warranties' },
+  { value: 'active', label: 'Warranty active' },
+  { value: 'expiring_soon', label: 'Expiring soon (30 days)' },
+  { value: 'expired', label: 'Warranty expired' },
+  { value: 'none', label: 'No warranty date' },
 ];
 
 const RETURN_CONDITION_OPTIONS = [
@@ -146,6 +154,36 @@ function statusColor(
   }
 }
 
+function warrantyStatusColor(
+  status: string,
+): 'default' | 'success' | 'warning' | 'error' {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'expiring_soon':
+      return 'warning';
+    case 'expired':
+      return 'error';
+    default:
+      return 'default';
+  }
+}
+
+function warrantyStatusLabel(status: string | null | undefined): string {
+  switch (status) {
+    case 'active':
+      return 'Active';
+    case 'expiring_soon':
+      return 'Expiring soon';
+    case 'expired':
+      return 'Expired';
+    case 'none':
+      return 'None';
+    default:
+      return '—';
+  }
+}
+
 function assigneeName(asset: ITAsset): string {
   return (
     asset.assigned_to_user_name ||
@@ -171,6 +209,7 @@ export function ITAssetsPage({
   const [statusFilter, setStatusFilter] = useState('');
   const [inventoryScope, setInventoryScope] = useState(defaultInventoryScope);
   const [ownershipFilter, setOwnershipFilter] = useState('');
+  const [warrantyFilter, setWarrantyFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ITAsset | null>(null);
   const [form, setForm] = useState<AssetFormState>(emptyForm);
@@ -223,8 +262,9 @@ export function ITAssetsPage({
       q: search.trim() || undefined,
       inventory_scope: statusFilter ? 'all' : inventoryScope,
       purchased_by: ownershipFilter || undefined,
+      warranty_status: warrantyFilter || undefined,
     }),
-    [search, statusFilter, inventoryScope, ownershipFilter],
+    [search, statusFilter, inventoryScope, ownershipFilter, warrantyFilter],
   );
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
@@ -556,6 +596,28 @@ export function ITAssetsPage({
       ),
     },
     {
+      field: 'warranty_status',
+      headerName: 'Warranty',
+      width: 130,
+      renderCell: (params) => {
+        const value = String(params.row.warranty_status || 'none');
+        return (
+          <Chip
+            size="small"
+            label={warrantyStatusLabel(value)}
+            color={warrantyStatusColor(value)}
+            variant="outlined"
+          />
+        );
+      },
+    },
+    {
+      field: 'warranty_expiry',
+      headerName: 'Warranty upto',
+      width: 130,
+      valueFormatter: (value) => formatDate(value as string | null | undefined),
+    },
+    {
       field: 'location',
       headerName: 'Location',
       flex: 0.9,
@@ -714,6 +776,13 @@ export function ITAssetsPage({
           options={ASSET_STATUS_OPTIONS}
           sx={{ minWidth: 180 }}
         />
+        <FormSelect
+          label="Warranty"
+          value={warrantyFilter}
+          onChange={(event) => setWarrantyFilter(String(event.target.value))}
+          options={WARRANTY_STATUS_OPTIONS}
+          sx={{ minWidth: 200 }}
+        />
       </SearchToolbar>
 
       {selectedIds.size > 0 ? (
@@ -837,13 +906,14 @@ export function ITAssetsPage({
               />
             </Stack>
             <FormField
-              label="Warranty expiry"
+              label="Warranty upto"
               type="date"
               value={form.warranty_expiry}
               onChange={(event) =>
                 setForm((current) => ({ ...current, warranty_expiry: event.target.value }))
               }
               slotProps={{ inputLabel: { shrink: true } }}
+              helper="Status is calculated from this date (active / expiring soon within 30 days / expired)."
             />
             <FormField
               label="Location"

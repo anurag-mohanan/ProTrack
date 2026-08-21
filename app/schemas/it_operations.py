@@ -112,6 +112,7 @@ class AssetRead(TimestampSchema):
     purchase_date: Optional[date] = None
     purchase_cost: Optional[Decimal] = None
     warranty_expiry: Optional[date] = None
+    warranty_status: Optional[str] = None
     location: Optional[str] = None
     notes: Optional[str] = None
     is_deleted: bool = False
@@ -571,6 +572,7 @@ class AssetRegisterRow(BaseModel):
     purchase_date: Optional[date] = None
     purchase_cost: Optional[Decimal] = None
     warranty_expiry: Optional[date] = None
+    warranty_status: Optional[str] = None
     current_assignee_name: Optional[str] = None
 
 

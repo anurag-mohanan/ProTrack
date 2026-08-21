@@ -70,6 +70,7 @@ def list_asset_ids(
     purchased_by: str | None = None,
     owner_customer_id: UUID | None = None,
     customer_used_for_id: UUID | None = None,
+    warranty_status: str | None = None,
     limit: int = MAX_BULK_IDS,
 ) -> tuple[list[UUID], int]:
     rows, total = it_asset_service.list_assets(
@@ -81,6 +82,7 @@ def list_asset_ids(
         purchased_by=purchased_by,
         owner_customer_id=owner_customer_id,
         customer_used_for_id=customer_used_for_id,
+        warranty_status=warranty_status,
         skip=0,
         limit=min(max(limit, 1), MAX_BULK_IDS),
     )

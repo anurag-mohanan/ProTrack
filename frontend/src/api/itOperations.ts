@@ -7,6 +7,10 @@ import {
 import type {
   AssetAssignPayload,
   AssetAssignment,
+  AssetBulkActionRequest,
+  AssetBulkActionResult,
+  AssetBulkIdsResponse,
+  AssetBulkPreviewResponse,
   AssetReturnPayload,
   AssetTransferPayload,
   AssetType,
@@ -125,6 +129,34 @@ export async function updateAsset(id: string, payload: ITAssetUpdate): Promise<I
 
 export async function deleteAsset(id: string): Promise<void> {
   await apiClient.delete(`/it/assets/${id}`);
+}
+
+export async function fetchAssetIds(params?: ListParams): Promise<AssetBulkIdsResponse> {
+  const { data } = await apiClient.get<AssetBulkIdsResponse>(`/it/assets/ids${buildQuery(params)}`);
+  return data;
+}
+
+export async function previewAssetBulkAction(
+  payload: AssetBulkActionRequest,
+): Promise<AssetBulkPreviewResponse> {
+  const { data } = await apiClient.post<AssetBulkPreviewResponse>('/it/assets/bulk-preview', {
+    asset_ids: payload.asset_ids,
+    action: payload.action,
+    parameters: payload.parameters ?? {},
+  });
+  return data;
+}
+
+export async function executeAssetBulkAction(
+  payload: AssetBulkActionRequest,
+): Promise<AssetBulkActionResult> {
+  const { data } = await apiClient.post<AssetBulkActionResult>('/it/assets/bulk-action', {
+    asset_ids: payload.asset_ids,
+    action: payload.action,
+    parameters: payload.parameters ?? {},
+    options: payload.options ?? {},
+  });
+  return data;
 }
 
 export async function assignAsset(id: string, payload: AssetAssignPayload): Promise<ITAsset> {

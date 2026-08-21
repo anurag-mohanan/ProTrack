@@ -1,6 +1,7 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import {
   Box,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
@@ -15,12 +16,13 @@ import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded';
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
 import UndoRoundedIcon from '@mui/icons-material/UndoRounded';
-import type { GridColDef } from '@mui/x-data-grid';
+import type { GridColDef, GridRowClassNameParams } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   assignAsset,
   createAsset,
   deleteAsset,
+  fetchAssetIds,
   fetchAssetTypes,
   fetchAssetsPaginated,
   itOperationsKeys,
@@ -35,6 +37,7 @@ import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
+import { AssetBulkActionBar } from '../../components/it/AssetBulkActionBar';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
@@ -193,6 +196,9 @@ export function ITAssetsPage({
   const [customerReturnCondition, setCustomerReturnCondition] = useState('good');
   const [customerReturnReason, setCustomerReturnReason] = useState('');
   const [customerReturnNotes, setCustomerReturnNotes] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pageRows, setPageRows] = useState<ITAsset[]>([]);
+  const [matchingTotal, setMatchingTotal] = useState(0);
 
   const assetTypesQuery = useQuery({
     queryKey: itOperationsKeys.assetTypes(),
@@ -208,7 +214,7 @@ export function ITAssetsPage({
   const customersQuery = useQuery({
     queryKey: ['lookups', 'customers'],
     queryFn: fetchCustomers,
-    enabled: canReturnToCustomer,
+    enabled: canReturnToCustomer || canManage,
   });
 
   const listFilters = useMemo(
@@ -219,6 +225,60 @@ export function ITAssetsPage({
       purchased_by: ownershipFilter || undefined,
     }),
     [search, statusFilter, inventoryScope, ownershipFilter],
+  );
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  const toggleAssetSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const pageIds = useMemo(() => pageRows.map((r) => r.id), [pageRows]);
+  const selectedOnPage = useMemo(
+    () => pageIds.filter((id) => selectedIds.has(id)),
+    [pageIds, selectedIds],
+  );
+  const allPageSelected = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
+  const somePageSelected = selectedOnPage.length > 0 && !allPageSelected;
+
+  const selectAllVisible = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of pageIds) next.add(id);
+      return next;
+    });
+  }, [pageIds]);
+
+  const deselectAllVisible = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of pageIds) next.delete(id);
+      return next;
+    });
+  }, [pageIds]);
+
+  const selectAllMatching = useCallback(async () => {
+    const res = await fetchAssetIds(listFilters);
+    setSelectedIds(new Set(res.ids));
+    setMatchingTotal(res.total);
+    if (res.truncated) {
+      showError(
+        `Only the first ${res.ids.length} of ${res.total} matching assets were selected.`,
+      );
+    }
+  }, [listFilters, showError]);
+
+  const handlePageDataChange = useCallback(
+    (info: { items: ITAsset[]; total: number }) => {
+      setPageRows(info.items);
+      setMatchingTotal(info.total);
+    },
+    [],
   );
 
   const invalidateAssets = () => {
@@ -419,6 +479,36 @@ export function ITAssetsPage({
   };
 
   const columns: GridColDef<ITAsset>[] = [
+    {
+      field: '__select',
+      headerName: '',
+      width: 48,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderHeader: () => (
+        <Checkbox
+          size="small"
+          checked={allPageSelected}
+          indeterminate={somePageSelected}
+          onChange={() => {
+            if (allPageSelected) deselectAllVisible();
+            else selectAllVisible();
+          }}
+          inputProps={{ 'aria-label': 'Select all on this page' }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+      renderCell: (params) => (
+        <Checkbox
+          size="small"
+          checked={selectedIds.has(params.row.id)}
+          onChange={() => toggleAssetSelection(params.row.id)}
+          inputProps={{ 'aria-label': `Select ${params.row.asset_number}` }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
     {
       field: 'asset_number',
       headerName: 'Asset #',
@@ -626,6 +716,22 @@ export function ITAssetsPage({
         />
       </SearchToolbar>
 
+      {selectedIds.size > 0 ? (
+        <AssetBulkActionBar
+          selectedIds={Array.from(selectedIds)}
+          matchingTotal={matchingTotal}
+          pageSelectedCount={selectedOnPage.length}
+          canManage={canManage}
+          canAssign={canAssign}
+          canReturnToCustomer={canReturnToCustomer}
+          onClearSelection={clearSelection}
+          onSelectAllMatching={selectAllMatching}
+          onComplete={() => {
+            invalidateAssets();
+          }}
+        />
+      ) : null}
+
       <ContentCard noPadding>
         <ServerPaginatedDataGrid<ITAsset, ITAsset>
           queryKey={['it', 'assets']}
@@ -634,6 +740,15 @@ export function ITAssetsPage({
           columns={columns}
           getRowId={(row) => row.id}
           autoHeight
+          onPageDataChange={handlePageDataChange}
+          getRowClassName={(params: GridRowClassNameParams<ITAsset>) =>
+            selectedIds.has(params.id as string) ? 'ProTrack-row--selected' : ''
+          }
+          sx={{
+            '& .ProTrack-row--selected': {
+              bgcolor: 'action.selected',
+            },
+          }}
         />
       </ContentCard>
 

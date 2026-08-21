@@ -195,6 +195,63 @@ class AssetAssignmentRead(TimestampSchema):
     notes: Optional[str] = None
 
 
+class AssetBulkActionRequest(BaseModel):
+    asset_ids: list[UUID] = Field(min_length=1, max_length=2000)
+    action: str = Field(
+        description=(
+            "delete | assign_user | assign_location | change_status | "
+            "change_ownership | renumber | return_to_customer"
+        )
+    )
+    parameters: dict = Field(default_factory=dict)
+    options: dict = Field(default_factory=dict)
+
+
+class AssetBulkPreviewRequest(BaseModel):
+    asset_ids: list[UUID] = Field(min_length=1, max_length=2000)
+    action: str
+    parameters: dict = Field(default_factory=dict)
+
+
+class AssetBulkPreviewResponse(BaseModel):
+    action: str
+    selected: int
+    asset_numbers: list[str] = Field(default_factory=list)
+    dependencies: list[dict] = Field(default_factory=list)
+    blocked_count: Optional[int] = None
+    eligible_count: Optional[int] = None
+    already_assigned: list[dict] = Field(default_factory=list)
+    available: list[str] = Field(default_factory=list)
+    ineligible: list[dict] = Field(default_factory=list)
+    transitions: list[dict] = Field(default_factory=list)
+    target_status: Optional[str] = None
+    preview: list[dict] = Field(default_factory=list)
+    batch_duplicates: list[str] = Field(default_factory=list)
+    existing_conflicts: list[str] = Field(default_factory=list)
+    can_apply: Optional[bool] = None
+    warning: Optional[str] = None
+    eligible: list[str] = Field(default_factory=list)
+
+
+class AssetBulkActionResult(BaseModel):
+    action: str
+    selected: int
+    updated: int
+    updated_asset_numbers: list[str] = Field(default_factory=list)
+    skipped: int = 0
+    skipped_details: list[dict] = Field(default_factory=list)
+    failed: int = 0
+    failed_details: list[dict] = Field(default_factory=list)
+    dependencies: list[dict] = Field(default_factory=list)
+    preview: list[dict] = Field(default_factory=list)
+
+
+class AssetBulkIdsResponse(BaseModel):
+    ids: list[UUID]
+    total: int
+    truncated: bool = False
+
+
 # ---------------------------------------------------------------------------
 # Computers
 # ---------------------------------------------------------------------------

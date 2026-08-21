@@ -35,6 +35,11 @@ from app.models.models import Customer, Ticket, User
 from app.schemas.it_operations import (
     AssetAssignRequest,
     AssetAssignmentRead,
+    AssetBulkActionRequest,
+    AssetBulkActionResult,
+    AssetBulkIdsResponse,
+    AssetBulkPreviewRequest,
+    AssetBulkPreviewResponse,
     AssetCreate,
     AssetCustomerReturnRead,
     AssetCustomerReturnRequest,
@@ -85,6 +90,7 @@ from app.schemas.it_operations import (
 )
 from app.services import (
     it_account_service,
+    it_asset_bulk_service,
     it_asset_service,
     it_dashboard_service,
     it_data_import_service,
@@ -479,6 +485,7 @@ def list_assets(
     status_filter: str | None = Query(None, alias="status"),
     asset_type_id: UUID | None = Query(None),
     search: str | None = Query(None),
+    q: str | None = Query(None, description="Alias for search"),
     inventory_scope: str = Query("current"),
     purchased_by: str | None = Query(None),
     owner_customer_id: UUID | None = Query(None),
@@ -492,7 +499,7 @@ def list_assets(
         db,
         status=status_filter,
         asset_type_id=asset_type_id,
-        search=search,
+        search=search or q,
         inventory_scope=inventory_scope,
         purchased_by=purchased_by,
         owner_customer_id=owner_customer_id,
@@ -506,6 +513,81 @@ def list_assets(
         page=pagination.page,
         page_size=pagination.page_size,
     )
+
+
+@router.get("/assets/ids", response_model=AssetBulkIdsResponse)
+def list_asset_ids(
+    status_filter: str | None = Query(None, alias="status"),
+    asset_type_id: UUID | None = Query(None),
+    search: str | None = Query(None),
+    q: str | None = Query(None, description="Alias for search"),
+    inventory_scope: str = Query("current"),
+    purchased_by: str | None = Query(None),
+    owner_customer_id: UUID | None = Query(None),
+    customer_used_for_id: UUID | None = Query(None),
+    limit: int = Query(2000, ge=1, le=2000),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """IDs for the current filter — used by Select all matching results."""
+    _require_it_access(db, current_user)
+    ids, total = it_asset_bulk_service.list_asset_ids(
+        db,
+        status=status_filter,
+        asset_type_id=asset_type_id,
+        search=search or q,
+        inventory_scope=inventory_scope,
+        purchased_by=purchased_by,
+        owner_customer_id=owner_customer_id,
+        customer_used_for_id=customer_used_for_id,
+        limit=limit,
+    )
+    return AssetBulkIdsResponse(
+        ids=ids,
+        total=total,
+        truncated=total > len(ids),
+    )
+
+
+@router.post("/assets/bulk-preview", response_model=AssetBulkPreviewResponse)
+def preview_asset_bulk_action(
+    payload: AssetBulkPreviewRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    try:
+        result = it_asset_bulk_service.preview_bulk_action(
+            db,
+            actor=current_user,
+            action=payload.action,  # type: ignore[arg-type]
+            asset_ids=payload.asset_ids,
+            parameters=payload.parameters,
+        )
+        return AssetBulkPreviewResponse(**result)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post("/assets/bulk-action", response_model=AssetBulkActionResult)
+def execute_asset_bulk_action(
+    payload: AssetBulkActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    try:
+        result = it_asset_bulk_service.execute_bulk_action(
+            db,
+            actor=current_user,
+            action=payload.action,  # type: ignore[arg-type]
+            asset_ids=payload.asset_ids,
+            parameters=payload.parameters,
+            options=payload.options,
+        )
+        return AssetBulkActionResult(**result)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
 
 
 @router.get(

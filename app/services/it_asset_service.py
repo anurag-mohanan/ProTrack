@@ -459,6 +459,7 @@ def update_asset(
     invoice_number: str | None = None,
     condition: str | None = None,
     fields_set: set[str] | None = None,
+    commit: bool = True,
 ) -> Asset:
     if asset.is_deleted:
         raise ProTrackValidationError("Cannot update a deleted asset.")
@@ -566,12 +567,15 @@ def update_asset(
         module=MODULE,
         commit=False,
     )
-    db.commit()
-    db.refresh(asset)
+    if commit:
+        db.commit()
+        db.refresh(asset)
     return asset
 
 
-def soft_delete_asset(db: Session, asset: Asset, *, actor: User) -> Asset:
+def soft_delete_asset(
+    db: Session, asset: Asset, *, actor: User, commit: bool = True
+) -> Asset:
     if asset.is_deleted:
         return asset
     if asset.status == "returned_to_customer":
@@ -597,8 +601,9 @@ def soft_delete_asset(db: Session, asset: Asset, *, actor: User) -> Asset:
         module=MODULE,
         commit=False,
     )
-    db.commit()
-    db.refresh(asset)
+    if commit:
+        db.commit()
+        db.refresh(asset)
     return asset
 
 
@@ -808,6 +813,7 @@ def transfer_asset(
     by_user: User,
     assigned_date: date | None = None,
     notes: str | None = None,
+    commit: bool = True,
 ) -> AssetAssignment:
     when = assigned_date or date.today()
     if get_current_assignment(db, asset.id) is not None:
@@ -847,8 +853,9 @@ def transfer_asset(
         module=MODULE,
         commit=False,
     )
-    db.commit()
-    db.refresh(assignment)
+    if commit:
+        db.commit()
+        db.refresh(assignment)
     return assignment
 
 

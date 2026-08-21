@@ -183,6 +183,78 @@ export interface AssetAssignPayload {
   notes?: string | null;
 }
 
+export type AssetBulkAction =
+  | 'delete'
+  | 'assign_user'
+  | 'assign_location'
+  | 'change_status'
+  | 'change_ownership'
+  | 'renumber'
+  | 'return_to_customer';
+
+export interface AssetBulkActionRequest {
+  asset_ids: string[];
+  action: AssetBulkAction;
+  parameters?: Record<string, unknown>;
+  options?: Record<string, unknown>;
+}
+
+export interface AssetBulkPreviewResponse {
+  action: string;
+  selected: number;
+  asset_numbers: string[];
+  dependencies?: Array<{
+    asset_id: string;
+    asset_number: string;
+    status: string;
+    blockers: string[];
+    warnings: string[];
+    can_delete: boolean;
+  }>;
+  blocked_count?: number;
+  eligible_count?: number;
+  already_assigned?: Array<{
+    asset_number: string;
+    assignee?: string | null;
+    has_computer?: boolean;
+  }>;
+  available?: string[];
+  ineligible?: Array<{ asset_number: string; reason: string }>;
+  transitions?: Array<{
+    asset_number: string;
+    from_status: string;
+    to_status: string;
+    rule: string;
+    reason?: string | null;
+  }>;
+  target_status?: string;
+  preview?: Array<{ asset_id: string; current: string; new: string }>;
+  batch_duplicates?: string[];
+  existing_conflicts?: string[];
+  can_apply?: boolean;
+  warning?: string;
+  eligible?: string[];
+}
+
+export interface AssetBulkActionResult {
+  action: string;
+  selected: number;
+  updated: number;
+  updated_asset_numbers: string[];
+  skipped: number;
+  skipped_details: Array<{ asset_number: string; reason: string }>;
+  failed: number;
+  failed_details: Array<{ asset_number: string; reason: string }>;
+  dependencies?: AssetBulkPreviewResponse['dependencies'];
+  preview?: AssetBulkPreviewResponse['preview'];
+}
+
+export interface AssetBulkIdsResponse {
+  ids: string[];
+  total: number;
+  truncated: boolean;
+}
+
 export interface AssetReturnPayload {
   returned_date?: string | null;
   return_condition?: ReturnCondition | null;

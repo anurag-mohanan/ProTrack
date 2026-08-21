@@ -1,4 +1,4 @@
-import type { ComponentProps } from 'react';
+import { useEffect, type ComponentProps } from 'react';
 import type { GridValidRowModel } from '@mui/x-data-grid';
 import type { ListParams } from '../../api/client';
 import type { PaginatedResponse } from '../../types/pagination';
@@ -18,6 +18,14 @@ export interface ServerPaginatedDataGridProps<T, R extends GridValidRowModel = G
   staleTime?: number;
   /** Map API items to grid rows (defaults to identity). */
   mapRows?: (items: T[]) => R[];
+  /** Notify when the current page of items / total changes. */
+  onPageDataChange?: (info: {
+    items: T[];
+    rows: R[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }) => void;
 }
 
 /**
@@ -31,6 +39,7 @@ export function ServerPaginatedDataGrid<T, R extends GridValidRowModel = GridVal
   enabled,
   staleTime,
   mapRows,
+  onPageDataChange,
   ...gridProps
 }: ServerPaginatedDataGridProps<T, R>) {
   const { pagination, query, items } = usePaginatedQuery<T>({
@@ -42,6 +51,16 @@ export function ServerPaginatedDataGrid<T, R extends GridValidRowModel = GridVal
   });
 
   const rows = mapRows ? mapRows(items) : (items as unknown as R[]);
+
+  useEffect(() => {
+    onPageDataChange?.({
+      items,
+      rows,
+      total: pagination.total,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+    });
+  }, [items, rows, pagination.total, pagination.page, pagination.pageSize, onPageDataChange]);
 
   return (
     <PaginatedDataGrid

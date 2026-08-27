@@ -61,7 +61,8 @@ export const defaultProjectCommandCenterFilters: ProjectCommandCenterFilters = {
   dueDate: 'all',
   showArchived: false,
   groupByTeam: false,
-  groupBy: 'workstream',
+  // Team sections for multi-team users; single-team stays flat. Workstream grouping is opt-in.
+  groupBy: 'team',
   layout: 'grouped',
   quickFilter: 'none',
 };

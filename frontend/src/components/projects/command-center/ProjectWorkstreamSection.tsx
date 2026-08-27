@@ -135,6 +135,7 @@ export function ProjectWorkstreamSection({
       elevation={0}
       sx={{
         mb: 1.25,
+        width: '100%',
         border: '1px solid',
         borderColor: 'divider',
         borderLeft: `4px solid ${accent}`,
@@ -143,6 +144,13 @@ export function ProjectWorkstreamSection({
         boxShadow: designTokens.elevation.card,
         '&:before': { display: 'none' },
         overflow: 'hidden',
+        '& .MuiCollapse-root': { width: '100%' },
+        '& .MuiCollapse-wrapper': { width: '100%' },
+        '& .MuiCollapse-wrapperInner': { width: '100%' },
+        '& .MuiAccordionDetails-root': {
+          width: '100%',
+          boxSizing: 'border-box',
+        },
       }}
     >
       <AccordionSummary
@@ -150,11 +158,14 @@ export function ProjectWorkstreamSection({
         sx={{
           minHeight: 56,
           px: 1.5,
+          width: '100%',
           '& .MuiAccordionSummary-content': {
             my: 1,
             flexDirection: 'column',
             alignItems: 'stretch',
             gap: 0.75,
+            width: '100%',
+            marginRight: 1,
           },
         }}
       >

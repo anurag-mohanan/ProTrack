@@ -78,7 +78,7 @@ export function ProjectListSection({
 
   if (!collapsible) {
     return (
-      <Box sx={{ mb: nested ? 0.75 : 1, pt: nested ? 0.35 : 0 }}>
+      <Box sx={{ mb: nested ? 0.75 : 1, pt: nested ? 0.35 : 0, width: '100%' }}>
         {title.trim() ? (
           <Typography
             variant="subtitle2"
@@ -113,11 +113,13 @@ export function ProjectListSection({
       elevation={0}
       sx={{
         mb: 1,
+        width: '100%',
         border: 1,
         borderColor: 'divider',
         borderRadius: '10px !important',
         '&:before': { display: 'none' },
         overflow: 'hidden',
+        '& .MuiCollapse-wrapperInner': { width: '100%' },
       }}
     >
       <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 40, px: 1.25, '& .MuiAccordionSummary-content': { my: 0.75 } }}>
@@ -125,7 +127,7 @@ export function ProjectListSection({
           {sectionTitle}
         </Typography>
       </AccordionSummary>
-      <AccordionDetails sx={{ p: 1 }}>{board}</AccordionDetails>
+      <AccordionDetails sx={{ p: 1, width: '100%', boxSizing: 'border-box' }}>{board}</AccordionDetails>
     </Accordion>
   );
 }

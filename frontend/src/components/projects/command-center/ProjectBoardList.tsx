@@ -16,13 +16,24 @@ import { formatDate, formatDisplayValue, formatNumber } from '../../../utils/for
 import { buildProjectTableRows, type ProjectTableRow } from '../ProjectTable';
 
 /**
- * Fluid tracks — fill the section width. Project name column grows;
- * metric columns stay readable without a fixed board width.
+ * Full-bleed board: project column absorbs leftover width;
+ * metric columns stay compact and readable.
  */
-const BOARD_COLUMNS = '72px minmax(180px, 2.4fr) minmax(120px, 1fr) minmax(88px, 0.7fr) 96px 40px';
+const BOARD_COLUMNS =
+  'minmax(64px, 88px) minmax(0, 1fr) minmax(120px, 160px) minmax(96px, 120px) minmax(88px, 110px) 40px';
 const BOARD_COLUMN_GAP = 2;
 const BOARD_ROW_PY = 1.1;
 const BOARD_ROW_PX = 1.75;
+
+const boardGridSx = {
+  display: 'grid',
+  gridTemplateColumns: BOARD_COLUMNS,
+  columnGap: BOARD_COLUMN_GAP,
+  alignItems: 'center',
+  width: '100%',
+  minWidth: '100%',
+  boxSizing: 'border-box',
+} as const;
 
 function healthTone(health?: string | null) {
   if (health === 'red') return designTokens.health.red;
@@ -82,11 +93,7 @@ function BoardHeader() {
   return (
     <Box
       sx={{
-        display: 'grid',
-        gridTemplateColumns: BOARD_COLUMNS,
-        columnGap: BOARD_COLUMN_GAP,
-        alignItems: 'center',
-        width: '100%',
+        ...boardGridSx,
         px: BOARD_ROW_PX,
         py: 0.85,
         borderBottom: '1px solid',
@@ -173,14 +180,10 @@ function ProjectBoardRow({
     <Box
       onClick={() => onRowOpen?.(row)}
       sx={{
+        ...boardGridSx,
         px: BOARD_ROW_PX,
         py: BOARD_ROW_PY,
-        display: 'grid',
-        gridTemplateColumns: BOARD_COLUMNS,
-        columnGap: BOARD_COLUMN_GAP,
         rowGap: 0.35,
-        alignItems: 'center',
-        width: '100%',
         borderBottom: '1px solid',
         borderColor: 'divider',
         borderLeft: `3px solid ${health.main}`,
@@ -368,11 +371,15 @@ function BoardShell({ children }: { children: ReactNode }) {
     <Box
       sx={{
         width: '100%',
+        minWidth: '100%',
+        maxWidth: '100%',
+        display: 'block',
         border: '1px solid',
         borderColor: 'divider',
         borderRadius: 1.5,
         overflow: 'hidden',
         bgcolor: 'background.paper',
+        boxSizing: 'border-box',
       }}
     >
       {children}
@@ -443,7 +450,7 @@ export function ProjectBoardList({
     ));
 
   return (
-    <Stack spacing={1} sx={{ width: '100%' }}>
+    <Stack spacing={1} sx={{ width: '100%', minWidth: '100%', display: 'flex', alignItems: 'stretch' }}>
       {working.length ? (
         <BoardShell>
           {splitActiveHold ? <SubLabel label="Active" count={working.length} /> : null}

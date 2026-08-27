@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   Alert,
   Box,
@@ -15,6 +16,8 @@ import {
   MODULE_FINANCIAL_PLANNING,
   MODULE_HUMAN_RESOURCES,
   MODULE_LABELS,
+  SPECIAL_APPROVE_TIMESHEETS,
+  SPECIAL_IMPORT_TIMESHEETS,
   SPECIAL_PERMISSION_LABELS,
   type ModuleKey,
   type SpecialPermissionKey,
@@ -23,8 +26,30 @@ import { FormSection } from '../ui/design-system';
 import {
   defaultModulesForRole,
   defaultSpecialPermissionsForRole,
+  ROLES,
 } from '../../utils/permissions';
 
+/** Mirrors selectable SoD pairs on the Users form (backend has additional finance pairs). */
+const SOD_CONFLICT_PAIRS: Array<{
+  left: SpecialPermissionKey;
+  right: SpecialPermissionKey;
+  message: string;
+}> = [
+  {
+    left: SPECIAL_IMPORT_TIMESHEETS,
+    right: SPECIAL_APPROVE_TIMESHEETS,
+    message: 'Cannot both import and approve timesheets (maker-checker).',
+  },
+];
+
+export function getSpecialPermissionSodConflicts(
+  specialPermissions: SpecialPermissionKey[],
+  roleName: string,
+): Array<{ left: SpecialPermissionKey; right: SpecialPermissionKey; message: string }> {
+  if (roleName === ROLES.ADMIN) return [];
+  const held = new Set(specialPermissions);
+  return SOD_CONFLICT_PAIRS.filter(({ left, right }) => held.has(left) && held.has(right));
+}
 interface UserAccessControlSectionProps {
   roleName: string;
   moduleAccess: ModuleKey[];
@@ -40,6 +65,10 @@ export function UserAccessControlSection({
   onModuleAccessChange,
   onSpecialPermissionsChange,
 }: UserAccessControlSectionProps) {
+  const sodConflicts = useMemo(
+    () => getSpecialPermissionSodConflicts(specialPermissions, roleName),
+    [roleName, specialPermissions],
+  );
   const toggleModule = (module: ModuleKey, checked: boolean) => {
     const next = checked
       ? [...new Set([...moduleAccess, module])]
@@ -101,8 +130,20 @@ export function UserAccessControlSection({
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Independent of role. Create Projects and Edit Projects are separate — viewing the
             Projects module does not grant either. They still apply only inside the user's team /
-            data scope.
+            data scope. Delete Projects can be combined with Approve Projects (soft-delete is
+            recoverable).
           </Typography>
+          {sodConflicts.length ? (
+            <Alert severity="error" sx={{ mb: 1.5 }}>
+              Segregation of duties conflict — remove one of each conflicting pair before saving:{' '}
+              {sodConflicts
+                .map(
+                  ({ left, right, message }) =>
+                    `${SPECIAL_PERMISSION_LABELS[left]} + ${SPECIAL_PERMISSION_LABELS[right]} (${message})`,
+                )
+                .join(' · ')}
+            </Alert>
+          ) : null}
           <FormGroup sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0.5 }}>
             {ALL_SPECIAL_PERMISSIONS.map((permission) => (
               <FormControlLabel
@@ -131,8 +172,8 @@ export function UserAccessControlSection({
             background: 'none',
             color: 'primary.main',
             cursor: 'pointer',
+            textDecoration: 'underline',
             fontSize: '0.875rem',
-            fontWeight: 600,
             p: 0,
           }}
         >

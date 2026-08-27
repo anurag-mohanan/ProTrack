@@ -39,12 +39,13 @@ def test_sod_rejects_import_and_approve_timesheets():
     assert "Segregation of duties" in exc.value.detail
 
 
-def test_sod_allows_admin_delete_and_approve_together():
+def test_sod_allows_delete_and_approve_projects_together():
+    """Soft-delete + approve is allowed (permanent delete stays Admin-only)."""
     from app.core.access_control import SPECIAL_APPROVE_PROJECTS, SPECIAL_DELETE_PROJECTS
 
     validate_special_permission_sod(
         [SPECIAL_DELETE_PROJECTS, SPECIAL_APPROVE_PROJECTS],
-        role_name="Admin",
+        role_name="Engineering Manager",
     )
 
 

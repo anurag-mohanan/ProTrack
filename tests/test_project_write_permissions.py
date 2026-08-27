@@ -11,6 +11,8 @@ from sqlalchemy import select
 
 from app.core.access_control import (
     SPECIAL_APPROVE_PROJECTS,
+    SPECIAL_APPROVE_TIMESHEETS,
+    SPECIAL_ARCHIVE_PROJECTS,
     SPECIAL_CREATE_PROJECTS,
     SPECIAL_DELETE_PROJECTS,
     SPECIAL_EDIT_PROJECTS,
@@ -314,3 +316,32 @@ def test_admin_user_save_allows_delete_and_approve_specials(client, session):
         },
     )
     assert response.status_code == 200, response.text
+
+
+def test_em_user_save_allows_delete_with_approve_projects(client, session):
+    """Granting delete_projects must not fail when approve_projects is also held."""
+    admin = login(client, "admin@prosohm.com")
+    em = session.get(User, IDS["user_binil"])
+    assert em is not None
+    em.role_id = IDS["role_pm"]
+    session.add(em)
+    session.commit()
+    response = client.patch(
+        f"/api/v1/users/{em.id}",
+        headers=admin,
+        json={
+            "special_permissions": [
+                SPECIAL_CREATE_PROJECTS,
+                SPECIAL_EDIT_PROJECTS,
+                SPECIAL_ARCHIVE_PROJECTS,
+                SPECIAL_APPROVE_PROJECTS,
+                SPECIAL_DELETE_PROJECTS,
+                SPECIAL_APPROVE_TIMESHEETS,
+            ]
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    specials = body.get("resolved_special_permissions") or body.get("special_permissions") or []
+    assert SPECIAL_DELETE_PROJECTS in specials
+    assert SPECIAL_APPROVE_PROJECTS in specials

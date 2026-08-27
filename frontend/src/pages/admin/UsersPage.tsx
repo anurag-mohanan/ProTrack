@@ -43,7 +43,7 @@ import { usePaginatedQuery } from '../../hooks/usePaginatedQuery';
 import { UserKpiConfiguration } from '../../components/admin/UserKpiConfiguration';
 import { useAuth } from '../../context/AuthContext';
 import { UserTeamAssignments, type UserTeamAssignmentFormValue } from '../../components/admin/UserTeamAssignments';
-import { UserAccessControlSection } from '../../components/admin/UserAccessControlSection';
+import { UserAccessControlSection, getSpecialPermissionSodConflicts } from '../../components/admin/UserAccessControlSection';
 import type { ModuleKey, SpecialPermissionKey } from '../../config/accessControl';
 import { ROLES, defaultModulesForRole, defaultSpecialPermissionsForRole } from '../../utils/permissions';
 import type { Role, User, WorkingModel } from '../../types';
@@ -491,6 +491,17 @@ export default function UsersPage() {
 
     if (!editingUser && form.team_assignments.length === 0) {
       showError('Select at least one team for the user.');
+      return;
+    }
+
+    const sodConflicts = getSpecialPermissionSodConflicts(
+      form.special_permissions,
+      roleMap.get(form.role_id) ?? '',
+    );
+    if (sodConflicts.length) {
+      showError(
+        `Segregation of duties conflict: ${sodConflicts.map((c) => c.message).join(' ')}`,
+      );
       return;
     }
 

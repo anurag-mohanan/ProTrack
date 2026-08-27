@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from app.core.access_control import (
-    SPECIAL_APPROVE_PROJECTS,
     SPECIAL_APPROVE_TIMESHEETS,
     SPECIAL_BUDGET_APPROVAL,
-    SPECIAL_DELETE_PROJECTS,
     SPECIAL_FINANCIAL_APPROVAL,
     SPECIAL_IMPORT_TIMESHEETS,
     SPECIAL_MANAGE_PERMISSIONS,
@@ -14,16 +12,13 @@ from app.core.access_control import (
 from app.core.exceptions import ProTrackValidationError
 
 # Conflicting pairs: holding both specials on one user is rejected (maker-checker).
+# Soft-delete + approve projects are intentionally allowed together: soft-delete is
+# reversible (restore from Deleted Projects) and permanent delete remains Admin-only.
 SOD_CONFLICT_PAIRS: tuple[tuple[str, str, str], ...] = (
     (
         SPECIAL_IMPORT_TIMESHEETS,
         SPECIAL_APPROVE_TIMESHEETS,
         "Cannot both import and approve timesheets (maker-checker).",
-    ),
-    (
-        SPECIAL_DELETE_PROJECTS,
-        SPECIAL_APPROVE_PROJECTS,
-        "Cannot both delete and approve projects (maker-checker).",
     ),
     (
         SPECIAL_MANAGE_PERMISSIONS,
@@ -46,8 +41,7 @@ def validate_special_permission_sod(
     """Raise ProTrackValidationError when conflicting specials are combined.
 
     The Admin role is exempt: platform administrators hold both maker and
-    checker powers by design. Applying SoD to Admin defaults made it
-    impossible to persist delete_projects together with approve_projects.
+    checker powers by design.
     """
     if not specials:
         return

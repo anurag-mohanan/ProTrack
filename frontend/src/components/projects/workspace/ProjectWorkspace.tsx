@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Box, Tab, Tabs, Typography } from '@mui/material';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
 import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
@@ -10,9 +10,13 @@ import EmailRoundedIcon from '@mui/icons-material/EmailRounded';
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
+import UnarchiveOutlinedIcon from '@mui/icons-material/UnarchiveOutlined';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import { PageContainer } from '../../common/PageContainer';
 import { LoadingState } from '../../common/LoadingState';
 import { ErrorState } from '../../common/ErrorState';
+import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { StickyRecordHeader } from '../../ui/design-system';
 import { APP_TOP_BAR_OFFSET } from '../../ui/design-system/StickyRecordHeader';
 import { commandCenterQueryKeys, fetchProjectCommandCenter } from '../../../api/commandCenter';
@@ -21,7 +25,14 @@ import { ProjectMilestoneGrid } from './ProjectMilestoneGrid';
 import { ProjectWorkspaceCompactHeader } from './ProjectWorkspaceCompactHeader';
 import { WorkflowTimeline } from '../../command-center/WorkflowTimeline';
 import { useAuth } from '../../../context/AuthContext';
-import { canEditProject, ROLES } from '../../../utils/permissions';
+import { useToast } from '../../../context/ToastContext';
+import {
+  accessContextFromUser,
+  canArchiveProject,
+  canDeleteProject,
+  canEditProject,
+  ROLES,
+} from '../../../utils/permissions';
 import { formatDisplayValue } from '../../../utils/format';
 import { isActiveProjectForHealth } from '../../../utils/projectHealth';
 import { ProjectCommunicationsPanel } from './ProjectCommunicationsPanel';
@@ -31,6 +42,12 @@ import { ProjectTimesheetsPanel } from './ProjectTimesheetsPanel';
 import { ProjectFormDialog } from '../ProjectFormDialog';
 import { ProsohmButton } from '../../ui/ProsohmButton';
 import { getProjectActivities } from '../../../services/notificationService';
+import {
+  archiveProject,
+  projectQueryKeys,
+  restoreProject,
+  softDeleteProject,
+} from '../../../services/projectService';
 import type { Activity } from '../../../types';
 
 const TABS = [
@@ -57,11 +74,16 @@ interface ProjectWorkspaceProps {
 }
 
 export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = tabFromParam(searchParams.get('tab'));
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const query = useQuery({
     queryKey: commandCenterQueryKeys.detail(projectId),
@@ -74,8 +96,11 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
     enabled: tab === 'activity',
   });
 
+  const access = accessContextFromUser(user);
   const roleName = user?.role_name ?? '';
-  const showEditProject = canEditProject(user ?? roleName);
+  const showEditProject = canEditProject(access);
+  const showArchive = canArchiveProject(access);
+  const showDelete = canDeleteProject(access);
   const canEditMilestones = (
     [
       ROLES.ADMIN,
@@ -94,6 +119,43 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
         ROLES.SURFACER,
       ] as string[]
     ).includes(roleName);
+
+  const invalidateProject = () => {
+    void queryClient.invalidateQueries({ queryKey: commandCenterQueryKeys.detail(projectId) });
+    void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+    void query.refetch();
+  };
+
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveProject(projectId),
+    onSuccess: () => {
+      showSuccess('Project archived');
+      setArchiveOpen(false);
+      invalidateProject();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: () => restoreProject(projectId),
+    onSuccess: () => {
+      showSuccess('Project restored to active');
+      setRestoreOpen(false);
+      invalidateProject();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => softDeleteProject(projectId),
+    onSuccess: () => {
+      showSuccess('Project deleted');
+      setDeleteOpen(false);
+      void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+      navigate('/projects');
+    },
+    onError: (error: Error) => showError(error.message),
+  });
 
   const subtitle = useMemo(() => {
     if (!query.data) return '';
@@ -134,7 +196,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
         />
       )}
 
-      {showEditProject ? (
+      {showEditProject || showArchive || showDelete ? (
         <Box
           sx={{
             display: 'flex',
@@ -145,14 +207,48 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
             mb: 0.5,
           }}
         >
-          <ProsohmButton
-            buttonVariant="outlined"
-            size="small"
-            startIcon={<EditOutlinedIcon />}
-            onClick={() => setEditOpen(true)}
-          >
-            Edit Project
-          </ProsohmButton>
+          {showEditProject ? (
+            <ProsohmButton
+              buttonVariant="outlined"
+              size="small"
+              startIcon={<EditOutlinedIcon />}
+              onClick={() => setEditOpen(true)}
+            >
+              Edit Project
+            </ProsohmButton>
+          ) : null}
+          {showArchive && !project.is_deleted ? (
+            project.is_archived ? (
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                startIcon={<UnarchiveOutlinedIcon />}
+                onClick={() => setRestoreOpen(true)}
+              >
+                Restore
+              </ProsohmButton>
+            ) : (
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                startIcon={<ArchiveOutlinedIcon />}
+                onClick={() => setArchiveOpen(true)}
+              >
+                Archive
+              </ProsohmButton>
+            )
+          ) : null}
+          {showDelete && !project.is_deleted ? (
+            <ProsohmButton
+              buttonVariant="outlined"
+              size="small"
+              startIcon={<DeleteOutlineRoundedIcon />}
+              onClick={() => setDeleteOpen(true)}
+              sx={{ color: 'error.main', borderColor: 'error.main' }}
+            >
+              Delete
+            </ProsohmButton>
+          ) : null}
         </Box>
       ) : null}
 
@@ -268,12 +364,44 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
         project={project}
         onUpdated={() => {
           setEditOpen(false);
-          void queryClient.invalidateQueries({
-            queryKey: commandCenterQueryKeys.detail(projectId),
-          });
-          void queryClient.invalidateQueries({ queryKey: ['projects'] });
-          void query.refetch();
+          invalidateProject();
         }}
+      />
+
+      <ConfirmDialog
+        open={archiveOpen}
+        title="Archive project?"
+        message="Archived projects are removed from the default list but remain in reports and history."
+        confirmLabel="Archive"
+        danger
+        loading={archiveMutation.isPending}
+        onClose={() => setArchiveOpen(false)}
+        onConfirm={() => archiveMutation.mutate()}
+      />
+
+      <ConfirmDialog
+        open={restoreOpen}
+        title="Restore project?"
+        message="The project will return to Active Projects as Currently Being Worked On."
+        confirmLabel="Restore"
+        loading={restoreMutation.isPending}
+        onClose={() => setRestoreOpen(false)}
+        onConfirm={() => restoreMutation.mutate()}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete project?"
+        message={
+          Number(project.actual_hours) > 0
+            ? `This removes ${project.tool_number} from active project management. Timesheets, milestones, and post-completion hours are kept for history. Restore from Deleted Projects if needed.`
+            : 'This removes the project from active project management. Related timesheets, milestones, and history are kept. The project can be restored from Deleted Projects.'
+        }
+        confirmLabel="Delete"
+        danger
+        loading={deleteMutation.isPending}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={() => deleteMutation.mutate()}
       />
     </PageContainer>
   );

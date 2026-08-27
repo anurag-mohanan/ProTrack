@@ -1,8 +1,9 @@
 import type { ProjectCommandCenterFilters } from './projectCommandCenter';
 import { defaultProjectCommandCenterFilters } from './projectCommandCenter';
 
-const STORAGE_KEY = 'protrack.projects.commandCenter.v2';
-const LEGACY_STORAGE_KEY = 'protrack.projects.commandCenter.v1';
+const STORAGE_KEY = 'protrack.projects.commandCenter.v3';
+const LEGACY_STORAGE_KEY = 'protrack.projects.commandCenter.v2';
+const LEGACY_STORAGE_KEY_V1 = 'protrack.projects.commandCenter.v1';
 
 export interface ProjectsPageSessionState {
   filters: ProjectCommandCenterFilters;
@@ -62,10 +63,17 @@ function normalizeFilters(raw: unknown): ProjectCommandCenterFilters {
         : base.dueDate,
     showArchived: typeof raw.showArchived === 'boolean' ? raw.showArchived : base.showArchived,
     groupByTeam: typeof raw.groupByTeam === 'boolean' ? raw.groupByTeam : base.groupByTeam,
-    groupBy:
-      typeof raw.groupBy === 'string'
-        ? (raw.groupBy as ProjectCommandCenterFilters['groupBy'])
-        : base.groupBy,
+    groupBy: (() => {
+      const value =
+        typeof raw.groupBy === 'string'
+          ? (raw.groupBy as ProjectCommandCenterFilters['groupBy'])
+          : base.groupBy;
+      // Simplified Projects UX: prefer team sections over workstream catalogs.
+      if (value === 'workstream' || value === 'customer' || value === 'health' || value === 'pm') {
+        return 'team';
+      }
+      return value;
+    })(),
     layout:
       typeof raw.layout === 'string'
         ? (raw.layout as ProjectCommandCenterFilters['layout'])
@@ -98,7 +106,8 @@ export function loadProjectsPageSession(): ProjectsPageSessionState | null {
   try {
     const raw =
       window.sessionStorage.getItem(STORAGE_KEY) ??
-      window.sessionStorage.getItem(LEGACY_STORAGE_KEY);
+      window.sessionStorage.getItem(LEGACY_STORAGE_KEY) ??
+      window.sessionStorage.getItem(LEGACY_STORAGE_KEY_V1);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) return null;
@@ -136,6 +145,7 @@ export function clearProjectsPageSession(): void {
   try {
     window.sessionStorage.removeItem(STORAGE_KEY);
     window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+    window.sessionStorage.removeItem(LEGACY_STORAGE_KEY_V1);
   } catch {
     // Ignore.
   }

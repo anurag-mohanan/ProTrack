@@ -28,6 +28,18 @@ export function canSelectAllProjectsScope(user: CurrentUser | null | undefined):
   return Boolean(user?.can_view_all_streams);
 }
 
+/** Streams the user handles (primary + relevant). Used to decide stream filter chrome. */
+export function getUserRelevantStreamIds(user: CurrentUser | null | undefined): string[] {
+  const ids = new Set<string>(user?.relevant_stream_ids ?? []);
+  if (user?.stream_id) ids.add(user.stream_id);
+  return [...ids];
+}
+
+/** Show stream filter cards when the user handles more than one stream. */
+export function shouldShowProjectStreamFilters(user: CurrentUser | null | undefined): boolean {
+  return getUserRelevantStreamIds(user).length > 1;
+}
+
 export function resolveRelevantStreamIds(
   user: CurrentUser | null | undefined,
   projects: Project[],

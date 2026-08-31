@@ -122,6 +122,8 @@ class OnboardingChecklistDetailRead(OnboardingChecklistRead):
     items: list[OnboardingChecklistItemRead] = Field(default_factory=list)
     sections: list[str] = Field(default_factory=list)
     triggered_tickets: list[OnboardingTriggeredTicket] = Field(default_factory=list)
+    # Set only when onboarding auto-created the User (not when linking an existing account).
+    provisioned_temporary_password: Optional[str] = None
 
 
 class OnboardingTemplateRead(BaseModel):

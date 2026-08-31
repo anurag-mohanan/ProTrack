@@ -21,6 +21,8 @@ import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
 import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
+import LockResetRoundedIcon from '@mui/icons-material/LockResetRounded';
+import VpnKeyOutlinedIcon from '@mui/icons-material/VpnKeyOutlined';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { fetchUserProfileDetail } from '../../api/resources';
@@ -54,6 +56,10 @@ import {
   userDisplayName,
   userInitials,
 } from '../../utils/format';
+import {
+  formatUserPasswordAuditValue,
+  getUserPasswordStatus,
+} from '../../utils/userPasswordStatus';
 
 interface UserDetailsDrawerProps {
   user: User | null;
@@ -151,6 +157,7 @@ export function UserDetailsDrawer({
 
   const profile = profileQuery.data;
   const fullName = user ? userDisplayName(user) : '';
+  const passwordStatus = user ? getUserPasswordStatus(user) : null;
   const workloadLabel = useMemo(
     () => formatUserWorkload(user?.active_projects_count ?? profile?.summary.active_projects),
     [profile?.summary.active_projects, user?.active_projects_count],
@@ -172,6 +179,14 @@ export function UserDetailsDrawer({
               color={user.is_active ? 'success' : 'default'}
             />
             <Chip label={roleLabel} size="small" color="primary" variant="outlined" />
+            {passwordStatus ? (
+              <Chip
+                label={passwordStatus.label}
+                size="small"
+                color={passwordStatus.color}
+                title={passwordStatus.detail}
+              />
+            ) : null}
           </>
         ) : null
       }
@@ -184,6 +199,22 @@ export function UserDetailsDrawer({
               onClick={() => onEdit(user)}
             >
               Edit
+            </ProsohmButton>
+            <ProsohmButton
+              buttonVariant="outlined"
+              size="small"
+              startIcon={<LockResetRoundedIcon />}
+              onClick={() => onSetTemporaryPassword(user)}
+            >
+              Set default password
+            </ProsohmButton>
+            <ProsohmButton
+              buttonVariant="outlined"
+              size="small"
+              startIcon={<VpnKeyOutlinedIcon />}
+              onClick={() => onResetPassword(user)}
+            >
+              Random password
             </ProsohmButton>
             {isAdmin ? (
               <ProsohmButton
@@ -409,16 +440,36 @@ export function UserDetailsDrawer({
           </FormSection>
 
           <FormSection title="Account Management" icon={PersonIcon}>
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Password status"
+                value={formatUserPasswordAuditValue(user)}
+                slotProps={{ input: { readOnly: true } }}
+                helper={
+                  user.must_change_password
+                    ? 'User must set a new password on next login.'
+                    : user.password_changed_at
+                      ? 'User has changed their password at least once.'
+                      : 'User is still on the org default or admin-assigned password.'
+                }
+              />
+            </Grid>
             <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
-              <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onResetPassword(user)}>
-                Reset Password
+              <ProsohmButton
+                buttonVariant="outlined"
+                size="small"
+                startIcon={<LockResetRoundedIcon />}
+                onClick={() => onSetTemporaryPassword(user)}
+              >
+                Set default password (Prosohm@2026)
               </ProsohmButton>
               <ProsohmButton
                 buttonVariant="outlined"
                 size="small"
-                onClick={() => onSetTemporaryPassword(user)}
+                startIcon={<VpnKeyOutlinedIcon />}
+                onClick={() => onResetPassword(user)}
               >
-                Set Temporary Password
+                Generate random password
               </ProsohmButton>
               <ProsohmButton buttonVariant="outlined" size="small" onClick={() => onForcePasswordChange(user)}>
                 Force Password Change
@@ -468,8 +519,8 @@ export function UserDetailsDrawer({
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <FormField
-                    label="Password Changed"
-                    value={user.must_change_password ? 'Required on next login' : 'Yes'}
+                    label="Password status"
+                    value={formatUserPasswordAuditValue(user)}
                     slotProps={{ input: { readOnly: true } }}
                   />
                 </Grid>

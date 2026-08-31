@@ -1,5 +1,6 @@
 import uuid
 
+from app.core.auth_constants import SOFT_LAUNCH_PASSWORD
 from tests.conftest import DEFAULT_PASSWORD, IDS, list_items, login
 
 
@@ -117,6 +118,70 @@ def test_reset_password_and_change_password(client):
 
     me = client.get("/api/v1/auth/me", headers=user_headers)
     assert me.json()["must_change_password"] is False
+
+    user_read = client.get(f"/api/v1/users/{user_id}", headers=headers)
+    assert user_read.status_code == 200
+    assert user_read.json()["password_changed_at"] is not None
+    assert user_read.json()["password_changed"] is True
+
+    admin_reset = client.post(
+        f"/api/v1/users/{user_id}/reset-password",
+        headers=headers,
+        json={"generate_temporary": True},
+    )
+    assert admin_reset.status_code == 200
+
+    after_reset = client.get(f"/api/v1/users/{user_id}", headers=headers).json()
+    assert after_reset["must_change_password"] is True
+    assert after_reset["password_changed_at"] is None
+    assert after_reset["password_changed"] is False
+
+
+def test_set_temporary_password_clears_password_changed_at(client):
+    headers = login(client, "admin@prosohm.com")
+    roles = client.get("/api/v1/roles", headers=headers)
+    designer_role = next(r for r in list_items(roles) if r["name"] == "Designer")
+    email = f"temp.user.{uuid.uuid4().hex[:8]}@prosohm.com"
+    create = client.post(
+        "/api/v1/users",
+        headers=headers,
+        json={
+            "role_id": designer_role["id"],
+            "email": email,
+            "password": "TempPass@123",
+            "first_name": "Temp",
+            "last_name": "User",
+            "is_active": True,
+        },
+    )
+    user_id = create.json()["id"]
+
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "TempPass@123"},
+    ).json()["access_token"]
+    user_headers = {"Authorization": f"Bearer {token}"}
+    client.post(
+        "/api/v1/auth/change-password",
+        headers=user_headers,
+        json={
+            "current_password": "TempPass@123",
+            "new_password": "NewPass@1234",
+            "confirm_password": "NewPass@1234",
+        },
+    )
+
+    response = client.post(
+        f"/api/v1/users/{user_id}/set-temporary-password",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["temporary_password"] == SOFT_LAUNCH_PASSWORD
+
+    user_read = client.get(f"/api/v1/users/{user_id}", headers=headers).json()
+    assert user_read["must_change_password"] is True
+    assert user_read["password_changed_at"] is None
+    assert user_read["password_changed"] is False
 
 
 def test_user_delete_disabled(client):

@@ -167,6 +167,7 @@ def _to_detail(
     current_user: User,
     *,
     triggered: list[dict] | None = None,
+    provisioned_temporary_password: str | None = None,
 ) -> OnboardingChecklistDetailRead:
     base = _to_read(db, checklist, current_user)
     items = [_item_read(db, item, current_user) for item in checklist.items]
@@ -181,6 +182,7 @@ def _to_detail(
         items=items,
         sections=sections,
         triggered_tickets=_triggered_tickets(checklist, triggered),
+        provisioned_temporary_password=provisioned_temporary_password,
     )
 
 
@@ -263,6 +265,7 @@ def create_checklist(
 
     employee_user_id = payload.employee_user_id
     role_id = payload.role_id
+    provisioned_temporary_password: str | None = None
 
     if employee_user_id is not None:
         emp = db.get(User, employee_user_id)
@@ -284,7 +287,7 @@ def create_checklist(
             designation = payload.designation
             if not designation and isinstance(placement_preview.get("designation"), str):
                 designation = placement_preview["designation"]  # type: ignore[assignment]
-            new_user, _temp_pw = provision.create_user_for_onboarding(
+            new_user, temp_pw = provision.create_user_for_onboarding(
                 db,
                 employee_name=payload.employee_name,
                 email=payload.employee_email,
@@ -295,6 +298,7 @@ def create_checklist(
                 designation=designation,
             )
             employee_user_id = new_user.id
+            provisioned_temporary_password = temp_pw
             if role_id is None:
                 role_id = new_user.role_id
         except ValueError as exc:
@@ -336,7 +340,13 @@ def create_checklist(
 
     loaded = onboard.load_checklist(db, checklist.id)
     assert loaded is not None
-    return _to_detail(db, loaded, current_user, triggered=triggered)
+    return _to_detail(
+        db,
+        loaded,
+        current_user,
+        triggered=triggered,
+        provisioned_temporary_password=provisioned_temporary_password,
+    )
 
 
 @router.get("/{checklist_id}", response_model=OnboardingChecklistDetailRead)

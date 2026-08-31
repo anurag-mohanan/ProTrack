@@ -124,10 +124,13 @@ export default function OnboardingPage() {
     mutationFn: onboardingApi.create,
     onSuccess: (data) => {
       const ticketCount = data.triggered_tickets?.length ?? 0;
+      const passwordNote = data.provisioned_temporary_password
+        ? ` Login password: ${data.provisioned_temporary_password} (share with the new hire).`
+        : '';
       showSuccess(
         ticketCount > 0
-          ? `Onboarding started for ${data.employee_name}. ${ticketCount} department ticket${ticketCount === 1 ? '' : 's'} raised.`
-          : `Onboarding started for ${data.employee_name}.`,
+          ? `Onboarding started for ${data.employee_name}. ${ticketCount} department ticket${ticketCount === 1 ? '' : 's'} raised.${passwordNote}`
+          : `Onboarding started for ${data.employee_name}.${passwordNote}`,
       );
       setCreateOpen(false);
       setSelectedId(data.id);
@@ -1066,8 +1069,8 @@ function ChecklistFormDialog({
           {mode === 'create' ? (
             <Typography variant="caption" color="text.secondary">
               Starting onboarding creates a User account when you enter an email (provisional Designer
-              role, temporary password). The team leader is notified in-app and by email. Help Desk
-              tickets are raised for HR, Admin, IT, and Accounts.
+              role, default password Prosohm@2026). The team leader is notified in-app and by email.
+              Help Desk tickets are raised for HR, Admin, IT, and Accounts.
             </Typography>
           ) : null}
           <TextField

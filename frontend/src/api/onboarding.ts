@@ -78,6 +78,8 @@ export interface OnboardingChecklistDetail extends OnboardingChecklist {
   items: OnboardingChecklistItem[];
   sections: string[];
   triggered_tickets: OnboardingTriggeredTicket[];
+  /** Present only when onboarding auto-created a new User account. */
+  provisioned_temporary_password?: string | null;
 }
 
 export interface OnboardingChecklistCreate {

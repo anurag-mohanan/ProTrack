@@ -7,7 +7,8 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.core.security import hash_password
+from app.core.auth_constants import SOFT_LAUNCH_PASSWORD
+from app.core.security import hash_password, verify_password
 from app.models.enums import NotificationType
 from app.models.models import ExitInterview, Notification, Role, Team, User
 from app.services.hr_process_audit_service import build_process_audit
@@ -71,6 +72,7 @@ def test_onboarding_creates_user_and_notifies_team_lead(client, session):
     assert user is not None
     assert user.email == "newhire.one@prosohm.com"
     assert user.must_change_password is True
+    assert verify_password(SOFT_LAUNCH_PASSWORD, user.password_hash)
     role = session.get(Role, user.role_id)
     assert role is not None
     assert role.name == "Designer"

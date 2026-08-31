@@ -273,6 +273,7 @@ class UserRead(UserBase, TimestampSchema):
     deleted_by_id: UUID | None = None
     is_locked: bool = False
     failed_login_count: int = 0
+    password_changed_at: datetime | None = None
     module_access: list[str] | None = None
     special_permissions: list[str] | None = None
     module_actions: dict[str, list[str]] | None = None
@@ -316,7 +317,7 @@ class UserRead(UserBase, TimestampSchema):
     @computed_field
     @property
     def password_changed(self) -> bool:
-        return not self.must_change_password
+        return self.password_changed_at is not None
 
 
 class UserDeleteCheck(BaseModel):

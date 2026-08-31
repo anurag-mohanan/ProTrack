@@ -11,14 +11,12 @@ import {
   DialogTitle,
   FormControlLabel,
   Grid,
-  IconButton,
   InputAdornment,
   Switch,
   Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PersonIcon from '@mui/icons-material/Person';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
@@ -30,6 +28,7 @@ import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
 import { UserDetailsDrawer } from '../../components/admin/UserDetailsDrawer';
+import { UserRowActions } from '../../components/admin/UserRowActions';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -62,11 +61,11 @@ import {
   FilterToolbar,
   compactFilterFieldSx,
   EmptyState,
-  TableRowActions,
 } from '../../components/ui/design-system';
 import { useOpenCreateFromQuery } from '../../hooks/useOpenCreateFromQuery';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 import { formatCellValue, formatDisplayValue, formatEmploymentType, userDisplayName, userInitials } from '../../utils/format';
+import { getUserPasswordStatus } from '../../utils/userPasswordStatus';
 import { optionalString, optionalUuid, validateRequiredFields } from '../../utils/formValues';
 
 interface UserFormState {
@@ -614,6 +613,7 @@ export default function UsersPage() {
         : result.message;
       showSuccess(message);
       setResetTarget(null);
+      await refreshUsers();
     } catch (error) {
       showError(getErrorMessage(error));
     } finally {
@@ -808,6 +808,20 @@ export default function UsersPage() {
       valueGetter: (_value, row) => formatEmploymentType(row.employment_type) || '—',
     },
     {
+      field: 'password_status',
+      headerName: 'Password',
+      width: 160,
+      sortable: false,
+      renderCell: (params) => {
+        const status = getUserPasswordStatus(params.row);
+        return (
+          <Tooltip title={status.detail ?? status.label}>
+            <Chip label={status.label} size="small" color={status.color} />
+          </Tooltip>
+        );
+      },
+    },
+    {
       field: 'is_active',
       headerName: 'Status',
       width: 110,
@@ -822,27 +836,29 @@ export default function UsersPage() {
     {
       field: 'actions',
       headerName: '',
-      width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
+      width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 56 : DATA_GRID_ACTIONS_COLUMN_WIDTH + 16,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <TableRowActions
+        <UserRowActions
+          user={params.row}
+          isAdmin={isAdmin}
           onEdit={() => openEdit(params.row)}
-          deleteAction={
-            isAdmin ? (
-              <Tooltip title="Delete">
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setDeleteTarget(params.row);
-                  }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            ) : undefined
+          onDelete={
+            isAdmin
+              ? () => {
+                  setDeleteTarget(params.row);
+                }
+              : undefined
+          }
+          onSetDefaultPassword={() => setTempPasswordTarget(params.row)}
+          onResetRandomPassword={() => setResetTarget(params.row)}
+          onUnlock={
+            params.row.is_locked
+              ? () => {
+                  setUnlockTarget(params.row);
+                }
+              : undefined
           }
         />
       ),
@@ -1553,13 +1569,13 @@ export default function UsersPage() {
 
       <ConfirmDialog
         open={Boolean(resetTarget)}
-        title="Reset Password"
+        title="Generate Random Password"
         message={
           resetTarget
-            ? `Generate a temporary password for ${resetTarget.first_name} ${resetTarget.last_name}? They will be required to change it on next login.`
+            ? `Generate a random temporary password for ${resetTarget.first_name} ${resetTarget.last_name}? They will be required to change it on next login.`
             : ''
         }
-        confirmLabel="Reset Password"
+        confirmLabel="Generate Password"
         onConfirm={() => void handleResetPassword()}
         onClose={() => setResetTarget(null)}
         loading={actionLoading}
@@ -1567,13 +1583,13 @@ export default function UsersPage() {
 
       <ConfirmDialog
         open={Boolean(tempPasswordTarget)}
-        title="Set Temporary Password"
+        title="Set Default Password"
         message={
           tempPasswordTarget
-            ? `Set the standard soft-launch temporary password for ${tempPasswordTarget.first_name} ${tempPasswordTarget.last_name}? They will be required to change it on next login.`
+            ? `Set the default password (Prosohm@2026) for ${tempPasswordTarget.first_name} ${tempPasswordTarget.last_name}? They will be required to change it on next login.`
             : ''
         }
-        confirmLabel="Set Temporary Password"
+        confirmLabel="Set Default Password"
         onConfirm={() => void handleSetTemporaryPassword()}
         onClose={() => setTempPasswordTarget(null)}
         loading={actionLoading}

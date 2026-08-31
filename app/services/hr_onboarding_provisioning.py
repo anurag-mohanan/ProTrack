@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import secrets
-import string
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -11,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.auth_constants import SOFT_LAUNCH_PASSWORD
 from app.core.security import hash_password
 from app.core.timesheet_eligibility import default_requires_timesheet_for_role
 from app.core.salary_eligibility import default_requires_salary_for_role
@@ -20,11 +19,6 @@ from app.models.models import OnboardingChecklist, Role, Team, User
 from app.services.kpi_participation import apply_defaults_for_user
 
 PROVISIONAL_ROLE_NAME = "Designer"
-
-
-def _generate_temporary_password(length: int = 12) -> str:
-    alphabet = string.ascii_letters + string.digits + "!@#$"
-    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def split_employee_name(full_name: str) -> tuple[str, str]:
@@ -86,7 +80,8 @@ def create_user_for_onboarding(
     role = db.get(Role, resolved_role_id)
     role_name = role.name if role is not None else PROVISIONAL_ROLE_NAME
     first_name, last_name = split_employee_name(employee_name)
-    temporary_password = _generate_temporary_password()
+    # Align with org soft-launch default (admin set-temporary-password, bulk migration).
+    temporary_password = SOFT_LAUNCH_PASSWORD
 
     # Prefer team lead as manager when not provided.
     resolved_manager_id = manager_id

@@ -295,6 +295,7 @@ def reset_password(
         obj_in={
             "password_hash": hash_password(temporary_password),
             "must_change_password": True,
+            "password_changed_at": None,
         },
     )
     log_activity(
@@ -395,6 +396,7 @@ def set_temporary_password(
         obj_in={
             "password_hash": hash_password(SOFT_LAUNCH_PASSWORD),
             "must_change_password": True,
+            "password_changed_at": None,
         },
     )
     unlocked = reset_login_lock(db, updated)

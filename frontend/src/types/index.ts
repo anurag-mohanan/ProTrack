@@ -219,6 +219,7 @@ export interface User {
   is_active: boolean;
   must_change_password?: boolean;
   password_changed?: boolean;
+  password_changed_at?: string | null;
   last_login?: string | null;
   is_archived?: boolean;
   is_locked?: boolean;

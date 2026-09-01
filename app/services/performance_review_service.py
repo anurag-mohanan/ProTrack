@@ -164,7 +164,7 @@ DEFAULT_REVIEW_TEMPLATE = PP_HRD_FO_20_TEMPLATE
 
 def current_review_year(as_of: date | None = None) -> int:
     today = as_of or date.today()
-    return today.year if today.month >= REVIEW_CYCLE_MONTH else today.year
+    return today.year + 1 if today.month >= REVIEW_CYCLE_MONTH else today.year
 
 
 def review_period_bounds(review_year: int | None = None, as_of: date | None = None) -> tuple[date, date]:

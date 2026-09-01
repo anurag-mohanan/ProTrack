@@ -14,7 +14,7 @@ import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import TimelineRoundedIcon from '@mui/icons-material/TimelineRounded';
 import SettingsSuggestRoundedIcon from '@mui/icons-material/SettingsSuggestRounded';
 import PaymentsRoundedIcon from '@mui/icons-material/PaymentsRounded';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamSkillMatrixPanel } from '../components/performance/TeamSkillMatrixPanel';
 import { LearningPlansPanel } from '../components/performance/LearningPlansPanel';
@@ -49,6 +49,7 @@ function sectionFromSearch(value: string | null): SectionId {
 
 export function PerformancePage() {
   const theme = useTheme();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [section, setSection] = useState<SectionId>(() =>
@@ -182,7 +183,13 @@ export function PerformancePage() {
           </Box>
 
           {section === 'dashboard' ? (
-            <PerformanceDashboardPanel onOpenReview={() => setSectionAndUrl('annual')} />
+            <PerformanceDashboardPanel
+              onOpenReview={(reviewId) =>
+                navigate(
+                  `/performance/reviews/${reviewId}?return=${encodeURIComponent('/performance?section=dashboard')}`,
+                )
+              }
+            />
           ) : null}
 
           {section === 'cycle' ? <PerformanceCycleDossierPanel /> : null}

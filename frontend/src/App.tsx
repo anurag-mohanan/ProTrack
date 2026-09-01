@@ -67,6 +67,12 @@ const HrDashboardPage = lazy(() =>
   })),
 );
 const PerformancePage = lazy(() => import('./pages/PerformancePage'));
+const PerformanceReviewListingPage = lazy(
+  () => import('./pages/PerformanceReviewListingPage'),
+);
+const PerformanceReviewWorkspacePage = lazy(
+  () => import('./pages/PerformanceReviewWorkspacePage'),
+);
 const HelpDeskPage = lazy(() => import('./pages/HelpDeskPage'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 const TrainingPage = lazy(() => import('./pages/TrainingPage'));
@@ -351,8 +357,24 @@ export default function App() {
                           </Suspense>
                         }
                       />
+                      <Route
+                        path="/performance/reviews"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading reviews…" />}>
+                            <PerformanceReviewListingPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/performance/reviews/:reviewId"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading review…" />}>
+                            <PerformanceReviewWorkspacePage />
+                          </Suspense>
+                        }
+                      />
                     </Route>
-                    <Route path="/performance-reviews" element={<Navigate to="/performance?section=annual" replace />} />
+                    <Route path="/performance-reviews" element={<Navigate to="/performance/reviews" replace />} />
                     <Route element={<ModuleRoute module={MODULE_TICKETS} />}>
                       <Route
                         path="/help-desk"

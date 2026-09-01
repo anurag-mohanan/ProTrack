@@ -97,6 +97,8 @@ type PerformanceReviewFormDocumentProps = {
   formRef: RefObject<HTMLDivElement | null>;
   onChange: (next: EditorState) => void;
   actions?: ReactNode;
+  fullWidth?: boolean;
+  readOnly?: boolean;
 };
 
 export function PerformanceReviewFormDocument({
@@ -107,12 +109,19 @@ export function PerformanceReviewFormDocument({
   formRef,
   onChange,
   actions,
+  fullWidth = false,
+  readOnly = false,
 }: PerformanceReviewFormDocumentProps) {
   const { company, appName } = useCompany();
   const logoUrl = resolveLogoUrl(company?.logo_url, company?.logo_url ?? undefined);
 
-  const setField = (field: keyof EditorState, value: string) =>
+  const setField = (field: keyof EditorState, value: string) => {
+    if (readOnly) return;
     onChange({ ...editor, [field]: value });
+  };
+
+  const fieldsDisabled = readOnly || !canManage;
+  const employeeFieldsDisabled = readOnly;
 
   const handleExport = () => {
     window.print();
@@ -139,6 +148,7 @@ export function PerformanceReviewFormDocument({
 
       <Box
         ref={formRef}
+        id="form-section-employee-info"
         className="performance-review-print-root"
         sx={{
           border: '1px solid',
@@ -146,8 +156,8 @@ export function PerformanceReviewFormDocument({
           borderRadius: 1.5,
           bgcolor: 'background.paper',
           p: { xs: 1.5, md: 2 },
-          maxWidth: 920,
-          mx: 'auto',
+          maxWidth: fullWidth ? 'none' : 920,
+          mx: fullWidth ? 0 : 'auto',
         }}
       >
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mb: 1.5 }}>
@@ -254,7 +264,7 @@ export function PerformanceReviewFormDocument({
               label="Review date"
               value={editor.review_date}
               onChange={(e) => setField('review_date', e.target.value)}
-              disabled={!canManage}
+              disabled={fieldsDisabled}
               slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>
@@ -279,7 +289,11 @@ export function PerformanceReviewFormDocument({
         </Box>
 
         {editor.sections.map((section, sectionIndex) => (
-          <Box key={section.id ?? section.title} sx={{ mb: 1.5 }}>
+          <Box
+            key={section.id ?? section.title}
+            id={`form-section-section-${sectionIndex}`}
+            sx={{ mb: 1.5 }}
+          >
             <Box
               sx={{
                 px: 1,
@@ -322,9 +336,10 @@ export function PerformanceReviewFormDocument({
                   </Box>
                   <PerformanceReviewRatingPicker
                     value={item.rating}
-                    disabled={!canManage}
+                    disabled={fieldsDisabled}
                     scale={ratingScale}
                     onChange={(next) => {
+                      if (readOnly) return;
                       const sections = cloneSections(editor.sections);
                       sections[sectionIndex].items[itemIndex].rating = next;
                       onChange({ ...editor, sections });
@@ -339,7 +354,9 @@ export function PerformanceReviewFormDocument({
                 minRows={2}
                 label={section.employee_notes_label || 'Notes'}
                 value={section.employee_notes ?? ''}
+                disabled={employeeFieldsDisabled}
                 onChange={(e) => {
+                  if (readOnly) return;
                   const sections = cloneSections(editor.sections);
                   sections[sectionIndex].employee_notes = e.target.value;
                   onChange({ ...editor, sections });
@@ -349,15 +366,25 @@ export function PerformanceReviewFormDocument({
           </Box>
         ))}
 
-        <PerformanceReviewProjectsPanel
-          projects={editor.projects}
-          periodStart={review.review_period_start}
-          periodEnd={review.review_period_end}
-          canManage={canManage}
-          onChange={(projects) => onChange({ ...editor, projects })}
-        />
+        <Box id="form-section-projects">
+          <PerformanceReviewProjectsPanel
+            projects={editor.projects}
+            periodStart={review.review_period_start}
+            periodEnd={review.review_period_end}
+            canManage={canManage && !readOnly}
+            onChange={(projects) => {
+              if (readOnly) return;
+              onChange({ ...editor, projects });
+            }}
+          />
+        </Box>
 
-        <Grid container spacing={1.25} sx={{ mt: 1.5, alignItems: 'stretch' }}>
+        <Grid
+          container
+          spacing={1.25}
+          id="form-section-comments"
+          sx={{ mt: 1.5, alignItems: 'stretch' }}
+        >
           {(
             [
               {
@@ -365,21 +392,21 @@ export function PerformanceReviewFormDocument({
                 label: 'Employee comments',
                 value: editor.employee_summary,
                 field: 'employee_summary' as const,
-                disabled: false,
+                disabled: employeeFieldsDisabled,
               },
               {
                 key: 'reviewer',
                 label: 'Reviewer comments',
                 value: editor.manager_summary,
                 field: 'manager_summary' as const,
-                disabled: !canManage,
+                disabled: fieldsDisabled,
               },
               {
                 key: 'goals',
                 label: 'Targets / Goals for upcoming year',
                 value: editor.career_goals,
                 field: 'career_goals' as const,
-                disabled: false,
+                disabled: employeeFieldsDisabled,
               },
             ] as const
           ).map((box) => (

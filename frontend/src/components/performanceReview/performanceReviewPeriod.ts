@@ -1,7 +1,7 @@
 /** July annual review cycle helpers (PP-HRD-FO-20). */
 
 export function currentReviewYear(asOf = new Date()): number {
-  return asOf.getMonth() + 1 >= 7 ? asOf.getFullYear() : asOf.getFullYear();
+  return asOf.getMonth() + 1 >= 7 ? asOf.getFullYear() + 1 : asOf.getFullYear();
 }
 
 export function defaultPeriodLabel(reviewYear = currentReviewYear()): string {

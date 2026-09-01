@@ -1448,10 +1448,11 @@ def close_review_cycle(
 
 @router.get("/reviews/me", response_model=list[PerformanceReviewRead])
 def my_performance_reviews(
+    review_year: int | None = Query(default=None, ge=2000, le=2100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    rows = db.scalars(
+    stmt = (
         select(PerformanceReviewSheet)
         .options(*_review_load_options())
         .where(
@@ -1459,7 +1460,14 @@ def my_performance_reviews(
             PerformanceReviewSheet.is_active.is_(True),
         )
         .order_by(PerformanceReviewSheet.created_at.desc())
-    ).all()
+    )
+    if review_year is not None:
+        period_start, period_end = review_period_bounds(review_year)
+        stmt = stmt.where(
+            PerformanceReviewSheet.review_period_start == period_start,
+            PerformanceReviewSheet.review_period_end == period_end,
+        )
+    rows = db.scalars(stmt).all()
     return [_review_to_read(db, row, current_user) for row in rows]
 
 
@@ -1525,6 +1533,7 @@ def review_team_members(
 def team_performance_reviews(
     team_id: UUID | None = None,
     kind: str | None = Query(default=None),
+    review_year: int | None = Query(default=None, ge=2000, le=2100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1546,6 +1555,12 @@ def team_performance_reviews(
         )
         .order_by(PerformanceReviewSheet.created_at.desc())
     )
+    if review_year is not None:
+        period_start, period_end = review_period_bounds(review_year)
+        stmt = stmt.where(
+            PerformanceReviewSheet.review_period_start == period_start,
+            PerformanceReviewSheet.review_period_end == period_end,
+        )
     rows = list(db.scalars(stmt).all())
     if kind:
         kind_norm = kind.strip().lower()

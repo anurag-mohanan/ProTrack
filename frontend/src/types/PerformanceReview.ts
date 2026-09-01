@@ -68,6 +68,8 @@ export type PerformanceReview = {
   review_period_start?: string | null;
   review_period_end?: string | null;
   is_editable: boolean;
+  can_edit_employee_section?: boolean;
+  can_edit_manager_section?: boolean;
   can_acknowledge: boolean;
   can_submit_self?: boolean;
   can_submit_manager?: boolean;

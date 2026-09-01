@@ -11,6 +11,14 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.permissions import PLANNING_BOARD, get_role_name, is_admin
+from app.core.module_actions import (
+    MODULE_ACTION_CREATE,
+    MODULE_ACTION_EDIT,
+    MODULE_ACTION_EDIT_REVIEWS,
+    user_has_module_action,
+)
+from app.core.access_control import MODULE_PERFORMANCE
+from app.core.team_access import get_accessible_team_ids
 from app.models.enums import TeamRelationshipType
 from app.models.models import (
     Milestone,
@@ -25,6 +33,12 @@ from app.models.models import (
     TimesheetEntry,
     User,
 )
+
+STAGE_SELF = "self"
+STAGE_MANAGER = "manager"
+STAGE_CALIBRATION = "calibration"
+STAGE_FINAL = "final"
+STAGE_ACKNOWLEDGED = "acknowledged"
 
 REVIEW_CYCLE_MONTH = 7
 FORM_CODE = "PP-HRD-FO-20"
@@ -486,7 +500,9 @@ def sheet_completion_ratio(sheet: PerformanceReviewSheet) -> tuple[int, int]:
     return rated, total
 
 
-def user_can_manage_team_reviews(db: Session, user: User, team_id: UUID) -> bool:
+def user_can_manage_team_reviews(db: Session, user: User, team_id: UUID | None) -> bool:
+    if team_id is None:
+        return is_admin(db, user)
     if is_admin(db, user):
         return True
     role_name = get_role_name(db, user)
@@ -512,7 +528,71 @@ def user_can_manage_team_reviews(db: Session, user: User, team_id: UUID) -> bool
         return True
     if role_name in {"HR", "Office Administrator"}:
         return True
+    if _user_has_performance_action(db, user, MODULE_ACTION_EDIT) or _user_has_performance_action(
+        db, user, MODULE_ACTION_EDIT_REVIEWS
+    ) or _user_has_performance_action(db, user, MODULE_ACTION_CREATE):
+        accessible = get_accessible_team_ids(db, user)
+        if accessible is None:
+            return True
+        return team_id in accessible
     return False
+
+
+def _user_has_performance_action(db: Session, user: User, action: str) -> bool:
+    return user_has_module_action(
+        user, get_role_name(db, user), MODULE_PERFORMANCE, action
+    )
+
+
+def review_is_locked(sheet: PerformanceReviewSheet) -> bool:
+    if bool(getattr(sheet, "is_published", False)):
+        return True
+    stage = sheet.stage or STAGE_SELF
+    return stage == STAGE_ACKNOWLEDGED or sheet.status == "acknowledged"
+
+
+def user_can_edit_review_as_employee(db: Session, user: User, sheet: PerformanceReviewSheet) -> bool:
+    if review_is_locked(sheet):
+        return False
+    if sheet.employee_id != user.id:
+        return False
+    return (sheet.stage or STAGE_SELF) == STAGE_SELF
+
+
+def user_can_edit_review_as_manager(db: Session, user: User, sheet: PerformanceReviewSheet) -> bool:
+    if review_is_locked(sheet):
+        return False
+    stage = sheet.stage or STAGE_SELF
+    team_id = sheet.team_id
+    has_scope = False
+    if is_admin(db, user):
+        has_scope = True
+    elif team_id is not None and user_can_manage_team_reviews(db, user, team_id):
+        has_scope = True
+    elif sheet.reviewer_id == user.id:
+        has_scope = True
+    if not has_scope:
+        return False
+    if stage in (STAGE_MANAGER, STAGE_CALIBRATION, STAGE_FINAL, STAGE_SELF):
+        return True
+    return False
+
+
+def user_can_edit_performance_review(db: Session, user: User, sheet: PerformanceReviewSheet) -> bool:
+    return user_can_edit_review_as_employee(db, user, sheet) or user_can_edit_review_as_manager(
+        db, user, sheet
+    )
+
+
+def user_can_create_performance_review(db: Session, user: User, team_id: UUID) -> bool:
+    scoped = user_can_manage_team_reviews(db, user, team_id)
+    if _user_has_performance_action(db, user, MODULE_ACTION_CREATE):
+        return scoped
+    if _user_has_performance_action(db, user, MODULE_ACTION_EDIT):
+        return scoped
+    if _user_has_performance_action(db, user, MODULE_ACTION_EDIT_REVIEWS):
+        return scoped
+    return scoped
 
 
 def user_can_view_review(db: Session, user: User, sheet: PerformanceReviewSheet) -> bool:

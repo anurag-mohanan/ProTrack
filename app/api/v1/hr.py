@@ -27,6 +27,7 @@ from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
 from app.core.access_control import MODULE_HUMAN_RESOURCES, MODULE_PERFORMANCE
 from app.core.module_actions import (
+    MODULE_ACTION_CREATE,
     MODULE_ACTION_EDIT,
     MODULE_ACTION_EDIT_REVIEWS,
     MODULE_ACTION_MANAGE_TEMPLATES,
@@ -34,7 +35,7 @@ from app.core.module_actions import (
     MODULE_ACTION_VIEW,
     user_has_module_action,
 )
-from app.core.permissions import get_role_name
+from app.core.permissions import get_role_name, is_admin
 from app.core.field_security import can_view_salary
 from app.core.team_access import get_accessible_team_ids, team_member_user_ids
 from app.models.enums import ProjectComplexity, TeamRelationshipType, TimesheetStatus
@@ -96,6 +97,10 @@ from app.services.performance_review_service import (
     section_average_score,
     sheet_completion_ratio,
     sheet_overall_score,
+    user_can_create_performance_review,
+    user_can_edit_performance_review,
+    user_can_edit_review_as_employee,
+    user_can_edit_review_as_manager,
     user_can_manage_team_reviews,
     user_can_view_review,
 )
@@ -177,6 +182,15 @@ def _scoped_member_ids(db: Session, current_user: User) -> tuple[list, set]:
 
 
 def _managed_team_ids(db: Session, current_user: User) -> list:
+    if is_admin(db, current_user):
+        return list(db.scalars(select(Team.id).where(Team.is_active.is_(True))).all())
+    if _has_performance_action(db, current_user, MODULE_ACTION_EDIT_REVIEWS) or _has_performance_action(
+        db, current_user, MODULE_ACTION_CREATE
+    ) or _has_performance_action(db, current_user, MODULE_ACTION_EDIT):
+        accessible = get_accessible_team_ids(db, current_user)
+        if accessible is None:
+            return list(db.scalars(select(Team.id).where(Team.is_active.is_(True))).all())
+        return list(accessible)
     if user_has_module_action(
         current_user,
         get_role_name(db, current_user),
@@ -263,9 +277,7 @@ def _build_section_read(section: PerformanceReviewSection) -> PerformanceReviewS
 def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: User) -> PerformanceReviewRead:
     employee_name = f"{sheet.employee.first_name} {sheet.employee.last_name}".strip()
     reviewer_name = f"{sheet.reviewer.first_name} {sheet.reviewer.last_name}".strip()
-    can_manage = sheet.team_id is not None and user_can_manage_team_reviews(
-        db, current_user, sheet.team_id
-    )
+    can_manage = user_can_manage_team_reviews(db, current_user, sheet.team_id)
     is_self = sheet.employee_id == current_user.id
     rated_count, total_count = sheet_completion_ratio(sheet)
     completion_percent = int(round((rated_count / total_count) * 100)) if total_count else 0
@@ -281,6 +293,9 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
     industry_experience = sheet.industry_experience or industry_auto
     can_manage = bool(can_manage or sheet.reviewer_id == current_user.id)
     stage = sheet.stage or STAGE_SELF
+    can_edit_employee = user_can_edit_review_as_employee(db, current_user, sheet)
+    can_edit_manager = user_can_edit_review_as_manager(db, current_user, sheet)
+    is_editable = can_edit_employee or can_edit_manager
     return PerformanceReviewRead(
         id=sheet.id,
         cycle_id=sheet.cycle_id,
@@ -334,13 +349,9 @@ def _review_to_read(db: Session, sheet: PerformanceReviewSheet, current_user: Us
             PerformanceReviewProjectRead.model_validate(project)
             for project in sorted(sheet.projects, key=lambda row: row.sort_order)
         ],
-        is_editable=bool(
-            not bool(getattr(sheet, "is_published", False))
-            and (
-                (can_manage and stage in (STAGE_MANAGER, STAGE_CALIBRATION, STAGE_FINAL))
-                or (is_self and stage == STAGE_SELF)
-            )
-        ),
+        is_editable=is_editable,
+        can_edit_employee_section=can_edit_employee,
+        can_edit_manager_section=can_edit_manager,
         can_acknowledge=bool(
             not bool(getattr(sheet, "is_published", False))
             and is_self
@@ -485,6 +496,8 @@ def _apply_employee_section_updates(sheet: PerformanceReviewSheet, sections: lis
                 continue
             if item_row.employee_comment is not None:
                 item.employee_comment = item_row.employee_comment
+            if item_row.rating is not None:
+                item.rating = item_row.rating
 
 
 @router.get("/reviews/template", response_model=PerformanceReviewTemplateRead)
@@ -1597,8 +1610,8 @@ def create_performance_review(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not user_can_manage_team_reviews(db, current_user, payload.team_id):
-        raise HTTPException(status_code=403, detail="Team review access denied")
+    if not user_can_create_performance_review(db, current_user, payload.team_id):
+        raise HTTPException(status_code=403, detail="Performance review create access denied")
     employee = db.get(User, payload.employee_id)
     if employee is None:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -1700,15 +1713,21 @@ def update_performance_review(
     )
     if sheet is None:
         raise HTTPException(status_code=404, detail="Performance review not found")
-    can_manage = sheet.team_id is not None and user_can_manage_team_reviews(
-        db, current_user, sheet.team_id
-    )
-    is_reviewer = sheet.reviewer_id == current_user.id
+    can_edit_employee = user_can_edit_review_as_employee(db, current_user, sheet)
+    can_edit_manager = user_can_edit_review_as_manager(db, current_user, sheet)
     is_self = sheet.employee_id == current_user.id
-    if not (can_manage or is_reviewer or is_self):
-        raise HTTPException(status_code=403, detail="Performance review access denied")
+    stage = sheet.stage or STAGE_SELF
+    can_acknowledge_only = bool(
+        payload.acknowledged
+        and not bool(getattr(sheet, "is_published", False))
+        and is_self
+        and stage == STAGE_FINAL
+        and sheet.status == "submitted"
+    )
+    if not (can_edit_employee or can_edit_manager or can_acknowledge_only):
+        raise HTTPException(status_code=403, detail="Performance review edit access denied")
 
-    if can_manage or is_reviewer:
+    if can_edit_manager:
         for field in (
             "review_date",
             "due_date",
@@ -1784,15 +1803,16 @@ def update_performance_review(
                 if sheet.manager_submitted_at is None:
                     sheet.manager_submitted_at = sheet.submitted_at
     else:
-        if payload.employee_summary is not None:
-            sheet.employee_summary = payload.employee_summary
-        if payload.career_goals is not None:
-            sheet.career_goals = payload.career_goals
-        if payload.sections is not None:
-            _apply_employee_section_updates(sheet, payload.sections)
-        if payload.projects is not None:
-            _apply_employee_project_updates(sheet, payload.projects)
-        if payload.acknowledged:
+        if can_edit_employee:
+            if payload.employee_summary is not None:
+                sheet.employee_summary = payload.employee_summary
+            if payload.career_goals is not None:
+                sheet.career_goals = payload.career_goals
+            if payload.sections is not None:
+                _apply_employee_section_updates(sheet, payload.sections)
+            if payload.projects is not None:
+                _apply_employee_project_updates(sheet, payload.projects)
+        if payload.acknowledged and can_acknowledge_only:
             # Legacy path: allow acknowledge when manager already submitted
             if (sheet.stage or STAGE_SELF) not in (STAGE_FINAL, STAGE_ACKNOWLEDGED) and sheet.status == "submitted":
                 sheet.stage = STAGE_FINAL

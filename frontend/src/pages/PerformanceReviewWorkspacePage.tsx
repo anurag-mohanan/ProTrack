@@ -34,6 +34,9 @@ import {
   getReviewDisplayStatus,
   reviewYearFromReview,
 } from '../utils/performanceReviewListing';
+import {
+  getPerformanceReviewFormMode,
+} from '../utils/performanceReviewPermissions';
 
 export function PerformanceReviewWorkspacePage() {
   const { reviewId } = useParams<{ reviewId: string }>();
@@ -172,17 +175,19 @@ export function PerformanceReviewWorkspacePage() {
 
   const review = reviewQuery.data;
   const ratingScale = templateQuery.data?.rating_scale ?? FALLBACK_RATING_SCALE;
+  const formMode = getPerformanceReviewFormMode(user, review);
   const display = getReviewDisplayStatus(review);
-  const reviewYear = reviewYearFromReview(review);
-  const canManage =
-    review.is_editable &&
-    Boolean(
-      review.can_submit_manager ||
-        review.can_calibrate ||
-        review.can_publish ||
-        review.can_delete,
-    );
+  const isViewOnly = formMode === 'view' || !display.editable;
+  const canEditEmployee = Boolean(review.can_edit_employee_section);
+  const canEditManager = Boolean(review.can_edit_manager_section);
+  const canManageWorkflow = Boolean(
+    review.can_submit_manager ||
+      review.can_calibrate ||
+      review.can_publish ||
+      review.can_delete,
+  );
   const isEmployee = review.employee_id === user?.id;
+  const reviewYear = reviewYearFromReview(review);
   const ratedCounts = countRatedItems(review);
   const progressPercent = review.completion_percent ?? 0;
   const workspaceSections = buildWorkspaceSections(review);
@@ -195,8 +200,8 @@ export function PerformanceReviewWorkspacePage() {
   };
 
   const saveDraft = () => {
-    if (!review) return;
-  if (canManage) {
+    if (!review || isViewOnly) return;
+    if (canEditManager) {
       updateReviewMutation.mutate({
         id: review.id,
         body: {
@@ -229,7 +234,7 @@ export function PerformanceReviewWorkspacePage() {
   };
 
   const submitReview = () => {
-    if (!review || !canManage) return;
+    if (!review || !canEditManager) return;
     updateReviewMutation.mutate({
       id: review.id,
       body: {
@@ -267,7 +272,7 @@ export function PerformanceReviewWorkspacePage() {
   const footerActions = (
     <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
       {review.is_published ? <Chip size="small" color="success" label="Published" /> : null}
-      {canManage ? (
+      {canManageWorkflow ? (
         <Button
           size="small"
           variant="outlined"
@@ -277,17 +282,17 @@ export function PerformanceReviewWorkspacePage() {
           Refresh projects
         </Button>
       ) : null}
-      {canManage && review.can_publish && !review.is_published ? (
+      {canManageWorkflow && review.can_publish && !review.is_published ? (
         <Button size="small" variant="contained" onClick={() => setPublishTarget(review)}>
           Publish
         </Button>
       ) : null}
-      {canManage && review.can_delete && !review.is_published ? (
+      {canManageWorkflow && review.can_delete && !review.is_published ? (
         <Button size="small" color="error" variant="outlined" onClick={() => setDeleteTarget(review)}>
           Delete
         </Button>
       ) : null}
-      {display.editable ? (
+      {!isViewOnly ? (
         <Button
           size="small"
           variant="outlined"
@@ -297,7 +302,7 @@ export function PerformanceReviewWorkspacePage() {
           Save draft
         </Button>
       ) : null}
-      {canManage && display.editable ? (
+      {canEditManager && !isViewOnly ? (
         <Button size="small" variant="contained" onClick={() => setSubmitConfirmOpen(true)}>
           Submit ratings
         </Button>
@@ -357,7 +362,7 @@ export function PerformanceReviewWorkspacePage() {
               ? 'warning'
               : 'primary'
         }
-        readOnly={!display.editable}
+        readOnly={isViewOnly}
         progressPercent={progressPercent}
         progressDetail={`${ratedCounts.rated} of ${ratedCounts.total} ratings`}
         lastSavedLabel={lastSavedLabel}
@@ -378,10 +383,10 @@ export function PerformanceReviewWorkspacePage() {
         footerActions={footerActions}
         dirty={isDirty}
         saving={updateReviewMutation.isPending}
-        onSave={display.editable ? saveDraft : undefined}
-        onDiscard={display.editable ? reset : undefined}
+        onSave={!isViewOnly ? saveDraft : undefined}
+        onDiscard={!isViewOnly ? reset : undefined}
         completionFooter={
-          display.editable && ratedCounts.total > ratedCounts.rated
+          !isViewOnly && ratedCounts.total > ratedCounts.rated
             ? (
               <Typography variant="body2">
                 {ratedCounts.total - ratedCounts.rated} rating(s) still need scores before the review is complete.
@@ -400,10 +405,12 @@ export function PerformanceReviewWorkspacePage() {
           review={review}
           editor={editor}
           ratingScale={ratingScale}
-          canManage={canManage}
+          canEditEmployeeSection={canEditEmployee}
+          canEditManagerSection={canEditManager}
+          canManage={canManageWorkflow}
           formRef={formRef}
           fullWidth
-          readOnly={!display.editable}
+          readOnly={isViewOnly}
           onChange={setEditor}
         />
       </FullScreenFormWorkspace>

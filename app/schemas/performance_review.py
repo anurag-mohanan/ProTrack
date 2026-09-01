@@ -309,6 +309,8 @@ class PerformanceReviewRead(BaseModel):
     sections: list[PerformanceReviewSectionRead] = Field(default_factory=list)
     projects: list[PerformanceReviewProjectRead] = Field(default_factory=list)
     is_editable: bool = False
+    can_edit_employee_section: bool = False
+    can_edit_manager_section: bool = False
     can_acknowledge: bool = False
     can_submit_self: bool = False
     can_submit_manager: bool = False

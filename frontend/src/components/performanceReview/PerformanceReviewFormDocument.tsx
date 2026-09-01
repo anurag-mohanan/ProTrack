@@ -93,7 +93,10 @@ type PerformanceReviewFormDocumentProps = {
   review: ReviewFormModel;
   editor: EditorState;
   ratingScale: RatingScaleItem[];
-  canManage: boolean;
+  canEditEmployeeSection?: boolean;
+  canEditManagerSection?: boolean;
+  /** Legacy alias — when true, enables manager workflow fields if manager section is editable. */
+  canManage?: boolean;
   formRef: RefObject<HTMLDivElement | null>;
   onChange: (next: EditorState) => void;
   actions?: ReactNode;
@@ -105,7 +108,9 @@ export function PerformanceReviewFormDocument({
   review,
   editor,
   ratingScale,
-  canManage,
+  canEditEmployeeSection = false,
+  canEditManagerSection = false,
+  canManage = false,
   formRef,
   onChange,
   actions,
@@ -115,13 +120,16 @@ export function PerformanceReviewFormDocument({
   const { company, appName } = useCompany();
   const logoUrl = resolveLogoUrl(company?.logo_url, company?.logo_url ?? undefined);
 
+  const managerFieldsEnabled = !readOnly && (canEditManagerSection || canManage);
+  const employeeFieldsEnabled = !readOnly && canEditEmployeeSection;
+  const ratingsEnabled =
+    !readOnly && (canEditEmployeeSection || canEditManagerSection || canManage);
+  const projectsEnabled = managerFieldsEnabled || employeeFieldsEnabled;
+
   const setField = (field: keyof EditorState, value: string) => {
     if (readOnly) return;
     onChange({ ...editor, [field]: value });
   };
-
-  const fieldsDisabled = readOnly || !canManage;
-  const employeeFieldsDisabled = readOnly;
 
   const handleExport = () => {
     window.print();
@@ -264,7 +272,7 @@ export function PerformanceReviewFormDocument({
               label="Review date"
               value={editor.review_date}
               onChange={(e) => setField('review_date', e.target.value)}
-              disabled={fieldsDisabled}
+              disabled={!managerFieldsEnabled}
               slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>
@@ -336,7 +344,7 @@ export function PerformanceReviewFormDocument({
                   </Box>
                   <PerformanceReviewRatingPicker
                     value={item.rating}
-                    disabled={fieldsDisabled}
+                    disabled={!ratingsEnabled}
                     scale={ratingScale}
                     onChange={(next) => {
                       if (readOnly) return;
@@ -354,7 +362,7 @@ export function PerformanceReviewFormDocument({
                 minRows={2}
                 label={section.employee_notes_label || 'Notes'}
                 value={section.employee_notes ?? ''}
-                disabled={employeeFieldsDisabled}
+                disabled={!employeeFieldsEnabled}
                 onChange={(e) => {
                   if (readOnly) return;
                   const sections = cloneSections(editor.sections);
@@ -371,7 +379,7 @@ export function PerformanceReviewFormDocument({
             projects={editor.projects}
             periodStart={review.review_period_start}
             periodEnd={review.review_period_end}
-            canManage={canManage && !readOnly}
+            canManage={projectsEnabled}
             onChange={(projects) => {
               if (readOnly) return;
               onChange({ ...editor, projects });
@@ -392,21 +400,21 @@ export function PerformanceReviewFormDocument({
                 label: 'Employee comments',
                 value: editor.employee_summary,
                 field: 'employee_summary' as const,
-                disabled: employeeFieldsDisabled,
+                disabled: !employeeFieldsEnabled,
               },
               {
                 key: 'reviewer',
                 label: 'Reviewer comments',
                 value: editor.manager_summary,
                 field: 'manager_summary' as const,
-                disabled: fieldsDisabled,
+                disabled: !managerFieldsEnabled,
               },
               {
                 key: 'goals',
                 label: 'Targets / Goals for upcoming year',
                 value: editor.career_goals,
                 field: 'career_goals' as const,
-                disabled: employeeFieldsDisabled,
+                disabled: !employeeFieldsEnabled,
               },
             ] as const
           ).map((box) => (

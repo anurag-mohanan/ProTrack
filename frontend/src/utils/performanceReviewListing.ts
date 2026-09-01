@@ -22,7 +22,11 @@ export function getReviewDisplayStatus(review: PerformanceReview): {
   category: FormStatusCategory;
   editable: boolean;
 } {
-  const editable = review.is_editable && !review.is_published;
+  const editable = Boolean(
+    review.is_editable &&
+      !review.is_published &&
+      (review.can_edit_employee_section || review.can_edit_manager_section || review.is_editable),
+  );
   if (review.is_published || review.stage === 'acknowledged' || review.status === 'acknowledged') {
     return { label: 'Completed', category: 'completed', editable: false };
   }
@@ -35,9 +39,19 @@ export function getReviewDisplayStatus(review: PerformanceReview): {
     }
   }
   if (review.stage === 'self') {
+    if (review.can_edit_employee_section || review.can_submit_self) {
+      return {
+        label: review.can_submit_self ? 'Self review in progress' : 'In progress',
+        category: 'in_progress',
+        editable,
+      };
+    }
+    if (review.can_edit_manager_section) {
+      return { label: 'Awaiting employee', category: 'pending_review', editable };
+    }
     return {
-      label: review.can_submit_self ? 'Self review in progress' : 'Not started',
-      category: review.can_submit_self ? 'in_progress' : 'not_started',
+      label: 'Not started',
+      category: 'not_started',
       editable,
     };
   }

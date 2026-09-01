@@ -48,6 +48,7 @@ export interface CurrentUser {
   requires_timesheet?: boolean;
   can_enter_own_timesheet?: boolean;
   can_view_organization_chart?: boolean;
+  module_actions?: Record<string, string[]>;
   data_scope?: {
     level: 'own' | 'own_team' | 'multiple_teams' | 'department' | 'company' | 'administrator';
     unrestricted: boolean;

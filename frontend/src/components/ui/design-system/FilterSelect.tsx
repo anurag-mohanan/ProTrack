@@ -2,6 +2,7 @@ import {
   FormControl,
   InputLabel,
   Select,
+  type MenuProps,
   type SelectChangeEvent,
   type SelectProps,
   type SxProps,
@@ -38,11 +39,16 @@ export function FilterSelect({
   ...props
 }: FilterSelectProps) {
   const valueStr = value === null || value === undefined ? '' : String(value);
+  const menuProps: Partial<MenuProps> = {
+    ...props.MenuProps,
+    sx: { zIndex: 1500, ...props.MenuProps?.sx },
+  };
   return (
     <FormControl size={size} fullWidth={fullWidth} disabled={props.disabled} sx={sx}>
       <InputLabel shrink>{label}</InputLabel>
       <Select
         {...props}
+        MenuProps={menuProps}
         label={label}
         value={valueStr}
         displayEmpty

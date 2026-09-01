@@ -59,6 +59,7 @@ import {
   reviewYearFromReview,
   type StatusQuickFilter,
 } from '../utils/performanceReviewListing';
+import { canCreatePerformanceReview } from '../utils/performanceReviewPermissions';
 import { formatScore } from '../components/performanceReview/performanceReviewConstants';
 
 export function PerformanceReviewListingPage({
@@ -72,7 +73,8 @@ export function PerformanceReviewListingPage({
 
   const [yearFilter, setYearFilter] = useState<number | 'all'>(currentReviewYear());
   const [statusFilter, setStatusFilter] = useState<StatusQuickFilter>('all');
-  const [teamId, setTeamId] = useState('');
+  const [filterTeamId, setFilterTeamId] = useState('');
+  const [createTeamId, setCreateTeamId] = useState('');
   const [department, setDepartment] = useState('');
   const [search, setSearch] = useState('');
   const [needsActionOnly, setNeedsActionOnly] = useState(false);
@@ -105,10 +107,10 @@ export function PerformanceReviewListingPage({
   });
 
   const teamReviewsQuery = useQuery({
-    queryKey: ['performance-reviews', 'team', teamId || 'all', kind || 'all'],
+    queryKey: ['performance-reviews', 'team', filterTeamId || 'all', kind || 'all'],
     queryFn: () =>
       fetchTeamPerformanceReviews({
-        teamId: teamId || undefined,
+        teamId: filterTeamId || undefined,
         kind: kind || undefined,
       }),
     enabled: (teamMembersQuery.data?.length ?? 0) > 0,
@@ -117,7 +119,7 @@ export function PerformanceReviewListingPage({
   const createReviewMutation = useMutation({
     mutationFn: async () => {
       const member = (teamMembersQuery.data ?? []).find((row) => row.user_id === selectedMemberId);
-      const teamIdForCreate = teamId || member?.team_id || '';
+      const teamIdForCreate = createTeamId || member?.team_id || '';
       if (!selectedMemberId || !teamIdForCreate) {
         throw new Error('Select a team member to create a review.');
       }
@@ -143,7 +145,7 @@ export function PerformanceReviewListingPage({
   });
 
   const teamMembers = teamMembersQuery.data ?? [];
-  const canManageTeamReviews = teamMembers.length > 0;
+  const canCreateReviews = canCreatePerformanceReview(user, teamMembers.length > 0);
 
   const teamOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -154,8 +156,8 @@ export function PerformanceReviewListingPage({
   }, [teamMembers]);
 
   const filteredMembers = useMemo(
-    () => teamMembers.filter((row) => !teamId || row.team_id === teamId),
-    [teamId, teamMembers],
+    () => teamMembers.filter((row) => !createTeamId || row.team_id === createTeamId),
+    [createTeamId, teamMembers],
   );
 
   const filteredCycles = useMemo(() => {
@@ -183,7 +185,7 @@ export function PerformanceReviewListingPage({
       filterReviews(allReviews, {
         year: yearFilter,
         status: statusFilter,
-        teamId,
+        teamId: filterTeamId,
         department,
         search,
         needsActionOnly,
@@ -194,7 +196,7 @@ export function PerformanceReviewListingPage({
       allReviews,
       yearFilter,
       statusFilter,
-      teamId,
+      filterTeamId,
       department,
       search,
       needsActionOnly,
@@ -218,7 +220,7 @@ export function PerformanceReviewListingPage({
   const clearFilters = () => {
     setYearFilter(currentReviewYear());
     setStatusFilter('all');
-    setTeamId('');
+    setFilterTeamId('');
     setDepartment('');
     setSearch('');
     setNeedsActionOnly(false);
@@ -347,11 +349,11 @@ export function PerformanceReviewListingPage({
       <FormListingFilters
         teamOptions={teamOptions}
         departmentOptions={departmentOptions}
-        teamId={teamId}
+        teamId={filterTeamId}
         department={department}
         search={search}
         needsActionOnly={needsActionOnly}
-        onTeamChange={setTeamId}
+        onTeamChange={setFilterTeamId}
         onDepartmentChange={setDepartment}
         onSearchChange={setSearch}
         onNeedsActionChange={setNeedsActionOnly}
@@ -403,14 +405,14 @@ export function PerformanceReviewListingPage({
         renderGroupedByStatus(filteredReviews)
       )}
 
-      {canManageTeamReviews ? (
+      {canCreateReviews ? (
         <FinanceSection
           title="Create review"
           subtitle="Launch a new sheet from the active template"
         >
           <Grid container spacing={1.5}>
             <Grid size={{ xs: 12, md: 3 }}>
-              <FilterSelect label="Team" value={teamId} onChange={(e) => setTeamId(String(e.target.value))}>
+              <FilterSelect label="Team" value={createTeamId} onChange={(e) => setCreateTeamId(String(e.target.value))}>
                 <MenuItem value="">All teams</MenuItem>
                 {teamOptions.map((team) => (
                   <MenuItem key={team.id} value={team.id}>{team.name}</MenuItem>
@@ -426,7 +428,7 @@ export function PerformanceReviewListingPage({
                 <MenuItem value=""><em>Select member</em></MenuItem>
                 {filteredMembers.map((member) => (
                   <MenuItem key={`${member.team_id}-${member.user_id}`} value={member.user_id}>
-                    {teamId ? member.name : `${member.name} · ${member.team_name}`}
+                    {createTeamId ? member.name : `${member.name} · ${member.team_name}`}
                   </MenuItem>
                 ))}
               </FilterSelect>

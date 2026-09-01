@@ -323,7 +323,7 @@ def _write_designers_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPay
 
 
 def _write_projects_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayload) -> None:
-    sheet = workbook.create_sheet("Project Hours To Date"[:31])
+    sheet = workbook.create_sheet("Project Hours"[:31])
     ctx = _context(payload)
 
     include_customer = payload.include_customer_columns
@@ -334,7 +334,7 @@ def _write_projects_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayl
         [
             "PART DESCRIPTION",
             "QUOTED HOURS",
-            "ACTUAL HOURS TO DATE",
+            "PERIOD HOURS",
             "VARIANCE HOURS",
             "VARIANCE %",
             "COMPLETION %",
@@ -347,7 +347,7 @@ def _write_projects_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayl
     next_row = _write_branded_preamble(
         sheet,
         payload,
-        report_title="Project Hours To Date",
+        report_title="Project Hours",
         col_span=col_span,
         include_kpis=True,
         extra_kpis=[

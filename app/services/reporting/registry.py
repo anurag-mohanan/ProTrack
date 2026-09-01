@@ -40,7 +40,7 @@ REPORT_CATALOG: list[ReportCatalogEntry] = [
     ReportCatalogEntry(
         id="weekly-timesheet",
         title="Weekly Timesheet Report",
-        description="Individual designer hours by team for the week, plus total project hours to date.",
+        description="Designer hours by team for the week, plus project hours recorded during the week.",
         category="timesheets",
         supported_periods=["weekly"],
         export_formats=["xlsx", "json"],
@@ -48,7 +48,7 @@ REPORT_CATALOG: list[ReportCatalogEntry] = [
     ReportCatalogEntry(
         id="monthly-timesheet",
         title="Monthly Timesheet Report",
-        description="Individual designer hours by team for the month, plus total project hours to date.",
+        description="Designer hours by team for the month, plus project hours recorded during the month.",
         category="timesheets",
         supported_periods=["monthly"],
         export_formats=["xlsx", "json"],
@@ -56,7 +56,7 @@ REPORT_CATALOG: list[ReportCatalogEntry] = [
     ReportCatalogEntry(
         id="quarterly-timesheet",
         title="Quarterly Timesheet Report",
-        description="Individual designer hours by team for the quarter, plus total project hours to date.",
+        description="Designer hours by team for the quarter, plus project hours recorded during the quarter.",
         category="timesheets",
         supported_periods=["quarterly"],
         export_formats=["xlsx", "json"],
@@ -64,7 +64,7 @@ REPORT_CATALOG: list[ReportCatalogEntry] = [
     ReportCatalogEntry(
         id="yearly-timesheet",
         title="Yearly Timesheet Report",
-        description="Individual designer hours by team for the year, plus total project hours to date.",
+        description="Designer hours by team for the year, plus project hours recorded during the year.",
         category="timesheets",
         supported_periods=["yearly"],
         export_formats=["xlsx", "json"],

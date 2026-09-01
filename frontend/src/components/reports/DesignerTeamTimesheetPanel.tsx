@@ -283,7 +283,7 @@ export function DesignerTeamTimesheetPanel({
               compact
             />
             <KpiMetricCard
-              title="Project hours to date"
+              title="Period project hours"
               value={formatNumber(payload.total_project_actual_hours)}
               icon={AssessmentRoundedIcon}
               accent="primary"
@@ -479,10 +479,10 @@ export function DesignerTeamTimesheetPanel({
 
           <Paper sx={{ p: 2 }}>
             <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
-              Total project hours to date
+              Project hours ({payload.period.label})
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Cumulative as of {new Date(payload.generated_at).toLocaleString()}
+              Hours recorded during the selected reporting period only.
             </Typography>
             <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
               <Table size="small">
@@ -493,7 +493,7 @@ export function DesignerTeamTimesheetPanel({
                       <TableCell>Customer</TableCell>
                     ) : null}
                     <TableCell align="right">Quoted</TableCell>
-                    <TableCell align="right">Actual to date</TableCell>
+                    <TableCell align="right">Period hours</TableCell>
                     <TableCell align="right">Variance</TableCell>
                     <TableCell align="right">Completion</TableCell>
                   </TableRow>

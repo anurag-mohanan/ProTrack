@@ -15,7 +15,7 @@ from app.models.models import User, WorkingModel
 from app.schemas.reporting import DesignerTeamTimesheetPayload
 from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
 from app.services.reporting.cross_team_hours import build_cross_team_hours
-from app.services.reporting.data_service import build_engineering_report
+from app.services.reporting.data_service import build_engineering_report, period_tool_hours
 from app.services.reporting.report_context import build_timesheet_report_context
 from app.services.reporting.report_scope import ReportScope, resolve_report_scope
 
@@ -129,10 +129,23 @@ def build_designer_team_timesheet(
     )
 
     designers = sorted(
-        full.designer_productivity,
+        (
+            row
+            for row in full.designer_productivity
+            if row.total_hours > 0
+        ),
         key=lambda row: ((row.team_name or "—").lower(), row.designer_name.lower()),
     )
-    projects = sorted(full.tool_hours, key=lambda row: row.tool_number)
+    projects = sorted(
+        period_tool_hours(
+            db,
+            full.period,
+            include_archived=include_archived,
+            include_deleted=include_deleted,
+            scope=report_scope,
+        ),
+        key=lambda row: row.tool_number,
+    )
     teams = {row.team_name or "—" for row in designers}
 
     total_designer = sum((row.total_hours for row in designers), Decimal("0"))

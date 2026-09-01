@@ -575,6 +575,55 @@ def _designer_tool_breakdown(
     return sorted(result, key=lambda row: (row.designer_name, -row.total_hours))
 
 
+def _project_user_name(db: Session, user_id: UUID | None) -> str | None:
+    if not user_id:
+        return None
+    user = db.get(User, user_id)
+    return f"{user.first_name} {user.last_name}".strip() if user else None
+
+
+def _tool_hours_row_from_project(
+    db: Session,
+    project: Project,
+    customer_name: str,
+    *,
+    actual_hours: Decimal,
+    use_lifetime_variance: bool,
+) -> ToolHoursRow:
+    hours = calculate_hours(db, project)
+    progress = calculate_progress(db, project)
+    quoted = hours.quoted
+    if use_lifetime_variance:
+        variance = hours.variance
+        variance_pct = _pct(hours.variance, quoted) if quoted > 0 else Decimal("0")
+    else:
+        variance = Decimal("0")
+        variance_pct = Decimal("0")
+    return ToolHoursRow(
+        project_id=project.id,
+        tool_number=project.tool_number,
+        customer_name=customer_name,
+        part_description=project.part_description or "",
+        design_leader_name=_project_user_name(db, project.design_leader_id),
+        designer_name=_project_user_name(db, project.designer_id),
+        surfacer_name=_project_user_name(db, project.surfacer_id),
+        quoted_hours=quoted,
+        actual_hours=_round_hours(actual_hours),
+        variance_hours=variance,
+        variance_percent=variance_pct,
+        completion_percent=progress.progress_percent,
+        original_hours=hours.original,
+        additional_work_hours=hours.additional_work,
+        rework_hours=hours.rework,
+        customer_change_hours=hours.customer_change,
+        internal_correction_hours=hours.internal_correction,
+        post_completion_hours=hours.post_completion_total,
+        project_stage=project.project_stage,
+        execution_status=project.execution_status,
+        health=project.health,
+    )
+
+
 def _tool_hours(
     db: Session,
     *,
@@ -594,41 +643,69 @@ def _tool_hours(
     result: list[ToolHoursRow] = []
     for project, customer_name in rows:
         hours = calculate_hours(db, project)
-        progress = calculate_progress(db, project)
-        quoted = hours.quoted
-        original = hours.original
-        actual = hours.actual
-        variance_pct = _pct(hours.variance, quoted) if quoted > 0 else Decimal("0")
-
-        def _user_name(user_id: UUID | None) -> str | None:
-            if not user_id:
-                return None
-            user = db.get(User, user_id)
-            return f"{user.first_name} {user.last_name}".strip() if user else None
-
         result.append(
-            ToolHoursRow(
-                project_id=project.id,
-                tool_number=project.tool_number,
-                customer_name=customer_name,
-                part_description=project.part_description or "",
-                design_leader_name=_user_name(project.design_leader_id),
-                designer_name=_user_name(project.designer_id),
-                surfacer_name=_user_name(project.surfacer_id),
-                quoted_hours=quoted,
-                actual_hours=actual,
-                variance_hours=hours.variance,
-                variance_percent=variance_pct,
-                completion_percent=progress.progress_percent,
-                original_hours=original,
-                additional_work_hours=hours.additional_work,
-                rework_hours=hours.rework,
-                customer_change_hours=hours.customer_change,
-                internal_correction_hours=hours.internal_correction,
-                post_completion_hours=hours.post_completion_total,
-                project_stage=project.project_stage,
-                execution_status=project.execution_status,
-                health=project.health,
+            _tool_hours_row_from_project(
+                db,
+                project,
+                customer_name,
+                actual_hours=hours.actual,
+                use_lifetime_variance=True,
+            )
+        )
+    return result
+
+
+def period_tool_hours(
+    db: Session,
+    period: ReportPeriod,
+    *,
+    include_archived: bool,
+    include_deleted: bool,
+    scope: ReportScope,
+) -> list[ToolHoursRow]:
+    """Projects with qualifying timesheet activity in the reporting period only."""
+    period_totals = db.execute(
+        select(
+            TimesheetEntry.project_id,
+            func.coalesce(func.sum(TimesheetEntry.hours), 0).label("period_hours"),
+        )
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .where(
+            TimesheetEntry.project_id.is_not(None),
+            *_entry_base_filters(period.start_date, period.end_date),
+            *_entry_scope_clauses(scope),
+        )
+        .group_by(TimesheetEntry.project_id)
+        .having(func.coalesce(func.sum(TimesheetEntry.hours), 0) > 0)
+    ).all()
+    if not period_totals:
+        return []
+
+    hours_by_project = {
+        row.project_id: _decimal(row.period_hours) for row in period_totals
+    }
+    project_ids = list(hours_by_project.keys())
+
+    stmt = (
+        select(Project, Customer.name)
+        .join(Customer, Project.customer_id == Customer.id)
+        .where(Project.id.in_(project_ids))
+    )
+    if not include_deleted:
+        stmt = stmt.where(Project.is_deleted.is_(False))
+    if not include_archived:
+        stmt = stmt.where(Project.is_archived.is_(False))
+
+    rows = db.execute(stmt.order_by(Project.tool_number)).all()
+    result: list[ToolHoursRow] = []
+    for project, customer_name in rows:
+        result.append(
+            _tool_hours_row_from_project(
+                db,
+                project,
+                customer_name,
+                actual_hours=hours_by_project.get(project.id, Decimal("0")),
+                use_lifetime_variance=False,
             )
         )
     return result

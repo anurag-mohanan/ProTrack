@@ -170,7 +170,7 @@ def test_timesheet_excel_has_two_sheets(session):
     workbook = load_workbook(filename=__import__("io").BytesIO(content))
     assert workbook.sheetnames == [
         "Designer Hours by Team",
-        "Project Hours To Date",
+        "Project Hours",
         "Cross-Team Hours",
     ]
 
@@ -200,7 +200,7 @@ def test_omit_customer_column_for_customer_filter(session):
     assert "Customers" not in header_row and "CUSTOMERS" not in header_row
     assert "Projects" in header_row or "PROJECTS" in header_row
 
-    projects = workbook["Project Hours To Date"]
+    projects = workbook["Project Hours"]
     project_header = next(
         row
         for row in projects.iter_rows(min_row=1, max_row=40, values_only=True)

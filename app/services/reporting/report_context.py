@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
 from sqlalchemy import select
@@ -229,10 +229,11 @@ def build_timesheet_report_context(
     productive = sum((row.productive_hours for row in designers), Decimal("0"))
     non_productive = sum((row.non_productive_hours for row in designers), Decimal("0"))
     leave_days = sum((row.leave_days for row in designers), Decimal("0"))
-    if designers:
-        avg_util = sum(
-            (row.utilization_percent for row in designers), Decimal("0")
-        ) / Decimal(len(designers))
+    total_available = sum((row.available_hours for row in designers), Decimal("0"))
+    if total_available > 0:
+        avg_util = (productive / total_available * Decimal("100")).quantize(
+            Decimal("0.1"), rounding=ROUND_HALF_UP
+        )
     else:
         avg_util = Decimal("0")
 

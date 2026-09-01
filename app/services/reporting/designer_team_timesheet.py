@@ -12,12 +12,15 @@ from sqlalchemy.orm import Session
 from app.models.enums import TeamBillingMode, WorkingModelCode
 from app.models.finance import TeamCommercialTerms
 from app.models.models import User, WorkingModel
+from app.crud.foundation import get_or_create_company_settings
 from app.schemas.reporting import DesignerTeamTimesheetPayload
 from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
 from app.services.reporting.cross_team_hours import build_cross_team_hours
 from app.services.reporting.data_service import build_engineering_report, period_tool_hours
+from app.services.reporting.excel.template import resolve_company_logo_path
 from app.services.reporting.report_context import build_timesheet_report_context
 from app.services.reporting.report_scope import ReportScope, resolve_report_scope
+from app.services.reporting.timesheet_report_sections import normalize_timesheet_sections
 
 TIMESHEET_REPORT_PERIODS: dict[str, str] = {
     "weekly-timesheet": "weekly",
@@ -108,8 +111,10 @@ def build_designer_team_timesheet(
     include_archived: bool = True,
     include_deleted: bool = False,
     scope: ReportScope | None = None,
+    sections: list[str] | None = None,
 ) -> DesignerTeamTimesheetPayload:
     resolved_period = period_for_timesheet_report(report_id, period_type)
+    selected_sections = normalize_timesheet_sections(sections)
     report_scope = scope or resolve_report_scope(
         db,
         current_user,
@@ -179,6 +184,9 @@ def build_designer_team_timesheet(
         team_id=scoped_team_id,
     )
 
+    company = get_or_create_company_settings(db)
+    logo_resolved = resolve_company_logo_path(company.logo_url)
+
     return DesignerTeamTimesheetPayload(
         report_id=full.report_id,
         title=_PERIOD_TITLES.get(resolved_period, "Timesheet Report"),
@@ -202,4 +210,6 @@ def build_designer_team_timesheet(
         cross_team_hours_outbound=outbound_hours,
         cross_team_hours_inbound=inbound_hours,
         context=context,
+        selected_sections=selected_sections,
+        company_logo_path=str(logo_resolved) if logo_resolved else None,
     )

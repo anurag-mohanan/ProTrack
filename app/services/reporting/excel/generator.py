@@ -164,7 +164,7 @@ def _write_designer_productivity(workbook: Workbook, payload: EngineeringReportP
             float(row.leave_days),
             float(row.total_hours),
             float(row.billable_percent),
-            float(row.utilization_percent),
+            float(row.utilization_percent or 0),
             row.project_count,
             row.customer_count,
         ]
@@ -288,7 +288,7 @@ def _write_team_summary(workbook: Workbook, payload: EngineeringReportPayload) -
             float(row.np_hours),
             float(row.leave_days),
             float(row.total_hours),
-            float(row.utilization_percent),
+            float(row.utilization_percent or 0),
         ]
         for row in payload.team_summary
     ]

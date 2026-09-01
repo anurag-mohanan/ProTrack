@@ -13,7 +13,17 @@ import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined';
 import { useCompany } from '../../context/CompanyContext';
 import { resolveLogoUrl } from '../../config/env';
 import { PerformanceReviewRatingPicker } from './PerformanceReviewRatingPicker';
+import { ReviewCommentField } from './PerformanceReviewCommentField';
 import { PerformanceReviewProjectsPanel, type ReviewProjectRow } from './PerformanceReviewProjectsPanel';
+import type { PerformanceReview } from '../../types/PerformanceReview';
+import type { CurrentUser } from '../../types/Auth';
+import {
+  canEditPerformanceReviewField,
+  canEditSectionEmployeeNotes,
+  canEditSectionReviewerNotes,
+  performanceReviewIsViewOnly,
+  type PerformanceReviewFieldKey,
+} from '../../utils/performanceReviewPermissions';
 import type { RatingScaleItem } from './performanceReviewConstants';
 import { formatScore, ratingLabelForValue } from './performanceReviewConstants';
 
@@ -93,6 +103,8 @@ type PerformanceReviewFormDocumentProps = {
   review: ReviewFormModel;
   editor: EditorState;
   ratingScale: RatingScaleItem[];
+  performanceReview: PerformanceReview;
+  currentUser: CurrentUser | null | undefined;
   canEditEmployeeSection?: boolean;
   canEditManagerSection?: boolean;
   /** Legacy alias — when true, enables manager workflow fields if manager section is editable. */
@@ -108,6 +120,8 @@ export function PerformanceReviewFormDocument({
   review,
   editor,
   ratingScale,
+  performanceReview,
+  currentUser,
   canEditEmployeeSection = false,
   canEditManagerSection = false,
   canManage = false,
@@ -120,14 +134,17 @@ export function PerformanceReviewFormDocument({
   const { company, appName } = useCompany();
   const logoUrl = resolveLogoUrl(company?.logo_url, company?.logo_url ?? undefined);
 
-  const managerFieldsEnabled = !readOnly && (canEditManagerSection || canManage);
-  const employeeFieldsEnabled = !readOnly && canEditEmployeeSection;
+  const viewOnly = readOnly || performanceReviewIsViewOnly(currentUser, performanceReview);
+  const canEditField = (field: PerformanceReviewFieldKey) =>
+    !viewOnly && canEditPerformanceReviewField(currentUser, performanceReview, field);
+  const sectionEmployeeNotesEnabled = canEditSectionEmployeeNotes(currentUser, performanceReview);
+  const sectionReviewerNotesEnabled = canEditSectionReviewerNotes(currentUser, performanceReview);
   const ratingsEnabled =
-    !readOnly && (canEditEmployeeSection || canEditManagerSection || canManage);
-  const projectsEnabled = managerFieldsEnabled || employeeFieldsEnabled;
+    !viewOnly && (canEditEmployeeSection || canEditManagerSection || canManage);
+  const projectsEnabled = canEditField('projects');
 
   const setField = (field: keyof EditorState, value: string) => {
-    if (readOnly) return;
+    if (!canEditField(field as PerformanceReviewFieldKey)) return;
     onChange({ ...editor, [field]: value });
   };
 
@@ -272,7 +289,7 @@ export function PerformanceReviewFormDocument({
               label="Review date"
               value={editor.review_date}
               onChange={(e) => setField('review_date', e.target.value)}
-              disabled={!managerFieldsEnabled}
+              disabled={!canEditField('review_date')}
               slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>
@@ -347,7 +364,7 @@ export function PerformanceReviewFormDocument({
                     disabled={!ratingsEnabled}
                     scale={ratingScale}
                     onChange={(next) => {
-                      if (readOnly) return;
+                      if (!ratingsEnabled) return;
                       const sections = cloneSections(editor.sections);
                       sections[sectionIndex].items[itemIndex].rating = next;
                       onChange({ ...editor, sections });
@@ -355,18 +372,25 @@ export function PerformanceReviewFormDocument({
                   />
                 </Box>
               ))}
-              <TextField
-                fullWidth
-                size="small"
-                multiline
-                minRows={2}
-                label={section.employee_notes_label || 'Notes'}
+              <ReviewCommentField
+                label={section.employee_notes_label || 'Employee notes'}
                 value={section.employee_notes ?? ''}
-                disabled={!employeeFieldsEnabled}
-                onChange={(e) => {
-                  if (readOnly) return;
+                editable={sectionEmployeeNotesEnabled}
+                viewOnly={viewOnly}
+                onChange={(next) => {
                   const sections = cloneSections(editor.sections);
-                  sections[sectionIndex].employee_notes = e.target.value;
+                  sections[sectionIndex].employee_notes = next;
+                  onChange({ ...editor, sections });
+                }}
+              />
+              <ReviewCommentField
+                label="Reviewer notes"
+                value={section.reviewer_notes ?? ''}
+                editable={sectionReviewerNotesEnabled}
+                viewOnly={viewOnly}
+                onChange={(next) => {
+                  const sections = cloneSections(editor.sections);
+                  sections[sectionIndex].reviewer_notes = next;
                   onChange({ ...editor, sections });
                 }}
               />
@@ -381,7 +405,7 @@ export function PerformanceReviewFormDocument({
             periodEnd={review.review_period_end}
             canManage={projectsEnabled}
             onChange={(projects) => {
-              if (readOnly) return;
+              if (!projectsEnabled) return;
               onChange({ ...editor, projects });
             }}
           />
@@ -400,47 +424,40 @@ export function PerformanceReviewFormDocument({
                 label: 'Employee comments',
                 value: editor.employee_summary,
                 field: 'employee_summary' as const,
-                disabled: !employeeFieldsEnabled,
               },
               {
                 key: 'reviewer',
                 label: 'Reviewer comments',
                 value: editor.manager_summary,
                 field: 'manager_summary' as const,
-                disabled: !managerFieldsEnabled,
+              },
+              {
+                key: 'strengths',
+                label: 'Strengths',
+                value: editor.strengths_summary,
+                field: 'strengths_summary' as const,
+              },
+              {
+                key: 'improvements',
+                label: 'Areas for improvement',
+                value: editor.improvement_summary,
+                field: 'improvement_summary' as const,
               },
               {
                 key: 'goals',
                 label: 'Targets / Goals for upcoming year',
                 value: editor.career_goals,
                 field: 'career_goals' as const,
-                disabled: !employeeFieldsEnabled,
               },
             ] as const
           ).map((box) => (
             <Grid key={box.key} size={{ xs: 12, md: 6 }} sx={{ display: 'flex' }}>
-              <TextField
-                fullWidth
-                size="small"
-                multiline
+              <ReviewCommentField
                 label={box.label}
                 value={box.value}
-                disabled={box.disabled}
-                onChange={(e) => setField(box.field, e.target.value)}
-                sx={{
-                  flex: 1,
-                  height: 108,
-                  '& .MuiInputBase-root': {
-                    height: '100%',
-                    alignItems: 'flex-start',
-                    overflow: 'hidden',
-                  },
-                  '& textarea': {
-                    height: '72px !important',
-                    overflowY: 'auto !important',
-                    resize: 'none',
-                  },
-                }}
+                editable={canEditField(box.field)}
+                viewOnly={viewOnly}
+                onChange={(next) => setField(box.field, next)}
               />
             </Grid>
           ))}

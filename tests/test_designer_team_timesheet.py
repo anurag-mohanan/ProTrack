@@ -172,6 +172,7 @@ def test_timesheet_excel_has_two_sheets(session):
         "Designer Hours by Team",
         "Project Hours",
         "Cross-Team Hours",
+        "Utilization Summary",
     ]
 
 

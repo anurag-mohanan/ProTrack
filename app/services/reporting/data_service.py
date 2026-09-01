@@ -45,12 +45,16 @@ from app.schemas.reporting import (
 )
 from app.services.holiday_service import load_holiday_dates
 from app.services.project_calculation_service import calculate_hours, calculate_progress
-from app.services.reporting.periods import build_report_period
+from app.services.reporting.periods import build_report_period, period_bounds
 from app.services.reporting.report_scope import ReportScope, refine_scope_for_period, user_matches_scope
 from app.services.reporting.timesheet_report_inclusion import (
     users_excluded_from_timesheet_reports,
 )
 from app.services.kpi_participation import engineering_productivity_users
+from app.services.reporting.utilization_capacity import (
+    calculate_utilization_percent,
+    designer_available_hours,
+)
 
 
 def _pct(numerator: Decimal, denominator: Decimal) -> Decimal:
@@ -177,11 +181,8 @@ def build_engineering_report(
     scope: ReportScope | None = None,
 ) -> EngineeringReportPayload:
     report_scope = scope or _unrestricted_scope()
-    holidays = load_holiday_dates(
-        db,
-        (anchor or date.today()).replace(day=1) if period_type == "monthly" else (anchor or date.today()),
-        anchor or date.today(),
-    )
+    period_start, period_end = period_bounds(period_type, anchor=anchor)
+    holidays = load_holiday_dates(db, period_start, period_end)
     period = build_report_period(period_type, anchor=anchor, holidays=holidays)
     report_scope = refine_scope_for_period(
         db,
@@ -192,7 +193,9 @@ def build_engineering_report(
     company = get_or_create_company_settings(db)
     daily_hours = _decimal(company.default_working_hours_per_day)
 
-    designer_productivity = _designer_productivity(db, period, daily_hours, report_scope)
+    designer_productivity = _designer_productivity(
+        db, period, daily_hours, report_scope, holidays=holidays
+    )
     designer_tool_breakdown = _designer_tool_breakdown(db, period, report_scope)
     tool_hours = _tool_hours(
         db,
@@ -305,7 +308,11 @@ def _executive_summary(
     top_tool = max(tools, key=lambda r: r.actual_hours, default=None)
     top_customer = max(customers, key=lambda r: r.total_hours, default=None)
     top_designer = max(designers, key=lambda r: r.total_hours, default=None)
-    top_util = max(designers, key=lambda r: r.utilization_percent, default=None)
+    top_util = max(
+        designers,
+        key=lambda r: r.utilization_percent or Decimal("0"),
+        default=None,
+    )
 
     kpis = [
         ExecutiveKpiCard(label="Reporting Period", value=period.label),
@@ -348,13 +355,17 @@ def _designer_productivity(
     period: ReportPeriod,
     daily_hours: Decimal,
     scope: ReportScope,
+    *,
+    holidays: set[date] | None = None,
 ) -> list[DesignerProductivityRow]:
     from app.services.reporting.team_membership_windows import (
         home_team_id_on,
+        membership_windows_for_teams,
         primary_home_team_timeline,
     )
     from app.services.reporting.timesheet_attribution import resolve_entry_home_team_id
 
+    holiday_set = holidays or set()
     excluded = users_excluded_from_timesheet_reports(db, team_ids=scope.team_ids)
     designers = [
         person
@@ -364,7 +375,6 @@ def _designer_productivity(
     if not designers:
         return []
 
-    expected_per_person = Decimal(period.working_days) * daily_hours
     timelines = primary_home_team_timeline(
         db,
         {person.id for person in designers},
@@ -379,6 +389,26 @@ def _designer_productivity(
     scoped_team_id: UUID | None = None
     if scope.team_ids is not None and len(scope.team_ids) == 1:
         scoped_team_id = next(iter(scope.team_ids))
+
+    capacity_team_ids: set[UUID] = set()
+    if scoped_team_id is not None:
+        capacity_team_ids.add(scoped_team_id)
+    elif scope.team_ids is not None:
+        capacity_team_ids.update(scope.team_ids)
+    else:
+        capacity_team_ids.update(
+            {person.team_id for person in designers if person.team_id is not None}
+        )
+
+    capacity_windows: dict[tuple[UUID, UUID], list[tuple[date, date]]] = {}
+    for team_id in capacity_team_ids:
+        for user_id, intervals in membership_windows_for_teams(
+            db,
+            {team_id},
+            range_start=period.start_date,
+            range_end=period.end_date,
+        ).items():
+            capacity_windows[(user_id, team_id)] = intervals
 
     # Aggregate by (user, home team as-of entry) so mid-period transfers split rows.
     buckets: dict[tuple[UUID, UUID | None], dict] = {}
@@ -469,9 +499,31 @@ def _designer_productivity(
         worked = productive + np_hours
         total = worked + leave_hours
         team_id = bucket["team_id"]
+        user_id = bucket["user_id"]
+        if team_id is not None and (user_id, team_id) not in capacity_windows:
+            capacity_windows[(user_id, team_id)] = membership_windows_for_teams(
+                db,
+                {team_id},
+                range_start=period.start_date,
+                range_end=period.end_date,
+            ).get(user_id, [])
+        membership_intervals: list[tuple[date, date]] = []
+        if team_id is not None:
+            membership_intervals = capacity_windows.get((user_id, team_id), [])
+        elif scoped_team_id is not None:
+            membership_intervals = capacity_windows.get((user_id, scoped_team_id), [])
+
+        applicable_start, applicable_end, working_days, available = designer_available_hours(
+            membership_intervals,
+            period_start=period.start_date,
+            period_end=period.end_date,
+            holidays=holiday_set,
+            daily_hours=daily_hours,
+        )
+        utilization = calculate_utilization_percent(productive, available)
         rows.append(
             DesignerProductivityRow(
-                user_id=bucket["user_id"],
+                user_id=user_id,
                 designer_name=bucket["designer_name"],
                 team_id=team_id,
                 team_name=team_names.get(team_id) if team_id else None,
@@ -480,9 +532,13 @@ def _designer_productivity(
                 leave_days=bucket["leave_days"],
                 total_hours=_round_hours(total),
                 billable_percent=_pct(bucket["billable"], worked),
-                utilization_percent=_pct(worked, expected_per_person),
+                utilization_percent=utilization,
                 project_count=len(bucket["project_ids"]),
                 customer_count=len(bucket["customer_ids"]),
+                applicable_start_date=applicable_start,
+                applicable_end_date=applicable_end,
+                applicable_working_days=working_days,
+                available_hours=_round_hours(available),
             )
         )
 

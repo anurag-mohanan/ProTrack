@@ -6,6 +6,7 @@ import type {
   ReportCatalogEntry,
   ReportScheduleEntry,
   ReportScheduleRequest,
+  TimesheetReportSectionOption,
 } from '../types/EngineeringReporting';
 import { ensureArray } from '../types/pagination';
 import { apiClient, buildQuery } from './client';
@@ -20,6 +21,7 @@ function reportQuery(options?: EngineeringReportOptions): string {
     team_id: options?.team_id,
     include_archived: options?.include_archived,
     include_deleted: options?.include_deleted,
+    sections: options?.sections?.length ? options.sections.join(',') : undefined,
   });
 }
 
@@ -30,6 +32,11 @@ export function isDesignerTeamTimesheetReport(reportId: string): boolean {
     reportId === 'quarterly-timesheet' ||
     reportId === 'yearly-timesheet'
   );
+}
+
+export async function fetchTimesheetReportSections(): Promise<TimesheetReportSectionOption[]> {
+  const { data } = await apiClient.get<TimesheetReportSectionOption[]>('/reports/timesheet-sections');
+  return ensureArray(data);
 }
 
 export async function fetchEngineeringReportCatalog(): Promise<ReportCatalog> {

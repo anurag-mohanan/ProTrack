@@ -99,6 +99,12 @@ from app.services.reporting.export_filenames import (
     team_timesheet_download_filename,
 )
 from app.services.reporting.schedule_store import list_schedules, upsert_schedule
+from app.services.reporting.timesheet_report_sections import (
+    TIMESHEET_REPORT_SECTIONS,
+    TIMESHEET_SECTION_DESCRIPTIONS,
+    SECTION_ORDER,
+    parse_timesheet_sections,
+)
 
 router = APIRouter(
     prefix="/reports",
@@ -175,6 +181,10 @@ def _engineering_report_options(
     stream_id: UUID | None = Query(None),
     include_archived: bool = Query(True),
     include_deleted: bool = Query(False),
+    sections: str | None = Query(
+        None,
+        description="Comma-separated timesheet report section ids (designers, projects, cross_team, utilization)",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, object]:
@@ -190,18 +200,33 @@ def _engineering_report_options(
         )
     except ReportScopeForbidden as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    selected_sections = parse_timesheet_sections(sections)
     return {
         "period_type": period_type,
         "anchor": anchor,
         "include_archived": include_archived,
         "include_deleted": include_deleted,
         "scope": scope,
+        "sections": selected_sections,
     }
 
 
 @router.get("/catalog", response_model=ReportCatalog)
 def engineering_report_catalog():
     return reporting_engine.catalog()
+
+
+@router.get("/timesheet-sections")
+def timesheet_report_sections_catalog():
+    """Selectable sections for designer/team timesheet Excel exports."""
+    return [
+        {
+            "id": section_id,
+            "label": TIMESHEET_REPORT_SECTIONS[section_id],
+            "description": TIMESHEET_SECTION_DESCRIPTIONS.get(section_id, ""),
+        }
+        for section_id in SECTION_ORDER
+    ]
 
 
 @router.get(
@@ -310,6 +335,7 @@ def engineering_report_preview(
             include_archived=bool(options.get("include_archived", True)),
             include_deleted=bool(options.get("include_deleted", False)),
             scope=options.get("scope"),  # type: ignore[arg-type]
+            sections=options.get("sections"),  # type: ignore[arg-type]
         )
     try:
         return reporting_engine.build_report(db, report_id=report_id, **options)
@@ -344,6 +370,7 @@ def engineering_report_export(
                 include_archived=bool(options.get("include_archived", True)),
                 include_deleted=bool(options.get("include_deleted", False)),
                 scope=scope,  # type: ignore[arg-type]
+                sections=options.get("sections"),  # type: ignore[arg-type]
             )
             content = generate_designer_team_timesheet_excel(timesheet_payload)
             period_type = str(options.get("period_type") or timesheet_payload.period.period_type)

@@ -34,6 +34,13 @@ from app.services.reporting.excel.template import (
     set_print_layout,
     style_total_row,
 )
+from app.services.reporting.timesheet_report_sections import (
+    TIMESHEET_SECTION_CROSS_TEAM,
+    TIMESHEET_SECTION_DESIGNERS,
+    TIMESHEET_SECTION_PROJECTS,
+    TIMESHEET_SECTION_UTILIZATION,
+    DEFAULT_TIMESHEET_SECTIONS,
+)
 
 
 def generate_designer_team_timesheet_excel(payload: DesignerTeamTimesheetPayload) -> bytes:
@@ -42,13 +49,36 @@ def generate_designer_team_timesheet_excel(payload: DesignerTeamTimesheetPayload
     workbook.properties.subject = payload.period.label
     workbook.properties.company = payload.company_name
 
-    _write_designers_sheet(workbook, payload)
-    _write_projects_sheet(workbook, payload)
-    _write_cross_team_sheet(workbook, payload)
+    sections = payload.selected_sections or list(DEFAULT_TIMESHEET_SECTIONS)
+    writers = {
+        TIMESHEET_SECTION_DESIGNERS: _write_designers_sheet,
+        TIMESHEET_SECTION_PROJECTS: _write_projects_sheet,
+        TIMESHEET_SECTION_CROSS_TEAM: _write_cross_team_sheet,
+        TIMESHEET_SECTION_UTILIZATION: _write_utilization_sheet,
+    }
+    written = False
+    for section_id in sections:
+        writer = writers.get(section_id)
+        if writer is None:
+            continue
+        writer(workbook, payload, use_active=not written)
+        written = True
+
+    if not written:
+        raise ValueError("No report sections were generated.")
+
+    if "Sheet" in workbook.sheetnames and len(workbook.sheetnames) > 1:
+        default = workbook["Sheet"]
+        if default.max_row == 1 and default.max_column == 1 and default.cell(1, 1).value is None:
+            del workbook["Sheet"]
 
     buffer = BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
+
+
+def _logo_path(payload: DesignerTeamTimesheetPayload) -> str | None:
+    return payload.company_logo_path
 
 
 def _context(payload: DesignerTeamTimesheetPayload) -> ReportContextMeta:
@@ -168,6 +198,7 @@ def _write_branded_preamble(
         company_name=payload.company_name,
         report_title=report_title or payload.title,
         col_span=col_span,
+        logo_path=_logo_path(payload),
     )
     row = render_metadata_cards(
         sheet, _metadata_cards(payload), start_row=row, col_span=col_span
@@ -186,8 +217,19 @@ def _write_branded_preamble(
     return row
 
 
-def _write_designers_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayload) -> None:
-    sheet = workbook.active
+def _utilization_display(row) -> str | float:
+    if row.available_hours <= 0 or row.utilization_percent is None:
+        return "N/A"
+    return format_hours(row.utilization_percent)
+
+
+def _write_designers_sheet(
+    workbook: Workbook,
+    payload: DesignerTeamTimesheetPayload,
+    *,
+    use_active: bool = True,
+) -> None:
+    sheet = workbook.active if use_active else workbook.create_sheet()
     sheet.title = "Designer Hours by Team"[:31]
     ctx = _context(payload)
 
@@ -231,7 +273,7 @@ def _write_designers_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPay
             format_hours(row.non_productive_hours),
             format_hours(row.leave_days),
             format_hours(row.total_hours),
-            format_hours(row.utilization_percent),
+            _utilization_display(row),
             row.project_count,
         ]
         if include_customer:
@@ -322,8 +364,14 @@ def _write_designers_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPay
     )
 
 
-def _write_projects_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayload) -> None:
-    sheet = workbook.create_sheet("Project Hours"[:31])
+def _write_projects_sheet(
+    workbook: Workbook,
+    payload: DesignerTeamTimesheetPayload,
+    *,
+    use_active: bool = False,
+) -> None:
+    sheet = workbook.active if use_active else workbook.create_sheet()
+    sheet.title = "Project Hours"[:31]
     ctx = _context(payload)
 
     include_customer = payload.include_customer_columns
@@ -452,8 +500,14 @@ def _write_projects_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayl
     )
 
 
-def _write_cross_team_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPayload) -> None:
-    sheet = workbook.create_sheet("Cross-Team Hours"[:31])
+def _write_cross_team_sheet(
+    workbook: Workbook,
+    payload: DesignerTeamTimesheetPayload,
+    *,
+    use_active: bool = False,
+) -> None:
+    sheet = workbook.active if use_active else workbook.create_sheet()
+    sheet.title = "Cross-Team Hours"[:31]
     ctx = _context(payload)
     headers = [
         "DIRECTION",
@@ -526,6 +580,150 @@ def _write_cross_team_sheet(workbook: Workbook, payload: DesignerTeamTimesheetPa
     apply_column_widths(
         sheet,
         {1: 12, 2: 20, 3: 18, 4: 12, 5: 18, 6: 18, 7: 12, 8: 28},
+    )
+    set_print_layout(
+        sheet,
+        landscape=True,
+        header_rows=f"{header_row}:{header_row}",
+        company_name=payload.company_name,
+        audience=ctx.audience,
+        generated_label=f"Generated: {_generated_label(payload)}",
+    )
+
+
+def _format_applicable_date(value) -> str:
+    if value is None:
+        return "Not Available"
+    if hasattr(value, "strftime"):
+        return value.strftime("%d %b %Y")
+    return str(value)
+
+
+def _write_utilization_sheet(
+    workbook: Workbook,
+    payload: DesignerTeamTimesheetPayload,
+    *,
+    use_active: bool = False,
+) -> None:
+    sheet = workbook.active if use_active else workbook.create_sheet()
+    sheet.title = "Utilization Summary"[:31]
+    ctx = _context(payload)
+
+    headers = [
+        "TEAM",
+        "DESIGNER",
+        "APPLICABLE START",
+        "APPLICABLE END",
+        "WORKING DAYS",
+        "AVAILABLE HOURS",
+        "PRODUCTIVE HOURS",
+        "UTILIZATION %",
+    ]
+    col_span = len(headers)
+    next_row = _write_branded_preamble(
+        sheet,
+        payload,
+        report_title="Utilization Summary",
+        col_span=col_span,
+        include_kpis=True,
+        extra_kpis=[
+            KpiCard("Designers", str(payload.designer_count)),
+            KpiCard(
+                "Team Utilization",
+                format_percent_display(ctx.average_utilization_percent),
+            ),
+            KpiCard("Productive Hrs", format_hours_display(ctx.total_productive_hours)),
+            KpiCard(
+                "Available Hrs",
+                format_hours_display(
+                    sum(row.available_hours for row in payload.designers)
+                ),
+            ),
+        ],
+    )
+    next_row = render_section_title(
+        sheet, "Utilization Detail", row=next_row, col_span=col_span
+    )
+
+    header_row = next_row
+    for col, header in enumerate(headers, start=1):
+        sheet.cell(row=header_row, column=col, value=header)
+    style_header_row(sheet, header_row, col_span)
+
+    for offset, row in enumerate(payload.designers):
+        excel_row = header_row + 1 + offset
+        values = [
+            row.team_name or "—",
+            row.designer_name,
+            _format_applicable_date(row.applicable_start_date),
+            _format_applicable_date(row.applicable_end_date),
+            row.applicable_working_days,
+            format_hours(row.available_hours),
+            format_hours(row.productive_hours),
+            _utilization_display(row),
+        ]
+        for col, value in enumerate(values, start=1):
+            cell = sheet.cell(row=excel_row, column=col, value=value)
+            if col in (1, 2, 3, 4):
+                cell.alignment = LEFT
+            else:
+                cell.alignment = RIGHT
+                if col in (6, 7) and isinstance(value, (int, float)):
+                    cell.number_format = HOURS_FORMAT
+
+    last_data_row = header_row + len(payload.designers)
+    if payload.designers:
+        style_body_rows(sheet, header_row + 1, last_data_row, col_span)
+        apply_utilization_conditional_format(
+            sheet, start_row=header_row + 1, end_row=last_data_row, col=8
+        )
+        total_row = last_data_row + 1
+        total_available = sum(row.available_hours for row in payload.designers)
+        sheet.cell(row=total_row, column=1, value="TEAM TOTAL").font = BODY_FONT
+        sheet.cell(row=total_row, column=5, value=sum(
+            row.applicable_working_days for row in payload.designers
+        )).alignment = RIGHT
+        sheet.cell(
+            row=total_row, column=6, value=format_hours(total_available)
+        ).number_format = HOURS_FORMAT
+        sheet.cell(
+            row=total_row, column=7, value=format_hours(ctx.total_productive_hours)
+        ).number_format = HOURS_FORMAT
+        team_util = (
+            format_percent_display(ctx.average_utilization_percent)
+            if total_available > 0
+            else "N/A"
+        )
+        sheet.cell(row=total_row, column=8, value=team_util).alignment = RIGHT
+        for col in (5, 6, 7, 8):
+            sheet.cell(row=total_row, column=col).alignment = RIGHT
+        style_total_row(sheet, total_row, col_span, emphasize_cols={1, 7})
+        filter_end = total_row
+        notes_start = total_row + 2
+    else:
+        filter_end = header_row
+        notes_start = header_row + 2
+
+    notes: list[tuple[str, str]] = [
+        (
+            "Available Hours",
+            "Applicable working days from team assignment × standard daily hours.",
+        ),
+        (
+            "Utilization",
+            "Productive hours ÷ available hours. Team total uses aggregate hours, not an average of percentages.",
+        ),
+        (
+            "Applicable Period",
+            "From MAX(report start, team assignment start) through MIN(report end, assignment end).",
+        ),
+    ]
+    render_notes_section(sheet, notes, start_row=notes_start, col_span=col_span)
+
+    freeze_and_filter(sheet, header_row, col_span, end_row=filter_end)
+    apply_column_widths(
+        sheet,
+        {1: 22, 2: 22, 3: 16, 4: 16, 5: 14, 6: 16, 7: 16, 8: 14},
     )
     set_print_layout(
         sheet,

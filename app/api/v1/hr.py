@@ -489,6 +489,8 @@ def _apply_employee_section_updates(sheet: PerformanceReviewSheet, sections: lis
             continue
         if section_row.employee_notes is not None:
             section.employee_notes = section_row.employee_notes
+        if section_row.reviewer_notes is not None:
+            section.reviewer_notes = section_row.reviewer_notes
         item_by_id = {item.id: item for item in section.items}
         for item_row in section_row.items:
             item = item_by_id.get(item_row.id) if item_row.id is not None else None

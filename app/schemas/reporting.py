@@ -60,9 +60,13 @@ class DesignerProductivityRow(BaseModel):
     leave_days: Decimal
     total_hours: Decimal
     billable_percent: Decimal
-    utilization_percent: Decimal
+    utilization_percent: Decimal | None = None
     project_count: int
     customer_count: int
+    applicable_start_date: date | None = None
+    applicable_end_date: date | None = None
+    applicable_working_days: int = 0
+    available_hours: Decimal = Decimal("0")
 
 
 class DesignerToolBreakdownRow(BaseModel):
@@ -302,6 +306,8 @@ class DesignerTeamTimesheetPayload(BaseModel):
     cross_team_hours_outbound: Decimal = Decimal("0")
     cross_team_hours_inbound: Decimal = Decimal("0")
     context: ReportContextMeta | None = None
+    selected_sections: list[str] = Field(default_factory=list)
+    company_logo_path: str | None = None
 
 
 class ChartSeries(BaseModel):

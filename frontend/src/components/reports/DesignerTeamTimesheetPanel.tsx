@@ -1,8 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
+  Checkbox,
+  Divider,
+  FormControlLabel,
+  FormGroup,
   MenuItem,
   Paper,
   Stack,
@@ -24,9 +28,10 @@ import {
   downloadEngineeringReportExcel,
   engineeringReportQueryKeys,
   fetchEngineeringReportPreview,
+  fetchTimesheetReportSections,
   isDesignerTeamTimesheetReport,
 } from '../../api/engineeringReporting';
-import type { DesignerTeamTimesheetPayload, DesignerProductivityRow, ToolHoursRow, CrossTeamHoursRow } from '../../types/EngineeringReporting';
+import type { DesignerTeamTimesheetPayload, DesignerProductivityRow, ToolHoursRow, CrossTeamHoursRow, TimesheetReportSectionOption } from '../../types/EngineeringReporting';
 import type { Customer } from '../../types';
 import type { Team } from '../../types/Team';
 import { ensureArray } from '../../types/pagination';
@@ -41,6 +46,26 @@ import {
   ReportPeriodSelectors,
   syncAnchorForPeriodChange,
 } from './ReportPeriodSelectors';
+
+const SECTIONS_STORAGE_KEY = 'protrack.timesheetReportSections';
+
+function readStoredSections(fallback: string[]): string[] {
+  try {
+    const raw = localStorage.getItem(SECTIONS_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return fallback;
+    return parsed.filter((id) => typeof id === 'string');
+  } catch {
+    return fallback;
+  }
+}
+
+function formatUtilization(row: DesignerProductivityRow): string {
+  if (row.available_hours != null && row.available_hours <= 0) return 'N/A';
+  if (row.utilization_percent == null) return 'N/A';
+  return `${formatNumber(row.utilization_percent)}%`;
+}
 
 const PERIOD_REPORTS = [
   { id: 'weekly-timesheet', label: 'Weekly', period: 'weekly' },
@@ -66,6 +91,26 @@ export function DesignerTeamTimesheetPanel({
   const [teamId, setTeamId] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+
+  const sectionsQuery = useQuery({
+    queryKey: ['reports', 'timesheet-sections'],
+    queryFn: fetchTimesheetReportSections,
+    staleTime: 10 * 60 * 1000,
+  });
+  const sectionCatalog = ensureArray<TimesheetReportSectionOption>(sectionsQuery.data);
+  const allSectionIds = sectionCatalog.map((row) => row.id);
+  const [selectedSections, setSelectedSections] = useState<string[]>(() =>
+    readStoredSections(allSectionIds.length ? allSectionIds : ['designers', 'projects', 'cross_team', 'utilization']),
+  );
+
+  useEffect(() => {
+    if (allSectionIds.length === 0) return;
+    setSelectedSections((current) => {
+      const valid = current.filter((id) => allSectionIds.includes(id));
+      return valid.length > 0 ? valid : allSectionIds;
+    });
+  }, [allSectionIds.join('|')]);
 
   const selected = PERIOD_REPORTS.find((row) => row.id === reportId) ?? PERIOD_REPORTS[1];
 
@@ -91,9 +136,49 @@ export function DesignerTeamTimesheetPanel({
       team_id: teamId || undefined,
       include_archived: includeArchived,
       include_deleted: includeDeleted,
+      sections: selectedSections,
     }),
-    [selected.period, anchor, customerId, teamId, includeArchived, includeDeleted],
+    [selected.period, anchor, customerId, teamId, includeArchived, includeDeleted, selectedSections],
   );
+
+  const persistSections = (sections: string[]) => {
+    try {
+      localStorage.setItem(SECTIONS_STORAGE_KEY, JSON.stringify(sections));
+    } catch {
+      // ignore storage failures
+    }
+  };
+
+  const toggleSection = (sectionId: string, checked: boolean) => {
+    setSectionError(null);
+    setSelectedSections((current) => {
+      const next = checked
+        ? [...current, sectionId]
+        : current.filter((id) => id !== sectionId);
+      persistSections(next);
+      return next;
+    });
+  };
+
+  const selectAllSections = () => {
+    setSectionError(null);
+    setSelectedSections(allSectionIds);
+    persistSections(allSectionIds);
+  };
+
+  const clearAllSections = () => {
+    setSelectedSections([]);
+    persistSections([]);
+  };
+
+  const validateSections = (): boolean => {
+    if (selectedSections.length === 0) {
+      setSectionError('Please select at least one report section.');
+      return false;
+    }
+    setSectionError(null);
+    return true;
+  };
 
   const previewQuery = useGeneratedReportQuery({
     queryKey: engineeringReportQueryKeys.preview(reportId, options),
@@ -121,6 +206,7 @@ export function DesignerTeamTimesheetPanel({
 
   const handleDownload = async () => {
     if (!canExport || !previewQuery.canDownload) return;
+    if (!validateSections()) return;
     setDownloading(true);
     setDownloadError(null);
     try {
@@ -218,11 +304,60 @@ export function DesignerTeamTimesheetPanel({
             </TextField>
           </Box>
 
+          <Divider />
+
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Report sections</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Choose which Excel tabs to generate. Only selected sections are exported.
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+              <Button size="small" variant="text" onClick={selectAllSections}>
+                Select all
+              </Button>
+              <Button size="small" variant="text" onClick={clearAllSections}>
+                Clear all
+              </Button>
+            </Stack>
+            <FormGroup>
+              {sectionCatalog.map((section) => (
+                <FormControlLabel
+                  key={section.id}
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={selectedSections.includes(section.id)}
+                      onChange={(event) => toggleSection(section.id, event.target.checked)}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="body2">{section.label}</Typography>
+                      {section.description ? (
+                        <Typography variant="caption" color="text.secondary">
+                          {section.description}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  }
+                />
+              ))}
+            </FormGroup>
+            {sectionError ? (
+              <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                {sectionError}
+              </Typography>
+            ) : null}
+          </Box>
+
           <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               startIcon={<PlayArrowRoundedIcon />}
-              onClick={() => previewQuery.generate()}
+              onClick={() => {
+                if (!validateSections()) return;
+                previewQuery.generate();
+              }}
               disabled={previewQuery.isFetching}
             >
               {previewQuery.isFetching ? 'Generating…' : 'Generate'}
@@ -351,7 +486,7 @@ export function DesignerTeamTimesheetPanel({
                         <TableCell align="right">{formatNumber(row.non_productive_hours)}</TableCell>
                         <TableCell align="right">{formatNumber(row.leave_days)}</TableCell>
                         <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
-                        <TableCell align="right">{formatNumber(row.utilization_percent)}%</TableCell>
+                        <TableCell align="right">{formatUtilization(row)}</TableCell>
                       </TableRow>
                     ))
                   )}

@@ -35,7 +35,9 @@ import {
   reviewYearFromReview,
 } from '../utils/performanceReviewListing';
 import {
+  buildPerformanceReviewSaveBody,
   getPerformanceReviewFormMode,
+  performanceReviewIsViewOnly,
 } from '../utils/performanceReviewPermissions';
 
 export function PerformanceReviewWorkspacePage() {
@@ -177,7 +179,7 @@ export function PerformanceReviewWorkspacePage() {
   const ratingScale = templateQuery.data?.rating_scale ?? FALLBACK_RATING_SCALE;
   const formMode = getPerformanceReviewFormMode(user, review);
   const display = getReviewDisplayStatus(review);
-  const isViewOnly = formMode === 'view' || !display.editable;
+  const isViewOnly = performanceReviewIsViewOnly(user, review);
   const canEditEmployee = Boolean(review.can_edit_employee_section);
   const canEditManager = Boolean(review.can_edit_manager_section);
   const canManageWorkflow = Boolean(
@@ -201,58 +203,16 @@ export function PerformanceReviewWorkspacePage() {
 
   const saveDraft = () => {
     if (!review || isViewOnly) return;
-    if (canEditManager) {
-      updateReviewMutation.mutate({
-        id: review.id,
-        body: {
-          period_label: editor.period_label,
-          review_date: editor.review_date || null,
-          due_date: editor.due_date || null,
-          total_experience: editor.total_experience || null,
-          industry_experience: editor.industry_experience || null,
-          employee_summary: editor.employee_summary || null,
-          manager_summary: editor.manager_summary || null,
-          strengths_summary: editor.strengths_summary || null,
-          improvement_summary: editor.improvement_summary || null,
-          career_goals: editor.career_goals || null,
-          status: 'draft',
-          sections: editor.sections,
-          projects: editor.projects,
-        },
-      });
-    } else {
-      updateReviewMutation.mutate({
-        id: review.id,
-        body: {
-          employee_summary: editor.employee_summary || null,
-          career_goals: editor.career_goals || null,
-          sections: editor.sections,
-          projects: editor.projects,
-        },
-      });
-    }
+    const body = buildPerformanceReviewSaveBody(user, review, editor, { status: 'draft' });
+    if (Object.keys(body).length === 0) return;
+    updateReviewMutation.mutate({ id: review.id, body });
   };
 
   const submitReview = () => {
-    if (!review || !canEditManager) return;
-    updateReviewMutation.mutate({
-      id: review.id,
-      body: {
-        period_label: editor.period_label,
-        review_date: editor.review_date || null,
-        due_date: editor.due_date || null,
-        total_experience: editor.total_experience || null,
-        industry_experience: editor.industry_experience || null,
-        employee_summary: editor.employee_summary || null,
-        manager_summary: editor.manager_summary || null,
-        strengths_summary: editor.strengths_summary || null,
-        improvement_summary: editor.improvement_summary || null,
-        career_goals: editor.career_goals || null,
-        status: 'submitted',
-        sections: editor.sections,
-        projects: editor.projects,
-      },
-    });
+    if (!review || isViewOnly) return;
+    const body = buildPerformanceReviewSaveBody(user, review, editor, { status: 'submitted' });
+    if (Object.keys(body).length === 0) return;
+    updateReviewMutation.mutate({ id: review.id, body });
     setSubmitConfirmOpen(false);
   };
 
@@ -405,6 +365,8 @@ export function PerformanceReviewWorkspacePage() {
           review={review}
           editor={editor}
           ratingScale={ratingScale}
+          performanceReview={review}
+          currentUser={user}
           canEditEmployeeSection={canEditEmployee}
           canEditManagerSection={canEditManager}
           canManage={canManageWorkflow}

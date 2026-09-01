@@ -5,6 +5,7 @@ All branded Excel exporters should prefer these helpers over ad-hoc cell styling
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -59,6 +60,9 @@ from app.services.reporting.excel.styles import (
     ReportTheme,
 )
 
+
+logger = logging.getLogger(__name__)
+
 _LOGO_MAX_WIDTH = 118
 _LOGO_MAX_HEIGHT = 50
 _LOGO_NAMES = (
@@ -93,24 +97,38 @@ class ReportHeaderContext:
     theme: ReportTheme = field(default_factory=lambda: DEFAULT_THEME)
 
 
-def resolve_company_logo_path() -> Path | None:
-    """Resolve company logo for Excel exports (uploads folder or env override)."""
+def resolve_company_logo_path(logo_url: str | None = None) -> Path | None:
+    """Resolve company logo for Excel exports (DB logo_url, uploads folder, or env override)."""
     override = (os.environ.get("PROTRACK_REPORT_LOGO_PATH") or "").strip()
     if override:
         candidate = Path(override)
         if candidate.is_file():
             return candidate
 
-    if not COMPANY_LOGO_DIR.exists():
-        return None
+    candidates: list[Path] = []
+    if logo_url:
+        candidates.append(COMPANY_LOGO_DIR / logo_url.rsplit("/", 1)[-1])
     for name in _LOGO_NAMES:
-        candidate = COMPANY_LOGO_DIR / name
+        candidates.append(COMPANY_LOGO_DIR / name)
+    for candidate in candidates:
         if candidate.is_file():
             return candidate
+
+    if not COMPANY_LOGO_DIR.exists():
+        logger.warning(
+            "Report logo asset not found: company logo directory missing (%s)",
+            COMPANY_LOGO_DIR,
+        )
+        return None
     for pattern in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
         matches = sorted(COMPANY_LOGO_DIR.glob(pattern))
         if matches:
             return matches[0]
+    logger.warning(
+        "Report logo asset not found: no logo in %s (logo_url=%s)",
+        COMPANY_LOGO_DIR,
+        logo_url,
+    )
     return None
 
 
@@ -126,13 +144,18 @@ def _fit_logo(image: XLImage) -> None:
     image.height = max(int(height * scale), 16)
 
 
-def render_report_logo(sheet, *, col_span: int = 8) -> bool:
+def render_report_logo(
+    sheet,
+    *,
+    col_span: int = 8,
+    logo_path: Path | str | None = None,
+) -> bool:
     """Place company logo in the upper-right area. Returns True when placed."""
-    logo_path = resolve_company_logo_path()
-    if logo_path is None:
+    resolved = Path(logo_path) if logo_path else resolve_company_logo_path()
+    if resolved is None or not resolved.is_file():
         return False
     try:
-        image = XLImage(str(logo_path))
+        image = XLImage(str(resolved))
         _fit_logo(image)
         # Anchor near the right edge, leaving breathing room.
         anchor_col = max(col_span - 1, 4)
@@ -150,6 +173,7 @@ def render_report_logo(sheet, *, col_span: int = 8) -> bool:
         )
         return True
     except Exception:
+        logger.warning("Failed to embed report logo from %s", resolved, exc_info=True)
         return False
 
 
@@ -160,6 +184,7 @@ def render_report_header(
     report_title: str,
     col_span: int = 8,
     theme: ReportTheme | None = None,
+    logo_path: Path | str | None = None,
 ) -> int:
     """
     Brand header block.
@@ -173,7 +198,7 @@ def render_report_header(
     Returns next free row (1-based).
     """
     theme = theme or DEFAULT_THEME
-    logo_placed = render_report_logo(sheet, col_span=col_span)
+    logo_placed = render_report_logo(sheet, col_span=col_span, logo_path=logo_path)
     # Keep rightmost columns freer when a logo is present so text does not collide.
     text_end = max(col_span - (2 if logo_placed else 0), 4)
     display_name = (company_name or theme.company_name_fallback).strip().upper()

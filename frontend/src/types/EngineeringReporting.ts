@@ -49,9 +49,13 @@ export interface DesignerProductivityRow {
   leave_days: number;
   total_hours: number;
   billable_percent: number;
-  utilization_percent: number;
+  utilization_percent?: number | null;
   project_count: number;
   customer_count: number;
+  applicable_start_date?: string | null;
+  applicable_end_date?: string | null;
+  applicable_working_days?: number;
+  available_hours?: number;
 }
 
 export interface ToolHoursRow {
@@ -111,6 +115,13 @@ export interface DesignerTeamTimesheetPayload {
   cross_team_hours?: CrossTeamHoursRow[];
   cross_team_hours_outbound?: number;
   cross_team_hours_inbound?: number;
+  selected_sections?: string[];
+}
+
+export interface TimesheetReportSectionOption {
+  id: string;
+  label: string;
+  description: string;
 }
 
 export interface CrossTeamHoursRow {
@@ -259,4 +270,5 @@ export interface EngineeringReportOptions {
   team_id?: string;
   include_archived?: boolean;
   include_deleted?: boolean;
+  sections?: string[];
 }

@@ -116,7 +116,12 @@ def _write_associate_sheet(workbook: Workbook, payload: CustomerTimesheetPackPay
 
     freeze_and_filter(sheet, header_row, len(headers))
     autofit_columns(sheet, min_width=12)
-    set_print_layout(sheet)
+    set_print_layout(
+        sheet,
+        company_name=payload.company_name,
+        audience="customer",
+        header_rows=f"{header_row}:{header_row}",
+    )
 
 
 def _write_tool_sheet(workbook: Workbook, payload: CustomerTimesheetPackPayload) -> None:
@@ -158,4 +163,4 @@ def _write_tool_sheet(workbook: Workbook, payload: CustomerTimesheetPackPayload)
 
     freeze_and_filter(sheet, header_row, len(headers))
     autofit_columns(sheet, min_width=14)
-    set_print_layout(sheet)
+    set_print_layout(sheet, company_name=payload.company_name, audience="customer")

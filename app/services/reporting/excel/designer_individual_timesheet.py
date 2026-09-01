@@ -174,7 +174,7 @@ def generate_designer_individual_timesheet_excel(
 
     freeze_and_filter(sheet, header_row, len(headers))
     autofit_columns(sheet)
-    set_print_layout(sheet)
+    set_print_layout(sheet, company_name=company_name)
 
     buffer = BytesIO()
     workbook.save(buffer)

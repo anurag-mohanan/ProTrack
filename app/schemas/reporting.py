@@ -252,6 +252,34 @@ class CrossTeamHoursRow(BaseModel):
     contribution_reason: str | None = None
 
 
+class ReportTeamManagerRow(BaseModel):
+    team_name: str
+    engineering_manager: str | None = None
+    department_name: str | None = None
+
+
+class ReportContextMeta(BaseModel):
+    """Dynamic report header metadata — never hardcode these values in exporters."""
+
+    period_month: str
+    period_year: int
+    period_display: str
+    customer_label: str = "Not Available"
+    customer_contact_name: str | None = None
+    customer_contact_email: str | None = None
+    customer_contact_phone: str | None = None
+    teams: list[ReportTeamManagerRow] = Field(default_factory=list)
+    engineering_manager_summary: str = "Not Assigned"
+    department_summary: str | None = None
+    generated_by_name: str | None = None
+    timezone_name: str = "Asia/Kolkata"
+    audience: str = "internal"  # internal | customer
+    total_productive_hours: Decimal = Decimal("0")
+    total_non_productive_hours: Decimal = Decimal("0")
+    total_leave_days: Decimal = Decimal("0")
+    average_utilization_percent: Decimal = Decimal("0")
+
+
 class DesignerTeamTimesheetPayload(BaseModel):
     """Simplified timesheet report: period designer hours by team + lifetime project hours."""
 
@@ -273,6 +301,7 @@ class DesignerTeamTimesheetPayload(BaseModel):
     cross_team_hours: list[CrossTeamHoursRow] = Field(default_factory=list)
     cross_team_hours_outbound: Decimal = Decimal("0")
     cross_team_hours_inbound: Decimal = Decimal("0")
+    context: ReportContextMeta | None = None
 
 
 class ChartSeries(BaseModel):

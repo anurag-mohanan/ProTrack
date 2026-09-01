@@ -194,19 +194,19 @@ def test_omit_customer_column_for_customer_filter(session):
     designers = workbook["Designer Hours by Team"]
     header_row = next(
         row
-        for row in designers.iter_rows(min_row=1, max_row=20, values_only=True)
-        if row and row[0] == "Team"
+        for row in designers.iter_rows(min_row=1, max_row=40, values_only=True)
+        if row and str(row[0]).upper() == "TEAM"
     )
-    assert "Customers" not in header_row
-    assert "Projects" in header_row
+    assert "Customers" not in header_row and "CUSTOMERS" not in header_row
+    assert "Projects" in header_row or "PROJECTS" in header_row
 
     projects = workbook["Project Hours To Date"]
     project_header = next(
         row
-        for row in projects.iter_rows(min_row=1, max_row=20, values_only=True)
-        if row and row[0] == "Tool #"
+        for row in projects.iter_rows(min_row=1, max_row=40, values_only=True)
+        if row and str(row[0]).upper().startswith("TOOL")
     )
-    assert "Customer" not in project_header
+    assert "Customer" not in project_header and "CUSTOMER" not in project_header
 
 
 def test_omit_customer_column_for_retainer_team(session):
@@ -255,10 +255,10 @@ def test_omit_customer_column_for_retainer_team(session):
     designers = workbook["Designer Hours by Team"]
     header_row = next(
         row
-        for row in designers.iter_rows(min_row=1, max_row=20, values_only=True)
-        if row and row[0] == "Team"
+        for row in designers.iter_rows(min_row=1, max_row=40, values_only=True)
+        if row and str(row[0]).upper() == "TEAM"
     )
-    assert "Customers" not in header_row
+    assert "Customers" not in header_row and "CUSTOMERS" not in header_row
 
 
 def test_keep_customer_column_for_non_retainer_team_without_customer(session):
@@ -279,10 +279,10 @@ def test_keep_customer_column_for_non_retainer_team_without_customer(session):
     designers = workbook["Designer Hours by Team"]
     header_row = next(
         row
-        for row in designers.iter_rows(min_row=1, max_row=20, values_only=True)
-        if row and row[0] == "Team"
+        for row in designers.iter_rows(min_row=1, max_row=40, values_only=True)
+        if row and str(row[0]).upper() == "TEAM"
     )
-    assert "Customers" in header_row
+    assert "CUSTOMERS" in header_row
 
 
 def test_timesheet_preview_api(client, session):

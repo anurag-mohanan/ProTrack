@@ -16,6 +16,7 @@ from app.schemas.reporting import DesignerTeamTimesheetPayload
 from app.services.finance.commercial_fee_rules import uses_flat_customer_fee
 from app.services.reporting.cross_team_hours import build_cross_team_hours
 from app.services.reporting.data_service import build_engineering_report
+from app.services.reporting.report_context import build_timesheet_report_context
 from app.services.reporting.report_scope import ReportScope, resolve_report_scope
 
 TIMESHEET_REPORT_PERIODS: dict[str, str] = {
@@ -154,6 +155,17 @@ def build_designer_team_timesheet(
         user_ids=set(report_scope.user_ids) if report_scope.user_ids is not None else None,
     )
 
+    context = build_timesheet_report_context(
+        db,
+        current_user=current_user,
+        period=full.period,
+        designers=designers,
+        projects=projects,
+        scope=report_scope,
+        customer_id=customer_id,
+        team_id=scoped_team_id,
+    )
+
     return DesignerTeamTimesheetPayload(
         report_id=full.report_id,
         title=_PERIOD_TITLES.get(resolved_period, "Timesheet Report"),
@@ -176,4 +188,5 @@ def build_designer_team_timesheet(
         cross_team_hours=cross_rows,
         cross_team_hours_outbound=outbound_hours,
         cross_team_hours_inbound=inbound_hours,
+        context=context,
     )

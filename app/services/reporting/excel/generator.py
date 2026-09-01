@@ -87,7 +87,7 @@ def _write_executive_sheet(workbook: Workbook, payload: EngineeringReportPayload
         col += 3
 
     autofit_columns(sheet, min_width=14)
-    set_print_layout(sheet)
+    set_print_layout(sheet, company_name=payload.company_name)
 
 
 def _write_table_sheet(
@@ -461,7 +461,7 @@ def _write_charts_sheet(workbook: Workbook, payload: EngineeringReportPayload) -
             chart.set_categories(labels)
             sheet.add_chart(chart, f"D{start}")
         row += 16
-    set_print_layout(sheet)
+    set_print_layout(sheet, company_name=payload.company_name)
 
 
 def _write_ai_insights(workbook: Workbook, payload: EngineeringReportPayload) -> None:
@@ -480,4 +480,4 @@ def _write_ai_insights(workbook: Workbook, payload: EngineeringReportPayload) ->
         sheet.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
         row += 1
     sheet.column_dimensions["A"].width = 100
-    set_print_layout(sheet, landscape=False)
+    set_print_layout(sheet, landscape=False, company_name=payload.company_name)

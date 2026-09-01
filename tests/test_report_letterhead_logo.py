@@ -1,4 +1,4 @@
-"""Excel letterhead branding — company logo top-right."""
+"""Excel letterhead branding — company logo top-right + professional header."""
 
 from pathlib import Path
 
@@ -20,8 +20,12 @@ def test_write_report_letterhead_places_logo_top_right(tmp_path, monkeypatch):
             "0000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082"
         )
     )
-    monkeypatch.setattr(letterhead_module, "COMPANY_LOGO_DIR", tmp_path)
     monkeypatch.setattr(letterhead_module, "resolve_company_logo_path", lambda: logo)
+    # letterhead re-exports from template — also patch template resolver used at runtime
+    from app.services.reporting.excel import template as template_module
+
+    monkeypatch.setattr(template_module, "COMPANY_LOGO_DIR", tmp_path)
+    monkeypatch.setattr(template_module, "resolve_company_logo_path", lambda: logo)
 
     workbook = Workbook()
     sheet = workbook.active
@@ -32,18 +36,19 @@ def test_write_report_letterhead_places_logo_top_right(tmp_path, monkeypatch):
         period_label="July 2026",
         col_span=8,
     )
-    assert next_row >= 5
-    assert sheet.cell(row=1, column=1).value == "Prosohm"
-    assert sheet.cell(row=2, column=1).value == "Timesheet Report"
-    # Logo anchored near the right edge (column H for col_span=8)
+    assert next_row >= 6
+    assert sheet.cell(row=1, column=1).value == "PROSOHM"
+    assert sheet.cell(row=3, column=1).value == "Timesheet Report"
     assert len(sheet._images) == 1
     anchor = str(sheet._images[0].anchor)
-    assert "H" in anchor or "G" in anchor or "8" in anchor
+    assert "G" in anchor or "H" in anchor or "7" in anchor or "8" in anchor
 
 
 def test_add_company_logo_top_right_no_logo_is_safe(tmp_path, monkeypatch):
-    monkeypatch.setattr(letterhead_module, "COMPANY_LOGO_DIR", tmp_path)
-    monkeypatch.setattr(letterhead_module, "resolve_company_logo_path", lambda: None)
+    from app.services.reporting.excel import template as template_module
+
+    monkeypatch.setattr(template_module, "COMPANY_LOGO_DIR", tmp_path)
+    monkeypatch.setattr(template_module, "resolve_company_logo_path", lambda: None)
     workbook = Workbook()
     sheet = workbook.active
     assert add_company_logo_top_right(sheet, col_span=6) is False
@@ -51,7 +56,9 @@ def test_add_company_logo_top_right_no_logo_is_safe(tmp_path, monkeypatch):
 
 
 def test_resolve_company_logo_path_finds_upload(tmp_path, monkeypatch):
+    from app.services.reporting.excel import template as template_module
+
     logo = tmp_path / "company-logo.png"
     logo.write_bytes(b"not-a-real-png-but-exists")
-    monkeypatch.setattr(letterhead_module, "COMPANY_LOGO_DIR", tmp_path)
-    assert letterhead_module.resolve_company_logo_path() == logo
+    monkeypatch.setattr(template_module, "COMPANY_LOGO_DIR", tmp_path)
+    assert template_module.resolve_company_logo_path() == logo

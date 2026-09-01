@@ -11,10 +11,11 @@ import {
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
-import type { Customer, Team, User } from '../../../types';
+import type { Customer, Stream, Team, User } from '../../../types';
 import type { ProjectStage } from '../../../types/common';
 import { PROJECT_STAGE_LABELS } from '../../../types/common';
 import type { ProjectType } from '../../../types/ProjectTemplate';
+import type { ProjectSmallTaskType } from '../../../types/Project';
 import { FormSelect } from '../../ui/design-system';
 import { FilterGroup } from '../../ui/design-system/filters';
 import { compactFilterFieldSx } from '../../ui/design-system/filters/filterFieldStyles';
@@ -25,7 +26,9 @@ interface ProjectFilterPanelProps {
   onDraftChange: (next: ProjectCommandCenterFilters) => void;
   customers: Customer[];
   teams: Team[];
+  streams: Stream[];
   projectTypes: ProjectType[];
+  smallTaskTypes: ProjectSmallTaskType[];
   users: User[];
 }
 
@@ -36,13 +39,17 @@ export function ProjectFilterPanel({
   onDraftChange,
   customers,
   teams,
+  streams,
   projectTypes,
+  smallTaskTypes,
   users,
 }: ProjectFilterPanelProps) {
   const selectedCustomers = customers.filter((customer) =>
     draft.customerIds.includes(customer.id),
   );
   const selectedTeams = teams.filter((team) => draft.teamIds.includes(team.id));
+  const selectedStreams = streams.filter((stream) => draft.streamIds.includes(stream.id));
+  const activeStreams = streams.filter((stream) => stream.is_active !== false);
   const userOptions = users.map((user) => ({
     value: user.id,
     label: `${user.first_name} ${user.last_name}`.trim() || user.email,
@@ -130,6 +137,62 @@ export function ProjectFilterPanel({
       </Box>
 
       <FilterGroup title="Project" icon={<FolderOutlinedIcon sx={{ fontSize: 14 }} />}>
+        {field(
+          <Autocomplete
+            multiple
+            size="small"
+            options={activeStreams}
+            value={selectedStreams}
+            getOptionLabel={(option) => option.name}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            onChange={(_, next) =>
+              onDraftChange({ ...draft, streamIds: next.map((stream) => stream.id) })
+            }
+            renderInput={(params) => (
+              <TextField {...params} label="Engineering stream" size="small" />
+            )}
+          />,
+        )}
+        {field(
+          <FormSelect
+            label="Project classification"
+            size="small"
+            value={draft.projectClassification}
+            options={[
+              { value: 'all', label: 'All classifications' },
+              { value: 'full_design', label: 'Full Design' },
+              { value: 'small_task', label: 'Small Task' },
+              { value: 'unclassified', label: 'Needs Classification' },
+            ]}
+            onChange={(event) => {
+              const value = event.target.value as ProjectCommandCenterFilters['projectClassification'];
+              onDraftChange({
+                ...draft,
+                projectClassification: value,
+                smallTaskTypeId: value === 'small_task' ? draft.smallTaskTypeId : 'all',
+              });
+            }}
+          />,
+        )}
+        {draft.projectClassification === 'small_task' || draft.smallTaskTypeId !== 'all'
+          ? field(
+              <FormSelect
+                label="Task type"
+                size="small"
+                value={draft.smallTaskTypeId}
+                options={[
+                  { value: 'all', label: 'All task types' },
+                  ...smallTaskTypes.map((taskType) => ({
+                    value: taskType.id,
+                    label: taskType.name,
+                  })),
+                ]}
+                onChange={(event) =>
+                  onDraftChange({ ...draft, smallTaskTypeId: String(event.target.value) })
+                }
+              />,
+            )
+          : null}
         {field(
           <FormSelect
             label="Project Type"

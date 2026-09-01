@@ -11,6 +11,13 @@ export interface ProjectHoursReportRow {
   hours_variance: number;
   execution_status: ExecutionStatus;
   project_stage: ProjectStage;
+  project_classification?: 'full_design' | 'small_task' | 'unclassified';
+  small_task_type_id?: string | null;
+  small_task_type_name?: string | null;
+  stream_id?: string | null;
+  stream_name?: string | null;
+  team_id?: string | null;
+  team_name?: string | null;
   contributors?: import('./TimesheetEntry').ProjectContributorSummary[];
   support_hours?: number;
   peer_review_hours?: number;
@@ -90,6 +97,47 @@ export interface ProjectPortfolioReportRow {
   execution_status: ExecutionStatus;
   due_date: string;
   health: string;
+  project_classification?: 'full_design' | 'small_task' | 'unclassified';
+  small_task_type_name?: string | null;
+  stream_name?: string | null;
+  team_name?: string | null;
+}
+
+export interface ProjectClassificationCountRow {
+  classification: 'full_design' | 'small_task' | 'unclassified';
+  label: string;
+  project_count: number;
+}
+
+export interface ProjectSmallTaskTypeCountRow {
+  small_task_type_id: string | null;
+  small_task_type_name: string;
+  project_count: number;
+}
+
+export interface ProjectClassificationByStreamRow {
+  stream_id: string | null;
+  stream_name: string;
+  full_design_count: number;
+  small_task_count: number;
+  unclassified_count: number;
+  total_count: number;
+}
+
+export interface ProjectClassificationByTeamRow {
+  team_id: string | null;
+  team_name: string;
+  full_design_count: number;
+  small_task_count: number;
+  unclassified_count: number;
+  total_count: number;
+}
+
+export interface ProjectClassificationReport {
+  summary: ProjectClassificationCountRow[];
+  small_task_breakdown: ProjectSmallTaskTypeCountRow[];
+  by_stream: ProjectClassificationByStreamRow[];
+  by_team: ProjectClassificationByTeamRow[];
 }
 
 export interface ProjectStageSummaryRow {

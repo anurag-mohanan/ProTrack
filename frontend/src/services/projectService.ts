@@ -26,6 +26,8 @@ export interface ProjectListParams extends ListParams {
   stream_ids?: string[];
   workstream_ids?: string[];
   project_type_id?: string;
+  project_classification?: 'full_design' | 'small_task' | 'unclassified';
+  small_task_type_id?: string;
   design_leader_id?: string;
   designer_id?: string;
   surfacer_id?: string;

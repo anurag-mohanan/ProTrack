@@ -25,6 +25,7 @@ export interface ProjectCommandCenterFilters {
   customerIds: string[];
   projectTypeId: string;
   teamIds: string[];
+  streamIds: string[];
   workstreamIds: string[];
   statusBucketIds: string[];
   projectClassification: ProjectClassificationFilter;
@@ -52,6 +53,7 @@ export const defaultProjectCommandCenterFilters: ProjectCommandCenterFilters = {
   customerIds: [],
   projectTypeId: 'all',
   teamIds: [],
+  streamIds: [],
   workstreamIds: [],
   statusBucketIds: [],
   projectClassification: 'all',
@@ -274,6 +276,10 @@ export function filterProjectsForCommandCenter(
       if (!project.team_id || !filters.teamIds.includes(project.team_id)) return false;
     }
 
+    if (filters.streamIds.length > 0) {
+      if (!project.stream_id || !filters.streamIds.includes(project.stream_id)) return false;
+    }
+
     if (filters.workstreamIds.length > 0) {
       const ids = (project.workstreams ?? []).map((ws) => ws.workstream_id);
       if (!filters.workstreamIds.some((id) => ids.includes(id))) return false;
@@ -437,8 +443,20 @@ export interface ProjectPortfolioMetrics {
   dueThisWeekCount: number;
   notStartedCount: number;
   completedThisMonthCount: number;
+  fullDesignCount: number;
+  smallTaskCount: number;
+  unclassifiedCount: number;
   quotedHours: number;
   actualHours: number;
+}
+
+function countByClassification(
+  projects: Project[],
+  classification: 'full_design' | 'small_task' | 'unclassified',
+): number {
+  return projects.filter(
+    (project) => (project.project_classification ?? 'unclassified') === classification,
+  ).length;
 }
 
 export function countCompletedThisMonthProjects(projects: Project[]): number {
@@ -464,6 +482,9 @@ export function computeProjectPortfolioMetrics(projects: Project[]): ProjectPort
     dueThisWeekCount: countDueThisWeekProjects(projects),
     notStartedCount: countNotStartedProjects(projects),
     completedThisMonthCount: countCompletedThisMonthProjects(projects),
+    fullDesignCount: countByClassification(projects, 'full_design'),
+    smallTaskCount: countByClassification(projects, 'small_task'),
+    unclassifiedCount: countByClassification(projects, 'unclassified'),
     quotedHours: sumLiveHours(projects, 'quoted_hours'),
     actualHours: sumLiveHours(projects, 'actual_hours'),
   };
@@ -474,6 +495,9 @@ export function countActiveSidebarFilters(filters: ProjectCommandCenterFilters):
   if (filters.customerIds.length > 0) count += 1;
   if (filters.projectTypeId !== 'all') count += 1;
   if (filters.teamIds.length > 0) count += 1;
+  if (filters.streamIds.length > 0) count += 1;
+  if (filters.projectClassification !== 'all') count += 1;
+  if (filters.smallTaskTypeId !== 'all') count += 1;
   if (filters.businessUnit !== 'all') count += 1;
   if (filters.projectStage !== 'all') count += 1;
   if (filters.executionStatus !== 'all') count += 1;
@@ -505,9 +529,18 @@ export interface ProjectFilterChipDef {
 interface ProjectFilterChipLookup {
   customerNameMap: Map<string, string>;
   teamNameMap: Map<string, string>;
+  streamNameMap: Map<string, string>;
   userNameMap: Map<string, string>;
   projectTypeNameMap: Map<string, string>;
+  smallTaskTypeNameMap: Map<string, string>;
 }
+
+const CLASSIFICATION_LABELS: Record<ProjectClassificationFilter, string> = {
+  all: 'All',
+  full_design: 'Full Design',
+  small_task: 'Small Task',
+  unclassified: 'Needs Classification',
+};
 
 export function getProjectActiveFilterChips(
   filters: ProjectCommandCenterFilters,
@@ -536,6 +569,33 @@ export function getProjectActiveFilterChips(
       }),
     });
   });
+
+  filters.streamIds.forEach((id) => {
+    chips.push({
+      key: `stream-${id}`,
+      label: `Stream: ${lookup.streamNameMap.get(id) ?? 'Unknown'}`,
+      patch: (current) => ({
+        ...current,
+        streamIds: current.streamIds.filter((value) => value !== id),
+      }),
+    });
+  });
+
+  if (filters.projectClassification !== 'all') {
+    chips.push({
+      key: 'classification',
+      label: `Classification: ${CLASSIFICATION_LABELS[filters.projectClassification]}`,
+      patch: (current) => ({ ...current, projectClassification: 'all', smallTaskTypeId: 'all' }),
+    });
+  }
+
+  if (filters.smallTaskTypeId !== 'all') {
+    chips.push({
+      key: 'task-type',
+      label: `Task: ${lookup.smallTaskTypeNameMap.get(filters.smallTaskTypeId) ?? 'Unknown'}`,
+      patch: (current) => ({ ...current, smallTaskTypeId: 'all' }),
+    });
+  }
 
   if (filters.projectStage !== 'all') {
     chips.push({
@@ -655,4 +715,19 @@ export function applyKpiQuickFilter(
   }
 
   return next;
+}
+
+/** Toggle project classification filter from the classification chip strip. */
+export function applyClassificationFilter(
+  current: ProjectCommandCenterFilters,
+  classification: ProjectClassificationFilter,
+): ProjectCommandCenterFilters {
+  const nextClassification =
+    current.projectClassification === classification ? 'all' : classification;
+  return {
+    ...current,
+    projectClassification: nextClassification,
+    smallTaskTypeId: nextClassification === 'small_task' ? current.smallTaskTypeId : 'all',
+    quickFilter: 'none',
+  };
 }

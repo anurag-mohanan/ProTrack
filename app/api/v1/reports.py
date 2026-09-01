@@ -25,6 +25,7 @@ from app.crud.reports import (
     get_productive_hours_report,
     get_project_delay_report,
     get_project_hours_report,
+    get_project_classification_report,
     get_project_portfolio_report,
     get_project_stage_summary_report,
     get_reports_bundle,
@@ -59,6 +60,7 @@ from app.schemas.reports import (
     ProductiveHoursReportRow,
     ProjectDelayReportRow,
     ProjectHoursReportRow,
+    ProjectClassificationReport,
     ProjectPortfolioReportRow,
     ProjectStageSummaryRow,
     ReportsBundle,
@@ -128,6 +130,41 @@ def _report_options(
         "include_archived": include_archived,
         "include_deleted": include_deleted,
     }
+
+
+def _project_report_options(
+    team_id: UUID | None = None,
+    stream_id: UUID | None = None,
+    include_archived: bool = Query(True),
+    include_deleted: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    if include_deleted and not can_view_deleted_projects(db, current_user):
+        include_deleted = False
+    try:
+        scope = resolve_report_scope(
+            db,
+            current_user,
+            team_id=team_id,
+            stream_id=stream_id,
+        )
+    except ReportScopeForbidden as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    from app.core.team_access import project_visibility_clause
+
+    options: dict[str, object] = {
+        "include_archived": include_archived,
+        "include_deleted": include_deleted,
+        "visibility_clause": project_visibility_clause(db, current_user),
+        "stream_id": stream_id,
+    }
+    if scope.team_ids is not None:
+        options["team_ids"] = scope.team_ids
+    elif team_id is not None:
+        options["team_ids"] = frozenset({team_id})
+    return options
 
 
 def _engineering_report_options(
@@ -452,9 +489,17 @@ def list_reports(
 @router.get("/project-hours", response_model=list[ProjectHoursReportRow])
 def project_hours_report(
     db: Session = Depends(get_db),
-    options: dict[str, bool] = Depends(_report_options),
+    options: dict[str, object] = Depends(_project_report_options),
 ):
     return get_project_hours_report(db, **options)
+
+
+@router.get("/project-classification", response_model=ProjectClassificationReport)
+def project_classification_report(
+    db: Session = Depends(get_db),
+    options: dict[str, object] = Depends(_project_report_options),
+):
+    return get_project_classification_report(db, **options)
 
 
 @router.get("/designer-utilization", response_model=list[DesignerWorkload])
@@ -595,7 +640,7 @@ def timesheet_export_report(
 @router.get("/project-portfolio", response_model=list[ProjectPortfolioReportRow])
 def project_portfolio_report(
     db: Session = Depends(get_db),
-    options: dict[str, bool] = Depends(_report_options),
+    options: dict[str, object] = Depends(_project_report_options),
 ):
     return get_project_portfolio_report(db, **options)
 

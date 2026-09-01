@@ -14,7 +14,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { cloneProject } from '../api/commandCenter';
-import { fetchCustomers, fetchStreams, fetchTeams, fetchUsers } from '../api/lookups';
+import { fetchCustomers, fetchProjectSmallTaskTypes, fetchStreams, fetchTeams, fetchUsers } from '../api/lookups';
 import { dashboardQueryKeys } from '../api/dashboard';
 import { fetchProjectTypes } from '../api/projectTemplates';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
@@ -30,6 +30,7 @@ import { ProjectFilterPanel } from '../components/projects/command-center/Projec
 import { ProjectKpiBar } from '../components/projects/command-center/ProjectKpiBar';
 import { ProjectTeamCommandCenter } from '../components/projects/command-center/ProjectTeamCommandCenter';
 import { groupProjectsByTeamThenStream } from '../utils/projectTeamStreamHierarchy';
+import { ProjectClassificationFilterStrip } from '../components/projects/command-center/ProjectClassificationFilterStrip';
 import { ProjectQuickFilterStrip } from '../components/projects/command-center/ProjectQuickFilterStrip';
 import { ProjectStreamCards } from '../components/projects/command-center/ProjectStreamCards';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
@@ -66,6 +67,7 @@ import {
 } from '../utils/projectsPageSession';
 import { canArchiveProject, canCreateProject, canDeleteProject, canEditProject, canViewArchivedProjects, accessContextFromUser, isAdminRole } from '../utils/permissions';
 import {
+  applyClassificationFilter,
   applyKpiQuickFilter,
   computeProjectPortfolioMetrics,
   countActiveSidebarFilters,
@@ -77,6 +79,7 @@ import {
   isLiveProject,
   sortLiveProjects,
   type ProjectCommandCenterFilters,
+  type ProjectClassificationFilter,
   type ProjectQuickFilter,
 } from '../utils/projectCommandCenter';
 
@@ -266,7 +269,18 @@ export function ProjectsPage() {
           : appliedFilters.teamIds.length > 0
             ? appliedFilters.teamIds
             : undefined,
-      stream_ids: selectedStreamIds.length > 0 ? selectedStreamIds : undefined,
+      stream_ids:
+        selectedStreamIds.length > 0
+          ? selectedStreamIds
+          : appliedFilters.streamIds.length > 0
+            ? appliedFilters.streamIds
+            : undefined,
+      project_classification:
+        appliedFilters.projectClassification === 'all'
+          ? undefined
+          : appliedFilters.projectClassification,
+      small_task_type_id:
+        appliedFilters.smallTaskTypeId === 'all' ? undefined : appliedFilters.smallTaskTypeId,
       workstream_ids:
         appliedFilters.workstreamIds.length > 0 ? appliedFilters.workstreamIds : undefined,
       project_type_id:
@@ -317,6 +331,12 @@ export function ProjectsPage() {
   const teamsQuery = useQuery({
     queryKey: ['lookups', 'teams'],
     queryFn: fetchTeams,
+    staleTime: QUERY_STALE_TIMES.lookups,
+  });
+
+  const smallTaskTypesQuery = useQuery({
+    queryKey: ['lookups', 'project-small-task-types'],
+    queryFn: fetchProjectSmallTaskTypes,
     staleTime: QUERY_STALE_TIMES.lookups,
   });
 
@@ -382,8 +402,16 @@ export function ProjectsPage() {
       customers: customersQuery.data ?? [],
       teams: teamsQuery.data ?? [],
       users: usersQuery.data ?? [],
+      streams: (streamsQuery.data ?? []).map((stream) => ({
+        id: stream.id,
+        name: stream.name,
+      })),
+      smallTaskTypes: (smallTaskTypesQuery.data ?? []).map((taskType) => ({
+        id: taskType.id,
+        name: taskType.name,
+      })),
     }),
-    [customersQuery.data, teamsQuery.data, usersQuery.data],
+    [customersQuery.data, teamsQuery.data, usersQuery.data, streamsQuery.data, smallTaskTypesQuery.data],
   );
   const lookupUsers = usersQuery.data ?? [];
 
@@ -401,12 +429,14 @@ export function ProjectsPage() {
   );
 
   const streamFilteredProjects = useMemo(() => {
-    if (!selectedStreamIds.length) return scopedFilteredProjects;
-    const allowed = new Set(selectedStreamIds);
+    const streamIds =
+      selectedStreamIds.length > 0 ? selectedStreamIds : appliedFilters.streamIds;
+    if (!streamIds.length) return scopedFilteredProjects;
+    const allowed = new Set(streamIds);
     return scopedFilteredProjects.filter(
       (project) => project.stream_id != null && allowed.has(project.stream_id),
     );
-  }, [scopedFilteredProjects, selectedStreamIds]);
+  }, [scopedFilteredProjects, selectedStreamIds, appliedFilters.streamIds]);
 
   const teamFilteredProjects = useMemo(() => {
     if (!selectedTeamIds.length) return streamFilteredProjects;
@@ -735,14 +765,42 @@ export function ProjectsPage() {
     () => new Map((projectTypesQuery.data ?? []).map((item) => [item.id, item.name])),
     [projectTypesQuery.data],
   );
+  const streamNameMap = useMemo(
+    () => new Map((streamsQuery.data ?? []).map((item) => [item.id, item.name])),
+    [streamsQuery.data],
+  );
+  const smallTaskTypeNameMap = useMemo(
+    () => new Map((smallTaskTypesQuery.data ?? []).map((item) => [item.id, item.name])),
+    [smallTaskTypesQuery.data],
+  );
+
+  const classificationCounts = useMemo(
+    () => ({
+      fullDesign: portfolioMetrics?.fullDesignCount ?? 0,
+      smallTask: portfolioMetrics?.smallTaskCount ?? 0,
+      unclassified: portfolioMetrics?.unclassifiedCount ?? 0,
+    }),
+    [portfolioMetrics],
+  );
+
+  const handleClassificationFilter = useCallback(
+    (classification: ProjectClassificationFilter) => {
+      const next = applyClassificationFilter(appliedFilters, classification);
+      setAppliedFilters(next);
+      setDraftFilters(next);
+    },
+    [appliedFilters],
+  );
 
   const activeFilterChips = useMemo(
     () =>
       getProjectActiveFilterChips(appliedFilters, {
         customerNameMap,
         teamNameMap,
+        streamNameMap,
         userNameMap,
         projectTypeNameMap,
+        smallTaskTypeNameMap,
       }).map((chip) => ({
         key: chip.key,
         label: chip.label,
@@ -752,7 +810,7 @@ export function ProjectsPage() {
           setDraftFilters(next);
         },
       })),
-    [appliedFilters, customerNameMap, projectTypeNameMap, teamNameMap, userNameMap],
+    [appliedFilters, customerNameMap, projectTypeNameMap, streamNameMap, smallTaskTypeNameMap, teamNameMap, userNameMap],
   );
 
   if (projectsQuery.error) {
@@ -884,6 +942,13 @@ export function ProjectsPage() {
             onFilter={handleQuickFilter}
           />
 
+          <ProjectClassificationFilterStrip
+            counts={classificationCounts}
+            activeClassification={appliedFilters.projectClassification}
+            onSelect={handleClassificationFilter}
+            showUnclassifiedReview={isAdmin}
+          />
+
           <ProjectQuickFilterStrip
             counts={quickCounts}
             activeFilter={appliedFilters.quickFilter}
@@ -936,7 +1001,9 @@ export function ProjectsPage() {
           onDraftChange={setDraftFilters}
           customers={customersQuery.data ?? []}
           teams={teamsQuery.data ?? []}
+          streams={streamsQuery.data ?? []}
           projectTypes={projectTypesQuery.data ?? []}
+          smallTaskTypes={smallTaskTypesQuery.data ?? []}
           users={usersQuery.data ?? []}
         />
       </FilterDrawer>

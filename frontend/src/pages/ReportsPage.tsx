@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   FormControlLabel,
+  Stack,
   Switch,
   Tab,
   Tabs,
@@ -19,7 +20,7 @@ import {
   FilterToolbar,
   ModernPageHeader,
 } from '../components/ui/design-system';
-import { ProjectHoursReportView } from '../components/reports/ReportAnalyticsViews';
+import { ProjectHoursReportView, ProjectClassificationReportView } from '../components/reports/ReportAnalyticsViews';
 import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
 import { EngineeringReportingSuite } from '../components/reports/EngineeringReportingSuite';
 import { CustomerTimesheetPackPanel } from '../components/reports/CustomerTimesheetPackPanel';
@@ -27,6 +28,7 @@ import { DesignerTeamTimesheetPanel } from '../components/reports/DesignerTeamTi
 import { useAuth } from '../context/AuthContext';
 import {
   getProjectHoursReport,
+  getProjectClassificationReport,
   reportQueryKeys,
   type ReportOptions,
 } from '../services/reportService';
@@ -118,6 +120,12 @@ export function ReportsPage() {
   const projectHoursQuery = useGeneratedReportQuery({
     queryKey: reportQueryKeys.projectHours(reportOptions),
     queryFn: () => getProjectHoursReport(reportOptions),
+    ready: tab === 2,
+  });
+
+  const projectClassificationQuery = useGeneratedReportQuery({
+    queryKey: reportQueryKeys.projectClassification(reportOptions),
+    queryFn: () => getProjectClassificationReport(reportOptions),
     ready: tab === 2,
   });
 
@@ -226,21 +234,38 @@ export function ReportsPage() {
           <Button
             variant="contained"
             startIcon={<PlayArrowRoundedIcon />}
-            onClick={() => projectHoursQuery.generate()}
-            disabled={projectHoursQuery.isFetching}
+            onClick={() => {
+              projectClassificationQuery.generate();
+              projectHoursQuery.generate();
+            }}
+            disabled={projectHoursQuery.isFetching || projectClassificationQuery.isFetching}
             sx={{ mb: 2 }}
           >
-            {projectHoursQuery.isFetching ? 'Generating…' : 'Generate'}
+            {projectHoursQuery.isFetching || projectClassificationQuery.isFetching
+              ? 'Generating…'
+              : 'Generate'}
           </Button>
-          {!projectHoursQuery.generationRequested ? (
+          {!projectHoursQuery.generationRequested && !projectClassificationQuery.generationRequested ? (
             <Alert severity="info" sx={{ mb: 2 }}>
-              Click Generate to load project hours for the current filters.
+              Click Generate to load project classification and hours for the current filters.
             </Alert>
           ) : null}
-          {projectHoursQuery.generationRequested && projectHoursQuery.isLoading ? (
+          {(projectHoursQuery.generationRequested || projectClassificationQuery.generationRequested) &&
+          (projectHoursQuery.isLoading || projectClassificationQuery.isLoading) ? (
             <LoadingState message="Loading reports…" />
           ) : null}
           {projectHoursQuery.error ? <ErrorState error={projectHoursQuery.error} /> : null}
+          {projectClassificationQuery.error ? (
+            <ErrorState error={projectClassificationQuery.error} />
+          ) : null}
+          {projectClassificationQuery.hasGenerated && projectClassificationQuery.data ? (
+            <Stack spacing={3} sx={{ mb: 3 }}>
+              <ProjectClassificationReportView
+                report={projectClassificationQuery.data}
+                canExport={canExport}
+              />
+            </Stack>
+          ) : null}
           {projectHoursQuery.hasGenerated ? (
             <ProjectHoursReportView
               rows={ensureArray<ProjectHoursReportRow>(projectHoursQuery.data)}

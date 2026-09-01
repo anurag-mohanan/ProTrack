@@ -4,7 +4,15 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
+from app.models.enums import (
+    ExecutionStatus,
+    MilestoneStatus,
+    ProjectClassification,
+    ProjectHealth,
+    ProjectStage,
+    TimesheetStatus,
+    WorkCategory,
+)
 from app.schemas.dashboard import DesignerWorkload
 from app.schemas.timesheet import ProjectContributorSummary
 
@@ -25,6 +33,50 @@ class ProjectHoursReportRow(BaseModel):
     engineering_change_hours: Decimal = Decimal("0")
     owner_hours: Decimal = Decimal("0")
     contributor_hours: Decimal = Decimal("0")
+    project_classification: ProjectClassification = ProjectClassification.unclassified
+    small_task_type_id: UUID | None = None
+    small_task_type_name: str | None = None
+    stream_id: UUID | None = None
+    stream_name: str | None = None
+    team_id: UUID | None = None
+    team_name: str | None = None
+
+
+class ProjectClassificationCountRow(BaseModel):
+    classification: ProjectClassification
+    label: str
+    project_count: int
+
+
+class ProjectSmallTaskTypeCountRow(BaseModel):
+    small_task_type_id: UUID | None = None
+    small_task_type_name: str
+    project_count: int
+
+
+class ProjectClassificationByStreamRow(BaseModel):
+    stream_id: UUID | None = None
+    stream_name: str
+    full_design_count: int
+    small_task_count: int
+    unclassified_count: int
+    total_count: int
+
+
+class ProjectClassificationByTeamRow(BaseModel):
+    team_id: UUID | None = None
+    team_name: str
+    full_design_count: int
+    small_task_count: int
+    unclassified_count: int
+    total_count: int
+
+
+class ProjectClassificationReport(BaseModel):
+    summary: list[ProjectClassificationCountRow]
+    small_task_breakdown: list[ProjectSmallTaskTypeCountRow]
+    by_stream: list[ProjectClassificationByStreamRow]
+    by_team: list[ProjectClassificationByTeamRow]
 
 
 class CustomerSummaryReportRow(BaseModel):
@@ -222,6 +274,10 @@ class ProjectPortfolioReportRow(BaseModel):
     execution_status: ExecutionStatus
     due_date: date
     health: ProjectHealth
+    project_classification: ProjectClassification = ProjectClassification.unclassified
+    small_task_type_name: str | None = None
+    stream_name: str | None = None
+    team_name: str | None = None
 
 
 class ProjectStageSummaryRow(BaseModel):

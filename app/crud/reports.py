@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import func, select
 
@@ -11,8 +12,8 @@ from app.core.non_productive_categories import (
 )
 from app.crud.base import Session
 from app.crud.dashboard import get_designer_workload, _decimal, _round_hours
-from app.models.enums import ContributionReason, ExecutionStatus, MilestoneStatus, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
-from app.models.models import Customer, Milestone, NonProductiveCode, Project, TaskType, Team, Timesheet, TimesheetEntry, User
+from app.models.enums import ContributionReason, ExecutionStatus, MilestoneStatus, ProjectClassification, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
+from app.models.models import Customer, Milestone, NonProductiveCode, Project, ProjectSmallTaskType, Stream, TaskType, Team, Timesheet, TimesheetEntry, User
 from app.schemas.reports import (
     BillableUtilizationReportRow,
     BillableVsNonBillableReportRow,
@@ -27,6 +28,11 @@ from app.schemas.reports import (
     ProjectDelayReportRow,
     ProjectHoursReportRow,
     ProjectPortfolioReportRow,
+    ProjectClassificationByStreamRow,
+    ProjectClassificationByTeamRow,
+    ProjectClassificationCountRow,
+    ProjectClassificationReport,
+    ProjectSmallTaskTypeCountRow,
     ProjectStageSummaryRow,
     ReportsBundle,
     TimesheetApprovalReportRow,
@@ -54,24 +60,233 @@ def _apply_report_filters(
     return stmt
 
 
+_CLASSIFICATION_LABELS: dict[ProjectClassification, str] = {
+    ProjectClassification.full_design: "Full Design",
+    ProjectClassification.small_task: "Small Task",
+    ProjectClassification.unclassified: "Needs Classification",
+}
+
+
+def _scoped_projects_stmt(
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+    team_ids: frozenset[UUID] | None = None,
+    stream_id: UUID | None = None,
+    visibility_clause=None,
+):
+    stmt = select(Project)
+    stmt = _apply_report_filters(
+        stmt, include_archived=include_archived, include_deleted=include_deleted
+    )
+    if team_ids is not None:
+        if not team_ids:
+            stmt = stmt.where(Project.id.is_(None))
+        else:
+            stmt = stmt.where(Project.team_id.in_(team_ids))
+    if stream_id is not None:
+        stmt = stmt.where(Project.stream_id == stream_id)
+    if visibility_clause is not None:
+        stmt = stmt.where(visibility_clause)
+    return stmt
+
+
+def get_project_classification_report(
+    db: Session,
+    *,
+    include_archived: bool = True,
+    include_deleted: bool = False,
+    team_ids: frozenset[UUID] | None = None,
+    stream_id: UUID | None = None,
+    visibility_clause=None,
+) -> ProjectClassificationReport:
+    projects = list(
+        db.scalars(
+            _scoped_projects_stmt(
+                include_archived=include_archived,
+                include_deleted=include_deleted,
+                team_ids=team_ids,
+                stream_id=stream_id,
+                visibility_clause=visibility_clause,
+            )
+        ).all()
+    )
+
+    summary_counts: dict[ProjectClassification, int] = {
+        ProjectClassification.full_design: 0,
+        ProjectClassification.small_task: 0,
+        ProjectClassification.unclassified: 0,
+    }
+    small_task_counts: dict[UUID | None, int] = {}
+    stream_buckets: dict[UUID | None, dict[str, int]] = {}
+    team_buckets: dict[UUID | None, dict[str, int]] = {}
+
+    small_task_type_ids = {
+        p.small_task_type_id for p in projects if p.small_task_type_id is not None
+    }
+    small_task_names: dict[UUID, str] = {}
+    if small_task_type_ids:
+        for row in db.scalars(
+            select(ProjectSmallTaskType).where(
+                ProjectSmallTaskType.id.in_(small_task_type_ids)
+            )
+        ).all():
+            small_task_names[row.id] = row.name
+
+    stream_ids = {p.stream_id for p in projects if p.stream_id is not None}
+    stream_names: dict[UUID, str] = {}
+    if stream_ids:
+        for row in db.scalars(select(Stream).where(Stream.id.in_(stream_ids))).all():
+            stream_names[row.id] = row.name
+
+    team_ids_set = {p.team_id for p in projects if p.team_id is not None}
+    team_names: dict[UUID, str] = {}
+    if team_ids_set:
+        for row in db.scalars(select(Team).where(Team.id.in_(team_ids_set))).all():
+            team_names[row.id] = row.name
+
+    def bump_bucket(
+        buckets: dict[UUID | None, dict[str, int]],
+        key: UUID | None,
+        classification: ProjectClassification,
+    ) -> None:
+        bucket = buckets.setdefault(
+            key,
+            {"full_design": 0, "small_task": 0, "unclassified": 0, "total": 0},
+        )
+        if classification == ProjectClassification.full_design:
+            bucket["full_design"] += 1
+        elif classification == ProjectClassification.small_task:
+            bucket["small_task"] += 1
+        else:
+            bucket["unclassified"] += 1
+        bucket["total"] += 1
+
+    for project in projects:
+        classification = project.project_classification or ProjectClassification.unclassified
+        summary_counts[classification] = summary_counts.get(classification, 0) + 1
+
+        if classification == ProjectClassification.small_task:
+            stt_id = project.small_task_type_id
+            small_task_counts[stt_id] = small_task_counts.get(stt_id, 0) + 1
+
+        bump_bucket(stream_buckets, project.stream_id, classification)
+        bump_bucket(team_buckets, project.team_id, classification)
+
+    summary = [
+        ProjectClassificationCountRow(
+            classification=classification,
+            label=_CLASSIFICATION_LABELS[classification],
+            project_count=summary_counts.get(classification, 0),
+        )
+        for classification in (
+            ProjectClassification.full_design,
+            ProjectClassification.small_task,
+            ProjectClassification.unclassified,
+        )
+    ]
+
+    small_task_breakdown = sorted(
+        [
+            ProjectSmallTaskTypeCountRow(
+                small_task_type_id=task_type_id,
+                small_task_type_name=(
+                    small_task_names.get(task_type_id, "Unknown")
+                    if task_type_id is not None
+                    else "Not specified"
+                ),
+                project_count=count,
+            )
+            for task_type_id, count in small_task_counts.items()
+        ],
+        key=lambda row: (-row.project_count, row.small_task_type_name),
+    )
+
+    by_stream = sorted(
+        [
+            ProjectClassificationByStreamRow(
+                stream_id=stream_id_key,
+                stream_name=(
+                    stream_names.get(stream_id_key, "Unknown stream")
+                    if stream_id_key is not None
+                    else "Unassigned stream"
+                ),
+                full_design_count=bucket["full_design"],
+                small_task_count=bucket["small_task"],
+                unclassified_count=bucket["unclassified"],
+                total_count=bucket["total"],
+            )
+            for stream_id_key, bucket in stream_buckets.items()
+        ],
+        key=lambda row: row.stream_name,
+    )
+
+    by_team = sorted(
+        [
+            ProjectClassificationByTeamRow(
+                team_id=team_id_key,
+                team_name=(
+                    team_names.get(team_id_key, "Unknown team")
+                    if team_id_key is not None
+                    else "Unassigned team"
+                ),
+                full_design_count=bucket["full_design"],
+                small_task_count=bucket["small_task"],
+                unclassified_count=bucket["unclassified"],
+                total_count=bucket["total"],
+            )
+            for team_id_key, bucket in team_buckets.items()
+        ],
+        key=lambda row: row.team_name,
+    )
+
+    return ProjectClassificationReport(
+        summary=summary,
+        small_task_breakdown=small_task_breakdown,
+        by_stream=by_stream,
+        by_team=by_team,
+    )
+
+
 def get_project_hours_report(
     db: Session,
     *,
     include_archived: bool = True,
     include_deleted: bool = False,
+    team_ids: frozenset[UUID] | None = None,
+    stream_id: UUID | None = None,
+    visibility_clause=None,
 ) -> list[ProjectHoursReportRow]:
     stmt = (
-        select(Project, Customer.name)
+        select(
+            Project,
+            Customer.name,
+            Stream.name,
+            Team.name,
+            ProjectSmallTaskType.name,
+        )
         .join(Customer, Project.customer_id == Customer.id)
+        .outerjoin(Stream, Project.stream_id == Stream.id)
+        .outerjoin(Team, Project.team_id == Team.id)
+        .outerjoin(ProjectSmallTaskType, Project.small_task_type_id == ProjectSmallTaskType.id)
         .order_by(Project.tool_number)
     )
     stmt = _apply_report_filters(
         stmt, include_archived=include_archived, include_deleted=include_deleted
     )
+    if team_ids is not None:
+        if not team_ids:
+            stmt = stmt.where(Project.id.is_(None))
+        else:
+            stmt = stmt.where(Project.team_id.in_(team_ids))
+    if stream_id is not None:
+        stmt = stmt.where(Project.stream_id == stream_id)
+    if visibility_clause is not None:
+        stmt = stmt.where(visibility_clause)
     rows = db.execute(stmt).all()
 
     report: list[ProjectHoursReportRow] = []
-    for project, customer_name in rows:
+    for project, customer_name, stream_name, team_name, small_task_type_name in rows:
         hours = calculate_hours(db, project)
         contributor_rows = get_project_contributors(db, project.id)
         reason_totals = aggregate_contribution_hours_by_reason(db, project.id)
@@ -108,6 +323,13 @@ def get_project_hours_report(
                 engineering_change_hours=reason_totals.get("Engineering Change", Decimal("0")),
                 owner_hours=owner_hours,
                 contributor_hours=contributor_hours,
+                project_classification=project.project_classification,
+                small_task_type_id=project.small_task_type_id,
+                small_task_type_name=small_task_type_name,
+                stream_id=project.stream_id,
+                stream_name=stream_name,
+                team_id=project.team_id,
+                team_name=team_name,
             )
         )
     return report
@@ -551,15 +773,36 @@ def get_project_portfolio_report(
     *,
     include_archived: bool = True,
     include_deleted: bool = False,
+    team_ids: frozenset[UUID] | None = None,
+    stream_id: UUID | None = None,
+    visibility_clause=None,
 ) -> list[ProjectPortfolioReportRow]:
     stmt = (
-        select(Project, Customer.name)
+        select(
+            Project,
+            Customer.name,
+            Stream.name,
+            Team.name,
+            ProjectSmallTaskType.name,
+        )
         .join(Customer, Project.customer_id == Customer.id)
+        .outerjoin(Stream, Project.stream_id == Stream.id)
+        .outerjoin(Team, Project.team_id == Team.id)
+        .outerjoin(ProjectSmallTaskType, Project.small_task_type_id == ProjectSmallTaskType.id)
         .order_by(Project.tool_number)
     )
     stmt = _apply_report_filters(
         stmt, include_archived=include_archived, include_deleted=include_deleted
     )
+    if team_ids is not None:
+        if not team_ids:
+            stmt = stmt.where(Project.id.is_(None))
+        else:
+            stmt = stmt.where(Project.team_id.in_(team_ids))
+    if stream_id is not None:
+        stmt = stmt.where(Project.stream_id == stream_id)
+    if visibility_clause is not None:
+        stmt = stmt.where(visibility_clause)
     rows = db.execute(stmt).all()
     return [
         ProjectPortfolioReportRow(
@@ -570,8 +813,12 @@ def get_project_portfolio_report(
             execution_status=project.execution_status,
             due_date=project.due_date,
             health=project.health,
+            project_classification=project.project_classification,
+            small_task_type_name=small_task_type_name,
+            stream_name=stream_name,
+            team_name=team_name,
         )
-        for project, customer_name in rows
+        for project, customer_name, stream_name, team_name, small_task_type_name in rows
     ]
 
 

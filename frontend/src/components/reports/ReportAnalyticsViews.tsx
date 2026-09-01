@@ -26,6 +26,7 @@ import type {
   ProductiveHoursReportRow,
   ProjectHoursReportRow,
   ProjectPortfolioReportRow,
+  ProjectClassificationReport,
   ProjectStageSummaryRow,
   TopNpActivityReportRow,
 } from '../../types/Reports';
@@ -36,6 +37,18 @@ import FolderRoundedIcon from '@mui/icons-material/FolderRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import PaidRoundedIcon from '@mui/icons-material/PaidRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
+import CategoryRoundedIcon from '@mui/icons-material/CategoryRounded';
+
+const CLASSIFICATION_LABELS: Record<string, string> = {
+  full_design: 'Full Design',
+  small_task: 'Small Task',
+  unclassified: 'Needs Classification',
+};
+
+function classificationLabel(value?: string | null): string {
+  if (!value) return CLASSIFICATION_LABELS.unclassified;
+  return CLASSIFICATION_LABELS[value] ?? value;
+}
 
 interface ReportExportProps {
   canExport: boolean;
@@ -74,6 +87,14 @@ export function ProjectHoursReportView({
         exportColumns={[
           { key: 'tool_number', header: 'Tool Number' },
           { key: 'customer_name', header: 'Customer' },
+          { key: 'team_name', header: 'Team' },
+          { key: 'stream_name', header: 'Stream' },
+          {
+            key: 'project_classification',
+            header: 'Classification',
+            format: (r) => classificationLabel(r.project_classification as string),
+          },
+          { key: 'small_task_type_name', header: 'Task Type' },
           { key: 'quoted_hours', header: 'Quoted', format: (r) => formatNumber(r.quoted_hours as number) },
           { key: 'actual_hours', header: 'Actual', format: (r) => formatNumber(r.actual_hours as number) },
         ]}
@@ -115,6 +136,10 @@ export function ProjectHoursReportView({
             <TableRow>
               <StickyHeaderCell pinned>Tool Number</StickyHeaderCell>
               <StickyHeaderCell>Customer</StickyHeaderCell>
+              <StickyHeaderCell>Team</StickyHeaderCell>
+              <StickyHeaderCell>Stream</StickyHeaderCell>
+              <StickyHeaderCell>Classification</StickyHeaderCell>
+              <StickyHeaderCell>Task Type</StickyHeaderCell>
               <StickyHeaderCell align="right">Quoted</StickyHeaderCell>
               <StickyHeaderCell align="right">Actual</StickyHeaderCell>
               <StickyHeaderCell align="right">Variance</StickyHeaderCell>
@@ -138,6 +163,10 @@ export function ProjectHoursReportView({
             >
               <StickyTableCell pinned>{row.tool_number}</StickyTableCell>
               <StickyTableCell>{row.customer_name}</StickyTableCell>
+              <StickyTableCell>{formatCellValue(row.team_name)}</StickyTableCell>
+              <StickyTableCell>{formatCellValue(row.stream_name)}</StickyTableCell>
+              <StickyTableCell>{classificationLabel(row.project_classification)}</StickyTableCell>
+              <StickyTableCell>{formatCellValue(row.small_task_type_name)}</StickyTableCell>
               <StickyTableCell align="right">{formatNumber(row.quoted_hours)}</StickyTableCell>
               <StickyTableCell align="right">{formatNumber(row.actual_hours)}</StickyTableCell>
               <StickyTableCell align="right">{formatNumber(row.hours_variance)}</StickyTableCell>
@@ -165,6 +194,243 @@ export function ProjectHoursReportView({
           ))}
         </OperationalDataTable>
       </ReportAnalyticsShell>
+    </>
+  );
+}
+
+export function ProjectClassificationReportView({
+  report,
+  canExport,
+}: { report: ProjectClassificationReport } & ReportExportProps) {
+  const totalProjects = report.summary.reduce((sum, row) => sum + row.project_count, 0);
+  const fullDesignCount =
+    report.summary.find((row) => row.classification === 'full_design')?.project_count ?? 0;
+  const smallTaskCount =
+    report.summary.find((row) => row.classification === 'small_task')?.project_count ?? 0;
+  const unclassifiedCount =
+    report.summary.find((row) => row.classification === 'unclassified')?.project_count ?? 0;
+
+  const summaryChartData = report.summary
+    .filter((row) => row.project_count > 0)
+    .map((row) => ({
+      id: row.classification,
+      label: row.label,
+      value: row.project_count,
+    }));
+
+  const streamCategories = report.by_stream.map((row) => row.stream_name);
+  const teamCategories = report.by_team.map((row) => row.team_name);
+
+  const classificationStackSeries = (
+    rows: Array<{
+      full_design_count: number;
+      small_task_count: number;
+      unclassified_count: number;
+    }>,
+  ) => [
+    {
+      label: CLASSIFICATION_LABELS.full_design,
+      data: rows.map((row) => row.full_design_count),
+      stack: 'classification',
+    },
+    {
+      label: CLASSIFICATION_LABELS.small_task,
+      data: rows.map((row) => row.small_task_count),
+      stack: 'classification',
+    },
+    {
+      label: CLASSIFICATION_LABELS.unclassified,
+      data: rows.map((row) => row.unclassified_count),
+      stack: 'classification',
+    },
+  ];
+
+  return (
+    <>
+      <ReportAnalyticsShell
+        title="Project Classification"
+        subtitle="Full design vs small tasks across your scoped projects"
+        canExport={canExport}
+        exportFilename="project-classification-summary"
+        exportRows={report.summary as unknown as Record<string, unknown>[]}
+        exportColumns={[
+          { key: 'label', header: 'Classification' },
+          { key: 'project_count', header: 'Projects' },
+        ]}
+        kpis={
+          <KpiStrip columns={{ xs: 12, sm: 6, md: 3 }}>
+            <KpiMetricCard compact title="Total Projects" value={String(totalProjects)} icon={FolderRoundedIcon} />
+            <KpiMetricCard
+              compact
+              title="Full Design"
+              value={String(fullDesignCount)}
+              icon={CategoryRoundedIcon}
+            />
+            <KpiMetricCard
+              compact
+              title="Small Tasks"
+              value={String(smallTaskCount)}
+              icon={ScheduleRoundedIcon}
+            />
+            <KpiMetricCard
+              compact
+              title="Needs Classification"
+              value={String(unclassifiedCount)}
+              icon={GroupsRoundedIcon}
+              accent={unclassifiedCount > 0 ? 'warning' : undefined}
+            />
+          </KpiStrip>
+        }
+        chart={<AnalyticsDonutChart data={summaryChartData} />}
+      >
+        <OperationalDataTable
+          head={
+            <TableRow>
+              <StickyHeaderCell>Classification</StickyHeaderCell>
+              <StickyHeaderCell align="right">Projects</StickyHeaderCell>
+            </TableRow>
+          }
+        >
+          {report.summary.map((row) => (
+            <TableRow key={row.classification}>
+              <StickyTableCell>{row.label}</StickyTableCell>
+              <StickyTableCell align="right">{row.project_count}</StickyTableCell>
+            </TableRow>
+          ))}
+        </OperationalDataTable>
+      </ReportAnalyticsShell>
+
+      {report.small_task_breakdown.length > 0 ? (
+        <ReportAnalyticsShell
+          title="Small Task Types"
+          subtitle="Breakdown of small-task projects by configured task type"
+          canExport={canExport}
+          exportFilename="project-small-task-types"
+          exportRows={report.small_task_breakdown as unknown as Record<string, unknown>[]}
+          exportColumns={[
+            { key: 'small_task_type_name', header: 'Task Type' },
+            { key: 'project_count', header: 'Projects' },
+          ]}
+          chart={
+            <AnalyticsBarChart
+              horizontal
+              categories={report.small_task_breakdown.map((row) => row.small_task_type_name)}
+              series={[
+                {
+                  label: 'Projects',
+                  data: report.small_task_breakdown.map((row) => row.project_count),
+                },
+              ]}
+            />
+          }
+        >
+          <OperationalDataTable
+            head={
+              <TableRow>
+                <StickyHeaderCell>Task Type</StickyHeaderCell>
+                <StickyHeaderCell align="right">Projects</StickyHeaderCell>
+              </TableRow>
+            }
+          >
+            {report.small_task_breakdown.map((row) => (
+              <TableRow key={row.small_task_type_id ?? row.small_task_type_name}>
+                <StickyTableCell>{row.small_task_type_name}</StickyTableCell>
+                <StickyTableCell align="right">{row.project_count}</StickyTableCell>
+              </TableRow>
+            ))}
+          </OperationalDataTable>
+        </ReportAnalyticsShell>
+      ) : null}
+
+      {report.by_stream.length > 0 ? (
+        <ReportAnalyticsShell
+          title="Classification by Engineering Stream"
+          canExport={canExport}
+          exportFilename="project-classification-by-stream"
+          exportRows={report.by_stream as unknown as Record<string, unknown>[]}
+          exportColumns={[
+            { key: 'stream_name', header: 'Stream' },
+            { key: 'full_design_count', header: 'Full Design' },
+            { key: 'small_task_count', header: 'Small Task' },
+            { key: 'unclassified_count', header: 'Needs Classification' },
+            { key: 'total_count', header: 'Total' },
+          ]}
+          chart={
+            <AnalyticsBarChart
+              horizontal
+              categories={streamCategories}
+              series={classificationStackSeries(report.by_stream)}
+            />
+          }
+        >
+          <OperationalDataTable
+            head={
+              <TableRow>
+                <StickyHeaderCell>Stream</StickyHeaderCell>
+                <StickyHeaderCell align="right">Full Design</StickyHeaderCell>
+                <StickyHeaderCell align="right">Small Task</StickyHeaderCell>
+                <StickyHeaderCell align="right">Needs Classification</StickyHeaderCell>
+                <StickyHeaderCell align="right">Total</StickyHeaderCell>
+              </TableRow>
+            }
+          >
+            {report.by_stream.map((row) => (
+              <TableRow key={row.stream_id ?? row.stream_name}>
+                <StickyTableCell>{row.stream_name}</StickyTableCell>
+                <StickyTableCell align="right">{row.full_design_count}</StickyTableCell>
+                <StickyTableCell align="right">{row.small_task_count}</StickyTableCell>
+                <StickyTableCell align="right">{row.unclassified_count}</StickyTableCell>
+                <StickyTableCell align="right">{row.total_count}</StickyTableCell>
+              </TableRow>
+            ))}
+          </OperationalDataTable>
+        </ReportAnalyticsShell>
+      ) : null}
+
+      {report.by_team.length > 0 ? (
+        <ReportAnalyticsShell
+          title="Classification by Team"
+          canExport={canExport}
+          exportFilename="project-classification-by-team"
+          exportRows={report.by_team as unknown as Record<string, unknown>[]}
+          exportColumns={[
+            { key: 'team_name', header: 'Team' },
+            { key: 'full_design_count', header: 'Full Design' },
+            { key: 'small_task_count', header: 'Small Task' },
+            { key: 'unclassified_count', header: 'Needs Classification' },
+            { key: 'total_count', header: 'Total' },
+          ]}
+          chart={
+            <AnalyticsBarChart
+              horizontal
+              categories={teamCategories}
+              series={classificationStackSeries(report.by_team)}
+            />
+          }
+        >
+          <OperationalDataTable
+            head={
+              <TableRow>
+                <StickyHeaderCell>Team</StickyHeaderCell>
+                <StickyHeaderCell align="right">Full Design</StickyHeaderCell>
+                <StickyHeaderCell align="right">Small Task</StickyHeaderCell>
+                <StickyHeaderCell align="right">Needs Classification</StickyHeaderCell>
+                <StickyHeaderCell align="right">Total</StickyHeaderCell>
+              </TableRow>
+            }
+          >
+            {report.by_team.map((row) => (
+              <TableRow key={row.team_id ?? row.team_name}>
+                <StickyTableCell>{row.team_name}</StickyTableCell>
+                <StickyTableCell align="right">{row.full_design_count}</StickyTableCell>
+                <StickyTableCell align="right">{row.small_task_count}</StickyTableCell>
+                <StickyTableCell align="right">{row.unclassified_count}</StickyTableCell>
+                <StickyTableCell align="right">{row.total_count}</StickyTableCell>
+              </TableRow>
+            ))}
+          </OperationalDataTable>
+        </ReportAnalyticsShell>
+      ) : null}
     </>
   );
 }

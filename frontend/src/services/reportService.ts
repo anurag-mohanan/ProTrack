@@ -10,6 +10,7 @@ import type {
   ProductiveHoursReportRow,
   ProjectHoursReportRow,
   ProjectPortfolioReportRow,
+  ProjectClassificationReport,
   ProjectStageSummaryRow,
   TopNpActivityReportRow,
   ProjectsByTeamReportRow,
@@ -28,12 +29,16 @@ import { ensureArray } from '../types/pagination';
 export interface ReportOptions {
   include_archived?: boolean;
   include_deleted?: boolean;
+  team_id?: string;
+  stream_id?: string;
 }
 
 function reportQuery(options?: ReportOptions) {
   return buildQuery({
     include_archived: options?.include_archived,
     include_deleted: options?.include_deleted,
+    team_id: options?.team_id,
+    stream_id: options?.stream_id,
   });
 }
 
@@ -116,6 +121,15 @@ export async function getProjectPortfolioReport(
     `/reports/project-portfolio${reportQuery(options)}`,
   );
   return ensureArray(data);
+}
+
+export async function getProjectClassificationReport(
+  options?: ReportOptions,
+): Promise<ProjectClassificationReport> {
+  const { data } = await apiClient.get<ProjectClassificationReport>(
+    `/reports/project-classification${reportQuery(options)}`,
+  );
+  return data;
 }
 
 export async function getProjectStageSummaryReport(
@@ -237,6 +251,8 @@ export const reportQueryKeys = {
   topNpActivities: ['reports', 'top-np-activities'] as const,
   projectPortfolio: (options?: ReportOptions) =>
     ['reports', 'project-portfolio', options ?? {}] as const,
+  projectClassification: (options?: ReportOptions) =>
+    ['reports', 'project-classification', options ?? {}] as const,
   projectStageSummary: (options?: ReportOptions) =>
     ['reports', 'project-stage-summary', options ?? {}] as const,
   executionStatusSummary: (options?: ReportOptions) =>

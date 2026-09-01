@@ -15,6 +15,7 @@ from app.core.pagination import PaginatedResponse, pagination_query, PaginationP
 from app.crud.base import CRUDBase
 from app.models.enums import (
     ExecutionStatus,
+    ProjectClassification,
     ProjectHealth,
     ProjectLifecycleFilter,
     ProjectPriority,
@@ -61,6 +62,8 @@ class ProjectFilters(BaseModel):
     project_stage: ProjectStage | None = None
     health: ProjectHealth | None = None
     priority: ProjectPriority | None = None
+    project_classification: ProjectClassification | None = None
+    small_task_type_id: UUID | None = None
     q: str | None = None
     due: str | None = None  # week | overdue | 7days
     lifecycle: ProjectLifecycleFilter = ProjectLifecycleFilter.all

@@ -28,10 +28,10 @@ import type { ProjectTableRow } from '../components/projects/ProjectTable';
 import { ProjectSearchBar } from '../components/projects/command-center/ProjectSearchBar';
 import { ProjectFilterPanel } from '../components/projects/command-center/ProjectFilterPanel';
 import { ProjectKpiBar } from '../components/projects/command-center/ProjectKpiBar';
-import { ProjectListSection } from '../components/projects/command-center/ProjectListSection';
+import { ProjectTeamCommandCenter } from '../components/projects/command-center/ProjectTeamCommandCenter';
+import { groupProjectsByTeamThenStream } from '../utils/projectTeamStreamHierarchy';
 import { ProjectQuickFilterStrip } from '../components/projects/command-center/ProjectQuickFilterStrip';
 import { ProjectStreamCards } from '../components/projects/command-center/ProjectStreamCards';
-import { ProjectStreamPanel } from '../components/projects/command-center/ProjectStreamPanel';
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { FilterDrawer, FilterToolbar } from '../components/ui/design-system';
 import { QUERY_STALE_TIMES } from '../config/queryConfig';
@@ -47,12 +47,14 @@ import {
 } from '../services/projectService';
 import type { ProjectStage } from '../types';
 import { exportToCsv } from '../utils/exportData';
-import { filterProjectsForAccessibleTeams, groupProjectsByTeam, resolveEffectiveProjectTeamId } from '../utils/projectTeamGroups';
-import { getLeaderTeamScopeIds, shouldGroupProjectsByTeamForUser, shouldScopeProjectsByLeaderTeams, userHasMultipleTeams } from '../utils/projectTeamScope';
+import {
+  filterProjectsForAccessibleTeams,
+  resolveEffectiveProjectTeamId,
+} from '../utils/projectTeamGroups';
+import { getLeaderTeamScopeIds, shouldScopeProjectsByLeaderTeams } from '../utils/projectTeamScope';
 import {
   canSelectAllProjectsScope,
   filterProjectsByPortfolioScope,
-  groupProjectsByStreamThenTeam,
   shouldShowProjectStreamFilters,
   getUserRelevantStreamIds,
   type ProjectsPortfolioScope,
@@ -73,7 +75,6 @@ import {
   isArchivedProject,
   isCompletedProject,
   isLiveProject,
-  sortCompletedProjects,
   sortLiveProjects,
   type ProjectCommandCenterFilters,
   type ProjectQuickFilter,
@@ -115,8 +116,6 @@ export function ProjectsPage() {
   const canDelete = canDeleteProject(access);
   const isAdmin = isAdminRole(user?.role_name ?? '');
   const allowAllScope = canSelectAllProjectsScope(user) || isAdmin;
-  const membershipTeamIds = getLeaderTeamScopeIds(user);
-  const multiTeamUser = userHasMultipleTeams(user);
   const showStreamFilters = shouldShowProjectStreamFilters(user);
   const userStreamIds = useMemo(() => new Set(getUserRelevantStreamIds(user)), [user]);
 
@@ -424,11 +423,6 @@ export function ProjectsPage() {
     [teamFilteredProjects],
   );
 
-  const completedProjects = useMemo(
-    () => sortCompletedProjects(teamFilteredProjects.filter(isCompletedProject)),
-    [teamFilteredProjects],
-  );
-
   const archivedProjects = useMemo(
     () => teamFilteredProjects.filter(isArchivedProject),
     [teamFilteredProjects],
@@ -441,8 +435,6 @@ export function ProjectsPage() {
 
   const leaderTeamIds = getLeaderTeamScopeIds(user);
   const scopeByLeaderTeams = shouldScopeProjectsByLeaderTeams(user?.role_name ?? '', user);
-  // Always hide empty team shells — card filters + list filters make zero-count sections noise.
-  const includeEmptyLeaderTeams = false;
 
   const teamScopedLiveProjects = useMemo(
     () =>
@@ -529,61 +521,52 @@ export function ProjectsPage() {
     }
   }, [selectedTeamIds, teamFilterOptions]);
 
-  const liveStreamSections = useMemo(
+  const commandCenterProjects = useMemo(
     () =>
-      groupProjectsByStreamThenTeam(
-        teamScopedLiveProjects,
-        streamsQuery.data ?? [],
+      filterProjectsForAccessibleTeams(
+        teamFilteredProjects,
+        scopeByLeaderTeams ? leaderTeamIds : undefined,
+        isAdmin,
+        lookupUsers,
+        user?.id,
+      ),
+    [
+      teamFilteredProjects,
+      scopeByLeaderTeams,
+      leaderTeamIds,
+      isAdmin,
+      lookupUsers,
+      user?.id,
+    ],
+  );
+
+  const teamStreamSections = useMemo(
+    () =>
+      groupProjectsByTeamThenStream(
+        commandCenterProjects,
         teamsQuery.data ?? [],
+        streamsQuery.data ?? [],
         lookupUsers,
         {
           leaderTeamIds: scopeByLeaderTeams ? leaderTeamIds : undefined,
-          includeEmptyLeaderTeams,
+          includeEmptyLeaderTeams: false,
           preferredStreamOrder:
             selectedStreamIds.length > 0
               ? selectedStreamIds
               : streamFilterOptions.map((option) => option.id),
         },
-      ).filter((section) => section.projectCount > 0),
+      ),
     [
-      teamScopedLiveProjects,
-      streamsQuery.data,
+      commandCenterProjects,
       teamsQuery.data,
+      streamsQuery.data,
       lookupUsers,
       scopeByLeaderTeams,
       leaderTeamIds,
-      includeEmptyLeaderTeams,
       selectedStreamIds,
       streamFilterOptions,
     ],
   );
-
-  const visibleStreamSections = liveStreamSections;
-  const multiStreamView = showStreamFilters && streamFilterOptions.length > 1;
-  const showStreamChrome =
-    multiStreamView &&
-    (selectedStreamIds.length === 0 || selectedStreamIds.length > 1);
-  const shouldGroupByStream = multiStreamView;
-
-  const liveProjectTeamGroups = useMemo(
-    () =>
-      groupProjectsByTeam(teamScopedLiveProjects, teamsQuery.data ?? [], lookupUsers, {
-        leaderTeamIds: scopeByLeaderTeams ? leaderTeamIds : undefined,
-        includeEmptyLeaderTeams: false,
-      }).filter((group) => group.projects.length > 0),
-    [teamScopedLiveProjects, teamsQuery.data, lookupUsers, scopeByLeaderTeams, leaderTeamIds],
-  );
-
-  const distinctTeamGroupCount = useMemo(
-    () => liveProjectTeamGroups.length,
-    [liveProjectTeamGroups],
-  );
-
-  // Simplified: team sections for multi-team users; never default to workstream catalogs.
-  const shouldGroupLiveProjectsByTeam =
-    !shouldGroupByStream &&
-    (multiTeamUser ||
-      shouldGroupProjectsByTeamForUser(user?.role_name ?? '', user, distinctTeamGroupCount));
 
   const handlePortfolioScopeChange = useCallback(
     (_event: React.MouseEvent<HTMLElement>, next: ProjectsPortfolioScope | null) => {
@@ -790,7 +773,7 @@ export function ProjectsPage() {
         >
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.25 }}>
-              {shouldGroupLiveProjectsByTeam ? 'Projects' : 'My Projects'}
+              Project Command Center
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.15 }}>
               {subtitle}
@@ -911,7 +894,7 @@ export function ProjectsPage() {
         <Box sx={{ width: '100%' }}>
           {tableLoading ? (
             <TableSkeleton rows={8} columns={8} />
-          ) : !displayLiveProjects.length && !completedProjects.length ? (
+          ) : !commandCenterProjects.length ? (
             <EmptyState
               title="No projects found"
               description={
@@ -921,151 +904,21 @@ export function ProjectsPage() {
               }
             />
           ) : (
-            <>
-              {teamScopedLiveProjects.length ? (
-                shouldGroupByStream ? (
-                  visibleStreamSections.map((streamSection) => {
-                    const teamGroupsWithProjects = streamSection.teamGroups.filter(
-                      (group) => group.projects.length > 0,
-                    );
-                    const flatProjects = teamGroupsWithProjects.flatMap((group) => group.projects);
-                    const useTeamNesting =
-                      (multiTeamUser || shouldGroupLiveProjectsByTeam) &&
-                      teamGroupsWithProjects.length > 1;
-
-                    return (
-                      <ProjectStreamPanel
-                        key={streamSection.streamId ?? 'unassigned'}
-                        streamName={streamSection.streamName}
-                        projectCount={streamSection.projectCount}
-                        showChrome={showStreamChrome}
-                        defaultExpanded
-                      >
-                        {useTeamNesting ? (
-                          teamGroupsWithProjects.map((group) => (
-                            <ProjectListSection
-                              key={`${streamSection.streamId ?? 'unassigned'}-${group.teamId ?? 'unassigned'}`}
-                              title={group.teamName}
-                              count={group.projects.length}
-                              projects={group.projects}
-                              nested={showStreamChrome}
-                              primary
-                              customers={customersQuery.data ?? []}
-                              users={usersQuery.data ?? []}
-                              streams={streamsQuery.data ?? []}
-                              teams={teamsQuery.data ?? []}
-                              gridSessionKey={gridSessionKey}
-                              onRowOpen={(row) =>
-                                navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)
-                              }
-                              onEdit={handleEdit}
-                              onArchive={showArchiveActions ? setArchiveId : undefined}
-                              onDuplicate={handleDuplicate}
-                              onExport={handleExport}
-                              onDelete={canDelete ? setDeleteId : undefined}
-                              canDelete={canDelete}
-                            />
-                          ))
-                        ) : (
-                          <ProjectListSection
-                            title=""
-                            count={flatProjects.length}
-                            projects={flatProjects}
-                            nested={false}
-                            primary
-                            customers={customersQuery.data ?? []}
-                            users={usersQuery.data ?? []}
-                            streams={streamsQuery.data ?? []}
-                            teams={teamsQuery.data ?? []}
-                            gridSessionKey={gridSessionKey}
-                            onRowOpen={(row) =>
-                              navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)
-                            }
-                            onEdit={handleEdit}
-                            onArchive={showArchiveActions ? setArchiveId : undefined}
-                            onDuplicate={handleDuplicate}
-                            onExport={handleExport}
-                            onDelete={canDelete ? setDeleteId : undefined}
-                            canDelete={canDelete}
-                          />
-                        )}
-                      </ProjectStreamPanel>
-                    );
-                  })
-                ) : shouldGroupLiveProjectsByTeam ? (
-                  liveProjectTeamGroups.map((group) => (
-                    <ProjectListSection
-                      key={group.teamId ?? 'unassigned'}
-                      title={group.teamName}
-                      count={group.projects.length}
-                      projects={group.projects}
-                      primary
-                      customers={customersQuery.data ?? []}
-                      users={usersQuery.data ?? []}
-                      streams={streamsQuery.data ?? []}
-                      teams={teamsQuery.data ?? []}
-                      gridSessionKey={gridSessionKey}
-                      onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                      onEdit={handleEdit}
-                      onArchive={showArchiveActions ? setArchiveId : undefined}
-                      onDuplicate={handleDuplicate}
-                      onExport={handleExport}
-                      onDelete={canDelete ? setDeleteId : undefined}
-                      canDelete={canDelete}
-                    />
-                  ))
-                ) : (
-                  <ProjectListSection
-                    title={
-                      appliedFilters.showArchived || appliedFilters.quickFilter === 'archived'
-                        ? 'Archived Projects'
-                        : membershipTeamIds.length
-                          ? 'Team projects'
-                          : 'My work'
-                    }
-                    count={teamScopedLiveProjects.length}
-                    projects={teamScopedLiveProjects}
-                    primary
-                    customers={customersQuery.data ?? []}
-                    users={usersQuery.data ?? []}
-                    streams={streamsQuery.data ?? []}
-                    teams={teamsQuery.data ?? []}
-                    gridSessionKey={gridSessionKey}
-                    onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                    onEdit={handleEdit}
-                    onArchive={showArchiveActions ? setArchiveId : undefined}
-                    onDuplicate={handleDuplicate}
-                    onExport={handleExport}
-                    onDelete={canDelete ? setDeleteId : undefined}
-                    canDelete={canDelete}
-                  />
-                )
-              ) : null}
-
-              {completedProjects.length &&
-              !appliedFilters.showArchived &&
-              appliedFilters.quickFilter !== 'archived' ? (
-                <ProjectListSection
-                  title="Completed Projects"
-                  count={completedProjects.length}
-                  projects={completedProjects}
-                  customers={customersQuery.data ?? []}
-                  users={usersQuery.data ?? []}
-                  streams={streamsQuery.data ?? []}
-                  teams={teamsQuery.data ?? []}
-                  defaultExpanded={false}
-                  collapsible
-                  splitActiveHold={false}
-                  onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
-                  onEdit={handleEdit}
-                  onArchive={showArchiveActions ? setArchiveId : undefined}
-                  onDuplicate={handleDuplicate}
-                  onExport={handleExport}
-                  onDelete={canDelete ? setDeleteId : undefined}
-                  canDelete={canDelete}
-                />
-              ) : null}
-            </>
+            <ProjectTeamCommandCenter
+              sections={teamStreamSections}
+              customers={customersQuery.data ?? []}
+              users={usersQuery.data ?? []}
+              streams={streamsQuery.data ?? []}
+              teams={teamsQuery.data ?? []}
+              gridSessionKey={gridSessionKey}
+              onRowOpen={(row) => navigateWithBack(navigate, `/projects/${row.id}?tab=milestones`)}
+              onEdit={handleEdit}
+              onArchive={showArchiveActions ? setArchiveId : undefined}
+              onDuplicate={handleDuplicate}
+              onExport={handleExport}
+              onDelete={canDelete ? setDeleteId : undefined}
+              canDelete={canDelete}
+            />
           )}
         </Box>
       </Box>

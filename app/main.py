@@ -211,6 +211,10 @@ from app.db.phase82_it_ownership_schema_sync import (
 from app.db.phase83_it_data_import_schema_sync import (
     ensure_phase83_it_data_import_foundation,
 )
+from app.db.phase84_project_classification_schema_sync import (
+    ensure_phase84_project_classification_foundation,
+)
+from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
     ensure_design_roles,
@@ -355,6 +359,7 @@ async def lifespan(app: FastAPI):
         ("phase81_it_operations", ensure_phase81_it_operations_foundation),
         ("phase82_it_ownership", ensure_phase82_it_ownership_foundation),
         ("phase83_it_data_import", ensure_phase83_it_data_import_foundation),
+        ("phase84_project_classification", ensure_phase84_project_classification_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 
@@ -376,6 +381,7 @@ async def lifespan(app: FastAPI):
     seed_session = sessionmaker(bind=engine)()
     try:
         ensure_engineering_streams(seed_session)
+        ensure_project_small_task_types(seed_session)
         seed_session.commit()
         ensure_project_types_and_templates(seed_session)
         validate_project_template_health(seed_session)

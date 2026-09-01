@@ -18,6 +18,8 @@ export type ProjectDueFilter = 'all' | 'week' | '7days' | 'overdue';
 
 export type ProjectPriorityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low';
 
+export type ProjectClassificationFilter = 'all' | 'full_design' | 'small_task' | 'unclassified';
+
 export interface ProjectCommandCenterFilters {
   search: string;
   customerIds: string[];
@@ -25,6 +27,8 @@ export interface ProjectCommandCenterFilters {
   teamIds: string[];
   workstreamIds: string[];
   statusBucketIds: string[];
+  projectClassification: ProjectClassificationFilter;
+  smallTaskTypeId: string;
   businessUnit: string;
   projectStage: ProjectStage | 'all';
   executionStatus: ExecutionStatus | 'all';
@@ -50,6 +54,8 @@ export const defaultProjectCommandCenterFilters: ProjectCommandCenterFilters = {
   teamIds: [],
   workstreamIds: [],
   statusBucketIds: [],
+  projectClassification: 'all',
+  smallTaskTypeId: 'all',
   businessUnit: 'all',
   projectStage: 'all',
   executionStatus: 'all',
@@ -195,6 +201,8 @@ export function buildProjectSearchHaystack(
   lookup: {
     customerName?: string;
     teamName?: string;
+    streamName?: string;
+    smallTaskTypeName?: string;
     designLeaderName?: string;
     designerName?: string;
   },
@@ -213,6 +221,9 @@ export function buildProjectSearchHaystack(
     lookup.teamName,
     lookup.designLeaderName,
     lookup.designerName,
+    lookup.streamName,
+    lookup.smallTaskTypeName,
+    project.project_classification,
   ]
     .filter(Boolean)
     .join(' ')
@@ -226,6 +237,8 @@ export function filterProjectsForCommandCenter(
     customers: Customer[];
     teams: Team[];
     users: User[];
+    streams?: { id: string; name: string }[];
+    smallTaskTypes?: { id: string; name: string }[];
   },
 ): Project[] {
   const today = new Date();
@@ -234,6 +247,10 @@ export function filterProjectsForCommandCenter(
   const customerMap = new Map(lookup.customers.map((item) => [item.id, item.name]));
   const teamMap = new Map(lookup.teams.map((item) => [item.id, item.name]));
   const userMap = new Map(lookup.users.map((item) => [item.id, userDisplayName(item)]));
+  const streamMap = new Map((lookup.streams ?? []).map((item) => [item.id, item.name]));
+  const smallTaskTypeMap = new Map(
+    (lookup.smallTaskTypes ?? []).map((item) => [item.id, item.name]),
+  );
 
   const term = filters.search.trim().toLowerCase();
   const customerFilterIds = filters.customerId
@@ -270,6 +287,19 @@ export function filterProjectsForCommandCenter(
           (buckets.has('at_risk') && project.health === 'red') ||
           (buckets.has('due_week') && isDueThisWeek(project, today)));
       if (!matchesStatus) return false;
+    }
+
+    if (filters.projectTypeId !== 'all' && project.project_type_id !== filters.projectTypeId) {
+      return false;
+    }
+
+    if (filters.projectClassification !== 'all') {
+      const classification = project.project_classification ?? 'unclassified';
+      if (classification !== filters.projectClassification) return false;
+    }
+
+    if (filters.smallTaskTypeId !== 'all') {
+      if (project.small_task_type_id !== filters.smallTaskTypeId) return false;
     }
 
     if (filters.businessUnit && filters.businessUnit !== 'all') {
@@ -321,6 +351,10 @@ export function filterProjectsForCommandCenter(
       const haystack = buildProjectSearchHaystack(project, {
         customerName: formatCellValue(customerMap.get(project.customer_id)),
         teamName: project.team_id ? formatCellValue(teamMap.get(project.team_id)) : '',
+        streamName: project.stream_id ? formatCellValue(streamMap.get(project.stream_id)) : '',
+        smallTaskTypeName: project.small_task_type_id
+          ? formatCellValue(smallTaskTypeMap.get(project.small_task_type_id))
+          : project.small_task_type_name ?? '',
         designLeaderName: project.design_leader_id
           ? formatCellValue(userMap.get(project.design_leader_id))
           : '',

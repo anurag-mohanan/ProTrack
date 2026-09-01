@@ -185,6 +185,10 @@ from app.db.phase82_it_ownership_schema_sync import (
 from app.db.phase83_it_data_import_schema_sync import (
     ensure_phase83_it_data_import_foundation,
 )
+from app.db.phase84_project_classification_schema_sync import (
+    ensure_phase84_project_classification_foundation,
+)
+from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_user_auth_schema, ensure_user_access_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_timesheet_entry_leave_count, ensure_timesheet_entry_soft_delete, ensure_team_schema, ensure_user_team_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
 from app.db.project_template_seed import ensure_project_types_and_templates
@@ -438,9 +442,17 @@ def _seed_database(session) -> Milestone:
             milestone = row
     assert milestone is not None
     ensure_project_types_and_templates(session)
+    ensure_project_small_task_types(session)
     mold_type = session.scalar(select(ProjectType).where(ProjectType.name == "Mold Design"))
     if mold_type is not None:
         IDS["project_type_mold"] = mold_type.id
+    from app.models.models import ProjectSmallTaskType
+
+    blockout = session.scalar(
+        select(ProjectSmallTaskType).where(ProjectSmallTaskType.code == "blockout_only")
+    )
+    if blockout is not None:
+        IDS["small_task_type_blockout"] = blockout.id
     session.commit()
     session.refresh(milestone)
     return milestone
@@ -530,6 +542,7 @@ def test_engine():
     ensure_phase81_it_operations_foundation(engine)
     ensure_phase82_it_ownership_foundation(engine)
     ensure_phase83_it_data_import_foundation(engine)
+    ensure_phase84_project_classification_foundation(engine)
     ensure_project_complexity(engine)
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
@@ -598,6 +611,7 @@ def seeded_db(test_session_factory, test_engine):
     ensure_phase81_it_operations_foundation(test_engine)
     ensure_phase82_it_ownership_foundation(test_engine)
     ensure_phase83_it_data_import_foundation(test_engine)
+    ensure_phase84_project_classification_foundation(test_engine)
     ensure_project_complexity(test_engine)
     ensure_standard_task_types(test_engine)
     return milestone

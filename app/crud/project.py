@@ -14,10 +14,11 @@ from app.models.enums import (
     EntityType,
     ExecutionStatus,
     NotificationType,
+    ProjectClassification,
     ProjectHealth,
     ProjectLifecycleFilter,
 )
-from app.models.models import Contact, Customer, Project, Role, Stream, User
+from app.models.models import Contact, Customer, Project, ProjectSmallTaskType, Role, Stream, User
 from app.schemas.project import ArchivedProjectListItem, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.notification_service import create_notification
 from app.services.project_calculation_service import recalculate_project
@@ -158,6 +159,31 @@ def _validate_code_unique(
         )
 
 
+def _validate_project_classification_fields(
+    db: Session,
+    *,
+    classification: ProjectClassification | None,
+    small_task_type_id: UUID | None,
+    require_classification: bool = False,
+) -> None:
+    if require_classification and classification is None:
+        raise ProTrackValidationError("project_classification is required")
+    if classification == ProjectClassification.unclassified and require_classification:
+        raise ProTrackValidationError(
+            "project_classification must be Full Design or Small Task"
+        )
+    if classification == ProjectClassification.small_task and small_task_type_id is None:
+        raise ProTrackValidationError(
+            "small_task_type_id is required for Small Task projects"
+        )
+    if small_task_type_id is not None:
+        task_type = db.get(ProjectSmallTaskType, small_task_type_id)
+        if task_type is None or not task_type.is_active:
+            raise ProTrackValidationError(
+                "small_task_type_id must reference an active task type"
+            )
+
+
 def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate:
     from app.services.stream_scope_service import resolve_default_project_stream_id
 
@@ -191,6 +217,16 @@ def _prepare_project_create(db: Session, obj_in: ProjectCreate) -> ProjectCreate
         raise ProTrackValidationError(
             "stream_id is required — select a stream (e.g. Mold Design or CAD Development)"
         )
+
+    _validate_project_classification_fields(
+        db,
+        classification=data.get("project_classification"),
+        small_task_type_id=data.get("small_task_type_id"),
+        require_classification=True,
+    )
+    if data.get("project_classification") == ProjectClassification.full_design:
+        data["small_task_type_id"] = None
+
     stream = db.get(Stream, data["stream_id"])
     if stream is None or not stream.is_active:
         raise ProTrackValidationError(
@@ -464,6 +500,23 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
 
         if "code" in update_data:
             update_data["code"] = _normalize_optional_code(update_data.get("code"))
+
+        effective_classification = update_data.get(
+            "project_classification", db_obj.project_classification
+        )
+        effective_task_type = (
+            update_data["small_task_type_id"]
+            if "small_task_type_id" in update_data
+            else db_obj.small_task_type_id
+        )
+        if "project_classification" in update_data or "small_task_type_id" in update_data:
+            _validate_project_classification_fields(
+                db,
+                classification=effective_classification,
+                small_task_type_id=effective_task_type,
+            )
+            if effective_classification == ProjectClassification.full_design:
+                update_data["small_task_type_id"] = None
 
         _validate_changed_project_references(db, db_obj, update_data)
 

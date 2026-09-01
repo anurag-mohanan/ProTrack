@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.field_normalization import normalize_optional_text
 from app.crud.base import select
-from app.models.models import Customer, Project, ProjectType, Team, User, WorkingModel
+from app.models.models import Customer, Project, ProjectSmallTaskType, ProjectType, Stream, Team, User, WorkingModel
 from app.schemas.project import ProjectRead, ProjectWorkstreamSummary
 from app.services.dashboard_service import _batch_current_milestones
 from app.services.project_calculation_service import (
@@ -84,6 +84,10 @@ def _batch_display_names(
 
     customer_ids = {p.customer_id for p in projects if p.customer_id}
     type_ids = {p.project_type_id for p in projects if p.project_type_id}
+    small_task_type_ids = {
+        p.small_task_type_id for p in projects if p.small_task_type_id
+    }
+    stream_ids = {p.stream_id for p in projects if p.stream_id}
     model_ids = {p.working_model_id for p in projects if p.working_model_id}
     team_ids = {p.team_id for p in projects if p.team_id}
     user_ids = {
@@ -116,12 +120,37 @@ def _batch_display_names(
         if team_ids
         else {}
     )
+    small_task_types = (
+        {
+            t.id: t
+            for t in db.scalars(
+                select(ProjectSmallTaskType).where(
+                    ProjectSmallTaskType.id.in_(small_task_type_ids)
+                )
+            )
+        }
+        if small_task_type_ids
+        else {}
+    )
+    streams = (
+        {s.id: s for s in db.scalars(select(Stream).where(Stream.id.in_(stream_ids)))}
+        if stream_ids
+        else {}
+    )
     users = (
         {u.id: u for u in db.scalars(select(User).where(User.id.in_(user_ids)))}
         if user_ids
         else {}
     )
-    return {"customers": customers, "types": types, "working_models": working_models, "teams": teams, "users": users}
+    return {
+        "customers": customers,
+        "types": types,
+        "working_models": working_models,
+        "teams": teams,
+        "small_task_types": small_task_types,
+        "streams": streams,
+        "users": users,
+    }
 
 
 def _name_updates(project: Project, names: dict[str, dict[UUID, object]]) -> dict:
@@ -129,12 +158,16 @@ def _name_updates(project: Project, names: dict[str, dict[UUID, object]]) -> dic
     project_type = names["types"].get(project.project_type_id)
     working_model = names["working_models"].get(project.working_model_id)
     team = names["teams"].get(project.team_id)
+    small_task_type = names["small_task_types"].get(project.small_task_type_id)
+    stream = names["streams"].get(project.stream_id)
     return {
         "customer_name": getattr(customer, "name", None),
         "project_type_name": getattr(project_type, "name", None),
         "working_model_name": getattr(working_model, "name", None),
         "working_model_code": getattr(working_model, "code", None),
         "team_name": getattr(team, "name", None),
+        "small_task_type_name": getattr(small_task_type, "name", None),
+        "stream_name": getattr(stream, "name", None),
         "design_leader_name": _full_name(names["users"].get(project.design_leader_id)),
         "designer_name": _full_name(names["users"].get(project.designer_id)),
         "surfacer_name": _full_name(names["users"].get(project.surfacer_id)),

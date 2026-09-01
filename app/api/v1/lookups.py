@@ -8,10 +8,11 @@ from app.api.deps import get_db
 from app.core.permissions import can_write_timesheet_entry
 from app.crud.timesheet_projects import get_timesheet_project_context, list_timesheet_projects
 from app.crud.base import select
-from app.models.models import Contact, Customer, NonProductiveCode, OperationalRoleType, OrgDepartment, ProjectType, Role, Stream, TaskType, Team, User, WorkingModel
+from app.models.models import Contact, Customer, NonProductiveCode, OperationalRoleType, OrgDepartment, ProjectSmallTaskType, ProjectType, Role, Stream, TaskType, Team, User, WorkingModel
 from app.schemas.identity import OperationalRoleTypeRead, OrgDepartmentRead, RoleRead
 from app.schemas.organization import ContactRead, CustomerRead, NonProductiveCodeRead, StreamRead, TaskTypeRead, WorkingModelRead
 from app.schemas.team import TeamRead
+from app.schemas.project import ProjectSmallTaskTypeRead
 from app.schemas.templates import ProjectTypeRead
 from app.schemas.timesheet import TimesheetProjectContext, TimesheetProjectLookup
 
@@ -184,6 +185,18 @@ def list_lookup_project_types(
         select(ProjectType)
         .where(ProjectType.is_active.is_(True))
         .order_by(ProjectType.name)
+    ).all()
+
+
+@router.get("/project-small-task-types", response_model=list[ProjectSmallTaskTypeRead])
+def list_lookup_project_small_task_types(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    return db.scalars(
+        select(ProjectSmallTaskType)
+        .where(ProjectSmallTaskType.is_active.is_(True))
+        .order_by(ProjectSmallTaskType.sort_order, ProjectSmallTaskType.name)
     ).all()
 
 

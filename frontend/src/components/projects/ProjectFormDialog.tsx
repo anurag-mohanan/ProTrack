@@ -11,9 +11,9 @@ import PrecisionManufacturingOutlinedIcon from '@mui/icons-material/PrecisionMan
 import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchContacts, fetchCustomers, fetchStreams, fetchTeams, fetchUsers, fetchWorkingModels } from '../../api/lookups';
+import { fetchContacts, fetchCustomers, fetchProjectSmallTaskTypes, fetchStreams, fetchTeams, fetchUsers, fetchWorkingModels } from '../../api/lookups';
 import { fetchMatchingProjectTemplates, fetchProjectTemplate, fetchProjectTypes } from '../../api/projectTemplates';
-import type { ExecutionStatus, Project, ProjectCreate, ProjectHealth, ProjectStage, ProjectUpdate, Workstream } from '../../types';
+import type { ExecutionStatus, Project, ProjectClassification, ProjectCreate, ProjectHealth, ProjectStage, ProjectUpdate, Workstream } from '../../types';
 import { workstreamsApi } from '../../api/resources';
 import {
   createProject,
@@ -58,6 +58,8 @@ interface ProjectFormValues {
   designer_id: string;
   surfacer_id: string;
   stream_id: string;
+  project_classification: ProjectClassification | '';
+  small_task_type_id: string;
   project_type_id: string;
   project_template_id: string;
   working_model_id: string;
@@ -92,6 +94,8 @@ const emptyForm: ProjectFormValues = {
   designer_id: '',
   surfacer_id: '',
   stream_id: '',
+  project_classification: '',
+  small_task_type_id: '',
   project_type_id: '',
   project_template_id: '',
   working_model_id: '',
@@ -126,6 +130,8 @@ function projectToForm(project: Project): ProjectFormValues {
     designer_id: id(project.designer_id),
     surfacer_id: id(project.surfacer_id),
     stream_id: id(project.stream_id),
+    project_classification: project.project_classification ?? '',
+    small_task_type_id: id(project.small_task_type_id),
     project_type_id: id(project.project_type_id),
     project_template_id: id(project.project_template_id),
     working_model_id: id(project.working_model_id),
@@ -215,6 +221,12 @@ export function ProjectFormDialog({
   const streamsQuery = useQuery({
     queryKey: ['streams'],
     queryFn: fetchStreams,
+    enabled: open,
+  });
+
+  const smallTaskTypesQuery = useQuery({
+    queryKey: ['lookups', 'project-small-task-types'],
+    queryFn: fetchProjectSmallTaskTypes,
     enabled: open,
   });
 
@@ -386,6 +398,12 @@ export function ProjectFormDialog({
           health: form.health,
           working_model_id: optionalUuid(form.working_model_id),
           qa_gate_enabled: form.qa_gate_enabled,
+          project_classification:
+            form.project_classification === '' ? undefined : form.project_classification,
+          small_task_type_id:
+            form.project_classification === 'small_task'
+              ? optionalUuid(form.small_task_type_id)
+              : null,
         };
         saved = await updateProject(project.id, updatePayload);
       } else {
@@ -407,6 +425,11 @@ export function ProjectFormDialog({
           due_date: optionalString(form.due_date),
           priority: form.priority,
           complexity: form.complexity,
+          project_classification: form.project_classification as ProjectClassification,
+          small_task_type_id:
+            form.project_classification === 'small_task'
+              ? optionalUuid(form.small_task_type_id)
+              : null,
           notes: optionalString(form.notes),
           work_order_number: optionalString(form.work_order_number),
           press_tonnage: optionalString(form.press_tonnage),
@@ -527,8 +550,20 @@ export function ProjectFormDialog({
       !isBlankDisplayValue(form.tool_number) &&
       !isBlankDisplayValue(form.part_description) &&
       !isBlankDisplayValue(form.customer_id) &&
-      (isEdit || !isBlankDisplayValue(form.stream_id)),
-    [form.tool_number, form.part_description, form.customer_id, form.stream_id, isEdit],
+      (isEdit || !isBlankDisplayValue(form.stream_id)) &&
+      (isEdit || !isBlankDisplayValue(form.project_classification)) &&
+      (isEdit ||
+        form.project_classification !== 'small_task' ||
+        !isBlankDisplayValue(form.small_task_type_id)),
+    [
+      form.tool_number,
+      form.part_description,
+      form.customer_id,
+      form.stream_id,
+      form.project_classification,
+      form.small_task_type_id,
+      isEdit,
+    ],
   );
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -549,13 +584,32 @@ export function ProjectFormDialog({
           ? []
           : [
               { key: 'team_id', label: 'Team' },
-              { key: 'stream_id', label: 'Stream' },
+              { key: 'stream_id', label: 'Engineering stream' },
+              { key: 'project_classification', label: 'Project classification' },
             ]),
       ],
     );
 
     if (validationError) {
       showError(validationError);
+      return;
+    }
+
+    if (
+      !isEdit &&
+      form.project_classification === 'small_task' &&
+      isBlankDisplayValue(form.small_task_type_id)
+    ) {
+      showError('Task type is required for Small Task projects.');
+      return;
+    }
+
+    if (
+      isEdit &&
+      form.project_classification === 'small_task' &&
+      isBlankDisplayValue(form.small_task_type_id)
+    ) {
+      showError('Task type is required for Small Task projects.');
       return;
     }
 
@@ -788,6 +842,77 @@ export function ProjectFormDialog({
               }
             />
           </Grid>
+        </CollapsibleFormSection>
+
+        <CollapsibleFormSection
+          sectionId="classification"
+          storageKey={PROJECT_SECTION_STORAGE_KEY}
+          title="Project classification"
+          subtitle="Engineering stream, full design vs small task"
+          icon={PrecisionManufacturingOutlinedIcon}
+          defaultExpanded
+        >
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormSelect
+              label="Engineering stream"
+              required={!isEdit}
+              value={form.stream_id}
+              options={[
+                ...(isEdit
+                  ? [{ value: '', label: 'None' }]
+                  : [{ value: '', label: 'Select stream' }]),
+                ...activeStreams.map((stream) => ({
+                  value: stream.id,
+                  label: stream.name,
+                })),
+              ]}
+              onChange={(event) =>
+                setForm({ ...form, stream_id: String(event.target.value) })
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormSelect
+              label="Project classification"
+              required={!isEdit}
+              value={form.project_classification}
+              options={[
+                ...(isEdit
+                  ? [{ value: '', label: 'Unclassified' }]
+                  : [{ value: '', label: 'Select classification' }]),
+                { value: 'full_design', label: 'Full Design' },
+                { value: 'small_task', label: 'Small Task' },
+              ]}
+              onChange={(event) => {
+                const next = String(event.target.value) as ProjectClassification | '';
+                setForm({
+                  ...form,
+                  project_classification: next,
+                  small_task_type_id: next === 'small_task' ? form.small_task_type_id : '',
+                });
+              }}
+            />
+          </Grid>
+          {form.project_classification === 'small_task' ? (
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Task type"
+                required
+                value={form.small_task_type_id}
+                selectedLabel={project?.small_task_type_name}
+                options={[
+                  { value: '', label: 'Select task type' },
+                  ...(smallTaskTypesQuery.data ?? []).map((taskType) => ({
+                    value: taskType.id,
+                    label: taskType.name,
+                  })),
+                ]}
+                onChange={(event) =>
+                  setForm({ ...form, small_task_type_id: String(event.target.value) })
+                }
+              />
+            </Grid>
+          ) : null}
         </CollapsibleFormSection>
 
         {!isEdit ? (

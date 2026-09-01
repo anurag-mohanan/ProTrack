@@ -44,6 +44,13 @@ export async function fetchUsers(arg?: unknown): Promise<User[]> {
   return ensureArray<User>(data);
 }
 
+export async function fetchProjectSmallTaskTypes(): Promise<
+  import('../types/Project').ProjectSmallTaskType[]
+> {
+  const { data } = await apiClient.get<unknown>('/lookups/project-small-task-types');
+  return ensureArray<import('../types/Project').ProjectSmallTaskType>(data);
+}
+
 export async function fetchTaskTypes(streamId?: string): Promise<TaskType[]> {
   const { data } = await apiClient.get<unknown>(
     `/lookups/task-types${buildQuery(streamId ? { stream_id: streamId } : undefined)}`,

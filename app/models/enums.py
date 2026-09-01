@@ -95,6 +95,14 @@ class ProjectComplexity(enum.Enum):
     expert = "expert"
 
 
+class ProjectClassification(enum.Enum):
+    """Full design assignment vs limited small-task engineering work."""
+
+    full_design = "full_design"
+    small_task = "small_task"
+    unclassified = "unclassified"
+
+
 class SkillProficiency(enum.Enum):
     """Industry-style skill matrix levels (learning → expert)."""
 

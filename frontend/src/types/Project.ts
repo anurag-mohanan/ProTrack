@@ -13,6 +13,17 @@ export type ProjectLifecycleFilter =
   | 'archived'
   | 'deleted';
 
+export type ProjectClassification = 'full_design' | 'small_task' | 'unclassified';
+
+export interface ProjectSmallTaskType {
+  id: string;
+  name: string;
+  code: string;
+  description?: string | null;
+  sort_order?: number;
+  is_active?: boolean;
+}
+
 export interface ProjectWorkstreamSummary {
   workstream_id: string;
   workstream_name?: string | null;
@@ -78,6 +89,10 @@ export interface Project extends Timestamped {
   surfacer_name?: string | null;
   team_name?: string | null;
   project_type_name?: string | null;
+  project_classification?: ProjectClassification;
+  small_task_type_id?: string | null;
+  small_task_type_name?: string | null;
+  stream_name?: string | null;
   can_change_template?: boolean;
   template_change_blocked_reason?: string | null;
   needs_setup?: boolean;
@@ -115,6 +130,8 @@ export interface ProjectCreate {
   due_date?: string | null;
   priority?: 'critical' | 'high' | 'medium' | 'low';
   complexity?: 'low' | 'medium' | 'high' | 'expert';
+  project_classification: ProjectClassification;
+  small_task_type_id?: string | null;
   project_stage?: ProjectStage;
   execution_status?: ExecutionStatus;
   notes?: string | null;
@@ -143,6 +160,8 @@ export interface ProjectUpdate {
   due_date?: string | null;
   priority?: 'critical' | 'high' | 'medium' | 'low';
   complexity?: 'low' | 'medium' | 'high' | 'expert';
+  project_classification?: ProjectClassification;
+  small_task_type_id?: string | null;
   project_stage?: ProjectStage;
   execution_status?: ExecutionStatus;
   health?: ProjectHealth;

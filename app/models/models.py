@@ -35,6 +35,7 @@ from app.models.enums import (
     NotificationType,
     ProjectHealth,
     ProjectComplexity,
+    ProjectClassification,
     ProjectPriority,
     ProjectStage,
     SkillLevel,
@@ -878,6 +879,26 @@ class ProjectType(Base, TimestampMixin, TenantMixin):
     projects: Mapped[list[Project]] = relationship(back_populates="project_type")
 
 
+class ProjectSmallTaskType(Base, TimestampMixin, TenantMixin):
+    """Configurable small-task types for project classification (Blockout, Feasibility, …)."""
+
+    __tablename__ = "project_small_task_types"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_project_small_task_types_tenant_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    projects: Mapped[list["Project"]] = relationship(back_populates="small_task_type")
+
+
 class ProjectTemplate(Base, TimestampMixin, TenantMixin):
     __tablename__ = "project_templates"
 
@@ -1052,6 +1073,14 @@ class Project(Base, TimestampMixin, TenantMixin):
         nullable=False,
         default=ProjectComplexity.medium,
     )
+    project_classification: Mapped[ProjectClassification] = mapped_column(
+        Enum(ProjectClassification, name="project_classification", native_enum=False),
+        nullable=False,
+        default=ProjectClassification.unclassified,
+    )
+    small_task_type_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("project_small_task_types.id"), nullable=True
+    )
     notes: Mapped[Optional[str]] = mapped_column(Text)
     work_order_number: Mapped[Optional[str]] = mapped_column(String(100))
     press_tonnage: Mapped[Optional[str]] = mapped_column(String(50))
@@ -1092,6 +1121,9 @@ class Project(Base, TimestampMixin, TenantMixin):
     stream: Mapped[Stream] = relationship(back_populates="projects")
     team: Mapped[Optional[Team]] = relationship(back_populates="projects")
     project_type: Mapped[Optional[ProjectType]] = relationship(
+        back_populates="projects"
+    )
+    small_task_type: Mapped[Optional[ProjectSmallTaskType]] = relationship(
         back_populates="projects"
     )
     project_template: Mapped[Optional[ProjectTemplate]] = relationship(

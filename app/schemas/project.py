@@ -4,10 +4,29 @@ from decimal import Decimal
 
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectComplexity, ProjectHealth, ProjectPriority, ProjectStage
+from app.models.enums import (
+    ExecutionStatus,
+    MilestoneStatus,
+    ProjectClassification,
+    ProjectComplexity,
+    ProjectHealth,
+    ProjectPriority,
+    ProjectStage,
+)
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
+
+
+class ProjectSmallTaskTypeRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    code: str
+    description: str | None = None
+    sort_order: int = 100
+    is_active: bool = True
 
 
 class ProjectWorkstreamSummary(BaseModel):
@@ -39,6 +58,8 @@ class ProjectBase(BaseModel):
     execution_status: ExecutionStatus = ExecutionStatus.planning
     priority: ProjectPriority = ProjectPriority.medium
     complexity: ProjectComplexity = ProjectComplexity.medium
+    project_classification: ProjectClassification = ProjectClassification.unclassified
+    small_task_type_id: UUID | None = None
     notes: str | None = None
     work_order_number: str | None = Field(default=None, max_length=100)
     press_tonnage: str | None = Field(default=None, max_length=50)
@@ -68,6 +89,8 @@ class ProjectCreate(BlankOptionalFieldsMixin, BaseModel):
     execution_status: ExecutionStatus = ExecutionStatus.planning
     priority: ProjectPriority = ProjectPriority.medium
     complexity: ProjectComplexity = ProjectComplexity.medium
+    project_classification: ProjectClassification
+    small_task_type_id: UUID | None = None
     notes: str | None = None
     work_order_number: str | None = Field(default=None, max_length=100)
     press_tonnage: str | None = Field(default=None, max_length=50)
@@ -75,6 +98,21 @@ class ProjectCreate(BlankOptionalFieldsMixin, BaseModel):
     cavity_count: int | None = Field(default=None, ge=0)
     tool_type: str | None = Field(default=None, max_length=100)
     customer_specs: str | None = None
+
+    @model_validator(mode="after")
+    def validate_classification(self) -> "ProjectCreate":
+        if self.project_classification == ProjectClassification.unclassified:
+            raise ValueError(
+                "Project classification must be Full Design or Small Task"
+            )
+        if (
+            self.project_classification == ProjectClassification.small_task
+            and self.small_task_type_id is None
+        ):
+            raise ValueError("Task type is required for Small Task projects")
+        if self.project_classification == ProjectClassification.full_design:
+            object.__setattr__(self, "small_task_type_id", None)
+        return self
 
 
 class ProjectUpdate(BlankOptionalFieldsMixin, BaseModel):
@@ -98,6 +136,8 @@ class ProjectUpdate(BlankOptionalFieldsMixin, BaseModel):
     priority: ProjectPriority | None = None
     complexity: ProjectComplexity | None = None
     health: ProjectHealth | None = None
+    project_classification: ProjectClassification | None = None
+    small_task_type_id: UUID | None = None
     notes: str | None = None
     work_order_number: str | None = Field(default=None, max_length=100)
     press_tonnage: str | None = Field(default=None, max_length=50)
@@ -109,6 +149,17 @@ class ProjectUpdate(BlankOptionalFieldsMixin, BaseModel):
     cad_folder_path: str | None = Field(default=None, max_length=500)
     released_folder_path: str | None = Field(default=None, max_length=500)
     qa_gate_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_classification(self) -> "ProjectUpdate":
+        if self.project_classification == ProjectClassification.full_design:
+            object.__setattr__(self, "small_task_type_id", None)
+        if (
+            self.project_classification == ProjectClassification.small_task
+            and self.small_task_type_id is None
+        ):
+            raise ValueError("Task type is required for Small Task projects")
+        return self
 
 
 class ProjectRead(ProjectBase, TimestampSchema):
@@ -144,6 +195,8 @@ class ProjectRead(ProjectBase, TimestampSchema):
     surfacer_name: str | None = None
     team_name: str | None = None
     project_type_name: str | None = None
+    small_task_type_name: str | None = None
+    stream_name: str | None = None
     working_model_name: str | None = None
     working_model_code: str | None = None
     can_change_template: bool = True

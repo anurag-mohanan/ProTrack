@@ -199,6 +199,22 @@ function ProjectBoardRow({
       </Typography>
 
       <Box sx={{ minWidth: 0, pr: 0.5 }}>
+        <Stack direction="row" spacing={0.5} sx={{ mb: 0.35, flexWrap: 'wrap' }}>
+          {row.project_classification === 'full_design' ? (
+            <Chip
+              size="small"
+              label="Full Design"
+              sx={{ height: 18, fontSize: '0.58rem', fontWeight: 800 }}
+            />
+          ) : null}
+          {row.project_classification === 'small_task' ? (
+            <Chip
+              size="small"
+              label={row.small_task_type_name ? `Small Task · ${row.small_task_type_name}` : 'Small Task'}
+              sx={{ height: 18, fontSize: '0.58rem', fontWeight: 800 }}
+            />
+          ) : null}
+        </Stack>
         <Typography sx={{ fontWeight: 700, fontSize: '0.8rem', lineHeight: 1.35 }} noWrap>
           {formatDisplayValue(stage)}
           {row.customerName ? (

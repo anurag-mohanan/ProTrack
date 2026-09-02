@@ -79,6 +79,7 @@ def _create_payload(tool: str, team_id: str | None) -> dict:
         "tool_number": tool,
         "part_description": "Permission create",
         "customer_id": str(IDS["customer"]),
+        "project_classification": "full_design",
     }
     if team_id is not None:
         body["team_id"] = team_id
@@ -345,3 +346,66 @@ def test_em_user_save_allows_delete_with_approve_projects(client, session):
     specials = body.get("resolved_special_permissions") or body.get("special_permissions") or []
     assert SPECIAL_DELETE_PROJECTS in specials
     assert SPECIAL_APPROVE_PROJECTS in specials
+
+
+def test_edit_assigned_cross_team_project_with_unchanged_team_id(client, session):
+    """Regression: PATCH must not re-authorize unchanged team_id on readable cross-team work."""
+    _team_a, team_b, _own, other = _seed_two_teams(session)
+    designer = session.get(User, IDS["user_binil"])
+    _set_specials(session, designer, [SPECIAL_EDIT_PROJECTS])
+    other.designer_id = designer.id
+    session.add(other)
+    session.commit()
+    headers = login(client, "binil@prosohm.com")
+    edited = client.patch(
+        f"/api/v1/projects/{other.id}",
+        json={
+            "notes": "Cross-team assignment edit",
+            "team_id": str(team_b.id),
+        },
+        headers=headers,
+    )
+    assert edited.status_code == 200, edited.text
+    body = edited.json()
+    assert body["notes"] == "Cross-team assignment edit"
+    assert body["team_id"] == str(team_b.id)
+
+
+def test_team_change_persists_for_authorized_editor(client, session):
+    team_a, team_b, own, _other = _seed_two_teams(session)
+    designer = session.get(User, IDS["user_binil"])
+    designer.team_id = team_a.id
+    session.add(designer)
+    session.add(
+        TeamMember(
+            team_id=team_b.id,
+            user_id=designer.id,
+            relationship_type=TeamRelationshipType.member,
+            is_primary=False,
+        )
+    )
+    session.commit()
+    _set_specials(session, designer, [SPECIAL_EDIT_PROJECTS])
+    headers = login(client, "binil@prosohm.com")
+    moved = client.patch(
+        f"/api/v1/projects/{own.id}",
+        json={"team_id": str(team_b.id)},
+        headers=headers,
+    )
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["team_id"] == str(team_b.id)
+    reloaded = client.get(f"/api/v1/projects/{own.id}", headers=headers)
+    assert reloaded.json()["team_id"] == str(team_b.id)
+
+
+def test_cannot_move_project_to_unauthorized_team(client, session):
+    team_a, team_b, own, _other = _seed_two_teams(session)
+    designer = session.get(User, IDS["user_binil"])
+    _set_specials(session, designer, [SPECIAL_EDIT_PROJECTS])
+    headers = login(client, "binil@prosohm.com")
+    denied = client.patch(
+        f"/api/v1/projects/{own.id}",
+        json={"team_id": str(team_b.id)},
+        headers=headers,
+    )
+    assert denied.status_code == 403

@@ -18,7 +18,7 @@ from app.models.enums import (
     ProjectHealth,
     ProjectLifecycleFilter,
 )
-from app.models.models import Contact, Customer, Project, ProjectSmallTaskType, Role, Stream, User
+from app.models.models import Contact, Customer, Project, ProjectSmallTaskType, Role, Stream, Team, User
 from app.schemas.project import ArchivedProjectListItem, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.notification_service import create_notification
 from app.services.project_calculation_service import recalculate_project
@@ -423,6 +423,13 @@ def _validate_changed_project_references(
             surfacer_id,
             field_name="surfacer_id",
         )
+
+    if "team_id" in update_data:
+        new_team_id = update_data.get("team_id")
+        if new_team_id != db_obj.team_id and new_team_id is not None:
+            team = db.get(Team, new_team_id)
+            if team is None or not team.is_active:
+                raise ProTrackValidationError("team_id must reference an active team")
 
 
 class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):

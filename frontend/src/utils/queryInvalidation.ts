@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
+import { commandCenterQueryKeys } from '../api/commandCenter';
 import { reportQueryKeys } from '../services/reportService';
 import { projectQueryKeys } from '../services/projectService';
 import { timesheetQueryKeys } from '../services/timesheetService';
@@ -15,6 +16,9 @@ export function invalidateProjectCalculationQueries(
   if (projectId) {
     void queryClient.invalidateQueries({
       queryKey: projectQueryKeys.detail(projectId),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: commandCenterQueryKeys.detail(projectId),
     });
     void queryClient.invalidateQueries({
       queryKey: milestoneQueryKeys.byProject(projectId),

@@ -457,6 +457,7 @@ def _seed_sections(sheet: PerformanceReviewSheet, structure: list | None = None)
 
 
 def _apply_manager_sections(sheet: PerformanceReviewSheet, sections: list) -> None:
+    """Replace sections wholesale (create / template rebuild paths)."""
     sheet.sections.clear()
     for section_row in sections:
         section = PerformanceReviewSection(
@@ -478,6 +479,36 @@ def _apply_manager_sections(sheet: PerformanceReviewSheet, sections: list) -> No
                 )
             )
         sheet.sections.append(section)
+    sheet.overall_score = sheet_overall_score(sheet)
+
+
+def _apply_manager_section_updates(sheet: PerformanceReviewSheet, sections: list) -> None:
+    """Persist manager edits on an existing review without replacing section rows."""
+    section_by_id = {section.id: section for section in sheet.sections}
+    for section_row in sections:
+        section = section_by_id.get(section_row.id) if section_row.id is not None else None
+        if section is None:
+            continue
+        if section_row.employee_notes is not None:
+            section.employee_notes = section_row.employee_notes
+        if section_row.reviewer_notes is not None:
+            section.reviewer_notes = section_row.reviewer_notes
+        if section_row.title:
+            section.title = section_row.title
+        if section_row.description is not None:
+            section.description = section_row.description
+        section.sort_order = section_row.sort_order
+        item_by_id = {item.id: item for item in section.items}
+        for item_row in section_row.items:
+            item = item_by_id.get(item_row.id) if item_row.id is not None else None
+            if item is None:
+                continue
+            if item_row.employee_comment is not None:
+                item.employee_comment = item_row.employee_comment
+            if item_row.manager_comment is not None:
+                item.manager_comment = item_row.manager_comment
+            if item_row.rating is not None:
+                item.rating = item_row.rating
     sheet.overall_score = sheet_overall_score(sheet)
 
 
@@ -1754,7 +1785,7 @@ def update_performance_review(
                 raise HTTPException(status_code=403, detail="Target team review access denied")
             sheet.team_id = payload.team_id
         if payload.sections is not None:
-            _apply_manager_sections(sheet, payload.sections)
+            _apply_manager_section_updates(sheet, payload.sections)
         if payload.projects is not None:
             _apply_projects(sheet, payload.projects, db)
         elif payload.import_suggested_projects:

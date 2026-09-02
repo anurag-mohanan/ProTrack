@@ -26,7 +26,7 @@ from app.core.exceptions import ProTrackValidationError
 from app.core.uploads import enforce_upload_size
 from app.core.permissions import (
     can_archive_project,
-    can_assign_project_team,
+    can_change_project_team,
     can_create_project_for_team,
     can_read_project,
     can_soft_delete_project,
@@ -822,8 +822,8 @@ def update_project(
     if not can_update_project(db, current_user, db_project):
         raise _forbid()
     payload = obj_in.model_dump(exclude_unset=True)
-    if "team_id" in payload and not can_assign_project_team(
-        db, current_user, payload.get("team_id")
+    if "team_id" in payload and not can_change_project_team(
+        db, current_user, db_project, payload.get("team_id")
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

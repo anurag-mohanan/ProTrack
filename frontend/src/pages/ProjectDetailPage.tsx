@@ -32,6 +32,7 @@ import {
   updateProjectDecision,
   updateProjectFolders,
 } from '../api/commandCenter';
+import { getErrorMessage } from '../api/client';
 import { DecisionLogPanel } from '../components/command-center/DecisionLogPanel';
 import { KpiPanel } from '../components/command-center/KpiPanel';
 import { WorkflowTimeline } from '../components/command-center/WorkflowTimeline';
@@ -639,10 +640,12 @@ export function ProjectDetailPage() {
               loading={decisionMutation.isPending}
               onCreate={(payload) => decisionMutation.mutate(payload)}
               onUpdate={(decisionId, payload) =>
-                void updateProjectDecision(id, decisionId, payload).then(() => {
-                  showSuccess('Decision updated');
-                  invalidate();
-                })
+                void updateProjectDecision(id, decisionId, payload)
+                  .then(() => {
+                    showSuccess('Decision updated');
+                    invalidate();
+                  })
+                  .catch((error: unknown) => showError(getErrorMessage(error)))
               }
               onDelete={(decisionId) => setDeleteDecisionTarget(decisionId)}
               readOnly={!canEdit}
@@ -751,11 +754,13 @@ export function ProjectDetailPage() {
         onClose={() => setDeleteDecisionTarget(null)}
         onConfirm={() => {
           if (!deleteDecisionTarget) return;
-          void deleteProjectDecision(id, deleteDecisionTarget).then(() => {
-            showSuccess('Decision deleted');
-            setDeleteDecisionTarget(null);
-            invalidate();
-          });
+          void deleteProjectDecision(id, deleteDecisionTarget)
+            .then(() => {
+              showSuccess('Decision deleted');
+              setDeleteDecisionTarget(null);
+              invalidate();
+            })
+            .catch((error: unknown) => showError(getErrorMessage(error)));
         }}
       />
 

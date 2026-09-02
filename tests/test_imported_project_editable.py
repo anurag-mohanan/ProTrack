@@ -125,13 +125,22 @@ def test_imported_project_full_edit_workflow(client, session, imported_project):
     )
     assert timesheet.status_code == 201
 
+    project_stream = client.get(f"/api/v1/projects/{project_id}", headers=headers).json()
+    stream_id = project_stream.get("stream_id")
+    task_types = client.get("/api/v1/lookups/task-types", headers=headers).json()
+    design_task = next(
+        row
+        for row in task_types
+        if row["name"] == "Design" and row["stream_id"] == stream_id
+    )
+
     entry = client.post(
         "/api/v1/timesheet-entries",
         json={
             "timesheet_id": timesheet.json()["id"],
             "work_category": "productive",
             "project_id": project_id,
-            "task_type_id": str(client.task_type_id),
+            "task_type_id": design_task["id"],
             "entry_date": "2026-06-17",
             "hours": 5,
             "description": "Post-import design work",

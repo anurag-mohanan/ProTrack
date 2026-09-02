@@ -159,6 +159,56 @@ function projectToForm(project: Project): ProjectFormValues {
   };
 }
 
+function formValuesToProjectUpdate(form: ProjectFormValues): ProjectUpdate {
+  return {
+    tool_number: form.tool_number.trim(),
+    part_description: form.part_description.trim(),
+    code: optionalString(form.code),
+    customer_id: form.customer_id,
+    customer_contact_id: optionalUuid(form.customer_contact_id),
+    design_leader_id: optionalUuid(form.design_leader_id),
+    designer_id: optionalUuid(form.designer_id),
+    surfacer_id: optionalUuid(form.surfacer_id),
+    stream_id: optionalUuid(form.stream_id),
+    team_id: optionalUuid(form.team_id),
+    project_type_id: optionalUuid(form.project_type_id),
+    quoted_hours: form.quoted_hours === '' ? null : Number(form.quoted_hours),
+    due_date: optionalString(form.due_date),
+    notes: optionalString(form.notes),
+    work_order_number: optionalString(form.work_order_number),
+    press_tonnage: optionalString(form.press_tonnage),
+    plastic_material: optionalString(form.plastic_material),
+    cavity_count: optionalNumber(form.cavity_count),
+    tool_type: optionalString(form.tool_type),
+    customer_specs: optionalString(form.customer_specs),
+    project_stage: form.project_stage,
+    execution_status: form.execution_status,
+    priority: form.priority,
+    complexity: form.complexity,
+    health: form.health,
+    working_model_id: optionalUuid(form.working_model_id),
+    qa_gate_enabled: form.qa_gate_enabled,
+    project_classification:
+      form.project_classification === '' ? undefined : form.project_classification,
+    small_task_type_id:
+      form.project_classification === 'small_task'
+        ? optionalUuid(form.small_task_type_id)
+        : null,
+  };
+}
+
+function buildChangedProjectUpdate(form: ProjectFormValues, project: Project): ProjectUpdate {
+  const candidate = formValuesToProjectUpdate(form) as Record<string, unknown>;
+  const baseline = formValuesToProjectUpdate(projectToForm(project)) as Record<string, unknown>;
+  const update: ProjectUpdate = {};
+  for (const key of Object.keys(candidate)) {
+    if (candidate[key] !== baseline[key]) {
+      (update as Record<string, unknown>)[key] = candidate[key];
+    }
+  }
+  return update;
+}
+
 /** Ensure the currently saved ID stays in the select even if lookups omit it. */
 function withCurrentOption(
   options: { value: string; label: string }[],
@@ -370,42 +420,11 @@ export function ProjectFormDialog({
     mutationFn: async () => {
       let saved: Project;
       if (isEdit && project) {
-        const updatePayload: ProjectUpdate = {
-          tool_number: form.tool_number.trim(),
-          part_description: form.part_description.trim(),
-          code: optionalString(form.code),
-          customer_id: form.customer_id,
-          customer_contact_id: optionalUuid(form.customer_contact_id),
-          design_leader_id: optionalUuid(form.design_leader_id),
-          designer_id: optionalUuid(form.designer_id),
-          surfacer_id: optionalUuid(form.surfacer_id),
-          stream_id: optionalUuid(form.stream_id),
-          team_id: optionalUuid(form.team_id),
-          project_type_id: optionalUuid(form.project_type_id),
-          quoted_hours: form.quoted_hours === '' ? null : Number(form.quoted_hours),
-          due_date: optionalString(form.due_date),
-          notes: optionalString(form.notes),
-          work_order_number: optionalString(form.work_order_number),
-          press_tonnage: optionalString(form.press_tonnage),
-          plastic_material: optionalString(form.plastic_material),
-          cavity_count: optionalNumber(form.cavity_count),
-          tool_type: optionalString(form.tool_type),
-          customer_specs: optionalString(form.customer_specs),
-          project_stage: form.project_stage,
-          execution_status: form.execution_status,
-          priority: form.priority,
-          complexity: form.complexity,
-          health: form.health,
-          working_model_id: optionalUuid(form.working_model_id),
-          qa_gate_enabled: form.qa_gate_enabled,
-          project_classification:
-            form.project_classification === '' ? undefined : form.project_classification,
-          small_task_type_id:
-            form.project_classification === 'small_task'
-              ? optionalUuid(form.small_task_type_id)
-              : null,
-        };
-        saved = await updateProject(project.id, updatePayload);
+        const updatePayload = buildChangedProjectUpdate(form, project);
+        saved =
+          Object.keys(updatePayload).length > 0
+            ? await updateProject(project.id, updatePayload)
+            : project;
       } else {
         const createPayload: ProjectCreate = {
           tool_number: form.tool_number.trim(),
@@ -448,12 +467,16 @@ export function ProjectFormDialog({
     },
     onSuccess: (savedProject) => {
       invalidateProjectCalculationQueries(queryClient, savedProject.id);
+      showSuccess(isEdit ? 'Project updated' : 'Project created');
       if (isEdit) {
         onUpdated?.(savedProject.id);
       } else {
         onCreated?.(savedProject.id);
       }
       onClose();
+    },
+    onError: (error: unknown) => {
+      showError(getErrorMessage(error));
     },
   });
 
@@ -1081,11 +1104,16 @@ export function ProjectFormDialog({
               options={[{ value: '', label: 'None' }, ...userOptions]}
               onChange={(event) => {
                 const designerId = String(event.target.value);
-                const designer = (usersQuery.data ?? []).find((user) => String(user.id) === designerId);
                 setForm({
                   ...form,
                   designer_id: designerId,
-                  team_id: designer?.team_id ?? form.team_id,
+                  ...(isEdit
+                    ? {}
+                    : {
+                        team_id:
+                          (usersQuery.data ?? []).find((user) => String(user.id) === designerId)
+                            ?.team_id ?? form.team_id,
+                      }),
                 });
               }}
             />

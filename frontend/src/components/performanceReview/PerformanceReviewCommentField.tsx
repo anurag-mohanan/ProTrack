@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { Box, TextField, Typography } from '@mui/material';
 
 type ReviewCommentFieldProps = {

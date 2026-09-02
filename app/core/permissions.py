@@ -180,6 +180,18 @@ def can_assign_project_team(db: Session, user: User, team_id: UUID | None) -> bo
     return scope.allows_team(team_id)
 
 
+def can_change_project_team(
+    db: Session,
+    user: User,
+    project: Project,
+    new_team_id: UUID | None,
+) -> bool:
+    """Authorize a team change (or unchanged team on a broader project edit)."""
+    if project.team_id == new_team_id:
+        return True
+    return can_assign_project_team(db, user, new_team_id)
+
+
 def can_delete_project(db: Session, user: User) -> bool:
     return user_holds_special(db, user, SPECIAL_DELETE_PROJECTS)
 

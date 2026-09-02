@@ -36,7 +36,6 @@ import {
 } from '../utils/performanceReviewListing';
 import {
   buildPerformanceReviewSaveBody,
-  getPerformanceReviewFormMode,
   performanceReviewIsViewOnly,
 } from '../utils/performanceReviewPermissions';
 
@@ -177,7 +176,6 @@ export function PerformanceReviewWorkspacePage() {
 
   const review = reviewQuery.data;
   const ratingScale = templateQuery.data?.rating_scale ?? FALLBACK_RATING_SCALE;
-  const formMode = getPerformanceReviewFormMode(user, review);
   const display = getReviewDisplayStatus(review);
   const isViewOnly = performanceReviewIsViewOnly(user, review);
   const canEditEmployee = Boolean(review.can_edit_employee_section);

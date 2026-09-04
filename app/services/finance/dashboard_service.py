@@ -16,6 +16,7 @@ from app.models.finance import (
     EmployeeCostProfile,
     Expense,
     ProjectFinancialSnapshot,
+    Quote,
     QuoteRevision,
     TeamCommercialTerms,
 )
@@ -841,6 +842,48 @@ def _overhead_metrics(
     }
 
 
+def _quote_billing_summary(db: Session, *, team_id: UUID | None = None) -> dict:
+    """Awarded / invoiced / outstanding totals from cash-ledger-derived quote status."""
+    from app.services.finance.quote_cash_ledger_service import summarize_quote_cash
+
+    stmt = select(Quote).where(Quote.is_active.is_(True))
+    if team_id is not None:
+        stmt = stmt.where(Quote.team_id == team_id)
+    awarded = Decimal("0.00")
+    remaining_to_invoice = Decimal("0.00")
+    total_invoiced = Decimal("0.00")
+    balance_due = Decimal("0.00")
+    total_paid = Decimal("0.00")
+    counts = {"none": 0, "partial": 0, "full": 0, "total": 0}
+    for quote in db.scalars(stmt).all():
+        rev = _current_quote_revision(db, quote)
+        cash = summarize_quote_cash(db, quote, revision=rev)
+        status = str(cash["invoice_status"] or "none")
+        if status == "none" and bool(quote.is_invoiced) and not cash["invoice_lines"]:
+            status = "full"
+        base = _d(rev.base_quoted_revenue_inr) if rev else Decimal("0")
+        quoted = _d(cash["quoted_revenue"])
+        fx = (base / quoted) if quoted > 0 and base > 0 else Decimal("1")
+        awarded += base if base > 0 else quoted
+        remaining_to_invoice += _d(cash["remaining_to_invoice"]) * fx
+        total_invoiced += _d(cash["total_invoiced"]) * fx
+        balance_due += _d(cash["balance_due"]) * fx
+        total_paid += _d(cash["total_paid"]) * fx
+        counts[status] = counts.get(status, 0) + 1
+        counts["total"] += 1
+    return {
+        "awarded_value_inr": awarded.quantize(Decimal("0.01")),
+        "remaining_to_invoice_inr": remaining_to_invoice.quantize(Decimal("0.01")),
+        "total_invoiced_inr": total_invoiced.quantize(Decimal("0.01")),
+        "outstanding_balance_inr": balance_due.quantize(Decimal("0.01")),
+        "total_paid_inr": total_paid.quantize(Decimal("0.01")),
+        "not_invoiced_count": counts.get("none", 0),
+        "partially_invoiced_count": counts.get("partial", 0),
+        "fully_invoiced_count": counts.get("full", 0),
+        "quote_count": counts.get("total", 0),
+    }
+
+
 def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
     from app.services.finance.annual_plan_service import current_fy_label, current_fy_start
 
@@ -1133,4 +1176,5 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         "by_team": by_team,
         "revenue_by_customer": revenue_by_customer,
         "revenue_by_stream": revenue_by_stream,
+        "quote_billing": _quote_billing_summary(db, team_id=team_id),
     }

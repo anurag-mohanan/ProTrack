@@ -77,7 +77,12 @@ import {
   FinanceSection,
   financeMoney,
 } from './FinanceCockpitPrimitives';
+import { FinanceWhatIfPanel } from './FinanceWhatIfPanel';
 import { teamQueryParam } from './FinanceTeamFilter';
+import {
+  defaultWhatIfInputs,
+  type WhatIfInputs,
+} from '../../utils/financeWhatIf';
 
 type DashTeam = {
   team_id: string;
@@ -96,6 +101,7 @@ type DashTeam = {
 
 type FinanceDashboard = {
   base_currency: string;
+  revenue?: Record<string, number | string>;
   cost: Record<string, number | string>;
   profitability: Record<string, number | string>;
   salary_cost_inr?: number;
@@ -642,8 +648,13 @@ export function FinanceScenariosPanel({ teamId }: { teamId: string }) {
                 startIcon={<SaveOutlinedIcon />}
                 onClick={() => openSave(false)}
                 disabled={!activeScenarioId}
+                title={
+                  activeScenarioId
+                    ? 'Update the currently loaded saved scenario'
+                    : 'Load a saved scenario first, or use Save as new'
+                }
               >
-                Save
+                Update saved
               </Button>
               <Button size="small" variant="outlined" startIcon={<SaveOutlinedIcon />} onClick={() => openSave(true)}>
                 Save as new
@@ -776,6 +787,19 @@ export function FinanceScenariosPanel({ teamId }: { teamId: string }) {
         </FinanceSection>
       ) : (
         <>
+          <FinanceWhatIfPanel
+            currencyCode={currency}
+            baselineHeadcount={toFiniteNumber(baseline.billable_fte)}
+            baselineRevenueMonthly={toFiniteNumber(dashboardQuery.data?.revenue?.monthly_revenue)}
+            value={defaultWhatIfInputs(
+              (draft.what_if as Partial<WhatIfInputs> | undefined) ?? {
+                headcount: toFiniteNumber(baseline.billable_fte) || 10,
+              },
+            )}
+            onChange={(next) =>
+              setDraft((d) => ({ ...d, what_if: next as Record<string, number | boolean> }))
+            }
+          />
           <Grid container spacing={1.5}>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <KpiMetricCard

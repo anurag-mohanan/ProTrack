@@ -400,7 +400,7 @@ export default function App() {
                       <Route
                         path="/finance"
                         element={
-                          <Suspense fallback={<LoadingState message="Loading financial planning…" />}>
+                          <Suspense fallback={<LoadingState message="Loading Finance…" />}>
                             <FinanceDashboardPage />
                           </Suspense>
                         }
@@ -408,7 +408,7 @@ export default function App() {
                       <Route
                         path="/finance/*"
                         element={
-                          <Suspense fallback={<LoadingState message="Loading financial planning…" />}>
+                          <Suspense fallback={<LoadingState message="Loading Finance…" />}>
                             <FinanceDashboardPage />
                           </Suspense>
                         }

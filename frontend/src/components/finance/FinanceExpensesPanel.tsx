@@ -814,7 +814,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Delete team expense?"
-        message="This removes the expense from Financial Planning lists and Overview totals (soft-delete)."
+        message="This removes the expense from Finance lists and Overview totals (soft-delete)."
         recordName={
           deleteTarget
             ? `${deleteTarget.name} · ${

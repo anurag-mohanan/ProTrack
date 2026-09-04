@@ -693,6 +693,7 @@ class FinanceDashboardRead(BaseModel):
     revenue_by_stream: list[RevenueBreakdownRow] = Field(default_factory=list)
     overhead: dict = Field(default_factory=dict)
     period_context: dict = Field(default_factory=dict)
+    quote_billing: dict = Field(default_factory=dict)
 
 
 class AiForecastPlaceholderRead(BaseModel):

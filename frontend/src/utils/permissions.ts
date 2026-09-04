@@ -325,7 +325,7 @@ type SectionNavConfigItem = {
 const OPERATIONS_SECTION_NAV: SectionNavConfigItem[] = [
   {
     module: MODULE_FINANCIAL_PLANNING,
-    label: 'Financial Planning',
+    label: 'Finance',
     path: '/finance',
     icon: AccountBalanceRoundedIcon,
   },

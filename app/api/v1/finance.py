@@ -233,7 +233,7 @@ def _require_finance_action(db: Session, user: User, action: str) -> None:
     if not user_has_module_action(user, role_name, MODULE_FINANCIAL_PLANNING, action):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Financial Planning access required",
+            detail="Finance access required",
         )
 
 
@@ -1514,14 +1514,63 @@ def sync_budget_spent(
 @router.get("/quotes", response_model=list[QuoteRead])
 def list_quotes(
     team_id: UUID | None = Query(default=None),
+    invoice_status: str | None = Query(
+        default=None,
+        description="Derived cash status: none|partial|full (aliases: not_invoiced, invoiced)",
+    ),
+    payment_status: str | None = Query(
+        default=None,
+        description="Derived payment status: none|partial|full",
+    ),
+    list_filter: str | None = Query(
+        default=None,
+        description=(
+            "Finance UI chip filter: all|not_invoiced|partially_invoiced|invoiced|"
+            "awaiting_payment|partially_paid|follow_up|unlinked|missing_date"
+        ),
+    ),
+    q: str | None = Query(default=None, description="Search quote #, tool #, customer, team, PO"),
+    project_linked: bool | None = Query(default=None),
+    missing_quoted_date: bool | None = Query(default=None),
+    payment_follow_up_due: bool | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.services.finance.quote_filter_service import (
+        normalize_invoice_status,
+        normalize_payment_status,
+        quote_matches_filters,
+    )
+
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if invoice_status is not None and normalize_invoice_status(invoice_status) is None:
+        raise HTTPException(
+            status_code=400,
+            detail="invoice_status must be none|partial|full (or not_invoiced|invoiced)",
+        )
+    if payment_status is not None and normalize_payment_status(payment_status) is None:
+        raise HTTPException(
+            status_code=400,
+            detail="payment_status must be none|partial|full",
+        )
     stmt = select(Quote).where(Quote.is_active.is_(True)).order_by(Quote.tool_number)
     if team_id is not None:
         stmt = stmt.where(Quote.team_id == team_id)
-    return [_quote_read(db, row) for row in db.scalars(stmt).all()]
+    rows = [_quote_read(db, row) for row in db.scalars(stmt).all()]
+    return [
+        row
+        for row in rows
+        if quote_matches_filters(
+            row.model_dump(),
+            invoice_status=invoice_status,
+            payment_status=payment_status,
+            list_filter=list_filter,
+            q=q,
+            project_linked=project_linked,
+            missing_quoted_date=missing_quoted_date,
+            payment_follow_up_due=payment_follow_up_due,
+        )
+    ]
 
 
 @router.patch("/quotes/{quote_id}", response_model=QuoteRead)
@@ -1737,6 +1786,18 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
     revision = _current_revision(db, row)
     gaps = quote_billing_gaps(row)
     cash = summarize_quote_cash(db, row, revision=revision)
+    invoice_status = cash["invoice_status"]
+    # Legacy quotes marked invoiced before cash ledger lines existed.
+    if invoice_status == "none" and bool(row.is_invoiced) and not cash["invoice_lines"]:
+        invoice_status = "full"
+    payment_status = cash["payment_status"]
+    if (
+        payment_status == "none"
+        and bool(row.is_paid)
+        and not cash["payment_lines"]
+        and invoice_status == "full"
+    ):
+        payment_status = "full"
     data = QuoteRead.model_validate(row)
     return data.model_copy(
         update={
@@ -1753,19 +1814,23 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
             "revisions": [],
             "billing_ready": quote_billing_ready(row),
             "billing_gaps": gaps,
-            "is_invoiced": cash["is_invoiced"] or bool(row.is_invoiced),
+            "is_invoiced": cash["is_invoiced"] or bool(row.is_invoiced) or invoice_status != "none",
             "invoiced_date": cash["invoiced_date"] or row.invoiced_date,
-            "is_paid": cash["is_paid"] if cash["invoice_lines"] else bool(row.is_paid),
+            "is_paid": (
+                cash["is_paid"]
+                if cash["invoice_lines"]
+                else (bool(row.is_paid) or payment_status == "full")
+            ),
             "paid_date": cash["paid_date"] if cash["invoice_lines"] else row.paid_date,
             "total_invoiced": cash["total_invoiced"],
             "total_paid": cash["total_paid"],
             "balance_due": cash["balance_due"],
             "remaining_to_invoice": cash["remaining_to_invoice"],
             "remaining_contract": cash["remaining_contract"],
-            "invoice_status": cash["invoice_status"],
-            "payment_status": cash["payment_status"],
-            "is_partially_invoiced": cash["is_partially_invoiced"],
-            "is_partially_paid": cash["is_partially_paid"],
+            "invoice_status": invoice_status,
+            "payment_status": payment_status,
+            "is_partially_invoiced": invoice_status == "partial",
+            "is_partially_paid": payment_status == "partial",
             "invoice_lines": [
                 QuoteInvoiceLineRead.model_validate(line) for line in cash["invoice_lines"]
             ],

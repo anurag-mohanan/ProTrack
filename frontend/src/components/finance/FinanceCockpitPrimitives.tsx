@@ -1,5 +1,5 @@
 /**
- * Shared visual primitives for Financial Planning cockpit (Phase B UX).
+ * Shared visual primitives for Finance cockpit (Phase B UX).
  * Uses design-system tokens — Abacum/Adaptive/QBO-inspired density without new design language.
  */
 import type { ReactNode } from 'react';

@@ -63,7 +63,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   [MODULE_RESOURCE_PLANNING]: 'Resource Planning',
   [MODULE_REPORTS]: 'Reports',
   [MODULE_SYSTEM_ADMINISTRATION]: 'System Administration',
-  [MODULE_FINANCIAL_PLANNING]: 'Financial Planning',
+  [MODULE_FINANCIAL_PLANNING]: 'Finance',
   [MODULE_HUMAN_RESOURCES]: 'Human Resources',
   [MODULE_REPORTS_ANALYTICS]: 'Reports & Analytics',
   [MODULE_PLANNING_BOARD]: 'Planning Board Monitor',

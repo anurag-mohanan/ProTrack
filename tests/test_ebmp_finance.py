@@ -255,7 +255,8 @@ def test_expense_paid_by_customer_is_pass_through(client, auth_headers, session)
 
     after = client.get("/api/v1/finance/dashboard", headers=auth_headers).json()
     assert float(after["cost"]["prosohm_opex"]) == before_opex
-    assert float(after["pass_through_opex_inr"]) == before_pass + 5000.0
+    # Yearly expenses contribute a monthly run-rate (amount / 12) to OpEx signals.
+    assert float(after["pass_through_opex_inr"]) == round(before_pass + 5000.0 / 12.0, 2)
 
 
 def test_expense_without_team_rejected(client, auth_headers):
@@ -386,7 +387,10 @@ def test_who_pays_software_default_from_team_commercial(client, auth_headers, se
     after = client.get(
         f"/api/v1/finance/dashboard?team_id={team.id}", headers=auth_headers
     ).json()
-    assert float(after["pass_through_opex_inr"]) == float(before["pass_through_opex_inr"]) + 8000.0
+    # Yearly expenses contribute a monthly run-rate (amount / 12) to OpEx signals.
+    assert float(after["pass_through_opex_inr"]) == round(
+        float(before["pass_through_opex_inr"]) + 8000.0 / 12.0, 2
+    )
     assert float(after["cost"]["prosohm_opex"]) == float(before["cost"]["prosohm_opex"])
 
 

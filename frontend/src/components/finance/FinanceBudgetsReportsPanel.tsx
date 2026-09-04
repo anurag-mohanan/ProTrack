@@ -93,6 +93,12 @@ type Cockpit = {
 };
 
 type PlRow = { label: string; amount_inr: number };
+type ProjectProfitRow = {
+  label: string;
+  amount: number;
+  amount_inr: number;
+  currency_code: string;
+};
 
 const severityColor: Record<string, string> = {
   high: designTokens.health.red.main,
@@ -129,6 +135,11 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
   const plQuery = useQuery({
     queryKey: ['finance-pl', teamId || 'all'],
     queryFn: async () => (await apiClient.get<PlRow[]>('/finance/reports/profit-loss')).data,
+  });
+  const projectProfitQuery = useQuery({
+    queryKey: ['finance-project-profitability'],
+    queryFn: async () =>
+      (await apiClient.get<ProjectProfitRow[]>('/finance/reports/project-profitability')).data,
   });
 
   const invalidate = () => {
@@ -230,6 +241,7 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
             <Button
               size="small"
               variant="outlined"
+              title="CSV stub for manual ERP import — not a live ERP sync"
               onClick={() => {
                 void (async () => {
                   try {
@@ -244,13 +256,14 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
                     link.download = 'protrack-erp-journal.csv';
                     link.click();
                     URL.revokeObjectURL(url);
+                    showSuccess('Downloaded ERP journal CSV stub (not live sync)');
                   } catch (error) {
                     showError(apiErrorMessage(error, 'Could not export ERP journal CSV'));
                   }
                 })();
               }}
             >
-              Export ERP journal CSV
+              Export ERP journal CSV (stub)
             </Button>
           </>
         }
@@ -482,6 +495,48 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
                 </>
               ) : (
                 <Typography color="text.secondary">No P&L rows yet.</Typography>
+              )}
+            </FinanceSection>
+
+            <FinanceSection
+              title="Project profitability"
+              subtitle="Gross profit from project financial snapshots (actual recorded revenue/cost where available)."
+            >
+              {(projectProfitQuery.data?.length ?? 0) > 0 ? (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Project</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        Gross profit
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        Revenue (INR)
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(projectProfitQuery.data ?? []).map((row) => (
+                      <TableRow key={row.label} hover>
+                        <TableCell>
+                          <Button
+                            size="small"
+                            href={`/projects/${row.label}`}
+                            sx={{ textTransform: 'none', fontWeight: 600 }}
+                          >
+                            Open project
+                          </Button>
+                        </TableCell>
+                        <TableCell align="right">
+                          {financeMoney(row.amount, row.currency_code || currency)}
+                        </TableCell>
+                        <TableCell align="right">{financeMoney(row.amount_inr, currency)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <Typography color="text.secondary">No project financial snapshots yet.</Typography>
               )}
             </FinanceSection>
 

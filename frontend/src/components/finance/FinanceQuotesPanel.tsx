@@ -62,6 +62,7 @@ type QuoteRow = {
   team_name?: string | null;
   customer_name?: string | null;
   project_linked?: boolean;
+  project_id?: string | null;
   quoted_hours?: number | string | null;
   quoted_revenue?: number | string | null;
   base_quoted_revenue_inr?: number | string | null;
@@ -140,20 +141,6 @@ const emptyManual: ManualQuoteForm = {
   customerPoNumber: '',
 };
 
-function quoteSearchBlob(quote: QuoteRow): string {
-  return [
-    quote.external_quote_number,
-    quote.tool_number,
-    quote.customer_name,
-    quote.team_name,
-    quote.currency_code,
-    quote.customer_po_number,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-}
-
 export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
@@ -185,9 +172,20 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       (await apiClient.get<Array<{ code: string; name: string }>>('/finance/currencies')).data,
   });
   const listQ = teamQueryParam(teamId);
-  const quotesQuery = useQuery({
-    queryKey: ['finance-quotes', teamId || 'all'],
+  const quotesStatsQuery = useQuery({
+    queryKey: ['finance-quotes', teamId || 'all', 'stats'],
     queryFn: async () => (await apiClient.get<QuoteRow[]>(`/finance/quotes${listQ}`)).data,
+  });
+  const quotesQuery = useQuery({
+    queryKey: ['finance-quotes', teamId || 'all', listFilter, search.trim()],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (teamId) params.set('team_id', teamId);
+      if (listFilter !== 'all') params.set('list_filter', listFilter);
+      if (search.trim()) params.set('q', search.trim());
+      const qs = params.toString();
+      return (await apiClient.get<QuoteRow[]>(`/finance/quotes${qs ? `?${qs}` : ''}`)).data;
+    },
   });
 
   const invalidateFinance = () => {
@@ -352,12 +350,13 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     ];
   }, [currenciesQuery.data]);
 
-  const quotes = quotesQuery.data ?? [];
+  const quotesAll = quotesStatsQuery.data ?? [];
+  const filteredQuotes = quotesQuery.data ?? [];
   const quoteStats = useMemo(() => {
-    const invoicedRevenue = quotes
-      .filter((q) => q.is_invoiced || toFiniteNumber(q.total_invoiced) > 0)
+    const invoicedRevenue = quotesAll
+      .filter((q) => q.invoice_status === 'full')
       .reduce((s, q) => s + toFiniteNumber(q.base_quoted_revenue_inr), 0);
-    const unpaidReceivable = quotes.reduce((s, q) => {
+    const unpaidReceivable = quotesAll.reduce((s, q) => {
       const balance = toFiniteNumber(q.balance_due);
       if (balance <= 0) return s;
       const quoted = toFiniteNumber(q.quoted_revenue);
@@ -365,76 +364,31 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       if (quoted > 0 && base > 0) return s + (balance / quoted) * base;
       return s + balance;
     }, 0);
-    const awaitingPaymentCount = quotes.filter(
+    const awaitingPaymentCount = quotesAll.filter(
       (q) => toFiniteNumber(q.balance_due) > 0,
     ).length;
-    const followUpDue = quotes.filter((q) => q.payment_follow_up_due).length;
-    const missingDate = quotes.filter((q) => !q.quoted_date).length;
-    const notInvoiced = quotes.filter(
-      (q) => !q.is_invoiced && toFiniteNumber(q.total_invoiced) <= 0,
-    ).length;
+    const followUpDue = quotesAll.filter((q) => q.payment_follow_up_due).length;
+    const missingDate = quotesAll.filter((q) => !q.quoted_date).length;
+    const notInvoiced = quotesAll.filter((q) => (q.invoice_status || 'none') === 'none').length;
+    const partiallyInvoiced = quotesAll.filter((q) => q.invoice_status === 'partial').length;
+    const fullyInvoiced = quotesAll.filter((q) => q.invoice_status === 'full').length;
     const currencies = new Set(
-      quotes.map((q) => (q.currency_code || 'INR').toUpperCase()).filter(Boolean),
+      quotesAll.map((q) => (q.currency_code || 'INR').toUpperCase()).filter(Boolean),
     );
     return {
-      count: quotes.length,
+      count: quotesAll.length,
       invoicedRevenue,
       unpaidReceivable,
       awaitingPaymentCount,
       followUpDue,
       missingDate,
       notInvoiced,
+      partiallyInvoiced,
+      fullyInvoiced,
       mixedFx: currencies.size > 1,
       currencyCount: currencies.size,
     };
-  }, [quotes]);
-
-  const filteredQuotes = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return quotes.filter((quote) => {
-      if (
-        listFilter === 'not_invoiced' &&
-        (quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0)
-      ) {
-        return false;
-      }
-      if (
-        listFilter === 'invoiced' &&
-        !(quote.is_invoiced || toFiniteNumber(quote.total_invoiced) > 0)
-      ) {
-        return false;
-      }
-      if (
-        listFilter === 'partially_invoiced' &&
-        !(
-          quote.invoice_status === 'partial' ||
-          quote.is_partially_invoiced ||
-          (toFiniteNumber(quote.total_invoiced) > 0 &&
-            toFiniteNumber(quote.remaining_to_invoice) > 0.01)
-        )
-      ) {
-        return false;
-      }
-      if (listFilter === 'awaiting_payment' && toFiniteNumber(quote.balance_due) <= 0) {
-        return false;
-      }
-      if (
-        listFilter === 'partially_paid' &&
-        !(
-          quote.payment_status === 'partial' ||
-          quote.is_partially_paid ||
-          (toFiniteNumber(quote.total_paid) > 0 && toFiniteNumber(quote.balance_due) > 0.01)
-        )
-      ) {
-        return false;
-      }
-      if (listFilter === 'follow_up' && !quote.payment_follow_up_due) return false;
-      if (listFilter === 'missing_date' && quote.quoted_date) return false;
-      if (listFilter === 'unlinked' && quote.project_linked) return false;
-      if (q && !quoteSearchBlob(quote).includes(q)) return false;
-      return true;
-    });
-  }, [quotes, listFilter, search]);
+  }, [quotesAll]);
 
   const canSaveManual =
     Boolean(importTeamId) &&
@@ -448,14 +402,17 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     setListFilter((prev) => (prev === next ? 'all' : next));
   };
 
-  if (quotesQuery.isLoading) {
+  if (quotesStatsQuery.isLoading || quotesQuery.isLoading) {
     return <LoadingState message="Loading awarded quotes…" />;
   }
 
-  if (quotesQuery.isError) {
+  if (quotesStatsQuery.isError || quotesQuery.isError) {
     return (
       <Typography color="error" variant="body2">
-        {apiErrorMessage(quotesQuery.error, 'Unable to load awarded quotes.')}
+        {apiErrorMessage(
+          quotesQuery.error ?? quotesStatsQuery.error,
+          "We couldn't load the financial data. Please try again.",
+        )}
       </Typography>
     );
   }
@@ -463,8 +420,8 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   return (
     <Stack spacing={2.5}>
       <FinanceHeroBanner
-        title="Revenue / awarded quotes"
-        subtitle="Book awarded quotes, capture customer PO, mark invoiced and paid so cash and receivables stay clear. Unpaid invoices get a follow-up at 30 days, then weekly."
+        title="Projects & revenue"
+        subtitle="Book awarded quotes, capture customer PO, and track invoice status (none / partial / full). Filters run on the server. Unpaid invoices get a follow-up at 30 days, then weekly."
         chips={
           <>
             <Chip size="small" label={teamId ? 'Team scope' : 'All teams'} sx={{ fontWeight: 700 }} />
@@ -527,12 +484,12 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             compact
             accent="success"
             icon={TrendingUpOutlinedIcon}
-            title="Invoiced revenue Σ"
+            title="Fully invoiced Σ"
             value={financeMoney(quoteStats.invoicedRevenue, 'INR')}
             subtitle={
               quoteStats.mixedFx
-                ? `Recognized · ${quoteStats.currencyCount} FX currencies`
-                : 'Recognized on invoiced date'
+                ? `Fully invoiced · ${quoteStats.fullyInvoiced} quotes · ${quoteStats.currencyCount} FX`
+                : `Fully invoiced · ${quoteStats.fullyInvoiced} quotes`
             }
             selected={listFilter === 'invoiced'}
             onClick={() => toggleFilter('invoiced')}
@@ -688,7 +645,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             {editingId ? (
               <QuoteCashLedgerPanel
                 quote={
-                  (quotes.find((q) => q.id === editingId) as QuoteRow | undefined) ?? {
+                  (quotesAll.find((q) => q.id === editingId) as QuoteRow | undefined) ?? {
                     id: editingId,
                     currency_code: manual.currencyCode || 'INR',
                     quoted_revenue: manual.cost,
@@ -821,7 +778,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
         subtitle={
           listFilter === 'all' && !search.trim()
             ? 'Scan booked quotes by amount, invoice status, and project link. Edit opens the form above.'
-            : `Showing ${filteredQuotes.length} of ${quotes.length} quotes`
+            : `Showing ${filteredQuotes.length} of ${quoteStats.count} quotes (server filter)`
         }
         action={
           <Stack
@@ -884,9 +841,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
         <FinanceQuotesTable
           rows={filteredQuotes}
           emptyMessage={
-            quotes.length === 0
+            quoteStats.count === 0
               ? 'No awarded quotes yet — save or import the first one above.'
-              : 'No quotes match this filter. Clear search or filters to see all.'
+              : 'No quotes match the selected filters.'
           }
           onEdit={startEdit}
           onDelete={setDeleteTarget}
@@ -896,7 +853,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Delete quote?"
-        message="This removes the quote from Financial Planning lists and Overview team revenue (soft-delete)."
+        message="This removes the quote from Finance lists and Overview team revenue (soft-delete)."
         recordName={
           deleteTarget
             ? `${deleteTarget.external_quote_number ? `${deleteTarget.external_quote_number} · ` : ''}${deleteTarget.tool_number} · ${deleteTarget.customer_name ?? 'Customer'} · ${deleteTarget.currency_code}${deleteTarget.quoted_revenue != null ? ` ${deleteTarget.quoted_revenue}` : ''}`

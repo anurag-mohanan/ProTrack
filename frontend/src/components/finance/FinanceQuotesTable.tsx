@@ -1,6 +1,7 @@
 import {
   Box,
   IconButton,
+  Link,
   Stack,
   Table,
   TableBody,
@@ -13,6 +14,8 @@ import {
 } from '@mui/material';
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
+import { Link as RouterLink } from 'react-router-dom';
 import { designTokens } from '../../theme/designTokens';
 import { chartTheme } from '../../theme/chartTheme';
 import { financeMoney } from './FinanceCockpitPrimitives';
@@ -26,6 +29,7 @@ export type AwardedQuoteRow = {
   current_revision: string;
   team_name?: string | null;
   customer_name?: string | null;
+  project_id?: string | null;
   project_linked?: boolean;
   quoted_revenue?: number | string | null;
   base_quoted_revenue_inr?: number | string | null;
@@ -257,6 +261,16 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                       Project {quote.tool_number}
                       {quote.current_revision ? ` · Rev ${quote.current_revision}` : ''}
                     </Typography>
+                    {quote.project_id ? (
+                      <Link
+                        component={RouterLink}
+                        to={`/projects/${quote.project_id}`}
+                        variant="caption"
+                        sx={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}
+                      >
+                        Open project <OpenInNewOutlinedIcon sx={{ fontSize: 12 }} />
+                      </Link>
+                    ) : null}
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: chartTheme.ink.primary }}>
@@ -389,6 +403,23 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                   </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={0.25} sx={{ justifyContent: 'flex-end' }}>
+                      {quote.project_id ? (
+                        <Tooltip title="Open linked project">
+                          <IconButton
+                            size="small"
+                            aria-label="Open linked project"
+                            component={RouterLink}
+                            to={`/projects/${quote.project_id}`}
+                            sx={{
+                              color: designTokens.semantic.primary,
+                              bgcolor: designTokens.semantic.primarySoft,
+                              borderRadius: `${designTokens.radius.sm}px`,
+                            }}
+                          >
+                            <OpenInNewOutlinedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      ) : null}
                       <Tooltip title="Edit quote">
                         <IconButton
                           size="small"

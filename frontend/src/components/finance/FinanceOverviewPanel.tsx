@@ -8,11 +8,14 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import RequestQuoteOutlinedIcon from '@mui/icons-material/RequestQuoteOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
@@ -82,6 +85,17 @@ type FinanceDashboard = {
   revenue: Record<string, number | string>;
   cost: Record<string, number | string>;
   profitability: Record<string, number | string>;
+  quote_billing?: {
+    awarded_value_inr?: number | string;
+    remaining_to_invoice_inr?: number | string;
+    total_invoiced_inr?: number | string;
+    outstanding_balance_inr?: number | string;
+    total_paid_inr?: number | string;
+    not_invoiced_count?: number;
+    partially_invoiced_count?: number;
+    fully_invoiced_count?: number;
+    quote_count?: number;
+  };
   period_context?: {
     months_month?: number;
     months_quarter?: number;
@@ -343,8 +357,8 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
   return (
     <Stack spacing={2.5}>
       <FinanceHeroBanner
-        title="Financial planning cockpit"
-        subtitle={`Live cost, revenue, and overhead signals for ${scopeLabel}${
+        title="Finance overview"
+        subtitle={`Live cost, revenue, invoicing, and overhead signals for ${scopeLabel}${
           data.planning_fy_label ? ` · ${data.planning_fy_label}` : ''
         }. Click any KPI card to see what accumulates into that number.`}
         chips={
@@ -363,11 +377,67 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
       />
 
       <Grid container spacing={1.5}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Tooltip title="Estimated contract value of active awarded quotes (base currency).">
+            <Box sx={{ height: '100%' }}>
+              <KpiMetricCard
+                title="Awarded value"
+                value={financeMoney(data.quote_billing?.awarded_value_inr, currency)}
+                subtitle={`${data.quote_billing?.quote_count ?? 0} active quotes · estimated contract value`}
+                icon={RequestQuoteOutlinedIcon}
+                accent="primary"
+                compact
+              />
+            </Box>
+          </Tooltip>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Tooltip title="Remaining contract value not yet covered by invoice lines (derived invoice_status = none or partial remaining).">
+            <Box sx={{ height: '100%' }}>
+              <KpiMetricCard
+                title="Not invoiced"
+                value={financeMoney(data.quote_billing?.remaining_to_invoice_inr, currency)}
+                subtitle={`${data.quote_billing?.not_invoiced_count ?? 0} none · ${data.quote_billing?.partially_invoiced_count ?? 0} partial`}
+                icon={ReceiptLongOutlinedIcon}
+                accent="warning"
+                compact
+              />
+            </Box>
+          </Tooltip>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Tooltip title="Sum of actual invoice line amounts (cash ledger), converted to base currency.">
+            <Box sx={{ height: '100%' }}>
+              <KpiMetricCard
+                title="Invoiced (cash)"
+                value={financeMoney(data.quote_billing?.total_invoiced_inr, currency)}
+                subtitle={`${data.quote_billing?.fully_invoiced_count ?? 0} fully invoiced · actual invoice lines`}
+                icon={TrendingUpOutlinedIcon}
+                accent="success"
+                compact
+              />
+            </Box>
+          </Tooltip>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Tooltip title="Outstanding = invoiced − paid (balance due on the cash ledger).">
+            <Box sx={{ height: '100%' }}>
+              <KpiMetricCard
+                title="Outstanding"
+                value={financeMoney(data.quote_billing?.outstanding_balance_inr, currency)}
+                subtitle={`Paid ${financeMoney(data.quote_billing?.total_paid_inr, currency)} · balance due`}
+                icon={PaymentsOutlinedIcon}
+                accent="info"
+                compact
+              />
+            </Box>
+          </Tooltip>
+        </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KpiMetricCard
             title="Operating cost / mo"
             value={financeMoney(operating, currency)}
-            subtitle="Click for salary + OpEx drivers"
+            subtitle="Actual · click for salary + OpEx drivers"
             icon={AccountBalanceWalletOutlinedIcon}
             accent="warning"
             compact
@@ -386,18 +456,25 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <KpiMetricCard
-            title="Gross profit this month"
-            value={financeMoney(grossProfit, currency)}
-            subtitle={`Pre-tax net ${financeMoney(preTaxNet, currency)} (${netMargin.toFixed(1)}%) · After-tax ${financeMoney(afterTaxNet, currency)} (${afterTaxMargin.toFixed(1)}% @ ${taxPercent}%) · awards + retainer this month`}
-            icon={ShowChartOutlinedIcon}
-            accent={netMargin >= 0 ? 'success' : 'error'}
-            compact
-            trend={{
-              value: `${afterTaxMargin.toFixed(1)}%`,
-              direction: afterTaxMargin > 0 ? 'up' : afterTaxMargin < 0 ? 'down' : 'flat',
-            }}
-          />
+          <Tooltip
+            title="Gross profit = period revenue (awarded/invoiced quotes + retainer) minus fully loaded operating cost for the month. Gross margin % = gross profit ÷ revenue × 100. Pre-tax and after-tax nets apply corporate tax to net profit."
+            arrow
+          >
+            <Box sx={{ height: '100%' }}>
+              <KpiMetricCard
+                title="Gross profit this month"
+                value={financeMoney(grossProfit, currency)}
+                subtitle={`Actual · Pre-tax net ${financeMoney(preTaxNet, currency)} (${netMargin.toFixed(1)}%) · After-tax ${financeMoney(afterTaxNet, currency)} (${afterTaxMargin.toFixed(1)}% @ ${taxPercent}%) · awards + retainer this month`}
+                icon={ShowChartOutlinedIcon}
+                accent={netMargin >= 0 ? 'success' : 'error'}
+                compact
+                trend={{
+                  value: `${afterTaxMargin.toFixed(1)}%`,
+                  direction: afterTaxMargin > 0 ? 'up' : afterTaxMargin < 0 ? 'down' : 'flat',
+                }}
+              />
+            </Box>
+          </Tooltip>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KpiMetricCard

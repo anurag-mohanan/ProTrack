@@ -279,6 +279,21 @@ def can_access_document_entity(
     if kind in {"team", "teams"}:
         ctx = resolve_data_scope(db, user)
         return ctx.allows_team(entity_id)
+    if kind in {"quote", "quotes"}:
+        from app.models.finance import Quote
+
+        quote = db.get(Quote, entity_id)
+        if quote is None:
+            return False
+        ctx = resolve_data_scope(db, user)
+        if ctx.unrestricted:
+            return True
+        if quote.team_id is not None and ctx.allows_team(quote.team_id):
+            return True
+        if quote.project_id is not None:
+            project = db.get(Project, quote.project_id)
+            return project is not None and can_access_project(db, user, project)
+        return False
     # Unknown entity types: only unrestricted actors (admin / company scope).
     ctx = resolve_data_scope(db, user)
     return ctx.unrestricted

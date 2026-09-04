@@ -884,13 +884,23 @@ def _quote_billing_summary(db: Session, *, team_id: UUID | None = None) -> dict:
     }
 
 
-def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
-    from app.services.finance.annual_plan_service import current_fy_label, current_fy_start
+def get_finance_dashboard(
+    db: Session,
+    *,
+    team_id: UUID | None = None,
+    fy_start_year: int | None = None,
+) -> dict:
+    from app.services.finance.fy_calendar_service import resolve_fy_context
+    from app.services.finance.fy_turnover_service import build_fy_turnover_control
 
     base = get_base_currency(db)
     today = date.today()
-    fy_start = current_fy_start(today)
-    fy_label = current_fy_label(today)
+    fy_ctx = resolve_fy_context(db, today=today, fy_start_year=fy_start_year)
+    fy_start = fy_ctx["fy_start"]
+    fy_label = fy_ctx["fy_label"]
+    fy_turnover = build_fy_turnover_control(
+        db, team_id=team_id, today=today, fy_start_year=fy_start_year
+    )
     revenue, estimated_cost = _quote_revenue_cost(db, team_id=team_id)
 
     as_of = today
@@ -1177,4 +1187,5 @@ def get_finance_dashboard(db: Session, *, team_id: UUID | None = None) -> dict:
         "revenue_by_customer": revenue_by_customer,
         "revenue_by_stream": revenue_by_stream,
         "quote_billing": _quote_billing_summary(db, team_id=team_id),
+        "fy_turnover": fy_turnover,
     }

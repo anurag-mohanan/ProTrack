@@ -260,13 +260,33 @@ def _audit(
 @router.get("/dashboard", response_model=FinanceDashboardRead)
 def finance_dashboard(
     team_id: UUID | None = Query(default=None),
+    fy_start_year: int | None = Query(
+        default=None,
+        description="Fiscal year start calendar year (e.g. 2026 for FY 2026-27). Defaults to current FY.",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
     if team_id is not None and db.get(Team, team_id) is None:
         raise HTTPException(status_code=400, detail="Team not found")
-    return get_finance_dashboard(db, team_id=team_id)
+    return get_finance_dashboard(db, team_id=team_id, fy_start_year=fy_start_year)
+
+
+@router.get("/fy-turnover")
+def finance_fy_turnover(
+    team_id: UUID | None = Query(default=None),
+    fy_start_year: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Month-on-month turnover and average monthly billing for a financial year."""
+    from app.services.finance.fy_turnover_service import build_fy_turnover_control
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    return build_fy_turnover_control(db, team_id=team_id, fy_start_year=fy_start_year)
 
 
 @router.get("/kpi-breakdown", response_model=KpiBreakdownRead)
@@ -2298,4 +2318,378 @@ def clone_planning_scenario(
         return _planning_scenario_read(row)
     except ProTrackValidationError as exc:
         db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+# --- Treasury: loans / OD / investments / cash --------------------------------
+
+from app.schemas.finance import (
+    FinanceCashPositionUpsert,
+    FinanceInvestmentCreate,
+    FinanceInvestmentIncomeCreate,
+    FinanceInvestmentUpdate,
+    FinanceLoanCreate,
+    FinanceLoanRepaymentCreate,
+    FinanceLoanUpdate,
+    FinanceOdFacilityCreate,
+    FinanceOdFacilityUpdate,
+    FinanceOdInterestCreate,
+)
+from app.services.finance import treasury_service
+
+
+@router.get("/treasury/summary")
+def get_treasury_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return treasury_service.treasury_summary(db)
+
+
+@router.get("/treasury/loans")
+def list_treasury_loans(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return [treasury_service.loan_to_dict(row) for row in treasury_service.list_loans(db)]
+
+
+@router.post("/treasury/loans", status_code=status.HTTP_201_CREATED)
+def create_treasury_loan(
+    payload: FinanceLoanCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        row = treasury_service.create_loan(db, payload.model_dump())
+        return treasury_service.loan_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/treasury/loans/{loan_id}")
+def update_treasury_loan(
+    loan_id: UUID,
+    payload: FinanceLoanUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        row = treasury_service.update_loan(
+            db, loan_id, payload.model_dump(exclude_unset=True)
+        )
+        return treasury_service.loan_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/treasury/loans/{loan_id}/repayments", status_code=status.HTTP_201_CREATED)
+def create_treasury_loan_repayment(
+    loan_id: UUID,
+    payload: FinanceLoanRepaymentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        row = treasury_service.record_loan_repayment(db, loan_id, payload.model_dump())
+        return treasury_service.loan_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/treasury/od-facilities")
+def list_treasury_od(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return [treasury_service.od_to_dict(row) for row in treasury_service.list_od_facilities(db)]
+
+
+@router.post("/treasury/od-facilities", status_code=status.HTTP_201_CREATED)
+def create_treasury_od(
+    payload: FinanceOdFacilityCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        row = treasury_service.create_od_facility(db, payload.model_dump())
+        return treasury_service.od_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/treasury/od-facilities/{facility_id}")
+def update_treasury_od(
+    facility_id: UUID,
+    payload: FinanceOdFacilityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        row = treasury_service.update_od_facility(
+            db, facility_id, payload.model_dump(exclude_unset=True)
+        )
+        return treasury_service.od_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/treasury/od-facilities/{facility_id}/interest", status_code=status.HTTP_201_CREATED)
+def create_treasury_od_interest(
+    facility_id: UUID,
+    payload: FinanceOdInterestCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        row = treasury_service.record_od_interest(db, facility_id, payload.model_dump())
+        return treasury_service.od_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/treasury/investments")
+def list_treasury_investments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return [
+        treasury_service.investment_to_dict(row)
+        for row in treasury_service.list_investments(db)
+    ]
+
+
+@router.post("/treasury/investments", status_code=status.HTTP_201_CREATED)
+def create_treasury_investment(
+    payload: FinanceInvestmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        row = treasury_service.create_investment(db, payload.model_dump())
+        return treasury_service.investment_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/treasury/investments/{investment_id}")
+def update_treasury_investment(
+    investment_id: UUID,
+    payload: FinanceInvestmentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    try:
+        row = treasury_service.update_investment(
+            db, investment_id, payload.model_dump(exclude_unset=True)
+        )
+        return treasury_service.investment_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/treasury/investments/{investment_id}/income",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_treasury_investment_income(
+    investment_id: UUID,
+    payload: FinanceInvestmentIncomeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    try:
+        row = treasury_service.record_investment_income(
+            db, investment_id, payload.model_dump()
+        )
+        return treasury_service.investment_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/treasury/cash-position")
+def upsert_treasury_cash_position(
+    payload: FinanceCashPositionUpsert,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = treasury_service.upsert_cash_position(db, payload.model_dump())
+    return {
+        "id": str(row.id),
+        "as_of_date": row.as_of_date,
+        "bank_balance": row.bank_balance,
+        "cash_balance": row.cash_balance,
+        "available_cash": (row.bank_balance or 0) + (row.cash_balance or 0),
+        "currency_code": row.currency_code,
+        "notes": row.notes,
+    }
+
+
+@router.get('/treasury/cash-flow-forecast')
+def treasury_cash_flow_forecast(
+    team_id: UUID | None = Query(default=None),
+    fy_start_year: int | None = Query(default=None),
+    months_ahead: int = Query(default=6, ge=1, le=12),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.cash_flow_forecast_service import build_cash_flow_forecast
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail='Team not found')
+    return build_cash_flow_forecast(
+        db, team_id=team_id, fy_start_year=fy_start_year, months_ahead=months_ahead
+    )
+
+
+@router.get('/treasury/runway')
+def treasury_cash_runway(
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.cash_flow_forecast_service import build_cash_runway
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail='Team not found')
+    return build_cash_runway(db, team_id=team_id)
+
+
+@router.get('/reports/monthly-pnl')
+def report_monthly_pnl(
+    team_id: UUID | None = Query(default=None),
+    fy_start_year: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.monthly_pnl_service import build_monthly_pnl
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail='Team not found')
+    return build_monthly_pnl(db, team_id=team_id, fy_start_year=fy_start_year)
+
+
+@router.get('/reports/monthly-pnl/{month_index}/drilldown')
+def report_monthly_pnl_drilldown(
+    month_index: int,
+    line: str = Query(..., description='turnover|salary|opex|finance|other_income|capex'),
+    team_id: UUID | None = Query(default=None),
+    fy_start_year: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.monthly_pnl_service import drilldown_monthly_pnl_line
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail='Team not found')
+    return drilldown_monthly_pnl_line(
+        db,
+        month_index=month_index,
+        line=line,
+        team_id=team_id,
+        fy_start_year=fy_start_year,
+    )
+
+
+@router.get('/treasury/capex-asset-links')
+def treasury_capex_asset_links(
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.monthly_pnl_service import list_capex_asset_links
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return list_capex_asset_links(db, team_id=team_id)
+
+
+@router.post('/invoices/pdf/extract')
+async def extract_invoice_pdf(
+    file: UploadFile = File(...),
+    team_id: UUID | None = Form(default=None),
+    quote_id: UUID | None = Form(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Extract invoice fields for review. Does not create financial records."""
+    from app.schemas.finance import InvoicePdfExtractResult
+    from app.services.finance.invoice_pdf_import_service import extract_invoice_pdf as do_extract
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if not file.filename:
+        raise HTTPException(status_code=400, detail='A file name is required.')
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail='Only PDF invoice files are supported.')
+    content = await file.read()
+    enforce_upload_size(content)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail='Team not found')
+    if quote_id is not None and db.get(Quote, quote_id) is None:
+        raise HTTPException(status_code=400, detail='Quote not found')
+    result = do_extract(
+        db,
+        content=content,
+        filename=file.filename,
+        team_id=team_id,
+        quote_id=quote_id,
+    )
+    return InvoicePdfExtractResult.model_validate(result)
+
+
+@router.post('/invoices/pdf/confirm')
+async def confirm_invoice_pdf(
+    quote_id: UUID = Form(...),
+    amount: Decimal = Form(...),
+    line_date: date = Form(...),
+    invoice_number: str | None = Form(default=None),
+    notes: str | None = Form(default=None),
+    import_anyway: bool = Form(default=False),
+    content_sha256: str | None = Form(default=None),
+    file: UploadFile | None = File(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Confirm reviewed invoice fields and create a quote invoice line (+ optional PDF store)."""
+    from app.services.finance.invoice_pdf_import_service import confirm_invoice_pdf_import
+
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    content = None
+    filename = None
+    if file is not None and file.filename:
+        content = await file.read()
+        enforce_upload_size(content)
+        filename = file.filename
+    try:
+        row = confirm_invoice_pdf_import(
+            db,
+            quote_id=quote_id,
+            amount=amount,
+            line_date=line_date,
+            notes=notes,
+            invoice_number=invoice_number,
+            import_anyway=import_anyway,
+            content=content,
+            filename=filename,
+            content_sha256=content_sha256,
+            user=current_user,
+        )
+        return _quote_read(db, row)
+    except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

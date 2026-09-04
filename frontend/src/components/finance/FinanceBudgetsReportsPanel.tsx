@@ -48,6 +48,7 @@ import {
   FinanceUtilizationMeter,
   financeMoney,
 } from './FinanceCockpitPrimitives';
+import { FinanceMonthlyPnlSection } from './FinanceMonthlyPnlSection';
 import { teamQueryParam } from './FinanceTeamFilter';
 
 const QUARTER_LABELS = ['Q1 Apr–Jun', 'Q2 Jul–Sep', 'Q3 Oct–Dec', 'Q4 Jan–Mar'];
@@ -455,9 +456,11 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
               </Stack>
             </FinanceSection>
 
+            <FinanceMonthlyPnlSection teamId={teamId} currency={currency} />
+
             <FinanceSection
-              title="Profit & Loss statement"
-              subtitle="Live operating signals (Overview basis)"
+              title="Profit & Loss (legacy summary)"
+              subtitle="Compact Overview-basis signals (kept for reference; use Monthly P&L above for invoice-date statement)"
             >
               {(plQuery.data ?? []).length ? (
                 <>

@@ -41,6 +41,7 @@ import {
 } from './FinanceKpiBreakdownDrawer';
 import { FinanceRevenueBreakdownTable } from './FinanceRevenueBreakdownTable';
 import { FinanceTeamPnlTable, type TeamPnlRow } from './FinanceTeamPnlTable';
+import { FinanceFyTurnoverSection, type FyTurnoverControl } from './FinanceFyTurnoverSection';
 
 type FinancePeriod = 'month' | 'quarter' | 'half' | 'year';
 
@@ -96,6 +97,7 @@ type FinanceDashboard = {
     fully_invoiced_count?: number;
     quote_count?: number;
   };
+  fy_turnover?: FyTurnoverControl;
   period_context?: {
     months_month?: number;
     months_quarter?: number;
@@ -375,6 +377,8 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
           </>
         }
       />
+
+      <FinanceFyTurnoverSection data={data.fy_turnover} currency={currency} />
 
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>

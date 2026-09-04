@@ -388,6 +388,44 @@ class AiForecastKind(enum.Enum):
     cash_flow_trend = "cash_flow_trend"
 
 
+class FinanceLoanStatus(enum.Enum):
+    active = "active"
+    closed = "closed"
+    cancelled = "cancelled"
+
+
+class FinanceLoanInterestType(enum.Enum):
+    fixed = "fixed"
+    floating = "floating"
+    reducing = "reducing"
+
+
+class FinanceOdStatus(enum.Enum):
+    active = "active"
+    expired = "expired"
+    closed = "closed"
+
+
+class FinanceInvestmentType(enum.Enum):
+    fixed_deposit = "fixed_deposit"
+    mutual_fund = "mutual_fund"
+    bond = "bond"
+    other = "other"
+
+
+class FinanceInvestmentStatus(enum.Enum):
+    active = "active"
+    matured = "matured"
+    closed = "closed"
+    cancelled = "cancelled"
+
+
+class FinanceRecordSource(enum.Enum):
+    manual = "manual"
+    pdf_import = "pdf_import"
+    system = "system"
+
+
 class EmailMessageStatus(enum.Enum):
     queued = "queued"
     sending = "sending"

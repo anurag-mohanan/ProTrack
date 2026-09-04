@@ -40,6 +40,7 @@ import {
   financeListRowSx,
   financeMoney,
 } from './FinanceCockpitPrimitives';
+import { InvoicePdfImportDialog } from './InvoicePdfImportDialog';
 import { FinanceQuotesTable } from './FinanceQuotesTable';
 import { QuoteCashLedgerPanel } from './QuoteCashLedgerPanel';
 
@@ -151,6 +152,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<QuoteRow | null>(null);
   const [lastImport, setLastImport] = useState<QuoteImportItem[]>([]);
+  const [invoicePdfOpen, setInvoicePdfOpen] = useState(false);
   const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [search, setSearch] = useState('');
 
@@ -714,23 +716,42 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       {!editingId ? (
         <FinanceSection
           title="Optional file upload"
-          subtitle={`Batch Excel/PDF/CSV (${IMPORT_FORMAT_LABEL_WITH_CSV}). Prefer manual entry above when smart parse fails.`}
+          subtitle={`Batch Excel/PDF/CSV for quotes (${IMPORT_FORMAT_LABEL_WITH_CSV}). Invoice PDF import uses extract → review → confirm (never auto-saves).`}
         >
-          <Button variant="outlined" component="label" disabled={!canUpload}>
-            Upload Quote File
-            <input
-              hidden
-              type="file"
-              accept={IMPORT_ACCEPT_WITH_CSV}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) importMutation.mutate(file);
-                event.target.value = '';
-              }}
-            />
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button variant="outlined" component="label" disabled={!canUpload}>
+              Upload Quote File
+              <input
+                hidden
+                type="file"
+                accept={IMPORT_ACCEPT_WITH_CSV}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) importMutation.mutate(file);
+                  event.target.value = '';
+                }}
+              />
+            </Button>
+            <Button
+              variant="outlined"
+              disabled={!importTeamId}
+              onClick={() => setInvoicePdfOpen(true)}
+            >
+              Import Invoice PDF
+            </Button>
+          </Box>
         </FinanceSection>
       ) : null}
+
+      <InvoicePdfImportDialog
+        open={invoicePdfOpen}
+        onClose={() => setInvoicePdfOpen(false)}
+        teamId={importTeamId || undefined}
+        onImported={() => {
+          void queryClient.invalidateQueries({ queryKey: ['finance-quotes'] });
+          void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+        }}
+      />
 
       {lastImport.length > 0 && !editingId ? (
         <FinanceSection

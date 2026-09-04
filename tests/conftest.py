@@ -188,6 +188,12 @@ from app.db.phase83_it_data_import_schema_sync import (
 from app.db.phase84_project_classification_schema_sync import (
     ensure_phase84_project_classification_foundation,
 )
+from app.db.phase85_finance_treasury_schema_sync import (
+    ensure_phase85_finance_treasury_foundation,
+)
+from app.db.phase86_finance_capex_asset_link_schema_sync import (
+    ensure_phase86_finance_capex_asset_link_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import ensure_admin_schema, ensure_project_lifecycle_schema, ensure_project_stage_and_execution_status, ensure_user_lifecycle_schema, ensure_user_auth_schema, ensure_user_access_schema, ensure_non_productive_codes, ensure_standard_task_types, ensure_timesheet_entry_work_category, ensure_timesheet_entry_leave_count, ensure_timesheet_entry_soft_delete, ensure_team_schema, ensure_user_team_schema
 from app.db.design_team import DESIGN_TEAM, build_design_team_users
@@ -543,6 +549,8 @@ def test_engine():
     ensure_phase82_it_ownership_foundation(engine)
     ensure_phase83_it_data_import_foundation(engine)
     ensure_phase84_project_classification_foundation(engine)
+    ensure_phase85_finance_treasury_foundation(engine)
+    ensure_phase86_finance_capex_asset_link_foundation(engine)
     ensure_project_complexity(engine)
     ensure_standard_task_types(engine)
     ensure_phase7_foundation(engine)
@@ -612,6 +620,8 @@ def seeded_db(test_session_factory, test_engine):
     ensure_phase82_it_ownership_foundation(test_engine)
     ensure_phase83_it_data_import_foundation(test_engine)
     ensure_phase84_project_classification_foundation(test_engine)
+    ensure_phase85_finance_treasury_foundation(test_engine)
+    ensure_phase86_finance_capex_asset_link_foundation(test_engine)
     ensure_project_complexity(test_engine)
     ensure_standard_task_types(test_engine)
     return milestone

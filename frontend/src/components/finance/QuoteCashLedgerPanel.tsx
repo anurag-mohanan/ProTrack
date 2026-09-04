@@ -14,6 +14,7 @@ import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { toFiniteNumber } from '../../utils/format';
 import { financeMoney } from './FinanceCockpitPrimitives';
+import { InvoicePdfImportDialog } from './InvoicePdfImportDialog';
 import { designTokens } from '../../theme/designTokens';
 
 export type CashLine = {
@@ -52,6 +53,7 @@ export function QuoteCashLedgerPanel({ quote, onChanged }: QuoteCashLedgerPanelP
   const [payAmount, setPayAmount] = useState('');
   const [payDate, setPayDate] = useState(today);
   const [payRef, setPayRef] = useState('');
+  const [invoicePdfOpen, setInvoicePdfOpen] = useState(false);
 
   const balanceDue = toFiniteNumber(quote.balance_due);
   const remainingToInvoice = toFiniteNumber(quote.remaining_to_invoice);
@@ -250,7 +252,19 @@ export function QuoteCashLedgerPanel({ quote, onChanged }: QuoteCashLedgerPanelP
             Invoice remaining
           </Button>
         ) : null}
+        <Button size="small" variant="text" disabled={busy} onClick={() => setInvoicePdfOpen(true)}>
+          Import PDF
+        </Button>
       </Stack>
+
+      <InvoicePdfImportDialog
+        open={invoicePdfOpen}
+        onClose={() => setInvoicePdfOpen(false)}
+        quoteId={quote.id}
+        onImported={(data) => {
+          if (data) onChanged(data as QuoteCashSummary);
+        }}
+      />
 
       <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.75 }}>
         Payment lines

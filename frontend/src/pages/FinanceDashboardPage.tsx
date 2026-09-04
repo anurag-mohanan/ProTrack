@@ -12,6 +12,7 @@ import { FinancePeopleCostsPanel } from '../components/finance/FinancePeopleCost
 import { FinanceQuotesPanel } from '../components/finance/FinanceQuotesPanel';
 import { FinanceScenariosPanel } from '../components/finance/FinanceScenariosPanel';
 import { FinanceTeamCommercialPanel } from '../components/finance/FinanceTeamCommercialPanel';
+import { FinanceTreasuryPanel } from '../components/finance/FinanceTreasuryPanel';
 import {
   FinanceTeamFilter,
   readStoredFinanceTeamId,
@@ -34,6 +35,7 @@ export const FINANCE_TABS = [
   { key: 'commercial', label: 'Teams / commercial', aliases: ['commercial', 'teams'] },
   { key: 'annual-plan', label: 'Forecasting / Annual Plan', aliases: ['annual-plan', 'forecast', 'forecasting', 'plan'] },
   { key: 'quotes', label: 'Projects & revenue', aliases: ['quotes', 'revenue', 'projects', 'invoicing'] },
+  { key: 'treasury', label: 'Treasury', aliases: ['treasury', 'loans', 'od', 'investments', 'cash'] },
   { key: 'budgets', label: 'Reports & budgets', aliases: ['budgets', 'reports', 'report'] },
 ] as const;
 
@@ -121,7 +123,8 @@ export function FinanceDashboardPage() {
       {tab === 5 && <FinanceTeamCommercialPanel teamId={teamId} />}
       {tab === 6 && <AnnualPlanPanel />}
       {tab === 7 && <FinanceQuotesPanel teamId={teamId} />}
-      {tab === 8 && <FinanceBudgetsReportsPanel teamId={teamId} />}
+      {tab === 8 && <FinanceTreasuryPanel teamId={teamId} />}
+      {tab === 9 && <FinanceBudgetsReportsPanel teamId={teamId} />}
     </Box>
   );
 }

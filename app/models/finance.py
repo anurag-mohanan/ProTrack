@@ -30,10 +30,16 @@ from app.models.enums import (
     CostFrequency,
     CostNature,
     ExpensePaidBy,
+    FinanceInvestmentStatus,
+    FinanceInvestmentType,
+    FinanceLoanInterestType,
+    FinanceLoanStatus,
+    FinanceOdStatus,
     FinancePlanSection,
     FinancePlanStatus,
     FinancePlanningScenarioStatus,
     FinancePlanningScenarioType,
+    FinanceRecordSource,
     TeamBillingMode,
     TeamBillingPeriod,
 )
@@ -192,6 +198,9 @@ class Expense(Base, TimestampMixin, TenantMixin):
     )
     project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("projects.id"), nullable=True
+    )
+    asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=True, index=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -593,3 +602,242 @@ class FinancePlanningScenario(Base, TimestampMixin, TenantMixin):
     updated_by_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
+
+
+class FinanceLoan(Base, TimestampMixin, TenantMixin):
+    """Company loan / term facility. Principal is financing position, not P&L."""
+
+    __tablename__ = "finance_loans"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    lender_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    loan_type: Mapped[Optional[str]] = mapped_column(String(80))
+    reference: Mapped[Optional[str]] = mapped_column(String(100))
+    original_principal: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    outstanding_principal: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    currency_code: Mapped[str] = mapped_column(
+        String(3), ForeignKey("currencies.code"), nullable=False, default="INR"
+    )
+    interest_rate_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    interest_type: Mapped[FinanceLoanInterestType] = mapped_column(
+        Enum(FinanceLoanInterestType, name="finance_loan_interest_type", native_enum=False),
+        nullable=False,
+        default=FinanceLoanInterestType.reducing,
+    )
+    start_date: Mapped[Optional[date]] = mapped_column(Date)
+    end_date: Mapped[Optional[date]] = mapped_column(Date)
+    tenure_months: Mapped[Optional[int]] = mapped_column(Integer)
+    emi_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    payment_frequency: Mapped[Optional[str]] = mapped_column(String(40))
+    next_payment_date: Mapped[Optional[date]] = mapped_column(Date)
+    security_notes: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[FinanceLoanStatus] = mapped_column(
+        Enum(FinanceLoanStatus, name="finance_loan_status", native_enum=False),
+        nullable=False,
+        default=FinanceLoanStatus.active,
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[FinanceRecordSource] = mapped_column(
+        Enum(FinanceRecordSource, name="finance_record_source", native_enum=False),
+        nullable=False,
+        default=FinanceRecordSource.manual,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    repayments: Mapped[list["FinanceLoanRepayment"]] = relationship(
+        back_populates="loan",
+        cascade="all, delete-orphan",
+        order_by="FinanceLoanRepayment.payment_date",
+    )
+
+
+class FinanceLoanRepayment(Base, TimestampMixin, TenantMixin):
+    """Loan repayment split: principal reduces debt; interest is P&L finance cost."""
+
+    __tablename__ = "finance_loan_repayments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    loan_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("finance_loans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    payment_date: Mapped[date] = mapped_column(Date, nullable=False)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    principal_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    interest_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    reference: Mapped[Optional[str]] = mapped_column(String(100))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[FinanceRecordSource] = mapped_column(
+        Enum(FinanceRecordSource, name="finance_record_source", native_enum=False),
+        nullable=False,
+        default=FinanceRecordSource.manual,
+    )
+
+    loan: Mapped[FinanceLoan] = relationship(back_populates="repayments")
+
+
+class FinanceOverdraftFacility(Base, TimestampMixin, TenantMixin):
+    """Bank OD facility — utilization is financing position; interest is P&L."""
+
+    __tablename__ = "finance_overdraft_facilities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    bank_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    sanctioned_limit: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    current_utilization: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    currency_code: Mapped[str] = mapped_column(
+        String(3), ForeignKey("currencies.code"), nullable=False, default="INR"
+    )
+    interest_rate_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    interest_basis_notes: Mapped[Optional[str]] = mapped_column(Text)
+    start_date: Mapped[Optional[date]] = mapped_column(Date)
+    review_date: Mapped[Optional[date]] = mapped_column(Date)
+    warning_utilization_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("80.00")
+    )
+    security_notes: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[FinanceOdStatus] = mapped_column(
+        Enum(FinanceOdStatus, name="finance_od_status", native_enum=False),
+        nullable=False,
+        default=FinanceOdStatus.active,
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[FinanceRecordSource] = mapped_column(
+        Enum(FinanceRecordSource, name="finance_record_source", native_enum=False),
+        nullable=False,
+        default=FinanceRecordSource.manual,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    interest_charges: Mapped[list["FinanceOdInterestCharge"]] = relationship(
+        back_populates="facility",
+        cascade="all, delete-orphan",
+        order_by="FinanceOdInterestCharge.charge_date",
+    )
+
+
+class FinanceOdInterestCharge(Base, TimestampMixin, TenantMixin):
+    """OD interest/charges — P&L finance expense; does not change OD utilization."""
+
+    __tablename__ = "finance_od_interest_charges"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    facility_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("finance_overdraft_facilities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    charge_date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[FinanceRecordSource] = mapped_column(
+        Enum(FinanceRecordSource, name="finance_record_source", native_enum=False),
+        nullable=False,
+        default=FinanceRecordSource.manual,
+    )
+
+    facility: Mapped[FinanceOverdraftFacility] = relationship(back_populates="interest_charges")
+
+
+class FinanceInvestment(Base, TimestampMixin, TenantMixin):
+    """Investment register — purchase is cash + asset, not automatic OpEx."""
+
+    __tablename__ = "finance_investments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    investment_type: Mapped[FinanceInvestmentType] = mapped_column(
+        Enum(FinanceInvestmentType, name="finance_investment_type", native_enum=False),
+        nullable=False,
+        default=FinanceInvestmentType.other,
+    )
+    institution: Mapped[Optional[str]] = mapped_column(String(200))
+    investment_date: Mapped[Optional[date]] = mapped_column(Date)
+    amount_invested: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    current_value: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    currency_code: Mapped[str] = mapped_column(
+        String(3), ForeignKey("currencies.code"), nullable=False, default="INR"
+    )
+    maturity_date: Mapped[Optional[date]] = mapped_column(Date)
+    expected_return_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    actual_return_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    income_received: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    status: Mapped[FinanceInvestmentStatus] = mapped_column(
+        Enum(FinanceInvestmentStatus, name="finance_investment_status", native_enum=False),
+        nullable=False,
+        default=FinanceInvestmentStatus.active,
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[FinanceRecordSource] = mapped_column(
+        Enum(FinanceRecordSource, name="finance_record_source", native_enum=False),
+        nullable=False,
+        default=FinanceRecordSource.manual,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    income_entries: Mapped[list["FinanceInvestmentIncome"]] = relationship(
+        back_populates="investment",
+        cascade="all, delete-orphan",
+        order_by="FinanceInvestmentIncome.income_date",
+    )
+
+
+class FinanceInvestmentIncome(Base, TimestampMixin, TenantMixin):
+    """Investment income received — cash inflow + investment income (not principal)."""
+
+    __tablename__ = "finance_investment_income"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    investment_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("finance_investments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    income_date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[FinanceRecordSource] = mapped_column(
+        Enum(FinanceRecordSource, name="finance_record_source", native_enum=False),
+        nullable=False,
+        default=FinanceRecordSource.manual,
+    )
+
+    investment: Mapped[FinanceInvestment] = relationship(back_populates="income_entries")
+
+
+class FinanceCashPosition(Base, TimestampMixin, TenantMixin):
+    """Manual opening/current cash & bank balances for cash-flow / runway."""
+
+    __tablename__ = "finance_cash_positions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    as_of_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    bank_balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    cash_balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    currency_code: Mapped[str] = mapped_column(
+        String(3), ForeignKey("currencies.code"), nullable=False, default="INR"
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[FinanceRecordSource] = mapped_column(
+        Enum(FinanceRecordSource, name="finance_record_source", native_enum=False),
+        nullable=False,
+        default=FinanceRecordSource.manual,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

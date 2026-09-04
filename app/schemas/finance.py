@@ -91,6 +91,7 @@ class ExpenseCreate(BaseModel):
     notify_enabled: bool = True
     team_id: UUID
     project_id: UUID | None = None
+    asset_id: UUID | None = None
 
 
 class ExpenseUpdate(BaseModel):
@@ -112,6 +113,7 @@ class ExpenseUpdate(BaseModel):
     notify_enabled: bool | None = None
     team_id: UUID | None = None
     project_id: UUID | None = None
+    asset_id: UUID | None = None
 
 
 class ExpenseRead(BaseModel):
@@ -136,6 +138,7 @@ class ExpenseRead(BaseModel):
     notify_enabled: bool
     team_id: UUID | None = None
     project_id: UUID | None = None
+    asset_id: UUID | None = None
     base_amount_inr: Decimal
     fx_rate: Decimal
     fx_date: date
@@ -694,6 +697,7 @@ class FinanceDashboardRead(BaseModel):
     overhead: dict = Field(default_factory=dict)
     period_context: dict = Field(default_factory=dict)
     quote_billing: dict = Field(default_factory=dict)
+    fy_turnover: dict = Field(default_factory=dict)
 
 
 class AiForecastPlaceholderRead(BaseModel):
@@ -1046,3 +1050,172 @@ class FinancePlanningScenarioCompareSummary(BaseModel):
 class FinancePlanningScenarioCompareResponse(BaseModel):
     scenario_a: FinancePlanningScenarioCompareSummary
     scenario_b: FinancePlanningScenarioCompareSummary
+
+
+# --- Treasury (loans / OD / investments / cash) -----------------------------
+
+
+class FinanceLoanCreate(BaseModel):
+    lender_name: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=200)
+    loan_type: str | None = None
+    reference: str | None = None
+    original_principal: Decimal = Field(ge=0)
+    outstanding_principal: Decimal | None = Field(default=None, ge=0)
+    currency_code: str = "INR"
+    interest_rate_percent: Decimal | None = None
+    interest_type: str | None = "reducing"
+    start_date: date | None = None
+    end_date: date | None = None
+    tenure_months: int | None = None
+    emi_amount: Decimal | None = None
+    payment_frequency: str | None = None
+    next_payment_date: date | None = None
+    security_notes: str | None = None
+    notes: str | None = None
+
+
+class FinanceLoanUpdate(BaseModel):
+    lender_name: str | None = None
+    name: str | None = None
+    loan_type: str | None = None
+    reference: str | None = None
+    original_principal: Decimal | None = None
+    outstanding_principal: Decimal | None = None
+    currency_code: str | None = None
+    interest_rate_percent: Decimal | None = None
+    interest_type: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    tenure_months: int | None = None
+    emi_amount: Decimal | None = None
+    payment_frequency: str | None = None
+    next_payment_date: date | None = None
+    security_notes: str | None = None
+    status: str | None = None
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+class FinanceLoanRepaymentCreate(BaseModel):
+    payment_date: date | None = None
+    total_amount: Decimal = Field(gt=0)
+    principal_amount: Decimal | None = Field(default=None, ge=0)
+    interest_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    reference: str | None = None
+    notes: str | None = None
+
+
+class FinanceOdFacilityCreate(BaseModel):
+    bank_name: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=200)
+    sanctioned_limit: Decimal = Field(ge=0)
+    current_utilization: Decimal = Field(default=Decimal("0"), ge=0)
+    currency_code: str = "INR"
+    interest_rate_percent: Decimal | None = None
+    interest_basis_notes: str | None = None
+    start_date: date | None = None
+    review_date: date | None = None
+    warning_utilization_percent: Decimal = Field(default=Decimal("80"), ge=0, le=100)
+    security_notes: str | None = None
+    notes: str | None = None
+
+
+class FinanceOdFacilityUpdate(BaseModel):
+    bank_name: str | None = None
+    name: str | None = None
+    sanctioned_limit: Decimal | None = None
+    current_utilization: Decimal | None = None
+    currency_code: str | None = None
+    interest_rate_percent: Decimal | None = None
+    interest_basis_notes: str | None = None
+    start_date: date | None = None
+    review_date: date | None = None
+    warning_utilization_percent: Decimal | None = None
+    security_notes: str | None = None
+    status: str | None = None
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+class FinanceOdInterestCreate(BaseModel):
+    charge_date: date | None = None
+    amount: Decimal = Field(gt=0)
+    notes: str | None = None
+
+
+class FinanceInvestmentCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    investment_type: str = "other"
+    institution: str | None = None
+    investment_date: date | None = None
+    amount_invested: Decimal = Field(ge=0)
+    current_value: Decimal | None = Field(default=None, ge=0)
+    currency_code: str = "INR"
+    maturity_date: date | None = None
+    expected_return_percent: Decimal | None = None
+    notes: str | None = None
+
+
+class FinanceInvestmentUpdate(BaseModel):
+    name: str | None = None
+    investment_type: str | None = None
+    institution: str | None = None
+    investment_date: date | None = None
+    amount_invested: Decimal | None = None
+    current_value: Decimal | None = None
+    currency_code: str | None = None
+    maturity_date: date | None = None
+    expected_return_percent: Decimal | None = None
+    actual_return_amount: Decimal | None = None
+    status: str | None = None
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+class FinanceInvestmentIncomeCreate(BaseModel):
+    income_date: date | None = None
+    amount: Decimal = Field(gt=0)
+    notes: str | None = None
+
+
+class FinanceCashPositionUpsert(BaseModel):
+    as_of_date: date | None = None
+    bank_balance: Decimal = Field(default=Decimal("0"), ge=0)
+    cash_balance: Decimal = Field(default=Decimal("0"), ge=0)
+    currency_code: str = "INR"
+    notes: str | None = None
+
+
+class InvoicePdfFieldCandidate(BaseModel):
+    value: str | None = None
+    confidence: float = 0
+    source: str | None = None
+    needs_review: bool = False
+
+
+class InvoicePdfExtractResult(BaseModel):
+    """Review DTO from invoice PDF — does not create records."""
+
+    text_extractable: bool = True
+    ocr_used: bool = False
+    source_chars: int = 0
+    content_sha256: str | None = None
+    filename: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    fields: dict[str, InvoicePdfFieldCandidate] = Field(default_factory=dict)
+    customer_matches: list[dict] = Field(default_factory=list)
+    quote_matches: list[dict] = Field(default_factory=list)
+    duplicates: list[dict] = Field(default_factory=list)
+    suggested_quote_id: str | None = None
+    source: str = "pdf_import"
+
+
+class InvoicePdfConfirmRequest(BaseModel):
+    quote_id: UUID
+    amount: Decimal = Field(gt=0)
+    line_date: date
+    invoice_number: str | None = None
+    notes: str | None = None
+    import_anyway: bool = False
+    content_sha256: str | None = None

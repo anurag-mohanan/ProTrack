@@ -34,7 +34,8 @@ import {
   StickyRecordHeader,
 } from '../ui/design-system';
 import { userDisplayName } from '../../utils/format';
-import { optionalString, optionalUuid, optionalNumber, validateRequiredFields, isBlankDisplayValue } from '../../utils/formValues';
+import { optionalString, optionalUuid, optionalNumber, isBlankDisplayValue } from '../../utils/formValues';
+import { validateProjectFormRequired } from '../../utils/projectFormValidation';
 import { ChangeProjectTemplateDialog } from './ChangeProjectTemplateDialog';
 import { ProjectDocumentsPanel } from './ProjectDocumentsPanel';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -592,26 +593,16 @@ export function ProjectFormDialog({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
 
-    const validationError = validateRequiredFields(
-      {
-        tool_number: form.tool_number,
-        part_description: form.part_description,
-        customer_id: form.customer_id,
-        ...(isEdit ? {} : { team_id: form.team_id, stream_id: form.stream_id }),
-      },
-      [
-        { key: 'tool_number', label: referenceLabel },
-        { key: 'part_description', label: 'Part description' },
-        { key: 'customer_id', label: 'Customer' },
-        ...(isEdit
-          ? []
-          : [
-              { key: 'team_id', label: 'Team' },
-              { key: 'stream_id', label: 'Engineering stream' },
-              { key: 'project_classification', label: 'Project classification' },
-            ]),
-      ],
-    );
+    const validationError = validateProjectFormRequired({
+      tool_number: form.tool_number,
+      part_description: form.part_description,
+      customer_id: form.customer_id,
+      team_id: form.team_id,
+      stream_id: form.stream_id,
+      project_classification: form.project_classification,
+      isEdit,
+      referenceLabel,
+    });
 
     if (validationError) {
       showError(validationError);

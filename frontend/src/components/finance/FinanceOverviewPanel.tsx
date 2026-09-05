@@ -42,6 +42,7 @@ import {
 import { FinanceRevenueBreakdownTable } from './FinanceRevenueBreakdownTable';
 import { FinanceTeamPnlTable, type TeamPnlRow } from './FinanceTeamPnlTable';
 import { FinanceFyTurnoverSection, type FyTurnoverControl } from './FinanceFyTurnoverSection';
+import { FinanceHealthStrip } from './FinanceHealthStrip';
 
 type FinancePeriod = 'month' | 'quarter' | 'half' | 'year';
 
@@ -379,6 +380,8 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
       />
 
       <FinanceFyTurnoverSection data={data.fy_turnover} currency={currency} />
+
+      <FinanceHealthStrip teamId={teamId} currency={currency} />
 
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>

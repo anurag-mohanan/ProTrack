@@ -20,6 +20,14 @@ export type WhatIfInputs = {
   cost_increase_percent: number;
   average_hours_per_project: number;
   margin_target_percent: number;
+  /** schema_version >= 4 — cash & financing */
+  opening_cash: number;
+  collections_realization_percent: number;
+  extra_loan_emi_monthly: number;
+  od_interest_monthly: number;
+  investment_income_monthly: number;
+  one_time_capex_cash: number;
+  minimum_cash_reserve: number;
 };
 
 export type FormulaStep = {
@@ -48,6 +56,13 @@ export type WhatIfResult = {
   break_even_projects: number;
   revenue_per_employee: number;
   profit_per_employee: number;
+  expected_collections: number;
+  cash_inflows: number;
+  cash_outflows: number;
+  net_cash_flow: number;
+  ending_cash: number;
+  scenario_runway_months: number | null;
+  cash_status: 'cash_generative' | 'burning' | 'missing_opening_cash';
   steps: FormulaStep[];
   warnings: string[];
 };
@@ -152,6 +167,48 @@ export const WHAT_IF_INPUT_HELP: Record<
     description: 'Minimum acceptable gross margin for warnings.',
     why: 'Flags scenarios that fall below your target.',
   },
+  opening_cash: {
+    label: 'Opening cash',
+    unit: 'currency',
+    description: 'Bank + cash available at the start of the scenario period.',
+    why: 'Baseline for ending cash and runway (from Treasury cash position when seeded).',
+  },
+  collections_realization_percent: {
+    label: 'Collections realization',
+    unit: '%',
+    description: 'Share of expected revenue you expect to collect as cash in the period.',
+    why: 'Separates P&L turnover from cash collections (payment timing).',
+  },
+  extra_loan_emi_monthly: {
+    label: 'Loan EMI / repayments',
+    unit: 'currency',
+    description: 'Cash loan repayments in the period (principal + interest cash outflow).',
+    why: 'Principal is financing/cash, not P&L expense; still reduces cash.',
+  },
+  od_interest_monthly: {
+    label: 'OD interest',
+    unit: 'currency',
+    description: 'Overdraft interest/charges expected in the period.',
+    why: 'OD interest is finance cost and cash outflow; OD drawdown is not revenue.',
+  },
+  investment_income_monthly: {
+    label: 'Investment income',
+    unit: 'currency',
+    description: 'Cash income expected from investments in the period.',
+    why: 'Investment income increases cash; purchases are modeled separately as CapEx cash.',
+  },
+  one_time_capex_cash: {
+    label: 'One-time CapEx cash',
+    unit: 'currency',
+    description: 'Cash spent on capital purchases in the period.',
+    why: 'CapEx is cash + asset — not automatic operating expense.',
+  },
+  minimum_cash_reserve: {
+    label: 'Minimum cash reserve',
+    unit: 'currency',
+    description: 'Floor cash balance that should not be breached.',
+    why: 'Triggers a warning when projected ending cash falls below the reserve.',
+  },
 };
 
 export function defaultWhatIfInputs(partial?: Partial<WhatIfInputs>): WhatIfInputs {
@@ -172,6 +229,13 @@ export function defaultWhatIfInputs(partial?: Partial<WhatIfInputs>): WhatIfInpu
     cost_increase_percent: 0,
     average_hours_per_project: 120,
     margin_target_percent: 25,
+    opening_cash: 0,
+    collections_realization_percent: 80,
+    extra_loan_emi_monthly: 0,
+    od_interest_monthly: 0,
+    investment_income_monthly: 0,
+    one_time_capex_cash: 0,
+    minimum_cash_reserve: 0,
     ...partial,
   };
 }
@@ -351,6 +415,89 @@ export function computeWhatIf(inputs: WhatIfInputs): WhatIfResult {
     warnings.push('Pipeline mode is on but pipeline value is zero.');
   }
 
+  const realization = Math.min(100, Math.max(0, n(inputs.collections_realization_percent)));
+  const expectedCollections = r2(expectedRevenue * (realization / 100));
+  const cashIn = r2(
+    expectedCollections + n(inputs.investment_income_monthly),
+  );
+  const cashOut = r2(
+    totalCost +
+      n(inputs.extra_loan_emi_monthly) +
+      n(inputs.od_interest_monthly) +
+      n(inputs.one_time_capex_cash),
+  );
+  const netCash = r2(cashIn - cashOut);
+  const openingCash = n(inputs.opening_cash);
+  const endingCash = r2(openingCash + netCash);
+  let cashStatus: WhatIfResult['cash_status'] = 'burning';
+  let runwayMonths: number | null = null;
+  if (openingCash <= 0 && n(inputs.minimum_cash_reserve) <= 0) {
+    cashStatus = 'missing_opening_cash';
+  } else if (netCash >= 0) {
+    cashStatus = 'cash_generative';
+    runwayMonths = null;
+  } else {
+    cashStatus = 'burning';
+    runwayMonths = openingCash > 0 ? r2(openingCash / Math.abs(netCash)) : 0;
+  }
+
+  steps.push(
+    {
+      label: 'Expected collections',
+      expression: 'Expected revenue × Collections realization %',
+      substituted: `${expectedRevenue} × ${realization}%`,
+      result: expectedCollections,
+      unit: 'currency',
+    },
+    {
+      label: 'Cash inflows',
+      expression: 'Collections + Investment income',
+      substituted: `${expectedCollections} + ${n(inputs.investment_income_monthly)}`,
+      result: cashIn,
+      unit: 'currency',
+    },
+    {
+      label: 'Cash outflows',
+      expression: 'Total cost + Loan EMI + OD interest + CapEx cash',
+      substituted: `${totalCost} + ${n(inputs.extra_loan_emi_monthly)} + ${n(inputs.od_interest_monthly)} + ${n(inputs.one_time_capex_cash)}`,
+      result: cashOut,
+      unit: 'currency',
+    },
+    {
+      label: 'Net cash flow',
+      expression: 'Cash in − Cash out',
+      substituted: `${cashIn} − ${cashOut}`,
+      result: netCash,
+      unit: 'currency',
+    },
+    {
+      label: 'Ending cash',
+      expression: 'Opening cash + Net cash flow',
+      substituted: `${openingCash} + ${netCash}`,
+      result: endingCash,
+      unit: 'currency',
+    },
+  );
+
+  if (cashStatus === 'missing_opening_cash') {
+    warnings.push(
+      'Opening cash is zero — set a Treasury cash position or enter opening cash for runway.',
+    );
+  }
+  if (cashStatus === 'burning' && runwayMonths != null && runwayMonths < 3) {
+    warnings.push(
+      `Projected cash runway is only ${runwayMonths} months at this net burn.`,
+    );
+  }
+  if (endingCash < n(inputs.minimum_cash_reserve)) {
+    warnings.push(
+      `Ending cash ${endingCash} falls below the minimum reserve ${n(inputs.minimum_cash_reserve)}.`,
+    );
+  }
+  if (n(inputs.extra_loan_emi_monthly) > cashIn * 0.4 && cashIn > 0) {
+    warnings.push('Loan repayments are high relative to expected collections.');
+  }
+
   return {
     scenario_headcount: headcount,
     available_hours: available,
@@ -369,6 +516,13 @@ export function computeWhatIf(inputs: WhatIfInputs): WhatIfResult {
     break_even_projects: breakEvenProjects,
     revenue_per_employee: headcount > 0 ? r2(expectedRevenue / headcount) : 0,
     profit_per_employee: headcount > 0 ? r2(profit / headcount) : 0,
+    expected_collections: expectedCollections,
+    cash_inflows: cashIn,
+    cash_outflows: cashOut,
+    net_cash_flow: netCash,
+    ending_cash: endingCash,
+    scenario_runway_months: runwayMonths,
+    cash_status: cashStatus,
     steps,
     warnings,
   };
@@ -384,6 +538,7 @@ export function whatIfPreset(base: WhatIfInputs, key: WhatIfCaseKey): WhatIfInpu
       win_rate_percent: Math.min(95, n(base.win_rate_percent) + 10),
       utilization_percent: Math.min(95, n(base.utilization_percent) + 10),
       cost_increase_percent: Math.max(0, n(base.cost_increase_percent) - 3),
+      collections_realization_percent: Math.min(95, n(base.collections_realization_percent) + 10),
     };
   }
   if (key === 'worst') {
@@ -393,6 +548,8 @@ export function whatIfPreset(base: WhatIfInputs, key: WhatIfCaseKey): WhatIfInpu
       win_rate_percent: Math.max(5, n(base.win_rate_percent) - 15),
       utilization_percent: Math.max(40, n(base.utilization_percent) - 10),
       cost_increase_percent: n(base.cost_increase_percent) + 10,
+      collections_realization_percent: Math.max(40, n(base.collections_realization_percent) - 15),
+      one_time_capex_cash: n(base.one_time_capex_cash) * 1.2,
     };
   }
   return { ...base };

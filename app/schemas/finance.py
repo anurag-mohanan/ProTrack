@@ -936,7 +936,7 @@ class FinancePlanAiApplyRequest(BaseModel):
 
 
 class FinancePlanningScenarioPayload(BaseModel):
-    schema_version: int = 2
+    schema_version: int = 4
     overhead: dict = Field(default_factory=dict)
     new_teams: list[dict] = Field(default_factory=list)
     management_hires: list[dict] = Field(default_factory=list)
@@ -944,6 +944,7 @@ class FinancePlanningScenarioPayload(BaseModel):
     expansion: dict = Field(default_factory=dict)
     opex_yearly: bool = False
     capex_yearly: bool = False
+    what_if: dict | None = None
 
 
 class FinancePlanningScenarioCreate(BaseModel):

@@ -190,6 +190,34 @@ export function FinanceWhatIfPanel({
           </Grid>
         </Grid>
 
+        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
+          4. Cash & financing
+        </Typography>
+        <Alert severity="info" sx={{ mb: 1.5 }}>
+          Invoice-date revenue stays on the P&L above. This section models cash: collections
+          realization, loan EMI (principal is financing, not expense), OD interest, investment
+          income, and CapEx cash (asset purchase, not automatic OpEx).
+        </Alert>
+        <Grid container spacing={1.5} sx={{ mb: 2 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>{numField('opening_cash', 'Opening cash')}</Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            {numField('collections_realization_percent', 'Collections realization %')}
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            {numField('extra_loan_emi_monthly', 'Loan EMI / repayments')}
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>{numField('od_interest_monthly', 'OD interest')}</Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            {numField('investment_income_monthly', 'Investment income')}
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            {numField('one_time_capex_cash', 'One-time CapEx cash')}
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            {numField('minimum_cash_reserve', 'Minimum cash reserve')}
+          </Grid>
+        </Grid>
+
         {scenario.warnings.length > 0 ? (
           <Stack spacing={1} sx={{ mb: 2 }}>
             {scenario.warnings.map((w) => (
@@ -216,9 +244,12 @@ export function FinanceWhatIfPanel({
             {(
               [
                 ['Revenue', current.expected_revenue, scenario.expected_revenue, true],
+                ['Collections', current.expected_collections, scenario.expected_collections, true],
                 ['Total cost', current.total_cost, scenario.total_cost, true],
                 ['Gross profit', current.gross_profit, scenario.gross_profit, true],
                 ['Gross margin %', current.gross_margin_percent, scenario.gross_margin_percent, false],
+                ['Net cash flow', current.net_cash_flow, scenario.net_cash_flow, true],
+                ['Ending cash', current.ending_cash, scenario.ending_cash, true],
                 ['Headcount', current.scenario_headcount, scenario.scenario_headcount, false],
                 ['Productive hours', current.productive_hours, scenario.productive_hours, false],
                 ['Capacity gap', current.capacity_gap, scenario.capacity_gap, false],
@@ -233,6 +264,16 @@ export function FinanceWhatIfPanel({
                 </TableCell>
               </TableRow>
             ))}
+            <TableRow>
+              <TableCell>Cash status</TableCell>
+              <TableCell align="right">{current.cash_status.replace(/_/g, ' ')}</TableCell>
+              <TableCell align="right">{scenario.cash_status.replace(/_/g, ' ')}</TableCell>
+              <TableCell align="right">
+                {scenario.scenario_runway_months != null
+                  ? `${scenario.scenario_runway_months.toFixed(1)} mo runway`
+                  : '—'}
+              </TableCell>
+            </TableRow>
           </TableBody>
         </Table>
 
@@ -252,9 +293,12 @@ export function FinanceWhatIfPanel({
             {(
               [
                 ['Revenue', 'expected_revenue', true],
+                ['Collections', 'expected_collections', true],
                 ['Cost', 'total_cost', true],
                 ['Profit', 'gross_profit', true],
                 ['Margin %', 'gross_margin_percent', false],
+                ['Net cash', 'net_cash_flow', true],
+                ['Ending cash', 'ending_cash', true],
                 ['Capacity gap', 'capacity_gap', false],
               ] as const
             ).map(([label, key, isMoney]) => (

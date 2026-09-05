@@ -78,6 +78,7 @@ import {
   financeMoney,
 } from './FinanceCockpitPrimitives';
 import { FinanceWhatIfPanel } from './FinanceWhatIfPanel';
+import { FinanceHealthStrip, type FinancialHealth } from './FinanceHealthStrip';
 import { teamQueryParam } from './FinanceTeamFilter';
 import {
   defaultWhatIfInputs,
@@ -262,6 +263,11 @@ export function FinanceScenariosPanel({ teamId }: { teamId: string }) {
     queryKey: ['finance-planning-scenarios'],
     queryFn: async () =>
       (await apiClient.get<SavedScenarioListItem[]>('/finance/planning-scenarios')).data,
+  });
+
+  const healthQuery = useQuery({
+    queryKey: ['finance-health', teamId || 'all'],
+    queryFn: async () => (await apiClient.get<FinancialHealth>(`/finance/health${q}`)).data,
   });
 
   const compareQuery = useQuery({
@@ -629,6 +635,8 @@ export function FinanceScenariosPanel({ teamId }: { teamId: string }) {
         }
       />
 
+      <FinanceHealthStrip teamId={teamId} currency={currency} compact />
+
       <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <ToggleButtonGroup
           exclusive
@@ -794,6 +802,13 @@ export function FinanceScenariosPanel({ teamId }: { teamId: string }) {
             value={defaultWhatIfInputs(
               (draft.what_if as Partial<WhatIfInputs> | undefined) ?? {
                 headcount: toFiniteNumber(baseline.billable_fte) || 10,
+                opening_cash: toFiniteNumber(healthQuery.data?.what_if_seed?.opening_cash),
+                extra_loan_emi_monthly: toFiniteNumber(
+                  healthQuery.data?.what_if_seed?.extra_loan_emi_monthly,
+                ),
+                collections_realization_percent:
+                  toFiniteNumber(healthQuery.data?.what_if_seed?.collections_realization_percent) ||
+                  80,
               },
             )}
             onChange={(next) =>

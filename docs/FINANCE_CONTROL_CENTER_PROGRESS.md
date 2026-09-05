@@ -29,8 +29,16 @@ Date: 2026-09-04
 - OCR for scanned PDFs: deferred (clear message; text PDF only for now)
 - Tests: `tests/test_finance_invoice_pdf_import.py` (5 passed)
 
+### Phase 5 — Scenarios + financial health
+- What-if engine (`schema_version` 4): opening cash, collections realization, loan EMI, OD interest, investment income, CapEx cash → ending cash / scenario runway + warnings
+- Live health strip: `GET /finance/health` composing runway, collections vs turnover, receivables, debt/OD, liquidity
+- UI: `FinanceHealthStrip` on Overview + Scenarios; cash section in `FinanceWhatIfPanel`
+- Planning payloads preserve `schema_version` ≥ 2 and optional `what_if` (no longer force v2)
+- What-if seeds from Treasury cash + active EMI when draft has no saved what-if
+- Tests: `tests/test_finance_phase5_health_scenarios.py`
+
 ## Still open
 - Phase 4b: OCR for scanned invoices
-- Phase 5: Full business scenarios + financial health indicators
 - Quote PDF review-before-save (quote import still auto-saves today)
-- Receivables aging report
+- Receivables aging report (detail beyond health strip)
+- Optional: wire expansion CPR scenarios more tightly to what-if cash case presets

@@ -144,7 +144,7 @@ export type ScenarioDraft = {
   new_teams: NewTeamLine[];
   management_hires: ManagementHireLine[];
   facility_lines: FacilityLine[];
-  /** Transparent capacity / margin what-if (optional; schema_version >= 3). */
+  /** Transparent capacity / margin / cash what-if (optional; schema_version >= 3). */
   what_if?: Record<string, number | boolean>;
 };
 
@@ -619,7 +619,7 @@ export const SCENARIO_STORAGE_KEY = 'protrack.finance.scenarios.draft.v2';
 
 export function emptyDraft(): ScenarioDraft {
   return {
-    schema_version: 3,
+    schema_version: 4,
     overhead: {
       extra_hq_salary_monthly: 0,
       extra_shared_opex_monthly: 0,
@@ -638,7 +638,7 @@ export function emptyDraft(): ScenarioDraft {
 export function draftPayload(draft: ScenarioDraft): ScenarioDraft {
   return {
     ...draft,
-    schema_version: 3,
+    schema_version: 4,
     overhead: {
       ...draft.overhead,
       opex_yearly: draft.opex_yearly,

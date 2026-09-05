@@ -2570,6 +2570,21 @@ def treasury_cash_runway(
     return build_cash_runway(db, team_id=team_id)
 
 
+@router.get('/health')
+def finance_health(
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Live financial health strip: runway, collections vs turnover, debt/OD, liquidity."""
+    from app.services.finance.financial_health_service import build_financial_health
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail='Team not found')
+    return build_financial_health(db, team_id=team_id)
+
+
 @router.get('/reports/monthly-pnl')
 def report_monthly_pnl(
     team_id: UUID | None = Query(default=None),

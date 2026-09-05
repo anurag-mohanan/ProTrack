@@ -52,12 +52,21 @@ def _normalize_payload(payload: dict | None) -> dict:
     merged = {**base, **payload}
     merged["overhead"] = {**base["overhead"], **(payload.get("overhead") or {})}
     merged["expansion"] = {**base["expansion"], **(payload.get("expansion") or {})}
-    merged["schema_version"] = 2
+    try:
+        version = int(payload.get("schema_version") or base.get("schema_version") or 2)
+    except (TypeError, ValueError):
+        version = 2
+    merged["schema_version"] = max(2, version)
     merged["opex_yearly"] = bool(merged.get("opex_yearly"))
     merged["capex_yearly"] = bool(merged.get("capex_yearly"))
     merged["new_teams"] = list(merged.get("new_teams") or [])
     merged["management_hires"] = list(merged.get("management_hires") or [])
     merged["facility_lines"] = list(merged.get("facility_lines") or [])
+    what_if = payload.get("what_if")
+    if isinstance(what_if, dict):
+        merged["what_if"] = what_if
+    elif "what_if" in merged and not isinstance(merged.get("what_if"), dict):
+        merged.pop("what_if", None)
     return merged
 
 

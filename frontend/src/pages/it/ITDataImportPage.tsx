@@ -319,7 +319,12 @@ export function ITDataImportPage() {
                     {t.label}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Expected file: {t.expected_filename} · Sheet: {t.canonical_sheet}
+                    Expected file: {t.expected_filename}
+                    {t.accepted_sheets?.length
+                      ? ` · Sheets: ${t.accepted_sheets.slice(0, 3).join(', ')}${
+                          t.accepted_sheets.length > 3 ? '…' : ''
+                        }`
+                      : ` · Sheet: ${t.canonical_sheet}`}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -358,6 +363,9 @@ export function ITDataImportPage() {
             {selectedMeta && (
               <Typography variant="body2" color="text.secondary">
                 Expected file: <strong>{selectedMeta.expected_filename}</strong>
+                {selectedMeta.accepted_sheets?.length
+                  ? ` · Accepted sheets: ${selectedMeta.accepted_sheets.join(', ')}`
+                  : null}
                 {selectedMeta.review_only ? ' · Review only (not asset data)' : null}
               </Typography>
             )}
@@ -378,18 +386,27 @@ export function ITDataImportPage() {
               />
             </ProsohmButton>
 
-            {analysis && analysis.other_sheets.length > 0 && (
+            {analysis && (analysis.other_sheets.length > 0 || analysis.sheet_name) && (
               <FormSelect
-                label="Data sheet (canonical recommended)"
+                label="Data sheet"
                 value={sheetOverride || analysis.sheet_name}
                 onChange={(event) => setSheetOverride(String(event.target.value))}
                 options={[
-                  { value: analysis.canonical_sheet || analysis.sheet_name, label: `${analysis.canonical_sheet || analysis.sheet_name} (recommended)` },
+                  {
+                    value: analysis.sheet_name,
+                    label: `${analysis.sheet_name} (detected)`,
+                  },
                   ...analysis.other_sheets
-                    .filter((s) => s !== analysis.sheet_name && s !== 'README')
+                    .filter(
+                      (s) =>
+                        s !== analysis.sheet_name &&
+                        !['README', 'Master Data Seed', 'Ownership Options', 'Instructions'].includes(
+                          s,
+                        ),
+                    )
                     .map((s) => ({ value: s, label: s })),
                 ]}
-                helper="Re-run Analyze after changing the sheet. Compat sheets are never selected by default."
+                helper="Re-run Analyze after changing the sheet. Reference sheets are never selected by default."
               />
             )}
 
@@ -430,6 +447,13 @@ export function ITDataImportPage() {
                 File: <strong>{analysis.filename}</strong> · Sheet:{' '}
                 <strong>{analysis.sheet_name}</strong> · Batch:{' '}
                 <strong>{analysis.batch_code}</strong>
+                {analysis.processing_type &&
+                analysis.processing_type !== (analysis.requested_import_type || analysis.import_type)
+                  ? ` · Pipeline: ${analysis.processing_type}`
+                  : ''}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {analysis.message}
               </Typography>
               <Typography variant="body2">
                 Records: {analysis.stats.records_found ?? 0} · Importable:{' '}

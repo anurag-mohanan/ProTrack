@@ -56,7 +56,7 @@ _SENSITIVE_HEADER_RE = re.compile(
     re.I,
 )
 
-# Canonical sheet names — NEVER auto-import compat sheets.
+# Primary display sheet name per import type (first preferred alias).
 CANONICAL_SHEETS: dict[str, str] = {
     "hardware_workbook": "IT Assets Import",
     "assets": "Assets",
@@ -69,6 +69,48 @@ CANONICAL_SHEETS: dict[str, str] = {
     "migration_exceptions": "Migration_Exceptions",
 }
 
+# Accepted sheet aliases (exact match, case-insensitive). Order = preference.
+SHEET_ALIASES: dict[str, tuple[str, ...]] = {
+    "hardware_workbook": (
+        "IT Assets Import",
+        "IT_Assets",
+        "IT Assets",
+        "Assets",
+        "01_Assets",
+        "Asset Import",
+    ),
+    "assets": (
+        "Assets",
+        "01_Assets",
+        "IT Assets Import",
+        "IT_Assets",
+        "IT Assets",
+        "Asset Import",
+    ),
+    "computers": ("Computers", "02_Computers"),
+    "ip_addresses": ("IP_Addresses", "IP Addresses", "03_IP_Addresses"),
+    "inventory": ("Inventory_Items", "Inventory Items", "04_Inventory_Items"),
+    "software": ("Software_Licenses", "Software Licenses", "05_Software_Licenses"),
+    "user_accounts": ("User_Accounts", "User Accounts", "06_User_Accounts"),
+    "suppliers": ("Suppliers", "07_Suppliers"),
+    "migration_exceptions": (
+        "Migration_Exceptions",
+        "Migration Exceptions",
+        "08_Migration_Exceptions",
+    ),
+}
+
+# Never auto-select these as physical asset data sheets.
+REFERENCE_SHEET_NAMES: frozenset[str] = frozenset(
+    {
+        "master data seed",
+        "ownership options",
+        "readme",
+        "instructions",
+        "template notes",
+    }
+)
+
 COMPAT_SHEETS: frozenset[str] = frozenset(
     {
         "hardware",
@@ -77,10 +119,53 @@ COMPAT_SHEETS: frozenset[str] = frozenset(
         "softwares_&_licenses",
         "user_credentials",
         "supplier_list",
-        "master data seed",
-        "ownership options",
+        *REFERENCE_SHEET_NAMES,
     }
 )
+
+# Header tokens (after _norm_header) used for confidence scoring.
+_SHEET_HEADER_HINTS: dict[str, frozenset[str]] = {
+    "hardware_workbook": frozenset(
+        {
+            "asset_number",
+            "asset_type",
+            "make",
+            "make_brand",
+            "model",
+            "model_number",
+            "assigned_user",
+            "parent_asset_number",
+            "pc_name",
+            "hardware_owner_type",
+        }
+    ),
+    "assets": frozenset(
+        {
+            "asset_number",
+            "external_id",
+            "asset_type",
+            "ownership_type",
+            "make",
+            "make_brand",
+            "model",
+            "model_number",
+            "assigned_user",
+            "parent_asset_number",
+            "pc_name",
+            "hardware_owner_type",
+            "category",
+        }
+    ),
+    "computers": frozenset(
+        {"computer_name", "asset_number", "asset_external_id", "mac_address"}
+    ),
+    "ip_addresses": frozenset({"ip_address", "asset_number", "asset_external_id"}),
+    "inventory": frozenset({"item_name", "quantity", "external_id"}),
+    "software": frozenset({"software_name", "license_quantity"}),
+    "user_accounts": frozenset({"employee_name", "username", "company_email"}),
+    "suppliers": frozenset({"supplier_name"}),
+    "migration_exceptions": frozenset({"exception_type", "issue", "identifier"}),
+}
 
 # Signature headers used to detect wrong-file uploads (normalized).
 _SIGNATURE_HEADERS: dict[str, frozenset[str]] = {
@@ -320,10 +405,11 @@ IMPORT_TYPES: list[dict[str, Any]] = [
     {
         "id": "assets",
         "label": "Assets",
-        "expected_filename": "01_Assets.xlsx",
+        "expected_filename": "01_Assets.xlsx or ProTrack_Current_IT_Assets_Import.xlsx",
         "recommended_order": 1,
         "depends_on": [],
         "review_only": False,
+        "accepted_sheets": list(SHEET_ALIASES["assets"]),
     },
     {
         "id": "computers",
@@ -823,35 +909,150 @@ def _inspect_workbook(content: bytes) -> dict[str, Any]:
         wb.close()
 
 
+def _sheet_header_row(content: bytes, sheet_name: str) -> list[str]:
+    """Read only the first row of headers for sheet scoring."""
+    wb = load_workbook(BytesIO(content), data_only=True, read_only=True)
+    try:
+        if sheet_name not in wb.sheetnames:
+            return []
+        ws = wb[sheet_name]
+        for row in ws.iter_rows(min_row=1, max_row=1, values_only=True):
+            return [_cell_str(c) for c in (row or ()) if _cell_str(c)]
+        return []
+    finally:
+        wb.close()
+
+
+def _header_match_score(import_type: str, headers: list[str]) -> int:
+    hints = _SHEET_HEADER_HINTS.get(import_type) or frozenset()
+    if not hints or not headers:
+        return 0
+    norms = {_norm_header(h) for h in headers if h}
+    # Also accept alias-normalized make_brand ↔ make
+    expanded = set(norms)
+    if "make_brand" in norms:
+        expanded.add("make")
+    if "make" in norms:
+        expanded.add("make_brand")
+    if "model_number" in norms:
+        expanded.add("model")
+    if "model" in norms:
+        expanded.add("model_number")
+    if "assigned_user" in norms:
+        expanded.add("assigned_to")
+    hits = len(hints & expanded)
+    return hits
+
+
+def _looks_like_hardware_workbook(headers: list[str]) -> bool:
+    """Combined ProTrack IT Assets Import layout (human headers)."""
+    norms = {_norm_header(h) for h in headers if h}
+    has_number = bool(norms & {"asset_number", "asset_tag", "it_asset_no", "it_asset_number"})
+    has_type = bool(norms & {"asset_type", "type"})
+    has_make = bool(norms & {"make", "make_brand", "brand", "manufacturer"})
+    has_combo = bool(
+        norms
+        & {
+            "parent_asset_number",
+            "pc_name",
+            "mac_address",
+            "ip_address",
+            "hardware_owner_type",
+            "hardware_owner",
+            "assigned_user",
+        }
+    )
+    return has_number and has_type and (has_make or has_combo)
+
+
+def _is_reference_sheet(name: str) -> bool:
+    return (name or "").strip().lower() in REFERENCE_SHEET_NAMES
+
+
 def _pick_sheet(
     sheetnames: list[str],
     import_type: str,
     override: str | None,
-) -> tuple[str, list[str]]:
-    """Return (selected_sheet, other_sheets)."""
+    *,
+    content: bytes | None = None,
+) -> tuple[str, list[str], dict[str, Any]]:
+    """Return (selected_sheet, other_sheets, detection_meta).
+
+    Priority:
+      1. Manual override
+      2. Configured aliases (exact / case-insensitive)
+      3. Header signature confidence (never auto-picks reference sheets)
+    """
+    meta: dict[str, Any] = {
+        "selection_method": "override" if override else None,
+        "candidates": [],
+        "reference_sheets": [s for s in sheetnames if _is_reference_sheet(s)],
+    }
     if override:
         if override not in sheetnames:
             raise ProTrackValidationError(
                 f"Sheet '{override}' not found. Available: {', '.join(sheetnames)}"
             )
         others = [s for s in sheetnames if s != override]
-        return override, others
+        meta["selection_method"] = "manual_override"
+        meta["selected"] = override
+        return override, others, meta
 
-    canonical = CANONICAL_SHEETS[import_type]
-    # Exact match first, then case-insensitive.
-    if canonical in sheetnames:
-        selected = canonical
-    else:
-        lowered = {s.lower(): s for s in sheetnames}
-        selected = lowered.get(canonical.lower())
-        if selected is None:
-            raise ProTrackValidationError(
-                f"Canonical sheet '{canonical}' not found for import type '{import_type}'. "
-                f"Available: {', '.join(sheetnames)}. "
-                "Pass sheet_name to override (compat sheets are never auto-selected)."
+    aliases = SHEET_ALIASES.get(import_type) or (CANONICAL_SHEETS.get(import_type) or "",)
+    lowered = {s.lower(): s for s in sheetnames}
+    for alias in aliases:
+        if not alias:
+            continue
+        if alias in sheetnames:
+            selected = alias
+            meta["selection_method"] = "alias_exact"
+            meta["matched_alias"] = alias
+            meta["selected"] = selected
+            return selected, [s for s in sheetnames if s != selected], meta
+        hit = lowered.get(alias.lower())
+        if hit is not None and not _is_reference_sheet(hit):
+            meta["selection_method"] = "alias_ci"
+            meta["matched_alias"] = alias
+            meta["selected"] = hit
+            return hit, [s for s in sheetnames if s != hit], meta
+
+    # Header-based fallback
+    if content is not None:
+        scored: list[tuple[int, str]] = []
+        for name in sheetnames:
+            if _is_reference_sheet(name) or name.lower() in COMPAT_SHEETS:
+                continue
+            headers = _sheet_header_row(content, name)
+            score = _header_match_score(import_type, headers)
+            meta["candidates"].append(
+                {"sheet": name, "score": score, "headers_sample": headers[:8]}
             )
-    others = [s for s in sheetnames if s != selected]
-    return selected, others
+            if score > 0:
+                scored.append((score, name))
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        if scored and scored[0][0] >= 3:
+            # Ambiguous if two high scores within 1 point
+            if len(scored) > 1 and scored[0][0] - scored[1][0] <= 1 and scored[1][0] >= 3:
+                options = ", ".join(f"{n} (score {s})" for s, n in scored[:5])
+                raise ProTrackValidationError(
+                    f"Multiple possible '{import_type}' sheets detected: {options}. "
+                    "Select the Asset sheet in the UI (sheet_name) and re-analyze."
+                )
+            selected = scored[0][1]
+            meta["selection_method"] = "header_confidence"
+            meta["confidence_score"] = scored[0][0]
+            meta["selected"] = selected
+            return selected, [s for s in sheetnames if s != selected], meta
+
+    expected = ", ".join(aliases[:5]) if aliases else CANONICAL_SHEETS.get(import_type, "")
+    hint_cols = sorted(_SHEET_HEADER_HINTS.get(import_type) or [])[:6]
+    raise ProTrackValidationError(
+        f"No valid '{import_type}' sheet was detected.\n"
+        f"Available sheets: {', '.join(sheetnames) or '(none)'}.\n"
+        f"Recognized sheet names include: {expected}.\n"
+        f"Expected columns include: {', '.join(hint_cols) or 'n/a'}.\n"
+        "Select the correct sheet in the UI or download the supported template."
+    )
 
 
 def _read_sheet(
@@ -935,11 +1136,20 @@ def _map_row(row: dict[str, str], bindings: dict[str, str | None]) -> dict[str, 
 
 
 def _validate_file_signature(import_type: str, headers: list[str], filename: str) -> None:
+    # Combined hardware workbook uploaded as "Assets" is valid — accept its signature.
+    if import_type == "assets" and _looks_like_hardware_workbook(headers):
+        import_type = "hardware_workbook"
     sig = _SIGNATURE_HEADERS.get(import_type, frozenset())
     if not sig:
         return
     norms = {_norm_header(h) for h in headers}
-    hits = len(sig & norms)
+    # Normalize common aliases so Make/Brand etc. count toward asset_number/asset_type hits.
+    expanded = set(norms)
+    if "make_brand" in norms:
+        expanded.add("make")
+    if "asset_tag" in norms or "it_asset_no" in norms or "it_asset_number" in norms:
+        expanded.add("asset_number")
+    hits = len(sig & expanded)
     if hits < max(1, len(sig) // 2):
         expected = (_IMPORT_TYPE_BY_ID.get(import_type) or {}).get("expected_filename", "")
         raise ProTrackValidationError(
@@ -973,6 +1183,11 @@ def list_import_types(db: Session) -> list[dict[str, Any]]:
             {
                 **meta,
                 "canonical_sheet": CANONICAL_SHEETS[meta["id"]],
+                "accepted_sheets": list(
+                    meta.get("accepted_sheets")
+                    or SHEET_ALIASES.get(meta["id"])
+                    or (CANONICAL_SHEETS[meta["id"]],)
+                ),
                 "status": status,
                 "latest_batch_id": str(latest.id) if latest else None,
                 "latest_batch_code": latest.batch_code if latest else None,
@@ -1053,12 +1268,19 @@ def analyze_upload(
         raise ProTrackValidationError("Uploaded file is empty.")
 
     inspection = _inspect_workbook(content)
-    selected_sheet, other_sheets = _pick_sheet(
-        inspection["sheetnames"], import_type, sheet_name
+    selected_sheet, other_sheets, sheet_detection = _pick_sheet(
+        inspection["sheetnames"], import_type, sheet_name, content=content
     )
     headers, raw_rows, sensitive = _read_sheet(content, selected_sheet)
     _validate_file_signature(import_type, headers, filename)
-    bindings, unmapped = _build_bindings(headers, import_type)
+
+    requested_import_type = import_type
+    processing_type = import_type
+    # Selecting "Assets" with the combined ProTrack workbook uses hardware pipeline.
+    if import_type == "assets" and _looks_like_hardware_workbook(headers):
+        processing_type = "hardware_workbook"
+
+    bindings, unmapped = _build_bindings(headers, processing_type)
 
     customers = _customer_index(db)
     users = _user_index(db)
@@ -1101,8 +1323,8 @@ def analyze_upload(
         "inventory": ("external_id",),
         "ip_addresses": ("ip_address",),
     }
-    id_keys = id_binding_keys.get(import_type, ())
-    if import_type == "hardware_workbook":
+    id_keys = id_binding_keys.get(processing_type, ())
+    if processing_type == "hardware_workbook":
         # Blank Asset Numbers are allowed (system-generated); do not fidelity-block.
         id_column_present = False
     else:
@@ -1120,7 +1342,7 @@ def analyze_upload(
         issues: list[dict[str, str]] = []
         action = "import"
 
-        if import_type == "hardware_workbook":
+        if processing_type == "hardware_workbook":
             from app.services import it_hardware_workbook_import as hw
 
             if id_column_present:
@@ -1150,7 +1372,7 @@ def analyze_upload(
             if any(i.get("code") == "USER_UNKNOWN" for i in issues):
                 user_match_required_count += 1
 
-        elif import_type == "assets":
+        elif processing_type == "assets":
             ext = fields.get("external_id") or ""
             anum = fields.get("asset_number") or ext
             legacy = fields.get("legacy_asset_number") or anum
@@ -1237,7 +1459,7 @@ def analyze_upload(
                 "import_action": action,
             }
 
-        elif import_type == "computers":
+        elif processing_type == "computers":
             link = fields.get("asset_number") or fields.get("asset_external_id") or ""
             cname = fields.get("computer_name") or ""
             if not link:
@@ -1281,7 +1503,7 @@ def analyze_upload(
                 "import_action": action,
             }
 
-        elif import_type == "ip_addresses":
+        elif processing_type == "ip_addresses":
             ip = fields.get("ip_address") or ""
             if id_column_present:
                 id_total += 1
@@ -1326,7 +1548,7 @@ def analyze_upload(
                 "import_action": action,
             }
 
-        elif import_type == "inventory":
+        elif processing_type == "inventory":
             name = fields.get("item_name") or ""
             if not name:
                 issues.append(
@@ -1355,7 +1577,7 @@ def analyze_upload(
                 "import_action": action,
             }
 
-        elif import_type == "software":
+        elif processing_type == "software":
             sw = fields.get("software_name") or ""
             if not sw:
                 issues.append(
@@ -1391,7 +1613,7 @@ def analyze_upload(
                 "import_action": action,
             }
 
-        elif import_type == "user_accounts":
+        elif processing_type == "user_accounts":
             name = fields.get("employee_name") or ""
             email = fields.get("company_email") or ""
             username = fields.get("username") or ""
@@ -1425,7 +1647,7 @@ def analyze_upload(
                 "import_action": action,
             }
 
-        elif import_type == "suppliers":
+        elif processing_type == "suppliers":
             name = fields.get("supplier_name") or ""
             if not name:
                 issues.append(
@@ -1502,17 +1724,20 @@ def analyze_upload(
             "(>50%). Commit blocked until column mapping is corrected."
         )
 
-    if import_type == "suppliers" and importable_count == 0 and not mapped_rows:
+    if processing_type == "suppliers" and importable_count == 0 and not mapped_rows:
         warning_count += 1
 
-    dep_warnings = _dependency_warnings(db, import_type)
+    dep_warnings = _dependency_warnings(db, requested_import_type)
     commit_allowed = not block_commit and not (
-        import_type != "migration_exceptions" and importable_count == 0 and error_count > 0 and not mapped_rows
+        processing_type != "migration_exceptions"
+        and importable_count == 0
+        and error_count > 0
+        and not mapped_rows
     )
     # Still allow empty suppliers sheet commit (0 rows).
     if block_commit:
         commit_allowed = False
-    if fidelity_note is None and not mapped_rows and import_type != "suppliers":
+    if fidelity_note is None and not mapped_rows and processing_type != "suppliers":
         # Empty non-supplier sheets: allow preview but warn.
         pass
 
@@ -1528,12 +1753,16 @@ def analyze_upload(
         "id_blank_ratio": (id_blank_count / id_total) if id_total else 0.0,
         "ownership_required": ownership_required_count,
         "user_match_required": user_match_required_count,
+        "processing_type": processing_type,
+        "sheet_selection_method": sheet_detection.get("selection_method"),
     }
 
+    # Keep user-selected type on the batch (checklist/deps); process via session.
+    batch_import_type = requested_import_type
     batch = ITImportBatch(
         id=uuid4(),
         batch_code=_next_batch_code(db),
-        import_type=import_type,
+        import_type=batch_import_type,
         filename=filename,
         sheet_name=selected_sheet,
         uploaded_by_user_id=actor.id,
@@ -1544,7 +1773,15 @@ def analyze_upload(
         error_count=error_count,
         warning_count=warning_count + review_count,
         session_id=None,
-        summary_json=json.dumps({"stats": stats, "bindings": bindings}),
+        summary_json=json.dumps(
+            {
+                "stats": stats,
+                "bindings": bindings,
+                "requested_import_type": requested_import_type,
+                "processing_type": processing_type,
+                "sheet_detection": sheet_detection,
+            }
+        ),
         notes=fidelity_note,
     )
     db.add(batch)
@@ -1553,7 +1790,9 @@ def analyze_upload(
     session_id = str(uuid4())
     session_payload = {
         "filename": filename,
-        "import_type": import_type,
+        "import_type": batch_import_type,
+        "requested_import_type": requested_import_type,
+        "processing_type": processing_type,
         "sheet_name": selected_sheet,
         "headers": headers,
         "bindings": bindings,
@@ -1576,7 +1815,9 @@ def analyze_upload(
         entity_id=batch.id,
         action=ActivityAction.it_data_import_analyzed,
         new_value={
-            "import_type": import_type,
+            "import_type": batch_import_type,
+            "requested_import_type": requested_import_type,
+            "processing_type": processing_type,
             "filename": filename,
             "sheet_name": selected_sheet,
             "batch_code": batch.batch_code,
@@ -1589,16 +1830,25 @@ def analyze_upload(
         commit=True,
     )
 
-    meta = _IMPORT_TYPE_BY_ID[import_type]
+    meta = _IMPORT_TYPE_BY_ID[requested_import_type]
+    bridge_note = ""
+    if requested_import_type != processing_type:
+        bridge_note = (
+            f" Detected combined hardware workbook layout — processing as "
+            f"'{processing_type}'."
+        )
     return {
         "batch_id": str(batch.id),
         "batch_code": batch.batch_code,
         "session_id": session_id,
-        "import_type": import_type,
+        "import_type": batch_import_type,
+        "requested_import_type": requested_import_type,
+        "processing_type": processing_type,
         "filename": filename,
         "sheet_name": selected_sheet,
         "other_sheets": other_sheets,
-        "canonical_sheet": CANONICAL_SHEETS[import_type],
+        "canonical_sheet": CANONICAL_SHEETS[requested_import_type],
+        "sheet_detection": sheet_detection,
         "review_only": bool(meta.get("review_only")),
         "headers": headers,
         "column_bindings": bindings,
@@ -1612,7 +1862,9 @@ def analyze_upload(
         "commit_allowed": commit_allowed,
         "confirm_required": True,
         "message": (
-            f"Preview only — {len(mapped_rows)} rows from sheet '{selected_sheet}'. "
+            f"Preview only — {len(mapped_rows)} rows from sheet '{selected_sheet}'."
+            + bridge_note
+            + " "
             + (fidelity_note or "Confirm to commit non-error rows.")
         ),
     }
@@ -1648,18 +1900,19 @@ def commit_import(
         raise ProTrackValidationError("Session does not match this batch.")
     if session.get("stats", {}).get("id_blank_ratio", 0) > 0.5:
         # Re-check fidelity gate
+        fidelity_type = session.get("processing_type") or batch.import_type
         id_keys = {
             "assets": ("external_id", "asset_number"),
             "computers": ("asset_external_id", "asset_number"),
             "inventory": ("external_id",),
             "ip_addresses": ("ip_address",),
-        }.get(batch.import_type, ())
+        }.get(fidelity_type, ())
         if id_keys:
             raise ProTrackValidationError(
                 "Commit blocked by fidelity gate (>50% blank IDs). Re-analyze after fixing mapping."
             )
 
-    import_type = batch.import_type
+    import_type = session.get("processing_type") or batch.import_type
     rows: list[dict[str, Any]] = session.get("rows") or []
     customers = _customer_index(db)
     users = _user_index(db)

@@ -587,6 +587,7 @@ export interface ITDataImportTypeStatus {
   depends_on: string[];
   review_only: boolean;
   canonical_sheet: string;
+  accepted_sheets?: string[];
   status: string;
   latest_batch_id: string | null;
   latest_batch_code: string | null;
@@ -617,10 +618,13 @@ export interface ITDataImportAnalyzeResult {
   batch_code: string;
   session_id: string;
   import_type: string;
+  requested_import_type?: string;
+  processing_type?: string;
   filename: string;
   sheet_name: string;
   other_sheets: string[];
   canonical_sheet: string;
+  sheet_detection?: Record<string, unknown>;
   review_only: boolean;
   headers: string[];
   column_bindings: Record<string, string | null>;

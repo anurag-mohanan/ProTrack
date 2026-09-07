@@ -212,3 +212,69 @@ def test_hardware_workbook_analyze_and_commit(session):
         select(Asset).where(Asset.asset_number.in_(["IT-155", "IT164", "IT-176", "IT-180"]))
     ).all()
     assert len(count) == 4
+
+
+def test_assets_import_type_accepts_it_assets_import_sheet(session):
+    """Selecting Import Type 'Assets' must recognize 'IT Assets Import' sheet."""
+    admin = _admin(session)
+    content = _workbook_bytes(
+        [
+            [
+                "IT-200",
+                "IT Hardware",
+                "Monitor",
+                "Dell",
+                "P2722H",
+                "",
+                "",
+                "",
+                "",
+                "Open",
+                "Available",
+                "Prosohm",
+                "Prosohm",
+                "",
+                "",
+            ]
+        ]
+    )
+    analysis = imp.analyze_upload(
+        session,
+        actor=admin,
+        content=content,
+        filename="ProTrack_Current_IT_Assets_Import.xlsx",
+        import_type="assets",
+    )
+    assert analysis["sheet_name"] == "IT Assets Import"
+    assert analysis["processing_type"] == "hardware_workbook"
+    assert analysis["requested_import_type"] == "assets"
+    assert analysis["commit_allowed"] is True
+    assert analysis["stats"]["records_found"] == 1
+    # Reference sheets must not be auto-selected
+    assert analysis["sheet_name"] not in {"Master Data Seed", "Ownership Options"}
+
+    # Classic Assets sheet still works
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Assets"
+    ws.append(
+        [
+            "external_id",
+            "asset_number",
+            "ownership_type",
+            "asset_type",
+            "name",
+        ]
+    )
+    ws.append(["EXT-1", "IT-301", "prosohm", "Monitor", "Dell monitor"])
+    buf = BytesIO()
+    wb.save(buf)
+    classic = imp.analyze_upload(
+        session,
+        actor=admin,
+        content=buf.getvalue(),
+        filename="01_Assets.xlsx",
+        import_type="assets",
+    )
+    assert classic["sheet_name"] == "Assets"
+    assert classic["processing_type"] == "assets"

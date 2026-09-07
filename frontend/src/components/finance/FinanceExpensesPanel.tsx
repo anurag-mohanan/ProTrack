@@ -20,7 +20,7 @@ import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
-import { fetchAssetsPaginated } from '../../api/itOperations';
+import { fetchAssetsPaginated, itOperationsKeys } from '../../api/itOperations';
 import { fetchTeams } from '../../api/lookups';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
@@ -60,6 +60,28 @@ type Expense = {
   base_amount_inr?: number | string | null;
   prior_fy_excluded_from_overview?: boolean;
   asset_id?: string | null;
+  software_id?: string | null;
+  license_pool_id?: string | null;
+  it_license_code?: string | null;
+  it_software_name?: string | null;
+  it_license_status?: string | null;
+};
+
+type SoftwareLicenseCandidate = {
+  expense_id: string;
+  expense_name: string;
+  cost_centre_code?: string | null;
+  amount: number | string;
+  currency_code?: string;
+  purchase_date?: string | null;
+  next_renewal_date?: string | null;
+  vendor_name?: string | null;
+  matched_software_id?: string | null;
+  matched_software_name?: string | null;
+  suggested_software_name?: string | null;
+  commercial_model?: string | null;
+  needs_review?: boolean;
+  review_reason?: string | null;
 };
 
 /** Corporate / overhead home — company-wide spend belongs on Overheads, not here. */
@@ -136,6 +158,12 @@ const emptyForm = {
   notify_before_days: '7',
   notify_enabled: true,
   asset_id: '',
+  create_it_license: true,
+  commercial_model: 'subscription',
+  seat_count: '1',
+  renewal_frequency: 'yearly',
+  amc_required: false,
+  amc_percent: '15',
 };
 
 const listRowSx = {
@@ -188,6 +216,27 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     },
   });
 
+  const candidatesQuery = useQuery({
+    queryKey: ['finance-software-license-candidates'],
+    queryFn: async () =>
+      (
+        await apiClient.get<SoftwareLicenseCandidate[]>(
+          '/finance/expenses/software-license-candidates',
+        )
+      ).data,
+  });
+
+  const [linkDrafts, setLinkDrafts] = useState<
+    Record<string, { commercial_model: string; seat_count: string; amc_percent: string }>
+  >({});
+
+  const draftFor = (expenseId: string) =>
+    linkDrafts[expenseId] ?? {
+      commercial_model: 'subscription',
+      seat_count: '1',
+      amc_percent: '15',
+    };
+
   const showAssetPicker =
     form.nature === 'capex' ||
     (() => {
@@ -195,6 +244,13 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       const code = (centre?.code || '').toUpperCase();
       return code === 'HARDWARE' || code === 'SERVERS' || centre?.nature === 'capex';
     })();
+
+  const showSoftwareLicenseFields = (() => {
+    if (editingId) return false;
+    const centre = (costCentresQuery.data ?? []).find((c) => c.id === form.cost_centre_id);
+    const code = (centre?.code || '').toUpperCase();
+    return code === 'SW_LICENSES' || code === 'SW_RENEWALS' || code === 'CLOUD';
+  })();
 
   const assetsQuery = useQuery({
     queryKey: ['it-assets', 'capex-picker', 1, 100],
@@ -218,28 +274,54 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     }
   };
 
-  const payloadBody = () => ({
-    cost_centre_id: form.cost_centre_id,
-    team_id: form.team_id,
-    name: form.name,
-    amount: form.amount,
-    currency_code: form.currency_code,
-    nature: form.nature,
-    frequency: form.frequency,
-    paid_by: form.paid_by,
-    vendor_name: form.vendor_name || null,
-    purchase_date: form.purchase_date,
-    is_recurring: form.is_recurring || form.frequency === 'recurring',
-    next_renewal_date: form.next_renewal_date || null,
-    notify_before_days: Number(form.notify_before_days) || 7,
-    notify_enabled: form.notify_enabled,
-    asset_id: form.nature === 'capex' && form.asset_id ? form.asset_id : null,
-  });
+  const payloadBody = () => {
+    const centre = (costCentresQuery.data ?? []).find((c) => c.id === form.cost_centre_id);
+    const code = (centre?.code || '').toUpperCase();
+    const isSoftware = code === 'SW_LICENSES' || code === 'SW_RENEWALS' || code === 'CLOUD';
+    const body: Record<string, unknown> = {
+      cost_centre_id: form.cost_centre_id,
+      team_id: form.team_id,
+      name: form.name,
+      amount: form.amount,
+      currency_code: form.currency_code,
+      nature: form.nature,
+      frequency: form.frequency,
+      paid_by: form.paid_by,
+      vendor_name: form.vendor_name || null,
+      purchase_date: form.purchase_date,
+      is_recurring: form.is_recurring || form.frequency === 'recurring',
+      next_renewal_date: form.next_renewal_date || null,
+      notify_before_days: Number(form.notify_before_days) || 7,
+      notify_enabled: form.notify_enabled,
+      asset_id: form.nature === 'capex' && form.asset_id ? form.asset_id : null,
+    };
+    if (!editingId && isSoftware && form.create_it_license) {
+      body.create_it_license = true;
+      body.it_license = {
+        software_name: form.name,
+        vendor: form.vendor_name || null,
+        commercial_model: form.commercial_model,
+        seat_count: Math.max(1, Number(form.seat_count) || 1),
+        renewal_frequency:
+          form.commercial_model === 'subscription' ? form.renewal_frequency : null,
+        next_renewal_date: form.next_renewal_date || null,
+        amc_required: form.commercial_model === 'perpetual' ? form.amc_required : null,
+        amc_percent:
+          form.commercial_model === 'perpetual' && form.amc_required
+            ? form.amc_percent
+            : null,
+        assignment_model: 'named_user',
+      };
+    }
+    return body;
+  };
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
     void queryClient.invalidateQueries({ queryKey: ['finance-overhead-expenses'] });
     void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-software-license-candidates'] });
+    void queryClient.invalidateQueries({ queryKey: itOperationsKeys.all });
   };
 
   const saveMutation = useMutation({
@@ -284,9 +366,48 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     },
   });
 
+  const createItLicenseMutation = useMutation({
+    mutationFn: async ({
+      expenseId,
+      commercial_model,
+      seat_count,
+      amc_percent,
+      software_name,
+      software_id,
+    }: {
+      expenseId: string;
+      commercial_model: string;
+      seat_count: number;
+      amc_percent?: string;
+      software_name?: string | null;
+      software_id?: string | null;
+    }) =>
+      (
+        await apiClient.post(`/finance/expenses/${expenseId}/create-it-license`, {
+          commercial_model,
+          seat_count,
+          software_name: software_name || undefined,
+          software_id: software_id || undefined,
+          renewal_frequency: commercial_model === 'subscription' ? 'yearly' : null,
+          amc_required: commercial_model === 'perpetual' ? true : null,
+          amc_percent:
+            commercial_model === 'perpetual' ? amc_percent || '15' : null,
+          assignment_model: 'named_user',
+        })
+      ).data,
+    onSuccess: () => {
+      showSuccess('IT license entitlement created and linked');
+      invalidate();
+    },
+    onError: (error: unknown) => {
+      showError(apiErrorMessage(error, 'Could not create IT license'));
+    },
+  });
+
   const startEdit = (row: Expense) => {
     setEditingId(row.id);
     setForm({
+      ...emptyForm,
       cost_centre_id: row.cost_centre_id,
       team_id: row.team_id || teamId || '',
       name: row.name,
@@ -302,6 +423,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       notify_before_days: String(row.notify_before_days ?? 7),
       notify_enabled: row.notify_enabled !== false,
       asset_id: row.asset_id || '',
+      create_it_license: false,
     });
     setPaidByHint('');
   };
@@ -466,6 +588,16 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
                 label={`Renews ${row.next_renewal_date}`}
               />
             ) : null}
+            {row.it_license_code ? (
+              <Chip
+                size="small"
+                color="secondary"
+                variant="outlined"
+                label={`IT ${row.it_license_code}${row.it_license_status ? ` · ${row.it_license_status}` : ''}`}
+              />
+            ) : cat === 'software' ? (
+              <Chip size="small" variant="outlined" label="IT license: not linked" />
+            ) : null}
           </Stack>
           <Typography variant="body2" color="text.secondary">
             {financeMoney(row.amount, row.currency_code)} · {row.nature.toUpperCase()} ·{' '}
@@ -483,6 +615,25 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
           ) : null}
         </Box>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          {cat === 'software' && !row.license_pool_id ? (
+            <Button
+              size="small"
+              variant="outlined"
+              color="secondary"
+              disabled={createItLicenseMutation.isPending}
+              onClick={() =>
+                createItLicenseMutation.mutate({
+                  expenseId: row.id,
+                  commercial_model: 'subscription',
+                  seat_count: 1,
+                  software_name: row.name,
+                  software_id: row.software_id,
+                })
+              }
+            >
+              Create IT license
+            </Button>
+          ) : null}
           <Button size="small" variant="contained" onClick={() => startEdit(row)}>
             Edit
           </Button>
@@ -586,6 +737,131 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
           />
         </Grid>
       </Grid>
+
+      {(candidatesQuery.data ?? []).length > 0 ? (
+        <FinanceSection
+          title="IT license migration review"
+          subtitle="Existing software expenses without an IT entitlement. Confirm commercial model before creating a license — do not invent perpetual vs subscription."
+        >
+          <Stack spacing={1.25}>
+            {(candidatesQuery.data ?? []).map((cand) => {
+              const draft = draftFor(cand.expense_id);
+              return (
+                <Box key={cand.expense_id} sx={listRowSx}>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      useFlexGap
+                      sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 0.5 }}
+                    >
+                      <Typography sx={{ fontWeight: 600 }}>{cand.expense_name}</Typography>
+                      <Chip
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        label="Needs review"
+                      />
+                      {cand.matched_software_name ? (
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`Matched: ${cand.matched_software_name}`}
+                        />
+                      ) : (
+                        <Chip size="small" variant="outlined" label="New software master" />
+                      )}
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary">
+                      {financeMoney(Number(cand.amount), cand.currency_code || 'INR')}
+                      {cand.purchase_date ? ` · Purchased ${cand.purchase_date}` : ''}
+                      {cand.next_renewal_date ? ` · Renews ${cand.next_renewal_date}` : ''}
+                      {cand.vendor_name ? ` · ${cand.vendor_name}` : ''}
+                    </Typography>
+                    <Typography variant="caption" color="warning.main">
+                      {cand.review_reason}
+                    </Typography>
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1}
+                      useFlexGap
+                      sx={{ flexWrap: 'wrap', mt: 1 }}
+                    >
+                      <FormControl size="small" sx={{ minWidth: 160 }}>
+                        <InputLabel>Commercial model</InputLabel>
+                        <Select
+                          label="Commercial model"
+                          value={draft.commercial_model}
+                          onChange={(e) =>
+                            setLinkDrafts((prev) => ({
+                              ...prev,
+                              [cand.expense_id]: {
+                                ...draft,
+                                commercial_model: String(e.target.value),
+                              },
+                            }))
+                          }
+                        >
+                          <MenuItem value="subscription">Subscription</MenuItem>
+                          <MenuItem value="perpetual">Perpetual</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        size="small"
+                        label="Quantity"
+                        type="number"
+                        value={draft.seat_count}
+                        onChange={(e) =>
+                          setLinkDrafts((prev) => ({
+                            ...prev,
+                            [cand.expense_id]: { ...draft, seat_count: e.target.value },
+                          }))
+                        }
+                        sx={{ width: 110 }}
+                      />
+                      {draft.commercial_model === 'perpetual' ? (
+                        <TextField
+                          size="small"
+                          label="AMC %"
+                          type="number"
+                          value={draft.amc_percent}
+                          onChange={(e) =>
+                            setLinkDrafts((prev) => ({
+                              ...prev,
+                              [cand.expense_id]: { ...draft, amc_percent: e.target.value },
+                            }))
+                          }
+                          sx={{ width: 110 }}
+                        />
+                      ) : null}
+                    </Stack>
+                  </Box>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="secondary"
+                      disabled={createItLicenseMutation.isPending}
+                      onClick={() =>
+                        createItLicenseMutation.mutate({
+                          expenseId: cand.expense_id,
+                          commercial_model: draft.commercial_model,
+                          seat_count: Math.max(1, Number(draft.seat_count) || 1),
+                          amc_percent: draft.amc_percent,
+                          software_name: cand.suggested_software_name,
+                          software_id: cand.matched_software_id,
+                        })
+                      }
+                    >
+                      Create license
+                    </Button>
+                  </Stack>
+                </Box>
+              );
+            })}
+          </Stack>
+        </FinanceSection>
+      ) : null}
 
       <FinanceSection
         title={editingId ? 'Edit team expense / subscription' : 'Add team expense / subscription'}
@@ -719,6 +995,90 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
                 ))}
               </Select>
             </FormControl>
+          ) : null}
+          {showSoftwareLicenseFields ? (
+            <>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={form.create_it_license}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, create_it_license: e.target.checked }))
+                    }
+                  />
+                }
+                label="Create IT software license"
+              />
+              {form.create_it_license ? (
+                <>
+                  <FormControl size="small" sx={{ minWidth: 150 }}>
+                    <InputLabel>License model</InputLabel>
+                    <Select
+                      label="License model"
+                      value={form.commercial_model}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, commercial_model: e.target.value }))
+                      }
+                    >
+                      <MenuItem value="subscription">Subscription</MenuItem>
+                      <MenuItem value="perpetual">Perpetual</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    size="small"
+                    label="License qty"
+                    type="number"
+                    value={form.seat_count}
+                    onChange={(e) => setForm((p) => ({ ...p, seat_count: e.target.value }))}
+                    sx={{ width: 110 }}
+                  />
+                  {form.commercial_model === 'subscription' ? (
+                    <FormControl size="small" sx={{ minWidth: 150 }}>
+                      <InputLabel>Renewal frequency</InputLabel>
+                      <Select
+                        label="Renewal frequency"
+                        value={form.renewal_frequency}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, renewal_frequency: e.target.value }))
+                        }
+                      >
+                        <MenuItem value="monthly">Monthly</MenuItem>
+                        <MenuItem value="quarterly">Quarterly</MenuItem>
+                        <MenuItem value="half_yearly">Half-yearly</MenuItem>
+                        <MenuItem value="yearly">Yearly</MenuItem>
+                        <MenuItem value="every_2_years">Every 2 years</MenuItem>
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={form.amc_required}
+                            onChange={(e) =>
+                              setForm((p) => ({ ...p, amc_required: e.target.checked }))
+                            }
+                          />
+                        }
+                        label="AMC required"
+                      />
+                      {form.amc_required ? (
+                        <TextField
+                          size="small"
+                          label="AMC %"
+                          type="number"
+                          value={form.amc_percent}
+                          onChange={(e) =>
+                            setForm((p) => ({ ...p, amc_percent: e.target.value }))
+                          }
+                          sx={{ width: 100 }}
+                        />
+                      ) : null}
+                    </>
+                  )}
+                </>
+              ) : null}
+            </>
           ) : null}
           <FormControl size="small" sx={{ minWidth: 130 }}>
             <InputLabel>Frequency</InputLabel>

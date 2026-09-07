@@ -232,6 +232,9 @@ from app.db.phase89_resource_shifts_schema_sync import (
 from app.db.phase90_it_parent_asset_schema_sync import (
     ensure_phase90_it_parent_asset_foundation,
 )
+from app.db.phase91_finance_software_bridge_schema_sync import (
+    ensure_phase91_finance_software_bridge_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
@@ -311,6 +314,7 @@ async def lifespan(app: FastAPI):
         ("email_communication", ensure_email_communication_foundation),
         ("phase13_multi_team", ensure_phase13_multi_team_foundation),
         ("phase17_ebmp_finance", ensure_phase17_ebmp_finance_foundation),
+        ("phase91_finance_software_bridge", ensure_phase91_finance_software_bridge_foundation),
         ("phase18_finance_annual_plan", ensure_phase18_finance_annual_plan_foundation),
         ("phase19_timesheet_report_inclusion", ensure_phase19_timesheet_report_inclusion_foundation),
         ("project_complexity", ensure_project_complexity),

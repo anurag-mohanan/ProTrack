@@ -115,6 +115,8 @@ from app.schemas.it_operations import (
     SoftwareLicensePoolCreate,
     SoftwareLicensePoolRead,
     SoftwareLicensePoolUpdate,
+    SoftwareLicenseRenewRequest,
+    SoftwareLicenseTerminateRequest,
 )
 from app.services import (
     it_account_service,
@@ -129,6 +131,7 @@ from app.services import (
     it_software_service,
     resource_it_gap_service,
 )
+from app.services import finance_software_bridge_service as sw_bridge
 from app.services.ticketing_service import OPEN_STATUSES
 
 router = APIRouter(
@@ -1756,16 +1759,33 @@ def _license_pool_read(db: Session, pool: SoftwareLicensePool) -> SoftwareLicens
         updated_at=pool.updated_at,
         software_id=pool.software_id,
         software_name=soft.name if soft else None,
+        entitlement_code=getattr(pool, "entitlement_code", None),
         purchased_by=pool.purchased_by,
         owner_customer_id=pool.owner_customer_id,
         seat_count=pool.seat_count,
         assigned_count=assigned,
         available_count=available,
         license_type=pool.license_type,
+        commercial_model=getattr(pool, "commercial_model", None),
+        assignment_model=getattr(pool, "assignment_model", None),
+        status=getattr(pool, "status", None) or "active",
         cost=pool.cost,
         currency_code=pool.currency_code,
+        purchase_date=getattr(pool, "purchase_date", None),
         expiry_date=pool.expiry_date,
         renewal_mode=pool.renewal_mode,
+        renewal_frequency=getattr(pool, "renewal_frequency", None),
+        renewal_amount=getattr(pool, "renewal_amount", None),
+        auto_renew=bool(getattr(pool, "auto_renew", False)),
+        renewal_notice_days=int(getattr(pool, "renewal_notice_days", 30) or 30),
+        amc_required=getattr(pool, "amc_required", None),
+        amc_percent=getattr(pool, "amc_percent", None),
+        amc_amount=getattr(pool, "amc_amount", None),
+        amc_amount_overridden=bool(getattr(pool, "amc_amount_overridden", False)),
+        amc_due_date=getattr(pool, "amc_due_date", None),
+        expense_id=getattr(pool, "expense_id", None),
+        terminated_at=getattr(pool, "terminated_at", None),
+        termination_reason=getattr(pool, "termination_reason", None),
         notes=pool.notes,
     )
 
@@ -1954,10 +1974,22 @@ def create_software_license(
             purchased_by=payload.purchased_by,
             owner_customer_id=payload.owner_customer_id,
             license_type=payload.license_type,
+            commercial_model=payload.commercial_model,
+            assignment_model=payload.assignment_model,
             cost=payload.cost,
             currency_code=payload.currency_code,
+            purchase_date=payload.purchase_date,
             expiry_date=payload.expiry_date,
             renewal_mode=payload.renewal_mode,
+            renewal_frequency=payload.renewal_frequency,
+            renewal_amount=payload.renewal_amount,
+            auto_renew=payload.auto_renew,
+            renewal_notice_days=payload.renewal_notice_days,
+            amc_required=payload.amc_required,
+            amc_percent=payload.amc_percent,
+            amc_amount=payload.amc_amount,
+            amc_amount_overridden=payload.amc_amount_overridden,
+            expense_id=payload.expense_id,
             notes=payload.notes,
         )
         return _license_pool_read(db, pool)
@@ -1993,6 +2025,66 @@ def update_software_license(
             renewal_mode=payload.renewal_mode,
             notes=payload.notes,
             fields_set=set(payload.model_fields_set),
+        )
+        return _license_pool_read(db, updated)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/software/licenses/{pool_id}/terminate",
+    response_model=SoftwareLicensePoolRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def terminate_software_license(
+    pool_id: UUID,
+    payload: SoftwareLicenseTerminateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from datetime import date as date_cls
+
+    pool = it_software_service.get_license_pool(db, pool_id)
+    if pool is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="License pool not found.")
+    try:
+        updated = sw_bridge.terminate_license_pool(
+            db,
+            pool,
+            termination_date=payload.termination_date or date_cls.today(),
+            reason=payload.reason,
+            actor=current_user,
+            notes=payload.notes,
+        )
+        return _license_pool_read(db, updated)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/software/licenses/{pool_id}/renew",
+    response_model=SoftwareLicensePoolRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def renew_software_license(
+    pool_id: UUID,
+    payload: SoftwareLicenseRenewRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    pool = it_software_service.get_license_pool(db, pool_id)
+    if pool is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="License pool not found.")
+    try:
+        updated = sw_bridge.renew_subscription_pool(
+            db,
+            pool,
+            actor=current_user,
+            renewal_date=payload.renewal_date,
+            period_end=payload.period_end,
+            amount=payload.amount,
+            expense_id=payload.expense_id,
+            notes=payload.notes,
         )
         return _license_pool_read(db, updated)
     except ProTrackValidationError as exc:

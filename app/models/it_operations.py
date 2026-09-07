@@ -504,6 +504,42 @@ LICENSE_TYPE_CODES = frozenset(
     }
 )
 
+# Commercial entitlement (how the right to use is sold) — separate from assignment model.
+COMMERCIAL_MODELS = frozenset({"perpetual", "subscription"})
+
+# How seats are consumed (named user / floating / device …).
+ASSIGNMENT_LICENSE_TYPES = frozenset(
+    {
+        "named_user",
+        "floating",
+        "concurrent",
+        "device_bound",
+        "network",
+        "other",
+    }
+)
+
+RENEWAL_FREQUENCIES = frozenset(
+    {
+        "monthly",
+        "quarterly",
+        "half_yearly",
+        "yearly",
+        "every_2_years",
+        "custom",
+    }
+)
+
+LICENSE_POOL_STATUSES = frozenset(
+    {
+        "draft",
+        "active",
+        "suspended",
+        "terminated",
+        "cancelled",
+    }
+)
+
 SOFTWARE_REQUIREMENT_LEVELS = frozenset({"required", "optional"})
 
 
@@ -525,12 +561,15 @@ class SoftwareCatalog(Base, TimestampMixin, TenantMixin):
 
 
 class SoftwareLicensePool(Base, TimestampMixin, TenantMixin):
+    """Purchased license entitlement (seat pool) linked optionally to a Finance expense."""
+
     __tablename__ = "software_license_pools"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     software_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("software_catalog.id"), nullable=False, index=True
     )
+    entitlement_code: Mapped[Optional[str]] = mapped_column(String(60), index=True)
     purchased_by: Mapped[str] = mapped_column(
         String(40), nullable=False, default="organization", index=True
     )
@@ -538,16 +577,65 @@ class SoftwareLicensePool(Base, TimestampMixin, TenantMixin):
         Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True
     )
     seat_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Legacy mixed field; prefer commercial_model + assignment_model going forward.
     license_type: Mapped[Optional[str]] = mapped_column(String(40))
+    commercial_model: Mapped[Optional[str]] = mapped_column(String(20), index=True)
+    assignment_model: Mapped[Optional[str]] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", index=True)
     cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
     currency_code: Mapped[Optional[str]] = mapped_column(String(3))
+    purchase_date: Mapped[Optional[date]] = mapped_column(Date)
     expiry_date: Mapped[Optional[date]] = mapped_column(Date)
     renewal_mode: Mapped[Optional[str]] = mapped_column(String(80))
+    subscription_start_date: Mapped[Optional[date]] = mapped_column(Date)
+    renewal_frequency: Mapped[Optional[str]] = mapped_column(String(40))
+    renewal_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    auto_renew: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    renewal_notice_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    amc_required: Mapped[Optional[bool]] = mapped_column(Boolean)
+    amc_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(7, 2))
+    amc_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    amc_amount_overridden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    amc_start_date: Mapped[Optional[date]] = mapped_column(Date)
+    amc_due_date: Mapped[Optional[date]] = mapped_column(Date)
+    amc_vendor: Mapped[Optional[str]] = mapped_column(String(200))
+    terminated_at: Mapped[Optional[date]] = mapped_column(Date)
+    termination_reason: Mapped[Optional[str]] = mapped_column(String(200))
+    terminated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    expense_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("expenses.id"), nullable=True, index=True
+    )
     notes: Mapped[Optional[str]] = mapped_column(Text)
     import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
     )
     source_system: Mapped[Optional[str]] = mapped_column(String(120))
+
+
+class SoftwareLicenseRenewal(Base, TimestampMixin, TenantMixin):
+    """Immutable renewal / AMC history rows for a license entitlement."""
+
+    __tablename__ = "software_license_renewals"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    license_pool_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_license_pools.id"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="subscription")
+    # subscription | amc
+    period_start: Mapped[Optional[date]] = mapped_column(Date)
+    period_end: Mapped[Optional[date]] = mapped_column(Date)
+    amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    currency_code: Mapped[Optional[str]] = mapped_column(String(3))
+    expense_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("expenses.id"), nullable=True, index=True
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    recorded_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
 
 
 class SoftwareAssignment(Base, TimestampMixin, TenantMixin):

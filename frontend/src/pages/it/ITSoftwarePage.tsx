@@ -28,6 +28,8 @@ import {
   fetchSoftwareLicenses,
   fetchSoftwareRequirements,
   itOperationsKeys,
+  renewSoftwareLicense,
+  terminateSoftwareLicense,
   unassignSoftwareAssignment,
   updateSoftwareCatalog,
 } from '../../api/itOperations';
@@ -61,15 +63,27 @@ import { accessContextFromUser, canManageItSoftware } from '../../utils/permissi
 
 type TabKey = 'catalog' | 'licenses' | 'assignments' | 'requirements' | 'expiry';
 
-const LICENSE_TYPE_OPTIONS = [
+const ASSIGNMENT_MODEL_OPTIONS = [
   { value: 'named_user', label: 'Named user' },
   { value: 'floating', label: 'Floating' },
   { value: 'concurrent', label: 'Concurrent' },
   { value: 'device_bound', label: 'Device bound' },
-  { value: 'subscription', label: 'Subscription' },
-  { value: 'perpetual', label: 'Perpetual' },
   { value: 'network', label: 'Network' },
   { value: 'other', label: 'Other' },
+];
+
+const COMMERCIAL_MODEL_OPTIONS = [
+  { value: 'subscription', label: 'Subscription' },
+  { value: 'perpetual', label: 'Perpetual' },
+];
+
+const RENEWAL_FREQUENCY_OPTIONS = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'half_yearly', label: 'Half-yearly' },
+  { value: 'yearly', label: 'Yearly' },
+  { value: 'every_2_years', label: 'Every 2 years' },
+  { value: 'custom', label: 'Custom' },
 ];
 
 type CatalogForm = {
@@ -95,22 +109,28 @@ const emptyCatalog: CatalogForm = {
 type LicenseForm = {
   software_id: string;
   seat_count: string;
-  license_type: string;
+  commercial_model: string;
+  assignment_model: string;
   currency_code: string;
   cost: string;
   expiry_date: string;
-  renewal_mode: string;
+  renewal_frequency: string;
+  amc_required: string;
+  amc_percent: string;
   notes: string;
 };
 
 const emptyLicense: LicenseForm = {
   software_id: '',
   seat_count: '1',
-  license_type: 'named_user',
+  commercial_model: 'subscription',
+  assignment_model: 'named_user',
   currency_code: 'INR',
   cost: '',
   expiry_date: '',
-  renewal_mode: '',
+  renewal_frequency: 'yearly',
+  amc_required: 'no',
+  amc_percent: '15',
   notes: '',
 };
 
@@ -161,6 +181,11 @@ export function ITSoftwarePage() {
   const [assignForm, setAssignForm] = useState<AssignForm>(emptyAssign);
   const [requirementOpen, setRequirementOpen] = useState(false);
   const [requirementForm, setRequirementForm] = useState<RequirementForm>(emptyRequirement);
+  const [terminateTarget, setTerminateTarget] = useState<SoftwareLicensePool | null>(null);
+  const [terminateReason, setTerminateReason] = useState('');
+  const [renewTarget, setRenewTarget] = useState<SoftwareLicensePool | null>(null);
+  const [renewAmount, setRenewAmount] = useState('');
+  const [renewPeriodEnd, setRenewPeriodEnd] = useState('');
 
   const catalogQuery = useQuery({
     queryKey: itOperationsKeys.software(),
@@ -199,10 +224,16 @@ export function ITSoftwarePage() {
 
   const licenseOptions = useMemo(
     () =>
-      (licensesQuery.data ?? []).map((pool) => ({
-        value: pool.id,
-        label: `${pool.software_name ?? 'Software'} — ${pool.available_count}/${pool.seat_count} available`,
-      })),
+      (licensesQuery.data ?? [])
+        .filter((pool) => {
+          const status = (pool.status || 'active').toLowerCase();
+          return status === 'active' || status === 'expiring_soon';
+        })
+        .filter((pool) => (pool.available_count ?? 0) > 0)
+        .map((pool) => ({
+          value: pool.id,
+          label: `${pool.entitlement_code ? `${pool.entitlement_code} · ` : ''}${pool.software_name ?? 'Software'} — ${pool.available_count}/${pool.seat_count} available`,
+        })),
     [licensesQuery.data],
   );
 
@@ -250,17 +281,61 @@ export function ITSoftwarePage() {
       createSoftwareLicense({
         software_id: licenseForm.software_id,
         seat_count: Number(licenseForm.seat_count) || 1,
-        license_type: optionalString(licenseForm.license_type) ?? undefined,
+        commercial_model: optionalString(licenseForm.commercial_model) ?? undefined,
+        assignment_model: optionalString(licenseForm.assignment_model) ?? undefined,
+        license_type: optionalString(licenseForm.assignment_model) ?? undefined,
         currency_code: optionalString(licenseForm.currency_code),
         cost: licenseForm.cost ? Number(licenseForm.cost) : null,
         expiry_date: optionalString(licenseForm.expiry_date),
-        renewal_mode: optionalString(licenseForm.renewal_mode),
+        renewal_frequency:
+          licenseForm.commercial_model === 'subscription'
+            ? optionalString(licenseForm.renewal_frequency)
+            : null,
+        amc_required:
+          licenseForm.commercial_model === 'perpetual'
+            ? licenseForm.amc_required === 'yes'
+            : null,
+        amc_percent:
+          licenseForm.commercial_model === 'perpetual' && licenseForm.amc_required === 'yes'
+            ? Number(licenseForm.amc_percent)
+            : null,
         notes: optionalString(licenseForm.notes),
       }),
     onSuccess: () => {
       showSuccess('License pool created.');
       setLicenseOpen(false);
       setLicenseForm(emptyLicense);
+      invalidateSoftware();
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const terminateMutation = useMutation({
+    mutationFn: () =>
+      terminateSoftwareLicense(terminateTarget!.id, {
+        termination_date: new Date().toISOString().slice(0, 10),
+        reason: optionalString(terminateReason) || 'Terminated from IT Software',
+      }),
+    onSuccess: () => {
+      showSuccess('License terminated.');
+      setTerminateTarget(null);
+      setTerminateReason('');
+      invalidateSoftware();
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const renewMutation = useMutation({
+    mutationFn: () =>
+      renewSoftwareLicense(renewTarget!.id, {
+        amount: renewAmount ? Number(renewAmount) : null,
+        period_end: optionalString(renewPeriodEnd),
+      }),
+    onSuccess: () => {
+      showSuccess('Subscription renewed.');
+      setRenewTarget(null);
+      setRenewAmount('');
+      setRenewPeriodEnd('');
       invalidateSoftware();
     },
     onError: (error) => showError(getErrorMessage(error)),
@@ -388,29 +463,108 @@ export function ITSoftwarePage() {
   const licenseColumns = useMemo<GridColDef<SoftwareLicensePool>[]>(
     () => [
       {
+        field: 'entitlement_code',
+        headerName: 'License',
+        width: 130,
+        valueFormatter: (value) => formatCellValue(value),
+      },
+      {
         field: 'software_name',
         headerName: 'Software',
-        flex: 1.2,
-        minWidth: 160,
+        flex: 1.1,
+        minWidth: 140,
         valueFormatter: (value) => formatCellValue(value),
       },
       {
-        field: 'license_type',
-        headerName: 'Type',
+        field: 'commercial_model',
+        headerName: 'Commercial',
         width: 120,
         valueFormatter: (value) => formatCellValue(value),
       },
-      { field: 'seat_count', headerName: 'Seats', width: 90 },
-      { field: 'assigned_count', headerName: 'Assigned', width: 100 },
-      { field: 'available_count', headerName: 'Available', width: 100 },
+      {
+        field: 'status',
+        headerName: 'Status',
+        width: 120,
+        renderCell: (params) => {
+          const status = String(params.row.status ?? 'active');
+          const color =
+            status === 'terminated' || status === 'expired' || status === 'cancelled'
+              ? 'error'
+              : status === 'expiring_soon'
+                ? 'warning'
+                : 'success';
+          return <Chip size="small" color={color} variant="outlined" label={status} />;
+        },
+      },
+      { field: 'seat_count', headerName: 'Total', width: 80 },
+      { field: 'assigned_count', headerName: 'Assigned', width: 90 },
+      { field: 'available_count', headerName: 'Available', width: 90 },
       {
         field: 'expiry_date',
-        headerName: 'Expiry',
-        width: 120,
+        headerName: 'Renewal / Expiry',
+        width: 130,
         valueFormatter: (value) => formatDate(value as string | null) || '—',
       },
+      {
+        field: 'amc_amount',
+        headerName: 'AMC',
+        width: 100,
+        valueFormatter: (value) => formatCellValue(value),
+      },
+      {
+        field: 'expense_id',
+        headerName: 'Finance',
+        width: 100,
+        valueFormatter: (value) => (value ? 'Linked' : '—'),
+      },
+      {
+        field: 'actions',
+        headerName: '',
+        width: 200,
+        sortable: false,
+        renderCell: (params) => {
+          if (!canManage) return null;
+          const status = (params.row.status || 'active').toLowerCase();
+          const active = status === 'active' || status === 'expiring_soon';
+          return (
+            <Stack direction="row" spacing={0.5}>
+              {active && params.row.commercial_model === 'subscription' ? (
+                <ProsohmButton
+                  size="small"
+                  buttonVariant="secondary"
+                  onClick={() => {
+                    setRenewTarget(params.row);
+                    setRenewAmount(
+                      params.row.renewal_amount != null
+                        ? String(params.row.renewal_amount)
+                        : params.row.cost != null
+                          ? String(params.row.cost)
+                          : '',
+                    );
+                    setRenewPeriodEnd('');
+                  }}
+                >
+                  Renew
+                </ProsohmButton>
+              ) : null}
+              {active ? (
+                <ProsohmButton
+                  size="small"
+                  buttonVariant="secondary"
+                  onClick={() => {
+                    setTerminateTarget(params.row);
+                    setTerminateReason('');
+                  }}
+                >
+                  Terminate
+                </ProsohmButton>
+              ) : null}
+            </Stack>
+          );
+        },
+      },
     ],
-    [],
+    [canManage],
   );
 
   const assignmentColumns = useMemo<GridColDef<SoftwareAssignment>[]>(
@@ -870,12 +1024,20 @@ export function ITSoftwarePage() {
               onChange={(e) => setLicenseForm((f) => ({ ...f, seat_count: e.target.value }))}
             />
             <FormSelect
-              label="License type"
-              value={licenseForm.license_type}
+              label="Commercial model"
+              value={licenseForm.commercial_model}
               onChange={(e) =>
-                setLicenseForm((f) => ({ ...f, license_type: String(e.target.value) }))
+                setLicenseForm((f) => ({ ...f, commercial_model: String(e.target.value) }))
               }
-              options={LICENSE_TYPE_OPTIONS}
+              options={COMMERCIAL_MODEL_OPTIONS}
+            />
+            <FormSelect
+              label="Assignment model"
+              value={licenseForm.assignment_model}
+              onChange={(e) =>
+                setLicenseForm((f) => ({ ...f, assignment_model: String(e.target.value) }))
+              }
+              options={ASSIGNMENT_MODEL_OPTIONS}
             />
             <FormField
               label="Currency"
@@ -888,18 +1050,54 @@ export function ITSoftwarePage() {
               value={licenseForm.cost}
               onChange={(e) => setLicenseForm((f) => ({ ...f, cost: e.target.value }))}
             />
-            <FormField
-              label="Expiry date"
-              type="date"
-              value={licenseForm.expiry_date}
-              onChange={(e) => setLicenseForm((f) => ({ ...f, expiry_date: e.target.value }))}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-            <FormField
-              label="Renewal mode"
-              value={licenseForm.renewal_mode}
-              onChange={(e) => setLicenseForm((f) => ({ ...f, renewal_mode: e.target.value }))}
-            />
+            {licenseForm.commercial_model === 'subscription' ? (
+              <>
+                <FormSelect
+                  label="Renewal frequency"
+                  value={licenseForm.renewal_frequency}
+                  onChange={(e) =>
+                    setLicenseForm((f) => ({
+                      ...f,
+                      renewal_frequency: String(e.target.value),
+                    }))
+                  }
+                  options={RENEWAL_FREQUENCY_OPTIONS}
+                />
+                <FormField
+                  label="Next renewal / expiry"
+                  type="date"
+                  value={licenseForm.expiry_date}
+                  onChange={(e) =>
+                    setLicenseForm((f) => ({ ...f, expiry_date: e.target.value }))
+                  }
+                  slotProps={{ inputLabel: { shrink: true } }}
+                />
+              </>
+            ) : (
+              <>
+                <FormSelect
+                  label="AMC required"
+                  value={licenseForm.amc_required}
+                  onChange={(e) =>
+                    setLicenseForm((f) => ({ ...f, amc_required: String(e.target.value) }))
+                  }
+                  options={[
+                    { value: 'no', label: 'No' },
+                    { value: 'yes', label: 'Yes' },
+                  ]}
+                />
+                {licenseForm.amc_required === 'yes' ? (
+                  <FormField
+                    label="AMC %"
+                    type="number"
+                    value={licenseForm.amc_percent}
+                    onChange={(e) =>
+                      setLicenseForm((f) => ({ ...f, amc_percent: e.target.value }))
+                    }
+                  />
+                ) : null}
+              </>
+            )}
             <FormField
               label="Notes"
               multiline
@@ -1018,6 +1216,78 @@ export function ITSoftwarePage() {
               minRows={2}
               value={requirementForm.notes}
               onChange={(e) => setRequirementForm((f) => ({ ...f, notes: e.target.value }))}
+            />
+          </FormSection>
+        </Box>
+      </FormDrawer>
+
+      <FormDrawer
+        open={Boolean(terminateTarget)}
+        onClose={() => setTerminateTarget(null)}
+        title="Terminate license"
+        formId="it-software-terminate-form"
+        submitLabel="Terminate license"
+        loading={terminateMutation.isPending}
+      >
+        <Box
+          component="form"
+          id="it-software-terminate-form"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            terminateMutation.mutate();
+          }}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}
+        >
+          <FormSection title="Confirmation">
+            <Typography variant="body2" color="text.secondary">
+              {terminateTarget?.entitlement_code || terminateTarget?.software_name} will stop
+              future assignment, renewal alerts, and forecast costs. Historical assignments and
+              Finance history stay intact.
+            </Typography>
+            <FormField
+              label="Reason"
+              required
+              value={terminateReason}
+              onChange={(e) => setTerminateReason(e.target.value)}
+            />
+          </FormSection>
+        </Box>
+      </FormDrawer>
+
+      <FormDrawer
+        open={Boolean(renewTarget)}
+        onClose={() => setRenewTarget(null)}
+        title="Renew subscription"
+        formId="it-software-renew-form"
+        submitLabel="Confirm renewal"
+        loading={renewMutation.isPending}
+      >
+        <Box
+          component="form"
+          id="it-software-renew-form"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            renewMutation.mutate();
+          }}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}
+        >
+          <FormSection title="Renewal">
+            <Typography variant="body2" color="text.secondary">
+              {renewTarget?.entitlement_code || renewTarget?.software_name} — extends the
+              entitlement period and records renewal history (does not overwrite prior renewals).
+            </Typography>
+            <FormField
+              label="Renewal amount"
+              type="number"
+              value={renewAmount}
+              onChange={(e) => setRenewAmount(e.target.value)}
+            />
+            <FormField
+              label="New period end (optional)"
+              type="date"
+              value={renewPeriodEnd}
+              onChange={(e) => setRenewPeriodEnd(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
             />
           </FormSection>
         </Box>

@@ -775,6 +775,38 @@ export async function updateSoftwareLicense(
   return data;
 }
 
+export async function terminateSoftwareLicense(
+  id: string,
+  payload: {
+    termination_date?: string | null;
+    reason?: string | null;
+    notes?: string | null;
+  },
+): Promise<SoftwareLicensePool> {
+  const { data } = await apiClient.post<SoftwareLicensePool>(
+    `/it/software/licenses/${id}/terminate`,
+    payload,
+  );
+  return data;
+}
+
+export async function renewSoftwareLicense(
+  id: string,
+  payload: {
+    renewal_date?: string | null;
+    period_end?: string | null;
+    amount?: number | null;
+    expense_id?: string | null;
+    notes?: string | null;
+  },
+): Promise<SoftwareLicensePool> {
+  const { data } = await apiClient.post<SoftwareLicensePool>(
+    `/it/software/licenses/${id}/renew`,
+    payload,
+  );
+  return data;
+}
+
 export async function fetchSoftwareAssignments(params?: ListParams): Promise<SoftwareAssignment[]> {
   return getList<SoftwareAssignment>('/it/software/assignments', params);
 }

@@ -830,10 +830,22 @@ class SoftwareLicensePoolCreate(BlankOptionalFieldsMixin, BaseModel):
     purchased_by: str = "organization"
     owner_customer_id: Optional[UUID] = None
     license_type: Optional[str] = Field(default=None, max_length=40)
+    commercial_model: Optional[str] = Field(default=None, max_length=20)
+    assignment_model: Optional[str] = Field(default=None, max_length=40)
     cost: Optional[Decimal] = None
     currency_code: Optional[str] = Field(default=None, max_length=3)
+    purchase_date: Optional[date] = None
     expiry_date: Optional[date] = None
     renewal_mode: Optional[str] = Field(default=None, max_length=80)
+    renewal_frequency: Optional[str] = Field(default=None, max_length=40)
+    renewal_amount: Optional[Decimal] = None
+    auto_renew: bool = False
+    renewal_notice_days: int = Field(default=30, ge=0, le=365)
+    amc_required: Optional[bool] = None
+    amc_percent: Optional[Decimal] = None
+    amc_amount: Optional[Decimal] = None
+    amc_amount_overridden: bool = False
+    expense_id: Optional[UUID] = None
     notes: Optional[str] = None
 
 
@@ -842,26 +854,69 @@ class SoftwareLicensePoolUpdate(BlankOptionalFieldsMixin, BaseModel):
     purchased_by: Optional[str] = None
     owner_customer_id: Optional[UUID] = None
     license_type: Optional[str] = Field(default=None, max_length=40)
+    commercial_model: Optional[str] = Field(default=None, max_length=20)
+    assignment_model: Optional[str] = Field(default=None, max_length=40)
+    status: Optional[str] = Field(default=None, max_length=20)
     cost: Optional[Decimal] = None
     currency_code: Optional[str] = Field(default=None, max_length=3)
+    purchase_date: Optional[date] = None
     expiry_date: Optional[date] = None
     renewal_mode: Optional[str] = Field(default=None, max_length=80)
+    renewal_frequency: Optional[str] = Field(default=None, max_length=40)
+    renewal_amount: Optional[Decimal] = None
+    auto_renew: Optional[bool] = None
+    renewal_notice_days: Optional[int] = Field(default=None, ge=0, le=365)
+    amc_required: Optional[bool] = None
+    amc_percent: Optional[Decimal] = None
+    amc_amount: Optional[Decimal] = None
+    amc_amount_overridden: Optional[bool] = None
     notes: Optional[str] = None
 
 
 class SoftwareLicensePoolRead(TimestampSchema):
     software_id: UUID
     software_name: Optional[str] = None
+    entitlement_code: Optional[str] = None
     purchased_by: str
     owner_customer_id: Optional[UUID] = None
     seat_count: int
     assigned_count: int = 0
     available_count: int = 0
     license_type: Optional[str] = None
+    commercial_model: Optional[str] = None
+    assignment_model: Optional[str] = None
+    status: str = "active"
     cost: Optional[Decimal] = None
     currency_code: Optional[str] = None
+    purchase_date: Optional[date] = None
     expiry_date: Optional[date] = None
     renewal_mode: Optional[str] = None
+    renewal_frequency: Optional[str] = None
+    renewal_amount: Optional[Decimal] = None
+    auto_renew: bool = False
+    renewal_notice_days: int = 30
+    amc_required: Optional[bool] = None
+    amc_percent: Optional[Decimal] = None
+    amc_amount: Optional[Decimal] = None
+    amc_amount_overridden: bool = False
+    amc_due_date: Optional[date] = None
+    expense_id: Optional[UUID] = None
+    terminated_at: Optional[date] = None
+    termination_reason: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SoftwareLicenseTerminateRequest(BlankOptionalFieldsMixin, BaseModel):
+    termination_date: Optional[date] = None
+    reason: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = None
+
+
+class SoftwareLicenseRenewRequest(BlankOptionalFieldsMixin, BaseModel):
+    renewal_date: Optional[date] = None
+    period_end: Optional[date] = None
+    amount: Optional[Decimal] = None
+    expense_id: Optional[UUID] = None
     notes: Optional[str] = None
 
 

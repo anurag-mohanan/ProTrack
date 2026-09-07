@@ -119,6 +119,8 @@ from app.services.finance.plan_vs_actual_service import (
 )
 from app.services.finance.plan_ai_service import apply_ai_action, build_ai_insights
 from app.services.finance.paid_by_defaults import default_paid_by
+from app.services import finance_software_bridge_service as sw_bridge
+from app.models.it_operations import SoftwareCatalog, SoftwareLicensePool
 from app.services.finance.commercial_fee_rules import (
     billing_mode_for_strategy,
     uses_flat_customer_fee,
@@ -156,6 +158,10 @@ def _expense_read(
     code = cost_centre.code if cost_centre is not None else None
     centre_name = cost_centre.name if cost_centre is not None else None
     category = _spend_category(is_common=common, cost_centre_code=code)
+    it_license_code = None
+    it_software_name = None
+    it_license_status = None
+    # Optional enrichment — callers that already have the session can pass via model_copy later.
     return data.model_copy(
         update={
             "prior_fy_excluded_from_overview": excluded,
@@ -165,6 +171,32 @@ def _expense_read(
             "cost_centre_code": code,
             "cost_centre_name": centre_name,
             "spend_category": category,
+            "it_license_code": it_license_code,
+            "it_software_name": it_software_name,
+            "it_license_status": it_license_status,
+        }
+    )
+
+
+def _enrich_expense_it_link(db: Session, payload: ExpenseRead, row: Expense) -> ExpenseRead:
+    license_code = None
+    software_name = None
+    license_status = None
+    if getattr(row, "license_pool_id", None):
+        pool = db.get(SoftwareLicensePool, row.license_pool_id)
+        if pool is not None:
+            license_code = pool.entitlement_code
+            license_status = pool.status
+            soft = db.get(SoftwareCatalog, pool.software_id)
+            software_name = soft.name if soft else None
+    elif getattr(row, "software_id", None):
+        soft = db.get(SoftwareCatalog, row.software_id)
+        software_name = soft.name if soft else None
+    return payload.model_copy(
+        update={
+            "it_license_code": license_code,
+            "it_software_name": software_name,
+            "it_license_status": license_status,
         }
     )
 
@@ -201,7 +233,7 @@ def _cost_centres_by_id(db: Session, centre_ids: set) -> dict:
 def _expense_read_with_team(db: Session, row: Expense) -> ExpenseRead:
     team = db.get(Team, row.team_id) if row.team_id is not None else None
     centre = db.get(CostCentre, row.cost_centre_id) if row.cost_centre_id is not None else None
-    return _expense_read(row, team=team, cost_centre=centre)
+    return _enrich_expense_it_link(db, _expense_read(row, team=team, cost_centre=centre), row)
 
 
 def _role(db: Session, user: User) -> str:
@@ -560,6 +592,8 @@ def create_expense(
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     data = payload.model_dump()
+    create_it = bool(data.pop("create_it_license", False))
+    it_license = data.pop("it_license", None)
     paid_by = data.pop("paid_by", None)
     if paid_by is None:
         paid_by = default_paid_by(
@@ -575,6 +609,41 @@ def create_expense(
     )
     db.add(row)
     db.flush()
+    if create_it or it_license is not None:
+        if not sw_bridge.is_software_cost_centre(db, row.cost_centre_id) and it_license is None:
+            raise HTTPException(
+                status_code=400,
+                detail="create_it_license is only valid for software/cloud cost centres.",
+            )
+        try:
+            lic = it_license or {}
+            if hasattr(lic, "model_dump"):
+                lic = lic.model_dump()
+            sw_bridge.create_entitlement_from_expense(
+                db,
+                expense=row,
+                actor=current_user,
+                software_id=lic.get("software_id") or payload.software_id,
+                software_name=lic.get("software_name") or payload.name,
+                vendor=lic.get("vendor") or payload.vendor_name,
+                commercial_model=lic.get("commercial_model"),
+                assignment_model=lic.get("assignment_model"),
+                seat_count=int(lic.get("seat_count") or 1),
+                renewal_frequency=lic.get("renewal_frequency"),
+                next_renewal_date=lic.get("next_renewal_date") or payload.next_renewal_date,
+                amc_required=lic.get("amc_required"),
+                amc_percent=lic.get("amc_percent"),
+                amc_amount=lic.get("amc_amount"),
+                amc_amount_overridden=bool(lic.get("amc_amount_overridden")),
+                auto_renew=bool(lic.get("auto_renew")),
+                renewal_notice_days=int(lic.get("renewal_notice_days") or 30),
+                owner_customer_id=lic.get("owner_customer_id"),
+                notes=lic.get("notes"),
+                commit=False,
+            )
+        except ProTrackValidationError as exc:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     _audit(
         db,
         user=current_user,
@@ -657,6 +726,7 @@ def delete_expense(
     row = db.get(Expense, expense_id)
     if row is None or not row.is_active:
         raise HTTPException(status_code=404, detail="Expense not found")
+    # Soft-delete only — keep row so linked IT license entitlements are not orphaned.
     row.is_active = False
     db.flush()
     _audit(
@@ -668,6 +738,60 @@ def delete_expense(
         new_value=f"expense_deleted:{row.name}",
     )
     db.commit()
+
+
+@router.get("/expenses/software-license-candidates")
+def list_software_license_candidates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Finance software expenses not yet linked to an IT license entitlement."""
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    return sw_bridge.list_migration_candidates(db)
+
+
+@router.post("/expenses/{expense_id}/create-it-license", response_model=ExpenseRead)
+def create_it_license_from_expense(
+    expense_id: UUID,
+    payload: dict | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create/link an IT license entitlement from an existing Finance software expense."""
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Expense, expense_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    if not sw_bridge.is_software_cost_centre(db, row.cost_centre_id):
+        raise HTTPException(status_code=400, detail="Expense is not a software/cloud cost centre.")
+    body = payload or {}
+    try:
+        sw_bridge.create_entitlement_from_expense(
+            db,
+            expense=row,
+            actor=current_user,
+            software_id=body.get("software_id") or row.software_id,
+            software_name=body.get("software_name") or row.name,
+            vendor=body.get("vendor") or row.vendor_name,
+            commercial_model=body.get("commercial_model"),
+            assignment_model=body.get("assignment_model"),
+            seat_count=int(body.get("seat_count") or 1),
+            renewal_frequency=body.get("renewal_frequency"),
+            next_renewal_date=body.get("next_renewal_date") or row.next_renewal_date,
+            amc_required=body.get("amc_required"),
+            amc_percent=body.get("amc_percent"),
+            amc_amount=body.get("amc_amount"),
+            amc_amount_overridden=bool(body.get("amc_amount_overridden")),
+            auto_renew=bool(body.get("auto_renew")),
+            renewal_notice_days=int(body.get("renewal_notice_days") or 30),
+            owner_customer_id=body.get("owner_customer_id"),
+            notes=body.get("notes"),
+            commit=True,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.refresh(row)
+    return _expense_read_with_team(db, row)
 
 
 @router.post("/renewals/notify", response_model=RenewalNotifyResult)

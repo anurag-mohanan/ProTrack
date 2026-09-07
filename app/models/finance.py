@@ -202,6 +202,12 @@ class Expense(Base, TimestampMixin, TenantMixin):
     asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=True, index=True
     )
+    software_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_catalog.id"), nullable=True, index=True
+    )
+    license_pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_license_pools.id"), nullable=True, index=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 

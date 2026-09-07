@@ -50,6 +50,9 @@ def count_active_assignments(db: Session, pool_id: UUID) -> int:
 
 
 def available_seats(db: Session, pool: SoftwareLicensePool) -> int:
+    status = (getattr(pool, "status", None) or "active").lower()
+    if status in {"terminated", "cancelled", "suspended", "draft"}:
+        return 0
     return max(0, int(pool.seat_count or 0) - count_active_assignments(db, pool.id))
 
 
@@ -217,12 +220,31 @@ def create_license_pool(
     purchased_by: str = "organization",
     owner_customer_id: UUID | None = None,
     license_type: str | None = None,
+    commercial_model: str | None = None,
+    assignment_model: str | None = None,
     cost: Decimal | None = None,
     currency_code: str | None = None,
+    purchase_date: date | None = None,
     expiry_date: date | None = None,
     renewal_mode: str | None = None,
+    renewal_frequency: str | None = None,
+    renewal_amount: Decimal | None = None,
+    auto_renew: bool = False,
+    renewal_notice_days: int = 30,
+    amc_required: bool | None = None,
+    amc_percent: Decimal | None = None,
+    amc_amount: Decimal | None = None,
+    amc_amount_overridden: bool = False,
+    expense_id: UUID | None = None,
     notes: str | None = None,
 ) -> SoftwareLicensePool:
+    from app.models.it_operations import (
+        ASSIGNMENT_LICENSE_TYPES,
+        COMMERCIAL_MODELS,
+        RENEWAL_FREQUENCIES,
+    )
+    from app.services import finance_software_bridge_service as sw_bridge
+
     software = get_software(db, software_id)
     if software is None:
         raise ProTrackValidationError("Software catalog entry not found.")
@@ -240,24 +262,73 @@ def create_license_pool(
             raise ProTrackValidationError(
                 f"Invalid license_type. Allowed: {sorted(LICENSE_TYPE_CODES)}"
             )
+    model = _optional_str(commercial_model)
+    if model is not None:
+        model = model.lower()
+        if model not in COMMERCIAL_MODELS:
+            raise ProTrackValidationError(
+                f"Invalid commercial_model. Allowed: {sorted(COMMERCIAL_MODELS)}"
+            )
+    assign_model = _optional_str(assignment_model)
+    if assign_model is not None:
+        assign_model = assign_model.lower()
+        if assign_model not in ASSIGNMENT_LICENSE_TYPES:
+            raise ProTrackValidationError(
+                f"Invalid assignment_model. Allowed: {sorted(ASSIGNMENT_LICENSE_TYPES)}"
+            )
+    freq = _optional_str(renewal_frequency)
+    if freq is not None:
+        freq = freq.lower()
+        if freq not in RENEWAL_FREQUENCIES:
+            raise ProTrackValidationError(
+                f"Invalid renewal_frequency. Allowed: {sorted(RENEWAL_FREQUENCIES)}"
+            )
     currency = _optional_str(currency_code)
     if currency is not None:
         currency = currency.upper()
         if len(currency) != 3:
             raise ProTrackValidationError("currency_code must be a 3-letter ISO code.")
+
+    computed_amc = amc_amount
+    if model == "perpetual" and amc_required and not amc_amount_overridden and cost is not None:
+        if amc_percent is None:
+            raise ProTrackValidationError("amc_percent is required when AMC is required.")
+        if Decimal(str(amc_percent)) < 0:
+            raise ProTrackValidationError("amc_percent must be >= 0.")
+        computed_amc = sw_bridge.calculate_amc_amount(Decimal(str(cost)), Decimal(str(amc_percent)))
+
+    next_renewal = expiry_date
+    if model == "subscription" and next_renewal is None and purchase_date is not None and freq:
+        next_renewal = sw_bridge.add_renewal_period(purchase_date, freq)
+
     pool = SoftwareLicensePool(
         id=uuid4(),
         software_id=software_id,
         seat_count=int(seat_count),
         purchased_by=pb,
         owner_customer_id=owner_customer_id,
-        license_type=lt,
+        license_type=lt or assign_model,
+        commercial_model=model,
+        assignment_model=assign_model or lt,
+        status="active",
         cost=cost,
         currency_code=currency,
-        expiry_date=expiry_date,
-        renewal_mode=_optional_str(renewal_mode),
+        purchase_date=purchase_date,
+        expiry_date=next_renewal,
+        renewal_mode=_optional_str(renewal_mode) or freq,
+        renewal_frequency=freq,
+        renewal_amount=renewal_amount if renewal_amount is not None else cost,
+        auto_renew=bool(auto_renew),
+        renewal_notice_days=int(renewal_notice_days or 30),
+        amc_required=amc_required,
+        amc_percent=amc_percent,
+        amc_amount=computed_amc,
+        amc_amount_overridden=bool(amc_amount_overridden),
+        expense_id=expense_id,
         notes=_optional_str(notes),
     )
+    if not getattr(pool, "entitlement_code", None):
+        pool.entitlement_code = sw_bridge._next_entitlement_code(db, software)
     db.add(pool)
     db.commit()
     db.refresh(pool)
@@ -418,6 +489,11 @@ def assign_license(
     pool = get_license_pool(db, license_pool_id)
     if pool is None:
         raise ProTrackValidationError("License pool not found.")
+    status = (getattr(pool, "status", None) or "active").lower()
+    if status in {"terminated", "cancelled", "suspended", "draft"}:
+        raise ProTrackValidationError(
+            f"License pool is {status} and cannot accept new assignments."
+        )
     if user_id is None and computer_id is None and asset_id is None:
         raise ProTrackValidationError("Assign to a user, computer, and/or asset.")
     if user_id is not None:
@@ -435,7 +511,7 @@ def assign_license(
         if asset is None or asset.is_deleted:
             raise ProTrackValidationError("Asset not found.")
     if available_seats(db, pool) < 1:
-        raise ProTrackValidationError("No available seats in this license pool.")
+        raise ProTrackValidationError("No available licenses.")
 
     # Prevent duplicate active assignment of same pool to same target
     dup_filters = [

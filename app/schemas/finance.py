@@ -92,6 +92,30 @@ class ExpenseCreate(BaseModel):
     team_id: UUID
     project_id: UUID | None = None
     asset_id: UUID | None = None
+    software_id: UUID | None = None
+    license_pool_id: UUID | None = None
+    # When true (default for software centres), create/link an IT license entitlement.
+    create_it_license: bool = False
+    it_license: ExpenseItLicensePayload | None = None
+
+
+class ExpenseItLicensePayload(BaseModel):
+    software_id: UUID | None = None
+    software_name: str | None = None
+    vendor: str | None = None
+    commercial_model: str | None = None  # perpetual | subscription
+    assignment_model: str | None = None
+    seat_count: int = Field(default=1, ge=1)
+    renewal_frequency: str | None = None
+    next_renewal_date: date | None = None
+    amc_required: bool | None = None
+    amc_percent: Decimal | None = None
+    amc_amount: Decimal | None = None
+    amc_amount_overridden: bool = False
+    auto_renew: bool = False
+    renewal_notice_days: int = Field(default=30, ge=0, le=365)
+    owner_customer_id: UUID | None = None
+    notes: str | None = None
 
 
 class ExpenseUpdate(BaseModel):
@@ -114,6 +138,10 @@ class ExpenseUpdate(BaseModel):
     team_id: UUID | None = None
     project_id: UUID | None = None
     asset_id: UUID | None = None
+    software_id: UUID | None = None
+    license_pool_id: UUID | None = None
+    create_it_license: bool | None = None
+    it_license: ExpenseItLicensePayload | None = None
 
 
 class ExpenseRead(BaseModel):
@@ -139,6 +167,8 @@ class ExpenseRead(BaseModel):
     team_id: UUID | None = None
     project_id: UUID | None = None
     asset_id: UUID | None = None
+    software_id: UUID | None = None
+    license_pool_id: UUID | None = None
     base_amount_inr: Decimal
     fx_rate: Decimal
     fx_date: date
@@ -151,6 +181,13 @@ class ExpenseRead(BaseModel):
     cost_centre_code: str | None = None
     cost_centre_name: str | None = None
     spend_category: str | None = None
+    it_license_code: str | None = None
+    it_software_name: str | None = None
+    it_license_status: str | None = None
+
+
+ExpenseCreate.model_rebuild()
+ExpenseUpdate.model_rebuild()
 
 
 class PaidByDefaultRead(BaseModel):

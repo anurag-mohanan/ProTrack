@@ -26,7 +26,7 @@ ROTATION_PATTERNS = frozenset({"daily", "weekly", "biweekly", "monthly", "custom
 
 
 class ResourceShift(Base, TimestampMixin, TenantMixin):
-    """A named working window (Day / Evening / Night / custom)."""
+    """A named working window (First / Second / General / custom)."""
 
     __tablename__ = "rp_shifts"
     __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_rp_shifts_tenant_code"),)

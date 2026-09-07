@@ -12,6 +12,8 @@ export interface Shift {
   is_overnight: boolean;
   is_active: boolean;
   notes: string | null;
+  display_window?: string;
+  display_label?: string;
 }
 
 export interface ShiftPayload {
@@ -40,6 +42,7 @@ export interface ShiftAssignment {
   user_name: string | null;
   shift_code: string | null;
   shift_name: string | null;
+  shift_display?: string | null;
 }
 
 export interface ShiftAssignmentPayload {

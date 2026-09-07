@@ -57,6 +57,30 @@ function addDaysIso(base: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatShiftClock(hhmm: string): string {
+  const [hRaw, mRaw] = hhmm.split(':');
+  const hour24 = Number(hRaw);
+  const minute = Number(mRaw);
+  if (Number.isNaN(hour24) || Number.isNaN(minute)) return hhmm;
+  const period = hour24 < 12 ? 'AM' : 'PM';
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
+}
+
+function shiftDisplayLabel(shift: {
+  name: string;
+  start_time: string;
+  end_time: string;
+  display_label?: string;
+  display_window?: string;
+}): string {
+  if (shift.display_label) return shift.display_label;
+  const window =
+    shift.display_window ??
+    `${formatShiftClock(shift.start_time)} – ${formatShiftClock(shift.end_time)}`;
+  return `${shift.name} — ${window}`;
+}
+
 const EMPTY_SHIFT: ShiftPayload = {
   code: '',
   name: '',
@@ -141,6 +165,8 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
     mutationFn: createShiftAssignment,
     onSuccess: () => {
       showSuccess('Shift assigned');
+      setAssignUserId('');
+      setAssignShiftId('');
       void queryClient.invalidateQueries({ queryKey: resourceShiftKeys.all });
     },
     onError: (error: Error) => showError(getErrorMessage(error)),
@@ -189,9 +215,12 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
       </Stack>
 
       {subTab === 'masters' && (
-        <DashboardPanel title="Shift masters" subtitle="Day / evening / night definitions used by planning">
+        <DashboardPanel title="Shift masters" subtitle="Company standard shifts used by Resource Planning">
           <Stack spacing={2}>
-            {(shiftsQuery.data ?? []).map((shift) => (
+            {(shiftsQuery.data ?? [])
+              .slice()
+              .sort((a, b) => Number(b.is_active) - Number(a.is_active) || a.start_time.localeCompare(b.start_time))
+              .map((shift) => (
               <Stack
                 key={shift.id}
                 direction={{ xs: 'column', sm: 'row' }}
@@ -202,15 +231,16 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                   borderBottom: '1px solid',
                   borderColor: 'divider',
                   pb: 1,
+                  opacity: shift.is_active ? 1 : 0.65,
                 }}
               >
                 <Box>
-                  <Typography variant="subtitle2">
-                    {shift.code} — {shift.name}
-                  </Typography>
+                  <Typography variant="subtitle2">{shift.name}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {shift.start_time}–{shift.end_time}
-                    {shift.is_overnight ? ' (overnight)' : ''} · break {shift.break_minutes}m
+                    {shift.display_window ??
+                      `${formatShiftClock(shift.start_time)} – ${formatShiftClock(shift.end_time)}`}
+                    {shift.is_overnight ? ' (overnight)' : ''}
+                    {shift.break_minutes ? ` · break ${shift.break_minutes}m` : ''}
                     {!shift.is_active ? ' · inactive' : ''}
                   </Typography>
                 </Box>
@@ -330,11 +360,11 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                     { value: '', label: 'Select shift' },
                     ...activeShifts.map((s) => ({
                       value: s.id,
-                      label: `${s.code} — ${s.name}`,
+                      label: shiftDisplayLabel(s),
                     })),
                   ]}
                   onChange={(e) => setAssignShiftId(String(e.target.value))}
-                  sx={{ minWidth: 200 }}
+                  sx={{ minWidth: 260 }}
                 />
                 <FormSelect
                   label="Type"
@@ -400,7 +430,10 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                   <TableRow key={row.id}>
                     <TableCell>{row.user_name ?? row.user_id}</TableCell>
                     <TableCell>
-                      {row.shift_code} {row.shift_name}
+                      {row.shift_display ??
+                        (row.shift_name
+                          ? row.shift_name
+                          : `${row.shift_code ?? ''}`.trim() || '—')}
                     </TableCell>
                     <TableCell>{row.assignment_type}</TableCell>
                     <TableCell>{row.effective_from}</TableCell>
@@ -486,14 +519,19 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                       </TableCell>
                       {weekDays.map((day) => {
                         const cell = row.days.find((d) => d.day === day);
+                        const master = (calendarQuery.data?.shifts ?? []).find(
+                          (s) => s.id === cell?.shift_id,
+                        );
+                        const label = master
+                          ? master.name
+                          : cell?.shift_name || cell?.shift_code || null;
+                        const title = master
+                          ? shiftDisplayLabel(master)
+                          : cell?.shift_name ?? undefined;
                         return (
                           <TableCell key={day}>
-                            {cell?.shift_code ? (
-                              <Chip
-                                size="small"
-                                label={cell.shift_code}
-                                title={cell.shift_name ?? undefined}
-                              />
+                            {label ? (
+                              <Chip size="small" label={label} title={title} />
                             ) : (
                               <Typography variant="caption" color="text.disabled">
                                 —

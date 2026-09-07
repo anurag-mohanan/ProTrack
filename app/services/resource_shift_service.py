@@ -35,34 +35,38 @@ class ShiftValidationError(ValueError):
 
 DEFAULT_SHIFTS: tuple[dict, ...] = (
     {
-        "code": "DAY",
-        "name": "Day Shift",
+        "code": "FIRST",
+        "name": "First Shift",
+        "start_time": "06:00",
+        "end_time": "14:00",
+        # Preserve prior seed convention (Day/Eve used 60); do not invent a new policy.
+        "break_minutes": 60,
+        "is_overnight": False,
+    },
+    {
+        "code": "SECOND",
+        "name": "Second Shift",
+        "start_time": "14:00",
+        "end_time": "22:00",
+        "break_minutes": 60,
+        "is_overnight": False,
+    },
+    {
+        "code": "GENERAL",
+        "name": "General Shift",
         "start_time": "09:00",
         "end_time": "18:00",
         "break_minutes": 60,
         "is_overnight": False,
     },
-    {
-        "code": "EVE",
-        "name": "Evening Shift",
-        "start_time": "14:00",
-        "end_time": "23:00",
-        "break_minutes": 60,
-        "is_overnight": False,
-    },
-    {
-        "code": "NGT",
-        "name": "Night Shift",
-        "start_time": "22:00",
-        "end_time": "07:00",
-        "break_minutes": 60,
-        "is_overnight": True,
-    },
 )
+
+# Obsolete seed codes from the initial Day/Evening/Night catalog.
+LEGACY_SHIFT_CODES: frozenset[str] = frozenset({"DAY", "EVE", "NGT"})
 
 
 # --------------------------------------------------------------------------
-# Shift duration
+# Shift duration / display
 # --------------------------------------------------------------------------
 
 
@@ -72,6 +76,28 @@ def _minutes_of(hhmm: str) -> int:
         return int(hours) * 60 + int(minutes)
     except (ValueError, AttributeError) as exc:
         raise ShiftValidationError(f"Invalid time value: {hhmm!r}") from exc
+
+
+def format_shift_clock(hhmm: str) -> str:
+    """Format ``HH:MM`` as ``6:00 AM`` / ``2:00 PM`` for consistent UI display."""
+    minutes = _minutes_of(hhmm)
+    hour24, minute = divmod(minutes, 60)
+    period = "AM" if hour24 < 12 else "PM"
+    hour12 = hour24 % 12
+    if hour12 == 0:
+        hour12 = 12
+    return f"{hour12}:{minute:02d} {period}"
+
+
+def format_shift_window(start_time: str, end_time: str) -> str:
+    return f"{format_shift_clock(start_time)} – {format_shift_clock(end_time)}"
+
+
+def format_shift_label(shift: ResourceShift, *, include_code: bool = False) -> str:
+    window = format_shift_window(shift.start_time, shift.end_time)
+    if include_code:
+        return f"{shift.name} ({shift.code}) — {window}"
+    return f"{shift.name} — {window}"
 
 
 def shift_duration_hours(shift: ResourceShift) -> Decimal:
@@ -624,10 +650,76 @@ def shift_calendar(
 
 
 def seed_default_shifts(db: Session) -> int:
-    """Create Day/Evening/Night if the tenant has no shifts yet."""
+    """Create company standard shifts when the tenant has none; otherwise migrate."""
     if db.scalar(select(ResourceShift).limit(1)) is not None:
-        return 0
+        return ensure_company_standard_shifts(db)
     for spec in DEFAULT_SHIFTS:
         db.add(ResourceShift(id=uuid.uuid4(), is_active=True, **spec))
     db.commit()
     return len(DEFAULT_SHIFTS)
+
+
+def ensure_company_standard_shifts(db: Session) -> int:
+    """Upsert First/Second/General and safely deactivate obsolete seed shifts.
+
+    Historical assignments keep pointing at the same shift rows; obsolete
+    masters are only marked inactive so they drop out of future dropdowns.
+    """
+    by_code = {
+        shift.code.upper(): shift
+        for shift in db.scalars(select(ResourceShift)).all()
+    }
+    changed = 0
+
+    # Prefer remapping the old Day seed onto General (same 09:00–18:00 window)
+    # so existing assignment history keeps its shift_id and meaning.
+    day = by_code.get("DAY")
+    general = by_code.get("GENERAL")
+    if day is not None and general is None:
+        day.code = "GENERAL"
+        day.name = "General Shift"
+        day.start_time = "09:00"
+        day.end_time = "18:00"
+        day.is_overnight = False
+        day.is_active = True
+        by_code["GENERAL"] = day
+        by_code.pop("DAY", None)
+        changed += 1
+
+    for spec in DEFAULT_SHIFTS:
+        code = spec["code"]
+        existing = by_code.get(code)
+        if existing is None:
+            shift = ResourceShift(id=uuid.uuid4(), is_active=True, **spec)
+            db.add(shift)
+            by_code[code] = shift
+            changed += 1
+            continue
+        dirty = False
+        if existing.name != spec["name"]:
+            existing.name = spec["name"]
+            dirty = True
+        if existing.start_time != spec["start_time"]:
+            existing.start_time = spec["start_time"]
+            dirty = True
+        if existing.end_time != spec["end_time"]:
+            existing.end_time = spec["end_time"]
+            dirty = True
+        if existing.is_overnight != spec["is_overnight"]:
+            existing.is_overnight = spec["is_overnight"]
+            dirty = True
+        if not existing.is_active:
+            existing.is_active = True
+            dirty = True
+        if dirty:
+            changed += 1
+
+    for legacy_code in LEGACY_SHIFT_CODES:
+        legacy = by_code.get(legacy_code)
+        if legacy is not None and legacy.is_active:
+            legacy.is_active = False
+            changed += 1
+
+    if changed:
+        db.commit()
+    return changed

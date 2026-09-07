@@ -438,6 +438,12 @@ def resolve_user_modules(user: User, role_name: str) -> list[str]:
 
 
 def resolve_user_special_permissions(user: User, role_name: str) -> list[str]:
+    normalized = normalize_role_name(role_name)
+    # Admins always receive the full special catalog so newly introduced
+    # permissions (e.g. assign_resource_shifts) apply without a Users re-save.
+    # Mirrors resolve_user_modules() and the frontend Admin bypass.
+    if normalized == ADMIN:
+        return sorted(ALL_SPECIAL_PERMISSIONS)
     stored = _parse_json_list(user.special_permissions)
     if stored is not None:
         return sorted({perm for perm in stored if perm in ALL_SPECIAL_PERMISSIONS})

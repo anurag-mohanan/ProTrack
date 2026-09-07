@@ -102,6 +102,9 @@ def _assignment_payload(db: Session, assignment: ResourceShiftAssignment) -> dic
         "user_name": resource_shift_service.display_name(user) if user else None,
         "shift_code": shift.code if shift else None,
         "shift_name": shift.name if shift else None,
+        "shift_display": (
+            resource_shift_service.format_shift_label(shift) if shift else None
+        ),
     }
 
 

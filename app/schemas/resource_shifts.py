@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class ShiftAssignmentType(str, Enum):
@@ -35,6 +35,18 @@ class ShiftRead(BaseModel):
     is_overnight: bool
     is_active: bool
     notes: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def display_window(self) -> str:
+        from app.services.resource_shift_service import format_shift_window
+
+        return format_shift_window(self.start_time, self.end_time)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def display_label(self) -> str:
+        return f"{self.name} — {self.display_window}"
 
 
 class ShiftCreate(BaseModel):
@@ -75,6 +87,7 @@ class ShiftAssignmentRead(BaseModel):
     user_name: str | None = None
     shift_code: str | None = None
     shift_name: str | None = None
+    shift_display: str | None = None
 
 
 class ShiftAssignmentCreate(BaseModel):

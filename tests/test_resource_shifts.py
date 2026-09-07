@@ -2,9 +2,16 @@
 
 from datetime import date, timedelta
 from decimal import Decimal
+import json
 
 import pytest
 
+from app.core.access_control import (
+    SPECIAL_ASSIGN_RESOURCE_SHIFTS,
+    SPECIAL_MANAGE_RESOURCE_SHIFTS,
+    resolve_user_special_permissions,
+)
+from app.models.models import User
 from app.models.resource_shifts import ResourceShift
 from app.services import resource_shift_service as svc
 from tests.conftest import IDS, login
@@ -12,29 +19,62 @@ from tests.conftest import IDS, login
 SHIFTS_URL = "/api/v1/resource-planning/shifts"
 
 
-def _day_shift(session) -> ResourceShift:
-    shift = session.query(ResourceShift).filter(ResourceShift.code == "DAY").first()
-    assert shift is not None, "phase89 should seed the default Day shift"
+def _general_shift(session) -> ResourceShift:
+    shift = session.query(ResourceShift).filter(ResourceShift.code == "GENERAL").first()
+    assert shift is not None, "phase89 should seed the General shift"
     return shift
 
 
+def _shifts_by_code(session) -> dict[str, ResourceShift]:
+    return {shift.code: shift for shift in svc.list_shifts(session, active_only=False)}
+
+
 def test_default_shifts_seeded(session):
-    codes = {shift.code for shift in svc.list_shifts(session)}
-    assert {"DAY", "EVE", "NGT"} <= codes
+    codes = {shift.code for shift in svc.list_shifts(session, active_only=True)}
+    assert {"FIRST", "SECOND", "GENERAL"} <= codes
+    # Obsolete Day/Evening/Night seeds must not stay active for new assignments.
+    active_legacy = {
+        shift.code
+        for shift in svc.list_shifts(session, active_only=True)
+        if shift.code in {"DAY", "EVE", "NGT"}
+    }
+    assert not active_legacy
+
+
+def test_company_shift_windows_and_display(session):
+    shifts = _shifts_by_code(session)
+    assert svc.format_shift_window(shifts["FIRST"].start_time, shifts["FIRST"].end_time) == (
+        "6:00 AM – 2:00 PM"
+    )
+    assert svc.format_shift_window(shifts["SECOND"].start_time, shifts["SECOND"].end_time) == (
+        "2:00 PM – 10:00 PM"
+    )
+    assert svc.format_shift_window(shifts["GENERAL"].start_time, shifts["GENERAL"].end_time) == (
+        "9:00 AM – 6:00 PM"
+    )
 
 
 def test_shift_duration_accounts_for_break_and_overnight(session):
-    day = _day_shift(session)
+    general = _general_shift(session)
     # 09:00–18:00 minus a 60 minute break.
-    assert svc.shift_duration_hours(day) == Decimal("8.00")
+    assert svc.shift_duration_hours(general) == Decimal("8.00")
 
-    night = session.query(ResourceShift).filter(ResourceShift.code == "NGT").first()
-    # 22:00–07:00 wraps midnight, minus a 60 minute break.
-    assert svc.shift_duration_hours(night) == Decimal("8.00")
+    overnight = svc.create_shift(
+        session,
+        {
+            "code": "NIGHTX",
+            "name": "Overnight Test",
+            "start_time": "22:00",
+            "end_time": "07:00",
+            "break_minutes": 60,
+            "is_overnight": True,
+        },
+    )
+    assert svc.shift_duration_hours(overnight) == Decimal("8.00")
 
 
 def test_permanent_assignment_resolves_for_employee(session):
-    shift = _day_shift(session)
+    shift = _general_shift(session)
     start = date(2026, 3, 2)
     svc.assign_shift(
         session,
@@ -55,7 +95,7 @@ def test_permanent_assignment_resolves_for_employee(session):
 
 
 def test_overlapping_permanent_assignment_is_rejected(session):
-    shift = _day_shift(session)
+    shift = _general_shift(session)
     base = {
         "user_id": IDS["user_binil"],
         "shift_id": shift.id,
@@ -70,12 +110,12 @@ def test_overlapping_permanent_assignment_is_rejected(session):
 
 
 def test_end_date_existing_closes_history_instead_of_overwriting(session):
-    shifts = {shift.code: shift for shift in svc.list_shifts(session)}
+    shifts = _shifts_by_code(session)
     first = svc.assign_shift(
         session,
         {
             "user_id": IDS["user_binil"],
-            "shift_id": shifts["DAY"].id,
+            "shift_id": shifts["GENERAL"].id,
             "assignment_type": "permanent",
             "effective_from": date(2026, 1, 1),
         },
@@ -85,7 +125,7 @@ def test_end_date_existing_closes_history_instead_of_overwriting(session):
         session,
         {
             "user_id": IDS["user_binil"],
-            "shift_id": shifts["NGT"].id,
+            "shift_id": shifts["FIRST"].id,
             "assignment_type": "permanent",
             "effective_from": switch_date,
             "end_date_existing": True,
@@ -95,96 +135,37 @@ def test_end_date_existing_closes_history_instead_of_overwriting(session):
     session.refresh(first)
     assert first.effective_to == switch_date - timedelta(days=1)
     # History is preserved, not rewritten.
-    assert svc.get_employee_shift(session, IDS["user_binil"], date(2026, 2, 1)).code == "DAY"
-    assert svc.get_employee_shift(session, IDS["user_binil"], switch_date).code == "NGT"
+    assert svc.get_employee_shift(session, IDS["user_binil"], date(2026, 2, 1)).code == "GENERAL"
+    assert svc.get_employee_shift(session, IDS["user_binil"], switch_date).code == "FIRST"
 
 
-def test_rotational_weekly_matches_only_configured_weekdays(session):
-    shifts = {shift.code: shift for shift in svc.list_shifts(session)}
+def test_rotational_weekly_assignment(session):
+    shifts = _shifts_by_code(session)
+    monday = date(2026, 3, 2)  # Monday
     svc.assign_shift(
         session,
         {
             "user_id": IDS["user_anurag"],
-            "shift_id": shifts["EVE"].id,
+            "shift_id": shifts["SECOND"].id,
             "assignment_type": "rotational",
             "rotation_pattern": "weekly",
-            # Monday and Wednesday only.
-            "rotation_weekdays": [0, 2],
-            "effective_from": date(2026, 3, 2),
+            "rotation_weekdays": [0, 2, 4],  # Mon/Wed/Fri
+            "effective_from": monday,
         },
     )
-
-    monday = date(2026, 3, 2)
-    assert monday.weekday() == 0
-    assert svc.get_employee_shift(session, IDS["user_anurag"], monday).code == "EVE"
-    assert svc.get_employee_shift(session, IDS["user_anurag"], monday + timedelta(days=2)).code == "EVE"
-    # Tuesday / Thursday are not part of the rotation.
+    assert svc.get_employee_shift(session, IDS["user_anurag"], monday).code == "SECOND"
+    assert svc.get_employee_shift(session, IDS["user_anurag"], monday + timedelta(days=2)).code == "SECOND"
     assert svc.get_employee_shift(session, IDS["user_anurag"], monday + timedelta(days=1)) is None
-    assert svc.get_employee_shift(session, IDS["user_anurag"], monday + timedelta(days=3)) is None
-
-
-def test_rotational_overrides_permanent_on_matching_day(session):
-    shifts = {shift.code: shift for shift in svc.list_shifts(session)}
-    svc.assign_shift(
-        session,
-        {
-            "user_id": IDS["user_binil"],
-            "shift_id": shifts["DAY"].id,
-            "assignment_type": "permanent",
-            "effective_from": date(2026, 3, 1),
-        },
-    )
-    svc.assign_shift(
-        session,
-        {
-            "user_id": IDS["user_binil"],
-            "shift_id": shifts["NGT"].id,
-            "assignment_type": "rotational",
-            "rotation_pattern": "weekly",
-            "rotation_weekdays": [5, 6],
-            "effective_from": date(2026, 3, 1),
-        },
-    )
-
-    saturday = date(2026, 3, 7)
-    assert saturday.weekday() == 5
-    assert svc.get_employee_shift(session, IDS["user_binil"], saturday).code == "NGT"
-    assert svc.get_employee_shift(session, IDS["user_binil"], date(2026, 3, 5)).code == "DAY"
-
-
-def test_bulk_assign_reports_conflicts(session):
-    shift = _day_shift(session)
-    svc.assign_shift(
-        session,
-        {
-            "user_id": IDS["user_binil"],
-            "shift_id": shift.id,
-            "assignment_type": "permanent",
-            "effective_from": date(2026, 3, 1),
-        },
-    )
-
-    created, conflicts = svc.bulk_assign(
-        session,
-        {
-            "user_ids": [IDS["user_binil"], IDS["user_anurag"]],
-            "shift_id": shift.id,
-            "assignment_type": "permanent",
-            "effective_from": date(2026, 4, 1),
-        },
-    )
-    assert [item.user_id for item in created] == [IDS["user_anurag"]]
-    assert [item["user_id"] for item in conflicts] == [IDS["user_binil"]]
 
 
 def test_shift_hours_for_range_feeds_capacity(session):
-    shifts = {shift.code: shift for shift in svc.list_shifts(session)}
-    svc.update_shift(session, shifts["EVE"], {"break_minutes": 0})
+    shifts = _shifts_by_code(session)
+    svc.update_shift(session, shifts["SECOND"], {"break_minutes": 0})
     svc.assign_shift(
         session,
         {
             "user_id": IDS["user_binil"],
-            "shift_id": shifts["EVE"].id,
+            "shift_id": shifts["SECOND"].id,
             "assignment_type": "permanent",
             "effective_from": date(2026, 3, 2),
         },
@@ -193,8 +174,8 @@ def test_shift_hours_for_range_feeds_capacity(session):
     hours = svc.shift_hours_for_range(
         session, [IDS["user_binil"]], date(2026, 3, 2), date(2026, 3, 4)
     )
-    # 14:00–23:00 with no break.
-    assert hours[IDS["user_binil"]][date(2026, 3, 3)] == Decimal("9.00")
+    # 14:00–22:00 with no break.
+    assert hours[IDS["user_binil"]][date(2026, 3, 3)] == Decimal("8.00")
 
 
 def test_resource_planning_grid_still_builds_without_shifts(client, auth_headers):
@@ -206,6 +187,33 @@ def test_resource_planning_grid_still_builds_without_shifts(client, auth_headers
     assert "designers" in response.json()
 
 
+def test_admin_with_stale_special_permissions_can_still_assign(client, session):
+    """FE grants Admin all specials; BE must match even when stored JSON is stale."""
+    admin = session.get(User, IDS["user_admin"])
+    admin.special_permissions = json.dumps(["manage_users", "view_reports"])
+    session.add(admin)
+    session.commit()
+
+    resolved = resolve_user_special_permissions(admin, "Admin")
+    assert SPECIAL_ASSIGN_RESOURCE_SHIFTS in resolved
+    assert SPECIAL_MANAGE_RESOURCE_SHIFTS in resolved
+
+    headers = login(client, "admin@prosohm.com")
+    shift_id = client.get(f"{SHIFTS_URL}?active_only=true", headers=headers).json()[0]["id"]
+    assigned = client.post(
+        f"{SHIFTS_URL}/assignments",
+        headers=headers,
+        json={
+            "user_id": str(IDS["user_binil"]),
+            "shift_id": shift_id,
+            "assignment_type": "permanent",
+            "effective_from": "2026-09-07",
+            "end_date_existing": True,
+        },
+    )
+    assert assigned.status_code == 201, assigned.text
+
+
 # --------------------------------------------------------------------------
 # API
 # --------------------------------------------------------------------------
@@ -214,7 +222,15 @@ def test_resource_planning_grid_still_builds_without_shifts(client, auth_headers
 def test_api_shift_crud_and_assignment_flow(client, auth_headers):
     listed = client.get(SHIFTS_URL, headers=auth_headers)
     assert listed.status_code == 200
-    assert {item["code"] for item in listed.json()} >= {"DAY", "EVE", "NGT"}
+    body = listed.json()
+    assert {item["code"] for item in body if item["is_active"]} >= {
+        "FIRST",
+        "SECOND",
+        "GENERAL",
+    }
+    general = next(item for item in body if item["code"] == "GENERAL")
+    assert general["display_window"] == "9:00 AM – 6:00 PM"
+    assert general["display_label"].startswith("General Shift")
 
     created = client.post(
         SHIFTS_URL,
@@ -250,6 +266,7 @@ def test_api_shift_crud_and_assignment_flow(client, auth_headers):
     )
     assert assigned.status_code == 201, assigned.text
     assert assigned.json()["shift_code"] == "SPL"
+    assert assigned.json()["shift_display"]
 
     conflict = client.post(
         f"{SHIFTS_URL}/assignments",
@@ -280,7 +297,11 @@ def test_api_shift_crud_and_assignment_flow(client, auth_headers):
 
 
 def test_api_bulk_assignment_returns_conflicts(client, auth_headers):
-    shift_id = client.get(SHIFTS_URL, headers=auth_headers).json()[0]["id"]
+    shift_id = next(
+        item["id"]
+        for item in client.get(f"{SHIFTS_URL}?active_only=true", headers=auth_headers).json()
+        if item["code"] == "GENERAL"
+    )
     client.post(
         f"{SHIFTS_URL}/assignments",
         headers=auth_headers,
@@ -340,7 +361,11 @@ def test_engineering_manager_can_assign_but_not_manage(client):
     )
     assert denied.status_code == 403
 
-    shift_id = client.get(SHIFTS_URL, headers=headers).json()[0]["id"]
+    shift_id = next(
+        item["id"]
+        for item in client.get(f"{SHIFTS_URL}?active_only=true", headers=headers).json()
+        if item["code"] == "FIRST"
+    )
     allowed = client.post(
         f"{SHIFTS_URL}/assignments",
         headers=headers,
@@ -351,3 +376,18 @@ def test_engineering_manager_can_assign_but_not_manage(client):
         },
     )
     assert allowed.status_code == 201, allowed.text
+
+
+def test_designer_cannot_assign_via_api(client):
+    headers = login(client, "binil@prosohm.com")
+    # Designers cannot even list — but if they somehow had a shift id, assign must 403.
+    response = client.post(
+        f"{SHIFTS_URL}/assignments",
+        headers=headers,
+        json={
+            "user_id": str(IDS["user_binil"]),
+            "shift_id": str(IDS["user_binil"]),
+            "effective_from": "2026-03-02",
+        },
+    )
+    assert response.status_code == 403

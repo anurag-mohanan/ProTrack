@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.models.resource_shifts import ResourceShift, ResourceShiftAssignment
-from app.services.resource_shift_service import seed_default_shifts
+from app.services.resource_shift_service import seed_default_shifts, ensure_company_standard_shifts
 
 
 def ensure_phase89_resource_shifts_foundation(engine: Engine) -> None:
@@ -30,6 +30,7 @@ def _seed(engine: Engine) -> None:
     db = SessionLocal()
     try:
         seed_default_shifts(db)
+        ensure_company_standard_shifts(db)
     except Exception:
         db.rollback()
         raise

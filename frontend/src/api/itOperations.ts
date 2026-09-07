@@ -32,6 +32,8 @@ import type {
   ITComputer,
   ITComputerCreate,
   ITComputerUpdate,
+  ComputerNetworkInterface,
+  ComputerNetworkInterfacePayload,
   ITDashboardSummary,
   ITIpAddress,
   ITNetwork,
@@ -96,6 +98,8 @@ export const itOperationsKeys = {
   computers: (filters?: ListParams) =>
     [...itOperationsKeys.all, 'computers', filters ?? {}] as const,
   computer: (id: string) => [...itOperationsKeys.all, 'computers', id] as const,
+  computerInterfaces: (id: string) =>
+    [...itOperationsKeys.all, 'computers', id, 'interfaces'] as const,
   people: (filters?: ListParams) => [...itOperationsKeys.all, 'people', filters ?? {}] as const,
   person: (id: string) => [...itOperationsKeys.all, 'people', id] as const,
   resetPreview: () => [...itOperationsKeys.all, 'reset-preview'] as const,
@@ -424,6 +428,42 @@ export async function createComputer(payload: ITComputerCreate): Promise<ITCompu
 export async function updateComputer(id: string, payload: ITComputerUpdate): Promise<ITComputer> {
   const { data } = await apiClient.patch<ITComputer>(`/it/computers/${id}`, payload);
   return data;
+}
+
+export async function fetchComputerInterfaces(
+  computerId: string,
+): Promise<ComputerNetworkInterface[]> {
+  return getList<ComputerNetworkInterface>(`/it/computers/${computerId}/interfaces`);
+}
+
+export async function createComputerInterface(
+  computerId: string,
+  payload: ComputerNetworkInterfacePayload,
+): Promise<ComputerNetworkInterface> {
+  const { data } = await apiClient.post<ComputerNetworkInterface>(
+    `/it/computers/${computerId}/interfaces`,
+    payload,
+  );
+  return data;
+}
+
+export async function updateComputerInterface(
+  computerId: string,
+  interfaceId: string,
+  payload: Partial<ComputerNetworkInterfacePayload>,
+): Promise<ComputerNetworkInterface> {
+  const { data } = await apiClient.patch<ComputerNetworkInterface>(
+    `/it/computers/${computerId}/interfaces/${interfaceId}`,
+    payload,
+  );
+  return data;
+}
+
+export async function deleteComputerInterface(
+  computerId: string,
+  interfaceId: string,
+): Promise<void> {
+  await apiClient.delete(`/it/computers/${computerId}/interfaces/${interfaceId}`);
 }
 
 export async function assignComputer(

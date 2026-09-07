@@ -32,6 +32,9 @@ docs/migration-sources/_analyze_output.txt
 # Node / frontend build
 node_modules/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/.auth/
 
 # Editor / OS
 .DS_Store

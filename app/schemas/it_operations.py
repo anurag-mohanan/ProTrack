@@ -346,6 +346,36 @@ class ComputerRead(TimestampSchema):
     data_quality_flags: list[str] = Field(default_factory=list)
     is_open: bool = False
     assigned_date: Optional[date] = None
+    interface_count: int = 0
+
+
+class ComputerNetworkInterfaceCreate(BlankOptionalFieldsMixin, BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    role: str = Field(default="lan", max_length=20)
+    mac_address: Optional[str] = Field(default=None, max_length=17)
+    is_primary: bool = False
+    is_active: bool = True
+    notes: Optional[str] = None
+
+
+class ComputerNetworkInterfaceUpdate(BlankOptionalFieldsMixin, BaseModel):
+    name: Optional[str] = Field(default=None, max_length=60)
+    role: Optional[str] = Field(default=None, max_length=20)
+    mac_address: Optional[str] = Field(default=None, max_length=17)
+    is_primary: Optional[bool] = None
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class ComputerNetworkInterfaceRead(TimestampSchema):
+    id: UUID
+    computer_id: UUID
+    name: str
+    role: str
+    mac_address: Optional[str] = None
+    is_primary: bool = False
+    is_active: bool = True
+    notes: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +433,7 @@ class IPAllocateRequest(BlankOptionalFieldsMixin, BaseModel):
     network_id: Optional[UUID] = None
     assigned_to_asset_id: Optional[UUID] = None
     assigned_to_user_id: Optional[UUID] = None
+    interface_id: Optional[UUID] = None
     hostname: Optional[str] = Field(default=None, max_length=60)
     notes: Optional[str] = None
     allocation_type: Optional[str] = Field(default="static", max_length=20)
@@ -416,6 +447,8 @@ class IPAssignmentHistoryRead(TimestampSchema):
     ip_address_id: UUID
     assigned_to_asset_id: Optional[UUID] = None
     assigned_to_user_id: Optional[UUID] = None
+    interface_id: Optional[UUID] = None
+    interface_name: Optional[str] = None
     assigned_by_user_id: UUID
     hostname: Optional[str] = None
     assigned_date: date

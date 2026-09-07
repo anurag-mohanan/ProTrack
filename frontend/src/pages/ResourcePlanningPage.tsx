@@ -2,11 +2,9 @@ import { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Stack,
   Tab,
   Tabs,
-  TextField,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +25,8 @@ import { ResourcePlanningShiftsPanel } from '../components/resource-planning/Res
 import { ResourcePlanningItReadinessPanel } from '../components/resource-planning/ResourcePlanningItReadinessPanel';
 import { ResourcePlanningDataQualityPanel } from '../components/resource-planning/ResourcePlanningDataQualityPanel';
 import { ResourcePlanningComputersByShiftPanel } from '../components/resource-planning/ResourcePlanningComputersByShiftPanel';
+import { ResourcePlanningForecastPanel } from '../components/resource-planning/ResourcePlanningForecastPanel';
+import { ResourcePlanningReportsPanel } from '../components/resource-planning/ResourcePlanningReportsPanel';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
@@ -59,7 +59,7 @@ const GRANULARITY_OPTIONS: { value: ResourcePlanningGranularity; label: string }
   { value: 'day', label: 'Daily' },
 ];
 
-type MainTab = 'planning' | 'shifts' | 'it' | 'quality';
+type MainTab = 'planning' | 'shifts' | 'it' | 'forecast' | 'reports' | 'quality';
 
 export function ResourcePlanningPage() {
   const queryClient = useQueryClient();
@@ -74,8 +74,6 @@ export function ResourcePlanningPage() {
   const [selectedDesignerId, setSelectedDesignerId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [whatIfExtraDesigners, setWhatIfExtraDesigners] = useState(0);
-  const [whatIfHoursDelta, setWhatIfHoursDelta] = useState(0);
 
   const teamParam = appliedTeamFilter === 'all' ? undefined : appliedTeamFilter;
   const gridParams = useMemo(
@@ -99,7 +97,7 @@ export function ResourcePlanningPage() {
     queryKey: resourcePlanningQueryKeys.grid(gridParams),
     queryFn: () => fetchResourcePlanningGrid(gridParams),
     staleTime: QUERY_STALE_TIMES.dashboard,
-    enabled: mainTab === 'planning' || mainTab === 'shifts',
+    enabled: mainTab === 'planning' || mainTab === 'shifts' || mainTab === 'forecast',
   });
 
   const [pendingAssign, setPendingAssign] = useState<{
@@ -234,10 +232,6 @@ export function ResourcePlanningPage() {
     : 0;
   const avgCapacityHours =
     data && data.designers.length > 0 ? totalCapacity / data.designers.length : 160;
-  const scenarioCapacity =
-    totalCapacity + whatIfExtraDesigners * avgCapacityHours + whatIfHoursDelta;
-  const scenarioUtil =
-    scenarioCapacity > 0 ? Math.round((totalAllocated / scenarioCapacity) * 100) : 0;
   const avgUtil = totalCapacity > 0 ? Math.round((totalAllocated / totalCapacity) * 100) : 0;
   const overloaded = data
     ? data.designers.filter((d) => {
@@ -246,7 +240,6 @@ export function ResourcePlanningPage() {
         return capacity > 0 && allocated / capacity >= 0.9;
       }).length
     : 0;
-  const whatIfActive = whatIfExtraDesigners !== 0 || whatIfHoursDelta !== 0;
 
   return (
     <PageContainer>
@@ -263,6 +256,8 @@ export function ResourcePlanningPage() {
         <Tab value="planning" label="Capacity & projects" sx={{ minHeight: 40 }} />
         <Tab value="shifts" label="Shifts & people" sx={{ minHeight: 40 }} />
         <Tab value="it" label="Computers & software" sx={{ minHeight: 40 }} />
+        <Tab value="forecast" label="Forecast" sx={{ minHeight: 40 }} />
+        <Tab value="reports" label="Reports" sx={{ minHeight: 40 }} />
         <Tab value="quality" label="Data quality" sx={{ minHeight: 40 }} />
       </Tabs>
 
@@ -297,7 +292,11 @@ export function ResourcePlanningPage() {
               ? 'shift calendar'
               : mainTab === 'quality'
                 ? 'data quality review'
-                : 'IT readiness'}
+                : mainTab === 'forecast'
+                  ? 'forecast scenarios'
+                  : mainTab === 'reports'
+                    ? 'reports'
+                    : 'IT readiness'}
           </Typography>
         )}
       </FilterToolbar>
@@ -314,6 +313,24 @@ export function ResourcePlanningPage() {
             <ResourcePlanningItReadinessPanel teamId={teamParam} />
             <ResourcePlanningComputersByShiftPanel teamId={teamParam} />
           </Stack>
+        </Box>
+      )}
+
+      {mainTab === 'forecast' && (
+        <Box sx={{ mt: 1 }}>
+          <ResourcePlanningForecastPanel
+            teamId={teamParam}
+            avgCapacityHours={avgCapacityHours}
+            totalCapacity={totalCapacity}
+            totalPlanned={totalAllocated}
+            liveUtil={avgUtil}
+          />
+        </Box>
+      )}
+
+      {mainTab === 'reports' && (
+        <Box sx={{ mt: 1 }}>
+          <ResourcePlanningReportsPanel teamId={teamParam} />
         </Box>
       )}
 
@@ -366,54 +383,8 @@ export function ResourcePlanningPage() {
             </KpiStrip>
           </Box>
 
-          <Alert
-            severity={whatIfActive ? 'info' : 'success'}
-            sx={{ mb: 2 }}
-            action={
-              whatIfActive ? (
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setWhatIfExtraDesigners(0);
-                    setWhatIfHoursDelta(0);
-                  }}
-                >
-                  Reset
-                </Button>
-              ) : undefined
-            }
-          >
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={1.5}
-              sx={{ alignItems: { sm: 'center' }, flexWrap: 'wrap' }}
-            >
-              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 140 }}>
-                Capacity what-if
-              </Typography>
-              <TextField
-                size="small"
-                type="number"
-                label="+/− designers"
-                value={whatIfExtraDesigners}
-                onChange={(event) => setWhatIfExtraDesigners(Number(event.target.value) || 0)}
-                sx={{ width: 140 }}
-                slotProps={{ htmlInput: { step: 1 } }}
-              />
-              <TextField
-                size="small"
-                type="number"
-                label="Hours delta"
-                value={whatIfHoursDelta}
-                onChange={(event) => setWhatIfHoursDelta(Number(event.target.value) || 0)}
-                sx={{ width: 140 }}
-                slotProps={{ htmlInput: { step: 8 } }}
-              />
-              <Typography variant="body2" color="text.secondary">
-                Scenario util {scenarioUtil}% · capacity {formatNumber(scenarioCapacity, 0) || '0'}h
-                {whatIfActive ? ` (live ${avgUtil}%)` : ''}
-              </Typography>
-            </Stack>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Capacity what-if and hire-impact forecasting live on the Forecast tab.
           </Alert>
 
           <Box

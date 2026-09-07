@@ -124,21 +124,31 @@ def _network_issues(db: Session) -> list[dict]:
             )
 
     conflicting_multi_ip: list[dict] = []
+    intentional_multi_ip: list[dict] = []
     for asset_id, histories in asset_to_ips.items():
         if len(histories) < 2:
             continue
         asset = db.get(Asset, asset_id)
-        conflicting_multi_ip.append(
-            {
-                "asset_id": str(asset_id),
-                "asset_number": asset.asset_number if asset else None,
-                "ip_count": len(histories),
-                "addresses": [
-                    h.ip_address.address if h.ip_address is not None else str(h.ip_address_id)
-                    for h in histories
-                ],
-            }
-        )
+        interface_ids = {
+            getattr(h, "interface_id", None)
+            for h in histories
+            if getattr(h, "interface_id", None) is not None
+        }
+        intentional = len(interface_ids) >= 2 and len(interface_ids) == len(histories)
+        sample = {
+            "asset_id": str(asset_id),
+            "asset_number": asset.asset_number if asset else None,
+            "ip_count": len(histories),
+            "addresses": [
+                h.ip_address.address if h.ip_address is not None else str(h.ip_address_id)
+                for h in histories
+            ],
+            "interface_bound": len(interface_ids),
+        }
+        if intentional:
+            intentional_multi_ip.append(sample)
+        else:
+            conflicting_multi_ip.append(sample)
 
     retired_with_ip: list[dict] = []
     for asset_id, histories in asset_to_ips.items():
@@ -180,9 +190,17 @@ def _network_issues(db: Session) -> list[dict]:
             code="asset_multiple_active_ips",
             severity="error",
             domain="network",
-            title="Assets with multiple active IPs",
+            title="Assets with multiple active IPs (no NIC binding)",
             count=len(conflicting_multi_ip),
             samples=conflicting_multi_ip,
+        ),
+        _issue(
+            code="asset_multi_homed_ips",
+            severity="info",
+            domain="network",
+            title="Multi-homed assets (IPs bound to distinct NICs)",
+            count=len(intentional_multi_ip),
+            samples=intentional_multi_ip,
         ),
         _issue(
             code="inactive_asset_with_active_ip",

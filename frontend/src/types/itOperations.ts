@@ -586,6 +586,7 @@ export interface IpAllocatePayload {
   network_id?: string | null;
   assigned_to_asset_id?: string | null;
   assigned_to_user_id?: string | null;
+  interface_id?: string | null;
   hostname?: string | null;
   notes?: string | null;
 }
@@ -594,11 +595,35 @@ export interface IpReleasePayload {
   notes?: string | null;
 }
 
+export interface ComputerNetworkInterface {
+  id: string;
+  computer_id: string;
+  name: string;
+  role: string;
+  mac_address?: string | null;
+  is_primary: boolean;
+  is_active: boolean;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ComputerNetworkInterfacePayload {
+  name: string;
+  role?: string;
+  mac_address?: string | null;
+  is_primary?: boolean;
+  is_active?: boolean;
+  notes?: string | null;
+}
+
 export interface IPAssignmentHistory {
   id: string;
   ip_address_id: string;
   assigned_to_asset_id?: string | null;
   assigned_to_user_id?: string | null;
+  interface_id?: string | null;
+  interface_name?: string | null;
   assigned_by_user_id: string;
   hostname?: string | null;
   assigned_date: string;

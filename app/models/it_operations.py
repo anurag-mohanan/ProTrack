@@ -377,6 +377,39 @@ class Computer(Base, TimestampMixin, TenantMixin):
     source_system: Mapped[Optional[str]] = mapped_column(String(120))
 
     asset: Mapped[Asset] = relationship(back_populates="computer")
+    interfaces: Mapped[list["ComputerNetworkInterface"]] = relationship(
+        back_populates="computer",
+        cascade="all, delete-orphan",
+        order_by="ComputerNetworkInterface.is_primary.desc(), ComputerNetworkInterface.name",
+    )
+
+
+class ComputerNetworkInterface(Base, TimestampMixin, TenantMixin):
+    """Physical/virtual NIC on a computer — enables intentional multi-homing."""
+
+    __tablename__ = "computer_network_interfaces"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "computer_id",
+            "name",
+            name="uq_computer_nics_tenant_computer_name",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    computer_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("computers.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(60), nullable=False)
+    # lan | wifi | vpn | other
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="lan")
+    mac_address: Mapped[Optional[str]] = mapped_column(String(17))
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    computer: Mapped[Computer] = relationship(back_populates="interfaces")
 
 
 class AssetAssignment(Base, TimestampMixin, TenantMixin):
@@ -515,6 +548,10 @@ class IPAssignmentHistory(Base, TimestampMixin, TenantMixin):
     )
     assigned_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    # Optional NIC binding for multi-homed computers.
+    interface_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("computer_network_interfaces.id"), nullable=True, index=True
     )
     assigned_by_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False

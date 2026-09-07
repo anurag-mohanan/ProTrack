@@ -21,6 +21,7 @@ from app.models.it_operations import (
     AssetStatusHistory,
     AssetType,
     Computer,
+    ComputerNetworkInterface,
     ITSettings,
 )
 from app.models.models import Customer, User
@@ -47,6 +48,7 @@ PURCHASED_BY_CODES = frozenset(
     {"organization", "customer", "vendor", "leased", "other", "unknown"}
 )
 WARRANTY_STATUSES = frozenset({"none", "active", "expiring_soon", "expired"})
+NIC_ROLES = frozenset({"lan", "wifi", "vpn", "other"})
 # Days before expiry counted as "expiring soon"
 WARRANTY_EXPIRING_SOON_DAYS = 30
 # Upper bound for the bulk "next numbers" preview
@@ -1532,6 +1534,9 @@ def create_computer(
     )
     db.add(computer)
     db.flush()
+    mac = (mac_address or "").strip() or None
+    if mac:
+        _ensure_primary_interface(db, computer, mac_address=mac, name="LAN")
     log_activity(
         db,
         user=actor,
@@ -1549,6 +1554,187 @@ def create_computer(
     db.commit()
     db.refresh(computer)
     return computer
+
+
+def _ensure_primary_interface(
+    db: Session,
+    computer: Computer,
+    *,
+    mac_address: str | None,
+    name: str = "LAN",
+) -> ComputerNetworkInterface:
+    existing = list_computer_interfaces(db, computer.id)
+    if existing:
+        primary = next((row for row in existing if row.is_primary), existing[0])
+        if mac_address and not primary.mac_address:
+            primary.mac_address = mac_address
+            db.add(primary)
+        return primary
+    return create_computer_interface(
+        db,
+        computer,
+        name=name,
+        role="lan",
+        mac_address=mac_address,
+        is_primary=True,
+        commit=False,
+    )
+
+
+def list_computer_interfaces(db: Session, computer_id: UUID) -> list[ComputerNetworkInterface]:
+    return list(
+        db.scalars(
+            select(ComputerNetworkInterface)
+            .where(ComputerNetworkInterface.computer_id == computer_id)
+            .order_by(
+                ComputerNetworkInterface.is_primary.desc(),
+                ComputerNetworkInterface.name.asc(),
+            )
+        ).all()
+    )
+
+
+def get_computer_interface(
+    db: Session, interface_id: UUID
+) -> ComputerNetworkInterface | None:
+    return db.get(ComputerNetworkInterface, interface_id)
+
+
+def create_computer_interface(
+    db: Session,
+    computer: Computer,
+    *,
+    name: str,
+    role: str = "lan",
+    mac_address: str | None = None,
+    is_primary: bool = False,
+    is_active: bool = True,
+    notes: str | None = None,
+    commit: bool = True,
+) -> ComputerNetworkInterface:
+    cleaned_name = (name or "").strip()
+    if not cleaned_name:
+        raise ProTrackValidationError("Interface name is required.")
+    role_norm = (role or "lan").strip().lower()
+    if role_norm not in NIC_ROLES:
+        raise ProTrackValidationError(f"Invalid NIC role '{role}'.")
+    clash = db.scalar(
+        select(ComputerNetworkInterface).where(
+            ComputerNetworkInterface.computer_id == computer.id,
+            ComputerNetworkInterface.name == cleaned_name,
+        )
+    )
+    if clash is not None:
+        raise ProTrackValidationError(f"Interface '{cleaned_name}' already exists on this computer.")
+    existing = list_computer_interfaces(db, computer.id)
+    make_primary = bool(is_primary) or len(existing) == 0
+    if make_primary:
+        for row in existing:
+            if row.is_primary:
+                row.is_primary = False
+                db.add(row)
+    interface = ComputerNetworkInterface(
+        id=uuid4(),
+        computer_id=computer.id,
+        name=cleaned_name,
+        role=role_norm,
+        mac_address=(mac_address or "").strip() or None,
+        is_primary=make_primary,
+        is_active=bool(is_active),
+        notes=(notes or "").strip() or None,
+    )
+    db.add(interface)
+    if make_primary and interface.mac_address:
+        computer.mac_address = interface.mac_address
+        db.add(computer)
+    db.flush()
+    if commit:
+        db.commit()
+        db.refresh(interface)
+    return interface
+
+
+def update_computer_interface(
+    db: Session,
+    interface: ComputerNetworkInterface,
+    *,
+    name: str | None = None,
+    role: str | None = None,
+    mac_address: str | None = None,
+    is_primary: bool | None = None,
+    is_active: bool | None = None,
+    notes: str | None = None,
+    fields_set: set[str] | None = None,
+    commit: bool = True,
+) -> ComputerNetworkInterface:
+    touched = fields_set or set()
+    if name is not None and ("name" in touched or fields_set is None):
+        cleaned = name.strip()
+        if not cleaned:
+            raise ProTrackValidationError("Interface name is required.")
+        clash = db.scalar(
+            select(ComputerNetworkInterface).where(
+                ComputerNetworkInterface.computer_id == interface.computer_id,
+                ComputerNetworkInterface.name == cleaned,
+                ComputerNetworkInterface.id != interface.id,
+            )
+        )
+        if clash is not None:
+            raise ProTrackValidationError(f"Interface '{cleaned}' already exists on this computer.")
+        interface.name = cleaned
+    if role is not None and ("role" in touched or fields_set is None):
+        role_norm = role.strip().lower()
+        if role_norm not in NIC_ROLES:
+            raise ProTrackValidationError(f"Invalid NIC role '{role}'.")
+        interface.role = role_norm
+    if "mac_address" in touched or (fields_set is None and mac_address is not None):
+        interface.mac_address = (mac_address or "").strip() or None
+    if is_active is not None and ("is_active" in touched or fields_set is None):
+        interface.is_active = bool(is_active)
+    if "notes" in touched or (fields_set is None and notes is not None):
+        interface.notes = (notes or "").strip() or None
+    if is_primary is True:
+        siblings = list_computer_interfaces(db, interface.computer_id)
+        for row in siblings:
+            if row.id != interface.id and row.is_primary:
+                row.is_primary = False
+                db.add(row)
+        interface.is_primary = True
+    elif is_primary is False and ("is_primary" in touched or fields_set is None):
+        interface.is_primary = False
+    db.add(interface)
+    computer = db.get(Computer, interface.computer_id)
+    if computer is not None and interface.is_primary and interface.mac_address:
+        computer.mac_address = interface.mac_address
+        db.add(computer)
+    db.flush()
+    if commit:
+        db.commit()
+        db.refresh(interface)
+    return interface
+
+
+def delete_computer_interface(
+    db: Session,
+    interface: ComputerNetworkInterface,
+    *,
+    commit: bool = True,
+) -> None:
+    was_primary = interface.is_primary
+    computer_id = interface.computer_id
+    db.delete(interface)
+    db.flush()
+    if was_primary:
+        remaining = list_computer_interfaces(db, computer_id)
+        if remaining:
+            remaining[0].is_primary = True
+            db.add(remaining[0])
+            computer = db.get(Computer, computer_id)
+            if computer is not None:
+                computer.mac_address = remaining[0].mac_address
+                db.add(computer)
+    if commit:
+        db.commit()
 
 
 def update_computer(

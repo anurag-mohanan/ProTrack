@@ -70,6 +70,9 @@ from app.schemas.it_operations import (
     AssetUpdate,
     ComputerAssignRequest,
     ComputerCreate,
+    ComputerNetworkInterfaceCreate,
+    ComputerNetworkInterfaceRead,
+    ComputerNetworkInterfaceUpdate,
     ComputerRead,
     ComputerTransferRequest,
     ComputerUnassignRequest,
@@ -371,6 +374,45 @@ def _computer_read(db: Session, computer) -> ComputerRead:
         data_quality_flags=resolved["data_quality"],
         is_open=is_open,
         assigned_date=assignment.assigned_date if assignment else None,
+        interface_count=len(it_asset_service.list_computer_interfaces(db, computer.id)),
+    )
+
+
+def _nic_read(row) -> ComputerNetworkInterfaceRead:
+    return ComputerNetworkInterfaceRead(
+        id=row.id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        computer_id=row.computer_id,
+        name=row.name,
+        role=row.role,
+        mac_address=row.mac_address,
+        is_primary=row.is_primary,
+        is_active=row.is_active,
+        notes=row.notes,
+    )
+
+
+def _ip_history_read(db: Session, row) -> IPAssignmentHistoryRead:
+    interface_name = None
+    interface_id = getattr(row, "interface_id", None)
+    if interface_id is not None:
+        iface = it_asset_service.get_computer_interface(db, interface_id)
+        interface_name = iface.name if iface else None
+    return IPAssignmentHistoryRead(
+        id=row.id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        ip_address_id=row.ip_address_id,
+        assigned_to_asset_id=row.assigned_to_asset_id,
+        assigned_to_user_id=row.assigned_to_user_id,
+        interface_id=interface_id,
+        interface_name=interface_name,
+        assigned_by_user_id=row.assigned_by_user_id,
+        hostname=row.hostname,
+        assigned_date=row.assigned_date,
+        released_date=row.released_date,
+        notes=row.notes,
     )
 
 
@@ -1341,22 +1383,7 @@ def list_asset_ip_history(
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
     rows = it_network_service.list_ip_history_for_asset(db, asset_id)
-    return [
-        IPAssignmentHistoryRead(
-            id=row.id,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            ip_address_id=row.ip_address_id,
-            assigned_to_asset_id=row.assigned_to_asset_id,
-            assigned_to_user_id=row.assigned_to_user_id,
-            assigned_by_user_id=row.assigned_by_user_id,
-            hostname=row.hostname,
-            assigned_date=row.assigned_date,
-            released_date=row.released_date,
-            notes=row.notes,
-        )
-        for row in rows
-    ]
+    return [_ip_history_read(db, row) for row in rows]
 
 
 @router.get("/assets/{asset_id}/lifecycle-history")
@@ -1502,6 +1529,110 @@ def update_computer(
         return _computer_read(db, computer)
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
+
+
+@router.get(
+    "/computers/{computer_id}/interfaces",
+    response_model=list[ComputerNetworkInterfaceRead],
+)
+def list_computer_interfaces(
+    computer_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    computer = it_asset_service.get_computer(db, computer_id)
+    if computer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Computer not found.")
+    return [
+        _nic_read(row)
+        for row in it_asset_service.list_computer_interfaces(db, computer_id)
+    ]
+
+
+@router.post(
+    "/computers/{computer_id}/interfaces",
+    response_model=ComputerNetworkInterfaceRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def create_computer_interface(
+    computer_id: UUID,
+    payload: ComputerNetworkInterfaceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    computer = it_asset_service.get_computer(db, computer_id)
+    if computer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Computer not found.")
+    try:
+        row = it_asset_service.create_computer_interface(
+            db,
+            computer,
+            name=payload.name,
+            role=payload.role,
+            mac_address=payload.mac_address,
+            is_primary=payload.is_primary,
+            is_active=payload.is_active,
+            notes=payload.notes,
+        )
+        return _nic_read(row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.patch(
+    "/computers/{computer_id}/interfaces/{interface_id}",
+    response_model=ComputerNetworkInterfaceRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def update_computer_interface(
+    computer_id: UUID,
+    interface_id: UUID,
+    payload: ComputerNetworkInterfaceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    computer = it_asset_service.get_computer(db, computer_id)
+    if computer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Computer not found.")
+    row = it_asset_service.get_computer_interface(db, interface_id)
+    if row is None or row.computer_id != computer.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interface not found.")
+    try:
+        row = it_asset_service.update_computer_interface(
+            db,
+            row,
+            name=payload.name,
+            role=payload.role,
+            mac_address=payload.mac_address,
+            is_primary=payload.is_primary,
+            is_active=payload.is_active,
+            notes=payload.notes,
+            fields_set=set(payload.model_fields_set),
+        )
+        return _nic_read(row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.delete(
+    "/computers/{computer_id}/interfaces/{interface_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def delete_computer_interface(
+    computer_id: UUID,
+    interface_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    computer = it_asset_service.get_computer(db, computer_id)
+    if computer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Computer not found.")
+    row = it_asset_service.get_computer_interface(db, interface_id)
+    if row is None or row.computer_id != computer.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interface not found.")
+    it_asset_service.delete_computer_interface(db, row)
 
 
 @router.post(
@@ -1763,6 +1894,7 @@ def allocate_ip(
             network_id=payload.network_id,
             assigned_to_asset_id=payload.assigned_to_asset_id,
             assigned_to_user_id=payload.assigned_to_user_id,
+            interface_id=payload.interface_id,
             hostname=payload.hostname,
             notes=payload.notes,
             allocation_type=payload.allocation_type,
@@ -1809,22 +1941,7 @@ def list_ip_assignment_history(
     if ip is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="IP address not found.")
     rows = it_network_service.list_ip_history(db, ip_id)
-    return [
-        IPAssignmentHistoryRead(
-            id=row.id,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            ip_address_id=row.ip_address_id,
-            assigned_to_asset_id=row.assigned_to_asset_id,
-            assigned_to_user_id=row.assigned_to_user_id,
-            assigned_by_user_id=row.assigned_by_user_id,
-            hostname=row.hostname,
-            assigned_date=row.assigned_date,
-            released_date=row.released_date,
-            notes=row.notes,
-        )
-        for row in rows
-    ]
+    return [_ip_history_read(db, row) for row in rows]
 
 # ---------------------------------------------------------------------------
 # Accounts

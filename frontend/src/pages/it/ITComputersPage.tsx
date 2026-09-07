@@ -11,6 +11,7 @@ import {
   Switch,
   ToggleButton,
   ToggleButtonGroup,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
@@ -20,7 +21,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   assignComputer,
   createComputer,
+  createComputerInterface,
+  deleteComputerInterface,
   fetchAssetTypes,
+  fetchComputerInterfaces,
   fetchComputersPaginated,
   fetchItPeoplePaginated,
   itOperationsKeys,
@@ -122,6 +126,10 @@ export function ITComputersPage() {
   const [assignTarget, setAssignTarget] = useState<ITComputer | null>(null);
   const [assignUserId, setAssignUserId] = useState('');
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [nicTarget, setNicTarget] = useState<ITComputer | null>(null);
+  const [nicName, setNicName] = useState('Wi-Fi');
+  const [nicRole, setNicRole] = useState('wifi');
+  const [nicMac, setNicMac] = useState('');
 
   const assetTypesQuery = useQuery({
     queryKey: itOperationsKeys.assetTypes(),
@@ -140,6 +148,41 @@ export function ITComputersPage() {
     queryKey: itOperationsKeys.people({ status: 'active', page_size: 200 }),
     queryFn: () => fetchItPeoplePaginated({ status: 'active', page_size: 200 }),
     enabled: canAssign && Boolean(assignTarget),
+  });
+
+  const interfacesQuery = useQuery({
+    queryKey: itOperationsKeys.computerInterfaces(nicTarget?.id ?? ''),
+    queryFn: () => fetchComputerInterfaces(nicTarget!.id),
+    enabled: Boolean(nicTarget?.id),
+  });
+
+  const addInterfaceMutation = useMutation({
+    mutationFn: () =>
+      createComputerInterface(nicTarget!.id, {
+        name: nicName.trim(),
+        role: nicRole,
+        mac_address: optionalString(nicMac),
+        is_primary: false,
+      }),
+    onSuccess: () => {
+      showSuccess('Network interface added.');
+      setNicMac('');
+      void queryClient.invalidateQueries({
+        queryKey: itOperationsKeys.computerInterfaces(nicTarget?.id ?? ''),
+      });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const deleteInterfaceMutation = useMutation({
+    mutationFn: (interfaceId: string) => deleteComputerInterface(nicTarget!.id, interfaceId),
+    onSuccess: () => {
+      showSuccess('Interface removed.');
+      void queryClient.invalidateQueries({
+        queryKey: itOperationsKeys.computerInterfaces(nicTarget?.id ?? ''),
+      });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
   });
 
   const computerTypeOptions = useMemo(
@@ -369,6 +412,11 @@ export function ITComputersPage() {
               <Stack direction="row" spacing={0.5}>
                 {canManage ? (
                   <TableRowActions onEdit={() => openEdit(params.row)} />
+                ) : null}
+                {canManage ? (
+                  <ProsohmButton size="small" onClick={() => setNicTarget(params.row)}>
+                    NICs
+                  </ProsohmButton>
                 ) : null}
                 {canAssign && params.row.is_open ? (
                   <ProsohmButton size="small" onClick={() => setAssignTarget(params.row)}>
@@ -645,6 +693,87 @@ export function ITComputersPage() {
         </DialogContent>
         <DialogActions>
           <ProsohmButton buttonVariant="outlined" onClick={() => setQualityOpen(false)}>
+            Close
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(nicTarget)}
+        onClose={() => setNicTarget(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          Network interfaces{nicTarget ? ` — ${nicTarget.computer_name}` : ''}
+        </DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Multi-NIC enables intentional multi-homing. Bind each IP to a NIC when allocating.
+          </Typography>
+          {(interfacesQuery.data ?? []).map((row) => (
+            <Stack
+              key={row.id}
+              direction="row"
+              spacing={1}
+              sx={{ alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <Box>
+                <Typography variant="body2">
+                  {row.name} · {row.role}
+                  {row.is_primary ? ' · primary' : ''}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {row.mac_address || 'No MAC'}
+                </Typography>
+              </Box>
+              {canManage && !row.is_primary ? (
+                <ProsohmButton
+                  size="small"
+                  buttonVariant="outlined"
+                  onClick={() => deleteInterfaceMutation.mutate(row.id)}
+                >
+                  Remove
+                </ProsohmButton>
+              ) : null}
+            </Stack>
+          ))}
+          {canManage ? (
+            <Stack spacing={1.5}>
+              <FormField
+                label="Name"
+                value={nicName}
+                onChange={(event) => setNicName(event.target.value)}
+              />
+              <FormSelect
+                label="Role"
+                value={nicRole}
+                onChange={(event) => setNicRole(String(event.target.value))}
+                options={[
+                  { value: 'lan', label: 'LAN' },
+                  { value: 'wifi', label: 'Wi-Fi' },
+                  { value: 'vpn', label: 'VPN' },
+                  { value: 'other', label: 'Other' },
+                ]}
+              />
+              <FormField
+                label="MAC address"
+                value={nicMac}
+                onChange={(event) => setNicMac(event.target.value)}
+              />
+              <ProsohmButton
+                buttonVariant="primary"
+                loading={addInterfaceMutation.isPending}
+                disabled={!nicName.trim()}
+                onClick={() => addInterfaceMutation.mutate()}
+              >
+                Add interface
+              </ProsohmButton>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setNicTarget(null)}>
             Close
           </ProsohmButton>
         </DialogActions>

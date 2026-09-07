@@ -148,6 +148,25 @@ export async function fetchComputersByShift(params?: {
   return data;
 }
 
+export async function fetchHireImpact(params: {
+  headcount: number;
+  team_id?: string;
+}): Promise<{
+  headcount: number;
+  team_id?: string | null;
+  required_computers: number;
+  spare_computers: number;
+  computers_to_procure: number;
+  required_license_seats: number;
+  estimated_license_cost?: number | string | null;
+  estimated_monthly_license_cost?: number | string | null;
+  assumptions?: string[];
+  warnings?: string[];
+}> {
+  const { data } = await apiClient.get(`/finance/hire-impact${buildQuery(params)}`);
+  return data;
+}
+
 export const resourcePlanningQueryKeys = {
   grid: (params?: {
     start?: string;

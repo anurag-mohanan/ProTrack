@@ -12,7 +12,12 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.access_control import MODULE_IT_OPERATIONS
 from app.core.exceptions import ProTrackValidationError
 from app.models.enums import ActivityAction, EntityType
-from app.models.it_operations import IPAddress, IPAssignmentHistory, Network
+from app.models.it_operations import (
+    ComputerNetworkInterface,
+    IPAddress,
+    IPAssignmentHistory,
+    Network,
+)
 from app.models.models import User
 from app.services.activity_service import log_activity
 
@@ -277,6 +282,7 @@ def allocate_ip(
     network_id: UUID | None = None,
     assigned_to_asset_id: UUID | None = None,
     assigned_to_user_id: UUID | None = None,
+    interface_id: UUID | None = None,
     hostname: str | None = None,
     notes: str | None = None,
     allocation_type: str | None = "static",
@@ -314,13 +320,31 @@ def allocate_ip(
     if _current_ip_history(db, ip.id) is not None:
         raise ProTrackValidationError(f"IP {ip.address} already has an open assignment.")
 
+    resolved_asset_id = assigned_to_asset_id
+    if interface_id is not None:
+        interface = db.get(ComputerNetworkInterface, interface_id)
+        if interface is None or not interface.is_active:
+            raise ProTrackValidationError("Network interface not found or inactive.")
+        from app.models.it_operations import Computer
+
+        computer = db.get(Computer, interface.computer_id)
+        if computer is None:
+            raise ProTrackValidationError("Interface computer not found.")
+        if resolved_asset_id is None:
+            resolved_asset_id = computer.asset_id
+        elif resolved_asset_id != computer.asset_id:
+            raise ProTrackValidationError(
+                "interface_id does not belong to assigned_to_asset_id."
+            )
+
     ip.status = "allocated"
     ip.allocation_type = (allocation_type or "static").strip() or "static"
     history = IPAssignmentHistory(
         id=uuid4(),
         ip_address_id=ip.id,
-        assigned_to_asset_id=assigned_to_asset_id,
+        assigned_to_asset_id=resolved_asset_id,
         assigned_to_user_id=assigned_to_user_id,
+        interface_id=interface_id,
         assigned_by_user_id=actor.id,
         hostname=(hostname or "").strip() or None,
         assigned_date=date.today(),
@@ -338,7 +362,8 @@ def allocate_ip(
         new_value={
             "address": ip.address,
             "assigned_to_user_id": str(assigned_to_user_id) if assigned_to_user_id else None,
-            "assigned_to_asset_id": str(assigned_to_asset_id) if assigned_to_asset_id else None,
+            "assigned_to_asset_id": str(resolved_asset_id) if resolved_asset_id else None,
+            "interface_id": str(interface_id) if interface_id else None,
             "hostname": history.hostname,
         },
         outcome="success",

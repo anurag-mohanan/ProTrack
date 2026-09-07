@@ -23,16 +23,84 @@ from app.models.it_operations import (
     SoftwareLicensePool,
 )
 from app.models.models import Team, TeamMember, User
+from app.models.resource_shifts import ResourceShift
 from app.services.it_software_service import available_seats
+from app.services import resource_shift_service as shift_service
 
 # License types where a seat is shared over time rather than bound to a person.
 FLOATING_LICENSE_TYPES = frozenset({"floating", "concurrent", "network"})
 
 EXPIRING_SOON_DAYS = 30
+_DEFAULT_DAY_START_MIN = 9 * 60
+_DEFAULT_DAY_END_MIN = 18 * 60
 
 
 def _full_name(user: User) -> str:
     return f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.email or "")
+
+
+def _minutes_of(hhmm: str) -> int:
+    parts = str(hhmm or "00:00").split(":")
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1]) if len(parts) > 1 else 0
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(hour, 23)) * 60 + max(0, min(minute, 59))
+
+
+def _shift_intervals_minutes(shift: ResourceShift | None) -> list[tuple[int, int]]:
+    """Return half-open minute intervals covered by a shift within a 24h day."""
+    if shift is None:
+        return [(_DEFAULT_DAY_START_MIN, _DEFAULT_DAY_END_MIN)]
+    start = _minutes_of(shift.start_time)
+    end = _minutes_of(shift.end_time)
+    if end <= start or bool(shift.is_overnight):
+        intervals: list[tuple[int, int]] = []
+        if start < 24 * 60:
+            intervals.append((start, 24 * 60))
+        if end > 0:
+            intervals.append((0, end))
+        return intervals or [(_DEFAULT_DAY_START_MIN, _DEFAULT_DAY_END_MIN)]
+    return [(start, end)]
+
+
+def estimate_floating_peak(
+    db: Session,
+    user_ids: list[UUID],
+    *,
+    on_date: date,
+) -> int:
+    """Max concurrent presence for ``user_ids`` on ``on_date`` from shift windows.
+
+    People without a resolved shift are treated as general daytime (09:00–18:00)
+    so demand is not understated.
+    """
+    if not user_ids:
+        return 0
+    resolved = shift_service.resolve_shifts_for_range(db, user_ids, on_date, on_date)
+    events: list[tuple[int, int]] = []
+    for user_id in user_ids:
+        shift = resolved.get(user_id, {}).get(on_date)
+        for start, end in _shift_intervals_minutes(shift):
+            if end > start:
+                events.append((start, 1))
+                events.append((end, -1))
+    if not events:
+        return 0
+    # Process releases before starts at the same minute so abutting shifts do not stack.
+    events.sort(key=lambda item: (item[0], item[1]))
+    current = 0
+    peak = 0
+    for _, delta in events:
+        current += delta
+        if current > peak:
+            peak = current
+    return peak
+
+
+def is_floating_license_type(license_type: str | None) -> bool:
+    return (license_type or "").strip().lower() in FLOATING_LICENSE_TYPES
 
 
 def _active_user_stmt():
@@ -283,6 +351,7 @@ def get_resource_gaps(
     # Demand per software: how many scoped people require it but hold no seat.
     unmet_demand: dict[UUID, int] = {}
     required_headcount: dict[UUID, int] = {}
+    required_users: dict[UUID, list[UUID]] = {}
 
     for user in users:
         if user.id not in assigned_computers:
@@ -300,6 +369,7 @@ def get_resource_gaps(
                 required_headcount[row["software_id"]] = (
                     required_headcount.get(row["software_id"], 0) + 1
                 )
+                required_users.setdefault(row["software_id"], []).append(user.id)
         for row in missing:
             unmet_demand[row["software_id"]] = unmet_demand.get(row["software_id"], 0) + 1
         if missing:
@@ -327,8 +397,19 @@ def get_resource_gaps(
         totals = software_totals.get(software_id)
         unmet = unmet_demand.get(software_id, 0)
         free = int(totals["available_seats"]) if totals else 0
-        # TODO (Wave 3 shifts): when shift schedules exist, estimate floating /
-        # concurrent peak from overlapping shift windows instead of headcount.
+        seats = int(totals["seat_count"]) if totals else 0
+        is_floating = bool(totals["is_floating"]) if totals else False
+        if is_floating:
+            peak = estimate_floating_peak(
+                db,
+                required_users.get(software_id, []),
+                on_date=on_date,
+            )
+            # Floating shortfall is peak concurrent demand vs pool seats.
+            seat_shortfall = max(0, peak - seats)
+        else:
+            peak = headcount
+            seat_shortfall = max(0, unmet - free)
         license_demand.append(
             {
                 "software_id": software_id,
@@ -339,12 +420,12 @@ def get_resource_gaps(
                 ),
                 "required_headcount": headcount,
                 "unmet_headcount": unmet,
-                "seat_count": int(totals["seat_count"]) if totals else 0,
+                "seat_count": seats,
                 "assigned_seats": int(totals["assigned_seats"]) if totals else 0,
                 "available_seats": free,
-                "is_floating": bool(totals["is_floating"]) if totals else False,
-                "peak_estimate": headcount,
-                "seat_shortfall": max(0, unmet - free),
+                "is_floating": is_floating,
+                "peak_estimate": peak,
+                "seat_shortfall": seat_shortfall,
                 "has_pool": totals is not None,
             }
         )
@@ -352,7 +433,12 @@ def get_resource_gaps(
     oversubscribed = [
         row
         for row in license_demand
-        if row["has_pool"] and row["required_headcount"] > row["seat_count"]
+        if row["has_pool"]
+        and (
+            row["peak_estimate"] > row["seat_count"]
+            if row["is_floating"]
+            else row["required_headcount"] > row["seat_count"]
+        )
     ]
     no_pool = [row for row in license_demand if not row["has_pool"]]
     expiring_pools = [row for row in pools if row["expires_soon"]]

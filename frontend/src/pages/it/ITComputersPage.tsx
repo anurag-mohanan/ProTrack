@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
+import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import type { GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -33,6 +34,7 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
+import { ResourcePlanningDataQualityPanel } from '../../components/resource-planning/ResourcePlanningDataQualityPanel';
 import {
   FormDrawer,
   FormField,
@@ -119,6 +121,7 @@ export function ITComputersPage() {
   const [form, setForm] = useState<ComputerFormState>(emptyForm);
   const [assignTarget, setAssignTarget] = useState<ITComputer | null>(null);
   const [assignUserId, setAssignUserId] = useState('');
+  const [qualityOpen, setQualityOpen] = useState(false);
 
   const assetTypesQuery = useQuery({
     queryKey: itOperationsKeys.assetTypes(),
@@ -395,20 +398,29 @@ export function ITComputersPage() {
       <PageHeader
         subtitle="Named workstations. Open = Available with no employee assignment."
         action={
-          canManage ? (
-            <Stack direction="row" spacing={1}>
-              <ProsohmButton
-                buttonVariant="secondary"
-                loading={reconcileMutation.isPending}
-                onClick={() => reconcileMutation.mutate()}
-              >
-                Fix orphan assigned
-              </ProsohmButton>
-              <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
-                Add computer
-              </ProsohmButton>
-            </Stack>
-          ) : undefined
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+            <ProsohmButton
+              buttonVariant="outlined"
+              startIcon={<FactCheckRoundedIcon />}
+              onClick={() => setQualityOpen(true)}
+            >
+              Data quality
+            </ProsohmButton>
+            {canManage ? (
+              <>
+                <ProsohmButton
+                  buttonVariant="secondary"
+                  loading={reconcileMutation.isPending}
+                  onClick={() => reconcileMutation.mutate()}
+                >
+                  Fix orphan assigned
+                </ProsohmButton>
+                <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
+                  Add computer
+                </ProsohmButton>
+              </>
+            ) : null}
+          </Stack>
         }
       />
 
@@ -620,6 +632,23 @@ export function ITComputersPage() {
           </FormSection>
         </Box>
       </FormDrawer>
+
+      <Dialog
+        open={qualityOpen}
+        onClose={() => setQualityOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>IT / Resource data quality</DialogTitle>
+        <DialogContent dividers>
+          {qualityOpen ? <ResourcePlanningDataQualityPanel /> : null}
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setQualityOpen(false)}>
+            Close
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
     </PageContainer>
   );
 }

@@ -147,6 +147,22 @@ class ShiftAssignmentBulkResult(BaseModel):
     conflicts: list[ShiftAssignmentConflict] = Field(default_factory=list)
 
 
+class ShiftReassignRequest(BaseModel):
+    user_id: UUID
+    shift_id: UUID
+    effective_from: date
+    assignment_type: ShiftAssignmentType = ShiftAssignmentType.permanent
+    notes: str | None = None
+
+
+class ShiftBulkReassignRequest(BaseModel):
+    user_ids: list[UUID] = Field(min_length=1)
+    shift_id: UUID
+    effective_from: date
+    assignment_type: ShiftAssignmentType = ShiftAssignmentType.permanent
+    notes: str | None = None
+
+
 class ShiftForUser(BaseModel):
     user_id: UUID
     on_date: date

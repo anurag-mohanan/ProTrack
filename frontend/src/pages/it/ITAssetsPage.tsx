@@ -7,11 +7,14 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   Stack,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import AssignmentReturnRoundedIcon from '@mui/icons-material/AssignmentReturnRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded';
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
@@ -25,6 +28,8 @@ import {
   createMasterModel,
   createMasterSupplier,
   deleteAsset,
+  fetchAssetAssignments,
+  fetchAssetChildren,
   fetchAssetIds,
   fetchMasterCategories,
   fetchMasterMakes,
@@ -40,12 +45,14 @@ import {
   updateAsset,
 } from '../../api/itOperations';
 import { fetchCustomers, fetchUsers } from '../../api/lookups';
+import { fetchShifts } from '../../api/resourceShifts';
 import { getErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { AssetBulkActionBar } from '../../components/it/AssetBulkActionBar';
+import { AssetLifecycleDrawer } from '../../components/it/AssetLifecycleDrawer';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
@@ -246,15 +253,19 @@ export function ITAssetsPage({
   const [returnTarget, setReturnTarget] = useState<ITAsset | null>(null);
   const [transferTarget, setTransferTarget] = useState<ITAsset | null>(null);
   const [customerReturnTarget, setCustomerReturnTarget] = useState<ITAsset | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<ITAsset | null>(null);
   const [assignUserId, setAssignUserId] = useState('');
+  const [assignShiftId, setAssignShiftId] = useState('');
   const [assignDate, setAssignDate] = useState(new Date().toISOString().slice(0, 10));
   const [assignNotes, setAssignNotes] = useState('');
   const [returnDate, setReturnDate] = useState(new Date().toISOString().slice(0, 10));
   const [returnCondition, setReturnCondition] = useState('good');
   const [returnNotes, setReturnNotes] = useState('');
+  const [returnAssignmentId, setReturnAssignmentId] = useState('');
   const [transferUserId, setTransferUserId] = useState('');
   const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10));
   const [transferNotes, setTransferNotes] = useState('');
+  const [transferIncludeChildren, setTransferIncludeChildren] = useState(false);
   const [customerReturnDate, setCustomerReturnDate] = useState(
     new Date().toISOString().slice(0, 10),
   );
@@ -323,6 +334,24 @@ export function ITAssetsPage({
     queryKey: ['lookups', 'users'],
     queryFn: () => fetchUsers(),
     enabled: canAssign,
+  });
+
+  const shiftsQuery = useQuery({
+    queryKey: ['resource-shifts', 'list', 'active'],
+    queryFn: () => fetchShifts({ active_only: true }),
+    enabled: Boolean(assignTarget) || Boolean(returnTarget),
+  });
+
+  const returnAssignmentsQuery = useQuery({
+    queryKey: itOperationsKeys.assetAssignments(returnTarget?.id ?? ''),
+    queryFn: () => fetchAssetAssignments(returnTarget!.id),
+    enabled: Boolean(returnTarget?.id),
+  });
+
+  const transferChildrenQuery = useQuery({
+    queryKey: itOperationsKeys.assetChildren(transferTarget?.id ?? ''),
+    queryFn: () => fetchAssetChildren(transferTarget!.id),
+    enabled: Boolean(transferTarget?.id),
   });
 
   const customersQuery = useQuery({
@@ -581,11 +610,13 @@ export function ITAssetsPage({
         user_id: assignUserId,
         assigned_date: optionalString(assignDate),
         notes: optionalString(assignNotes),
+        shift_id: optionalString(assignShiftId),
       }),
     onSuccess: () => {
       showSuccess('Asset assigned.');
       setAssignTarget(null);
       setAssignUserId('');
+      setAssignShiftId('');
       setAssignNotes('');
       invalidateAssets();
     },
@@ -593,16 +624,27 @@ export function ITAssetsPage({
   });
 
   const returnMutation = useMutation({
-    mutationFn: () =>
-      returnAsset(returnTarget!.id, {
+    mutationFn: () => {
+      const openRows = (returnAssignmentsQuery.data ?? []).filter((row) => !row.returned_date);
+      const resolvedAssignmentId =
+        returnAssignmentId || (openRows.length === 1 ? openRows[0]?.id : undefined);
+      const resolvedShift =
+        openRows.length === 1 && !returnAssignmentId
+          ? openRows[0]?.shift_id || undefined
+          : undefined;
+      return returnAsset(returnTarget!.id, {
         returned_date: optionalString(returnDate),
         return_condition: returnCondition,
         notes: optionalString(returnNotes),
-      }),
+        assignment_id: optionalString(resolvedAssignmentId || ''),
+        shift_id: optionalString(resolvedShift || ''),
+      });
+    },
     onSuccess: () => {
       showSuccess('Asset returned.');
       setReturnTarget(null);
       setReturnNotes('');
+      setReturnAssignmentId('');
       invalidateAssets();
     },
     onError: (error) => showError(getErrorMessage(error)),
@@ -614,12 +656,18 @@ export function ITAssetsPage({
         to_user_id: transferUserId,
         assigned_date: optionalString(transferDate),
         notes: optionalString(transferNotes),
+        include_children: transferIncludeChildren,
       }),
     onSuccess: () => {
-      showSuccess('Asset transferred.');
+      showSuccess(
+        transferIncludeChildren
+          ? 'Asset and child assets transferred.'
+          : 'Asset transferred.',
+      );
       setTransferTarget(null);
       setTransferUserId('');
       setTransferNotes('');
+      setTransferIncludeChildren(false);
       invalidateAssets();
     },
     onError: (error) => showError(getErrorMessage(error)),
@@ -694,6 +742,31 @@ export function ITAssetsPage({
         label: userDisplayName(u) || u.email || u.id,
       })),
     [usersQuery.data],
+  );
+
+  const shiftOptions = useMemo(
+    () =>
+      (shiftsQuery.data ?? []).map((shift) => ({
+        value: shift.id,
+        label: shift.display_label || shift.name || shift.code,
+      })),
+    [shiftsQuery.data],
+  );
+
+  const openReturnAssignments = useMemo(
+    () => (returnAssignmentsQuery.data ?? []).filter((row) => !row.returned_date),
+    [returnAssignmentsQuery.data],
+  );
+
+  const returnOccupantOptions = useMemo(
+    () =>
+      openReturnAssignments.map((row) => ({
+        value: row.id,
+        label: `${row.assigned_to_user_name || 'User'} — ${
+          row.shift_display || row.shift_name || 'Legacy (no shift)'
+        }`,
+      })),
+    [openReturnAssignments],
   );
 
   const customerOptions = useMemo(
@@ -943,12 +1016,23 @@ export function ITAssetsPage({
       headerName: 'Actions',
       width:
         DATA_GRID_ACTIONS_COLUMN_WIDTH +
+        40 +
         (canAssign ? 72 : 0) +
         (canReturnToCustomer ? 40 : 0),
       sortable: false,
       filterable: false,
       renderCell: (params) => (
         <Stack direction="row" spacing={0.25} onClick={(e) => e.stopPropagation()} sx={{ alignItems: 'center' }}>
+          <ProsohmButton
+            buttonVariant="outlined"
+            size="small"
+            aria-label="Asset lifecycle"
+            title="Asset lifecycle"
+            onClick={() => setHistoryTarget(params.row)}
+            sx={{ minWidth: 0, px: 0.75 }}
+          >
+            <HistoryRoundedIcon fontSize="small" />
+          </ProsohmButton>
           {canManage ? (
             <TableRowActions
               onEdit={() => openEdit(params.row)}
@@ -1006,6 +1090,7 @@ export function ITAssetsPage({
                   setTransferUserId('');
                   setTransferDate(new Date().toISOString().slice(0, 10));
                   setTransferNotes('');
+                  setTransferIncludeChildren(false);
                 }}
                 sx={{ minWidth: 0, px: 0.75 }}
               >
@@ -1463,6 +1548,13 @@ export function ITAssetsPage({
             onChange={(event) => setAssignUserId(String(event.target.value))}
             options={userOptions}
           />
+          <FormSelect
+            label="Shift slot (shared desk)"
+            value={assignShiftId}
+            onChange={(event) => setAssignShiftId(String(event.target.value))}
+            options={[{ value: '', label: 'None (single assignee)' }, ...shiftOptions]}
+            helper="Set a shift to allow a second occupant on a different shift."
+          />
           <FormField
             label="Assigned date"
             type="date"
@@ -1496,6 +1588,16 @@ export function ITAssetsPage({
       <Dialog open={Boolean(returnTarget)} onClose={() => setReturnTarget(null)} fullWidth maxWidth="sm">
         <DialogTitle>Return asset</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          {openReturnAssignments.length > 1 ? (
+            <FormSelect
+              label="Return which occupant"
+              required
+              value={returnAssignmentId}
+              onChange={(event) => setReturnAssignmentId(String(event.target.value))}
+              options={returnOccupantOptions}
+              helper="Shared desk has multiple open assignments — pick one."
+            />
+          ) : null}
           <FormField
             label="Returned date"
             type="date"
@@ -1524,6 +1626,7 @@ export function ITAssetsPage({
           <ProsohmButton
             buttonVariant="primary"
             loading={returnMutation.isPending}
+            disabled={openReturnAssignments.length > 1 && !returnAssignmentId}
             onClick={() => returnMutation.mutate()}
           >
             Return
@@ -1555,6 +1658,24 @@ export function ITAssetsPage({
             multiline
             minRows={2}
           />
+          {(transferChildrenQuery.data ?? []).length > 0 ? (
+            <Box>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={transferIncludeChildren}
+                    onChange={(event) => setTransferIncludeChildren(event.target.checked)}
+                  />
+                }
+                label={`Also transfer ${transferChildrenQuery.data!.length} child asset(s)`}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                {(transferChildrenQuery.data ?? [])
+                  .map((child) => child.asset_number)
+                  .join(', ')}
+              </Typography>
+            </Box>
+          ) : null}
         </DialogContent>
         <DialogActions>
           <ProsohmButton buttonVariant="outlined" onClick={() => setTransferTarget(null)}>
@@ -1637,6 +1758,8 @@ export function ITAssetsPage({
           </ProsohmButton>
         </DialogActions>
       </Dialog>
+
+      <AssetLifecycleDrawer asset={historyTarget} onClose={() => setHistoryTarget(null)} />
     </PageContainer>
   );
 }

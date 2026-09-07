@@ -6,6 +6,7 @@ Does not invent employee/team/location links.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
@@ -154,10 +155,16 @@ def _resolve_team_name(db: Session, user: User) -> str | None:
     return None
 
 
-def resolve_computer_display(db: Session, computer: Computer) -> dict:
+def resolve_computer_display(
+    db: Session,
+    computer: Computer,
+    *,
+    on_date: date | None = None,
+) -> dict:
     """Authoritative display fields for computer list/detail (no invented data)."""
-    from datetime import date
+    from app.services import it_computer_shift_service as shift_computers
 
+    on_date = on_date or date.today()
     asset = computer.asset
     assignment = None
     assignee = None
@@ -165,17 +172,67 @@ def resolve_computer_display(db: Session, computer: Computer) -> dict:
     shift_code = None
     shift_name = None
     shift_display = None
+    next_shift_code = None
+    next_shift_name = None
+    next_shift_display = None
+    next_change_date = None
+    previous_user_id = None
+    previous_user_name = None
+    other_shift_user_id = None
+    other_shift_user_name = None
+    other_shift_code = None
+    other_shift_name = None
+    other_shift_display = None
+    is_shared_candidate = False
     data_quality: list[str] = []
 
     if asset is not None:
         assignment, assignee = it_asset_service.get_computer_current_assignee(db, asset.id)
+        prev_id, prev_name = shift_computers.last_used_by(db, asset.id)
+        previous_user_id = str(prev_id) if prev_id else None
+        previous_user_name = prev_name
+
+        # Shared-desk candidate: more than one distinct historical assignee
+        distinct_users = set(
+            db.scalars(
+                select(AssetAssignment.assigned_to_user_id).where(
+                    AssetAssignment.asset_id == asset.id
+                )
+            ).all()
+        )
+        is_shared_candidate = len(distinct_users) > 1
+
         if assignee is not None:
             team_name = _resolve_team_name(db, assignee)
-            shift = resource_shift_service.get_employee_shift(db, assignee.id, date.today())
+            shift = resource_shift_service.get_employee_shift(db, assignee.id, on_date)
             if shift is not None:
                 shift_code = shift.code
                 shift_name = shift.name
                 shift_display = resource_shift_service.format_shift_label(shift)
+            nxt = resource_shift_service.next_employee_shift(
+                db, assignee.id, after_date=on_date
+            )
+            if nxt and nxt.get("next_shift") is not None:
+                next_shift = nxt["next_shift"]
+                next_shift_code = next_shift.code
+                next_shift_name = next_shift.name
+                next_shift_display = resource_shift_service.format_shift_label(next_shift)
+                next_change_date = (
+                    nxt["next_change_date"].isoformat() if nxt.get("next_change_date") else None
+                )
+            peer = shift_computers.other_shift_peer(
+                db,
+                asset.id,
+                current_user_id=assignee.id,
+                on_date=on_date,
+            )
+            if peer:
+                other_shift_user_id = peer["user_id"]
+                other_shift_user_name = peer["user_name"]
+                other_shift_code = peer["shift_code"]
+                other_shift_name = peer["shift_name"]
+                other_shift_display = peer["shift_display"]
+
         status = (asset.status or "").lower()
         if status == "assigned" and assignee is None:
             data_quality.append("status_assigned_without_employee")
@@ -191,6 +248,18 @@ def resolve_computer_display(db: Session, computer: Computer) -> dict:
         "shift_code": shift_code,
         "shift_name": shift_name,
         "shift_display": shift_display,
+        "next_shift_code": next_shift_code,
+        "next_shift_name": next_shift_name,
+        "next_shift_display": next_shift_display,
+        "next_change_date": next_change_date,
+        "previous_user_id": previous_user_id,
+        "previous_user_name": previous_user_name,
+        "other_shift_user_id": other_shift_user_id,
+        "other_shift_user_name": other_shift_user_name,
+        "other_shift_code": other_shift_code,
+        "other_shift_name": other_shift_name,
+        "other_shift_display": other_shift_display,
+        "is_shared_candidate": is_shared_candidate,
         "data_quality": data_quality,
     }
 

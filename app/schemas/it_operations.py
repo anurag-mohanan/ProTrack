@@ -134,12 +134,15 @@ class AssetAssignRequest(BlankOptionalFieldsMixin, BaseModel):
     user_id: UUID
     assigned_date: Optional[date] = None
     notes: Optional[str] = None
+    shift_id: Optional[UUID] = None
 
 
 class AssetReturnRequest(BlankOptionalFieldsMixin, BaseModel):
     returned_date: Optional[date] = None
     return_condition: Optional[str] = Field(default=None, max_length=40)
     notes: Optional[str] = None
+    assignment_id: Optional[UUID] = None
+    shift_id: Optional[UUID] = None
 
 
 class AssetCustomerReturnRequest(BlankOptionalFieldsMixin, BaseModel):
@@ -192,6 +195,7 @@ class AssetTransferRequest(BlankOptionalFieldsMixin, BaseModel):
     to_user_id: UUID
     assigned_date: Optional[date] = None
     notes: Optional[str] = None
+    include_children: bool = False
 
 
 class AssetAssignmentRead(TimestampSchema):
@@ -200,6 +204,10 @@ class AssetAssignmentRead(TimestampSchema):
     assigned_to_user_name: Optional[str] = None
     assigned_by_user_id: UUID
     assigned_by_user_name: Optional[str] = None
+    shift_id: Optional[UUID] = None
+    shift_code: Optional[str] = None
+    shift_name: Optional[str] = None
+    shift_display: Optional[str] = None
     assigned_date: date
     returned_date: Optional[date] = None
     return_condition: Optional[str] = None
@@ -323,6 +331,18 @@ class ComputerRead(TimestampSchema):
     current_shift_code: Optional[str] = None
     current_shift_name: Optional[str] = None
     current_shift_display: Optional[str] = None
+    next_shift_code: Optional[str] = None
+    next_shift_name: Optional[str] = None
+    next_shift_display: Optional[str] = None
+    next_change_date: Optional[date] = None
+    previous_user_id: Optional[UUID] = None
+    previous_user_name: Optional[str] = None
+    other_shift_user_id: Optional[UUID] = None
+    other_shift_user_name: Optional[str] = None
+    other_shift_code: Optional[str] = None
+    other_shift_name: Optional[str] = None
+    other_shift_display: Optional[str] = None
+    is_shared_candidate: bool = False
     data_quality_flags: list[str] = Field(default_factory=list)
     is_open: bool = False
     assigned_date: Optional[date] = None
@@ -609,6 +629,7 @@ class ComputerTransferRequest(BlankOptionalFieldsMixin, BaseModel):
     assigned_date: Optional[date] = None
     notes: Optional[str] = None
     reason: Optional[str] = None
+    include_children: bool = False
 
 
 class AssetRegisterRow(BaseModel):

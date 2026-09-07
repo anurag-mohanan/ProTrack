@@ -651,12 +651,17 @@ def assign_shift(db: Session, payload: dict, *, commit: bool = True) -> Resource
                     f" (from {clash.effective_from.isoformat()})."
                 )
             for clash in overlaps:
-                if clash.effective_from >= effective_from:
+                if clash.effective_from > effective_from:
                     raise ShiftConflictError(
-                        "Cannot end-date an assignment that starts on or after "
+                        "Cannot end-date an assignment that starts after "
                         f"{effective_from.isoformat()}."
                     )
-                clash.effective_to = effective_from - timedelta(days=1)
+                if clash.effective_from == effective_from:
+                    # Same-day reassign: supersede the prior row (preserve history).
+                    clash.is_active = False
+                    clash.effective_to = effective_from
+                else:
+                    clash.effective_to = effective_from - timedelta(days=1)
 
     assignment = ResourceShiftAssignment(
         id=uuid.uuid4(),
@@ -717,6 +722,51 @@ def bulk_assign(db: Session, payload: dict) -> tuple[list[ResourceShiftAssignmen
         for assignment in created:
             db.refresh(assignment)
     return created, conflicts
+
+
+def reassign_employee_shift(
+    db: Session,
+    *,
+    user_id: uuid.UUID,
+    new_shift_id: uuid.UUID,
+    effective_from: date,
+    assignment_type: str = ASSIGNMENT_TYPE_PERMANENT,
+    notes: str | None = None,
+    commit: bool = True,
+) -> ResourceShiftAssignment:
+    """Move an employee to a new permanent shift effective_from (history preserved)."""
+    payload = {
+        "user_id": user_id,
+        "shift_id": new_shift_id,
+        "assignment_type": assignment_type,
+        "effective_from": effective_from,
+        "end_date_existing": True,
+        "notes": notes,
+    }
+    return assign_shift(db, payload, commit=commit)
+
+
+def bulk_reassign_employee_shifts(
+    db: Session,
+    *,
+    user_ids: list[uuid.UUID],
+    new_shift_id: uuid.UUID,
+    effective_from: date,
+    assignment_type: str = ASSIGNMENT_TYPE_PERMANENT,
+    notes: str | None = None,
+) -> tuple[list[ResourceShiftAssignment], list[dict]]:
+    """Bulk move employees to a shift. Returns (created, conflicts)."""
+    return bulk_assign(
+        db,
+        {
+            "user_ids": user_ids,
+            "shift_id": new_shift_id,
+            "assignment_type": assignment_type,
+            "effective_from": effective_from,
+            "end_date_existing": True,
+            "notes": notes,
+        },
+    )
 
 
 # --------------------------------------------------------------------------

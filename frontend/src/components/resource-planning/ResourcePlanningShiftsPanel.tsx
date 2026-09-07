@@ -24,6 +24,8 @@ import {
   fetchShiftCalendar,
   fetchShiftOverview,
   fetchShifts,
+  bulkReassignShiftAssignments,
+  reassignShiftAssignment,
   resourceShiftKeys,
   updateShift,
 } from '../../api/resourceShifts';
@@ -110,18 +112,62 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
   const [assignShiftId, setAssignShiftId] = useState('');
   const [assignFrom, setAssignFrom] = useState(todayIso());
   const [assignType, setAssignType] = useState<'permanent' | 'rotational'>('permanent');
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [bulkShiftId, setBulkShiftId] = useState('');
+  const [bulkFrom, setBulkFrom] = useState(todayIso());
+  const [pendingDrop, setPendingDrop] = useState<{
+    userId: string;
+    userName: string;
+    fromShiftId: string | null;
+    fromLabel: string;
+    toShiftId: string;
+    toLabel: string;
+  } | null>(null);
   const [rotationPattern, setRotationPattern] = useState<'weekly' | 'custom' | 'biweekly'>(
     'weekly',
   );
   const [slotDays, setSlotDays] = useState('7');
   const [rotationSeq, setRotationSeq] = useState<string[]>([]);
-  const [weekStart, setWeekStart] = useState(() => {
+  const [calendarGranularity, setCalendarGranularity] = useState<'day' | 'week' | 'month'>(
+    'week',
+  );
+  const [calendarAnchor, setCalendarAnchor] = useState(() => {
     const d = new Date();
     const day = (d.getDay() + 6) % 7; // Monday=0
     d.setDate(d.getDate() - day);
     return d.toISOString().slice(0, 10);
   });
   const boardDate = todayIso();
+
+  const calendarRange = useMemo(() => {
+    if (calendarGranularity === 'day') {
+      return { from: calendarAnchor, to: calendarAnchor, days: [calendarAnchor] };
+    }
+    if (calendarGranularity === 'month') {
+      const anchor = new Date(`${calendarAnchor}T12:00:00`);
+      const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+      const end = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+      const from = start.toISOString().slice(0, 10);
+      const to = end.toISOString().slice(0, 10);
+      const days: string[] = [];
+      const cursor = new Date(start);
+      while (cursor <= end) {
+        days.push(cursor.toISOString().slice(0, 10));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return { from, to, days };
+    }
+    // week
+    const monday = new Date(`${calendarAnchor}T12:00:00`);
+    const dow = (monday.getDay() + 6) % 7;
+    monday.setDate(monday.getDate() - dow);
+    const from = monday.toISOString().slice(0, 10);
+    return {
+      from,
+      to: addDaysIso(from, 6),
+      days: Array.from({ length: 7 }, (_, i) => addDaysIso(from, i)),
+    };
+  }, [calendarAnchor, calendarGranularity]);
 
   const shiftsQuery = useQuery({
     queryKey: resourceShiftKeys.shifts({ active_only: false }),
@@ -137,14 +183,14 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
 
   const calendarQuery = useQuery({
     queryKey: resourceShiftKeys.calendar({
-      from: weekStart,
-      to: addDaysIso(weekStart, 6),
+      from: calendarRange.from,
+      to: calendarRange.to,
       team_id: teamId,
     }),
     queryFn: () =>
       fetchShiftCalendar({
-        from: weekStart,
-        to: addDaysIso(weekStart, 6),
+        from: calendarRange.from,
+        to: calendarRange.to,
         team_id: teamId,
       }),
     staleTime: QUERY_STALE_TIMES.dashboard,
@@ -205,15 +251,45 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
     onError: (error: Error) => showError(getErrorMessage(error)),
   });
 
+  const reassignMutation = useMutation({
+    mutationFn: reassignShiftAssignment,
+    onSuccess: () => {
+      showSuccess('Shift changed');
+      setPendingDrop(null);
+      void queryClient.invalidateQueries({ queryKey: resourceShiftKeys.all });
+    },
+    onError: (error: Error) => showError(getErrorMessage(error)),
+  });
+
+  const bulkReassignMutation = useMutation({
+    mutationFn: bulkReassignShiftAssignments,
+    onSuccess: (result) => {
+      const ready = result.created?.length ?? 0;
+      const blocked = result.conflicts?.length ?? 0;
+      showSuccess(
+        blocked
+          ? `${ready} moved · ${blocked} require review`
+          : `${ready} employee(s) moved to new shift`,
+      );
+      setSelectedUserIds([]);
+      setBulkShiftId('');
+      void queryClient.invalidateQueries({ queryKey: resourceShiftKeys.all });
+    },
+    onError: (error: Error) => showError(getErrorMessage(error)),
+  });
+
+  const toggleSelected = (userId: string) => {
+    setSelectedUserIds((current) =>
+      current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
+    );
+  };
+
   const activeShifts = useMemo(
     () => (shiftsQuery.data ?? []).filter((s) => s.is_active),
     [shiftsQuery.data],
   );
 
-  const weekDays = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDaysIso(weekStart, i)),
-    [weekStart],
-  );
+  const weekDays = calendarRange.days;
 
   if (shiftsQuery.isLoading) return <LoadingState message="Loading shifts…" />;
   if (shiftsQuery.error) return <ErrorState error={shiftsQuery.error} />;
@@ -225,7 +301,7 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
           [
             ['overview', 'Overview'],
             ['board', 'Shift board'],
-            ['calendar', 'Week calendar'],
+            ['calendar', 'Calendar'],
             ['assign', 'Assignments'],
             ['masters', 'Shift masters'],
           ] as const
@@ -284,17 +360,83 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
       )}
 
       {subTab === 'board' && (
-        <DashboardPanel title="Shift board" subtitle={`Who works when · ${boardDate}`}>
+        <DashboardPanel title="Shift board" subtitle={`Drag employees between shifts · ${boardDate}`}>
           {boardQuery.isLoading ? (
             <LoadingState message="Loading board…" />
           ) : boardQuery.error ? (
             <ErrorState error={boardQuery.error} />
           ) : (
             <Stack spacing={2}>
+              {canAssign && selectedUserIds.length > 0 ? (
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={1}
+                  sx={{ alignItems: { sm: 'center' }, flexWrap: 'wrap' }}
+                >
+                  <Typography variant="body2">{selectedUserIds.length} selected</Typography>
+                  <FormSelect
+                    label="Move to shift"
+                    value={bulkShiftId}
+                    onChange={(event) => setBulkShiftId(String(event.target.value))}
+                    options={activeShifts.map((s) => ({
+                      value: s.id,
+                      label: s.display_label || s.name,
+                    }))}
+                    sx={{ minWidth: 220 }}
+                  />
+                  <FormField
+                    label="Effective from"
+                    type="date"
+                    value={bulkFrom}
+                    onChange={(event) => setBulkFrom(event.target.value)}
+                    sx={{ minWidth: 160 }}
+                  />
+                  <ProsohmButton
+                    buttonVariant="primary"
+                    loading={bulkReassignMutation.isPending}
+                    disabled={!bulkShiftId}
+                    onClick={() => {
+                      if (!bulkShiftId) return;
+                      bulkReassignMutation.mutate({
+                        user_ids: selectedUserIds,
+                        shift_id: bulkShiftId,
+                        effective_from: bulkFrom,
+                        assignment_type: 'permanent',
+                      });
+                    }}
+                  >
+                    Move shift
+                  </ProsohmButton>
+                  <ProsohmButton buttonVariant="outlined" onClick={() => setSelectedUserIds([])}>
+                    Clear
+                  </ProsohmButton>
+                </Stack>
+              ) : null}
+
               <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} sx={{ alignItems: 'stretch' }}>
                 {(boardQuery.data?.columns ?? []).map((col) => (
                   <Box
                     key={col.shift_id}
+                    onDragOver={(event) => {
+                      if (canAssign) event.preventDefault();
+                    }}
+                    onDrop={(event) => {
+                      if (!canAssign) return;
+                      event.preventDefault();
+                      const userId = event.dataTransfer.getData('text/user-id');
+                      const userName = event.dataTransfer.getData('text/user-name');
+                      const fromShiftId = event.dataTransfer.getData('text/from-shift-id') || null;
+                      const fromLabel = event.dataTransfer.getData('text/from-label') || 'Unassigned';
+                      if (!userId || fromShiftId === col.shift_id) return;
+                      setPendingDrop({
+                        userId,
+                        userName,
+                        fromShiftId,
+                        fromLabel,
+                        toShiftId: col.shift_id,
+                        toLabel: col.display_label || col.shift_name,
+                      });
+                    }}
                     sx={{
                       flex: 1,
                       minWidth: 220,
@@ -314,6 +456,7 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                       sx={{ display: 'block', mb: 1 }}
                     >
                       {col.employee_count} employees
+                      {canAssign ? ' · drop here to move' : ''}
                     </Typography>
                     <Stack spacing={0.75}>
                       {col.employees.length === 0 ? (
@@ -324,28 +467,53 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                         col.employees.map((person) => (
                           <Box
                             key={person.user_id}
+                            draggable={canAssign}
+                            onDragStart={(event) => {
+                              event.dataTransfer.setData('text/user-id', person.user_id);
+                              event.dataTransfer.setData('text/user-name', person.user_name);
+                              event.dataTransfer.setData('text/from-shift-id', col.shift_id);
+                              event.dataTransfer.setData(
+                                'text/from-label',
+                                col.display_label || col.shift_name,
+                              );
+                            }}
                             sx={{
                               p: 1,
                               borderRadius: 1,
                               bgcolor: 'action.hover',
+                              cursor: canAssign ? 'grab' : 'default',
                             }}
                           >
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {person.user_name}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {[person.team_name, person.computer_name].filter(Boolean).join(' · ') ||
-                                '—'}
-                            </Typography>
-                            {person.next_change_date ? (
-                              <Typography
-                                variant="caption"
-                                color="info.main"
-                                sx={{ display: 'block' }}
-                              >
-                                Next {person.next_shift_code || 'change'} · {person.next_change_date}
-                              </Typography>
-                            ) : null}
+                            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'flex-start' }}>
+                              {canAssign ? (
+                                <Checkbox
+                                  size="small"
+                                  checked={selectedUserIds.includes(person.user_id)}
+                                  onChange={() => toggleSelected(person.user_id)}
+                                  sx={{ p: 0.25, mt: 0.1 }}
+                                />
+                              ) : null}
+                              <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                  {person.user_name}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {[person.team_name, person.computer_name]
+                                    .filter(Boolean)
+                                    .join(' · ') || '—'}
+                                </Typography>
+                                {person.next_change_date ? (
+                                  <Typography
+                                    variant="caption"
+                                    color="info.main"
+                                    sx={{ display: 'block' }}
+                                  >
+                                    Next {person.next_shift_code || 'change'} ·{' '}
+                                    {person.next_change_date}
+                                  </Typography>
+                                ) : null}
+                              </Box>
+                            </Stack>
                           </Box>
                         ))
                       )}
@@ -358,6 +526,41 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                   Unassigned today: {(boardQuery.data?.unassigned ?? [])
                     .map((p) => p.user_name)
                     .join(', ')}
+                </Alert>
+              ) : null}
+
+              {pendingDrop ? (
+                <Alert
+                  severity="info"
+                  action={
+                    <Stack direction="row" spacing={1}>
+                      <ProsohmButton
+                        buttonVariant="outlined"
+                        size="small"
+                        onClick={() => setPendingDrop(null)}
+                      >
+                        Cancel
+                      </ProsohmButton>
+                      <ProsohmButton
+                        buttonVariant="primary"
+                        size="small"
+                        loading={reassignMutation.isPending}
+                        onClick={() => {
+                          reassignMutation.mutate({
+                            user_id: pendingDrop.userId,
+                            shift_id: pendingDrop.toShiftId,
+                            effective_from: todayIso(),
+                            assignment_type: 'permanent',
+                          });
+                        }}
+                      >
+                        Confirm
+                      </ProsohmButton>
+                    </Stack>
+                  }
+                >
+                  Change shift for <strong>{pendingDrop.userName}</strong>: {pendingDrop.fromLabel} →{' '}
+                  {pendingDrop.toLabel} (effective {todayIso()}, permanent)
                 </Alert>
               ) : null}
             </Stack>
@@ -709,20 +912,56 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
       {subTab === 'calendar' && (
         <DashboardPanel
           title="Shift calendar"
-          subtitle="Who is on which shift this week"
+          subtitle={
+            calendarGranularity === 'day'
+              ? `Coverage for ${calendarRange.from}`
+              : calendarGranularity === 'month'
+                ? `Month of ${calendarRange.from.slice(0, 7)}`
+                : `Week of ${calendarRange.from}`
+          }
           action={
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+              {(['day', 'week', 'month'] as const).map((mode) => (
+                <Chip
+                  key={mode}
+                  size="small"
+                  label={mode[0].toUpperCase() + mode.slice(1)}
+                  color={calendarGranularity === mode ? 'primary' : 'default'}
+                  variant={calendarGranularity === mode ? 'filled' : 'outlined'}
+                  onClick={() => setCalendarGranularity(mode)}
+                />
+              ))}
               <ProsohmButton
                 size="small"
                 buttonVariant="secondary"
-                onClick={() => setWeekStart(addDaysIso(weekStart, -7))}
+                onClick={() => {
+                  if (calendarGranularity === 'day') {
+                    setCalendarAnchor(addDaysIso(calendarAnchor, -1));
+                  } else if (calendarGranularity === 'month') {
+                    const d = new Date(`${calendarAnchor}T12:00:00`);
+                    d.setMonth(d.getMonth() - 1);
+                    setCalendarAnchor(d.toISOString().slice(0, 10));
+                  } else {
+                    setCalendarAnchor(addDaysIso(calendarRange.from, -7));
+                  }
+                }}
               >
                 Prev
               </ProsohmButton>
               <ProsohmButton
                 size="small"
                 buttonVariant="secondary"
-                onClick={() => setWeekStart(addDaysIso(weekStart, 7))}
+                onClick={() => {
+                  if (calendarGranularity === 'day') {
+                    setCalendarAnchor(addDaysIso(calendarAnchor, 1));
+                  } else if (calendarGranularity === 'month') {
+                    const d = new Date(`${calendarAnchor}T12:00:00`);
+                    d.setMonth(d.getMonth() + 1);
+                    setCalendarAnchor(d.toISOString().slice(0, 10));
+                  } else {
+                    setCalendarAnchor(addDaysIso(calendarRange.from, 7));
+                  }
+                }}
               >
                 Next
               </ProsohmButton>
@@ -738,16 +977,22 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Person</TableCell>
+                    <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', zIndex: 1 }}>
+                      Person
+                    </TableCell>
                     {weekDays.map((day) => (
-                      <TableCell key={day}>{day.slice(5)}</TableCell>
+                      <TableCell key={day} sx={{ minWidth: calendarGranularity === 'month' ? 44 : 72 }}>
+                        {calendarGranularity === 'month' ? day.slice(8) : day.slice(5)}
+                      </TableCell>
                     ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {(calendarQuery.data?.rows ?? []).map((row) => (
                     <TableRow key={row.user_id}>
-                      <TableCell>
+                      <TableCell
+                        sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', zIndex: 1 }}
+                      >
                         <Typography variant="body2">{row.user_name}</Typography>
                         {row.team_name ? (
                           <Typography variant="caption" color="text.secondary">
@@ -761,7 +1006,9 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                           (s) => s.id === cell?.shift_id,
                         );
                         const label = master
-                          ? master.name
+                          ? calendarGranularity === 'month'
+                            ? master.code || master.name.slice(0, 1)
+                            : master.name
                           : cell?.shift_name || cell?.shift_code || null;
                         const title = master
                           ? shiftDisplayLabel(master)
@@ -769,7 +1016,16 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                         return (
                           <TableCell key={day}>
                             {label ? (
-                              <Chip size="small" label={label} title={title} />
+                              <Chip
+                                size="small"
+                                label={label}
+                                title={title}
+                                sx={
+                                  calendarGranularity === 'month'
+                                    ? { height: 22, '& .MuiChip-label': { px: 0.5, fontSize: 11 } }
+                                    : undefined
+                                }
+                              />
                             ) : (
                               <Typography variant="caption" color="text.disabled">
                                 —
@@ -782,9 +1038,9 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                   ))}
                   {(calendarQuery.data?.rows ?? []).length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8}>
+                      <TableCell colSpan={weekDays.length + 1}>
                         <Typography variant="body2" color="text.secondary">
-                          No people in scope for this week. Assign shifts to see coverage.
+                          No people in scope for this range. Assign shifts to see coverage.
                         </Typography>
                       </TableCell>
                     </TableRow>

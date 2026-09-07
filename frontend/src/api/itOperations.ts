@@ -22,6 +22,7 @@ import type {
   AssetModelCreate,
   IpAllocatePayload,
   IpReleasePayload,
+  IPAssignmentHistory,
   ITAsset,
   ITAssetCategory,
   ITAssetCreate,
@@ -86,6 +87,12 @@ export const itOperationsKeys = {
     [...itOperationsKeys.all, 'reports', 'customer-returns', filters ?? {}] as const,
   assetAssignments: (id: string) =>
     [...itOperationsKeys.all, 'assets', id, 'assignments'] as const,
+  assetChildren: (id: string) =>
+    [...itOperationsKeys.all, 'assets', id, 'children'] as const,
+  assetIpHistory: (id: string) =>
+    [...itOperationsKeys.all, 'assets', id, 'ip-history'] as const,
+  assetLifecycleHistory: (id: string) =>
+    [...itOperationsKeys.all, 'assets', id, 'lifecycle-history'] as const,
   computers: (filters?: ListParams) =>
     [...itOperationsKeys.all, 'computers', filters ?? {}] as const,
   computer: (id: string) => [...itOperationsKeys.all, 'computers', id] as const,
@@ -96,6 +103,7 @@ export const itOperationsKeys = {
   network: (id: string) => [...itOperationsKeys.all, 'networks', id] as const,
   networkIps: (id: string, status?: string) =>
     [...itOperationsKeys.all, 'networks', id, 'ips', status ?? 'all'] as const,
+  ipHistory: (id: string) => [...itOperationsKeys.all, 'ips', id, 'history'] as const,
   settings: () => [...itOperationsKeys.all, 'settings'] as const,
   profileMe: () => [...itOperationsKeys.all, 'profile', 'me'] as const,
   profileUser: (userId: string) => [...itOperationsKeys.all, 'profile', userId] as const,
@@ -359,8 +367,40 @@ export async function transferAsset(id: string, payload: AssetTransferPayload): 
   return data;
 }
 
+export async function fetchAssetChildren(id: string): Promise<ITAsset[]> {
+  return getList<ITAsset>(`/it/assets/${id}/children`);
+}
+
+export async function returnAssetsForPerson(
+  userId: string,
+  payload: AssetReturnPayload = {},
+): Promise<AssetAssignment[]> {
+  const { data } = await apiClient.post<AssetAssignment[]>(
+    `/it/people/${userId}/return-assets`,
+    payload,
+  );
+  return data;
+}
+
 export async function fetchAssetAssignments(id: string): Promise<AssetAssignment[]> {
   return getList<AssetAssignment>(`/it/assets/${id}/assignments`);
+}
+
+export async function fetchAssetIpHistory(id: string): Promise<IPAssignmentHistory[]> {
+  return getList<IPAssignmentHistory>(`/it/assets/${id}/ip-history`);
+}
+
+export type AssetLifecycleHistory = {
+  ownership: Array<Record<string, unknown>>;
+  locations: Array<Record<string, unknown>>;
+  statuses: Array<Record<string, unknown>>;
+};
+
+export async function fetchAssetLifecycleHistory(id: string): Promise<AssetLifecycleHistory> {
+  const { data } = await apiClient.get<AssetLifecycleHistory>(
+    `/it/assets/${id}/lifecycle-history`,
+  );
+  return data;
 }
 
 // --- Computers ---
@@ -422,6 +462,13 @@ export async function fetchComputerDataQuality(): Promise<{
   samples: Record<string, unknown[]>;
 }> {
   const { data } = await apiClient.get('/it/computers/data-quality');
+  return data;
+}
+
+export async function fetchItDataQuality(): Promise<
+  import('./resourcePlanning').DataQualityReport
+> {
+  const { data } = await apiClient.get('/it/data-quality');
   return data;
 }
 
@@ -500,6 +547,10 @@ export async function allocateIp(payload: IpAllocatePayload): Promise<ITIpAddres
 export async function releaseIp(id: string, payload: IpReleasePayload = {}): Promise<ITIpAddress> {
   const { data } = await apiClient.post<ITIpAddress>(`/it/ips/${id}/release`, payload);
   return data;
+}
+
+export async function fetchIpHistory(id: string): Promise<IPAssignmentHistory[]> {
+  return getList<IPAssignmentHistory>(`/it/ips/${id}/history`);
 }
 
 // --- Settings / profile / reports ---

@@ -61,6 +61,31 @@ export async function bulkCreateShiftAssignments(
   return data;
 }
 
+export async function reassignShiftAssignment(payload: {
+  user_id: string;
+  shift_id: string;
+  effective_from: string;
+  assignment_type?: 'permanent' | 'rotational';
+  notes?: string | null;
+}): Promise<ShiftAssignment> {
+  const { data } = await apiClient.post<ShiftAssignment>(`${BASE}/assignments/reassign`, payload);
+  return data;
+}
+
+export async function bulkReassignShiftAssignments(payload: {
+  user_ids: string[];
+  shift_id: string;
+  effective_from: string;
+  assignment_type?: 'permanent' | 'rotational';
+  notes?: string | null;
+}): Promise<ShiftAssignmentBulkResult> {
+  const { data } = await apiClient.post<ShiftAssignmentBulkResult>(
+    `${BASE}/assignments/bulk-reassign`,
+    payload,
+  );
+  return data;
+}
+
 export async function endShiftAssignment(
   assignmentId: string,
   effectiveTo: string,

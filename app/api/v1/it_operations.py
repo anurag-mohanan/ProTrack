@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -12,6 +13,7 @@ from app.api.auth_deps import get_current_user, require_roles, require_special
 from app.api.deps import get_db
 from app.core.access_control import (
     MODULE_IT_OPERATIONS,
+    MODULE_RESOURCE_PLANNING,
     SPECIAL_ALLOCATE_IT_IPS,
     SPECIAL_ASSIGN_IT_ASSETS,
     SPECIAL_GENERATE_IT_CREDENTIALS,
@@ -26,6 +28,7 @@ from app.core.access_control import (
     SPECIAL_RETURN_CUSTOMER_ASSETS,
     SPECIAL_VIEW_IT_OPERATIONS,
     SPECIAL_VIEW_IT_REPORTS,
+    SPECIAL_VIEW_RESOURCE_PLANNING,
     user_has_module,
     user_has_special,
 )
@@ -80,6 +83,7 @@ from app.schemas.it_operations import (
     IPAllocateRequest,
     IPAllocationReportRow,
     IPAddressRead,
+    IPAssignmentHistoryRead,
     IPReleaseRequest,
     ITDashboardSummary,
     ITDataImportAnalyzeResult,
@@ -231,6 +235,16 @@ def _asset_read(db: Session, asset: Asset) -> AssetRead:
 def _assignment_read(db: Session, row: AssetAssignment) -> AssetAssignmentRead:
     to_user = db.get(User, row.assigned_to_user_id)
     by_user = db.get(User, row.assigned_by_user_id)
+    shift_code = shift_name = shift_display = None
+    if getattr(row, "shift_id", None):
+        from app.models.resource_shifts import ResourceShift
+        from app.services import resource_shift_service
+
+        shift = db.get(ResourceShift, row.shift_id)
+        if shift is not None:
+            shift_code = shift.code
+            shift_name = shift.name
+            shift_display = resource_shift_service.format_shift_label(shift)
     return AssetAssignmentRead(
         id=row.id,
         created_at=row.created_at,
@@ -240,6 +254,10 @@ def _assignment_read(db: Session, row: AssetAssignment) -> AssetAssignmentRead:
         assigned_to_user_name=_full_name(to_user),
         assigned_by_user_id=row.assigned_by_user_id,
         assigned_by_user_name=_full_name(by_user),
+        shift_id=getattr(row, "shift_id", None),
+        shift_code=shift_code,
+        shift_name=shift_name,
+        shift_display=shift_display,
         assigned_date=row.assigned_date,
         returned_date=row.returned_date,
         return_condition=row.return_condition,
@@ -288,6 +306,8 @@ def _customer_return_read(db: Session, row: AssetCustomerReturn) -> AssetCustome
 
 
 def _computer_read(db: Session, computer) -> ComputerRead:
+    from datetime import date
+
     from app.services import it_computer_reconciliation_service as recon
 
     asset = computer.asset
@@ -326,6 +346,28 @@ def _computer_read(db: Session, computer) -> ComputerRead:
         current_shift_code=resolved["shift_code"],
         current_shift_name=resolved["shift_name"],
         current_shift_display=resolved["shift_display"],
+        next_shift_code=resolved.get("next_shift_code"),
+        next_shift_name=resolved.get("next_shift_name"),
+        next_shift_display=resolved.get("next_shift_display"),
+        next_change_date=(
+            date.fromisoformat(resolved["next_change_date"])
+            if resolved.get("next_change_date")
+            else None
+        ),
+        previous_user_id=(
+            UUID(resolved["previous_user_id"]) if resolved.get("previous_user_id") else None
+        ),
+        previous_user_name=resolved.get("previous_user_name"),
+        other_shift_user_id=(
+            UUID(resolved["other_shift_user_id"])
+            if resolved.get("other_shift_user_id")
+            else None
+        ),
+        other_shift_user_name=resolved.get("other_shift_user_name"),
+        other_shift_code=resolved.get("other_shift_code"),
+        other_shift_name=resolved.get("other_shift_name"),
+        other_shift_display=resolved.get("other_shift_display"),
+        is_shared_candidate=bool(resolved.get("is_shared_candidate")),
         data_quality_flags=resolved["data_quality"],
         is_open=is_open,
         assigned_date=assignment.assigned_date if assignment else None,
@@ -1161,6 +1203,7 @@ def assign_asset(
             by_user=current_user,
             assigned_date=payload.assigned_date,
             notes=payload.notes,
+            shift_id=payload.shift_id,
         )
         return _assignment_read(db, row)
     except ProTrackValidationError as exc:
@@ -1189,6 +1232,8 @@ def return_asset(
             returned_date=payload.returned_date,
             return_condition=payload.return_condition,
             notes=payload.notes,
+            assignment_id=payload.assignment_id,
+            shift_id=payload.shift_id,
         )
         return _assignment_read(db, row)
     except ProTrackValidationError as exc:
@@ -1248,10 +1293,24 @@ def transfer_asset(
             by_user=current_user,
             assigned_date=payload.assigned_date,
             notes=payload.notes,
+            include_children=bool(payload.include_children),
         )
         return _assignment_read(db, row)
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
+
+
+@router.get("/assets/{asset_id}/children", response_model=list[AssetRead])
+def list_asset_children(
+    asset_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    asset = it_asset_service.get_asset(db, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+    return [_asset_read(db, child) for child in it_asset_service.list_child_assets(db, asset_id)]
 
 
 @router.get("/assets/{asset_id}/assignments", response_model=list[AssetAssignmentRead])
@@ -1270,10 +1329,79 @@ def list_asset_assignments(
     ]
 
 
+@router.get("/assets/{asset_id}/ip-history", response_model=list[IPAssignmentHistoryRead])
+def list_asset_ip_history(
+    asset_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """IP assignment history for an asset (never rewritten)."""
+    _require_it_access(db, current_user)
+    asset = it_asset_service.get_asset(db, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+    rows = it_network_service.list_ip_history_for_asset(db, asset_id)
+    return [
+        IPAssignmentHistoryRead(
+            id=row.id,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            ip_address_id=row.ip_address_id,
+            assigned_to_asset_id=row.assigned_to_asset_id,
+            assigned_to_user_id=row.assigned_to_user_id,
+            assigned_by_user_id=row.assigned_by_user_id,
+            hostname=row.hostname,
+            assigned_date=row.assigned_date,
+            released_date=row.released_date,
+            notes=row.notes,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/assets/{asset_id}/lifecycle-history")
+def get_asset_lifecycle_history(
+    asset_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Ownership, location, and status/maintenance periods (never rewritten)."""
+    _require_it_access(db, current_user)
+    asset = it_asset_service.get_asset(db, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+    return it_asset_service.list_asset_lifecycle_history(db, asset_id)
+
+
 # ---------------------------------------------------------------------------
 # Computers
 # ---------------------------------------------------------------------------
 
+
+@router.get("/computers/by-shift")
+def computers_by_shift(
+    on_date: date | None = Query(None),
+    team_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Open / assigned computers bucketed by First / Second / General shift."""
+    role = _role_name(db, current_user)
+    if not (
+        user_has_module(current_user, role, MODULE_IT_OPERATIONS)
+        or user_has_special(current_user, role, SPECIAL_VIEW_IT_OPERATIONS)
+        or user_has_special(current_user, role, SPECIAL_VIEW_RESOURCE_PLANNING)
+        or user_has_module(current_user, role, MODULE_RESOURCE_PLANNING)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires view_resource_planning or IT Operations view access.",
+        )
+    from app.services import it_computer_shift_service
+
+    return it_computer_shift_service.computers_by_shift(
+        db, on_date=on_date, team_id=team_id
+    )
 
 @router.get("/computers", response_model=PaginatedResponse[ComputerRead])
 def list_computers(
@@ -1465,6 +1593,7 @@ def transfer_computer(
             by_user=current_user,
             assigned_date=payload.assigned_date,
             notes=notes,
+            include_children=bool(payload.include_children),
         )
         return _assignment_read(db, row)
     except ProTrackValidationError as exc:
@@ -1476,11 +1605,33 @@ def computer_data_quality(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """IT / Resource Planning data-quality report for computers and related links."""
+    """Legacy computer-only report (kept for compatibility). Prefer GET /it/data-quality."""
     _require_it_access(db, current_user)
     from app.services import it_computer_reconciliation_service as recon
 
     return recon.computer_data_quality_report(db)
+
+
+@router.get("/data-quality")
+def it_data_quality(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Unified IT / Resource Planning data-quality catalog (flags only — no invented links)."""
+    role = _role_name(db, current_user)
+    if not (
+        user_has_module(current_user, role, MODULE_IT_OPERATIONS)
+        or user_has_special(current_user, role, SPECIAL_VIEW_IT_OPERATIONS)
+        or user_has_special(current_user, role, SPECIAL_VIEW_RESOURCE_PLANNING)
+        or user_has_module(current_user, role, MODULE_RESOURCE_PLANNING)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires view_resource_planning or IT Operations view access.",
+        )
+    from app.services import it_data_quality_service
+
+    return it_data_quality_service.build_data_quality_report(db)
 
 
 @router.post(
@@ -1645,6 +1796,35 @@ def release_ip(
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
 
+
+@router.get("/ips/{ip_id}/history", response_model=list[IPAssignmentHistoryRead])
+def list_ip_assignment_history(
+    ip_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Effective-dated IP assignment history (never rewritten)."""
+    _require_it_access(db, current_user)
+    ip = it_network_service.get_ip(db, ip_id)
+    if ip is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="IP address not found.")
+    rows = it_network_service.list_ip_history(db, ip_id)
+    return [
+        IPAssignmentHistoryRead(
+            id=row.id,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            ip_address_id=row.ip_address_id,
+            assigned_to_asset_id=row.assigned_to_asset_id,
+            assigned_to_user_id=row.assigned_to_user_id,
+            assigned_by_user_id=row.assigned_by_user_id,
+            hostname=row.hostname,
+            assigned_date=row.assigned_date,
+            released_date=row.released_date,
+            notes=row.notes,
+        )
+        for row in rows
+    ]
 
 # ---------------------------------------------------------------------------
 # Accounts
@@ -2348,6 +2528,34 @@ def get_it_person(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
     return ITPersonDetail(**row)
+
+
+@router.post(
+    "/people/{user_id}/return-assets",
+    response_model=list[AssetAssignmentRead],
+    dependencies=[Depends(require_special(SPECIAL_ASSIGN_IT_ASSETS))],
+)
+def return_assets_for_person(
+    user_id: UUID,
+    payload: AssetReturnRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk-return all open asset assignments for an exiting employee."""
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
+    try:
+        rows = it_asset_service.return_assets_for_user(
+            db,
+            user_id=user_id,
+            by_user=current_user,
+            returned_date=payload.returned_date,
+            notes=payload.notes or "Returned on employee exit",
+        )
+        return [_assignment_read(db, row) for row in rows]
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
 
 
 # ---------------------------------------------------------------------------

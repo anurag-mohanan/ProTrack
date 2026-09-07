@@ -204,6 +204,8 @@ export interface ITAsset {
   assigned_to_user_id?: string | null;
   assigned_to_user_name?: string | null;
   current_assignee_name?: string | null;
+  parent_asset_id?: string | null;
+  parent_asset_number?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -283,6 +285,8 @@ export interface AssetAssignPayload {
   user_id: string;
   assigned_date?: string | null;
   notes?: string | null;
+  /** When set, enables shared-desk dual occupancy for that shift slot. */
+  shift_id?: string | null;
 }
 
 export type AssetBulkAction =
@@ -361,12 +365,17 @@ export interface AssetReturnPayload {
   returned_date?: string | null;
   return_condition?: ReturnCondition | null;
   notes?: string | null;
+  /** Required when multiple open shared-desk assignments exist. */
+  shift_id?: string | null;
+  assignment_id?: string | null;
 }
 
 export interface AssetTransferPayload {
   to_user_id: string;
   assigned_date?: string | null;
   notes?: string | null;
+  /** Cascade transfer to child assets linked via parent_asset_id. */
+  include_children?: boolean;
 }
 
 export interface AssetAssignment {
@@ -376,6 +385,10 @@ export interface AssetAssignment {
   assigned_to_user_name?: string | null;
   assigned_by_user_id: string;
   assigned_by_user_name?: string | null;
+  shift_id?: string | null;
+  shift_code?: string | null;
+  shift_name?: string | null;
+  shift_display?: string | null;
   assigned_date: string;
   returned_date?: string | null;
   return_condition?: string | null;
@@ -411,6 +424,18 @@ export interface ITComputer {
   current_shift_code?: string | null;
   current_shift_name?: string | null;
   current_shift_display?: string | null;
+  next_shift_code?: string | null;
+  next_shift_name?: string | null;
+  next_shift_display?: string | null;
+  next_change_date?: string | null;
+  previous_user_id?: string | null;
+  previous_user_name?: string | null;
+  other_shift_user_id?: string | null;
+  other_shift_user_name?: string | null;
+  other_shift_code?: string | null;
+  other_shift_name?: string | null;
+  other_shift_display?: string | null;
+  is_shared_candidate?: boolean;
   data_quality_flags?: string[];
   is_open?: boolean;
   assigned_date?: string | null;
@@ -569,6 +594,20 @@ export interface IpReleasePayload {
   notes?: string | null;
 }
 
+export interface IPAssignmentHistory {
+  id: string;
+  ip_address_id: string;
+  assigned_to_asset_id?: string | null;
+  assigned_to_user_id?: string | null;
+  assigned_by_user_id: string;
+  hostname?: string | null;
+  assigned_date: string;
+  released_date?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ITSettings {
   id: string;
   asset_numbering_pattern: string;
@@ -592,11 +631,44 @@ export interface ITSettingsUpdate {
   settings_json?: string | null;
 }
 
+export interface ITProfileComputer {
+  computer_id: string;
+  computer_name?: string | null;
+  asset_id?: string | null;
+  asset_number?: string | null;
+  asset_status?: string | null;
+  assigned_date?: string | null;
+}
+
+export interface ITProfileSoftware {
+  assignment_id: string;
+  license_pool_id: string;
+  software_id: string;
+  software_name?: string | null;
+  license_type?: string | null;
+  assigned_date?: string | null;
+}
+
 export interface ITProfile {
   user_id: string;
   user_name?: string | null;
   assets: ITAsset[];
   computers?: ITComputer[];
+  computer?: ITProfileComputer | null;
+  software?: ITProfileSoftware[];
+  required_software_count?: number;
+  missing_software?: string[];
+  is_compliant?: boolean;
+  shift?: {
+    id?: string;
+    code?: string | null;
+    name?: string | null;
+    display?: string | null;
+    shift_code?: string | null;
+    shift_name?: string | null;
+    shift_display?: string | null;
+    [key: string]: unknown;
+  } | null;
   ips?: ITIpAddress[];
   accounts?: Array<{
     id: string;

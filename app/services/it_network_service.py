@@ -242,6 +242,33 @@ def _current_ip_history(db: Session, ip_id: UUID) -> IPAssignmentHistory | None:
     )
 
 
+def list_ip_history(db: Session, ip_id: UUID) -> list[IPAssignmentHistory]:
+    return list(
+        db.scalars(
+            select(IPAssignmentHistory)
+            .where(IPAssignmentHistory.ip_address_id == ip_id)
+            .order_by(
+                IPAssignmentHistory.assigned_date.desc(),
+                IPAssignmentHistory.created_at.desc(),
+            )
+        ).all()
+    )
+
+
+def list_ip_history_for_asset(db: Session, asset_id: UUID) -> list[IPAssignmentHistory]:
+    return list(
+        db.scalars(
+            select(IPAssignmentHistory)
+            .options(selectinload(IPAssignmentHistory.ip_address))
+            .where(IPAssignmentHistory.assigned_to_asset_id == asset_id)
+            .order_by(
+                IPAssignmentHistory.assigned_date.desc(),
+                IPAssignmentHistory.created_at.desc(),
+            )
+        ).all()
+    )
+
+
 def allocate_ip(
     db: Session,
     *,

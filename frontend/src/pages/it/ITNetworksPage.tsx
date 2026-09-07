@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   allocateIp,
   createNetwork,
+  fetchIpHistory,
   fetchNetworkIps,
   fetchNetworks,
   itOperationsKeys,
@@ -45,7 +46,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import type { ITIpAddress, ITNetwork, ITNetworkCreate } from '../../types/itOperations';
-import { formatCellValue, userDisplayName } from '../../utils/format';
+import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
 import {
   accessContextFromUser,
@@ -120,6 +121,7 @@ export function ITNetworksPage() {
   const [allocateHostname, setAllocateHostname] = useState('');
   const [allocateNotes, setAllocateNotes] = useState('');
   const [releaseTarget, setReleaseTarget] = useState<ITIpAddress | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<ITIpAddress | null>(null);
 
   const networksQuery = useQuery({
     queryKey: itOperationsKeys.networks(),
@@ -133,6 +135,12 @@ export function ITNetworksPage() {
         status: ipStatusFilter || undefined,
       }),
     enabled: Boolean(selectedNetworkId),
+  });
+
+  const ipHistoryQuery = useQuery({
+    queryKey: itOperationsKeys.ipHistory(historyTarget?.id ?? ''),
+    queryFn: () => fetchIpHistory(historyTarget!.id),
+    enabled: Boolean(historyTarget?.id),
   });
 
   const usersQuery = useQuery({
@@ -406,15 +414,24 @@ export function ITNetworksPage() {
                       <TableCell>{ip.hostname || '—'}</TableCell>
                       <TableCell>{ip.assigned_to_user_name || '—'}</TableCell>
                       <TableCell align="right">
-                        {canAllocate && ip.status === 'allocated' ? (
+                        <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
                           <ProsohmButton
                             buttonVariant="outlined"
                             size="small"
-                            onClick={() => setReleaseTarget(ip)}
+                            onClick={() => setHistoryTarget(ip)}
                           >
-                            Release
+                            History
                           </ProsohmButton>
-                        ) : null}
+                          {canAllocate && ip.status === 'allocated' ? (
+                            <ProsohmButton
+                              buttonVariant="outlined"
+                              size="small"
+                              onClick={() => setReleaseTarget(ip)}
+                            >
+                              Release
+                            </ProsohmButton>
+                          ) : null}
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -579,6 +596,67 @@ export function ITNetworksPage() {
             }}
           >
             Release
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(historyTarget)}
+        onClose={() => setHistoryTarget(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          IP history{historyTarget?.address ? ` — ${historyTarget.address}` : ''}
+        </DialogTitle>
+        <DialogContent dividers>
+          {ipHistoryQuery.isLoading ? (
+            <Typography color="text.secondary">Loading history…</Typography>
+          ) : ipHistoryQuery.isError ? (
+            <Typography color="error">Unable to load IP history.</Typography>
+          ) : (ipHistoryQuery.data ?? []).length === 0 ? (
+            <Typography color="text.secondary">No assignment history for this IP.</Typography>
+          ) : (
+            <Stack spacing={1.5} sx={{ pt: 0.5 }}>
+              {(ipHistoryQuery.data ?? []).map((row) => (
+                <Box
+                  key={row.id}
+                  sx={{
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    px: 1.5,
+                    py: 1.25,
+                  }}
+                >
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+                    <Typography sx={{ fontWeight: 600, flex: 1 }}>
+                      {row.hostname || row.assigned_to_asset_id || 'Assignment'}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={row.released_date ? 'Historical' : 'Current'}
+                      color={row.released_date ? 'default' : 'success'}
+                      variant="outlined"
+                    />
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    {formatDate(row.assigned_date)} →{' '}
+                    {row.released_date ? formatDate(row.released_date) : 'Current'}
+                  </Typography>
+                  {row.notes ? (
+                    <Typography variant="body2" color="text.secondary">
+                      {row.notes}
+                    </Typography>
+                  ) : null}
+                </Box>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setHistoryTarget(null)}>
+            Close
           </ProsohmButton>
         </DialogActions>
       </Dialog>

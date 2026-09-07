@@ -16,6 +16,9 @@ from app.models.it_operations import (
     Asset,
     AssetAssignment,
     AssetCustomerReturn,
+    AssetLocationHistory,
+    AssetOwnershipHistory,
+    AssetStatusHistory,
     AssetType,
     Computer,
     ITSettings,
@@ -379,6 +382,7 @@ def update_asset_type(
 
 
 def get_current_assignment(db: Session, asset_id: UUID) -> AssetAssignment | None:
+    """Primary open assignment (most recent). For shared desks prefer list_open_assignments."""
     return db.scalar(
         select(AssetAssignment)
         .where(
@@ -388,6 +392,209 @@ def get_current_assignment(db: Session, asset_id: UUID) -> AssetAssignment | Non
         .order_by(AssetAssignment.assigned_date.desc())
         .limit(1)
     )
+
+
+def list_open_assignments(db: Session, asset_id: UUID) -> list[AssetAssignment]:
+    return list(
+        db.scalars(
+            select(AssetAssignment)
+            .where(
+                AssetAssignment.asset_id == asset_id,
+                AssetAssignment.returned_date.is_(None),
+            )
+            .order_by(AssetAssignment.assigned_date.desc())
+        ).all()
+    )
+
+
+def get_open_assignment_for_shift(
+    db: Session, asset_id: UUID, shift_id: UUID
+) -> AssetAssignment | None:
+    return db.scalar(
+        select(AssetAssignment)
+        .where(
+            AssetAssignment.asset_id == asset_id,
+            AssetAssignment.returned_date.is_(None),
+            AssetAssignment.shift_id == shift_id,
+        )
+        .limit(1)
+    )
+
+
+def _open_ownership_period(
+    db: Session,
+    asset: Asset,
+    *,
+    actor: User,
+    on_date: date,
+    notes: str | None = None,
+) -> None:
+    db.add(
+        AssetOwnershipHistory(
+            id=uuid4(),
+            asset_id=asset.id,
+            purchased_by=asset.purchased_by,
+            owner_customer_id=asset.owner_customer_id,
+            effective_from=on_date,
+            changed_by_user_id=actor.id,
+            notes=notes,
+        )
+    )
+
+
+def _open_location_period(
+    db: Session,
+    asset: Asset,
+    *,
+    actor: User,
+    on_date: date,
+    notes: str | None = None,
+) -> None:
+    db.add(
+        AssetLocationHistory(
+            id=uuid4(),
+            asset_id=asset.id,
+            location=asset.location,
+            effective_from=on_date,
+            changed_by_user_id=actor.id,
+            notes=notes,
+        )
+    )
+
+
+def _open_status_period(
+    db: Session,
+    asset: Asset,
+    *,
+    actor: User,
+    on_date: date,
+    reason: str | None = None,
+    notes: str | None = None,
+) -> None:
+    db.add(
+        AssetStatusHistory(
+            id=uuid4(),
+            asset_id=asset.id,
+            status=asset.status,
+            effective_from=on_date,
+            changed_by_user_id=actor.id,
+            reason=reason,
+            notes=notes,
+        )
+    )
+
+
+def _end_open_period(row, *, on_date: date) -> None:
+    if row is not None and row.effective_to is None:
+        # Period ends the day before the new one starts when same-day change.
+        row.effective_to = on_date if on_date >= row.effective_from else row.effective_from
+
+
+def _current_ownership_period(db: Session, asset_id: UUID) -> AssetOwnershipHistory | None:
+    return db.scalar(
+        select(AssetOwnershipHistory)
+        .where(
+            AssetOwnershipHistory.asset_id == asset_id,
+            AssetOwnershipHistory.effective_to.is_(None),
+        )
+        .order_by(AssetOwnershipHistory.effective_from.desc())
+        .limit(1)
+    )
+
+
+def _current_location_period(db: Session, asset_id: UUID) -> AssetLocationHistory | None:
+    return db.scalar(
+        select(AssetLocationHistory)
+        .where(
+            AssetLocationHistory.asset_id == asset_id,
+            AssetLocationHistory.effective_to.is_(None),
+        )
+        .order_by(AssetLocationHistory.effective_from.desc())
+        .limit(1)
+    )
+
+
+def _current_status_period(db: Session, asset_id: UUID) -> AssetStatusHistory | None:
+    return db.scalar(
+        select(AssetStatusHistory)
+        .where(
+            AssetStatusHistory.asset_id == asset_id,
+            AssetStatusHistory.effective_to.is_(None),
+        )
+        .order_by(AssetStatusHistory.effective_from.desc())
+        .limit(1)
+    )
+
+
+def list_asset_lifecycle_history(db: Session, asset_id: UUID) -> dict:
+    # Open periods (effective_to IS NULL) first, then newest effective_from.
+    ownership = list(
+        db.scalars(
+            select(AssetOwnershipHistory)
+            .where(AssetOwnershipHistory.asset_id == asset_id)
+            .order_by(
+                AssetOwnershipHistory.effective_to.is_(None).desc(),
+                AssetOwnershipHistory.effective_from.desc(),
+            )
+        ).all()
+    )
+    locations = list(
+        db.scalars(
+            select(AssetLocationHistory)
+            .where(AssetLocationHistory.asset_id == asset_id)
+            .order_by(
+                AssetLocationHistory.effective_to.is_(None).desc(),
+                AssetLocationHistory.effective_from.desc(),
+            )
+        ).all()
+    )
+    statuses = list(
+        db.scalars(
+            select(AssetStatusHistory)
+            .where(AssetStatusHistory.asset_id == asset_id)
+            .order_by(
+                AssetStatusHistory.effective_to.is_(None).desc(),
+                AssetStatusHistory.effective_from.desc(),
+            )
+        ).all()
+    )
+    return {
+        "ownership": [
+            {
+                "id": str(row.id),
+                "purchased_by": row.purchased_by,
+                "owner_customer_id": str(row.owner_customer_id) if row.owner_customer_id else None,
+                "effective_from": row.effective_from.isoformat(),
+                "effective_to": row.effective_to.isoformat() if row.effective_to else None,
+                "changed_by_user_id": str(row.changed_by_user_id),
+                "notes": row.notes,
+            }
+            for row in ownership
+        ],
+        "locations": [
+            {
+                "id": str(row.id),
+                "location": row.location,
+                "effective_from": row.effective_from.isoformat(),
+                "effective_to": row.effective_to.isoformat() if row.effective_to else None,
+                "changed_by_user_id": str(row.changed_by_user_id),
+                "notes": row.notes,
+            }
+            for row in locations
+        ],
+        "statuses": [
+            {
+                "id": str(row.id),
+                "status": row.status,
+                "effective_from": row.effective_from.isoformat(),
+                "effective_to": row.effective_to.isoformat() if row.effective_to else None,
+                "changed_by_user_id": str(row.changed_by_user_id),
+                "reason": row.reason,
+                "notes": row.notes,
+            }
+            for row in statuses
+        ],
+    }
 
 
 def list_assets(
@@ -621,6 +828,10 @@ def create_asset(
     )
     db.add(asset)
     db.flush()
+    today = date.today()
+    _open_ownership_period(db, asset, actor=actor, on_date=today)
+    _open_location_period(db, asset, actor=actor, on_date=today)
+    _open_status_period(db, asset, actor=actor, on_date=today)
     log_activity(
         db,
         user=actor,
@@ -753,6 +964,28 @@ def update_asset(
     ownership_changed = old["purchased_by"] != asset.purchased_by or old[
         "owner_customer_id"
     ] != (str(asset.owner_customer_id) if asset.owner_customer_id else None)
+    location_changed = old["location"] != asset.location
+    status_changed = old["status"] != asset.status
+    today = date.today()
+    if ownership_changed:
+        prev = _current_ownership_period(db, asset.id)
+        _end_open_period(prev, on_date=today)
+        if prev is not None:
+            db.add(prev)
+        _open_ownership_period(db, asset, actor=actor, on_date=today)
+    if location_changed:
+        prev = _current_location_period(db, asset.id)
+        _end_open_period(prev, on_date=today)
+        if prev is not None:
+            db.add(prev)
+        _open_location_period(db, asset, actor=actor, on_date=today)
+    if status_changed:
+        prev = _current_status_period(db, asset.id)
+        _end_open_period(prev, on_date=today)
+        if prev is not None:
+            db.add(prev)
+        reason = "maintenance" if asset.status == "maintenance" else None
+        _open_status_period(db, asset, actor=actor, on_date=today, reason=reason)
     log_activity(
         db,
         user=actor,
@@ -824,20 +1057,44 @@ def assign_asset(
     by_user: User,
     assigned_date: date | None = None,
     notes: str | None = None,
+    shift_id: UUID | None = None,
     commit: bool = True,
 ) -> AssetAssignment:
     if asset.is_deleted:
         raise ProTrackValidationError("Cannot assign a deleted asset.")
-    if asset.status == "returned_to_customer":
+    if asset.status in {"returned_to_customer", "disposed", "retired"}:
         raise ProTrackValidationError(
-            "Cannot assign an asset that was returned to the customer."
+            f"Cannot assign an asset with status '{asset.status}'."
         )
-    if asset.status != "available":
+    if asset.status not in {"available", "assigned"}:
         raise ProTrackValidationError(
-            f"Asset must be available to assign (current status: {asset.status})."
+            f"Asset must be available or assigned to add an occupant "
+            f"(current status: {asset.status})."
         )
-    if get_current_assignment(db, asset.id) is not None:
-        raise ProTrackValidationError("Asset already has an open assignment.")
+
+    open_rows = list_open_assignments(db, asset.id)
+    if shift_id is None:
+        if open_rows:
+            raise ProTrackValidationError(
+                "Asset already has an open assignment. "
+                "Provide shift_id for shared-desk occupancy, or return the current user first."
+            )
+    else:
+        from app.models.resource_shifts import ResourceShift
+
+        shift = db.get(ResourceShift, shift_id)
+        if shift is None or not shift.is_active:
+            raise ProTrackValidationError("Shift not found or inactive.")
+        if any(row.shift_id is None for row in open_rows):
+            raise ProTrackValidationError(
+                "Asset has a legacy open assignment without a shift. "
+                "Return it before creating shared-desk slots."
+            )
+        if any(row.shift_id == shift_id for row in open_rows):
+            raise ProTrackValidationError(
+                "This asset already has an open assignment for that shift."
+            )
+
     user = db.get(User, user_id)
     if user is None or user.is_deleted:
         raise ProTrackValidationError("Assignee user not found.")
@@ -847,13 +1104,21 @@ def assign_asset(
         asset_id=asset.id,
         assigned_to_user_id=user_id,
         assigned_by_user_id=by_user.id,
+        shift_id=shift_id,
         assigned_date=when,
         notes=(notes or "").strip() or None,
     )
+    prev_status = asset.status
     asset.status = "assigned"
     db.add(assignment)
     db.add(asset)
     db.flush()
+    if prev_status != "assigned":
+        prev = _current_status_period(db, asset.id)
+        _end_open_period(prev, on_date=when)
+        if prev is not None:
+            db.add(prev)
+        _open_status_period(db, asset, actor=by_user, on_date=when)
     log_activity(
         db,
         user=by_user,
@@ -864,6 +1129,7 @@ def assign_asset(
             "asset_number": asset.asset_number,
             "assigned_to_user_id": str(user_id),
             "assigned_date": str(when),
+            "shift_id": str(shift_id) if shift_id else None,
         },
         outcome="success",
         module=MODULE,
@@ -883,11 +1149,31 @@ def return_asset(
     returned_date: date | None = None,
     return_condition: str | None = None,
     notes: str | None = None,
+    assignment_id: UUID | None = None,
+    shift_id: UUID | None = None,
     commit: bool = True,
 ) -> AssetAssignment:
-    assignment = get_current_assignment(db, asset.id)
-    if assignment is None:
+    open_rows = list_open_assignments(db, asset.id)
+    if not open_rows:
         raise ProTrackValidationError("Asset is not currently assigned.")
+
+    assignment: AssetAssignment | None = None
+    if assignment_id is not None:
+        assignment = next((row for row in open_rows if row.id == assignment_id), None)
+        if assignment is None:
+            raise ProTrackValidationError("Open assignment not found for this asset.")
+    elif shift_id is not None:
+        assignment = next((row for row in open_rows if row.shift_id == shift_id), None)
+        if assignment is None:
+            raise ProTrackValidationError("No open assignment for that shift.")
+    else:
+        if len(open_rows) > 1:
+            raise ProTrackValidationError(
+                "Shared desk has multiple open occupants. "
+                "Specify assignment_id or shift_id to return one."
+            )
+        assignment = open_rows[0]
+
     when = returned_date or date.today()
     assignment.returned_date = when
     assignment.return_condition = (return_condition or "").strip() or None
@@ -895,10 +1181,19 @@ def return_asset(
         assignment.notes = (
             f"{assignment.notes}\n{notes}".strip() if assignment.notes else notes.strip()
         )
-    asset.status = "available"
+    remaining = [row for row in open_rows if row.id != assignment.id]
+    prev_status = asset.status
+    if not remaining:
+        asset.status = "available"
     db.add(assignment)
     db.add(asset)
     db.flush()
+    if prev_status != asset.status:
+        prev = _current_status_period(db, asset.id)
+        _end_open_period(prev, on_date=when)
+        if prev is not None:
+            db.add(prev)
+        _open_status_period(db, asset, actor=by_user, on_date=when)
     log_activity(
         db,
         user=by_user,
@@ -909,6 +1204,8 @@ def return_asset(
             "asset_number": asset.asset_number,
             "returned_date": str(when),
             "return_condition": assignment.return_condition,
+            "assignment_id": str(assignment.id),
+            "shift_id": str(assignment.shift_id) if assignment.shift_id else None,
         },
         outcome="success",
         module=MODULE,
@@ -918,7 +1215,6 @@ def return_asset(
         db.commit()
         db.refresh(assignment)
     return assignment
-
 
 def return_asset_to_customer(
     db: Session,
@@ -1014,6 +1310,19 @@ def list_customer_returns(
     return list(db.scalars(stmt).all())
 
 
+def list_child_assets(db: Session, asset_id: UUID) -> list[Asset]:
+    return list(
+        db.scalars(
+            select(Asset)
+            .where(
+                Asset.parent_asset_id == asset_id,
+                Asset.is_deleted.is_(False),
+            )
+            .order_by(Asset.asset_number.asc())
+        ).all()
+    )
+
+
 def transfer_asset(
     db: Session,
     asset: Asset,
@@ -1022,6 +1331,7 @@ def transfer_asset(
     by_user: User,
     assigned_date: date | None = None,
     notes: str | None = None,
+    include_children: bool = False,
     commit: bool = True,
 ) -> AssetAssignment:
     when = assigned_date or date.today()
@@ -1047,6 +1357,20 @@ def transfer_asset(
         notes=notes,
         commit=False,
     )
+    child_numbers: list[str] = []
+    if include_children:
+        for child in list_child_assets(db, asset.id):
+            transfer_asset(
+                db,
+                child,
+                to_user_id=to_user_id,
+                by_user=by_user,
+                assigned_date=when,
+                notes=notes or f"Cascaded from parent {asset.asset_number}",
+                include_children=True,
+                commit=False,
+            )
+            child_numbers.append(child.asset_number)
     log_activity(
         db,
         user=by_user,
@@ -1057,6 +1381,8 @@ def transfer_asset(
             "asset_number": asset.asset_number,
             "to_user_id": str(to_user_id),
             "assigned_date": str(when),
+            "include_children": include_children,
+            "child_assets": child_numbers,
         },
         outcome="success",
         module=MODULE,
@@ -1301,3 +1627,47 @@ def list_assets_for_user(db: Session, user_id: UUID) -> list[Asset]:
             .order_by(Asset.asset_number)
         ).all()
     )
+
+
+def return_assets_for_user(
+    db: Session,
+    *,
+    user_id: UUID,
+    by_user: User,
+    returned_date: date | None = None,
+    notes: str | None = None,
+    commit: bool = True,
+) -> list[AssetAssignment]:
+    """Return every open assignment held by ``user_id`` (exit / offboard reclaim)."""
+    when = returned_date or date.today()
+    note = notes or "Returned on employee exit"
+    open_rows = list(
+        db.scalars(
+            select(AssetAssignment).where(
+                AssetAssignment.assigned_to_user_id == user_id,
+                AssetAssignment.returned_date.is_(None),
+            )
+        ).all()
+    )
+    returned: list[AssetAssignment] = []
+    for assignment in open_rows:
+        asset = db.get(Asset, assignment.asset_id)
+        if asset is None or asset.is_deleted:
+            continue
+        returned.append(
+            return_asset(
+                db,
+                asset,
+                by_user=by_user,
+                returned_date=when,
+                notes=note,
+                assignment_id=assignment.id,
+                commit=False,
+            )
+        )
+    if commit:
+        db.commit()
+        for row in returned:
+            db.refresh(row)
+    return returned
+

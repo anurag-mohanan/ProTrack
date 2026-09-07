@@ -7,6 +7,7 @@ import json
 import pytest
 
 from app.core.access_control import (
+    ENGINEERING_MANAGER,
     SPECIAL_ASSIGN_RESOURCE_SHIFTS,
     SPECIAL_MANAGE_RESOURCE_SHIFTS,
     resolve_user_special_permissions,
@@ -213,6 +214,22 @@ def test_admin_with_stale_special_permissions_can_still_assign(client, session):
     )
     assert assigned.status_code == 201, assigned.text
 
+
+def test_engineering_manager_stale_specials_still_get_assign(session):
+    """Saved specials without assign_resource_shifts must still resolve for Eng Manager."""
+    user = session.get(User, IDS["user_pm"])  # typically Engineering Manager fixture
+    if user is None:
+        pytest.skip("user_pm fixture missing")
+    user.special_permissions = json.dumps(
+        ["create_projects", "edit_projects", "view_reports", "view_resource_planning"]
+    )
+    session.add(user)
+    session.commit()
+    resolved = resolve_user_special_permissions(user, ENGINEERING_MANAGER)
+    assert SPECIAL_ASSIGN_RESOURCE_SHIFTS in resolved
+    assert "view_resource_planning" in resolved
+    # Custom/stale list is not wiped — create_projects remains.
+    assert "create_projects" in resolved
 
 # --------------------------------------------------------------------------
 # API

@@ -444,10 +444,23 @@ def resolve_user_special_permissions(user: User, role_name: str) -> list[str]:
     # Mirrors resolve_user_modules() and the frontend Admin bypass.
     if normalized == ADMIN:
         return sorted(ALL_SPECIAL_PERMISSIONS)
+    role_defaults = set(default_special_permissions_for_role(role_name))
     stored = _parse_json_list(user.special_permissions)
     if stored is not None:
-        return sorted({perm for perm in stored if perm in ALL_SPECIAL_PERMISSIONS})
-    return default_special_permissions_for_role(role_name)
+        perms = {perm for perm in stored if perm in ALL_SPECIAL_PERMISSIONS}
+        # Resource Planning shift specials were added after many accounts already
+        # had a saved special_permissions JSON. Merge role defaults for these so
+        # Engineering Manager / Executive retain assign capability without a
+        # manual Users re-save — without wiping other custom specials.
+        for perm in (
+            SPECIAL_VIEW_RESOURCE_PLANNING,
+            SPECIAL_ASSIGN_RESOURCE_SHIFTS,
+            SPECIAL_MANAGE_RESOURCE_SHIFTS,
+        ):
+            if perm in role_defaults:
+                perms.add(perm)
+        return sorted(perms)
+    return sorted(role_defaults)
 
 
 def user_has_module(user: User, role_name: str, module: str) -> bool:

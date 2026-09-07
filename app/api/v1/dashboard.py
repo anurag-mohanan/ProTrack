@@ -319,6 +319,40 @@ def dashboard_resource_planning_it_matrix(
     )
 
 
+@router.get("/resource-planning/data-quality")
+def dashboard_resource_planning_data_quality(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Inventory integrity catalog for Resource Planning / IT (flags only)."""
+    _require_it_readiness_access(db, current_user)
+    from app.services import it_data_quality_service
+
+    return it_data_quality_service.build_data_quality_report(db)
+
+
+@router.get("/resource-planning/computers-by-shift")
+def dashboard_resource_planning_computers_by_shift(
+    on_date: date | None = None,
+    team_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Open and assigned computers bucketed by company shifts."""
+    _require_it_readiness_access(db, current_user)
+    scoped_team_ids = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped_team_ids is not None and team_id is not None and team_id not in scoped_team_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team is outside your accessible scope",
+        )
+    from app.services import it_computer_shift_service
+
+    return it_computer_shift_service.computers_by_shift(
+        db, on_date=on_date, team_id=team_id
+    )
+
+
 @router.post("/resource-planning/assign", status_code=status.HTTP_204_NO_CONTENT)
 def dashboard_resource_planning_assign(
     payload: ResourcePlanningAssignRequest,

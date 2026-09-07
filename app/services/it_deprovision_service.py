@@ -57,8 +57,12 @@ def ensure_offboard_tasks(
         if row.status == "active"
     ]
     ips = it_network_service.list_ips_for_user(db, user.id)
+    from app.models.it_operations import SoftwareCatalog, SoftwareLicensePool
+    from app.services import it_software_service
 
-    if not assets and not accounts and not ips:
+    software_rows = it_software_service.list_assignments(db, user_id=user.id, active_only=True)
+
+    if not assets and not accounts and not ips and not software_rows:
         return None
 
     label = _employee_label(user)
@@ -72,12 +76,20 @@ def ensure_offboard_tasks(
         for account in accounts
     ) or "- None"
     ip_lines = "\n".join(f"- {ip.address}" for ip in ips) or "- None"
+    software_lines_parts: list[str] = []
+    for row in software_rows:
+        pool = db.get(SoftwareLicensePool, row.license_pool_id)
+        software = db.get(SoftwareCatalog, pool.software_id) if pool else None
+        name = software.name if software else str(row.license_pool_id)
+        software_lines_parts.append(f"- {name}")
+    software_lines = "\n".join(software_lines_parts) or "- None"
 
     description = (
         f"{OFFBOARD_TICKET_MARKER} for {label}.\n"
         f"Employee user_id: {user.id}\n"
         f"Leaving date: {user.leaving_date.isoformat() if user.leaving_date else 'TBD'}\n\n"
         f"Assigned assets to return:\n{asset_lines}\n\n"
+        f"Software licenses to unassign:\n{software_lines}\n\n"
         f"Active IT accounts to deactivate:\n{account_lines}\n\n"
         f"Allocated IPs to release:\n{ip_lines}\n\n"
         "Complete each action in IT Operations, then close this ticket."

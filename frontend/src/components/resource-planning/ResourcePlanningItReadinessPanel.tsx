@@ -235,7 +235,9 @@ export function ResourcePlanningItReadinessPanel({ teamId }: Props) {
             {gaps.oversubscribed_software.map((row) => (
               <Alert key={`over-${row.software_id}`} severity="warning">
                 {row.software_name ?? row.software_id}: shortfall {row.seat_shortfall} seat(s)
-                (need {row.required_headcount}, available {row.available_seats})
+                {row.is_floating
+                  ? ` (floating peak ${row.peak_estimate} vs ${row.seat_count} seats; ${row.required_headcount} people require it)`
+                  : ` (need ${row.required_headcount}, available ${row.available_seats})`}
               </Alert>
             ))}
             {gaps.software_without_pool.map((row) => (

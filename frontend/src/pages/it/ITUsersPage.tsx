@@ -10,18 +10,22 @@ import {
   Box,
 } from '@mui/material';
 import type { GridColDef } from '@mui/x-data-grid';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchItPeoplePaginated,
   fetchItPerson,
   itOperationsKeys,
+  returnAssetsForPerson,
 } from '../../api/itOperations';
+import { getErrorMessage } from '../../api/client';
+import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { ContentCard } from '../../components/ui/cards';
 import { FormSelect, SearchToolbar, FormField } from '../../components/ui/design-system';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
+import { useToast } from '../../context/ToastContext';
 import { formatCellValue } from '../../utils/format';
 import type { ITPersonListItem } from '../../types/itOperations';
 
@@ -36,6 +40,9 @@ export function ITUsersPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('active');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirmReturn, setConfirmReturn] = useState(false);
+  const { showSuccess, showError } = useToast();
+  const queryClient = useQueryClient();
 
   const listFilters = useMemo(
     () => ({
@@ -49,6 +56,24 @@ export function ITUsersPage() {
     queryKey: itOperationsKeys.person(selectedId ?? ''),
     queryFn: () => fetchItPerson(selectedId!),
     enabled: Boolean(selectedId),
+  });
+
+  const returnMutation = useMutation({
+    mutationFn: () =>
+      returnAssetsForPerson(selectedId!, {
+        notes: 'Returned on employee exit',
+      }),
+    onSuccess: (rows) => {
+      showSuccess(
+        rows.length
+          ? `Returned ${rows.length} asset assignment(s).`
+          : 'No open asset assignments to return.',
+      );
+      setConfirmReturn(false);
+      void queryClient.invalidateQueries({ queryKey: itOperationsKeys.person(selectedId ?? '') });
+      void queryClient.invalidateQueries({ queryKey: itOperationsKeys.people() });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
   });
 
   const columns: GridColDef<ITPersonListItem>[] = [
@@ -204,11 +229,34 @@ export function ITUsersPage() {
           )}
         </DialogContent>
         <DialogActions>
+          {detail && (detail.assigned_assets?.length ?? 0) > 0 ? (
+            <ProsohmButton
+              buttonVariant="secondary"
+              onClick={() => setConfirmReturn(true)}
+              disabled={returnMutation.isPending}
+            >
+              Return all assets
+            </ProsohmButton>
+          ) : null}
           <ProsohmButton buttonVariant="outlined" onClick={() => setSelectedId(null)}>
             Close
           </ProsohmButton>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmReturn}
+        title="Return all assets?"
+        message={
+          detail
+            ? `Return every open assignment for ${detail.full_name}? Use this when completing an employee exit.`
+            : 'Return every open assignment for this employee?'
+        }
+        confirmLabel="Return assets"
+        onClose={() => setConfirmReturn(false)}
+        onConfirm={() => returnMutation.mutate()}
+        loading={returnMutation.isPending}
+      />
     </PageContainer>
   );
 }

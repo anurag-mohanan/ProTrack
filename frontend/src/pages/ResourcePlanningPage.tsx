@@ -25,6 +25,8 @@ import { ResourcePlanningRightPanel } from '../components/resource-planning/Reso
 import { ResourcePlanningTimeline } from '../components/resource-planning/ResourcePlanningTimeline';
 import { ResourcePlanningShiftsPanel } from '../components/resource-planning/ResourcePlanningShiftsPanel';
 import { ResourcePlanningItReadinessPanel } from '../components/resource-planning/ResourcePlanningItReadinessPanel';
+import { ResourcePlanningDataQualityPanel } from '../components/resource-planning/ResourcePlanningDataQualityPanel';
+import { ResourcePlanningComputersByShiftPanel } from '../components/resource-planning/ResourcePlanningComputersByShiftPanel';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
@@ -57,7 +59,7 @@ const GRANULARITY_OPTIONS: { value: ResourcePlanningGranularity; label: string }
   { value: 'day', label: 'Daily' },
 ];
 
-type MainTab = 'planning' | 'shifts' | 'it';
+type MainTab = 'planning' | 'shifts' | 'it' | 'quality';
 
 export function ResourcePlanningPage() {
   const queryClient = useQueryClient();
@@ -250,7 +252,7 @@ export function ResourcePlanningPage() {
     <PageContainer>
       <ModernPageHeader
         title="Resource Planning"
-        subtitle="Capacity, shifts, and IT readiness — one planning hub"
+        subtitle="People, shifts, capacity, computers, software & licenses — connected planning"
       />
 
       <Tabs
@@ -258,9 +260,10 @@ export function ResourcePlanningPage() {
         onChange={(_, value: MainTab) => setMainTab(value)}
         sx={{ mb: 2, minHeight: 40, borderBottom: 1, borderColor: 'divider' }}
       >
-        <Tab value="planning" label="Capacity" sx={{ minHeight: 40 }} />
-        <Tab value="shifts" label="Shifts" sx={{ minHeight: 40 }} />
-        <Tab value="it" label="IT readiness" sx={{ minHeight: 40 }} />
+        <Tab value="planning" label="Capacity & projects" sx={{ minHeight: 40 }} />
+        <Tab value="shifts" label="Shifts & people" sx={{ minHeight: 40 }} />
+        <Tab value="it" label="Computers & software" sx={{ minHeight: 40 }} />
+        <Tab value="quality" label="Data quality" sx={{ minHeight: 40 }} />
       </Tabs>
 
       <FilterToolbar
@@ -289,7 +292,12 @@ export function ResourcePlanningPage() {
           </Tabs>
         ) : (
           <Typography variant="body2" color="text.secondary">
-            Team filter applies to {mainTab === 'shifts' ? 'shift calendar' : 'IT readiness'}
+            Team filter applies to{' '}
+            {mainTab === 'shifts'
+              ? 'shift calendar'
+              : mainTab === 'quality'
+                ? 'data quality review'
+                : 'IT readiness'}
           </Typography>
         )}
       </FilterToolbar>
@@ -302,7 +310,16 @@ export function ResourcePlanningPage() {
 
       {mainTab === 'it' && (
         <Box sx={{ mt: 1 }}>
-          <ResourcePlanningItReadinessPanel teamId={teamParam} />
+          <Stack spacing={3}>
+            <ResourcePlanningItReadinessPanel teamId={teamParam} />
+            <ResourcePlanningComputersByShiftPanel teamId={teamParam} />
+          </Stack>
+        </Box>
+      )}
+
+      {mainTab === 'quality' && (
+        <Box sx={{ mt: 1 }}>
+          <ResourcePlanningDataQualityPanel />
         </Box>
       )}
 

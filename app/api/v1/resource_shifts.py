@@ -29,11 +29,13 @@ from app.schemas.resource_shifts import (
     ShiftAssignmentEnd,
     ShiftAssignmentRead,
     ShiftBoard,
+    ShiftBulkReassignRequest,
     ShiftCalendar,
     ShiftCreate,
     ShiftForUser,
     ShiftOverview,
     ShiftRead,
+    ShiftReassignRequest,
     ShiftUpdate,
 )
 from app.services import resource_shift_service
@@ -237,6 +239,51 @@ def bulk_create_assignments(
         payload.rotation_pattern.value if payload.rotation_pattern else None
     )
     created, conflicts = resource_shift_service.bulk_assign(db, data)
+    return ShiftAssignmentBulkResult(
+        created=[_assignment_payload(db, assignment) for assignment in created],
+        conflicts=conflicts,
+    )
+
+
+@router.post("/shifts/assignments/reassign", response_model=ShiftAssignmentRead)
+def reassign_assignment(
+    payload: ShiftReassignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Move one employee to another shift (end-dates prior permanent coverage)."""
+    _require_assign(db, current_user)
+    try:
+        assignment = resource_shift_service.reassign_employee_shift(
+            db,
+            user_id=payload.user_id,
+            new_shift_id=payload.shift_id,
+            effective_from=payload.effective_from,
+            assignment_type=payload.assignment_type.value,
+            notes=payload.notes,
+        )
+    except ShiftConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ShiftValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _assignment_payload(db, assignment)
+
+
+@router.post("/shifts/assignments/bulk-reassign", response_model=ShiftAssignmentBulkResult)
+def bulk_reassign_assignments(
+    payload: ShiftBulkReassignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_assign(db, current_user)
+    created, conflicts = resource_shift_service.bulk_reassign_employee_shifts(
+        db,
+        user_ids=payload.user_ids,
+        new_shift_id=payload.shift_id,
+        effective_from=payload.effective_from,
+        assignment_type=payload.assignment_type.value,
+        notes=payload.notes,
+    )
     return ShiftAssignmentBulkResult(
         created=[_assignment_payload(db, assignment) for assignment in created],
         conflicts=conflicts,

@@ -583,12 +583,24 @@ export function resolveSpecialPermissions(ctx: AccessContext): SpecialPermission
   if (normalizeRoleName(ctx.role_name) === ROLES.ADMIN) {
     return [...ALL_SPECIAL_PERMISSIONS];
   }
-  if (ctx.resolved_special_permissions != null) {
-    return ctx.resolved_special_permissions.filter((permission): permission is SpecialPermissionKey =>
-      Boolean(permission),
-    ) as SpecialPermissionKey[];
+  const roleDefaults = defaultSpecialPermissionsForRole(ctx.role_name);
+  const base: SpecialPermissionKey[] =
+    ctx.resolved_special_permissions != null
+      ? (ctx.resolved_special_permissions.filter((permission): permission is SpecialPermissionKey =>
+          Boolean(permission),
+        ) as SpecialPermissionKey[])
+      : roleDefaults;
+  // Parity with backend resolve_user_special_permissions: merge RP shift specials
+  // from role defaults so stale saved specials / cached /me still allow assign.
+  const merged = new Set(base);
+  for (const perm of [
+    SPECIAL_VIEW_RESOURCE_PLANNING,
+    SPECIAL_ASSIGN_RESOURCE_SHIFTS,
+    SPECIAL_MANAGE_RESOURCE_SHIFTS,
+  ] as const) {
+    if (roleDefaults.includes(perm)) merged.add(perm);
   }
-  return defaultSpecialPermissionsForRole(ctx.role_name);
+  return [...merged];
 }
 
 export function userHasModule(ctx: AccessContext, module: ModuleKey): boolean {

@@ -392,12 +392,74 @@ class AssetAssignment(Base, TimestampMixin, TenantMixin):
     assigned_by_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
+    # Optional shift slot for shared desks (First/Second/General). Null = legacy single assignee.
+    shift_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("rp_shifts.id"), nullable=True, index=True
+    )
     assigned_date: Mapped[date] = mapped_column(Date, nullable=False)
     returned_date: Mapped[Optional[date]] = mapped_column(Date)
     return_condition: Mapped[Optional[str]] = mapped_column(String(40))
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     asset: Mapped[Asset] = relationship(back_populates="assignments")
+
+
+class AssetOwnershipHistory(Base, TimestampMixin, TenantMixin):
+    """Effective-dated ownership periods — never rewritten."""
+
+    __tablename__ = "asset_ownership_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True
+    )
+    purchased_by: Mapped[str] = mapped_column(String(40), nullable=False)
+    owner_customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True
+    )
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date)
+    changed_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class AssetLocationHistory(Base, TimestampMixin, TenantMixin):
+    """Effective-dated location periods — never rewritten."""
+
+    __tablename__ = "asset_location_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True
+    )
+    location: Mapped[Optional[str]] = mapped_column(String(120))
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date)
+    changed_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class AssetStatusHistory(Base, TimestampMixin, TenantMixin):
+    """Effective-dated status/maintenance periods — never rewritten."""
+
+    __tablename__ = "asset_status_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date)
+    changed_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    reason: Mapped[Optional[str]] = mapped_column(String(200))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
 
 
 class Network(Base, TimestampMixin, TenantMixin):

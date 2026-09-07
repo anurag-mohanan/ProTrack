@@ -232,5 +232,14 @@
 "cpu_percent": null,
 "memory_mb": null,
 "disk_percent": 0.0
+},
+{
+"recorded_at": "2026-09-07T07:01:51.493510+00:00",
+"overall_status": "warning",
+"response_time_ms": 24,
+"error_count": 0,
+"cpu_percent": null,
+"memory_mb": null,
+"disk_percent": 0.0
 }
 ]

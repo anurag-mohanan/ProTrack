@@ -16,7 +16,7 @@ import { apiClient } from '../../api/client';
 import { LoadingState } from '../common/LoadingState';
 import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
 import { FinanceSection, financeMoney } from './FinanceCockpitPrimitives';
-import { teamQueryParam } from './FinanceTeamFilter';
+import { financeQueryParam } from './FinanceTeamFilter';
 import { toFiniteNumber } from '../../utils/format';
 
 type CashForecast = {
@@ -53,13 +53,15 @@ type CashForecast = {
 export function FinanceCashForecastSection({
   teamId,
   currency = 'INR',
+  fyStartYear = null,
 }: {
   teamId: string;
   currency?: string;
+  fyStartYear?: number | null;
 }) {
-  const q = teamQueryParam(teamId);
+  const q = financeQueryParam(teamId, fyStartYear);
   const forecastQuery = useQuery({
-    queryKey: ['finance-cash-forecast', teamId || 'all'],
+    queryKey: ['finance-cash-forecast', teamId || 'all', fyStartYear ?? 'current'],
     queryFn: async () =>
       (await apiClient.get<CashForecast>(`/finance/treasury/cash-flow-forecast${q}`)).data,
   });

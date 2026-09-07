@@ -31,6 +31,7 @@ from app.api.v1 import (
     working_models,
     projects,
     reports,
+    resource_shifts,
     roles,
     security,
     settings,
@@ -172,3 +173,4 @@ api_router.include_router(imports.router)
 api_router.include_router(history_imports.router)
 api_router.include_router(timesheet_imports.router)
 api_router.include_router(it_operations.router)
+api_router.include_router(resource_shifts.router)

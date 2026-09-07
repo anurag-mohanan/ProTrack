@@ -49,7 +49,7 @@ import {
   financeMoney,
 } from './FinanceCockpitPrimitives';
 import { FinanceMonthlyPnlSection } from './FinanceMonthlyPnlSection';
-import { teamQueryParam } from './FinanceTeamFilter';
+import { financeQueryParam } from './FinanceTeamFilter';
 
 const QUARTER_LABELS = ['Q1 Apr–Jun', 'Q2 Jul–Sep', 'Q3 Oct–Dec', 'Q4 Jan–Mar'];
 
@@ -108,10 +108,16 @@ const severityColor: Record<string, string> = {
   info: designTokens.semantic.neutral,
 };
 
-export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
+export function FinanceBudgetsReportsPanel({
+  teamId,
+  fyStartYear = null,
+}: {
+  teamId: string;
+  fyStartYear?: number | null;
+}) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
-  const q = teamQueryParam(teamId);
+  const q = financeQueryParam(teamId, fyStartYear);
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'approved' | 'at_risk'>('all');
   const [createOpen, setCreateOpen] = useState(false);
   const [fxOpen, setFxOpen] = useState(false);
@@ -456,7 +462,7 @@ export function FinanceBudgetsReportsPanel({ teamId }: { teamId: string }) {
               </Stack>
             </FinanceSection>
 
-            <FinanceMonthlyPnlSection teamId={teamId} currency={currency} />
+            <FinanceMonthlyPnlSection teamId={teamId} currency={currency} fyStartYear={fyStartYear} />
 
             <FinanceSection
               title="Profit & Loss (legacy summary)"

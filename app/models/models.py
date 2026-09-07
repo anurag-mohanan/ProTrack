@@ -1997,6 +1997,7 @@ from app.models.it_operations import (  # noqa: E402, F401
     AssetCustomerReturn,
     AssetType,
     Computer,
+    EmployeeSoftwareRequirement,
     InventoryItem,
     IPAddress,
     IPAssignmentHistory,

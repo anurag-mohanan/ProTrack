@@ -220,6 +220,18 @@ from app.db.phase85_finance_treasury_schema_sync import (
 from app.db.phase86_finance_capex_asset_link_schema_sync import (
     ensure_phase86_finance_capex_asset_link_foundation,
 )
+from app.db.phase87_it_software_schema_sync import (
+    ensure_phase87_it_software_foundation,
+)
+from app.db.phase88_it_master_data_schema_sync import (
+    ensure_phase88_it_master_data_foundation,
+)
+from app.db.phase89_resource_shifts_schema_sync import (
+    ensure_phase89_resource_shifts_foundation,
+)
+from app.db.phase90_it_parent_asset_schema_sync import (
+    ensure_phase90_it_parent_asset_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
@@ -368,6 +380,10 @@ async def lifespan(app: FastAPI):
         ("phase84_project_classification", ensure_phase84_project_classification_foundation),
         ("phase85_finance_treasury", ensure_phase85_finance_treasury_foundation),
         ("phase86_finance_capex_asset_link", ensure_phase86_finance_capex_asset_link_foundation),
+        ("phase87_it_software", ensure_phase87_it_software_foundation),
+        ("phase88_it_master_data", ensure_phase88_it_master_data_foundation),
+        ("phase89_resource_shifts", ensure_phase89_resource_shifts_foundation),
+        ("phase90_it_parent_asset", ensure_phase90_it_parent_asset_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

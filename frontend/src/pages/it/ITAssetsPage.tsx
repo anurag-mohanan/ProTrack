@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   Box,
   Checkbox,
@@ -21,9 +21,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   assignAsset,
   createAsset,
+  createMasterMake,
+  createMasterModel,
+  createMasterSupplier,
   deleteAsset,
   fetchAssetIds,
-  fetchAssetTypes,
+  fetchMasterCategories,
+  fetchMasterMakes,
+  fetchMasterModels,
+  fetchMasterSuppliers,
+  fetchMasterTypes,
+  fetchNextAssetNumber,
   fetchAssetsPaginated,
   itOperationsKeys,
   returnAsset,
@@ -51,16 +59,20 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
-import type { ITAsset, ITAssetCreate } from '../../types/itOperations';
+import type { ITAsset, ITAssetCreate, ITAssetUpdate } from '../../types/itOperations';
 import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
 import {
   accessContextFromUser,
   canAssignItAssets,
   canManageItAssets,
+  canOverrideItAssetNumber,
   canReturnCustomerAssets,
 } from '../../utils/permissions';
 
+const ADD_NEW_MAKE = '__add_new_make__';
+const ADD_NEW_MODEL = '__add_new_model__';
+const ADD_NEW_SUPPLIER = '__add_new_supplier__';
 const ASSET_STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
   { value: 'available', label: 'Available' },
@@ -109,10 +121,13 @@ const CUSTOMER_RETURN_REASON_OPTIONS = [
 ];
 
 type AssetFormState = {
+  category: string;
   asset_type_id: string;
+  make_id: string;
+  model_id: string;
+  supplier_id: string;
   serial_number: string;
-  make: string;
-  model: string;
+  asset_number_override: string;
   purchase_date: string;
   purchase_cost: string;
   warranty_expiry: string;
@@ -122,10 +137,13 @@ type AssetFormState = {
 };
 
 const emptyForm: AssetFormState = {
+  category: '',
   asset_type_id: '',
+  make_id: '',
+  model_id: '',
+  supplier_id: '',
   serial_number: '',
-  make: '',
-  model: '',
+  asset_number_override: '',
   purchase_date: '',
   purchase_cost: '',
   warranty_expiry: '',
@@ -202,6 +220,7 @@ export function ITAssetsPage({
   const canManage = canManageItAssets(access);
   const canAssign = canAssignItAssets(access);
   const canReturnToCustomer = canReturnCustomerAssets(access);
+  const canOverrideNumber = canOverrideItAssetNumber(access);
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
 
@@ -210,9 +229,18 @@ export function ITAssetsPage({
   const [inventoryScope, setInventoryScope] = useState(defaultInventoryScope);
   const [ownershipFilter, setOwnershipFilter] = useState('');
   const [warrantyFilter, setWarrantyFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [makeFilter, setMakeFilter] = useState('');
+  const [modelFilter, setModelFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ITAsset | null>(null);
   const [form, setForm] = useState<AssetFormState>(emptyForm);
+  const [addMakeOpen, setAddMakeOpen] = useState(false);
+  const [addModelOpen, setAddModelOpen] = useState(false);
+  const [addSupplierOpen, setAddSupplierOpen] = useState(false);
+  const [newMakeName, setNewMakeName] = useState('');
+  const [newModelName, setNewModelName] = useState('');
+  const [newSupplierName, setNewSupplierName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<ITAsset | null>(null);
   const [assignTarget, setAssignTarget] = useState<ITAsset | null>(null);
   const [returnTarget, setReturnTarget] = useState<ITAsset | null>(null);
@@ -239,9 +267,56 @@ export function ITAssetsPage({
   const [pageRows, setPageRows] = useState<ITAsset[]>([]);
   const [matchingTotal, setMatchingTotal] = useState(0);
 
-  const assetTypesQuery = useQuery({
-    queryKey: itOperationsKeys.assetTypes(),
-    queryFn: fetchAssetTypes,
+  const categoriesQuery = useQuery({
+    queryKey: itOperationsKeys.masterCategories(),
+    queryFn: () => fetchMasterCategories({ active_only: true }),
+    enabled: formOpen,
+  });
+
+  const typesQuery = useQuery({
+    queryKey: itOperationsKeys.masterTypes(form.category || undefined),
+    queryFn: () =>
+      fetchMasterTypes({
+        category: form.category || undefined,
+        active_only: true,
+      }),
+    enabled: formOpen && Boolean(form.category),
+  });
+
+  const makesQuery = useQuery({
+    queryKey: itOperationsKeys.masterMakes(form.asset_type_id || undefined),
+    queryFn: () =>
+      fetchMasterMakes({
+        asset_type_id: form.asset_type_id || undefined,
+        active_only: true,
+      }),
+    enabled: formOpen && Boolean(form.asset_type_id),
+  });
+
+  const modelsQuery = useQuery({
+    queryKey: itOperationsKeys.masterModels(
+      form.make_id || undefined,
+      form.asset_type_id || undefined,
+    ),
+    queryFn: () =>
+      fetchMasterModels({
+        make_id: form.make_id || undefined,
+        asset_type_id: form.asset_type_id || undefined,
+        active_only: true,
+      }),
+    enabled: formOpen && Boolean(form.make_id) && Boolean(form.asset_type_id),
+  });
+
+  const suppliersQuery = useQuery({
+    queryKey: itOperationsKeys.masterSuppliers(),
+    queryFn: () => fetchMasterSuppliers({ active_only: true }),
+    enabled: formOpen,
+  });
+
+  const nextNumberQuery = useQuery({
+    queryKey: itOperationsKeys.nextAssetNumber(form.asset_type_id),
+    queryFn: () => fetchNextAssetNumber(form.asset_type_id),
+    enabled: formOpen && !editing && Boolean(form.asset_type_id),
   });
 
   const usersQuery = useQuery({
@@ -256,6 +331,49 @@ export function ITAssetsPage({
     enabled: canReturnToCustomer || canManage,
   });
 
+  const filterCategoriesQuery = useQuery({
+    queryKey: itOperationsKeys.masterCategories(),
+    queryFn: () => fetchMasterCategories({ active_only: true }),
+  });
+
+  const filterMakesQuery = useQuery({
+    queryKey: itOperationsKeys.masterMakes(),
+    queryFn: () => fetchMasterMakes({ active_only: true }),
+  });
+
+  const filterModelsQuery = useQuery({
+    queryKey: itOperationsKeys.masterModels(makeFilter || undefined),
+    queryFn: () =>
+      fetchMasterModels({ make_id: makeFilter || undefined, active_only: true }),
+  });
+
+  const categoryFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All categories' },
+      ...(filterCategoriesQuery.data ?? []).map((row) => ({
+        value: row.code,
+        label: row.name,
+      })),
+    ],
+    [filterCategoriesQuery.data],
+  );
+
+  const makeFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All makes' },
+      ...(filterMakesQuery.data ?? []).map((row) => ({ value: row.id, label: row.name })),
+    ],
+    [filterMakesQuery.data],
+  );
+
+  const modelFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All models' },
+      ...(filterModelsQuery.data ?? []).map((row) => ({ value: row.id, label: row.name })),
+    ],
+    [filterModelsQuery.data],
+  );
+
   const listFilters = useMemo(
     () => ({
       status: statusFilter || undefined,
@@ -263,8 +381,20 @@ export function ITAssetsPage({
       inventory_scope: statusFilter ? 'all' : inventoryScope,
       purchased_by: ownershipFilter || undefined,
       warranty_status: warrantyFilter || undefined,
+      category: categoryFilter || undefined,
+      make_id: makeFilter || undefined,
+      model_id: modelFilter || undefined,
     }),
-    [search, statusFilter, inventoryScope, ownershipFilter, warrantyFilter],
+    [
+      search,
+      statusFilter,
+      inventoryScope,
+      ownershipFilter,
+      warrantyFilter,
+      categoryFilter,
+      makeFilter,
+      modelFilter,
+    ],
   );
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
@@ -327,11 +457,40 @@ export function ITAssetsPage({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const makeName =
+        (makesQuery.data ?? []).find((m) => m.id === form.make_id)?.name ?? null;
+      const modelName =
+        (modelsQuery.data ?? []).find((m) => m.id === form.model_id)?.name ?? null;
+
+      if (editing) {
+        const payload: ITAssetUpdate = {
+          asset_type_id: form.asset_type_id,
+          serial_number: optionalString(form.serial_number),
+          make: makeName,
+          model: modelName,
+          supplier_id: optionalString(form.supplier_id),
+          purchase_date: optionalString(form.purchase_date),
+          purchase_cost: form.purchase_cost.trim()
+            ? Number(form.purchase_cost)
+            : null,
+          warranty_expiry: optionalString(form.warranty_expiry),
+          location: optionalString(form.location),
+          notes: optionalString(form.notes),
+          status: optionalString(form.status) ?? 'available',
+        };
+        return updateAsset(editing.id, payload);
+      }
+
+      const override = optionalString(form.asset_number_override);
+      const suggested = nextNumberQuery.data?.asset_number?.trim() || '';
       const payload: ITAssetCreate = {
         asset_type_id: form.asset_type_id,
         serial_number: optionalString(form.serial_number),
-        make: optionalString(form.make),
-        model: optionalString(form.model),
+        make_id: optionalString(form.make_id),
+        model_id: optionalString(form.model_id),
+        supplier_id: optionalString(form.supplier_id),
+        make: makeName,
+        model: modelName,
         purchase_date: optionalString(form.purchase_date),
         purchase_cost: form.purchase_cost.trim()
           ? Number(form.purchase_cost)
@@ -339,10 +498,9 @@ export function ITAssetsPage({
         warranty_expiry: optionalString(form.warranty_expiry),
         location: optionalString(form.location),
         notes: optionalString(form.notes),
-        status: optionalString(form.status) ?? 'available',
       };
-      if (editing) {
-        return updateAsset(editing.id, payload);
+      if (canOverrideNumber && override && override !== suggested) {
+        payload.asset_number = override;
       }
       return createAsset(payload);
     },
@@ -356,6 +514,57 @@ export function ITAssetsPage({
     onError: (error) => showError(getErrorMessage(error)),
   });
 
+  const createMakeMutation = useMutation({
+    mutationFn: () =>
+      createMasterMake({
+        name: newMakeName.trim(),
+        asset_type_id: form.asset_type_id || null,
+      }),
+    onSuccess: (created) => {
+      showSuccess('Make added.');
+      setAddMakeOpen(false);
+      setNewMakeName('');
+      setForm((current) => ({ ...current, make_id: created.id, model_id: '' }));
+      void queryClient.invalidateQueries({
+        queryKey: itOperationsKeys.masterMakes(form.asset_type_id || undefined),
+      });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const createModelMutation = useMutation({
+    mutationFn: () =>
+      createMasterModel({
+        name: newModelName.trim(),
+        make_id: form.make_id,
+        asset_type_id: form.asset_type_id,
+      }),
+    onSuccess: (created) => {
+      showSuccess('Model added.');
+      setAddModelOpen(false);
+      setNewModelName('');
+      setForm((current) => ({ ...current, model_id: created.id }));
+      void queryClient.invalidateQueries({
+        queryKey: itOperationsKeys.masterModels(
+          form.make_id || undefined,
+          form.asset_type_id || undefined,
+        ),
+      });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const createSupplierMutation = useMutation({
+    mutationFn: () => createMasterSupplier({ name: newSupplierName.trim() }),
+    onSuccess: (created) => {
+      showSuccess('Supplier added.');
+      setAddSupplierOpen(false);
+      setNewSupplierName('');
+      setForm((current) => ({ ...current, supplier_id: created.id }));
+      void queryClient.invalidateQueries({ queryKey: itOperationsKeys.masterSuppliers() });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteAsset(id),
     onSuccess: () => {
@@ -437,13 +646,46 @@ export function ITAssetsPage({
     onError: (error) => showError(getErrorMessage(error)),
   });
 
+  const categoryOptions = useMemo(
+    () =>
+      (categoriesQuery.data ?? []).map((category) => ({
+        value: category.code,
+        label: category.name,
+      })),
+    [categoriesQuery.data],
+  );
+
   const assetTypeOptions = useMemo(
     () =>
-      (assetTypesQuery.data ?? [])
+      (typesQuery.data ?? [])
         .filter((type) => type.is_active !== false)
         .map((type) => ({ value: type.id, label: `${type.name} (${type.code})` })),
-    [assetTypesQuery.data],
+    [typesQuery.data],
   );
+
+  const makeOptions = useMemo(() => {
+    const rows = (makesQuery.data ?? []).map((make) => ({
+      value: make.id,
+      label: make.name,
+    }));
+    return [...rows, { value: ADD_NEW_MAKE, label: '+ Add new make' }];
+  }, [makesQuery.data]);
+
+  const modelOptions = useMemo(() => {
+    const rows = (modelsQuery.data ?? []).map((model) => ({
+      value: model.id,
+      label: model.name,
+    }));
+    return [...rows, { value: ADD_NEW_MODEL, label: '+ Add new model' }];
+  }, [modelsQuery.data]);
+
+  const supplierOptions = useMemo(() => {
+    const rows = (suppliersQuery.data ?? []).map((supplier) => ({
+      value: supplier.id,
+      label: supplier.name,
+    }));
+    return [...rows, { value: ADD_NEW_SUPPLIER, label: '+ Add new supplier' }];
+  }, [suppliersQuery.data]);
 
   const userOptions = useMemo(
     () =>
@@ -488,10 +730,13 @@ export function ITAssetsPage({
   const openEdit = (asset: ITAsset) => {
     setEditing(asset);
     setForm({
+      category: '',
       asset_type_id: asset.asset_type_id,
+      make_id: asset.make_id ?? '',
+      model_id: asset.model_id ?? '',
+      supplier_id: asset.supplier_id ?? '',
       serial_number: asset.serial_number ?? '',
-      make: asset.make ?? '',
-      model: asset.model ?? '',
+      asset_number_override: '',
       purchase_date: asset.purchase_date ?? '',
       purchase_cost:
         asset.purchase_cost === null || asset.purchase_cost === undefined
@@ -505,11 +750,73 @@ export function ITAssetsPage({
     setFormOpen(true);
   };
 
+  const editTypesBootstrapQuery = useQuery({
+    queryKey: [...itOperationsKeys.masterTypes(), 'edit-bootstrap'],
+    queryFn: () => fetchMasterTypes({ active_only: true }),
+    enabled: formOpen && Boolean(editing) && !form.category && Boolean(form.asset_type_id),
+  });
+
+  useEffect(() => {
+    if (!editing || !formOpen) return;
+    const bootstrapType = (editTypesBootstrapQuery.data ?? []).find(
+      (t) => t.id === editing.asset_type_id,
+    );
+    const typedType = (typesQuery.data ?? []).find((t) => t.id === editing.asset_type_id);
+    const categoryCode = String(
+      typedType?.category || bootstrapType?.category || '',
+    );
+    if (categoryCode && !form.category) {
+      setForm((current) =>
+        current.category ? current : { ...current, category: categoryCode },
+      );
+    }
+  }, [
+    editing,
+    formOpen,
+    form.category,
+    editTypesBootstrapQuery.data,
+    typesQuery.data,
+  ]);
+
+  useEffect(() => {
+    if (!editing || !formOpen) return;
+    if (!form.make_id && editing.make && makesQuery.data?.length) {
+      const matchedMake = makesQuery.data.find(
+        (m) => m.name.toLowerCase() === editing.make!.toLowerCase(),
+      );
+      if (matchedMake) {
+        setForm((current) =>
+          current.make_id ? current : { ...current, make_id: matchedMake.id },
+        );
+      }
+    }
+  }, [editing, formOpen, form.make_id, makesQuery.data]);
+
+  useEffect(() => {
+    if (!editing || !formOpen) return;
+    if (!form.model_id && editing.model && modelsQuery.data?.length) {
+      const matchedModel = modelsQuery.data.find(
+        (m) => m.name.toLowerCase() === editing.model!.toLowerCase(),
+      );
+      if (matchedModel) {
+        setForm((current) =>
+          current.model_id ? current : { ...current, model_id: matchedModel.id },
+        );
+      }
+    }
+  }, [editing, formOpen, form.model_id, modelsQuery.data]);
+
   const handleSave = (event?: FormEvent) => {
     event?.preventDefault();
     const validationError = validateRequiredFields(
-      { asset_type_id: form.asset_type_id },
-      [{ key: 'asset_type_id', label: 'Asset type' }],
+      {
+        category: form.category,
+        asset_type_id: form.asset_type_id,
+      },
+      [
+        { key: 'category', label: 'Category' },
+        { key: 'asset_type_id', label: 'Asset type' },
+      ],
     );
     if (validationError) {
       showError(validationError);
@@ -783,6 +1090,30 @@ export function ITAssetsPage({
           options={WARRANTY_STATUS_OPTIONS}
           sx={{ minWidth: 200 }}
         />
+        <FormSelect
+          label="Category"
+          value={categoryFilter}
+          onChange={(event) => setCategoryFilter(String(event.target.value))}
+          options={categoryFilterOptions}
+          sx={{ minWidth: 180 }}
+        />
+        <FormSelect
+          label="Make"
+          value={makeFilter}
+          onChange={(event) => {
+            setMakeFilter(String(event.target.value));
+            setModelFilter('');
+          }}
+          options={makeFilterOptions}
+          sx={{ minWidth: 180 }}
+        />
+        <FormSelect
+          label="Model"
+          value={modelFilter}
+          onChange={(event) => setModelFilter(String(event.target.value))}
+          options={modelFilterOptions}
+          sx={{ minWidth: 180 }}
+        />
       </SearchToolbar>
 
       {selectedIds.size > 0 ? (
@@ -825,7 +1156,11 @@ export function ITAssetsPage({
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title={editing ? 'Edit asset' : 'Add asset'}
-        subtitle="Asset numbers are generated by the server."
+        subtitle={
+          editing
+            ? 'Update identity and purchase details.'
+            : 'Select category and type to suggest the next asset number.'
+        }
         icon={InventoryRoundedIcon}
         formId="it-asset-form"
         width={560}
@@ -840,14 +1175,74 @@ export function ITAssetsPage({
         >
           <FormSection title="Identity">
             <FormSelect
+              label="Category"
+              required
+              value={form.category}
+              onChange={(event) => {
+                const category = String(event.target.value);
+                setForm((current) => ({
+                  ...current,
+                  category,
+                  asset_type_id: '',
+                  make_id: '',
+                  model_id: '',
+                  asset_number_override: '',
+                }));
+              }}
+              options={categoryOptions}
+              placeholder="Select category"
+            />
+            <FormSelect
               label="Asset type"
               required
               value={form.asset_type_id}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, asset_type_id: String(event.target.value) }))
-              }
+              disabled={!form.category}
+              onChange={(event) => {
+                const asset_type_id = String(event.target.value);
+                setForm((current) => ({
+                  ...current,
+                  asset_type_id,
+                  make_id: '',
+                  model_id: '',
+                  asset_number_override: '',
+                }));
+              }}
               options={assetTypeOptions}
+              placeholder={form.category ? 'Select type' : 'Select category first'}
             />
+            {!editing ? (
+              <FormField
+                label="Suggested asset number"
+                value={
+                  form.asset_type_id
+                    ? nextNumberQuery.data?.asset_number ??
+                      (nextNumberQuery.isFetching ? 'Loading…' : '')
+                    : ''
+                }
+                slotProps={{ input: { readOnly: true } }}
+                helper="Assigned automatically on create. Serial number is separate."
+              />
+            ) : (
+              <FormField
+                label="Asset number"
+                value={editing.asset_number}
+                slotProps={{ input: { readOnly: true } }}
+              />
+            )}
+            {!editing && canOverrideNumber ? (
+              <FormField
+                label="Override asset number"
+                value={form.asset_number_override}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    asset_number_override: event.target.value,
+                  }))
+                }
+                helper="Leave blank to use the suggested number."
+                placeholder={nextNumberQuery.data?.asset_number ?? ''}
+              />
+            ) : null}
             <FormField
               label="Serial number"
               value={form.serial_number}
@@ -855,24 +1250,50 @@ export function ITAssetsPage({
                 setForm((current) => ({ ...current, serial_number: event.target.value }))
               }
             />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <FormField
-                label="Make"
-                value={form.make}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, make: event.target.value }))
+            <FormSelect
+              label="Make"
+              value={form.make_id}
+              disabled={!form.asset_type_id}
+              onChange={(event) => {
+                const value = String(event.target.value);
+                if (value === ADD_NEW_MAKE) {
+                  setAddMakeOpen(true);
+                  return;
                 }
-                sx={{ flex: 1 }}
-              />
-              <FormField
-                label="Model"
-                value={form.model}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, model: event.target.value }))
+                setForm((current) => ({ ...current, make_id: value, model_id: '' }));
+              }}
+              options={makeOptions}
+              placeholder={form.asset_type_id ? 'Select make' : 'Select type first'}
+            />
+            <FormSelect
+              label="Model"
+              value={form.model_id}
+              disabled={!form.make_id}
+              onChange={(event) => {
+                const value = String(event.target.value);
+                if (value === ADD_NEW_MODEL) {
+                  setAddModelOpen(true);
+                  return;
                 }
-                sx={{ flex: 1 }}
-              />
-            </Stack>
+                setForm((current) => ({ ...current, model_id: value }));
+              }}
+              options={modelOptions}
+              placeholder={form.make_id ? 'Select model' : 'Select make first'}
+            />
+            <FormSelect
+              label="Supplier"
+              value={form.supplier_id}
+              onChange={(event) => {
+                const value = String(event.target.value);
+                if (value === ADD_NEW_SUPPLIER) {
+                  setAddSupplierOpen(true);
+                  return;
+                }
+                setForm((current) => ({ ...current, supplier_id: value }));
+              }}
+              options={supplierOptions}
+              placeholder="Select supplier"
+            />
             {editing ? (
               <FormSelect
                 label="Status"
@@ -934,6 +1355,89 @@ export function ITAssetsPage({
           </FormSection>
         </Box>
       </FormDrawer>
+
+      <Dialog open={addMakeOpen} onClose={() => setAddMakeOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Add make</DialogTitle>
+        <DialogContent>
+          <FormField
+            label="Make / brand"
+            value={newMakeName}
+            onChange={(event) => setNewMakeName(event.target.value)}
+            autoFocus
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setAddMakeOpen(false)}>
+            Cancel
+          </ProsohmButton>
+          <ProsohmButton
+            buttonVariant="primary"
+            loading={createMakeMutation.isPending}
+            disabled={!newMakeName.trim() || !form.asset_type_id}
+            onClick={() => createMakeMutation.mutate()}
+          >
+            Add make
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={addModelOpen} onClose={() => setAddModelOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Add model</DialogTitle>
+        <DialogContent>
+          <FormField
+            label="Model"
+            value={newModelName}
+            onChange={(event) => setNewModelName(event.target.value)}
+            autoFocus
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setAddModelOpen(false)}>
+            Cancel
+          </ProsohmButton>
+          <ProsohmButton
+            buttonVariant="primary"
+            loading={createModelMutation.isPending}
+            disabled={!newModelName.trim() || !form.make_id || !form.asset_type_id}
+            onClick={() => createModelMutation.mutate()}
+          >
+            Add model
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={addSupplierOpen}
+        onClose={() => setAddSupplierOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Add supplier</DialogTitle>
+        <DialogContent>
+          <FormField
+            label="Supplier name"
+            value={newSupplierName}
+            onChange={(event) => setNewSupplierName(event.target.value)}
+            autoFocus
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setAddSupplierOpen(false)}>
+            Cancel
+          </ProsohmButton>
+          <ProsohmButton
+            buttonVariant="primary"
+            loading={createSupplierMutation.isPending}
+            disabled={!newSupplierName.trim()}
+            onClick={() => createSupplierMutation.mutate()}
+          >
+            Add supplier
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

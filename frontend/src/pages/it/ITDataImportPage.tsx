@@ -80,7 +80,7 @@ export function ITDataImportPage() {
   const allowed = canManageItDataImports(ctx);
   const isAdmin = ctx.role_name === ROLES.ADMIN;
 
-  const [importType, setImportType] = useState('assets');
+  const [importType, setImportType] = useState('hardware_workbook');
   const [file, setFile] = useState<File | null>(null);
   const [sheetOverride, setSheetOverride] = useState('');
   const [analysis, setAnalysis] = useState<ITDataImportAnalyzeResult | null>(null);
@@ -436,6 +436,12 @@ export function ITDataImportPage() {
                 {analysis.stats.importable ?? 0} · Duplicates: {analysis.stats.duplicates ?? 0} ·
                 Errors: {analysis.stats.errors ?? 0} · Warnings: {analysis.stats.warnings ?? 0} ·
                 Review: {analysis.stats.reviews ?? 0}
+                {analysis.stats.ownership_required != null
+                  ? ` · Ownership required: ${analysis.stats.ownership_required}`
+                  : ''}
+                {analysis.stats.user_match_required != null
+                  ? ` · User match required: ${analysis.stats.user_match_required}`
+                  : ''}
               </Typography>
 
               <Typography sx={{ fontWeight: 600 }}>Column mapping</Typography>

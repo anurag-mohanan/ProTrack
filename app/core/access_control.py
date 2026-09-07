@@ -122,6 +122,9 @@ SPECIAL_MANAGE_COMPANY_SETTINGS = "manage_company_settings"
 SPECIAL_MANAGE_PROJECT_SETTINGS = "manage_project_settings"
 SPECIAL_VIEW_REPORTS = "view_reports"
 SPECIAL_VIEW_RESOURCE_PLANNING = "view_resource_planning"
+# --- Resource Planning shifts (wave 3) ---
+SPECIAL_MANAGE_RESOURCE_SHIFTS = "manage_resource_shifts"
+SPECIAL_ASSIGN_RESOURCE_SHIFTS = "assign_resource_shifts"
 # --- Field-level security & governance specials (security foundation) ---
 SPECIAL_VIEW_SALARY = "view_salary"
 SPECIAL_VIEW_FINANCIAL_COST = "view_financial_cost"
@@ -146,6 +149,7 @@ SPECIAL_MANAGE_IT_DATA_IMPORTS = "manage_it_data_imports"
 SPECIAL_MANAGE_IT_INVENTORY = "manage_it_inventory"
 SPECIAL_MANAGE_IT_SOFTWARE = "manage_it_software"
 SPECIAL_MANAGE_IT_SUPPLIERS = "manage_it_suppliers"
+SPECIAL_OVERRIDE_IT_ASSET_NUMBER = "override_it_asset_number"
 
 ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_CREATE_PROJECTS,
@@ -164,6 +168,8 @@ ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_MANAGE_PROJECT_SETTINGS,
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
+    SPECIAL_MANAGE_RESOURCE_SHIFTS,
+    SPECIAL_ASSIGN_RESOURCE_SHIFTS,
     SPECIAL_VIEW_SALARY,
     SPECIAL_VIEW_FINANCIAL_COST,
     SPECIAL_VIEW_BUDGET,
@@ -186,6 +192,7 @@ ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_MANAGE_IT_INVENTORY,
     SPECIAL_MANAGE_IT_SOFTWARE,
     SPECIAL_MANAGE_IT_SUPPLIERS,
+    SPECIAL_OVERRIDE_IT_ASSET_NUMBER,
 )
 
 # Executive tier: every business module EXCEPT System Administration (which
@@ -203,6 +210,8 @@ EXECUTIVE_SPECIALS: frozenset[str] = frozenset(
         SPECIAL_VIEW_REPORTS,
         SPECIAL_EXPORT_REPORTS,
         SPECIAL_VIEW_RESOURCE_PLANNING,
+        SPECIAL_MANAGE_RESOURCE_SHIFTS,
+        SPECIAL_ASSIGN_RESOURCE_SHIFTS,
         SPECIAL_VIEW_SALARY,
         SPECIAL_VIEW_FINANCIAL_COST,
         SPECIAL_VIEW_BUDGET,
@@ -307,6 +316,7 @@ DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
         SPECIAL_MANAGE_IT_INVENTORY,
         SPECIAL_MANAGE_IT_SOFTWARE,
         SPECIAL_MANAGE_IT_SUPPLIERS,
+        SPECIAL_OVERRIDE_IT_ASSET_NUMBER,
     }),
     DIRECTOR_GENERIC: EXECUTIVE_SPECIALS | EXECUTIVE_IT_VIEW_SPECIALS,
     ENGINEERING_MANAGER: frozenset(
@@ -319,6 +329,7 @@ DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
             SPECIAL_EXPORT_REPORTS,
             SPECIAL_VIEW_REPORTS,
             SPECIAL_VIEW_RESOURCE_PLANNING,
+            SPECIAL_ASSIGN_RESOURCE_SHIFTS,
         }
     ),
     DESIGN_LEADER: frozenset(

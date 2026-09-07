@@ -58,6 +58,7 @@ _SENSITIVE_HEADER_RE = re.compile(
 
 # Canonical sheet names — NEVER auto-import compat sheets.
 CANONICAL_SHEETS: dict[str, str] = {
+    "hardware_workbook": "IT Assets Import",
     "assets": "Assets",
     "computers": "Computers",
     "ip_addresses": "IP_Addresses",
@@ -76,11 +77,14 @@ COMPAT_SHEETS: frozenset[str] = frozenset(
         "softwares_&_licenses",
         "user_credentials",
         "supplier_list",
+        "master data seed",
+        "ownership options",
     }
 )
 
 # Signature headers used to detect wrong-file uploads (normalized).
 _SIGNATURE_HEADERS: dict[str, frozenset[str]] = {
+    "hardware_workbook": frozenset({"asset_number", "asset_type"}),
     "assets": frozenset({"external_id", "asset_number", "ownership_type", "asset_type"}),
     "computers": frozenset({"asset_external_id", "asset_number", "computer_name", "computer_type"}),
     "ip_addresses": frozenset({"ip_address", "asset_external_id", "assignment_status"}),
@@ -92,22 +96,92 @@ _SIGNATURE_HEADERS: dict[str, frozenset[str]] = {
 }
 
 FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
+    "hardware_workbook": {
+        "asset_number": (
+            "asset_number",
+            "asset number",
+            "asset tag",
+            "asset tag cpu#",
+            "it asset no",
+            "it asset number",
+            "id_tag",
+        ),
+        "category": ("category", "asset category"),
+        "asset_type": ("asset_type", "asset type", "type"),
+        "make": ("make", "make / brand", "make_brand", "brand", "manufacturer"),
+        "model_number": ("model", "model_number", "model number"),
+        "computer_name": ("pc name", "pc_name", "computer_name", "hostname"),
+        "serial_number": ("serial_number", "serial", "serial / service tag"),
+        "service_tag": ("service_tag", "service tag", "serial / service tag"),
+        "ip_address": ("ip address", "ip_address", "ip"),
+        "mac_address": ("mac address", "mac_address", "mac"),
+        "assigned_to": (
+            "assigned user",
+            "assigned_to",
+            "assigned_user",
+            "current_user",
+        ),
+        "current_status": ("asset status", "current_status", "status"),
+        "ownership_type": (
+            "hardware owner type",
+            "ownership_type",
+            "owner_type",
+            "purchased_by",
+        ),
+        "owner_customer": (
+            "hardware owner",
+            "owner_customer",
+            "owner",
+            "cust_paid",
+        ),
+        "parent_asset_number": (
+            "parent asset number",
+            "parent_asset_number",
+            "parent asset",
+        ),
+        "migration_note": ("notes", "migration_note", "remarks"),
+        "description": ("description",),
+        "location": ("location",),
+    },
     "assets": {
         "external_id": ("external_id", "source_id", "id"),
-        "asset_number": ("asset_number", "id_tag"),
+        "asset_number": (
+            "asset_number",
+            "asset number",
+            "id_tag",
+            "asset tag",
+            "it asset no",
+        ),
         "legacy_asset_number": ("legacy_asset_number",),
-        "asset_type": ("asset_type", "type", "category"),
+        "category": ("category", "asset category"),
+        "asset_type": ("asset_type", "asset type", "type"),
+        "make": ("make", "make / brand", "brand", "manufacturer"),
         "name": ("name",),
         "description": ("description",),
-        "ownership_type": ("ownership_type", "owner_type", "purchased_by"),
-        "owner_customer": ("owner_customer", "owner", "cust_paid"),
+        "ownership_type": (
+            "ownership_type",
+            "owner_type",
+            "purchased_by",
+            "hardware owner type",
+        ),
+        "owner_customer": (
+            "owner_customer",
+            "owner",
+            "cust_paid",
+            "hardware owner",
+        ),
         "customer_used_for": ("customer_used_for", "customer_used"),
-        "assigned_to": ("assigned_to", "assigned_user", "current_user"),
+        "assigned_to": (
+            "assigned_to",
+            "assigned_user",
+            "assigned user",
+            "current_user",
+        ),
         "team_or_department": ("team_or_department", "department", "team"),
         "location": ("location", "room", "storage_location"),
         "purchase_date": ("purchase_date", "date_of_purchase", "date"),
         "supplier": ("supplier",),
-        "service_tag": ("service_tag", "service_tag_number"),
+        "service_tag": ("service_tag", "service_tag_number", "serial / service tag"),
         "warranty_expiry": ("warranty_expiry", "warranty_valid_upto", "warranty_valid_until"),
         "condition": ("condition",),
         "quantity": ("quantity", "qty"),
@@ -115,11 +189,19 @@ FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
         "model_number": ("model_number", "model"),
         "serial_number": ("serial_number", "serial"),
         "invoice_number": ("invoice_number", "invoice_no", "invoice"),
-        "current_status": ("current_status", "status"),
+        "current_status": ("current_status", "status", "asset status"),
         "is_current_asset": ("is_current_asset", "current_asset"),
         "returned_to_owner": ("returned_to_owner", "returned_to_customer"),
         "return_date": ("return_date",),
         "return_notes": ("return_notes",),
+        "parent_asset_number": (
+            "parent_asset_number",
+            "parent asset number",
+            "parent asset",
+        ),
+        "computer_name": ("pc name", "pc_name", "computer_name", "hostname"),
+        "ip_address": ("ip address", "ip_address", "ip"),
+        "mac_address": ("mac address", "mac_address", "mac"),
         "source_system": ("source_system",),
         "source_row": ("source_row",),
         "migration_note": ("migration_note", "remarks", "notes"),
@@ -227,6 +309,14 @@ FIELD_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
 }
 
 IMPORT_TYPES: list[dict[str, Any]] = [
+    {
+        "id": "hardware_workbook",
+        "label": "IT Hardware Workbook",
+        "expected_filename": "ProTrack_Current_IT_Assets_Import.xlsx",
+        "recommended_order": 0,
+        "depends_on": [],
+        "review_only": False,
+    },
     {
         "id": "assets",
         "label": "Assets",
@@ -1005,20 +1095,62 @@ def analyze_upload(
 
     # Detect presence of ID-like columns for fidelity gate.
     id_binding_keys = {
+        "hardware_workbook": ("asset_number",),
         "assets": ("external_id", "asset_number"),
         "computers": ("asset_external_id", "asset_number"),
         "inventory": ("external_id",),
         "ip_addresses": ("ip_address",),
     }
     id_keys = id_binding_keys.get(import_type, ())
-    id_column_present = any(bindings.get(k) for k in id_keys)
+    if import_type == "hardware_workbook":
+        # Blank Asset Numbers are allowed (system-generated); do not fidelity-block.
+        id_column_present = False
+    else:
+        id_column_present = any(bindings.get(k) for k in id_keys)
+    existing_macs = {
+        (c.mac_address or "").strip().upper()
+        for c in db.scalars(select(Computer)).all()
+        if c.mac_address
+    }
+    ownership_required_count = 0
+    user_match_required_count = 0
 
     for idx, raw in enumerate(raw_rows, start=2):  # Excel-ish (header = row 1)
         fields = _map_row(raw, bindings)
         issues: list[dict[str, str]] = []
         action = "import"
 
-        if import_type == "assets":
+        if import_type == "hardware_workbook":
+            from app.services import it_hardware_workbook_import as hw
+
+            if id_column_present:
+                id_total += 1
+                if not (fields.get("asset_number") or "").strip():
+                    id_blank_count += 1
+            action, issues, extras = hw.analyze_hardware_issues(
+                fields,
+                existing=existing,
+                existing_ips=existing_ips,
+                existing_macs=existing_macs,
+                users=users,
+                customers=customers,
+                resolve_ownership=_resolve_ownership,
+                match_user=_match_user,
+                match_customer=_match_customer,
+                preview_next_asset_number=it_asset_service.preview_next_asset_number,
+                resolve_or_create_asset_type=_resolve_or_create_asset_type,
+                db=db,
+            )
+            fields = extras.get("fields") or fields
+            preview = extras.get("preview") or {}
+            if action == "skip_duplicate":
+                duplicate_count += 1
+            if any(i.get("code") == "OWNERSHIP_REQUIRED" for i in issues):
+                ownership_required_count += 1
+            if any(i.get("code") == "USER_UNKNOWN" for i in issues):
+                user_match_required_count += 1
+
+        elif import_type == "assets":
             ext = fields.get("external_id") or ""
             anum = fields.get("asset_number") or ext
             legacy = fields.get("legacy_asset_number") or anum
@@ -1064,7 +1196,13 @@ def analyze_upload(
                 fields["_purchased_by"] = purchased_by
                 issues.extend(own_issues)
                 assignee = fields.get("assigned_to") or ""
-                if assignee and _match_user(users, assignee) is None:
+                from app.services.it_hardware_workbook_import import is_placeholder_assignee
+
+                if assignee and is_placeholder_assignee(assignee):
+                    fields["assigned_to"] = ""
+                    if not (fields.get("current_status") or "").strip():
+                        fields["current_status"] = "Available"
+                elif assignee and _match_user(users, assignee) is None:
                     issues.append(
                         {
                             "code": "USER_UNKNOWN",
@@ -1388,6 +1526,8 @@ def analyze_upload(
         "skipped": skip_count,
         "sensitive_columns_excluded": len(sensitive),
         "id_blank_ratio": (id_blank_count / id_total) if id_total else 0.0,
+        "ownership_required": ownership_required_count,
+        "user_match_required": user_match_required_count,
     }
 
     batch = ITImportBatch(
@@ -1531,7 +1671,141 @@ def commit_import(
     source_system_default = f"it_data_import:{session.get('filename') or batch.filename}"
 
     try:
-        if import_type == "assets":
+        if import_type == "hardware_workbook":
+            from app.services import it_hardware_workbook_import as hw
+
+            existing = _existing_asset_keys(db)
+            parent_links: list[tuple[Asset, str | None]] = []
+            for row in rows:
+                if row.get("_action") == "error":
+                    skipped += 1
+                    continue
+                if row.get("_action") == "skip_duplicate" and skip_duplicates:
+                    duplicated += 1
+                    skipped += 1
+                    continue
+                # Re-apply defaults in case session stored pre-default fields
+                row_fields = hw.apply_hardware_row_defaults(
+                    {k: ("" if v is None else str(v)) for k, v in row.items() if not str(k).startswith("_")}
+                )
+                anum = (row_fields.get("asset_number") or row.get("asset_number") or "").strip()
+                generated_number = bool(row.get("_generated_asset_number") or row_fields.get("_generated_asset_number"))
+                if generated_number:
+                    anum = ""  # allocate under lock
+                norm = _norm_id(anum) if anum else ""
+                st = (row_fields.get("service_tag") or "").strip()
+                sn = (row_fields.get("serial_number") or "").strip()
+                if skip_duplicates and anum and (
+                    (st and _norm_id(st) in existing["service_tag"])
+                    or (sn and _norm_id(sn) in existing["serial"])
+                    or (norm in existing["asset_number"])
+                    or (norm in existing["legacy"])
+                ):
+                    duplicated += 1
+                    skipped += 1
+                    continue
+
+                purchased_by, owner_id, _ = _resolve_ownership(
+                    row_fields.get("ownership_type") or "",
+                    row_fields.get("owner_customer") or "",
+                    customers,
+                )
+                if not (row_fields.get("ownership_type") or "").strip() and not (
+                    row_fields.get("owner_customer") or ""
+                ).strip():
+                    purchased_by, owner_id = "unknown", None
+                if purchased_by == "customer" and owner_id is None:
+                    purchased_by = "unknown"
+
+                status = _map_asset_status(
+                    row_fields.get("current_status") or "",
+                    "",
+                    "",
+                )
+                if row_fields.get("_assignee_placeholder") == "1" and status == "available":
+                    status = "available"
+                type_label = row_fields.get("asset_type") or "OTHER"
+                category_label = (row_fields.get("category") or "").strip()
+                try:
+                    at = _resolve_or_create_asset_type(db, type_label)
+                    if category_label:
+                        # Keep type category aligned with workbook Category master label
+                        cat_code = re.sub(r"[^A-Za-z0-9]+", "_", category_label).strip("_").lower()[:40]
+                        if cat_code:
+                            at.category = cat_code if "hardware" in cat_code else (at.category or cat_code)
+                            if "hardware" in category_label.casefold():
+                                at.category = "peripheral" if "monitor" in type_label.casefold() or "mouse" in type_label.casefold() else "computer"
+                            db.add(at)
+                    make = (row_fields.get("make") or "").strip() or None
+                    model = (row_fields.get("model_number") or row_fields.get("model") or "").strip() or None
+                    asset = it_asset_service.create_asset(
+                        db,
+                        actor=actor,
+                        asset_type_id=at.id,
+                        asset_number=None if generated_number else anum,
+                        legacy_asset_number=None if generated_number else (anum or None),
+                        serial_number=sn or None,
+                        make=make,
+                        model=model,
+                        location=(row_fields.get("location") or "").strip() or None,
+                        notes=(row_fields.get("migration_note") or "").strip() or None,
+                        description=(row_fields.get("description") or "").strip() or None,
+                        service_tag=st or None,
+                        purchased_by=purchased_by,
+                        owner_customer_id=owner_id,
+                        commit=False,
+                    )
+                    asset.status = status
+                    asset.import_batch_id = batch.id
+                    asset.source_system = source_system_default
+                    asset.source_record_id = (anum or asset.asset_number or "")[:80]
+                    asset.source_row = _parse_int(str(row.get("_source_row") or ""))
+                    db.add(asset)
+                    db.flush()
+
+                    assignee_label = (row_fields.get("assigned_to") or "").strip()
+                    assignee = _match_user(users, assignee_label) if assignee_label else None
+                    if assignee and asset.status in {"available", "assigned"}:
+                        try:
+                            it_asset_service.assign_asset(
+                                db,
+                                asset,
+                                user_id=assignee.id,
+                                by_user=actor,
+                                notes="IT Hardware Workbook import",
+                                commit=False,
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+
+                    hw.ensure_computer_and_ip(
+                        db,
+                        asset=asset,
+                        fields=row_fields,
+                        batch_id=batch.id,
+                        source_system=source_system_default,
+                        actor=actor,
+                        ensure_slash24_network=_ensure_slash24_network,
+                    )
+                    parent_links.append(
+                        (asset, (row_fields.get("parent_asset_number") or "").strip() or None)
+                    )
+                    imported += 1
+                    if asset.asset_number:
+                        existing["asset_number"].add(_norm_id(asset.asset_number))
+                        existing["legacy"].add(_norm_id(asset.asset_number))
+                    if sn:
+                        existing["serial"].add(_norm_id(sn))
+                    if st:
+                        existing["service_tag"].add(_norm_id(st))
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"Row {row.get('_source_row')}: {exc}")
+                    skipped += 1
+
+            for warn in hw.link_parent_assets(db, parent_links):
+                errors.append(warn)
+
+        elif import_type == "assets":
             existing = _existing_asset_keys(db)
             for row in rows:
                 if row.get("_action") == "error":
@@ -1542,17 +1816,27 @@ def commit_import(
                     skipped += 1
                     continue
                 anum = (row.get("asset_number") or row.get("external_id") or "").strip()
+                generated_number = False
                 if not anum:
-                    skipped += 1
-                    continue
-                norm = _norm_id(anum)
+                    # Missing number → allocate during create_asset (locked highest+1)
+                    generated_number = True
+                    at_preview = _resolve_or_create_asset_type(
+                        db, row.get("asset_type") or "OTHER"
+                    )
+                    suggested = it_asset_service.preview_next_asset_number(db, at_preview)[
+                        "asset_number"
+                    ]
+                    row["asset_number"] = suggested
+                    row["_generated_asset_number"] = True
+                    anum = ""  # force create_asset to allocate under lock
+                norm = _norm_id(anum) if anum else ""
                 st = (row.get("service_tag") or "").strip()
                 sn = (row.get("serial_number") or "").strip()
                 if skip_duplicates and (
                     (st and _norm_id(st) in existing["service_tag"])
                     or (sn and _norm_id(sn) in existing["serial"])
-                    or norm in existing["asset_number"]
-                    or norm in existing["legacy"]
+                    or (anum and norm in existing["asset_number"])
+                    or (anum and norm in existing["legacy"])
                 ):
                     duplicated += 1
                     skipped += 1
@@ -1604,13 +1888,15 @@ def commit_import(
                         db,
                         actor=actor,
                         asset_type_id=at.id,
-                        asset_number=anum,
+                        asset_number=None if generated_number else anum,
                         legacy_asset_number=(
-                            (row.get("legacy_asset_number") or anum).strip() or None
+                            None
+                            if generated_number
+                            else ((row.get("legacy_asset_number") or anum).strip() or None)
                         ),
                         serial_number=sn or None,
-                        make=None,
-                        model=(row.get("model_number") or "").strip() or None,
+                        make=(row.get("make") or row.get("manufacturer") or "").strip() or None,
+                        model=(row.get("model_number") or row.get("model") or "").strip() or None,
                         purchase_date=_parse_date(row.get("purchase_date") or ""),
                         purchase_cost=_parse_decimal(row.get("purchase_value") or ""),
                         warranty_expiry=warranty,
@@ -1623,6 +1909,7 @@ def commit_import(
                         owner_customer_id=owner_id,
                         customer_used_for_id=used_for.id if used_for else None,
                         supplier_id=supplier.id if supplier else None,
+                        supplier_name=supplier_name or None,
                         invoice_number=(row.get("invoice_number") or "").strip() or None,
                         condition=(row.get("condition") or row.get("current_status") or "").strip()
                         or None,

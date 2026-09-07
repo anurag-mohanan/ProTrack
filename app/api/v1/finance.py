@@ -80,6 +80,7 @@ from app.schemas.finance import (
     FxRateCreate,
     FxRateRead,
     FxRateRefreshResult,
+    HireImpactResult,
     KpiBreakdownRead,
     PaidByDefaultRead,
     PlanVsActualRead,
@@ -287,6 +288,37 @@ def finance_fy_turnover(
     if team_id is not None and db.get(Team, team_id) is None:
         raise HTTPException(status_code=400, detail="Team not found")
     return build_fy_turnover_control(db, team_id=team_id, fy_start_year=fy_start_year)
+
+
+@router.get("/receivables")
+def finance_receivables(
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Receivables aging buckets from quote invoice/payment ledgers."""
+    from app.services.finance.receivables_service import build_receivables_aging
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    return build_receivables_aging(db, team_id=team_id)
+
+
+@router.get("/hire-impact", response_model=HireImpactResult)
+def finance_hire_impact(
+    headcount: int = Query(default=1, ge=0, le=500),
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Computers, license seats and recorded cost implied by a hiring plan."""
+    from app.services.finance.hire_impact_service import estimate_hire_impact
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    return estimate_hire_impact(db, headcount=headcount, team_id=team_id)
 
 
 @router.get("/kpi-breakdown", response_model=KpiBreakdownRead)
@@ -2706,5 +2738,94 @@ async def confirm_invoice_pdf(
             user=current_user,
         )
         return _quote_read(db, row)
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/quotes/pdf/extract")
+async def extract_quote_pdf(
+    file: UploadFile = File(...),
+    team_id: UUID | None = Form(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Extract Prosohm quote PDF fields for review. Does not create financial records."""
+    from app.schemas.finance import QuotePdfExtractResult
+    from app.services.finance.quote_pdf_import_service import extract_quote_pdf as do_extract
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="A file name is required.")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF quote files are supported.")
+    content = await file.read()
+    enforce_upload_size(content)
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team not found")
+    result = do_extract(
+        db,
+        content=content,
+        filename=file.filename,
+        team_id=team_id,
+    )
+    return QuotePdfExtractResult.model_validate(result)
+
+
+@router.post("/quotes/pdf/confirm", response_model=QuoteImportResult)
+async def confirm_quote_pdf(
+    team_id: UUID = Form(...),
+    customer_id: UUID = Form(...),
+    tool_number: str = Form(...),
+    quoted_revenue: Decimal = Form(...),
+    external_quote_number: str | None = Form(default=None),
+    currency_code: str | None = Form(default=None),
+    quoted_hours: Decimal | None = Form(default=None),
+    quoted_date: date | None = Form(default=None),
+    create_project: bool = Form(default=True),
+    import_anyway: bool = Form(default=False),
+    notes: str | None = Form(default=None),
+    content_sha256: str | None = Form(default=None),
+    file: UploadFile | None = File(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Confirm reviewed quote fields and create an awarded quote (+ optional PDF store)."""
+    from app.services.finance.quote_pdf_import_service import confirm_quote_pdf_import
+
+    _require_finance_action(db, current_user, MODULE_ACTION_CREATE)
+    if db.get(Team, team_id) is None:
+        raise HTTPException(status_code=400, detail="Team is required and must exist.")
+    content = None
+    filename = None
+    if file is not None and file.filename:
+        content = await file.read()
+        enforce_upload_size(content)
+        filename = file.filename
+    try:
+        outcome = confirm_quote_pdf_import(
+            db,
+            team_id=team_id,
+            customer_id=customer_id,
+            tool_number=tool_number,
+            quoted_revenue=quoted_revenue,
+            external_quote_number=external_quote_number,
+            currency_code=currency_code,
+            quoted_hours=quoted_hours,
+            quoted_date=quoted_date,
+            create_project=create_project,
+            import_anyway=import_anyway,
+            notes=notes,
+            content=content,
+            filename=filename,
+            content_sha256=content_sha256,
+            user=current_user,
+        )
+        items = _quote_import_items(db, current_user=current_user, outcomes=[outcome])
+        db.commit()
+        return QuoteImportResult(
+            imported_count=1,
+            quote_ids=[outcome.quote.id],
+            items=items,
+        )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

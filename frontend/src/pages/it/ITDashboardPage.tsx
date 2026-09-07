@@ -10,6 +10,9 @@ import LanRoundedIcon from '@mui/icons-material/LanRounded';
 import DnsRoundedIcon from '@mui/icons-material/DnsRounded';
 import HowToRegRoundedIcon from '@mui/icons-material/HowToRegRounded';
 import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
+import AppsRoundedIcon from '@mui/icons-material/AppsRounded';
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
+import EventBusyRoundedIcon from '@mui/icons-material/EventBusyRounded';
 import {
   fetchItDashboard,
   fetchItOnboardingTasks,
@@ -63,6 +66,10 @@ export function ITDashboardPage() {
   const maintenanceComputers = data?.maintenance_computers ?? 0;
   const retiredComputers = data?.retired_computers ?? 0;
   const employeesWithout = data?.employees_without_computer ?? 0;
+  const softwareCatalog = data?.software_catalog_count ?? 0;
+  const licensePools = data?.license_pool_count ?? 0;
+  const licensesExpiring = data?.licenses_expiring_30 ?? 0;
+  const licensesExpired = data?.licenses_expired ?? 0;
   const onboardingTasks = onboardingQuery.data ?? [];
 
   return (
@@ -166,6 +173,47 @@ export function ITDashboardPage() {
                 icon={HowToRegRoundedIcon}
                 accent="warning"
                 onClick={() => navigate('/it/accounts')}
+              />
+            </Grid>
+          </Grid>
+        </ContentCard>
+
+        <ContentCard title="Software & licenses">
+          <Grid container spacing={1.5}>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <KpiMetricCard
+                title="Catalog"
+                value={String(softwareCatalog)}
+                icon={AppsRoundedIcon}
+                accent="primary"
+                onClick={() => navigate('/it/software')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <KpiMetricCard
+                title="License pools"
+                value={String(licensePools)}
+                icon={DevicesOtherRoundedIcon}
+                accent="info"
+                onClick={() => navigate('/it/software')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <KpiMetricCard
+                title="Expiring (30d)"
+                value={String(licensesExpiring)}
+                icon={WarningAmberRoundedIcon}
+                accent="warning"
+                onClick={() => navigate('/it/software')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <KpiMetricCard
+                title="Expired"
+                value={String(licensesExpired)}
+                icon={EventBusyRoundedIcon}
+                accent="error"
+                onClick={() => navigate('/it/software')}
               />
             </Grid>
           </Grid>

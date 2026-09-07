@@ -19,6 +19,7 @@ from app.services.finance.invoice_pdf_parser import (
     content_fingerprint,
     parse_invoice_pdf_text,
 )
+from app.services.finance.pdf_ocr import extract_text_with_optional_ocr
 from app.services.finance.quote_cash_ledger_service import add_invoice_line, load_quote_with_ledger
 from app.services.finance.quote_import_service import _find_customer
 from app.services.workorder_pdf_extract import extract_pdf_text
@@ -221,13 +222,22 @@ def extract_invoice_pdf(
     try:
         text = extract_pdf_text(content)
     except ProTrackValidationError as exc:
+        text = ""
+        extract_error: str | None = str(exc)
+    else:
+        extract_error = None
+
+    ocr = extract_text_with_optional_ocr(content, existing_text=text)
+    text = ocr.text
+
+    if not text.strip():
         return {
             "text_extractable": False,
             "ocr_used": False,
             "source_chars": 0,
             "content_sha256": sha,
             "filename": filename,
-            "warnings": [str(exc)],
+            "warnings": [w for w in ([extract_error] if extract_error else []) + ocr.warnings],
             "fields": {},
             "customer_matches": [],
             "quote_matches": [],
@@ -236,6 +246,8 @@ def extract_invoice_pdf(
         }
 
     parsed = parse_invoice_pdf_text(text, filename=filename, content_sha256=sha)
+    parsed.ocr_used = ocr.ocr_used
+    parsed.warnings.extend(ocr.warnings)
     amount = _parse_amount(parsed.amount.value)
     inv_date = _parse_iso_date(parsed.invoice_date.value)
 
@@ -290,7 +302,7 @@ def extract_invoice_pdf(
 
     return {
         "text_extractable": parsed.text_extractable,
-        "ocr_used": False,
+        "ocr_used": parsed.ocr_used,
         "source_chars": parsed.source_chars,
         "content_sha256": sha,
         "filename": filename,

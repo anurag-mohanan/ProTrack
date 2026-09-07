@@ -16,9 +16,14 @@ import type {
   AssetType,
   AssetTypeCreate,
   AssetTypeUpdate,
+  AssetMake,
+  AssetMakeCreate,
+  AssetModel,
+  AssetModelCreate,
   IpAllocatePayload,
   IpReleasePayload,
   ITAsset,
+  ITAssetCategory,
   ITAssetCreate,
   ITAssetUpdate,
   AssetCustomerReturn,
@@ -36,6 +41,25 @@ import type {
   ITProfile,
   ITSettings,
   ITSettingsUpdate,
+  ITSupplier,
+  ITSupplierCreate,
+  MasterKind,
+  MasterMergeResult,
+  NextAssetNumberPreview,
+  NextAssetNumbersPreview,
+  SoftwareAssignment,
+  SoftwareAssignmentCreate,
+  SoftwareCatalogCreate,
+  SoftwareCatalogItem,
+  SoftwareCatalogUpdate,
+  SoftwareCompliance,
+  SoftwareExpirySummary,
+  SoftwareLicensePool,
+  SoftwareLicensePoolCreate,
+  SoftwareLicensePoolUpdate,
+  EmployeeSoftwareRequirement,
+  EmployeeSoftwareRequirementCreate,
+  EmployeeSoftwareRequirementUpdate,
 } from '../types/itOperations';
 
 export const itOperationsKeys = {
@@ -43,6 +67,17 @@ export const itOperationsKeys = {
   dashboard: () => [...itOperationsKeys.all, 'dashboard'] as const,
   onboardingTasks: () => [...itOperationsKeys.all, 'dashboard', 'onboarding-tasks'] as const,
   assetTypes: () => [...itOperationsKeys.all, 'asset-types'] as const,
+  masterCategories: () => [...itOperationsKeys.all, 'master', 'categories'] as const,
+  masterTypes: (category?: string) =>
+    [...itOperationsKeys.all, 'master', 'types', category ?? 'all'] as const,
+  masterMakes: (assetTypeId?: string) =>
+    [...itOperationsKeys.all, 'master', 'makes', assetTypeId ?? 'all'] as const,
+  masterModels: (makeId?: string, assetTypeId?: string) =>
+    [...itOperationsKeys.all, 'master', 'models', makeId ?? 'all', assetTypeId ?? 'all'] as const,
+  masterSuppliers: (search?: string) =>
+    [...itOperationsKeys.all, 'master', 'suppliers', search ?? ''] as const,
+  nextAssetNumber: (assetTypeId: string) =>
+    [...itOperationsKeys.all, 'assets', 'next-number', assetTypeId] as const,
   assets: (filters?: ListParams) => [...itOperationsKeys.all, 'assets', filters ?? {}] as const,
   asset: (id: string) => [...itOperationsKeys.all, 'assets', id] as const,
   customerReturns: (filters?: ListParams) =>
@@ -65,6 +100,16 @@ export const itOperationsKeys = {
   profileMe: () => [...itOperationsKeys.all, 'profile', 'me'] as const,
   profileUser: (userId: string) => [...itOperationsKeys.all, 'profile', userId] as const,
   openRequests: () => [...itOperationsKeys.all, 'reports', 'open-requests'] as const,
+  software: (filters?: ListParams) => [...itOperationsKeys.all, 'software', filters ?? {}] as const,
+  softwareLicenses: (filters?: ListParams) =>
+    [...itOperationsKeys.all, 'software-licenses', filters ?? {}] as const,
+  softwareAssignments: (filters?: ListParams) =>
+    [...itOperationsKeys.all, 'software-assignments', filters ?? {}] as const,
+  softwareRequirements: (filters?: ListParams) =>
+    [...itOperationsKeys.all, 'software-requirements', filters ?? {}] as const,
+  softwareExpiry: () => [...itOperationsKeys.all, 'software-expiry'] as const,
+  softwareCompliance: (userId: string) =>
+    [...itOperationsKeys.all, 'software-compliance', userId] as const,
 };
 
 async function getListOrPage<T>(path: string, params?: ListParams): Promise<PaginatedResponse<T>> {
@@ -97,6 +142,116 @@ export async function createAssetType(payload: AssetTypeCreate): Promise<AssetTy
 
 export async function updateAssetType(id: string, payload: AssetTypeUpdate): Promise<AssetType> {
   const { data } = await apiClient.patch<AssetType>(`/it/asset-types/${id}`, payload);
+  return data;
+}
+
+// --- Cascading master data ---
+
+export async function fetchMasterCategories(params?: {
+  active_only?: boolean;
+}): Promise<ITAssetCategory[]> {
+  return getList<ITAssetCategory>('/it/master/categories', params);
+}
+
+export async function createMasterCategory(payload: {
+  name: string;
+  code?: string;
+}): Promise<ITAssetCategory> {
+  const { data } = await apiClient.post<ITAssetCategory>('/it/master/categories', payload);
+  return data;
+}
+
+export async function fetchMasterTypes(params?: {
+  category?: string;
+  active_only?: boolean;
+}): Promise<AssetType[]> {
+  return getList<AssetType>('/it/master/types', params);
+}
+
+export async function fetchMasterMakes(params?: {
+  asset_type_id?: string;
+  active_only?: boolean;
+}): Promise<AssetMake[]> {
+  return getList<AssetMake>('/it/master/makes', params);
+}
+
+export async function createMasterMake(payload: AssetMakeCreate): Promise<AssetMake> {
+  const { data } = await apiClient.post<AssetMake>('/it/master/makes', payload);
+  return data;
+}
+
+export async function fetchMasterModels(params?: {
+  make_id?: string;
+  asset_type_id?: string;
+  active_only?: boolean;
+}): Promise<AssetModel[]> {
+  return getList<AssetModel>('/it/master/models', params);
+}
+
+export async function createMasterModel(payload: AssetModelCreate): Promise<AssetModel> {
+  const { data } = await apiClient.post<AssetModel>('/it/master/models', payload);
+  return data;
+}
+
+export async function fetchMasterSuppliers(params?: {
+  active_only?: boolean;
+  search?: string;
+}): Promise<ITSupplier[]> {
+  return getList<ITSupplier>('/it/master/suppliers', params);
+}
+
+export async function createMasterSupplier(payload: ITSupplierCreate): Promise<ITSupplier> {
+  const { data } = await apiClient.post<ITSupplier>('/it/master/suppliers', payload);
+  return data;
+}
+
+export async function setMasterActive(
+  kind: MasterKind,
+  id: string,
+  isActive: boolean,
+): Promise<ITAssetCategory | AssetType | AssetMake | AssetModel | ITSupplier> {
+  const { data } = await apiClient.patch(`/it/master/${kind}/${id}/active`, {
+    is_active: isActive,
+  });
+  return data;
+}
+
+export async function mergeMasterMake(
+  sourceId: string,
+  targetMakeId: string,
+): Promise<MasterMergeResult> {
+  const { data } = await apiClient.post<MasterMergeResult>(
+    `/it/master/makes/${sourceId}/merge`,
+    { target_make_id: targetMakeId },
+  );
+  return data;
+}
+
+export async function mergeMasterModel(
+  sourceId: string,
+  targetModelId: string,
+): Promise<MasterMergeResult> {
+  const { data } = await apiClient.post<MasterMergeResult>(
+    `/it/master/models/${sourceId}/merge`,
+    { target_model_id: targetModelId },
+  );
+  return data;
+}
+
+export async function fetchNextAssetNumber(assetTypeId: string): Promise<NextAssetNumberPreview> {
+  const { data } = await apiClient.get<NextAssetNumberPreview>(
+    `/it/assets/next-number${buildQuery({ asset_type_id: assetTypeId })}`,
+  );
+  return data;
+}
+
+export async function fetchNextAssetNumbers(
+  assetTypeId: string,
+  count: number,
+): Promise<NextAssetNumbersPreview> {
+  const { data } = await apiClient.get<NextAssetNumbersPreview>(
+    `/it/assets/next-numbers${buildQuery({ asset_type_id: assetTypeId, count })}`,
+  );
   return data;
 }
 
@@ -571,4 +726,114 @@ export async function fetchItOnboardingTasks(): Promise<ITOnboardingTask[]> {
 
 export async function fetchOpenItRequests(): Promise<ITOpenRequest[]> {
   return getList<ITOpenRequest>('/it/reports/open-requests');
+}
+
+// --- Software & licenses ---
+
+export async function fetchSoftwareCatalog(params?: ListParams): Promise<SoftwareCatalogItem[]> {
+  return getList<SoftwareCatalogItem>('/it/software', params);
+}
+
+export async function createSoftwareCatalog(
+  payload: SoftwareCatalogCreate,
+): Promise<SoftwareCatalogItem> {
+  const { data } = await apiClient.post<SoftwareCatalogItem>('/it/software', payload);
+  return data;
+}
+
+export async function updateSoftwareCatalog(
+  id: string,
+  payload: SoftwareCatalogUpdate,
+): Promise<SoftwareCatalogItem> {
+  const { data } = await apiClient.patch<SoftwareCatalogItem>(`/it/software/${id}`, payload);
+  return data;
+}
+
+export async function fetchSoftwareLicenses(params?: ListParams): Promise<SoftwareLicensePool[]> {
+  return getList<SoftwareLicensePool>('/it/software/licenses', params);
+}
+
+export async function createSoftwareLicense(
+  payload: SoftwareLicensePoolCreate,
+): Promise<SoftwareLicensePool> {
+  const { data } = await apiClient.post<SoftwareLicensePool>('/it/software/licenses', payload);
+  return data;
+}
+
+export async function updateSoftwareLicense(
+  id: string,
+  payload: SoftwareLicensePoolUpdate,
+): Promise<SoftwareLicensePool> {
+  const { data } = await apiClient.patch<SoftwareLicensePool>(
+    `/it/software/licenses/${id}`,
+    payload,
+  );
+  return data;
+}
+
+export async function fetchSoftwareAssignments(params?: ListParams): Promise<SoftwareAssignment[]> {
+  return getList<SoftwareAssignment>('/it/software/assignments', params);
+}
+
+export async function createSoftwareAssignment(
+  payload: SoftwareAssignmentCreate,
+): Promise<SoftwareAssignment> {
+  const { data } = await apiClient.post<SoftwareAssignment>('/it/software/assignments', payload);
+  return data;
+}
+
+export async function unassignSoftwareAssignment(
+  id: string,
+  payload?: { released_date?: string | null },
+): Promise<SoftwareAssignment> {
+  const { data } = await apiClient.post<SoftwareAssignment>(
+    `/it/software/assignments/${id}/unassign`,
+    payload ?? {},
+  );
+  return data;
+}
+
+export async function fetchSoftwareRequirements(
+  params?: ListParams,
+): Promise<EmployeeSoftwareRequirement[]> {
+  return getList<EmployeeSoftwareRequirement>('/it/software/requirements', params);
+}
+
+export async function createSoftwareRequirement(
+  payload: EmployeeSoftwareRequirementCreate,
+): Promise<EmployeeSoftwareRequirement> {
+  const { data } = await apiClient.post<EmployeeSoftwareRequirement>(
+    '/it/software/requirements',
+    payload,
+  );
+  return data;
+}
+
+export async function updateSoftwareRequirement(
+  id: string,
+  payload: EmployeeSoftwareRequirementUpdate,
+): Promise<EmployeeSoftwareRequirement> {
+  const { data } = await apiClient.patch<EmployeeSoftwareRequirement>(
+    `/it/software/requirements/${id}`,
+    payload,
+  );
+  return data;
+}
+
+export async function deleteSoftwareRequirement(id: string): Promise<void> {
+  await apiClient.delete(`/it/software/requirements/${id}`);
+}
+
+export async function fetchSoftwareExpirySummary(
+  withinDays = 30,
+): Promise<SoftwareExpirySummary> {
+  const { data } = await apiClient.get<SoftwareExpirySummary>(
+    `/it/software/expiry-summary${buildQuery({ within_days: withinDays })}`,
+  );
+  return data;
+}
+
+export async function fetchSoftwareCompliance(userId: string): Promise<SoftwareCompliance> {
+  const { data } = await apiClient.get<SoftwareCompliance>(`/it/software/compliance/${userId}`);
+  return data;
 }

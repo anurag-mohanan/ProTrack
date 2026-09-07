@@ -129,6 +129,11 @@ const ITReturnedAssetsPage = lazy(() =>
     default: module.ITReturnedAssetsPage,
   })),
 );
+const ITMasterDataPage = lazy(() =>
+  import('./pages/it/ITMasterDataPage').then((module) => ({
+    default: module.ITMasterDataPage,
+  })),
+);
 const ITReportsPage = lazy(() =>
   import('./pages/it/ITReportsPage').then((module) => ({
     default: module.ITReportsPage,
@@ -137,6 +142,11 @@ const ITReportsPage = lazy(() =>
 const ITUsersPage = lazy(() =>
   import('./pages/it/ITUsersPage').then((module) => ({
     default: module.ITUsersPage,
+  })),
+);
+const ITSoftwarePage = lazy(() =>
+  import('./pages/it/ITSoftwarePage').then((module) => ({
+    default: module.ITSoftwarePage,
   })),
 );
 const ITModulePlaceholderPage = lazy(() =>
@@ -530,10 +540,7 @@ export default function App() {
                         path="/it/software"
                         element={
                           <Suspense fallback={<LoadingState message="Loading software…" />}>
-                            <ITModulePlaceholderPage
-                              title="Software & Licenses"
-                              description="Software catalog, license pools, and assignments."
-                            />
+                            <ITSoftwarePage />
                           </Suspense>
                         }
                       />
@@ -557,15 +564,16 @@ export default function App() {
                         }
                       />
                       <Route
-                        path="/it/suppliers"
+                        path="/it/master-data"
                         element={
-                          <Suspense fallback={<LoadingState message="Loading suppliers…" />}>
-                            <ITModulePlaceholderPage
-                              title="Suppliers"
-                              description="IT and inventory vendor master data."
-                            />
+                          <Suspense fallback={<LoadingState message="Loading master data…" />}>
+                            <ITMasterDataPage />
                           </Suspense>
                         }
+                      />
+                      <Route
+                        path="/it/suppliers"
+                        element={<Navigate to="/it/master-data?tab=suppliers" replace />}
                       />
                       <Route
                         path="/it/reports"

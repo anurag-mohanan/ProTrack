@@ -49,6 +49,12 @@ export interface ITDashboardSummary {
   retired_computers?: number;
   disposed_computers?: number;
   employees_without_computer?: number;
+  software_catalog_count?: number;
+  active_software_count?: number;
+  license_pool_count?: number;
+  software_assignments_count?: number;
+  licenses_expiring_30?: number;
+  licenses_expired?: number;
 }
 
 export interface AssetType {
@@ -78,6 +84,93 @@ export interface AssetTypeUpdate {
   numbering_prefix?: string | null;
 }
 
+export interface ITAssetCategory {
+  id: string;
+  code: string;
+  name: string;
+  is_active?: boolean;
+  notes?: string | null;
+  usage_count?: number;
+}
+
+export interface AssetMake {
+  id: string;
+  name: string;
+  is_active?: boolean;
+  notes?: string | null;
+  usage_count?: number;
+}
+
+export interface AssetMakeCreate {
+  name: string;
+  asset_type_id?: string | null;
+}
+
+export interface AssetModel {
+  id: string;
+  name: string;
+  make_id: string;
+  asset_type_id: string;
+  is_active?: boolean;
+  notes?: string | null;
+  usage_count?: number;
+}
+
+export interface AssetModelCreate {
+  name: string;
+  make_id: string;
+  asset_type_id: string;
+}
+
+export interface ITSupplier {
+  id: string;
+  name: string;
+  website?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  products?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+  usage_count?: number;
+}
+
+export interface ITSupplierCreate {
+  name: string;
+  website?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+}
+
+export interface NextAssetNumberPreview {
+  asset_number: string;
+  prefix?: string;
+  sequence?: number;
+}
+
+export interface NextAssetNumbersPreview {
+  asset_type_id: string;
+  count: number;
+  asset_numbers: string[];
+  message?: string;
+}
+
+export type MasterKind = 'categories' | 'types' | 'makes' | 'models' | 'suppliers';
+
+export interface MasterMergeResult {
+  source_id: string;
+  source_name: string;
+  target_id: string;
+  target_name: string;
+  assets_moved: number;
+  models_moved?: number;
+  models_merged?: number;
+  type_links_added?: number;
+  message: string;
+}
+
 export interface ITAsset {
   id: string;
   asset_number: string;
@@ -90,6 +183,8 @@ export interface ITAsset {
   service_tag?: string | null;
   make?: string | null;
   model?: string | null;
+  make_id?: string | null;
+  model_id?: string | null;
   status: AssetStatus | string;
   purchased_by?: PurchasedBy;
   owner_customer_id?: string | null;
@@ -158,6 +253,10 @@ export interface ITAssetCreate {
   serial_number?: string | null;
   make?: string | null;
   model?: string | null;
+  make_id?: string | null;
+  model_id?: string | null;
+  supplier_id?: string | null;
+  asset_number?: string | null;
   status?: AssetStatus | string;
   purchase_date?: string | null;
   purchase_cost?: number | null;
@@ -171,6 +270,7 @@ export interface ITAssetUpdate {
   serial_number?: string | null;
   make?: string | null;
   model?: string | null;
+  supplier_id?: string | null;
   status?: AssetStatus | string;
   purchase_date?: string | null;
   purchase_cost?: number | null;
@@ -526,4 +626,178 @@ export interface ITOnboardingTask {
   joining_date?: string | null;
   help_ticket_id?: string | null;
   owner_user_id?: string | null;
+}
+
+export type SoftwareLicenseType =
+  | 'named_user'
+  | 'floating'
+  | 'concurrent'
+  | 'device_bound'
+  | 'subscription'
+  | 'perpetual'
+  | 'network'
+  | 'other'
+  | string;
+
+export interface SoftwareCatalogItem {
+  id: string;
+  name: string;
+  vendor?: string | null;
+  version?: string | null;
+  edition?: string | null;
+  category?: string | null;
+  code?: string | null;
+  notes?: string | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SoftwareCatalogCreate {
+  name: string;
+  vendor?: string | null;
+  version?: string | null;
+  edition?: string | null;
+  category?: string | null;
+  code?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+}
+
+export interface SoftwareCatalogUpdate {
+  name?: string;
+  vendor?: string | null;
+  version?: string | null;
+  edition?: string | null;
+  category?: string | null;
+  code?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+}
+
+export interface SoftwareLicensePool {
+  id: string;
+  software_id: string;
+  software_name?: string | null;
+  purchased_by: string;
+  owner_customer_id?: string | null;
+  seat_count: number;
+  assigned_count: number;
+  available_count: number;
+  license_type?: SoftwareLicenseType | null;
+  cost?: number | string | null;
+  currency_code?: string | null;
+  expiry_date?: string | null;
+  renewal_mode?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SoftwareLicensePoolCreate {
+  software_id: string;
+  seat_count?: number;
+  purchased_by?: string;
+  owner_customer_id?: string | null;
+  license_type?: SoftwareLicenseType | null;
+  cost?: number | null;
+  currency_code?: string | null;
+  expiry_date?: string | null;
+  renewal_mode?: string | null;
+  notes?: string | null;
+}
+
+export interface SoftwareLicensePoolUpdate {
+  seat_count?: number;
+  purchased_by?: string;
+  owner_customer_id?: string | null;
+  license_type?: SoftwareLicenseType | null;
+  cost?: number | null;
+  currency_code?: string | null;
+  expiry_date?: string | null;
+  renewal_mode?: string | null;
+  notes?: string | null;
+}
+
+export interface SoftwareAssignment {
+  id: string;
+  license_pool_id: string;
+  software_id?: string | null;
+  software_name?: string | null;
+  user_id?: string | null;
+  user_name?: string | null;
+  computer_id?: string | null;
+  computer_name?: string | null;
+  asset_id?: string | null;
+  assigned_date?: string | null;
+  released_date?: string | null;
+  notes?: string | null;
+  department?: string | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SoftwareAssignmentCreate {
+  license_pool_id: string;
+  user_id?: string | null;
+  computer_id?: string | null;
+  asset_id?: string | null;
+  assigned_date?: string | null;
+  notes?: string | null;
+  department?: string | null;
+}
+
+export interface EmployeeSoftwareRequirement {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  software_id: string;
+  software_name?: string | null;
+  requirement_level: 'required' | 'optional' | string;
+  version?: string | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EmployeeSoftwareRequirementCreate {
+  user_id: string;
+  software_id: string;
+  requirement_level?: string;
+  version?: string | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+}
+
+export interface EmployeeSoftwareRequirementUpdate {
+  requirement_level?: string;
+  version?: string | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+}
+
+export interface SoftwareExpirySummary {
+  active_count: number;
+  expiring_30_count: number;
+  expired_count: number;
+  active: Array<Record<string, unknown>>;
+  expiring_30: Array<Record<string, unknown>>;
+  expired: Array<Record<string, unknown>>;
+}
+
+export interface SoftwareCompliance {
+  user_id: string;
+  full_name?: string | null;
+  requirements: Array<Record<string, unknown>>;
+  missing_required_count: number;
+  licensed_without_requirement: Array<Record<string, unknown>>;
+  is_compliant: boolean;
 }

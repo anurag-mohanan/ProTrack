@@ -18,6 +18,7 @@ from app.models.it_operations import (
     AssetCustomerReturn,
     AssetType,
     Computer,
+    EmployeeSoftwareRequirement,
     InventoryItem,
     IPAddress,
     IPAssignmentHistory,
@@ -39,6 +40,7 @@ CONFIRM_PHRASE = "RESET IT DATA"
 
 # Operational tables wiped (children first). Config tables preserved.
 _WIPE_ORDER: list[tuple[str, Any]] = [
+    ("employee_software_requirements", EmployeeSoftwareRequirement),
     ("software_assignments", SoftwareAssignment),
     ("software_license_pools", SoftwareLicensePool),
     ("software_catalog", SoftwareCatalog),
@@ -78,6 +80,7 @@ def preview_reset(db: Session) -> dict[str, Any]:
         "software_catalog": _count(db, SoftwareCatalog),
         "software_license_pools": _count(db, SoftwareLicensePool),
         "software_assignments": _count(db, SoftwareAssignment),
+        "employee_software_requirements": _count(db, EmployeeSoftwareRequirement),
         "it_user_accounts": _count(db, ITUserAccount),
         "it_suppliers": _count(db, ITSupplier),
         "it_import_batches": _count(db, ITImportBatch),

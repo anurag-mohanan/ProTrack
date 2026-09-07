@@ -23,6 +23,8 @@ import {
 } from '../components/resource-planning/ResourcePlanningLeftPanel';
 import { ResourcePlanningRightPanel } from '../components/resource-planning/ResourcePlanningRightPanel';
 import { ResourcePlanningTimeline } from '../components/resource-planning/ResourcePlanningTimeline';
+import { ResourcePlanningShiftsPanel } from '../components/resource-planning/ResourcePlanningShiftsPanel';
+import { ResourcePlanningItReadinessPanel } from '../components/resource-planning/ResourcePlanningItReadinessPanel';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
@@ -55,9 +57,12 @@ const GRANULARITY_OPTIONS: { value: ResourcePlanningGranularity; label: string }
   { value: 'day', label: 'Daily' },
 ];
 
+type MainTab = 'planning' | 'shifts' | 'it';
+
 export function ResourcePlanningPage() {
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
+  const [mainTab, setMainTab] = useState<MainTab>('planning');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [appliedTeamFilter, setAppliedTeamFilter] = useState('all');
   const [draftTeamFilter, setDraftTeamFilter] = useState('all');
@@ -67,7 +72,6 @@ export function ResourcePlanningPage() {
   const [selectedDesignerId, setSelectedDesignerId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  /** R3 capacity what-if: draft headcount / hours delta (client-side only). */
   const [whatIfExtraDesigners, setWhatIfExtraDesigners] = useState(0);
   const [whatIfHoursDelta, setWhatIfHoursDelta] = useState(0);
 
@@ -93,6 +97,7 @@ export function ResourcePlanningPage() {
     queryKey: resourcePlanningQueryKeys.grid(gridParams),
     queryFn: () => fetchResourcePlanningGrid(gridParams),
     staleTime: QUERY_STALE_TIMES.dashboard,
+    enabled: mainTab === 'planning' || mainTab === 'shifts',
   });
 
   const [pendingAssign, setPendingAssign] = useState<{
@@ -197,129 +202,66 @@ export function ResourcePlanningPage() {
     setDraftGranularity('week');
   };
 
-  if (planningQuery.isLoading) return <LoadingState message="Loading resource planning…" />;
-  if (planningQuery.error) return <ErrorState error={planningQuery.error} />;
-  if (!planningQuery.data) return null;
+  const designerOptions = useMemo(
+    () =>
+      (planningQuery.data?.designers ?? []).map((d) => ({
+        user_id: d.user_id,
+        designer_name: d.designer_name,
+      })),
+    [planningQuery.data?.designers],
+  );
 
   const data = planningQuery.data;
-  const filteredByTeam = selectedTeamId
-    ? {
-        ...data,
-        designers: data.designers.filter((d) =>
-          data.team_summary.some(
-            (t) => t.team_id === selectedTeamId && d.team_name === t.team_name,
+  const filteredByTeam =
+    data && selectedTeamId
+      ? {
+          ...data,
+          designers: data.designers.filter((d) =>
+            data.team_summary.some(
+              (t) => t.team_id === selectedTeamId && d.team_name === t.team_name,
+            ),
           ),
-        ),
-      }
-    : data;
+        }
+      : data;
 
-  const totalCapacity = data.designers.reduce((sum, d) => sum + toFiniteNumber(d.capacity_hours), 0);
-  const totalAllocated = data.designers.reduce((sum, d) => sum + toFiniteNumber(d.allocated_hours), 0);
+  const totalCapacity = data
+    ? data.designers.reduce((sum, d) => sum + toFiniteNumber(d.capacity_hours), 0)
+    : 0;
+  const totalAllocated = data
+    ? data.designers.reduce((sum, d) => sum + toFiniteNumber(d.allocated_hours), 0)
+    : 0;
   const avgCapacityHours =
-    data.designers.length > 0 ? totalCapacity / data.designers.length : 160;
+    data && data.designers.length > 0 ? totalCapacity / data.designers.length : 160;
   const scenarioCapacity =
     totalCapacity + whatIfExtraDesigners * avgCapacityHours + whatIfHoursDelta;
   const scenarioUtil =
     scenarioCapacity > 0 ? Math.round((totalAllocated / scenarioCapacity) * 100) : 0;
-  const avgUtil =
-    totalCapacity > 0 ? Math.round((totalAllocated / totalCapacity) * 100) : 0;
-  const overloaded = data.designers.filter((d) => {
-    const capacity = toFiniteNumber(d.capacity_hours);
-    const allocated = toFiniteNumber(d.allocated_hours);
-    return capacity > 0 && allocated / capacity >= 0.9;
-  }).length;
+  const avgUtil = totalCapacity > 0 ? Math.round((totalAllocated / totalCapacity) * 100) : 0;
+  const overloaded = data
+    ? data.designers.filter((d) => {
+        const capacity = toFiniteNumber(d.capacity_hours);
+        const allocated = toFiniteNumber(d.allocated_hours);
+        return capacity > 0 && allocated / capacity >= 0.9;
+      }).length
+    : 0;
   const whatIfActive = whatIfExtraDesigners !== 0 || whatIfHoursDelta !== 0;
 
   return (
     <PageContainer>
       <ModernPageHeader
         title="Resource Planning"
-        subtitle="Engineering planning dashboard — capacity, assignments, and customer allocation"
+        subtitle="Capacity, shifts, and IT readiness — one planning hub"
       />
 
-      <Box sx={{ mb: 2.5 }}>
-        <KpiStrip columns={4}>
-          <KpiMetricCard
-            compact
-            title="Designers"
-            value={String(data.designers.length)}
-            icon={GroupsRoundedIcon}
-            accent="primary"
-          />
-          <KpiMetricCard
-            compact
-            title="Avg Utilization"
-            value={`${avgUtil}%`}
-            icon={TrendingUpRoundedIcon}
-            accent={avgUtil >= 90 ? 'error' : avgUtil >= 75 ? 'warning' : 'success'}
-          />
-          <KpiMetricCard
-            compact
-            title="Allocated Hours"
-            value={formatNumber(totalAllocated, 0) || '0'}
-            subtitle={`of ${formatNumber(totalCapacity, 0) || '0'}h capacity`}
-            icon={ScheduleRoundedIcon}
-            accent="info"
-          />
-          <KpiMetricCard
-            compact
-            title="Near / Over Capacity"
-            value={String(overloaded)}
-            icon={WarningAmberRoundedIcon}
-            accent="warning"
-          />
-        </KpiStrip>
-      </Box>
-
-      <Alert
-        severity={whatIfActive ? 'info' : 'success'}
-        sx={{ mb: 2 }}
-        action={
-          whatIfActive ? (
-            <Button
-              size="small"
-              onClick={() => {
-                setWhatIfExtraDesigners(0);
-                setWhatIfHoursDelta(0);
-              }}
-            >
-              Reset
-            </Button>
-          ) : undefined
-        }
+      <Tabs
+        value={mainTab}
+        onChange={(_, value: MainTab) => setMainTab(value)}
+        sx={{ mb: 2, minHeight: 40, borderBottom: 1, borderColor: 'divider' }}
       >
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={1.5}
-          sx={{ alignItems: { sm: 'center' }, flexWrap: 'wrap' }}
-        >
-          <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 140 }}>
-            Capacity what-if
-          </Typography>
-          <TextField
-            size="small"
-            type="number"
-            label="+/− designers"
-            value={whatIfExtraDesigners}
-            onChange={(event) => setWhatIfExtraDesigners(Number(event.target.value) || 0)}
-            sx={{ width: 140 }}
-            slotProps={{ htmlInput: { step: 1 } }}
-          />
-          <TextField
-            size="small"
-            type="number"
-            label="Hours delta"
-            value={whatIfHoursDelta}
-            onChange={(event) => setWhatIfHoursDelta(Number(event.target.value) || 0)}
-            sx={{ width: 140 }}
-            slotProps={{ htmlInput: { step: 8 } }}
-          />
-          <Typography variant="body2" color="text.secondary">
-            Scenario util {scenarioUtil}% · capacity {formatNumber(scenarioCapacity, 0) || '0'}h
-            {whatIfActive ? ` (live ${avgUtil}%)` : ''}
-          </Typography>
-        </Stack>
-      </Alert>
+        <Tab value="planning" label="Capacity" sx={{ minHeight: 40 }} />
+        <Tab value="shifts" label="Shifts" sx={{ minHeight: 40 }} />
+        <Tab value="it" label="IT readiness" sx={{ minHeight: 40 }} />
+      </Tabs>
 
       <FilterToolbar
         sticky
@@ -327,62 +269,183 @@ export function ResourcePlanningPage() {
         chips={filterChips}
         onClearAll={clearFilters}
       >
-        <Tabs
-          value={appliedGranularity}
-          onChange={(_, value: ResourcePlanningGranularity) => {
-            setAppliedGranularity(value);
-            setDraftGranularity(value);
-          }}
-          sx={{ minHeight: 36 }}
-        >
-          {GRANULARITY_OPTIONS.map((option) => (
-            <Tab key={option.value} value={option.value} label={option.label} sx={{ minHeight: 36, py: 0.5 }} />
-          ))}
-        </Tabs>
+        {mainTab === 'planning' ? (
+          <Tabs
+            value={appliedGranularity}
+            onChange={(_, value: ResourcePlanningGranularity) => {
+              setAppliedGranularity(value);
+              setDraftGranularity(value);
+            }}
+            sx={{ minHeight: 36 }}
+          >
+            {GRANULARITY_OPTIONS.map((option) => (
+              <Tab
+                key={option.value}
+                value={option.value}
+                label={option.label}
+                sx={{ minHeight: 36, py: 0.5 }}
+              />
+            ))}
+          </Tabs>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            Team filter applies to {mainTab === 'shifts' ? 'shift calendar' : 'IT readiness'}
+          </Typography>
+        )}
       </FilterToolbar>
 
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 280px) minmax(0, 1fr) minmax(0, 300px)' },
-          gap: 2,
-          height: { lg: 'calc(100dvh - 280px)' },
-          minHeight: { xs: 0, lg: 480 },
-          minWidth: 0,
-        }}
-      >
-        <ResourcePlanningLeftPanel
-          tab={leftTab}
-          onTabChange={setLeftTab}
-          designers={filteredByTeam.designers}
-          teams={data.team_summary}
-          departments={departmentsQuery.data ?? []}
-          selectedDesignerId={selectedDesignerId}
-          selectedTeamId={selectedTeamId}
-          onSelectDesigner={setSelectedDesignerId}
-          onSelectTeam={setSelectedTeamId}
-        />
-
-        <Box sx={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <ResourcePlanningTimeline
-            grid={filteredByTeam}
-            selectedDesignerId={selectedDesignerId}
-            selectedProjectId={selectedProjectId}
-            onAssign={(projectId, designerId) => {
-              if (!designerId) return;
-              void requestAssign(projectId, designerId);
-            }}
-            onSelectProject={setSelectedProjectId}
-          />
+      {mainTab === 'shifts' && (
+        <Box sx={{ mt: 1 }}>
+          <ResourcePlanningShiftsPanel designers={designerOptions} teamId={teamParam} />
         </Box>
+      )}
 
-        <ResourcePlanningRightPanel
-          grid={data}
-          selectedDesignerId={selectedDesignerId}
-          selectedProjectId={selectedProjectId}
-          onSelectProject={setSelectedProjectId}
-        />
-      </Box>
+      {mainTab === 'it' && (
+        <Box sx={{ mt: 1 }}>
+          <ResourcePlanningItReadinessPanel teamId={teamParam} />
+        </Box>
+      )}
+
+      {mainTab === 'planning' && planningQuery.isLoading && (
+        <LoadingState message="Loading resource planning…" />
+      )}
+      {mainTab === 'planning' && planningQuery.error && (
+        <ErrorState error={planningQuery.error} />
+      )}
+
+      {mainTab === 'planning' && data && filteredByTeam && (
+        <>
+          <Box sx={{ mb: 2.5 }}>
+            <KpiStrip columns={4}>
+              <KpiMetricCard
+                compact
+                title="Designers"
+                value={String(data.designers.length)}
+                icon={GroupsRoundedIcon}
+                accent="primary"
+              />
+              <KpiMetricCard
+                compact
+                title="Avg Utilization"
+                value={`${avgUtil}%`}
+                icon={TrendingUpRoundedIcon}
+                accent={avgUtil >= 90 ? 'error' : avgUtil >= 75 ? 'warning' : 'success'}
+              />
+              <KpiMetricCard
+                compact
+                title="Allocated Hours"
+                value={formatNumber(totalAllocated, 0) || '0'}
+                subtitle={`of ${formatNumber(totalCapacity, 0) || '0'}h capacity`}
+                icon={ScheduleRoundedIcon}
+                accent="info"
+              />
+              <KpiMetricCard
+                compact
+                title="Near / Over Capacity"
+                value={String(overloaded)}
+                icon={WarningAmberRoundedIcon}
+                accent="warning"
+              />
+            </KpiStrip>
+          </Box>
+
+          <Alert
+            severity={whatIfActive ? 'info' : 'success'}
+            sx={{ mb: 2 }}
+            action={
+              whatIfActive ? (
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setWhatIfExtraDesigners(0);
+                    setWhatIfHoursDelta(0);
+                  }}
+                >
+                  Reset
+                </Button>
+              ) : undefined
+            }
+          >
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1.5}
+              sx={{ alignItems: { sm: 'center' }, flexWrap: 'wrap' }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 140 }}>
+                Capacity what-if
+              </Typography>
+              <TextField
+                size="small"
+                type="number"
+                label="+/− designers"
+                value={whatIfExtraDesigners}
+                onChange={(event) => setWhatIfExtraDesigners(Number(event.target.value) || 0)}
+                sx={{ width: 140 }}
+                slotProps={{ htmlInput: { step: 1 } }}
+              />
+              <TextField
+                size="small"
+                type="number"
+                label="Hours delta"
+                value={whatIfHoursDelta}
+                onChange={(event) => setWhatIfHoursDelta(Number(event.target.value) || 0)}
+                sx={{ width: 140 }}
+                slotProps={{ htmlInput: { step: 8 } }}
+              />
+              <Typography variant="body2" color="text.secondary">
+                Scenario util {scenarioUtil}% · capacity {formatNumber(scenarioCapacity, 0) || '0'}h
+                {whatIfActive ? ` (live ${avgUtil}%)` : ''}
+              </Typography>
+            </Stack>
+          </Alert>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: '1fr',
+                lg: 'minmax(0, 280px) minmax(0, 1fr) minmax(0, 300px)',
+              },
+              gap: 2,
+              height: { lg: 'calc(100dvh - 320px)' },
+              minHeight: { xs: 0, lg: 480 },
+              minWidth: 0,
+            }}
+          >
+            <ResourcePlanningLeftPanel
+              tab={leftTab}
+              onTabChange={setLeftTab}
+              designers={filteredByTeam.designers}
+              teams={data.team_summary}
+              departments={departmentsQuery.data ?? []}
+              selectedDesignerId={selectedDesignerId}
+              selectedTeamId={selectedTeamId}
+              onSelectDesigner={setSelectedDesignerId}
+              onSelectTeam={setSelectedTeamId}
+            />
+
+            <Box sx={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <ResourcePlanningTimeline
+                grid={filteredByTeam}
+                selectedDesignerId={selectedDesignerId}
+                selectedProjectId={selectedProjectId}
+                onAssign={(projectId, designerId) => {
+                  if (!designerId) return;
+                  void requestAssign(projectId, designerId);
+                }}
+                onSelectProject={setSelectedProjectId}
+              />
+            </Box>
+
+            <ResourcePlanningRightPanel
+              grid={data}
+              selectedDesignerId={selectedDesignerId}
+              selectedProjectId={selectedProjectId}
+              onSelectProject={setSelectedProjectId}
+            />
+          </Box>
+        </>
+      )}
 
       <FilterDrawer
         open={filtersOpen}

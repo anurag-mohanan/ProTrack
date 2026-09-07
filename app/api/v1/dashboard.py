@@ -31,10 +31,21 @@ from app.schemas.dashboard import (
 from app.schemas.timesheet import ActivityRead
 from app.schemas.reports import TeamResourcePlanningRow
 from app.schemas.resource_planning import (
+    ResourceITGaps,
+    ResourceITMatrix,
     ResourcePlanningAssignRequest,
     ResourcePlanningGranularity,
     ResourcePlanningGrid,
 )
+from app.core.access_control import (
+    MODULE_IT_OPERATIONS,
+    MODULE_RESOURCE_PLANNING,
+    SPECIAL_VIEW_IT_OPERATIONS,
+    SPECIAL_VIEW_RESOURCE_PLANNING,
+    user_has_module,
+    user_has_special,
+)
+from app.services import resource_it_gap_service
 from app.crud.team_reports import get_team_resource_planning
 from app.services.notification_service import create_notification
 from app.services.resource_planning_service import get_resource_planning_grid
@@ -79,6 +90,22 @@ router = APIRouter(
     tags=["dashboard"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+def _require_it_readiness_access(db: Session, user: User) -> None:
+    """IT readiness is shared surface: planners see it, so does IT Operations."""
+    role = normalize_role_name(get_role_name(db, user))
+    if (
+        user_has_special(user, role, SPECIAL_VIEW_RESOURCE_PLANNING)
+        or user_has_module(user, role, MODULE_RESOURCE_PLANNING)
+        or user_has_special(user, role, SPECIAL_VIEW_IT_OPERATIONS)
+        or user_has_module(user, role, MODULE_IT_OPERATIONS)
+    ):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Requires view_resource_planning or IT Operations view access.",
+    )
 
 
 @router.get("/summary", response_model=DashboardSummary)
@@ -242,6 +269,53 @@ def dashboard_resource_planning_grid(
             if scoped_team_ids is None or team_id is not None
             else list(scoped_team_ids)
         ),
+    )
+
+
+@router.get("/resource-planning/it-gaps", response_model=ResourceITGaps)
+def dashboard_resource_planning_it_gaps(
+    team_id: UUID | None = None,
+    on_date: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """IT readiness gaps (computers, license compliance) for planned people."""
+    _require_it_readiness_access(db, current_user)
+    scoped_team_ids = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped_team_ids is not None and team_id is not None and team_id not in scoped_team_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team is outside your accessible scope",
+        )
+    return resource_it_gap_service.get_resource_gaps(
+        db,
+        team_id=team_id,
+        on_date=on_date,
+    )
+
+
+@router.get("/resource-planning/it-matrix", response_model=ResourceITMatrix)
+def dashboard_resource_planning_it_matrix(
+    from_date: date | None = None,
+    to_date: date | None = None,
+    team_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """People × computer / license readiness over a planning window."""
+    _require_it_readiness_access(db, current_user)
+    scoped_team_ids = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped_team_ids is not None and team_id is not None and team_id not in scoped_team_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team is outside your accessible scope",
+        )
+    start = from_date or date.today()
+    return resource_it_gap_service.get_resource_matrix(
+        db,
+        from_date=start,
+        to_date=to_date or start,
+        team_id=team_id,
     )
 
 

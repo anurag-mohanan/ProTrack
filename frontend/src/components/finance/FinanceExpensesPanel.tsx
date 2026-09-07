@@ -20,6 +20,7 @@ import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
+import { fetchAssetsPaginated } from '../../api/itOperations';
 import { fetchTeams } from '../../api/lookups';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
@@ -58,6 +59,7 @@ type Expense = {
   spend_category?: string | null;
   base_amount_inr?: number | string | null;
   prior_fy_excluded_from_overview?: boolean;
+  asset_id?: string | null;
 };
 
 /** Corporate / overhead home — company-wide spend belongs on Overheads, not here. */
@@ -133,6 +135,7 @@ const emptyForm = {
   next_renewal_date: '',
   notify_before_days: '7',
   notify_enabled: true,
+  asset_id: '',
 };
 
 const listRowSx = {
@@ -185,6 +188,20 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     },
   });
 
+  const showAssetPicker =
+    form.nature === 'capex' ||
+    (() => {
+      const centre = (costCentresQuery.data ?? []).find((c) => c.id === form.cost_centre_id);
+      const code = (centre?.code || '').toUpperCase();
+      return code === 'HARDWARE' || code === 'SERVERS' || centre?.nature === 'capex';
+    })();
+
+  const assetsQuery = useQuery({
+    queryKey: ['it-assets', 'capex-picker', 1, 100],
+    queryFn: () => fetchAssetsPaginated({ page: 1, page_size: 100 }),
+    enabled: showAssetPicker,
+  });
+
   const refreshPaidByDefault = async (nextTeamId: string, nextCentreId: string) => {
     if (!nextTeamId || !nextCentreId) {
       setPaidByHint('');
@@ -216,6 +233,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
     next_renewal_date: form.next_renewal_date || null,
     notify_before_days: Number(form.notify_before_days) || 7,
     notify_enabled: form.notify_enabled,
+    asset_id: form.nature === 'capex' && form.asset_id ? form.asset_id : null,
   });
 
   const invalidate = () => {
@@ -283,6 +301,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       next_renewal_date: row.next_renewal_date || '',
       notify_before_days: String(row.notify_before_days ?? 7),
       notify_enabled: row.notify_enabled !== false,
+      asset_id: row.asset_id || '',
     });
     setPaidByHint('');
   };
@@ -409,6 +428,7 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
       cost_centre_id: nextCentreId,
       nature: nextNature,
       frequency: nextFreq,
+      asset_id: nextNature === 'capex' ? p.asset_id : '',
     }));
     void refreshPaidByDefault(form.team_id, nextCentreId);
   };
@@ -667,12 +687,39 @@ export function FinanceExpensesPanel({ teamId }: { teamId: string }) {
             <Select
               label="Nature"
               value={form.nature}
-              onChange={(e) => setForm((p) => ({ ...p, nature: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({
+                  ...p,
+                  nature: e.target.value,
+                  asset_id: e.target.value === 'capex' ? p.asset_id : '',
+                }))
+              }
             >
               <MenuItem value="opex">OPEX</MenuItem>
               <MenuItem value="capex">CAPEX</MenuItem>
             </Select>
           </FormControl>
+          {showAssetPicker ? (
+            <FormControl size="small" sx={{ minWidth: 260 }}>
+              <InputLabel>IT asset</InputLabel>
+              <Select
+                label="IT asset"
+                value={form.asset_id}
+                onChange={(e) => setForm((p) => ({ ...p, asset_id: e.target.value }))}
+              >
+                <MenuItem value="">None</MenuItem>
+                {(assetsQuery.data?.items ?? []).map((asset) => (
+                  <MenuItem key={asset.id} value={asset.id}>
+                    {asset.asset_number}
+                    {asset.make || asset.model
+                      ? ` · ${[asset.make, asset.model].filter(Boolean).join(' ')}`
+                      : ''}
+                    {asset.description ? ` · ${asset.description}` : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ) : null}
           <FormControl size="small" sx={{ minWidth: 130 }}>
             <InputLabel>Frequency</InputLabel>
             <Select

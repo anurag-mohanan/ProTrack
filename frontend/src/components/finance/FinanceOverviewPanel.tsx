@@ -28,7 +28,7 @@ import { LoadingState } from '../common/LoadingState';
 import { chartTheme } from '../../theme/chartTheme';
 import { designTokens } from '../../theme/designTokens';
 import { toFiniteNumber } from '../../utils/format';
-import { teamQueryParam } from './FinanceTeamFilter';
+import { financeQueryParam } from './FinanceTeamFilter';
 import {
   FinanceHeroBanner,
   FinanceRenewalChip,
@@ -43,6 +43,8 @@ import { FinanceRevenueBreakdownTable } from './FinanceRevenueBreakdownTable';
 import { FinanceTeamPnlTable, type TeamPnlRow } from './FinanceTeamPnlTable';
 import { FinanceFyTurnoverSection, type FyTurnoverControl } from './FinanceFyTurnoverSection';
 import { FinanceHealthStrip } from './FinanceHealthStrip';
+import { FinanceBusinessPositionStrip } from './FinanceBusinessPositionStrip';
+import { FinanceReceivablesSection } from './FinanceReceivablesSection';
 
 type FinancePeriod = 'month' | 'quarter' | 'half' | 'year';
 
@@ -238,16 +240,22 @@ function companyPeriodTotals(data: FinanceDashboard, period: FinancePeriod) {
   };
 }
 
-export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
+export function FinanceOverviewPanel({
+  teamId,
+  fyStartYear = null,
+}: {
+  teamId: string;
+  fyStartYear?: number | null;
+}) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
-  const q = teamQueryParam(teamId);
+  const q = financeQueryParam(teamId, fyStartYear);
   const [breakdownMetric, setBreakdownMetric] = useState<KpiBreakdownMetric | null>(null);
   const [period, setPeriod] = useState<FinancePeriod>('month');
   const [taxDraft, setTaxDraft] = useState('30');
 
   const dashboardQuery = useQuery({
-    queryKey: ['finance-dashboard', teamId || 'all'],
+    queryKey: ['finance-dashboard', teamId || 'all', fyStartYear ?? 'current'],
     queryFn: async () => (await apiClient.get<FinanceDashboard>(`/finance/dashboard${q}`)).data,
   });
 
@@ -382,6 +390,10 @@ export function FinanceOverviewPanel({ teamId }: { teamId: string }) {
       <FinanceFyTurnoverSection data={data.fy_turnover} currency={currency} />
 
       <FinanceHealthStrip teamId={teamId} currency={currency} />
+
+      <FinanceBusinessPositionStrip teamId={teamId} currency={currency} />
+
+      <FinanceReceivablesSection teamId={teamId} currency={currency} />
 
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>

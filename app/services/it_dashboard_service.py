@@ -124,6 +124,12 @@ def dashboard_summary(db: Session) -> dict[str, int]:
 
     computer_stats = it_people_service.computer_availability_summary(db)
     employees_without = it_people_service.count_active_employees_without_computer(db)
+    from app.services import it_software_service
+
+    software_stats = it_software_service.software_counts_for_dashboard(db)
+    from app.services import resource_it_gap_service
+
+    gap_stats = resource_it_gap_service.gap_counts_for_dashboard(db)
     return {
         "total_assets": total_assets,
         "assigned_assets": assigned_assets,
@@ -135,6 +141,8 @@ def dashboard_summary(db: Session) -> dict[str, int]:
         "allocated_ips": allocated_ips,
         **computer_stats,
         "employees_without_computer": employees_without,
+        **software_stats,
+        **gap_stats,
     }
 
 

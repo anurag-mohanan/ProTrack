@@ -94,7 +94,13 @@ type Investment = {
   accounting_note?: string;
 };
 
-export function FinanceTreasuryPanel({ teamId = '' }: { teamId?: string }) {
+export function FinanceTreasuryPanel({
+  teamId = '',
+  fyStartYear = null,
+}: {
+  teamId?: string;
+  fyStartYear?: number | null;
+}) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [section, setSection] = useState(0);
@@ -347,7 +353,7 @@ export function FinanceTreasuryPanel({ teamId = '' }: { teamId?: string }) {
         </Grid>
       </Grid>
 
-      <FinanceCashForecastSection teamId={teamId} currency={currency} />
+      <FinanceCashForecastSection teamId={teamId} currency={currency} fyStartYear={fyStartYear} />
 
       <Tabs value={section} onChange={(_, v) => setSection(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Tab label="Loans" />

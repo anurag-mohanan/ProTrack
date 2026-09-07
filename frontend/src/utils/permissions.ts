@@ -23,7 +23,7 @@ import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
 import PeopleAltRoundedIcon from '@mui/icons-material/PeopleAltRounded';
 import AppsRoundedIcon from '@mui/icons-material/AppsRounded';
 import BuildRoundedIcon from '@mui/icons-material/BuildRounded';
-import LocalShippingRoundedIcon from '@mui/icons-material/LocalShippingRounded';
+import CategoryRoundedIcon from '@mui/icons-material/CategoryRounded';
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import type { CurrentUser } from '../types';
 import {
@@ -65,7 +65,10 @@ import {
   SPECIAL_MANAGE_IT_SOFTWARE,
   SPECIAL_MANAGE_IT_SUPPLIERS,
   SPECIAL_MANAGE_IT_ACCOUNTS,
+  SPECIAL_OVERRIDE_IT_ASSET_NUMBER,
   SPECIAL_MANAGE_PROJECT_SETTINGS,
+  SPECIAL_MANAGE_RESOURCE_SHIFTS,
+  SPECIAL_ASSIGN_RESOURCE_SHIFTS,
   SPECIAL_MANAGE_TEAMS,
   SPECIAL_MANAGE_USERS,
   SPECIAL_RETURN_CUSTOMER_ASSETS,
@@ -227,6 +230,8 @@ const EXECUTIVE_SPECIALS: SpecialPermissionKey[] = [
   SPECIAL_VIEW_REPORTS,
   SPECIAL_EXPORT_REPORTS,
   SPECIAL_VIEW_RESOURCE_PLANNING,
+  SPECIAL_MANAGE_RESOURCE_SHIFTS,
+  SPECIAL_ASSIGN_RESOURCE_SHIFTS,
 ];
 
 const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
@@ -247,6 +252,8 @@ const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
     SPECIAL_MANAGE_PROJECT_SETTINGS,
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
+    SPECIAL_MANAGE_RESOURCE_SHIFTS,
+    SPECIAL_ASSIGN_RESOURCE_SHIFTS,
   ],
   [ROLES.MANAGING_DIRECTOR]: EXECUTIVE_SPECIALS,
   [ROLES.DIRECTOR_OF_ENGINEERING]: EXECUTIVE_SPECIALS,
@@ -264,6 +271,7 @@ const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
     SPECIAL_EXPORT_REPORTS,
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
+    SPECIAL_ASSIGN_RESOURCE_SHIFTS,
   ],
   [ROLES.DESIGN_LEADER]: [
     SPECIAL_CREATE_PROJECTS,
@@ -464,11 +472,13 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'Suppliers',
-    path: '/it/suppliers',
-    icon: LocalShippingRoundedIcon,
+    label: 'Master Data',
+    path: '/it/master-data',
+    icon: CategoryRoundedIcon,
     visible: (ctx: AccessContext) =>
-      userHasSpecial(ctx, SPECIAL_MANAGE_IT_SUPPLIERS) || canViewItOperations(ctx),
+      userHasSpecial(ctx, SPECIAL_MANAGE_IT_ASSETS) ||
+      userHasSpecial(ctx, SPECIAL_MANAGE_IT_SUPPLIERS) ||
+      canViewItOperations(ctx),
   },
   {
     module: MODULE_IT_OPERATIONS,
@@ -831,6 +841,19 @@ export function canViewResourcePlanning(roleNameOrContext: string | AccessContex
   );
 }
 
+export function canManageResourceShifts(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_RESOURCE_SHIFTS);
+}
+
+export function canAssignResourceShifts(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return (
+    userHasSpecial(ctx, SPECIAL_ASSIGN_RESOURCE_SHIFTS) ||
+    userHasSpecial(ctx, SPECIAL_MANAGE_RESOURCE_SHIFTS)
+  );
+}
+
 export function canViewArchivedProjects(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
   return userHasModule(ctx, MODULE_ARCHIVED_PROJECTS);
@@ -876,9 +899,22 @@ export function canManageItSettings(roleNameOrContext: string | AccessContext): 
   return userHasSpecial(ctx, SPECIAL_MANAGE_IT_SETTINGS);
 }
 
+export function canOverrideItAssetNumber(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return (
+    userHasSpecial(ctx, SPECIAL_OVERRIDE_IT_ASSET_NUMBER) ||
+    userHasSpecial(ctx, SPECIAL_MANAGE_IT_SETTINGS)
+  );
+}
+
 export function canManageItDataImports(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
   return userHasSpecial(ctx, SPECIAL_MANAGE_IT_DATA_IMPORTS);
+}
+
+export function canManageItSoftware(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_IT_SOFTWARE);
 }
 
 export function getMainNavItems(roleNameOrContext: string | AccessContext): MainNavItem[] {

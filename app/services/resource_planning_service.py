@@ -26,6 +26,7 @@ from app.services.dashboard_service import _batch_current_milestones
 from app.services.kpi_participation import capacity_planning_users
 from app.services.holiday_service import is_holiday_cached, load_holiday_dates
 from app.services.project_calculation_service import batch_calculate_hours
+from app.services.resource_shift_service import shift_hours_for_range
 
 
 def _round(value: Decimal) -> Decimal:
@@ -118,6 +119,7 @@ def _daily_capacity(
     user: User,
     day: date,
     holidays: set[date],
+    shift_hours: dict[UUID, dict[date, Decimal]] | None = None,
 ) -> Decimal:
     if user.availability_status in (
         UserAvailabilityStatus.on_leave,
@@ -128,6 +130,12 @@ def _daily_capacity(
         return Decimal("0")
     if is_holiday_cached(holidays, day):
         return Decimal("0")
+    # A resolved shift states the actual hours worked that day; without one we
+    # fall back to the user's baseline working hours.
+    if shift_hours:
+        hours = shift_hours.get(user.id, {}).get(day)
+        if hours is not None and hours > 0:
+            return _decimal(hours)
     return _decimal(user.working_hours_per_day or 8)
 
 
@@ -351,6 +359,16 @@ def get_resource_planning_grid(
     if team_user_ids is not None:
         designers = [designer for designer in designers if designer.id in team_user_ids]
 
+    # Shift-aware capacity (wave 3). Degrades to the working_hours_per_day
+    # baseline when no shifts are configured or the table is not yet synced.
+    try:
+        shift_hours = shift_hours_for_range(
+            db, [designer.id for designer in designers], anchor, end_date
+        )
+    except Exception:
+        db.rollback()
+        shift_hours = {}
+
     live_statuses = (
         ExecutionStatus.planning,
         ExecutionStatus.currently_being_worked_on,
@@ -434,7 +452,7 @@ def get_resource_planning_grid(
 
             day = period.start_date
             while day <= period.end_date:
-                day_capacity = _daily_capacity(designer, day, holidays)
+                day_capacity = _daily_capacity(designer, day, holidays, shift_hours)
                 period_capacity += day_capacity
 
                 for project in assigned_projects:

@@ -20,6 +20,9 @@ from app.core.access_control import (
     SPECIAL_MANAGE_IT_DATA_IMPORTS,
     SPECIAL_MANAGE_IT_NETWORKS,
     SPECIAL_MANAGE_IT_SETTINGS,
+    SPECIAL_MANAGE_IT_SOFTWARE,
+    SPECIAL_MANAGE_IT_SUPPLIERS,
+    SPECIAL_OVERRIDE_IT_ASSET_NUMBER,
     SPECIAL_RETURN_CUSTOMER_ASSETS,
     SPECIAL_VIEW_IT_OPERATIONS,
     SPECIAL_VIEW_IT_REPORTS,
@@ -30,7 +33,18 @@ from app.core.exceptions import ProTrackValidationError
 from app.core.pagination import PaginatedResponse, PaginationParams, pagination_query
 from app.core.permissions import get_role_name, normalize_role_name
 from app.core.uploads import enforce_upload_size
-from app.models.it_operations import Asset, AssetAssignment, AssetCustomerReturn, IPAddress, Network
+from app.models.it_operations import (
+    Asset,
+    AssetAssignment,
+    AssetCustomerReturn,
+    Computer,
+    IPAddress,
+    Network,
+    SoftwareAssignment,
+    SoftwareCatalog,
+    SoftwareLicensePool,
+    EmployeeSoftwareRequirement,
+)
 from app.models.models import Customer, Ticket, User
 from app.schemas.it_operations import (
     AssetAssignRequest,
@@ -60,6 +74,9 @@ from app.schemas.it_operations import (
     CredentialGenerateRequest,
     CredentialGenerateResponse,
     CustomerAssetReturnReportRow,
+    EmployeeSoftwareRequirementCreate,
+    EmployeeSoftwareRequirementRead,
+    EmployeeSoftwareRequirementUpdate,
     IPAllocateRequest,
     IPAllocationReportRow,
     IPAddressRead,
@@ -87,6 +104,17 @@ from app.schemas.it_operations import (
     NetworkUpdate,
     OpenITRequestRow,
     PendingITOnboardingTask,
+    SoftwareAssignmentCreate,
+    SoftwareAssignmentRead,
+    SoftwareAssignmentUnassignRequest,
+    SoftwareCatalogCreate,
+    SoftwareCatalogRead,
+    SoftwareCatalogUpdate,
+    SoftwareComplianceRead,
+    SoftwareExpirySummary,
+    SoftwareLicensePoolCreate,
+    SoftwareLicensePoolRead,
+    SoftwareLicensePoolUpdate,
 )
 from app.services import (
     it_account_service,
@@ -98,6 +126,8 @@ from app.services import (
     it_network_service,
     it_people_service,
     it_reset_service,
+    it_software_service,
+    resource_it_gap_service,
 )
 from app.services.ticketing_service import OPEN_STATUSES
 
@@ -157,6 +187,7 @@ def _asset_read(db: Session, asset: Asset) -> AssetRead:
     used_for = (
         db.get(Customer, asset.customer_used_for_id) if asset.customer_used_for_id else None
     )
+    parent = db.get(Asset, asset.parent_asset_id) if getattr(asset, "parent_asset_id", None) else None
     return AssetRead(
         id=asset.id,
         created_at=asset.created_at,
@@ -186,6 +217,8 @@ def _asset_read(db: Session, asset: Asset) -> AssetRead:
         warranty_status=it_asset_service.warranty_status_for(asset.warranty_expiry),
         location=asset.location,
         notes=asset.notes,
+        parent_asset_id=getattr(asset, "parent_asset_id", None),
+        parent_asset_number=parent.asset_number if parent else None,
         is_deleted=asset.is_deleted,
         current_assignee_id=assignee_id,
         current_assignee_name=assignee_name,
@@ -376,7 +409,19 @@ def _profile_for_user(db: Session, user_id: UUID) -> ITProfileRead:
         _account_read(db, a) for a in it_account_service.list_accounts(db, user_id=user_id)
     ]
     ips = [_ip_read(ip) for ip in it_network_service.list_ips_for_user(db, user_id)]
-    return ITProfileRead(user_id=user_id, assets=assets, accounts=accounts, ips=ips)
+    snapshot = resource_it_gap_service.get_employee_it_snapshot(db, user_id)
+    return ITProfileRead(
+        user_id=user_id,
+        assets=assets,
+        accounts=accounts,
+        ips=ips,
+        computer=snapshot["computer"],
+        software=snapshot["software"],
+        required_software_count=snapshot["required_software_count"],
+        missing_software=snapshot["missing_software"],
+        is_compliant=snapshot["is_compliant"],
+        shift=snapshot["shift"],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -477,6 +522,294 @@ def update_asset_type(
 
 
 # ---------------------------------------------------------------------------
+# Cascading master data (categories / makes / models / suppliers)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/master/categories")
+def list_master_categories(
+    active_only: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import it_master_data_service as masters
+
+    _require_it_access(db, current_user)
+    return [masters.category_to_dict(r) for r in masters.list_categories(db, active_only=active_only)]
+
+
+@router.post(
+    "/master/categories",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def create_master_category(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import it_master_data_service as masters
+
+    try:
+        row = masters.get_or_create_category(
+            db, code=payload.get("code"), name=payload.get("name") or "", actor=current_user
+        )
+        db.commit()
+        db.refresh(row)
+        return masters.category_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.get("/master/types")
+def list_master_types(
+    category: str | None = Query(default=None),
+    active_only: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import it_master_data_service as masters
+
+    _require_it_access(db, current_user)
+    usage = masters.usage_counts(db)["types"]
+    return [
+        masters.asset_type_to_dict(r, usage=usage.get(str(r.id), 0))
+        for r in masters.list_types_for_category(
+            db, category=category, active_only=active_only
+        )
+    ]
+
+
+@router.get("/master/makes")
+def list_master_makes(
+    asset_type_id: UUID | None = Query(default=None),
+    active_only: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import it_master_data_service as masters
+
+    _require_it_access(db, current_user)
+    usage = masters.usage_counts(db)["makes"]
+    return [
+        masters.make_to_dict(r, usage=usage.get(str(r.id), 0))
+        for r in masters.list_makes_for_type(
+            db, asset_type_id=asset_type_id, active_only=active_only
+        )
+    ]
+
+
+@router.post(
+    "/master/makes",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def create_master_make(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import it_master_data_service as masters
+
+    try:
+        type_id = payload.get("asset_type_id")
+        row = masters.get_or_create_make(
+            db,
+            name=payload.get("name") or "",
+            asset_type_id=UUID(str(type_id)) if type_id else None,
+        )
+        db.commit()
+        db.refresh(row)
+        return masters.make_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.get("/master/models")
+def list_master_models(
+    make_id: UUID | None = Query(default=None),
+    asset_type_id: UUID | None = Query(default=None),
+    active_only: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import it_master_data_service as masters
+
+    _require_it_access(db, current_user)
+    usage = masters.usage_counts(db)["models"]
+    return [
+        masters.model_to_dict(r, usage=usage.get(str(r.id), 0))
+        for r in masters.list_models_for_context(
+            db, make_id=make_id, asset_type_id=asset_type_id, active_only=active_only
+        )
+    ]
+
+
+@router.post(
+    "/master/models",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def create_master_model(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import it_master_data_service as masters
+
+    try:
+        row = masters.get_or_create_model(
+            db,
+            name=payload.get("name") or "",
+            make_id=UUID(str(payload["make_id"])),
+            asset_type_id=UUID(str(payload["asset_type_id"])),
+        )
+        db.commit()
+        db.refresh(row)
+        return masters.model_to_dict(row)
+    except (ProTrackValidationError, KeyError, ValueError) as exc:
+        if isinstance(exc, ProTrackValidationError):
+            raise _handle_validation(exc) from exc
+        raise HTTPException(status_code=400, detail="make_id and asset_type_id are required.") from exc
+
+
+@router.get("/master/suppliers")
+def list_master_suppliers(
+    active_only: bool = Query(True),
+    search: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import it_master_data_service as masters
+
+    _require_it_access(db, current_user)
+    usage = masters.usage_counts(db)["suppliers"]
+    return [
+        masters.supplier_to_dict(r, usage=usage.get(str(r.id), 0))
+        for r in masters.list_suppliers(db, active_only=active_only, search=search)
+    ]
+
+
+@router.post(
+    "/master/suppliers",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SUPPLIERS))],
+)
+def create_master_supplier(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import it_master_data_service as masters
+    from app.core.access_control import SPECIAL_MANAGE_IT_SUPPLIERS as _  # noqa: F401
+
+    try:
+        row = masters.get_or_create_supplier(
+            db,
+            name=payload.get("name") or "",
+            website=payload.get("website"),
+            phone=payload.get("phone"),
+            email=payload.get("email"),
+            address=payload.get("address"),
+            notes=payload.get("notes"),
+        )
+        db.commit()
+        db.refresh(row)
+        return masters.supplier_to_dict(row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.patch("/master/{kind}/{master_id}/active")
+def set_master_active(
+    kind: str,
+    master_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Activate / deactivate a master record — never a hard delete."""
+    from app.services import it_master_data_service as masters
+
+    try:
+        kind_key = masters.normalize_master_kind(kind)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    required = (
+        SPECIAL_MANAGE_IT_SUPPLIERS if kind_key == "suppliers" else SPECIAL_MANAGE_IT_ASSETS
+    )
+    role = _role_name(db, current_user)
+    if not user_has_special(current_user, role, required):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Changing master status requires {required} permission.",
+        )
+    if "is_active" not in payload:
+        raise HTTPException(status_code=400, detail="is_active is required.")
+    try:
+        row = masters.set_master_active(
+            db, kind_key, master_id, bool(payload.get("is_active"))
+        )
+        db.commit()
+        db.refresh(row)
+        return masters.master_to_dict(db, kind_key, row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/master/makes/{make_id}/merge",
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def merge_master_make(
+    make_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Merge this make into a target make; assets and models move over."""
+    from app.services import it_master_data_service as masters
+
+    target_id = payload.get("target_make_id")
+    if not target_id:
+        raise HTTPException(status_code=400, detail="target_make_id is required.")
+    try:
+        result = masters.merge_makes(db, make_id, UUID(str(target_id)))
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="target_make_id must be a UUID.") from exc
+    db.commit()
+    return result
+
+
+@router.post(
+    "/master/models/{model_id}/merge",
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def merge_master_model(
+    model_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Merge this model into a target model of the same asset type."""
+    from app.services import it_master_data_service as masters
+
+    target_id = payload.get("target_model_id")
+    if not target_id:
+        raise HTTPException(status_code=400, detail="target_model_id is required.")
+    try:
+        result = masters.merge_models(db, model_id, UUID(str(target_id)))
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="target_model_id must be a UUID.") from exc
+    db.commit()
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Assets
 # ---------------------------------------------------------------------------
 
@@ -485,6 +818,9 @@ def update_asset_type(
 def list_assets(
     status_filter: str | None = Query(None, alias="status"),
     asset_type_id: UUID | None = Query(None),
+    category: str | None = Query(None, description="Asset type category code"),
+    make_id: UUID | None = Query(None),
+    model_id: UUID | None = Query(None),
     search: str | None = Query(None),
     q: str | None = Query(None, description="Alias for search"),
     inventory_scope: str = Query("current"),
@@ -505,6 +841,9 @@ def list_assets(
             db,
             status=status_filter,
             asset_type_id=asset_type_id,
+            category=category,
+            make_id=make_id,
+            model_id=model_id,
             search=search or q,
             inventory_scope=inventory_scope,
             purchased_by=purchased_by,
@@ -528,6 +867,9 @@ def list_assets(
 def list_asset_ids(
     status_filter: str | None = Query(None, alias="status"),
     asset_type_id: UUID | None = Query(None),
+    category: str | None = Query(None, description="Asset type category code"),
+    make_id: UUID | None = Query(None),
+    model_id: UUID | None = Query(None),
     search: str | None = Query(None),
     q: str | None = Query(None, description="Alias for search"),
     inventory_scope: str = Query("current"),
@@ -546,6 +888,9 @@ def list_asset_ids(
             db,
             status=status_filter,
             asset_type_id=asset_type_id,
+            category=category,
+            make_id=make_id,
+            model_id=model_id,
             search=search or q,
             inventory_scope=inventory_scope,
             purchased_by=purchased_by,
@@ -631,6 +976,17 @@ def create_asset(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    preferred = (payload.asset_number or "").strip() or None
+    if preferred:
+        role = _role_name(db, current_user)
+        if not (
+            user_has_special(current_user, role, SPECIAL_OVERRIDE_IT_ASSET_NUMBER)
+            or user_has_special(current_user, role, SPECIAL_MANAGE_IT_SETTINGS)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manual asset number override requires override_it_asset_number permission.",
+            )
     try:
         asset = it_asset_service.create_asset(
             db,
@@ -639,18 +995,22 @@ def create_asset(
             serial_number=payload.serial_number,
             make=payload.make,
             model=payload.model,
+            make_id=payload.make_id,
+            model_id=payload.model_id,
             purchase_date=payload.purchase_date,
             purchase_cost=payload.purchase_cost,
             warranty_expiry=payload.warranty_expiry,
             location=payload.location,
             notes=payload.notes,
             legacy_asset_number=payload.legacy_asset_number,
+            asset_number=preferred,
             description=payload.description,
             service_tag=payload.service_tag,
             purchased_by=payload.purchased_by,
             owner_customer_id=payload.owner_customer_id,
             customer_used_for_id=payload.customer_used_for_id,
             supplier_id=payload.supplier_id,
+            supplier_name=payload.supplier_name,
             invoice_number=payload.invoice_number,
             condition=payload.condition,
         )
@@ -658,6 +1018,47 @@ def create_asset(
         return _asset_read(db, asset)
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
+
+
+@router.get("/assets/next-number")
+def preview_asset_number(
+    asset_type_id: UUID = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Suggest next asset number (does not allocate)."""
+    _require_it_access(db, current_user)
+    from app.models.it_operations import AssetType as AT
+
+    asset_type = db.get(AT, asset_type_id)
+    if asset_type is None:
+        raise HTTPException(status_code=404, detail="Asset type not found.")
+    return it_asset_service.preview_next_asset_number(db, asset_type)
+
+
+@router.get("/assets/next-numbers")
+def preview_asset_numbers(
+    asset_type_id: UUID = Query(...),
+    count: int = Query(5, ge=1, le=it_asset_service.MAX_NUMBER_PREVIEW),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Suggest the next N asset numbers for bulk create / import preview."""
+    _require_it_access(db, current_user)
+    from app.models.it_operations import AssetType as AT
+
+    if db.get(AT, asset_type_id) is None:
+        raise HTTPException(status_code=404, detail="Asset type not found.")
+    try:
+        numbers = it_asset_service.preview_next_asset_numbers(db, asset_type_id, count)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return {
+        "asset_type_id": asset_type_id,
+        "count": len(numbers),
+        "asset_numbers": numbers,
+        "message": "Suggested next available asset numbers (nothing allocated).",
+    }
 
 
 @router.get("/assets/{asset_id}", response_model=AssetRead)
@@ -1322,6 +1723,448 @@ def generate_credential(
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
+
+
+# ---------------------------------------------------------------------------
+# Software catalog / licenses / assignments / requirements
+# ---------------------------------------------------------------------------
+
+
+def _software_read(row: SoftwareCatalog) -> SoftwareCatalogRead:
+    return SoftwareCatalogRead(
+        id=row.id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        name=row.name,
+        vendor=row.vendor,
+        version=row.version,
+        edition=row.edition,
+        category=row.category,
+        code=row.code,
+        notes=row.notes,
+        is_active=row.is_active,
+    )
+
+
+def _license_pool_read(db: Session, pool: SoftwareLicensePool) -> SoftwareLicensePoolRead:
+    soft = it_software_service.get_software(db, pool.software_id)
+    assigned = it_software_service.count_active_assignments(db, pool.id)
+    available = it_software_service.available_seats(db, pool)
+    return SoftwareLicensePoolRead(
+        id=pool.id,
+        created_at=pool.created_at,
+        updated_at=pool.updated_at,
+        software_id=pool.software_id,
+        software_name=soft.name if soft else None,
+        purchased_by=pool.purchased_by,
+        owner_customer_id=pool.owner_customer_id,
+        seat_count=pool.seat_count,
+        assigned_count=assigned,
+        available_count=available,
+        license_type=pool.license_type,
+        cost=pool.cost,
+        currency_code=pool.currency_code,
+        expiry_date=pool.expiry_date,
+        renewal_mode=pool.renewal_mode,
+        notes=pool.notes,
+    )
+
+
+def _assignment_software_read(db: Session, row: SoftwareAssignment) -> SoftwareAssignmentRead:
+    pool = it_software_service.get_license_pool(db, row.license_pool_id)
+    soft = it_software_service.get_software(db, pool.software_id) if pool else None
+    user = db.get(User, row.user_id) if row.user_id else None
+    computer = db.get(Computer, row.computer_id) if row.computer_id else None
+    return SoftwareAssignmentRead(
+        id=row.id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        license_pool_id=row.license_pool_id,
+        software_id=pool.software_id if pool else None,
+        software_name=soft.name if soft else None,
+        user_id=row.user_id,
+        user_name=_full_name(user),
+        computer_id=row.computer_id,
+        computer_name=computer.computer_name if computer else None,
+        asset_id=row.asset_id,
+        assigned_date=row.assigned_date,
+        released_date=row.released_date,
+        notes=row.notes,
+        department=row.department,
+        is_active=row.released_date is None,
+    )
+
+
+def _requirement_read(db: Session, row: EmployeeSoftwareRequirement) -> EmployeeSoftwareRequirementRead:
+    user = db.get(User, row.user_id)
+    soft = it_software_service.get_software(db, row.software_id)
+    return EmployeeSoftwareRequirementRead(
+        id=row.id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        user_id=row.user_id,
+        user_name=_full_name(user),
+        software_id=row.software_id,
+        software_name=soft.name if soft else None,
+        requirement_level=row.requirement_level,
+        version=row.version,
+        effective_from=row.effective_from,
+        effective_to=row.effective_to,
+        reason=row.reason,
+        notes=row.notes,
+    )
+
+
+@router.get("/software", response_model=list[SoftwareCatalogRead])
+def list_software_catalog(
+    active_only: bool = Query(False),
+    search: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    return [
+        _software_read(row)
+        for row in it_software_service.list_software(
+            db, active_only=active_only, search=search
+        )
+    ]
+
+
+@router.post(
+    "/software",
+    response_model=SoftwareCatalogRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def create_software_catalog(
+    payload: SoftwareCatalogCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        row = it_software_service.create_software(
+            db,
+            name=payload.name,
+            vendor=payload.vendor,
+            version=payload.version,
+            edition=payload.edition,
+            category=payload.category,
+            code=payload.code,
+            notes=payload.notes,
+            is_active=payload.is_active,
+        )
+        return _software_read(row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.get("/software/expiry-summary", response_model=SoftwareExpirySummary)
+def software_expiry_summary(
+    within_days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    return SoftwareExpirySummary(**it_software_service.expiry_summary(db, within_days=within_days))
+
+
+@router.get("/software/compliance/{user_id}", response_model=SoftwareComplianceRead)
+def software_user_compliance(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    try:
+        return SoftwareComplianceRead(**it_software_service.user_compliance(db, user_id))
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.patch(
+    "/software/{software_id}",
+    response_model=SoftwareCatalogRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def update_software_catalog(
+    software_id: UUID,
+    payload: SoftwareCatalogUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = it_software_service.get_software(db, software_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Software not found.")
+    try:
+        updated = it_software_service.update_software(
+            db,
+            row,
+            name=payload.name,
+            vendor=payload.vendor,
+            version=payload.version,
+            edition=payload.edition,
+            category=payload.category,
+            code=payload.code,
+            notes=payload.notes,
+            is_active=payload.is_active,
+            fields_set=set(payload.model_fields_set),
+        )
+        return _software_read(updated)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.get("/software/licenses", response_model=list[SoftwareLicensePoolRead])
+def list_software_licenses(
+    software_id: UUID | None = Query(None),
+    expiring_within_days: int | None = Query(None, ge=1, le=365),
+    include_expired: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    return [
+        _license_pool_read(db, pool)
+        for pool in it_software_service.list_license_pools(
+            db,
+            software_id=software_id,
+            expiring_within_days=expiring_within_days,
+            include_expired=include_expired,
+        )
+    ]
+
+
+@router.post(
+    "/software/licenses",
+    response_model=SoftwareLicensePoolRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def create_software_license(
+    payload: SoftwareLicensePoolCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        pool = it_software_service.create_license_pool(
+            db,
+            software_id=payload.software_id,
+            seat_count=payload.seat_count,
+            purchased_by=payload.purchased_by,
+            owner_customer_id=payload.owner_customer_id,
+            license_type=payload.license_type,
+            cost=payload.cost,
+            currency_code=payload.currency_code,
+            expiry_date=payload.expiry_date,
+            renewal_mode=payload.renewal_mode,
+            notes=payload.notes,
+        )
+        return _license_pool_read(db, pool)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.patch(
+    "/software/licenses/{pool_id}",
+    response_model=SoftwareLicensePoolRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def update_software_license(
+    pool_id: UUID,
+    payload: SoftwareLicensePoolUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    pool = it_software_service.get_license_pool(db, pool_id)
+    if pool is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="License pool not found.")
+    try:
+        updated = it_software_service.update_license_pool(
+            db,
+            pool,
+            seat_count=payload.seat_count,
+            purchased_by=payload.purchased_by,
+            owner_customer_id=payload.owner_customer_id,
+            license_type=payload.license_type,
+            cost=payload.cost,
+            currency_code=payload.currency_code,
+            expiry_date=payload.expiry_date,
+            renewal_mode=payload.renewal_mode,
+            notes=payload.notes,
+            fields_set=set(payload.model_fields_set),
+        )
+        return _license_pool_read(db, updated)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.get("/software/assignments", response_model=list[SoftwareAssignmentRead])
+def list_software_assignments(
+    license_pool_id: UUID | None = Query(None),
+    user_id: UUID | None = Query(None),
+    computer_id: UUID | None = Query(None),
+    asset_id: UUID | None = Query(None),
+    active_only: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    return [
+        _assignment_software_read(db, row)
+        for row in it_software_service.list_assignments(
+            db,
+            license_pool_id=license_pool_id,
+            user_id=user_id,
+            computer_id=computer_id,
+            asset_id=asset_id,
+            active_only=active_only,
+        )
+    ]
+
+
+@router.post(
+    "/software/assignments",
+    response_model=SoftwareAssignmentRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def create_software_assignment(
+    payload: SoftwareAssignmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        row = it_software_service.assign_license(
+            db,
+            license_pool_id=payload.license_pool_id,
+            user_id=payload.user_id,
+            computer_id=payload.computer_id,
+            asset_id=payload.asset_id,
+            assigned_date=payload.assigned_date,
+            notes=payload.notes,
+            department=payload.department,
+        )
+        return _assignment_software_read(db, row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/software/assignments/{assignment_id}/unassign",
+    response_model=SoftwareAssignmentRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def unassign_software_assignment(
+    assignment_id: UUID,
+    payload: SoftwareAssignmentUnassignRequest | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = it_software_service.get_assignment(db, assignment_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found.")
+    try:
+        updated = it_software_service.unassign_license(
+            db,
+            row,
+            released_date=payload.released_date if payload else None,
+        )
+        return _assignment_software_read(db, updated)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.get("/software/requirements", response_model=list[EmployeeSoftwareRequirementRead])
+def list_software_requirements(
+    user_id: UUID | None = Query(None),
+    software_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    return [
+        _requirement_read(db, row)
+        for row in it_software_service.list_requirements(
+            db, user_id=user_id, software_id=software_id
+        )
+    ]
+
+
+@router.post(
+    "/software/requirements",
+    response_model=EmployeeSoftwareRequirementRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def create_software_requirement(
+    payload: EmployeeSoftwareRequirementCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        row = it_software_service.create_requirement(
+            db,
+            user_id=payload.user_id,
+            software_id=payload.software_id,
+            requirement_level=payload.requirement_level,
+            version=payload.version,
+            effective_from=payload.effective_from,
+            effective_to=payload.effective_to,
+            reason=payload.reason,
+            notes=payload.notes,
+        )
+        return _requirement_read(db, row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.patch(
+    "/software/requirements/{requirement_id}",
+    response_model=EmployeeSoftwareRequirementRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def update_software_requirement(
+    requirement_id: UUID,
+    payload: EmployeeSoftwareRequirementUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = it_software_service.get_requirement(db, requirement_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement not found.")
+    try:
+        updated = it_software_service.update_requirement(
+            db,
+            row,
+            requirement_level=payload.requirement_level,
+            version=payload.version,
+            effective_from=payload.effective_from,
+            effective_to=payload.effective_to,
+            reason=payload.reason,
+            notes=payload.notes,
+            fields_set=set(payload.model_fields_set),
+        )
+        return _requirement_read(db, updated)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.delete(
+    "/software/requirements/{requirement_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def delete_software_requirement(
+    requirement_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = it_software_service.get_requirement(db, requirement_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement not found.")
+    it_software_service.delete_requirement(db, row)
+    return None
 
 
 # ---------------------------------------------------------------------------

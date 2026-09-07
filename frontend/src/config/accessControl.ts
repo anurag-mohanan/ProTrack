@@ -89,6 +89,8 @@ export const SPECIAL_MANAGE_COMPANY_SETTINGS = 'manage_company_settings';
 export const SPECIAL_MANAGE_PROJECT_SETTINGS = 'manage_project_settings';
 export const SPECIAL_VIEW_REPORTS = 'view_reports';
 export const SPECIAL_VIEW_RESOURCE_PLANNING = 'view_resource_planning';
+export const SPECIAL_MANAGE_RESOURCE_SHIFTS = 'manage_resource_shifts';
+export const SPECIAL_ASSIGN_RESOURCE_SHIFTS = 'assign_resource_shifts';
 export const SPECIAL_VIEW_IT_OPERATIONS = 'view_it_operations';
 export const SPECIAL_MANAGE_IT_ASSETS = 'manage_it_assets';
 export const SPECIAL_ASSIGN_IT_ASSETS = 'assign_it_assets';
@@ -104,6 +106,7 @@ export const SPECIAL_MANAGE_IT_DATA_IMPORTS = 'manage_it_data_imports';
 export const SPECIAL_MANAGE_IT_INVENTORY = 'manage_it_inventory';
 export const SPECIAL_MANAGE_IT_SOFTWARE = 'manage_it_software';
 export const SPECIAL_MANAGE_IT_SUPPLIERS = 'manage_it_suppliers';
+export const SPECIAL_OVERRIDE_IT_ASSET_NUMBER = 'override_it_asset_number';
 
 export type SpecialPermissionKey =
   | typeof SPECIAL_CREATE_PROJECTS
@@ -122,6 +125,8 @@ export type SpecialPermissionKey =
   | typeof SPECIAL_MANAGE_PROJECT_SETTINGS
   | typeof SPECIAL_VIEW_REPORTS
   | typeof SPECIAL_VIEW_RESOURCE_PLANNING
+  | typeof SPECIAL_MANAGE_RESOURCE_SHIFTS
+  | typeof SPECIAL_ASSIGN_RESOURCE_SHIFTS
   | typeof SPECIAL_VIEW_IT_OPERATIONS
   | typeof SPECIAL_MANAGE_IT_ASSETS
   | typeof SPECIAL_ASSIGN_IT_ASSETS
@@ -136,7 +141,8 @@ export type SpecialPermissionKey =
   | typeof SPECIAL_MANAGE_IT_DATA_IMPORTS
   | typeof SPECIAL_MANAGE_IT_INVENTORY
   | typeof SPECIAL_MANAGE_IT_SOFTWARE
-  | typeof SPECIAL_MANAGE_IT_SUPPLIERS;
+  | typeof SPECIAL_MANAGE_IT_SUPPLIERS
+  | typeof SPECIAL_OVERRIDE_IT_ASSET_NUMBER;
 
 export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_CREATE_PROJECTS,
@@ -155,6 +161,8 @@ export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_MANAGE_PROJECT_SETTINGS,
   SPECIAL_VIEW_REPORTS,
   SPECIAL_VIEW_RESOURCE_PLANNING,
+  SPECIAL_MANAGE_RESOURCE_SHIFTS,
+  SPECIAL_ASSIGN_RESOURCE_SHIFTS,
   SPECIAL_VIEW_IT_OPERATIONS,
   SPECIAL_MANAGE_IT_ASSETS,
   SPECIAL_ASSIGN_IT_ASSETS,
@@ -170,6 +178,7 @@ export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_MANAGE_IT_INVENTORY,
   SPECIAL_MANAGE_IT_SOFTWARE,
   SPECIAL_MANAGE_IT_SUPPLIERS,
+  SPECIAL_OVERRIDE_IT_ASSET_NUMBER,
 ];
 
 export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
@@ -189,6 +198,8 @@ export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
   [SPECIAL_MANAGE_PROJECT_SETTINGS]: 'Manage Project Settings',
   [SPECIAL_VIEW_REPORTS]: 'View Reports',
   [SPECIAL_VIEW_RESOURCE_PLANNING]: 'View Resource Planning',
+  [SPECIAL_MANAGE_RESOURCE_SHIFTS]: 'Manage Resource Shifts',
+  [SPECIAL_ASSIGN_RESOURCE_SHIFTS]: 'Assign Resource Shifts',
   [SPECIAL_VIEW_IT_OPERATIONS]: 'View IT Operations',
   [SPECIAL_MANAGE_IT_ASSETS]: 'Manage IT Assets',
   [SPECIAL_ASSIGN_IT_ASSETS]: 'Assign IT Assets',
@@ -204,6 +215,7 @@ export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
   [SPECIAL_MANAGE_IT_INVENTORY]: 'Manage IT Inventory',
   [SPECIAL_MANAGE_IT_SOFTWARE]: 'Manage IT Software',
   [SPECIAL_MANAGE_IT_SUPPLIERS]: 'Manage IT Suppliers',
+  [SPECIAL_OVERRIDE_IT_ASSET_NUMBER]: 'Override IT Asset Number',
 };
 
 export const PATH_MODULE_MAP: Record<string, ModuleKey> = {

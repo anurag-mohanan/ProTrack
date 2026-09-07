@@ -1220,3 +1220,52 @@ class InvoicePdfConfirmRequest(BaseModel):
     notes: str | None = None
     import_anyway: bool = False
     content_sha256: str | None = None
+
+
+class QuotePdfExtractResult(BaseModel):
+    """Review DTO from Prosohm quote PDF — does not create records."""
+
+    text_extractable: bool = True
+    ocr_used: bool = False
+    source_chars: int = 0
+    content_sha256: str | None = None
+    filename: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    fields: dict[str, InvoicePdfFieldCandidate] = Field(default_factory=dict)
+    customer_matches: list[dict] = Field(default_factory=list)
+    project_matches: list[dict] = Field(default_factory=list)
+    duplicates: list[dict] = Field(default_factory=list)
+    suggested_customer_id: str | None = None
+    suggested_project_id: str | None = None
+    source: str = "pdf_quote_import"
+
+
+class HireImpactSoftwareRow(BaseModel):
+    software_id: UUID
+    software_name: str | None = None
+    seats_needed: int = 0
+    pool_seat_capacity: int = 0
+    has_pool: bool = False
+    cost_per_seat: Decimal | None = None
+    currency_code: str | None = None
+    estimated_cost: Decimal | None = None
+    estimated_monthly_cost: Decimal | None = None
+    cost_basis: str = "not_recorded"
+
+
+class HireImpactResult(BaseModel):
+    """IT + cost footprint of a hiring plan. Costs appear only where recorded."""
+
+    headcount: int = 0
+    team_id: UUID | None = None
+    required_computers: int = 0
+    spare_computers: int = 0
+    computers_to_procure: int = 0
+    required_license_seats: int = 0
+    software: list[HireImpactSoftwareRow] = Field(default_factory=list)
+    estimated_license_cost: Decimal | None = None
+    estimated_monthly_license_cost: Decimal | None = None
+    estimated_hardware_cost: Decimal | None = None
+    currency_code: str | None = None
+    assumptions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

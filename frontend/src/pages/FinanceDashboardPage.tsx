@@ -15,8 +15,9 @@ import { FinanceTeamCommercialPanel } from '../components/finance/FinanceTeamCom
 import { FinanceTreasuryPanel } from '../components/finance/FinanceTreasuryPanel';
 import {
   FinanceTeamFilter,
+  financeQueryParam,
+  readStoredFinanceFyStartYear,
   readStoredFinanceTeamId,
-  teamQueryParam,
 } from '../components/finance/FinanceTeamFilter';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -62,6 +63,7 @@ export function FinanceDashboardPage() {
   );
   const [tab, setTab] = useState(initialTab);
   const [teamId, setTeamId] = useState(readStoredFinanceTeamId);
+  const [fyStartYear, setFyStartYear] = useState<number | null>(readStoredFinanceFyStartYear);
 
   useEffect(() => {
     const next = resolveFinanceTabIndex(location.pathname, searchParams.get('tab'));
@@ -80,9 +82,13 @@ export function FinanceDashboardPage() {
   };
 
   const dashboardQuery = useQuery({
-    queryKey: ['finance-dashboard', teamId || 'all'],
+    queryKey: ['finance-dashboard', teamId || 'all', fyStartYear ?? 'current'],
     queryFn: async () =>
-      (await apiClient.get<FinanceDashboard>(`/finance/dashboard${teamQueryParam(teamId)}`)).data,
+      (
+        await apiClient.get<FinanceDashboard>(
+          `/finance/dashboard${financeQueryParam(teamId, fyStartYear)}`,
+        )
+      ).data,
   });
 
   if (dashboardQuery.isLoading && tab === 0) {
@@ -98,7 +104,12 @@ export function FinanceDashboardPage() {
         }) — Overview, revenue, invoicing, profitability, forecasting, and scenario planning. Grant Finance access in Admin → Users.`}
       />
 
-      <FinanceTeamFilter value={teamId} onChange={setTeamId} />
+      <FinanceTeamFilter
+        value={teamId}
+        onChange={setTeamId}
+        fyStartYear={fyStartYear}
+        onFyStartYearChange={setFyStartYear}
+      />
 
       <Tabs
         value={tab}
@@ -115,7 +126,7 @@ export function FinanceDashboardPage() {
         ))}
       </Tabs>
 
-      {tab === 0 && <FinanceOverviewPanel teamId={teamId} />}
+      {tab === 0 && <FinanceOverviewPanel teamId={teamId} fyStartYear={fyStartYear} />}
       {tab === 1 && <FinancePeopleCostsPanel teamId={teamId} />}
       {tab === 2 && <FinanceExpensesPanel teamId={teamId} />}
       {tab === 3 && <FinanceOverheadsPanel teamId={teamId} />}
@@ -123,8 +134,8 @@ export function FinanceDashboardPage() {
       {tab === 5 && <FinanceTeamCommercialPanel teamId={teamId} />}
       {tab === 6 && <AnnualPlanPanel />}
       {tab === 7 && <FinanceQuotesPanel teamId={teamId} />}
-      {tab === 8 && <FinanceTreasuryPanel teamId={teamId} />}
-      {tab === 9 && <FinanceBudgetsReportsPanel teamId={teamId} />}
+      {tab === 8 && <FinanceTreasuryPanel teamId={teamId} fyStartYear={fyStartYear} />}
+      {tab === 9 && <FinanceBudgetsReportsPanel teamId={teamId} fyStartYear={fyStartYear} />}
     </Box>
   );
 }

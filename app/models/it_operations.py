@@ -127,6 +127,93 @@ class AssetType(Base, TimestampMixin, TenantMixin):
     assets: Mapped[list["Asset"]] = relationship(back_populates="asset_type")
 
 
+class AssetCategory(Base, TimestampMixin, TenantMixin):
+    """Reusable IT asset category (e.g. computer, peripheral). Source for cascading."""
+
+    __tablename__ = "it_asset_categories"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_it_asset_categories_tenant_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class AssetMake(Base, TimestampMixin, TenantMixin):
+    """Reusable make/brand. Linked to asset types for cascading filters."""
+
+    __tablename__ = "it_asset_makes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "normalized_name", name="uq_it_asset_makes_tenant_norm"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    type_links: Mapped[list["AssetMakeTypeLink"]] = relationship(
+        back_populates="make", cascade="all, delete-orphan"
+    )
+    models: Mapped[list["AssetModel"]] = relationship(back_populates="make")
+
+
+class AssetMakeTypeLink(Base, TimestampMixin, TenantMixin):
+    """Associates a make with an asset type (Category→Type→Make cascade)."""
+
+    __tablename__ = "it_asset_make_type_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "make_id", "asset_type_id", name="uq_it_asset_make_type_link"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    make_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_asset_makes.id"), nullable=False, index=True
+    )
+    asset_type_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("asset_types.id"), nullable=False, index=True
+    )
+
+    make: Mapped["AssetMake"] = relationship(back_populates="type_links")
+    asset_type: Mapped["AssetType"] = relationship()
+
+
+class AssetModel(Base, TimestampMixin, TenantMixin):
+    """Model under a make + asset type context."""
+
+    __tablename__ = "it_asset_models"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "make_id",
+            "asset_type_id",
+            "normalized_name",
+            name="uq_it_asset_models_ctx_norm",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    make_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_asset_makes.id"), nullable=False, index=True
+    )
+    asset_type_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("asset_types.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    make: Mapped["AssetMake"] = relationship(back_populates="models")
+    asset_type: Mapped["AssetType"] = relationship()
+
+
 class Asset(Base, TimestampMixin, TenantMixin):
     __tablename__ = "assets"
     __table_args__ = (
@@ -144,6 +231,15 @@ class Asset(Base, TimestampMixin, TenantMixin):
     service_tag: Mapped[Optional[str]] = mapped_column(String(100), index=True)
     make: Mapped[Optional[str]] = mapped_column(String(100))
     model: Mapped[Optional[str]] = mapped_column(String(100))
+    make_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_asset_makes.id"), nullable=True, index=True
+    )
+    model_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_asset_models.id"), nullable=True, index=True
+    )
+    parent_asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="available", index=True)
     # Ownership (who purchased/owns) — separate from usage and customer_used_for.
     purchased_by: Mapped[str] = mapped_column(
@@ -175,6 +271,17 @@ class Asset(Base, TimestampMixin, TenantMixin):
     source_row: Mapped[Optional[int]] = mapped_column(Integer)
 
     asset_type: Mapped[AssetType] = relationship(back_populates="assets")
+    parent_asset: Mapped[Optional["Asset"]] = relationship(
+        "Asset",
+        remote_side="Asset.id",
+        foreign_keys=[parent_asset_id],
+        back_populates="child_assets",
+    )
+    child_assets: Mapped[list["Asset"]] = relationship(
+        "Asset",
+        foreign_keys=[parent_asset_id],
+        back_populates="parent_asset",
+    )
     computer: Mapped[Optional["Computer"]] = relationship(back_populates="asset", uselist=False)
     assignments: Mapped[list["AssetAssignment"]] = relationship(
         back_populates="asset", order_by="AssetAssignment.assigned_date.desc()"
@@ -384,6 +491,22 @@ class ITUserAccount(Base, TimestampMixin, TenantMixin):
     source_system: Mapped[Optional[str]] = mapped_column(String(120))
 
 
+LICENSE_TYPE_CODES = frozenset(
+    {
+        "named_user",
+        "floating",
+        "concurrent",
+        "device_bound",
+        "subscription",
+        "perpetual",
+        "network",
+        "other",
+    }
+)
+
+SOFTWARE_REQUIREMENT_LEVELS = frozenset({"required", "optional"})
+
+
 class SoftwareCatalog(Base, TimestampMixin, TenantMixin):
     __tablename__ = "software_catalog"
     __table_args__ = (
@@ -393,6 +516,10 @@ class SoftwareCatalog(Base, TimestampMixin, TenantMixin):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     vendor: Mapped[Optional[str]] = mapped_column(String(120))
+    version: Mapped[Optional[str]] = mapped_column(String(80))
+    edition: Mapped[Optional[str]] = mapped_column(String(80))
+    category: Mapped[Optional[str]] = mapped_column(String(80))
+    code: Mapped[Optional[str]] = mapped_column(String(40))
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -411,6 +538,9 @@ class SoftwareLicensePool(Base, TimestampMixin, TenantMixin):
         Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True
     )
     seat_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    license_type: Mapped[Optional[str]] = mapped_column(String(40))
+    cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    currency_code: Mapped[Optional[str]] = mapped_column(String(3))
     expiry_date: Mapped[Optional[date]] = mapped_column(Date)
     renewal_mode: Mapped[Optional[str]] = mapped_column(String(80))
     notes: Mapped[Optional[str]] = mapped_column(Text)
@@ -430,9 +560,37 @@ class SoftwareAssignment(Base, TimestampMixin, TenantMixin):
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    computer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("computers.id"), nullable=True, index=True
+    )
+    asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=True, index=True
+    )
     assigned_date: Mapped[Optional[date]] = mapped_column(Date)
+    released_date: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     department: Mapped[Optional[str]] = mapped_column(String(100))
     import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("it_import_batches.id"), nullable=True, index=True
     )
+
+
+class EmployeeSoftwareRequirement(Base, TimestampMixin, TenantMixin):
+    """Per-employee software entitlement / role requirement (not a license seat)."""
+
+    __tablename__ = "employee_software_requirements"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    software_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_catalog.id"), nullable=False, index=True
+    )
+    # required | optional
+    requirement_level: Mapped[str] = mapped_column(String(20), nullable=False, default="required")
+    version: Mapped[Optional[str]] = mapped_column(String(80))
+    effective_from: Mapped[Optional[date]] = mapped_column(Date)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date)
+    reason: Mapped[Optional[str]] = mapped_column(String(200))
+    notes: Mapped[Optional[str]] = mapped_column(Text)

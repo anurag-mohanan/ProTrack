@@ -17,7 +17,7 @@ import { apiClient } from '../../api/client';
 import { LoadingState } from '../common/LoadingState';
 import { AnalyticsBarChart } from '../analytics/AnalyticsCharts';
 import { FinanceSection, financeMoney } from './FinanceCockpitPrimitives';
-import { teamQueryParam } from './FinanceTeamFilter';
+import { financeQueryParam } from './FinanceTeamFilter';
 import { toFiniteNumber } from '../../utils/format';
 
 type MonthlyPnlRow = {
@@ -66,26 +66,35 @@ const LINE_KEYS = [
 export function FinanceMonthlyPnlSection({
   teamId,
   currency = 'INR',
+  fyStartYear = null,
 }: {
   teamId: string;
   currency?: string;
+  fyStartYear?: number | null;
 }) {
-  const q = teamQueryParam(teamId);
+  const q = financeQueryParam(teamId, fyStartYear);
   const [drill, setDrill] = useState<{ monthIndex: number; line: string; label: string } | null>(
     null,
   );
 
   const pnlQuery = useQuery({
-    queryKey: ['finance-monthly-pnl', teamId || 'all'],
+    queryKey: ['finance-monthly-pnl', teamId || 'all', fyStartYear ?? 'current'],
     queryFn: async () => (await apiClient.get<MonthlyPnl>(`/finance/reports/monthly-pnl${q}`)).data,
   });
 
   const drillQuery = useQuery({
-    queryKey: ['finance-monthly-pnl-drill', drill?.monthIndex, drill?.line, teamId || 'all'],
+    queryKey: [
+      'finance-monthly-pnl-drill',
+      drill?.monthIndex,
+      drill?.line,
+      teamId || 'all',
+      fyStartYear ?? 'current',
+    ],
     enabled: Boolean(drill),
     queryFn: async () => {
       const params = new URLSearchParams({ line: drill!.line });
       if (teamId) params.set('team_id', teamId);
+      if (fyStartYear != null) params.set('fy_start_year', String(fyStartYear));
       return (
         await apiClient.get<Drilldown>(
           `/finance/reports/monthly-pnl/${drill!.monthIndex}/drilldown?${params.toString()}`,

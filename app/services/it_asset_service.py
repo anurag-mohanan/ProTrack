@@ -46,6 +46,8 @@ PURCHASED_BY_CODES = frozenset(
 WARRANTY_STATUSES = frozenset({"none", "active", "expiring_soon", "expired"})
 # Days before expiry counted as "expiring soon"
 WARRANTY_EXPIRING_SOON_DAYS = 30
+# Upper bound for the bulk "next numbers" preview
+MAX_NUMBER_PREVIEW = 200
 
 
 def warranty_status_for(expiry: date | None, *, today: date | None = None) -> str:
@@ -113,21 +115,152 @@ def _locked_settings(db: Session) -> ITSettings:
     return settings
 
 
-def next_asset_number(db: Session, asset_type: AssetType) -> str:
-    settings = _locked_settings(db)
-    seq = settings.next_asset_seq or 1
-    prefix = (asset_type.numbering_prefix or asset_type.code or "ASSET").strip()
-    pattern = settings.asset_numbering_pattern or "{prefix}-{seq:04d}"
+def _prefix_for_type(asset_type: AssetType) -> str:
+    return (asset_type.numbering_prefix or asset_type.code or "ASSET").strip()
+
+
+def _format_asset_number(pattern: str, *, prefix: str, seq: int, type_code: str) -> str:
     try:
-        number = pattern.format(prefix=prefix, seq=seq, type=asset_type.code or "")
+        return pattern.format(prefix=prefix, seq=seq, type=type_code or "").strip()
     except (KeyError, ValueError) as exc:
-        raise ProTrackValidationError(
-            f"Invalid asset numbering pattern: {pattern}"
-        ) from exc
+        raise ProTrackValidationError(f"Invalid asset numbering pattern: {pattern}") from exc
+
+
+def _highest_seq_for_prefix(db: Session, *, prefix: str, pattern: str) -> int:
+    """
+    Highest numeric sequence among existing asset numbers for this prefix.
+
+    Default policy: highest existing + 1 (do not fill gaps). Includes disposed/retired.
+    """
+    prefix_norm = prefix.strip()
+    if not prefix_norm:
+        return 0
+    # Match numbers that start with prefix and end with digits (with optional separator)
+    like = f"{prefix_norm}%"
+    numbers = list(
+        db.scalars(
+            select(Asset.asset_number).where(
+                Asset.is_deleted.is_(False),
+                Asset.asset_number.ilike(like),
+            )
+        ).all()
+    )
+    highest = 0
+    import re
+
+    # Extract trailing integer after last non-digit run
+    for num in numbers:
+        text = (num or "").strip()
+        if not text.upper().startswith(prefix_norm.upper()):
+            continue
+        m = re.search(r"(\d+)\s*$", text)
+        if not m:
+            continue
+        try:
+            highest = max(highest, int(m.group(1)))
+        except ValueError:
+            continue
+    return highest
+
+
+def preview_next_asset_number(db: Session, asset_type: AssetType) -> dict:
+    """Suggest next number without consuming the sequence (read-side)."""
+    settings = get_or_create_settings(db)
+    prefix = _prefix_for_type(asset_type)
+    pattern = settings.asset_numbering_pattern or "{prefix}-{seq:04d}"
+    highest_db = _highest_seq_for_prefix(db, prefix=prefix, pattern=pattern)
+    # Align with counter so imports that skipped the counter don't collide
+    seq = max(highest_db, int(settings.next_asset_seq or 1) - 1) + 1
+    number = _format_asset_number(
+        pattern, prefix=prefix, seq=seq, type_code=asset_type.code or ""
+    )
+    # If collision (rare with custom patterns), walk forward
+    while db.scalar(
+        select(Asset.id).where(
+            Asset.is_deleted.is_(False),
+            Asset.asset_number == number,
+        )
+    ):
+        seq += 1
+        number = _format_asset_number(
+            pattern, prefix=prefix, seq=seq, type_code=asset_type.code or ""
+        )
+    return {
+        "asset_number": number,
+        "prefix": prefix,
+        "sequence": seq,
+        "pattern": pattern,
+        "highest_existing_sequence": highest_db,
+        "message": "Suggested next available asset number (highest existing + 1).",
+    }
+
+
+def preview_next_asset_numbers(
+    db: Session, asset_type_id: UUID, count: int = 1
+) -> list[str]:
+    """Suggest the next N numbers for a type without allocating any of them."""
+    asset_type = db.get(AssetType, asset_type_id)
+    if asset_type is None:
+        raise ProTrackValidationError("Asset type not found.")
+    wanted = max(1, min(int(count or 1), MAX_NUMBER_PREVIEW))
+    first = preview_next_asset_number(db, asset_type)
+    prefix = first["prefix"]
+    pattern = first["pattern"]
+    numbers = [str(first["asset_number"])]
+    seq = int(first["sequence"])
+    attempts = 0
+    while len(numbers) < wanted:
+        seq += 1
+        attempts += 1
+        if attempts > wanted * 50:
+            raise ProTrackValidationError(
+                f"Numbering pattern '{pattern}' cannot produce {wanted} distinct numbers."
+            )
+        number = _format_asset_number(
+            pattern, prefix=prefix, seq=seq, type_code=asset_type.code or ""
+        )
+        if number in numbers:
+            continue
+        if db.scalar(
+            select(Asset.id).where(
+                Asset.is_deleted.is_(False),
+                Asset.asset_number == number,
+            )
+        ):
+            continue
+        numbers.append(number)
+    return numbers
+
+
+def next_asset_number(db: Session, asset_type: AssetType) -> str:
+    """
+    Allocate next asset number under lock.
+
+    Uses max(highest existing for prefix, settings counter) + 1.
+    Does not recycle gaps or historical disposed numbers.
+    """
+    settings = _locked_settings(db)
+    prefix = _prefix_for_type(asset_type)
+    pattern = settings.asset_numbering_pattern or "{prefix}-{seq:04d}"
+    highest_db = _highest_seq_for_prefix(db, prefix=prefix, pattern=pattern)
+    seq = max(highest_db, int(settings.next_asset_seq or 1) - 1) + 1
+    number = _format_asset_number(
+        pattern, prefix=prefix, seq=seq, type_code=asset_type.code or ""
+    )
+    while db.scalar(
+        select(Asset.id).where(
+            Asset.is_deleted.is_(False),
+            Asset.asset_number == number,
+        )
+    ):
+        seq += 1
+        number = _format_asset_number(
+            pattern, prefix=prefix, seq=seq, type_code=asset_type.code or ""
+        )
     settings.next_asset_seq = seq + 1
     db.add(settings)
     db.flush()
-    return number.strip()
+    return number
 
 
 def next_computer_name(db: Session, type_code: str) -> str:
@@ -262,6 +395,9 @@ def list_assets(
     *,
     status: str | None = None,
     asset_type_id: UUID | None = None,
+    category: str | None = None,
+    make_id: UUID | None = None,
+    model_id: UUID | None = None,
     search: str | None = None,
     inventory_scope: str = "current",
     purchased_by: str | None = None,
@@ -304,6 +440,19 @@ def list_assets(
     if asset_type_id:
         stmt = stmt.where(Asset.asset_type_id == asset_type_id)
         count_filters.append(Asset.asset_type_id == asset_type_id)
+    category_key = (category or "").strip().lower() or None
+    if category_key:
+        category_clause = Asset.asset_type_id.in_(
+            select(AssetType.id).where(AssetType.category == category_key)
+        )
+        stmt = stmt.where(category_clause)
+        count_filters.append(category_clause)
+    if make_id:
+        stmt = stmt.where(Asset.make_id == make_id)
+        count_filters.append(Asset.make_id == make_id)
+    if model_id:
+        stmt = stmt.where(Asset.model_id == model_id)
+        count_filters.append(Asset.model_id == model_id)
     if purchased_by:
         stmt = stmt.where(Asset.purchased_by == purchased_by)
         count_filters.append(Asset.purchased_by == purchased_by)
@@ -386,6 +535,8 @@ def create_asset(
     serial_number: str | None = None,
     make: str | None = None,
     model: str | None = None,
+    make_id: UUID | None = None,
+    model_id: UUID | None = None,
     purchase_date: date | None = None,
     purchase_cost: Decimal | None = None,
     warranty_expiry: date | None = None,
@@ -399,10 +550,13 @@ def create_asset(
     owner_customer_id: UUID | None = None,
     customer_used_for_id: UUID | None = None,
     supplier_id: UUID | None = None,
+    supplier_name: str | None = None,
     invoice_number: str | None = None,
     condition: str | None = None,
     commit: bool = True,
 ) -> Asset:
+    from app.services.it_master_data_service import resolve_masters_for_asset
+
     asset_type = db.get(AssetType, asset_type_id)
     if asset_type is None or not asset_type.is_active:
         raise ProTrackValidationError("Asset type not found or inactive.")
@@ -411,7 +565,19 @@ def create_asset(
         raise ProTrackValidationError("Owner customer not found.")
     if customer_used_for_id is not None and db.get(Customer, customer_used_for_id) is None:
         raise ProTrackValidationError("Customer used for not found.")
-    preferred = (asset_number or legacy_asset_number or "").strip() or None
+
+    masters = resolve_masters_for_asset(
+        db,
+        asset_type_id=asset_type_id,
+        make=make,
+        model=model,
+        make_id=make_id,
+        model_id=model_id,
+        supplier_id=supplier_id,
+        supplier_name=supplier_name,
+    )
+
+    preferred = (asset_number or "").strip() or None
     if preferred:
         clash = db.scalar(
             select(Asset).where(
@@ -420,8 +586,9 @@ def create_asset(
             )
         )
         if clash is not None:
+            suggested = preview_next_asset_number(db, asset_type)["asset_number"]
             raise ProTrackValidationError(
-                f"Asset number '{preferred}' already exists."
+                f"Asset number '{preferred}' already exists. Suggested next: {suggested}"
             )
         number = preferred
     else:
@@ -429,18 +596,20 @@ def create_asset(
     asset = Asset(
         id=uuid4(),
         asset_number=number,
-        legacy_asset_number=(legacy_asset_number or preferred or "").strip() or None,
+        legacy_asset_number=(legacy_asset_number or "").strip() or None,
         asset_type_id=asset_type.id,
         description=(description or "").strip() or None,
         serial_number=(serial_number or "").strip() or None,
         service_tag=(service_tag or "").strip() or None,
-        make=(make or "").strip() or None,
-        model=(model or "").strip() or None,
+        make=masters["make"],
+        model=masters["model"],
+        make_id=masters["make_id"],
+        model_id=masters["model_id"],
         status="available",
         purchased_by=purchased_by,
         owner_customer_id=owner_customer_id,
         customer_used_for_id=customer_used_for_id,
-        supplier_id=supplier_id,
+        supplier_id=masters["supplier_id"],
         invoice_number=(invoice_number or "").strip() or None,
         condition=(condition or "").strip() or None,
         purchase_date=purchase_date,

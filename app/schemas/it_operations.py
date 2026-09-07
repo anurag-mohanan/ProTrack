@@ -51,18 +51,26 @@ class AssetCreate(BlankOptionalFieldsMixin, BaseModel):
     serial_number: Optional[str] = Field(default=None, max_length=100)
     make: Optional[str] = Field(default=None, max_length=100)
     model: Optional[str] = Field(default=None, max_length=100)
+    make_id: Optional[UUID] = None
+    model_id: Optional[UUID] = None
     purchase_date: Optional[date] = None
     purchase_cost: Optional[Decimal] = None
     warranty_expiry: Optional[date] = None
     location: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
     legacy_asset_number: Optional[str] = Field(default=None, max_length=40)
+    asset_number: Optional[str] = Field(
+        default=None,
+        max_length=40,
+        description="Optional manual override; requires override permission.",
+    )
     description: Optional[str] = Field(default=None, max_length=255)
     service_tag: Optional[str] = Field(default=None, max_length=100)
     purchased_by: str = Field(default="organization", max_length=40)
     owner_customer_id: Optional[UUID] = None
     customer_used_for_id: Optional[UUID] = None
     supplier_id: Optional[UUID] = None
+    supplier_name: Optional[str] = Field(default=None, max_length=200)
     invoice_number: Optional[str] = Field(default=None, max_length=80)
     condition: Optional[str] = Field(default=None, max_length=40)
 
@@ -115,6 +123,8 @@ class AssetRead(TimestampSchema):
     warranty_status: Optional[str] = None
     location: Optional[str] = None
     notes: Optional[str] = None
+    parent_asset_id: Optional[UUID] = None
+    parent_asset_number: Optional[str] = None
     is_deleted: bool = False
     current_assignee_id: Optional[UUID] = None
     current_assignee_name: Optional[str] = None
@@ -460,11 +470,36 @@ class ITSettingsUpdate(BlankOptionalFieldsMixin, BaseModel):
     settings_json: Optional[str] = None
 
 
+class ITProfileComputer(BaseModel):
+    computer_id: UUID
+    computer_name: Optional[str] = None
+    asset_id: Optional[UUID] = None
+    asset_number: Optional[str] = None
+    asset_status: Optional[str] = None
+    assigned_date: Optional[date] = None
+
+
+class ITProfileSoftware(BaseModel):
+    assignment_id: UUID
+    license_pool_id: UUID
+    software_id: UUID
+    software_name: Optional[str] = None
+    license_type: Optional[str] = None
+    assigned_date: Optional[date] = None
+
+
 class ITProfileRead(BaseModel):
     user_id: UUID
     assets: list[AssetRead] = Field(default_factory=list)
     accounts: list[ITUserAccountRead] = Field(default_factory=list)
     ips: list[IPAddressRead] = Field(default_factory=list)
+    # Read-only cross-module aggregate (Connected ProTrack Wave 5B)
+    computer: Optional[ITProfileComputer] = None
+    software: list[ITProfileSoftware] = Field(default_factory=list)
+    required_software_count: int = 0
+    missing_software: list[str] = Field(default_factory=list)
+    is_compliant: bool = True
+    shift: Optional[dict] = None
 
 
 class ITDashboardSummary(BaseModel):
@@ -485,6 +520,18 @@ class ITDashboardSummary(BaseModel):
     retired_computers: int = 0
     disposed_computers: int = 0
     employees_without_computer: int = 0
+    software_catalog_count: int = 0
+    active_software_count: int = 0
+    license_pool_count: int = 0
+    software_assignments_count: int = 0
+    licenses_expiring_30: int = 0
+    licenses_expired: int = 0
+    # Resource Planning readiness gaps (Connected ProTrack Wave 4)
+    gap_users_without_computer: int = 0
+    gap_users_missing_licenses: int = 0
+    gap_oversubscribed_software: int = 0
+    gap_software_without_pool: int = 0
+    gap_spare_computers: int = 0
 
 
 class ITPersonListItem(BaseModel):
@@ -737,3 +784,163 @@ class ITDataImportCommitResult(BaseModel):
     deleted: dict[str, int] = Field(default_factory=dict)
     confirm_required: bool = False
     message: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Software catalog / licenses / assignments / requirements
+# ---------------------------------------------------------------------------
+
+
+class SoftwareCatalogCreate(BlankOptionalFieldsMixin, BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    vendor: Optional[str] = Field(default=None, max_length=120)
+    version: Optional[str] = Field(default=None, max_length=80)
+    edition: Optional[str] = Field(default=None, max_length=80)
+    category: Optional[str] = Field(default=None, max_length=80)
+    code: Optional[str] = Field(default=None, max_length=40)
+    notes: Optional[str] = None
+    is_active: bool = True
+
+
+class SoftwareCatalogUpdate(BlankOptionalFieldsMixin, BaseModel):
+    name: Optional[str] = Field(default=None, max_length=200)
+    vendor: Optional[str] = Field(default=None, max_length=120)
+    version: Optional[str] = Field(default=None, max_length=80)
+    edition: Optional[str] = Field(default=None, max_length=80)
+    category: Optional[str] = Field(default=None, max_length=80)
+    code: Optional[str] = Field(default=None, max_length=40)
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SoftwareCatalogRead(TimestampSchema):
+    name: str
+    vendor: Optional[str] = None
+    version: Optional[str] = None
+    edition: Optional[str] = None
+    category: Optional[str] = None
+    code: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: bool = True
+
+
+class SoftwareLicensePoolCreate(BlankOptionalFieldsMixin, BaseModel):
+    software_id: UUID
+    seat_count: int = Field(default=1, ge=1)
+    purchased_by: str = "organization"
+    owner_customer_id: Optional[UUID] = None
+    license_type: Optional[str] = Field(default=None, max_length=40)
+    cost: Optional[Decimal] = None
+    currency_code: Optional[str] = Field(default=None, max_length=3)
+    expiry_date: Optional[date] = None
+    renewal_mode: Optional[str] = Field(default=None, max_length=80)
+    notes: Optional[str] = None
+
+
+class SoftwareLicensePoolUpdate(BlankOptionalFieldsMixin, BaseModel):
+    seat_count: Optional[int] = Field(default=None, ge=1)
+    purchased_by: Optional[str] = None
+    owner_customer_id: Optional[UUID] = None
+    license_type: Optional[str] = Field(default=None, max_length=40)
+    cost: Optional[Decimal] = None
+    currency_code: Optional[str] = Field(default=None, max_length=3)
+    expiry_date: Optional[date] = None
+    renewal_mode: Optional[str] = Field(default=None, max_length=80)
+    notes: Optional[str] = None
+
+
+class SoftwareLicensePoolRead(TimestampSchema):
+    software_id: UUID
+    software_name: Optional[str] = None
+    purchased_by: str
+    owner_customer_id: Optional[UUID] = None
+    seat_count: int
+    assigned_count: int = 0
+    available_count: int = 0
+    license_type: Optional[str] = None
+    cost: Optional[Decimal] = None
+    currency_code: Optional[str] = None
+    expiry_date: Optional[date] = None
+    renewal_mode: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SoftwareAssignmentCreate(BlankOptionalFieldsMixin, BaseModel):
+    license_pool_id: UUID
+    user_id: Optional[UUID] = None
+    computer_id: Optional[UUID] = None
+    asset_id: Optional[UUID] = None
+    assigned_date: Optional[date] = None
+    notes: Optional[str] = None
+    department: Optional[str] = Field(default=None, max_length=100)
+
+
+class SoftwareAssignmentUnassignRequest(BlankOptionalFieldsMixin, BaseModel):
+    released_date: Optional[date] = None
+
+
+class SoftwareAssignmentRead(TimestampSchema):
+    license_pool_id: UUID
+    software_id: Optional[UUID] = None
+    software_name: Optional[str] = None
+    user_id: Optional[UUID] = None
+    user_name: Optional[str] = None
+    computer_id: Optional[UUID] = None
+    computer_name: Optional[str] = None
+    asset_id: Optional[UUID] = None
+    assigned_date: Optional[date] = None
+    released_date: Optional[date] = None
+    notes: Optional[str] = None
+    department: Optional[str] = None
+    is_active: bool = True
+
+
+class EmployeeSoftwareRequirementCreate(BlankOptionalFieldsMixin, BaseModel):
+    user_id: UUID
+    software_id: UUID
+    requirement_level: str = "required"
+    version: Optional[str] = Field(default=None, max_length=80)
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
+    reason: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = None
+
+
+class EmployeeSoftwareRequirementUpdate(BlankOptionalFieldsMixin, BaseModel):
+    requirement_level: Optional[str] = None
+    version: Optional[str] = Field(default=None, max_length=80)
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
+    reason: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = None
+
+
+class EmployeeSoftwareRequirementRead(TimestampSchema):
+    user_id: UUID
+    user_name: Optional[str] = None
+    software_id: UUID
+    software_name: Optional[str] = None
+    requirement_level: str
+    version: Optional[str] = None
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SoftwareExpirySummary(BaseModel):
+    active_count: int = 0
+    expiring_30_count: int = 0
+    expired_count: int = 0
+    active: list[dict] = Field(default_factory=list)
+    expiring_30: list[dict] = Field(default_factory=list)
+    expired: list[dict] = Field(default_factory=list)
+
+
+class SoftwareComplianceRead(BaseModel):
+    user_id: UUID
+    full_name: Optional[str] = None
+    requirements: list[dict] = Field(default_factory=list)
+    missing_required_count: int = 0
+    licensed_without_requirement: list[dict] = Field(default_factory=list)
+    is_compliant: bool = True

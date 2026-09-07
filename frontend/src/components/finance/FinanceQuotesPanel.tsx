@@ -23,10 +23,6 @@ import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { fetchCustomers, fetchTeams } from '../../api/lookups';
-import {
-  IMPORT_ACCEPT_WITH_CSV,
-  IMPORT_FORMAT_LABEL_WITH_CSV,
-} from '../../config/importFormats';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { LoadingState } from '../common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -41,6 +37,7 @@ import {
   financeMoney,
 } from './FinanceCockpitPrimitives';
 import { InvoicePdfImportDialog } from './InvoicePdfImportDialog';
+import { QuotePdfImportDialog } from './QuotePdfImportDialog';
 import { FinanceQuotesTable } from './FinanceQuotesTable';
 import { QuoteCashLedgerPanel } from './QuoteCashLedgerPanel';
 
@@ -153,6 +150,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<QuoteRow | null>(null);
   const [lastImport, setLastImport] = useState<QuoteImportItem[]>([]);
   const [invoicePdfOpen, setInvoicePdfOpen] = useState(false);
+  const [quotePdfOpen, setQuotePdfOpen] = useState(false);
   const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [search, setSearch] = useState('');
 
@@ -322,6 +320,12 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     mutationFn: async (file: File) => {
       if (!importTeamId) {
         throw new Error('Select a team for this upload.');
+      }
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith('.pdf')) {
+        throw new Error(
+          'Quote PDFs use extract → review → confirm. Use Import Quote PDF instead of batch upload.',
+        );
       }
       const form = new FormData();
       form.append('file', file);
@@ -716,7 +720,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       {!editingId ? (
         <FinanceSection
           title="Optional file upload"
-          subtitle={`Batch Excel/PDF/CSV for quotes (${IMPORT_FORMAT_LABEL_WITH_CSV}). Invoice PDF import uses extract → review → confirm (never auto-saves).`}
+          subtitle="Batch Excel/CSV for quotes. Quote and invoice PDFs use extract → review → confirm (never auto-save)."
         >
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button variant="outlined" component="label" disabled={!canUpload}>
@@ -724,13 +728,20 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
               <input
                 hidden
                 type="file"
-                accept={IMPORT_ACCEPT_WITH_CSV}
+                accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12,text/csv"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (file) importMutation.mutate(file);
                   event.target.value = '';
                 }}
               />
+            </Button>
+            <Button
+              variant="outlined"
+              disabled={!importTeamId}
+              onClick={() => setQuotePdfOpen(true)}
+            >
+              Import Quote PDF
             </Button>
             <Button
               variant="outlined"
@@ -742,6 +753,16 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           </Box>
         </FinanceSection>
       ) : null}
+
+      <QuotePdfImportDialog
+        open={quotePdfOpen}
+        onClose={() => setQuotePdfOpen(false)}
+        teamId={importTeamId}
+        createProject={createProject}
+        onImported={(data) => {
+          applyImportResult(data as QuoteImportResult, 'Imported quote from PDF');
+        }}
+      />
 
       <InvoicePdfImportDialog
         open={invoicePdfOpen}

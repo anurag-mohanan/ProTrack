@@ -756,6 +756,59 @@ def _map_asset_status(
     return "available"
 
 
+def _try_assign_imported_asset(
+    db: Session,
+    asset: Asset,
+    *,
+    assignee: User | None,
+    actor: User,
+    notes: str,
+    errors: list[str],
+    row_label: str,
+    mapped_status: str,
+) -> str:
+    """Assign during import without leaving status=assigned and no open assignment.
+
+    ``assign_asset`` requires status ``available`` and then sets ``assigned``.
+    Returns the status that should remain on the asset.
+    """
+    if it_asset_service.get_current_assignment(db, asset.id) is not None:
+        return "assigned"
+
+    if assignee is None:
+        if mapped_status == "assigned":
+            errors.append(
+                f"{row_label}: status mapped to assigned but no matched employee — "
+                "left available (use Assign User or reconciliation)."
+            )
+            return "available"
+        return mapped_status
+
+    if mapped_status in {"retired", "disposed", "returned_to_customer", "damaged"}:
+        errors.append(
+            f"{row_label}: cannot assign to {assignee.email or assignee.id} while "
+            f"status is {mapped_status}."
+        )
+        return mapped_status
+
+    # Force available so assign_asset can run; it sets assigned on success.
+    asset.status = "available"
+    db.flush()
+    try:
+        it_asset_service.assign_asset(
+            db,
+            asset,
+            user_id=assignee.id,
+            by_user=actor,
+            notes=notes,
+            commit=False,
+        )
+        return "assigned"
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"{row_label}: assign failed ({exc})")
+        return "available"
+
+
 def _resolve_or_create_asset_type(db: Session, type_label: str) -> AssetType:
     raw = (type_label or "OTHER").strip() or "OTHER"
     code = re.sub(r"[^A-Za-z0-9]+", "_", raw).strip("_").upper()[:20] or "OTHER"
@@ -2018,18 +2071,18 @@ def commit_import(
 
                     assignee_label = (row_fields.get("assigned_to") or "").strip()
                     assignee = _match_user(users, assignee_label) if assignee_label else None
-                    if assignee and asset.status in {"available", "assigned"}:
-                        try:
-                            it_asset_service.assign_asset(
-                                db,
-                                asset,
-                                user_id=assignee.id,
-                                by_user=actor,
-                                notes="IT Hardware Workbook import",
-                                commit=False,
-                            )
-                        except Exception:  # noqa: BLE001
-                            pass
+                    row_label = f"Row {row.get('_source_row')}"
+                    asset.status = _try_assign_imported_asset(
+                        db,
+                        asset,
+                        assignee=assignee,
+                        actor=actor,
+                        notes="IT Hardware Workbook import",
+                        errors=errors,
+                        row_label=row_label,
+                        mapped_status=status,
+                    )
+                    db.add(asset)
 
                     hw.ensure_computer_and_ip(
                         db,
@@ -2177,21 +2230,22 @@ def commit_import(
                     src_row = _parse_int(str(row.get("source_row") or row.get("_source_row") or ""))
                     asset.source_row = src_row
                     db.add(asset)
+                    db.flush()
 
                     assignee_label = (row.get("assigned_to") or "").strip()
                     assignee = _match_user(users, assignee_label) if assignee_label else None
-                    if assignee and asset.status in {"available", "assigned"}:
-                        try:
-                            it_asset_service.assign_asset(
-                                db,
-                                asset,
-                                user_id=assignee.id,
-                                by_user=actor,
-                                notes="IT Data Import assignment",
-                                commit=False,
-                            )
-                        except Exception:  # noqa: BLE001
-                            pass
+                    row_label = f"Row {row.get('_source_row') or row.get('source_row')}"
+                    asset.status = _try_assign_imported_asset(
+                        db,
+                        asset,
+                        assignee=assignee,
+                        actor=actor,
+                        notes="IT Data Import assignment",
+                        errors=errors,
+                        row_label=row_label,
+                        mapped_status=status,
+                    )
+                    db.add(asset)
 
                     imported += 1
                     existing["asset_number"].add(norm)
@@ -2264,6 +2318,21 @@ def commit_import(
                         asset.serial_number = (row.get("serial_number") or "").strip()
                     if not asset.service_tag and (row.get("service_tag") or "").strip():
                         asset.service_tag = (row.get("service_tag") or "").strip()
+                    if not asset.location and (row.get("location") or "").strip():
+                        asset.location = (row.get("location") or "").strip()[:120]
+                    assignee_label = (row.get("assigned_to") or "").strip()
+                    assignee = _match_user(users, assignee_label) if assignee_label else None
+                    if assignee or (asset.status or "") == "assigned":
+                        asset.status = _try_assign_imported_asset(
+                            db,
+                            asset,
+                            assignee=assignee,
+                            actor=actor,
+                            notes="IT Computers import assignment",
+                            errors=errors,
+                            row_label=f"Row {row.get('_source_row')}",
+                            mapped_status=asset.status or "available",
+                        )
                     db.add(asset)
                     imported += 1
                 except Exception as exc:  # noqa: BLE001

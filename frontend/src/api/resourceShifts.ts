@@ -4,8 +4,10 @@ import type {
   ShiftAssignmentBulkPayload,
   ShiftAssignmentBulkResult,
   ShiftAssignmentPayload,
+  ShiftBoard,
   ShiftCalendar,
   ShiftForUser,
+  ShiftOverview,
   ShiftPayload,
 } from '../types/ResourceShifts';
 import { apiClient, buildQuery } from './client';
@@ -89,6 +91,22 @@ export async function fetchShiftCalendar(params: {
   return data;
 }
 
+export async function fetchShiftOverview(params?: {
+  date?: string;
+  team_id?: string;
+}): Promise<ShiftOverview> {
+  const { data } = await apiClient.get<ShiftOverview>(`${BASE}/overview${buildQuery(params)}`);
+  return data;
+}
+
+export async function fetchShiftBoard(params?: {
+  date?: string;
+  team_id?: string;
+}): Promise<ShiftBoard> {
+  const { data } = await apiClient.get<ShiftBoard>(`${BASE}/board${buildQuery(params)}`);
+  return data;
+}
+
 export const resourceShiftKeys = {
   all: ['resource-shifts'] as const,
   shifts: (params?: { active_only?: boolean }) =>
@@ -97,4 +115,8 @@ export const resourceShiftKeys = {
     ['resource-shifts', 'assignments', params ?? {}] as const,
   calendar: (params: { from: string; to: string; team_id?: string }) =>
     ['resource-shifts', 'calendar', params] as const,
+  overview: (params?: { date?: string; team_id?: string }) =>
+    ['resource-shifts', 'overview', params ?? {}] as const,
+  board: (params?: { date?: string; team_id?: string }) =>
+    ['resource-shifts', 'board', params ?? {}] as const,
 };

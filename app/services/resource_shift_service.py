@@ -212,9 +212,19 @@ def assignment_weekdays(assignment: ResourceShiftAssignment) -> list[int]:
 
 
 def _rotation_matches(assignment: ResourceShiftAssignment, on_date: date) -> bool:
-    """Whether a rotational assignment is 'on' for ``on_date``."""
-    pattern = (assignment.rotation_pattern or "daily").lower()
+    """Whether a rotational assignment is 'on' for ``on_date``.
+
+    Sequence-based rotations (multi-shift cycles) always match on covered dates;
+    the active shift is chosen in ``_shift_id_for_date``.
+    """
     config = _rotation_config(assignment)
+    if _sequence_segments(config):
+        weekdays = _weekdays_of(config)
+        if weekdays and on_date.weekday() not in weekdays:
+            return False
+        return True
+
+    pattern = (assignment.rotation_pattern or "daily").lower()
     weekdays = _weekdays_of(config)
 
     if weekdays and on_date.weekday() not in weekdays:
@@ -245,6 +255,96 @@ def _rotation_matches(assignment: ResourceShiftAssignment, on_date: date) -> boo
         return months % cycle_months == cycle_index % cycle_months
 
     return True
+
+
+def _sequence_segments(config: dict) -> list[dict]:
+    """Normalize rotation sequence config into ``[{shift_id, days}, ...]``.
+
+    Supported forms:
+    - segments: [{shift_id, days}]
+    - sequence: [shift_id, ...] with slot_days (default 7) or period per slot
+    """
+    segments = config.get("segments")
+    if isinstance(segments, list) and segments:
+        out = []
+        for item in segments:
+            if not isinstance(item, dict):
+                continue
+            days = max(int(item.get("days") or 0), 0)
+            if days <= 0:
+                continue
+            sid = item.get("shift_id")
+            out.append({"shift_id": str(sid) if sid else None, "days": days})
+        return out
+
+    sequence = config.get("sequence")
+    if isinstance(sequence, list) and sequence:
+        slot = max(int(config.get("slot_days") or config.get("period") or 7), 1)
+        out = []
+        for sid in sequence:
+            out.append({"shift_id": str(sid) if sid else None, "days": slot})
+        return out
+    return []
+
+
+def _shift_id_for_date(assignment: ResourceShiftAssignment, on_date: date) -> uuid.UUID | None:
+    """Resolve which shift master applies on ``on_date`` for this assignment."""
+    config = _rotation_config(assignment)
+    segments = _sequence_segments(config)
+    if not segments:
+        return assignment.shift_id
+
+    cycle_len = sum(seg["days"] for seg in segments)
+    if cycle_len <= 0:
+        return assignment.shift_id
+    offset = (on_date - assignment.effective_from).days
+    if offset < 0:
+        return None
+    pos = offset % cycle_len
+    cursor = 0
+    for seg in segments:
+        cursor += seg["days"]
+        if pos < cursor:
+            sid = seg["shift_id"]
+            if not sid:
+                return None  # Off day in custom cycle
+            try:
+                return uuid.UUID(str(sid))
+            except (ValueError, TypeError):
+                return assignment.shift_id
+    return assignment.shift_id
+
+
+def next_employee_shift(
+    db: Session,
+    employee_id: uuid.UUID,
+    *,
+    after_date: date | None = None,
+    horizon_days: int = 366,
+) -> dict | None:
+    """Return current shift (on after_date) and the next change within horizon."""
+    start = after_date or date.today()
+    current = get_employee_shift(db, employee_id, start)
+    current_id = current.id if current else None
+    day = start + timedelta(days=1)
+    end = start + timedelta(days=max(1, horizon_days))
+    while day <= end:
+        nxt = get_employee_shift(db, employee_id, day)
+        nxt_id = nxt.id if nxt else None
+        if nxt_id != current_id:
+            return {
+                "on_date": start,
+                "current_shift": current,
+                "next_change_date": day,
+                "next_shift": nxt,
+            }
+        day += timedelta(days=1)
+    return {
+        "on_date": start,
+        "current_shift": current,
+        "next_change_date": None,
+        "next_shift": None,
+    }
 
 
 def _covers(assignment: ResourceShiftAssignment, on_date: date) -> bool:
@@ -317,7 +417,10 @@ def get_employee_shift(
     if not candidates:
         return None
     winner = max(candidates, key=_precedence)
-    return db.get(ResourceShift, winner.shift_id)
+    shift_id = _shift_id_for_date(winner, on_date)
+    if shift_id is None:
+        return None
+    return db.get(ResourceShift, shift_id)
 
 
 def resolve_shifts_for_range(
@@ -333,13 +436,20 @@ def resolve_shifts_for_range(
     assignments = _assignments_for_users(db, ids, start=start, end=end)
     if not assignments:
         return {}
+
+    # Collect every shift id referenced by assignment.shift_id or sequences.
+    shift_ids: set[uuid.UUID] = {item.shift_id for item in assignments}
+    for item in assignments:
+        for seg in _sequence_segments(_rotation_config(item)):
+            sid = seg.get("shift_id")
+            if sid:
+                try:
+                    shift_ids.add(uuid.UUID(str(sid)))
+                except (ValueError, TypeError):
+                    pass
     shifts = {
         shift.id: shift
-        for shift in db.scalars(
-            select(ResourceShift).where(
-                ResourceShift.id.in_({item.shift_id for item in assignments})
-            )
-        ).all()
+        for shift in db.scalars(select(ResourceShift).where(ResourceShift.id.in_(shift_ids))).all()
     }
 
     by_user: dict[uuid.UUID, list[ResourceShiftAssignment]] = {}
@@ -353,7 +463,9 @@ def resolve_shifts_for_range(
         while day <= end:
             matching = [item for item in user_assignments if _applies_on(item, day)]
             if matching:
-                shift = shifts.get(max(matching, key=_precedence).shift_id)
+                winner = max(matching, key=_precedence)
+                sid = _shift_id_for_date(winner, day)
+                shift = shifts.get(sid) if sid else None
                 if shift is not None:
                     per_day[day] = shift
             day += timedelta(days=1)
@@ -481,6 +593,51 @@ def assign_shift(db: Session, payload: dict, *, commit: bool = True) -> Resource
             config["weekdays"] = cleaned
         if payload.get("cycle_index") is not None:
             config["cycle_index"] = int(payload["cycle_index"])
+        if payload.get("slot_days") is not None:
+            config["slot_days"] = max(int(payload["slot_days"]), 1)
+        if payload.get("period") is not None:
+            config["period"] = max(int(payload["period"]), 1)
+        if payload.get("unit"):
+            config["unit"] = str(payload["unit"]).lower()
+        sequence = payload.get("rotation_sequence") or payload.get("sequence") or []
+        if isinstance(sequence, list) and sequence:
+            config["sequence"] = [str(item) for item in sequence if item]
+            # Primary shift_id becomes first sequence entry when not already meaningful.
+            try:
+                first = uuid.UUID(str(config["sequence"][0]))
+                if db.get(ResourceShift, first) is not None:
+                    shift_id = first
+            except (ValueError, TypeError):
+                pass
+        segments = payload.get("rotation_segments") or payload.get("segments") or []
+        if isinstance(segments, list) and segments:
+            cleaned_segments = []
+            for item in segments:
+                if not isinstance(item, dict):
+                    continue
+                days = max(int(item.get("days") or 0), 0)
+                if days <= 0:
+                    continue
+                cleaned_segments.append(
+                    {
+                        "shift_id": str(item["shift_id"]) if item.get("shift_id") else None,
+                        "days": days,
+                    }
+                )
+            if cleaned_segments:
+                config["segments"] = cleaned_segments
+                if cleaned_segments[0].get("shift_id"):
+                    try:
+                        shift_id = uuid.UUID(str(cleaned_segments[0]["shift_id"]))
+                    except (ValueError, TypeError):
+                        pass
+        days_of_month = payload.get("days_of_month") or []
+        if isinstance(days_of_month, list) and days_of_month:
+            config["days_of_month"] = sorted(
+                {int(day) for day in days_of_month if isinstance(day, int) and 1 <= int(day) <= 31}
+            )
+        if payload.get("cycle_months") is not None:
+            config["cycle_months"] = max(int(payload["cycle_months"]), 1)
         rotation_json = json.dumps(config) if config else None
 
     if assignment_type == ASSIGNMENT_TYPE_PERMANENT:
@@ -642,6 +799,141 @@ def shift_calendar(
         "shifts": list_shifts(db, active_only=True),
         "rows": rows,
     }
+
+
+def shift_overview(db: Session, *, on_date: date | None = None, team_id: uuid.UUID | None = None) -> dict:
+    """Management summary: headcount by shift, permanent vs rotational, unassigned."""
+    on_date = on_date or date.today()
+    stmt = select(User).where(User.is_deleted.is_(False), User.is_active.is_(True))
+    if team_id is not None:
+        scoped = _team_scoped_user_ids(db, team_id)
+        if not scoped:
+            return {
+                "on_date": on_date,
+                "total_employees": 0,
+                "unassigned": 0,
+                "permanent": 0,
+                "rotational": 0,
+                "by_shift": [],
+            }
+        stmt = stmt.where(User.id.in_(scoped))
+    users = list(db.scalars(stmt).all())
+    resolved = resolve_shifts_for_range(db, [u.id for u in users], on_date, on_date)
+    assignments = _assignments_for_users(db, [u.id for u in users], start=on_date, end=on_date)
+
+    permanent_users: set[uuid.UUID] = set()
+    rotational_users: set[uuid.UUID] = set()
+    for assignment in assignments:
+        if not _applies_on(assignment, on_date):
+            continue
+        if assignment.assignment_type == ASSIGNMENT_TYPE_ROTATIONAL:
+            rotational_users.add(assignment.user_id)
+        else:
+            permanent_users.add(assignment.user_id)
+
+    by_shift: dict[uuid.UUID, dict] = {}
+    for shift in list_shifts(db, active_only=True):
+        by_shift[shift.id] = {
+            "shift_id": shift.id,
+            "shift_code": shift.code,
+            "shift_name": shift.name,
+            "display_label": format_shift_label(shift),
+            "employee_count": 0,
+        }
+
+    assigned_count = 0
+    for user in users:
+        shift = resolved.get(user.id, {}).get(on_date)
+        if shift is None:
+            continue
+        assigned_count += 1
+        bucket = by_shift.get(shift.id)
+        if bucket is not None:
+            bucket["employee_count"] += 1
+
+    return {
+        "on_date": on_date,
+        "total_employees": len(users),
+        "assigned": assigned_count,
+        "unassigned": max(0, len(users) - assigned_count),
+        "permanent": len(permanent_users - rotational_users),
+        "rotational": len(rotational_users),
+        "by_shift": list(by_shift.values()),
+    }
+
+
+def shift_board(db: Session, *, on_date: date | None = None, team_id: uuid.UUID | None = None) -> dict:
+    """Visual board: employees grouped under each shift for ``on_date``."""
+    on_date = on_date or date.today()
+    stmt = select(User).where(User.is_deleted.is_(False), User.is_active.is_(True))
+    if team_id is not None:
+        scoped = _team_scoped_user_ids(db, team_id)
+        if not scoped:
+            return {"on_date": on_date, "columns": []}
+        stmt = stmt.where(User.id.in_(scoped))
+    users = list(db.scalars(stmt).all())
+    team_names = {team.id: team.name for team in db.scalars(select(Team)).all()}
+    resolved = resolve_shifts_for_range(db, [u.id for u in users], on_date, on_date)
+
+    # Optional computer names for board rows
+    from app.models.it_operations import AssetAssignment, Computer
+
+    open_assigns = list(
+        db.scalars(
+            select(AssetAssignment).where(AssetAssignment.returned_date.is_(None))
+        ).all()
+    )
+    asset_to_user = {a.asset_id: a.assigned_to_user_id for a in open_assigns}
+    computers = list(db.scalars(select(Computer)).all())
+    user_computer: dict[uuid.UUID, str] = {}
+    for computer in computers:
+        uid = asset_to_user.get(computer.asset_id)
+        if uid:
+            user_computer[uid] = computer.computer_name
+
+    columns = []
+    for shift in list_shifts(db, active_only=True):
+        people = []
+        for user in sorted(users, key=display_name):
+            day_shift = resolved.get(user.id, {}).get(on_date)
+            if day_shift is None or day_shift.id != shift.id:
+                continue
+            nxt = next_employee_shift(db, user.id, after_date=on_date, horizon_days=60)
+            people.append(
+                {
+                    "user_id": user.id,
+                    "user_name": display_name(user),
+                    "team_name": team_names.get(user.team_id),
+                    "computer_name": user_computer.get(user.id),
+                    "next_change_date": nxt.get("next_change_date") if nxt else None,
+                    "next_shift_code": (
+                        nxt["next_shift"].code if nxt and nxt.get("next_shift") else None
+                    ),
+                }
+            )
+        columns.append(
+            {
+                "shift_id": shift.id,
+                "shift_code": shift.code,
+                "shift_name": shift.name,
+                "display_label": format_shift_label(shift),
+                "start_time": shift.start_time,
+                "end_time": shift.end_time,
+                "employee_count": len(people),
+                "employees": people,
+            }
+        )
+    unassigned = [
+        {
+            "user_id": user.id,
+            "user_name": display_name(user),
+            "team_name": team_names.get(user.team_id),
+            "computer_name": user_computer.get(user.id),
+        }
+        for user in sorted(users, key=display_name)
+        if resolved.get(user.id, {}).get(on_date) is None
+    ]
+    return {"on_date": on_date, "columns": columns, "unassigned": unassigned}
 
 
 # --------------------------------------------------------------------------

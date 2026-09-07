@@ -20,7 +20,9 @@ import {
   createShiftAssignment,
   endShiftAssignment,
   fetchShiftAssignments,
+  fetchShiftBoard,
   fetchShiftCalendar,
+  fetchShiftOverview,
   fetchShifts,
   resourceShiftKeys,
   updateShift,
@@ -100,18 +102,26 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
 
-  const [subTab, setSubTab] = useState<'masters' | 'assign' | 'calendar'>('calendar');
+  const [subTab, setSubTab] = useState<'overview' | 'board' | 'masters' | 'assign' | 'calendar'>(
+    'overview',
+  );
   const [shiftForm, setShiftForm] = useState<ShiftPayload>(EMPTY_SHIFT);
   const [assignUserId, setAssignUserId] = useState('');
   const [assignShiftId, setAssignShiftId] = useState('');
   const [assignFrom, setAssignFrom] = useState(todayIso());
   const [assignType, setAssignType] = useState<'permanent' | 'rotational'>('permanent');
+  const [rotationPattern, setRotationPattern] = useState<'weekly' | 'custom' | 'biweekly'>(
+    'weekly',
+  );
+  const [slotDays, setSlotDays] = useState('7');
+  const [rotationSeq, setRotationSeq] = useState<string[]>([]);
   const [weekStart, setWeekStart] = useState(() => {
     const d = new Date();
     const day = (d.getDay() + 6) % 7; // Monday=0
     d.setDate(d.getDate() - day);
     return d.toISOString().slice(0, 10);
   });
+  const boardDate = todayIso();
 
   const shiftsQuery = useQuery({
     queryKey: resourceShiftKeys.shifts({ active_only: false }),
@@ -139,6 +149,20 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
       }),
     staleTime: QUERY_STALE_TIMES.dashboard,
     enabled: subTab === 'calendar',
+  });
+
+  const overviewQuery = useQuery({
+    queryKey: resourceShiftKeys.overview({ date: boardDate, team_id: teamId }),
+    queryFn: () => fetchShiftOverview({ date: boardDate, team_id: teamId }),
+    staleTime: QUERY_STALE_TIMES.dashboard,
+    enabled: subTab === 'overview' || subTab === 'board',
+  });
+
+  const boardQuery = useQuery({
+    queryKey: resourceShiftKeys.board({ date: boardDate, team_id: teamId }),
+    queryFn: () => fetchShiftBoard({ date: boardDate, team_id: teamId }),
+    staleTime: QUERY_STALE_TIMES.dashboard,
+    enabled: subTab === 'board',
   });
 
   const createShiftMutation = useMutation({
@@ -199,6 +223,8 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
       <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
         {(
           [
+            ['overview', 'Overview'],
+            ['board', 'Shift board'],
             ['calendar', 'Week calendar'],
             ['assign', 'Assignments'],
             ['masters', 'Shift masters'],
@@ -213,6 +239,131 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
           />
         ))}
       </Stack>
+
+      {subTab === 'overview' && (
+        <DashboardPanel title="Shift overview" subtitle={`Coverage for ${boardDate}`}>
+          {overviewQuery.isLoading ? (
+            <LoadingState message="Loading overview…" />
+          ) : overviewQuery.error ? (
+            <ErrorState error={overviewQuery.error} />
+          ) : (
+            <Stack spacing={2}>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                <Chip label={`Employees ${overviewQuery.data?.total_employees ?? 0}`} />
+                <Chip color="success" label={`Assigned ${overviewQuery.data?.assigned ?? 0}`} />
+                <Chip color="warning" label={`Unassigned ${overviewQuery.data?.unassigned ?? 0}`} />
+                <Chip label={`Permanent ${overviewQuery.data?.permanent ?? 0}`} />
+                <Chip label={`Rotational ${overviewQuery.data?.rotational ?? 0}`} />
+              </Stack>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap>
+                {(overviewQuery.data?.by_shift ?? []).map((row) => (
+                  <Box
+                    key={row.shift_id}
+                    sx={{
+                      flex: 1,
+                      p: 1.5,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 2,
+                      minWidth: 160,
+                    }}
+                  >
+                    <Typography variant="subtitle2">{row.display_label || row.shift_name}</Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                      {row.employee_count}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      employees today
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </Stack>
+          )}
+        </DashboardPanel>
+      )}
+
+      {subTab === 'board' && (
+        <DashboardPanel title="Shift board" subtitle={`Who works when · ${boardDate}`}>
+          {boardQuery.isLoading ? (
+            <LoadingState message="Loading board…" />
+          ) : boardQuery.error ? (
+            <ErrorState error={boardQuery.error} />
+          ) : (
+            <Stack spacing={2}>
+              <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} sx={{ alignItems: 'stretch' }}>
+                {(boardQuery.data?.columns ?? []).map((col) => (
+                  <Box
+                    key={col.shift_id}
+                    sx={{
+                      flex: 1,
+                      minWidth: 220,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 2,
+                      p: 1.5,
+                      bgcolor: 'background.paper',
+                    }}
+                  >
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      {col.display_label || col.shift_name}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mb: 1 }}
+                    >
+                      {col.employee_count} employees
+                    </Typography>
+                    <Stack spacing={0.75}>
+                      {col.employees.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          No one scheduled
+                        </Typography>
+                      ) : (
+                        col.employees.map((person) => (
+                          <Box
+                            key={person.user_id}
+                            sx={{
+                              p: 1,
+                              borderRadius: 1,
+                              bgcolor: 'action.hover',
+                            }}
+                          >
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {person.user_name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {[person.team_name, person.computer_name].filter(Boolean).join(' · ') ||
+                                '—'}
+                            </Typography>
+                            {person.next_change_date ? (
+                              <Typography
+                                variant="caption"
+                                color="info.main"
+                                sx={{ display: 'block' }}
+                              >
+                                Next {person.next_shift_code || 'change'} · {person.next_change_date}
+                              </Typography>
+                            ) : null}
+                          </Box>
+                        ))
+                      )}
+                    </Stack>
+                  </Box>
+                ))}
+              </Stack>
+              {(boardQuery.data?.unassigned ?? []).length > 0 ? (
+                <Alert severity="warning">
+                  Unassigned today: {(boardQuery.data?.unassigned ?? [])
+                    .map((p) => p.user_name)
+                    .join(', ')}
+                </Alert>
+              ) : null}
+            </Stack>
+          )}
+        </DashboardPanel>
+      )}
 
       {subTab === 'masters' && (
         <DashboardPanel title="Shift masters" subtitle="Company standard shifts used by Resource Planning">
@@ -372,13 +523,83 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                   value={assignType}
                   options={[
                     { value: 'permanent', label: 'Permanent' },
-                    { value: 'rotational', label: 'Rotational (weekly)' },
+                    { value: 'rotational', label: 'Rotational' },
                   ]}
                   onChange={(e) =>
                     setAssignType(e.target.value as 'permanent' | 'rotational')
                   }
                   sx={{ minWidth: 160 }}
                 />
+                {assignType === 'rotational' ? (
+                  <>
+                    <FormSelect
+                      label="Rotation"
+                      size="small"
+                      value={rotationPattern}
+                      options={[
+                        { value: 'weekly', label: 'Weekly (same shift)' },
+                        { value: 'biweekly', label: 'Biweekly' },
+                        { value: 'custom', label: 'Sequence cycle' },
+                      ]}
+                      onChange={(e) =>
+                        setRotationPattern(
+                          e.target.value as 'weekly' | 'custom' | 'biweekly',
+                        )
+                      }
+                      sx={{ minWidth: 180 }}
+                    />
+                    {rotationPattern === 'custom' ? (
+                      <>
+                        <TextField
+                          label="Days per step"
+                          type="number"
+                          size="small"
+                          value={slotDays}
+                          onChange={(e) => setSlotDays(e.target.value)}
+                          sx={{ width: 120 }}
+                        />
+                        <FormSelect
+                          label="Sequence (multi-select order)"
+                          size="small"
+                          value={rotationSeq[0] || ''}
+                          options={[
+                            { value: '', label: 'Add first shift…' },
+                            ...activeShifts.map((s) => ({
+                              value: s.id,
+                              label: shiftDisplayLabel(s),
+                            })),
+                          ]}
+                          onChange={(e) => {
+                            const id = String(e.target.value);
+                            if (!id) return;
+                            setRotationSeq((prev) =>
+                              prev.includes(id) ? prev : [...prev, id],
+                            );
+                            if (!assignShiftId) setAssignShiftId(id);
+                          }}
+                          sx={{ minWidth: 260 }}
+                        />
+                        {rotationSeq.length > 0 ? (
+                          <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                            {rotationSeq.map((id, idx) => {
+                              const s = activeShifts.find((x) => x.id === id);
+                              return (
+                                <Chip
+                                  key={`${id}-${idx}`}
+                                  size="small"
+                                  label={`${idx + 1}. ${s?.code || id}`}
+                                  onDelete={() =>
+                                    setRotationSeq((prev) => prev.filter((x) => x !== id))
+                                  }
+                                />
+                              );
+                            })}
+                          </Stack>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
                 <TextField
                   label="Effective from"
                   type="date"
@@ -395,13 +616,30 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
                       showError('Select a person and shift');
                       return;
                     }
+                    if (assignType === 'rotational' && rotationPattern === 'custom') {
+                      if (rotationSeq.length < 2) {
+                        showError('Sequence rotation needs at least two shifts');
+                        return;
+                      }
+                    }
                     assignMutation.mutate({
                       user_id: assignUserId,
                       shift_id: assignShiftId,
                       assignment_type: assignType,
-                      rotation_pattern: assignType === 'rotational' ? 'weekly' : null,
+                      rotation_pattern:
+                        assignType === 'rotational' ? rotationPattern : null,
                       rotation_weekdays:
-                        assignType === 'rotational' ? [0, 1, 2, 3, 4] : [],
+                        assignType === 'rotational' && rotationPattern !== 'custom'
+                          ? [0, 1, 2, 3, 4]
+                          : [],
+                      rotation_sequence:
+                        assignType === 'rotational' && rotationPattern === 'custom'
+                          ? rotationSeq
+                          : [],
+                      slot_days:
+                        assignType === 'rotational' && rotationPattern === 'custom'
+                          ? Math.max(1, Number(slotDays) || 7)
+                          : null,
                       effective_from: assignFrom,
                       end_date_existing: true,
                     });

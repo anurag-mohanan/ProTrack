@@ -320,6 +320,10 @@ class ComputerRead(TimestampSchema):
     assigned_to_user_id: Optional[UUID] = None
     assigned_to_name: Optional[str] = None
     assigned_to_team: Optional[str] = None
+    current_shift_code: Optional[str] = None
+    current_shift_name: Optional[str] = None
+    current_shift_display: Optional[str] = None
+    data_quality_flags: list[str] = Field(default_factory=list)
     is_open: bool = False
     assigned_date: Optional[date] = None
 

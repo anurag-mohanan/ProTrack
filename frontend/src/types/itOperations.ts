@@ -408,6 +408,10 @@ export interface ITComputer {
   assigned_to_team?: string | null;
   assigned_to_user_name?: string | null;
   current_assignee_name?: string | null;
+  current_shift_code?: string | null;
+  current_shift_name?: string | null;
+  current_shift_display?: string | null;
+  data_quality_flags?: string[];
   is_open?: boolean;
   assigned_date?: string | null;
   created_at?: string;

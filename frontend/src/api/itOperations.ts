@@ -410,6 +410,29 @@ export async function transferComputer(
   return data;
 }
 
+export async function fetchComputerDataQuality(): Promise<{
+  computers_total: number;
+  assigned_without_employee: number;
+  available_with_open_assignment: number;
+  computers_without_location: number;
+  computers_without_ram: number;
+  assigned_without_team: number;
+  employees_without_computer: number;
+  employees_without_shift_today: number;
+  samples: Record<string, unknown[]>;
+}> {
+  const { data } = await apiClient.get('/it/computers/data-quality');
+  return data;
+}
+
+export async function reconcileOrphanAssignedComputers(): Promise<{
+  repaired_count: number;
+  repaired: Array<Record<string, string>>;
+}> {
+  const { data } = await apiClient.post('/it/computers/reconcile-orphan-assigned');
+  return data;
+}
+
 export async function fetchItPeoplePaginated(
   params?: ListParams & { status?: string },
 ): Promise<PaginatedResponse<import('../types/itOperations').ITPersonListItem>> {

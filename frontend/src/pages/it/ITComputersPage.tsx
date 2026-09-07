@@ -23,6 +23,7 @@ import {
   fetchComputersPaginated,
   fetchItPeoplePaginated,
   itOperationsKeys,
+  reconcileOrphanAssignedComputers,
   unassignComputer,
   updateComputer,
 } from '../../api/itOperations';
@@ -215,6 +216,19 @@ export function ITComputersPage() {
     onError: (error) => showError(getErrorMessage(error)),
   });
 
+  const reconcileMutation = useMutation({
+    mutationFn: reconcileOrphanAssignedComputers,
+    onSuccess: (data) => {
+      showSuccess(
+        data.repaired_count
+          ? `Repaired ${data.repaired_count} orphan assigned status(es).`
+          : 'No orphan assigned statuses found.',
+      );
+      void queryClient.invalidateQueries({ queryKey: itOperationsKeys.all });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
@@ -302,8 +316,22 @@ export function ITComputersPage() {
       headerName: 'Employee',
       flex: 1,
       minWidth: 140,
-      valueGetter: (_value, row) =>
-        row.assigned_to_name || row.assigned_to_user_name || row.current_assignee_name || '—',
+      renderCell: (params) => {
+        const name =
+          params.row.assigned_to_name ||
+          params.row.assigned_to_user_name ||
+          params.row.current_assignee_name;
+        const flags = params.row.data_quality_flags ?? [];
+        const orphan = flags.includes('status_assigned_without_employee');
+        return (
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+            <span>{name || '—'}</span>
+            {orphan ? (
+              <Chip size="small" color="warning" variant="outlined" label="needs link" />
+            ) : null}
+          </Stack>
+        );
+      },
     },
     {
       field: 'assigned_to_team',
@@ -317,6 +345,13 @@ export function ITComputersPage() {
       headerName: 'Location',
       flex: 0.8,
       minWidth: 110,
+      valueFormatter: (value) => formatCellValue(value) || '—',
+    },
+    {
+      field: 'current_shift_display',
+      headerName: 'Shift',
+      flex: 1,
+      minWidth: 140,
       valueFormatter: (value) => formatCellValue(value) || '—',
     },
     ...(canManage || canAssign
@@ -361,9 +396,18 @@ export function ITComputersPage() {
         subtitle="Named workstations. Open = Available with no employee assignment."
         action={
           canManage ? (
-            <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
-              Add computer
-            </ProsohmButton>
+            <Stack direction="row" spacing={1}>
+              <ProsohmButton
+                buttonVariant="secondary"
+                loading={reconcileMutation.isPending}
+                onClick={() => reconcileMutation.mutate()}
+              >
+                Fix orphan assigned
+              </ProsohmButton>
+              <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
+                Add computer
+              </ProsohmButton>
+            </Stack>
           ) : undefined
         }
       />

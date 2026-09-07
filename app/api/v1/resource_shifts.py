@@ -28,9 +28,11 @@ from app.schemas.resource_shifts import (
     ShiftAssignmentCreate,
     ShiftAssignmentEnd,
     ShiftAssignmentRead,
+    ShiftBoard,
     ShiftCalendar,
     ShiftCreate,
     ShiftForUser,
+    ShiftOverview,
     ShiftRead,
     ShiftUpdate,
 )
@@ -88,6 +90,16 @@ def _require_assign(db: Session, user: User) -> None:
 def _assignment_payload(db: Session, assignment: ResourceShiftAssignment) -> dict:
     shift = resource_shift_service.get_shift(db, assignment.shift_id)
     user = db.get(User, assignment.user_id)
+    config = resource_shift_service._rotation_config(assignment)
+    sequence_raw = config.get("sequence") or []
+    sequence: list = []
+    for item in sequence_raw:
+        try:
+            sequence.append(UUID(str(item)))
+        except (ValueError, TypeError):
+            continue
+    segments = resource_shift_service._sequence_segments(config)
+    slot_days = config.get("slot_days")
     return {
         "id": assignment.id,
         "user_id": assignment.user_id,
@@ -95,6 +107,9 @@ def _assignment_payload(db: Session, assignment: ResourceShiftAssignment) -> dic
         "assignment_type": assignment.assignment_type,
         "rotation_pattern": assignment.rotation_pattern,
         "rotation_weekdays": resource_shift_service.assignment_weekdays(assignment),
+        "rotation_sequence": sequence,
+        "rotation_segments": segments,
+        "slot_days": int(slot_days) if slot_days is not None else None,
         "effective_from": assignment.effective_from,
         "effective_to": assignment.effective_to,
         "is_active": assignment.is_active,
@@ -261,6 +276,8 @@ def shift_for_user(
     _require_view(db, current_user)
     target = on_date or date.today()
     shift = resource_shift_service.get_employee_shift(db, user_id, target)
+    nxt = resource_shift_service.next_employee_shift(db, user_id, after_date=target)
+    next_shift = nxt.get("next_shift") if nxt else None
     return ShiftForUser(
         user_id=user_id,
         on_date=target,
@@ -268,7 +285,31 @@ def shift_for_user(
         shift_hours=(
             resource_shift_service.shift_duration_hours(shift) if shift else None
         ),
+        next_change_date=nxt.get("next_change_date") if nxt else None,
+        next_shift=ShiftRead.model_validate(next_shift) if next_shift else None,
     )
+
+
+@router.get("/shifts/overview", response_model=ShiftOverview)
+def shifts_overview(
+    on_date: date | None = Query(default=None, alias="date"),
+    team_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_view(db, current_user)
+    return resource_shift_service.shift_overview(db, on_date=on_date, team_id=team_id)
+
+
+@router.get("/shifts/board", response_model=ShiftBoard)
+def shifts_board(
+    on_date: date | None = Query(default=None, alias="date"),
+    team_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_view(db, current_user)
+    return resource_shift_service.shift_board(db, on_date=on_date, team_id=team_id)
 
 
 @router.get("/shifts/calendar", response_model=ShiftCalendar)

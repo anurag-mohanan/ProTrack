@@ -80,6 +80,9 @@ class ShiftAssignmentRead(BaseModel):
     assignment_type: ShiftAssignmentType
     rotation_pattern: ShiftRotationPattern | None = None
     rotation_weekdays: list[int] = Field(default_factory=list)
+    rotation_sequence: list[UUID] = Field(default_factory=list)
+    rotation_segments: list[dict] = Field(default_factory=list)
+    slot_days: int | None = None
     effective_from: date
     effective_to: date | None = None
     is_active: bool
@@ -97,6 +100,16 @@ class ShiftAssignmentCreate(BaseModel):
     rotation_pattern: ShiftRotationPattern | None = None
     # 0 = Monday … 6 = Sunday. Only meaningful for rotational assignments.
     rotation_weekdays: list[int] = Field(default_factory=list)
+    # Multi-shift cycle: ordered shift IDs; each lasts slot_days (default 7).
+    rotation_sequence: list[UUID] = Field(default_factory=list)
+    # Custom segments: [{shift_id, days}] — shift_id null = off.
+    rotation_segments: list[dict] = Field(default_factory=list)
+    slot_days: int | None = Field(default=None, ge=1, le=366)
+    period: int | None = Field(default=None, ge=1, le=366)
+    unit: str | None = None  # days | weeks | months
+    days_of_month: list[int] = Field(default_factory=list)
+    cycle_months: int | None = Field(default=None, ge=1, le=24)
+    cycle_index: int | None = None
     effective_from: date
     effective_to: date | None = None
     notes: str | None = None
@@ -110,6 +123,9 @@ class ShiftAssignmentBulkCreate(BaseModel):
     assignment_type: ShiftAssignmentType = ShiftAssignmentType.permanent
     rotation_pattern: ShiftRotationPattern | None = None
     rotation_weekdays: list[int] = Field(default_factory=list)
+    rotation_sequence: list[UUID] = Field(default_factory=list)
+    rotation_segments: list[dict] = Field(default_factory=list)
+    slot_days: int | None = Field(default=None, ge=1, le=366)
     effective_from: date
     effective_to: date | None = None
     notes: str | None = None
@@ -136,6 +152,24 @@ class ShiftForUser(BaseModel):
     on_date: date
     shift: ShiftRead | None = None
     shift_hours: Decimal | None = None
+    next_change_date: date | None = None
+    next_shift: ShiftRead | None = None
+
+
+class ShiftOverview(BaseModel):
+    on_date: date
+    total_employees: int
+    assigned: int = 0
+    unassigned: int
+    permanent: int
+    rotational: int
+    by_shift: list[dict] = Field(default_factory=list)
+
+
+class ShiftBoard(BaseModel):
+    on_date: date
+    columns: list[dict] = Field(default_factory=list)
+    unassigned: list[dict] = Field(default_factory=list)
 
 
 class ShiftCalendarDay(BaseModel):

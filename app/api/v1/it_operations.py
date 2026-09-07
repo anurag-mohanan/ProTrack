@@ -288,22 +288,14 @@ def _customer_return_read(db: Session, row: AssetCustomerReturn) -> AssetCustome
 
 
 def _computer_read(db: Session, computer) -> ComputerRead:
+    from app.services import it_computer_reconciliation_service as recon
+
     asset = computer.asset
     at = asset.asset_type if asset else None
-    assignment = None
-    assignee = None
-    team_name = None
-    if asset is not None:
-        assignment, assignee = it_asset_service.get_computer_current_assignee(db, asset.id)
-        if assignee is not None and getattr(assignee, "team", None) is not None:
-            team_name = assignee.team.name
-        elif assignee is not None:
-            # lazy load team if needed
-            from app.models.models import Team
-
-            if assignee.team_id:
-                team = db.get(Team, assignee.team_id)
-                team_name = team.name if team else None
+    resolved = recon.resolve_computer_display(db, computer)
+    assignment = resolved["assignment"]
+    assignee = resolved["assignee"]
+    team_name = resolved["team_name"]
     status = asset.status if asset else None
     is_open = status == "available"
     return ComputerRead(
@@ -331,6 +323,10 @@ def _computer_read(db: Session, computer) -> ComputerRead:
         assigned_to_user_id=assignee.id if assignee else None,
         assigned_to_name=_full_name(assignee) if assignee else None,
         assigned_to_team=team_name,
+        current_shift_code=resolved["shift_code"],
+        current_shift_name=resolved["shift_name"],
+        current_shift_display=resolved["shift_display"],
+        data_quality_flags=resolved["data_quality"],
         is_open=is_open,
         assigned_date=assignment.assigned_date if assignment else None,
     )
@@ -1473,6 +1469,32 @@ def transfer_computer(
         return _assignment_read(db, row)
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
+
+
+@router.get("/computers/data-quality")
+def computer_data_quality(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """IT / Resource Planning data-quality report for computers and related links."""
+    _require_it_access(db, current_user)
+    from app.services import it_computer_reconciliation_service as recon
+
+    return recon.computer_data_quality_report(db)
+
+
+@router.post(
+    "/computers/reconcile-orphan-assigned",
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def reconcile_orphan_assigned_computers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reset status=assigned with no open assignment → available (no invented assignees)."""
+    from app.services import it_computer_reconciliation_service as recon
+
+    return recon.repair_orphan_assigned_status(db, commit=True)
 
 
 # ---------------------------------------------------------------------------

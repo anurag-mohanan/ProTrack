@@ -215,21 +215,22 @@ def _build_renumber_preview(
         seen.add(n)
 
     conflicts: list[str] = []
+    selected_ids = {asset.id for asset in assets}
     for mapping in mappings:
-        existing = db.scalar(
-            select(Asset).where(
-                Asset.asset_number == mapping["new"],
-                Asset.is_deleted.is_(False),
+        if it_asset_service.asset_number_is_reserved(
+            db, mapping["new"], exclude_asset_id=mapping["asset_id"]
+        ):
+            # Allow if the only reservation is another selected asset that is
+            # itself leaving that number in this batch.
+            existing = db.scalar(
+                select(Asset).where(Asset.asset_number == mapping["new"])
             )
-        )
-        if existing is None:
-            continue
-        if existing.id == mapping["asset_id"]:
-            continue
-        other_map = next((m for m in mappings if m["asset_id"] == existing.id), None)
-        if other_map is None:
-            conflicts.append(mapping["new"])
-        elif other_map["new"] == mapping["new"]:
+            if existing is not None and existing.id in selected_ids:
+                other_map = next(
+                    (m for m in mappings if m["asset_id"] == existing.id), None
+                )
+                if other_map is not None and other_map["new"] != mapping["new"]:
+                    continue
             conflicts.append(mapping["new"])
 
     return {
@@ -804,14 +805,32 @@ def _bulk_renumber(
     db.flush()
 
     updated: list[str] = []
+    today = date.today()
     for i, mapping in enumerate(preview["preview"]):
         asset = assets[i]
         old_number = mapping["current"]
         new_number = mapping["new"]
+        prev = it_asset_service._current_number_period(db, asset.id)
+        if prev is None:
+            # Record the real pre-temp number, not the uniqueness swap token.
+            saved = asset.asset_number
+            asset.asset_number = old_number
+            it_asset_service._open_number_period(
+                db, asset, actor=actor, on_date=today, reason="open_before_bulk_renumber"
+            )
+            asset.asset_number = saved
+            prev = it_asset_service._current_number_period(db, asset.id)
+        it_asset_service._end_open_period(prev, on_date=today)
+        if prev is not None:
+            db.add(prev)
         if not asset.legacy_asset_number:
             asset.legacy_asset_number = old_number
         asset.asset_number = new_number
         db.add(asset)
+        db.flush()
+        it_asset_service._open_number_period(
+            db, asset, actor=actor, on_date=today, reason="bulk_renumber"
+        )
         log_activity(
             db,
             user=actor,

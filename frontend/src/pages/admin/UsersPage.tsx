@@ -1415,7 +1415,7 @@ export default function UsersPage() {
                     onChange={(event) =>
                       setForm((current) => ({ ...current, primary_tool: event.target.value }))
                     }
-                    placeholder="e.g. NX Local"
+                    helper="Fallback only when the employee has no assigned IT software license. Assigned licenses take precedence on the skill matrix and resource profile."
                   />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>

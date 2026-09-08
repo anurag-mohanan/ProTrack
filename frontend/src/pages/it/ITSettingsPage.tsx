@@ -13,6 +13,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_SETTINGS_TABS } from '../../components/it/ITSectionSubnav';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { FormField, FormSelect } from '../../components/ui/design-system';
@@ -97,6 +98,7 @@ export function ITSettingsPage() {
     return (
       <PageContainer>
         <PageHeader title="IT Settings" subtitle="Naming and allocation conventions." />
+        <ITSectionSubnav items={IT_SETTINGS_TABS} />
         <ErrorState error={new Error('You do not have permission to manage IT settings.')} />
       </PageContainer>
     );
@@ -132,6 +134,8 @@ export function ITSettingsPage() {
           </ProsohmButton>
         }
       />
+
+      <ITSectionSubnav items={IT_SETTINGS_TABS} />
 
       <ContentCard title="Conventions">
         <Box

@@ -18,13 +18,8 @@ import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
 import LanRoundedIcon from '@mui/icons-material/LanRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
-import CloudUploadRoundedIcon from '@mui/icons-material/CloudUploadRounded';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
-import PeopleAltRoundedIcon from '@mui/icons-material/PeopleAltRounded';
 import AppsRoundedIcon from '@mui/icons-material/AppsRounded';
-import BuildRoundedIcon from '@mui/icons-material/BuildRounded';
-import CategoryRoundedIcon from '@mui/icons-material/CategoryRounded';
-import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import type { CurrentUser } from '../types';
 import {
   ALL_MODULES,
@@ -63,8 +58,6 @@ import {
   SPECIAL_MANAGE_IT_SETTINGS,
   SPECIAL_MANAGE_IT_DATA_IMPORTS,
   SPECIAL_MANAGE_IT_SOFTWARE,
-  SPECIAL_MANAGE_IT_SUPPLIERS,
-  SPECIAL_MANAGE_IT_ACCOUNTS,
   SPECIAL_OVERRIDE_IT_ASSET_NUMBER,
   SPECIAL_MANAGE_PROJECT_SETTINGS,
   SPECIAL_MANAGE_RESOURCE_SHIFTS,
@@ -414,41 +407,15 @@ const HR_SECTION_NAV: SectionNavConfigItem[] = [
 const IT_SECTION_NAV: SectionNavConfigItem[] = [
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'IT Dashboard',
+    label: 'Dashboard',
     path: '/it',
     icon: DevicesOtherRoundedIcon,
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'Assets & Inventory',
+    label: 'Inventory',
     path: '/it/assets',
     icon: InventoryRoundedIcon,
-  },
-  {
-    module: MODULE_IT_OPERATIONS,
-    label: 'Returned Assets',
-    path: '/it/returned-assets',
-    icon: HistoryRoundedIcon,
-  },
-  {
-    module: MODULE_IT_OPERATIONS,
-    label: 'Computers',
-    path: '/it/computers',
-    icon: DevicesOtherRoundedIcon,
-  },
-  {
-    module: MODULE_IT_OPERATIONS,
-    label: 'Network / IP',
-    path: '/it/networks',
-    icon: LanRoundedIcon,
-  },
-  {
-    module: MODULE_IT_OPERATIONS,
-    label: 'Users & Accounts',
-    path: '/it/accounts',
-    icon: PeopleAltRoundedIcon,
-    visible: (ctx: AccessContext) =>
-      userHasSpecial(ctx, SPECIAL_MANAGE_IT_ACCOUNTS) || canViewItOperations(ctx),
   },
   {
     module: MODULE_IT_OPERATIONS,
@@ -460,47 +427,26 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'IT Requests',
+    label: 'Network',
+    path: '/it/networks',
+    icon: LanRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
+    label: 'Requests',
     path: '/it/requests',
     icon: SupportAgentRoundedIcon,
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'Maintenance',
-    path: '/it/maintenance',
-    icon: BuildRoundedIcon,
-  },
-  {
-    module: MODULE_IT_OPERATIONS,
-    label: 'Master Data',
-    path: '/it/master-data',
-    icon: CategoryRoundedIcon,
-    visible: (ctx: AccessContext) =>
-      userHasSpecial(ctx, SPECIAL_MANAGE_IT_ASSETS) ||
-      userHasSpecial(ctx, SPECIAL_MANAGE_IT_SUPPLIERS) ||
-      canViewItOperations(ctx),
-  },
-  {
-    module: MODULE_IT_OPERATIONS,
-    label: 'Reports',
-    path: '/it/reports',
-    icon: AssessmentRoundedIcon,
-    visible: (ctx: AccessContext) =>
-      userHasSpecial(ctx, SPECIAL_VIEW_IT_REPORTS) || canViewItOperations(ctx),
-  },
-  {
-    module: MODULE_IT_OPERATIONS,
-    label: 'Data Import',
-    path: '/it/data-import',
-    icon: CloudUploadRoundedIcon,
-    visible: (ctx: AccessContext) => canManageItDataImports(ctx),
-  },
-  {
-    module: MODULE_IT_OPERATIONS,
-    label: 'IT Settings',
+    label: 'Settings',
     path: '/it/settings',
     icon: SettingsRoundedIcon,
-    visible: (ctx: AccessContext) => canManageItSettings(ctx),
+    visible: (ctx: AccessContext) =>
+      canManageItSettings(ctx) ||
+      canManageItDataImports(ctx) ||
+      userHasSpecial(ctx, SPECIAL_VIEW_IT_REPORTS) ||
+      canViewItOperations(ctx),
   },
 ];
 export const FUTURE_MODULE_PLACEHOLDERS = [

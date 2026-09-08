@@ -29,6 +29,15 @@ test.describe('Resource Planning', () => {
     const main = page.getByRole('main');
 
     await main.getByRole('tab', { name: 'Shifts & people' }).click();
+    await expect(main.getByRole('button', { name: 'Hierarchy' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await main.getByRole('button', { name: 'Hierarchy' }).click();
+    await expect(main.getByText('Shift hierarchy')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(main.getByText('Unassigned')).toBeVisible();
+
     // Scope to main — nav also has a "Calendar" link to /calendar.
     await main.getByRole('button', { name: 'Calendar' }).click();
     await expect(main.getByRole('heading', { name: 'Shift calendar' })).toBeVisible({
@@ -38,5 +47,32 @@ test.describe('Resource Planning', () => {
     await expect(main.getByRole('button', { name: 'Day' })).toBeVisible();
     await expect(main.getByRole('button', { name: 'Week' })).toBeVisible();
     await expect(main.getByRole('button', { name: 'Month' })).toBeVisible();
+  });
+
+  test('selecting a designer shows the IT resource profile', async ({ page }) => {
+    await gotoAuthenticated(page, '/resource-planning');
+    const main = page.getByRole('main');
+    await expect(main.getByRole('heading', { name: 'Resource Planning', level: 5 })).toBeVisible();
+
+    await main.getByRole('tab', { name: 'Computers & software' }).click();
+    await expect(main.getByText('Employee resources')).toBeVisible({ timeout: 20_000 });
+
+    const designerRow = main.locator('.MuiListItemButton-root').first();
+    if (await designerRow.count()) {
+      await designerRow.click();
+      await expect(
+        main.getByRole('button', { name: 'Assign resources' }).or(main.getByText(/No shift, hardware/i)),
+      ).toBeVisible();
+      const assign = main.getByRole('button', { name: 'Assign resources' });
+      if (await assign.count()) {
+        await assign.click();
+        await expect(page.getByText('Inventory availability')).toBeVisible();
+        await expect(page.getByText('Pick hardware')).toBeVisible();
+        await expect(page.getByText('Pick licenses')).toBeVisible();
+        await page.getByRole('button', { name: 'Cancel' }).click();
+      }
+    } else {
+      await expect(main.getByText(/Select a person/i)).toBeVisible();
+    }
   });
 });

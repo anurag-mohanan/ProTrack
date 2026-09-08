@@ -241,6 +241,15 @@ from app.db.phase92_it_shared_desk_history_schema_sync import (
 from app.db.phase93_it_computer_nics_schema_sync import (
     ensure_phase93_it_computer_nics_foundation,
 )
+from app.db.phase94_it_resource_packages_schema_sync import (
+    ensure_phase94_it_resource_packages_foundation,
+)
+from app.db.phase95_it_asset_number_history_schema_sync import (
+    ensure_phase95_it_asset_number_history_foundation,
+)
+from app.db.phase96_software_installations_schema_sync import (
+    ensure_phase96_software_installations_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
@@ -396,6 +405,9 @@ async def lifespan(app: FastAPI):
         ("phase90_it_parent_asset", ensure_phase90_it_parent_asset_foundation),
         ("phase92_it_shared_desk_history", ensure_phase92_it_shared_desk_history_foundation),
         ("phase93_it_computer_nics", ensure_phase93_it_computer_nics_foundation),
+        ("phase94_it_resource_packages", ensure_phase94_it_resource_packages_foundation),
+        ("phase95_it_asset_number_history", ensure_phase95_it_asset_number_history_foundation),
+        ("phase96_software_installations", ensure_phase96_software_installations_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

@@ -185,6 +185,7 @@ export interface ITAsset {
   model?: string | null;
   make_id?: string | null;
   model_id?: string | null;
+  previous_asset_numbers?: string[];
   status: AssetStatus | string;
   purchased_by?: PurchasedBy;
   owner_customer_id?: string | null;
@@ -674,6 +675,15 @@ export interface ITProfileSoftware {
   assigned_date?: string | null;
 }
 
+export interface ITProfileSoftwareStatus {
+  software_id: string;
+  software_name?: string | null;
+  required: boolean;
+  installed: boolean;
+  licensed: boolean;
+  status: string;
+}
+
 export interface ITProfile {
   user_id: string;
   user_name?: string | null;
@@ -683,7 +693,10 @@ export interface ITProfile {
   software?: ITProfileSoftware[];
   required_software_count?: number;
   missing_software?: string[];
+  software_status?: ITProfileSoftwareStatus[];
   is_compliant?: boolean;
+  primary_tool?: string | null;
+  primary_tool_source?: string | null;
   shift?: {
     id?: string;
     code?: string | null;
@@ -878,6 +891,21 @@ export interface SoftwareAssignmentCreate {
   department?: string | null;
 }
 
+export interface SoftwareInstallation {
+  id: string;
+  computer_id: string;
+  computer_name?: string | null;
+  software_id: string;
+  software_name?: string | null;
+  installed_date?: string | null;
+  uninstalled_date?: string | null;
+  installed_by_user_id?: string | null;
+  notes?: string | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface EmployeeSoftwareRequirement {
   id: string;
   user_id: string;
@@ -930,4 +958,97 @@ export interface SoftwareCompliance {
   missing_required_count: number;
   licensed_without_requirement: Array<Record<string, unknown>>;
   is_compliant: boolean;
+}
+
+export interface ResourcePackageHardwareLine {
+  id: string;
+  asset_type_id: string;
+  asset_type_name?: string | null;
+  quantity: number;
+  is_required: boolean;
+}
+
+export interface ResourcePackageSoftwareLine {
+  id: string;
+  software_id: string;
+  software_name?: string | null;
+  requirement_level: string;
+  seats: number;
+}
+
+export interface ResourcePackage {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  requires_ip: boolean;
+  is_active: boolean;
+  hardware_lines: ResourcePackageHardwareLine[];
+  software_lines: ResourcePackageSoftwareLine[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ResourcePackageUpsert {
+  code: string;
+  name: string;
+  description?: string | null;
+  requires_ip?: boolean;
+  is_active?: boolean;
+  hardware_lines?: Array<{
+    asset_type_id: string;
+    quantity: number;
+    is_required?: boolean;
+  }>;
+  software_lines?: Array<{
+    software_id: string;
+    requirement_level?: string;
+    seats?: number;
+  }>;
+}
+
+export interface ResourcePackagePreview {
+  user_id: string;
+  user_name?: string;
+  package_id: string;
+  package_code: string;
+  package_name: string;
+  requires_ip: boolean;
+  on_date: string;
+  shift?: { id?: string; name?: string; code?: string } | null;
+  hardware: Array<{
+    asset_type_id: string;
+    asset_type_name: string;
+    quantity: number;
+    is_required: boolean;
+    available_count: number;
+    candidates: Array<{
+      id: string;
+      asset_number: string;
+      status: string;
+      make?: string | null;
+      model?: string | null;
+    }>;
+  }>;
+  software: Array<{
+    software_id: string;
+    software_name: string;
+    requirement_level: string;
+    seats: number;
+    available_seats: number;
+    pools: Array<{
+      id: string;
+      seat_count: number;
+      available_seats: number;
+      license_type?: string | null;
+      status?: string;
+    }>;
+  }>;
+  ip: {
+    required: boolean;
+    available_count: number;
+    candidates: Array<{ id: string; address: string; network_id: string }>;
+  };
+  shortages: string[];
+  can_assign_without_override: boolean;
 }

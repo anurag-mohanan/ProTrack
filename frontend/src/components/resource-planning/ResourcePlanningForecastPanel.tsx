@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { fetchHireImpact } from '../../api/resourcePlanning';
 import { QUERY_STALE_TIMES } from '../../config/queryConfig';
@@ -96,13 +96,39 @@ export function ResourcePlanningForecastPanel({
         ) : hire ? (
           <Stack spacing={1}>
             <Typography variant="body2">
-              Computers to procure: <strong>{hire.computers_to_procure}</strong> (need{' '}
-              {hire.required_computers}, spare {hire.spare_computers})
+              Computers: <strong>{hire.computers_to_procure}</strong> to procure (need{' '}
+              {hire.required_computers}, spare {hire.spare_computers}
+              {typeof hire.computer_shortage === 'number'
+                ? `, shortage ${hire.computer_shortage}`
+                : ''}
+              )
             </Typography>
             <Typography variant="body2">
               License seats required: <strong>{hire.required_license_seats}</strong>
               {licenseCost != null ? ` · est. cost ${formatCellValue(licenseCost)}` : ''}
             </Typography>
+            {(hire.software ?? []).length ? (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Software</TableCell>
+                    <TableCell>Available</TableCell>
+                    <TableCell>Needed</TableCell>
+                    <TableCell>Shortage</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {hire.software.map((row) => (
+                    <TableRow key={row.software_id}>
+                      <TableCell>{row.software_name || row.software_id}</TableCell>
+                      <TableCell>{row.seats_available ?? 0}</TableCell>
+                      <TableCell>{row.seats_needed}</TableCell>
+                      <TableCell>{row.seats_shortage ?? 0}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : null}
             {(hire.warnings ?? []).slice(0, 3).map((warning) => (
               <Alert key={warning} severity="warning">
                 {warning}

@@ -1281,6 +1281,8 @@ class HireImpactSoftwareRow(BaseModel):
     software_id: UUID
     software_name: str | None = None
     seats_needed: int = 0
+    seats_available: int = 0
+    seats_shortage: int = 0
     pool_seat_capacity: int = 0
     has_pool: bool = False
     cost_per_seat: Decimal | None = None
@@ -1298,6 +1300,7 @@ class HireImpactResult(BaseModel):
     required_computers: int = 0
     spare_computers: int = 0
     computers_to_procure: int = 0
+    computer_shortage: int = 0
     required_license_seats: int = 0
     software: list[HireImpactSoftwareRow] = Field(default_factory=list)
     estimated_license_cost: Decimal | None = None

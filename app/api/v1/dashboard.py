@@ -37,15 +37,26 @@ from app.schemas.resource_planning import (
     ResourcePlanningGranularity,
     ResourcePlanningGrid,
 )
+from app.schemas.it_operations import (
+    ResourcePackageAssignRequest,
+    ResourcePackagePreviewRequest,
+    ResourcePackageRead,
+)
 from app.core.access_control import (
     MODULE_IT_OPERATIONS,
     MODULE_RESOURCE_PLANNING,
+    SPECIAL_ALLOCATE_IT_IPS,
+    SPECIAL_ASSIGN_IT_ASSETS,
+    SPECIAL_ASSIGN_RESOURCE_SHIFTS,
+    SPECIAL_MANAGE_IT_SOFTWARE,
     SPECIAL_VIEW_IT_OPERATIONS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
     user_has_module,
     user_has_special,
 )
 from app.services import resource_it_gap_service
+from app.services import resource_package_service
+from app.services.resource_shift_service import ShiftConflictError, ShiftValidationError
 from app.crud.team_reports import get_team_resource_planning
 from app.services.notification_service import create_notification
 from app.services.resource_planning_service import get_resource_planning_grid
@@ -351,6 +362,135 @@ def dashboard_resource_planning_computers_by_shift(
     return it_computer_shift_service.computers_by_shift(
         db, on_date=on_date, team_id=team_id
     )
+
+
+@router.get("/resource-planning/shift-hierarchy")
+def dashboard_resource_planning_shift_hierarchy(
+    on_date: date | None = None,
+    team_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """SHIFT → TEAM → EMPLOYEE → computer/IP/software/project (read-only)."""
+    _require_it_readiness_access(db, current_user)
+    scoped_team_ids = resolve_team_scope(db, current_user, team_id=team_id)
+    if scoped_team_ids is not None and team_id is not None and team_id not in scoped_team_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team is outside your accessible scope",
+        )
+    from app.services.resource_shift_hierarchy_service import build_shift_hierarchy
+
+    return build_shift_hierarchy(db, on_date=on_date, team_id=team_id)
+
+
+def _require_special(db: Session, user: User, permission: str, detail: str) -> None:
+    role = normalize_role_name(get_role_name(db, user))
+    if not user_has_special(user, role, permission):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+@router.get("/resource-planning/packages", response_model=list[ResourcePackageRead])
+def dashboard_resource_planning_packages(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_readiness_access(db, current_user)
+    from app.api.v1.it_operations import _package_read
+
+    return [
+        _package_read(row)
+        for row in resource_package_service.list_packages(db, active_only=True)
+    ]
+
+
+@router.post("/resource-planning/packages/{package_id}/preview")
+def dashboard_resource_planning_package_preview(
+    package_id: UUID,
+    payload: ResourcePackagePreviewRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_readiness_access(db, current_user)
+    _require_special(
+        db,
+        current_user,
+        SPECIAL_ASSIGN_IT_ASSETS,
+        "Requires assign_it_assets.",
+    )
+    try:
+        return resource_package_service.preview_package_assignment(
+            db,
+            user_id=payload.user_id,
+            package_id=package_id,
+            on_date=payload.on_date,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(
+            status_code=exc.status_code or status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.detail,
+        ) from exc
+
+
+@router.post("/resource-planning/packages/{package_id}/assign")
+def dashboard_resource_planning_package_assign(
+    package_id: UUID,
+    payload: ResourcePackageAssignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_readiness_access(db, current_user)
+    _require_special(
+        db,
+        current_user,
+        SPECIAL_ASSIGN_IT_ASSETS,
+        "Requires assign_it_assets.",
+    )
+    if payload.shift_id is not None:
+        _require_special(
+            db,
+            current_user,
+            SPECIAL_ASSIGN_RESOURCE_SHIFTS,
+            "Requires assign_resource_shifts to set a shift.",
+        )
+    if payload.ip_address_id is not None or payload.network_id is not None:
+        _require_special(
+            db,
+            current_user,
+            SPECIAL_ALLOCATE_IT_IPS,
+            "Requires allocate_it_ips to assign an IP.",
+        )
+    if payload.license_pool_ids:
+        _require_special(
+            db,
+            current_user,
+            SPECIAL_MANAGE_IT_SOFTWARE,
+            "Requires manage_it_software to assign licenses.",
+        )
+    try:
+        return resource_package_service.assign_package(
+            db,
+            actor=current_user,
+            user_id=payload.user_id,
+            package_id=package_id,
+            asset_ids=payload.asset_ids,
+            license_pool_ids=payload.license_pool_ids,
+            shift_id=payload.shift_id,
+            ip_address_id=payload.ip_address_id,
+            network_id=payload.network_id,
+            notes=payload.notes,
+            assigned_date=payload.assigned_date,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(
+            status_code=exc.status_code or status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.detail,
+        ) from exc
+    except (ShiftValidationError, ShiftConflictError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post("/resource-planning/assign", status_code=status.HTTP_204_NO_CONTENT)

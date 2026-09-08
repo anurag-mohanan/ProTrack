@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Checkbox,
@@ -50,6 +51,7 @@ import { getErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_INVENTORY_TABS } from '../../components/it/ITSectionSubnav';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { AssetBulkActionBar } from '../../components/it/AssetBulkActionBar';
 import { AssetLifecycleDrawer } from '../../components/it/AssetLifecycleDrawer';
@@ -231,14 +233,31 @@ export function ITAssetsPage({
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [inventoryScope, setInventoryScope] = useState(defaultInventoryScope);
   const [ownershipFilter, setOwnershipFilter] = useState('');
   const [warrantyFilter, setWarrantyFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get('category') ?? '');
   const [makeFilter, setMakeFilter] = useState('');
   const [modelFilter, setModelFilter] = useState('');
+
+  const applyCategoryFilter = useCallback(
+    (value: string) => {
+      setCategoryFilter(value);
+      const next = new URLSearchParams(searchParams);
+      if (value) next.set('category', value);
+      else next.delete('category');
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('category') ?? '';
+    setCategoryFilter((current) => (current === fromUrl ? current : fromUrl));
+  }, [searchParams]);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ITAsset | null>(null);
   const [form, setForm] = useState<AssetFormState>(emptyForm);
@@ -1135,6 +1154,29 @@ export function ITAssetsPage({
         }
       />
 
+      <ITSectionSubnav items={IT_INVENTORY_TABS} />
+
+      {defaultInventoryScope !== 'returned' ? (
+        <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+          {(
+            [
+              ['', 'All inventory'],
+              ['computer', 'Computers'],
+              ['peripheral', 'Peripherals'],
+              ['network_equipment', 'Network'],
+            ] as const
+          ).map(([value, label]) => (
+            <Chip
+              key={value || 'all'}
+              label={label}
+              color={categoryFilter === value ? 'primary' : 'default'}
+              variant={categoryFilter === value ? 'filled' : 'outlined'}
+              onClick={() => applyCategoryFilter(value)}
+            />
+          ))}
+        </Stack>
+      ) : null}
+
       <SearchToolbar sticky>
         <FormField
           label="Search"
@@ -1178,7 +1220,7 @@ export function ITAssetsPage({
         <FormSelect
           label="Category"
           value={categoryFilter}
-          onChange={(event) => setCategoryFilter(String(event.target.value))}
+          onChange={(event) => applyCategoryFilter(String(event.target.value))}
           options={categoryFilterOptions}
           sx={{ minWidth: 180 }}
         />

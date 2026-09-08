@@ -289,6 +289,9 @@ class Asset(Base, TimestampMixin, TenantMixin):
     customer_returns: Mapped[list["AssetCustomerReturn"]] = relationship(
         back_populates="asset", order_by="AssetCustomerReturn.return_date.desc()"
     )
+    number_history: Mapped[list["AssetNumberHistory"]] = relationship(
+        back_populates="asset", order_by="AssetNumberHistory.effective_from.desc()"
+    )
 
 
 class AssetCustomerReturn(Base, TimestampMixin, TenantMixin):
@@ -435,6 +438,27 @@ class AssetAssignment(Base, TimestampMixin, TenantMixin):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     asset: Mapped[Asset] = relationship(back_populates="assignments")
+
+
+class AssetNumberHistory(Base, TimestampMixin, TenantMixin):
+    """Effective-dated asset numbers — never rewritten or recycled."""
+
+    __tablename__ = "it_asset_number_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True
+    )
+    asset_number: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date)
+    changed_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    reason: Mapped[Optional[str]] = mapped_column(String(200))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    asset: Mapped["Asset"] = relationship(back_populates="number_history")
 
 
 class AssetOwnershipHistory(Base, TimestampMixin, TenantMixin):
@@ -762,6 +786,26 @@ class SoftwareAssignment(Base, TimestampMixin, TenantMixin):
     )
 
 
+class SoftwareInstallation(Base, TimestampMixin, TenantMixin):
+    """Software present on a computer — distinct from a license seat assignment."""
+
+    __tablename__ = "software_installations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    computer_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("computers.id"), nullable=False, index=True
+    )
+    software_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_catalog.id"), nullable=False, index=True
+    )
+    installed_date: Mapped[date] = mapped_column(Date, nullable=False)
+    uninstalled_date: Mapped[Optional[date]] = mapped_column(Date)
+    installed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
 class EmployeeSoftwareRequirement(Base, TimestampMixin, TenantMixin):
     """Per-employee software entitlement / role requirement (not a license seat)."""
 
@@ -781,3 +825,78 @@ class EmployeeSoftwareRequirement(Base, TimestampMixin, TenantMixin):
     effective_to: Mapped[Optional[date]] = mapped_column(Date)
     reason: Mapped[Optional[str]] = mapped_column(String(200))
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class ResourcePackage(Base, TimestampMixin, TenantMixin):
+    """Requirement template (not inventory). Hardware/software lines describe a typical setup."""
+
+    __tablename__ = "it_resource_packages"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_it_resource_packages_tenant_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    requires_ip: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    hardware_lines: Mapped[list["ResourcePackageHardwareLine"]] = relationship(
+        back_populates="package",
+        cascade="all, delete-orphan",
+        order_by="ResourcePackageHardwareLine.created_at",
+    )
+    software_lines: Mapped[list["ResourcePackageSoftwareLine"]] = relationship(
+        back_populates="package",
+        cascade="all, delete-orphan",
+        order_by="ResourcePackageSoftwareLine.created_at",
+    )
+
+
+class ResourcePackageHardwareLine(Base, TimestampMixin, TenantMixin):
+    __tablename__ = "it_resource_package_hardware_lines"
+    __table_args__ = (
+        UniqueConstraint(
+            "package_id",
+            "asset_type_id",
+            name="uq_it_resource_package_hw_type",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    package_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_resource_packages.id"), nullable=False, index=True
+    )
+    asset_type_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("asset_types.id"), nullable=False, index=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    package: Mapped[ResourcePackage] = relationship(back_populates="hardware_lines")
+    asset_type: Mapped[AssetType] = relationship()
+
+
+class ResourcePackageSoftwareLine(Base, TimestampMixin, TenantMixin):
+    __tablename__ = "it_resource_package_software_lines"
+    __table_args__ = (
+        UniqueConstraint(
+            "package_id",
+            "software_id",
+            name="uq_it_resource_package_sw",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    package_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_resource_packages.id"), nullable=False, index=True
+    )
+    software_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_catalog.id"), nullable=False, index=True
+    )
+    requirement_level: Mapped[str] = mapped_column(String(20), nullable=False, default="required")
+    seats: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    package: Mapped[ResourcePackage] = relationship(back_populates="software_lines")
+    software: Mapped["SoftwareCatalog"] = relationship()

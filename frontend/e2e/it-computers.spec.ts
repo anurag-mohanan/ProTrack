@@ -7,6 +7,7 @@ test.describe('IT Computers', () => {
   }) => {
     await gotoAuthenticated(page, '/it/computers');
     await expect(page.getByText(/computer/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('button', { name: 'View as inventory' })).toBeVisible();
 
     // Grid or empty state should render; NICs button appears for manage-capable users on rows.
     const nics = page.getByRole('button', { name: 'NICs' });

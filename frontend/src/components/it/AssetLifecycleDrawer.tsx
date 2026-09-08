@@ -75,6 +75,12 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
           <Stack spacing={2}>
             <Section title="Identity">
               <DetailRow label="Asset #" value={asset.asset_number} />
+              {(asset.previous_asset_numbers ?? []).length > 0 ? (
+                <DetailRow
+                  label="Previous #s"
+                  value={asset.previous_asset_numbers!.join(', ')}
+                />
+              ) : null}
               <DetailRow label="Type" value={asset.asset_type_name || asset.asset_type_code} />
               <DetailRow
                 label="Make / Model"
@@ -173,6 +179,26 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
                       }`}
                       current={!row.released_date}
                       extra={row.notes}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </Section>
+
+            <Section title="Asset number history">
+              {(lifecycleQuery.data?.asset_numbers ?? []).length === 0 ? (
+                <Typography color="text.secondary">No asset-number periods recorded yet.</Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {(lifecycleQuery.data?.asset_numbers ?? []).map((row) => (
+                    <HistoryCard
+                      key={String(row.id)}
+                      title={String(row.asset_number || '—')}
+                      subtitle={`${formatDate(String(row.effective_from))} → ${
+                        row.effective_to ? formatDate(String(row.effective_to)) : 'Current'
+                      }`}
+                      current={!row.effective_to}
+                      extra={row.reason ? String(row.reason).replace(/_/g, ' ') : null}
                     />
                   ))}
                 </Stack>

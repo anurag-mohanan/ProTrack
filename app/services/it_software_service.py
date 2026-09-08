@@ -19,6 +19,7 @@ from app.models.it_operations import (
     EmployeeSoftwareRequirement,
     SoftwareAssignment,
     SoftwareCatalog,
+    SoftwareInstallation,
     SoftwareLicensePool,
 )
 from app.models.models import Customer, User
@@ -485,6 +486,7 @@ def assign_license(
     assigned_date: date | None = None,
     notes: str | None = None,
     department: str | None = None,
+    commit: bool = True,
 ) -> SoftwareAssignment:
     pool = get_license_pool(db, license_pool_id)
     if pool is None:
@@ -541,8 +543,18 @@ def assign_license(
         department=_optional_str(department),
     )
     db.add(row)
-    db.commit()
-    db.refresh(row)
+    db.flush()
+    if computer_id is not None:
+        ensure_installation(
+            db,
+            computer_id=computer_id,
+            software_id=pool.software_id,
+            on_date=row.assigned_date or date.today(),
+            commit=False,
+        )
+    if commit:
+        db.commit()
+        db.refresh(row)
     return row
 
 
@@ -610,6 +622,7 @@ def create_requirement(
     effective_to: date | None = None,
     reason: str | None = None,
     notes: str | None = None,
+    commit: bool = True,
 ) -> EmployeeSoftwareRequirement:
     user = db.get(User, user_id)
     if user is None or user.is_deleted:
@@ -639,8 +652,10 @@ def create_requirement(
         notes=_optional_str(notes),
     )
     db.add(row)
-    db.commit()
-    db.refresh(row)
+    db.flush()
+    if commit:
+        db.commit()
+        db.refresh(row)
     return row
 
 
@@ -791,3 +806,72 @@ def software_counts_for_dashboard(db: Session) -> dict[str, int]:
         "licenses_expiring_30": expiring_30,
         "licenses_expired": expired,
     }
+
+
+def list_installations(
+    db: Session, *, computer_id: UUID | None = None, active_only: bool = True
+) -> list[SoftwareInstallation]:
+    stmt = select(SoftwareInstallation).order_by(SoftwareInstallation.installed_date.desc())
+    if computer_id is not None:
+        stmt = stmt.where(SoftwareInstallation.computer_id == computer_id)
+    if active_only:
+        stmt = stmt.where(SoftwareInstallation.uninstalled_date.is_(None))
+    return list(db.scalars(stmt).all())
+
+
+def ensure_installation(
+    db: Session,
+    *,
+    computer_id: UUID,
+    software_id: UUID,
+    on_date: date | None = None,
+    installed_by_user_id: UUID | None = None,
+    notes: str | None = None,
+    commit: bool = True,
+) -> SoftwareInstallation:
+    existing = db.scalar(
+        select(SoftwareInstallation).where(
+            SoftwareInstallation.computer_id == computer_id,
+            SoftwareInstallation.software_id == software_id,
+            SoftwareInstallation.uninstalled_date.is_(None),
+        )
+    )
+    if existing is not None:
+        return existing
+    if db.get(Computer, computer_id) is None:
+        raise ProTrackValidationError("Computer not found.")
+    if db.get(SoftwareCatalog, software_id) is None:
+        raise ProTrackValidationError("Software not found.")
+    row = SoftwareInstallation(
+        id=uuid4(),
+        computer_id=computer_id,
+        software_id=software_id,
+        installed_date=on_date or date.today(),
+        installed_by_user_id=installed_by_user_id,
+        notes=_optional_str(notes),
+    )
+    db.add(row)
+    db.flush()
+    if commit:
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def uninstall_software(
+    db: Session,
+    installation: SoftwareInstallation,
+    *,
+    uninstalled_date: date | None = None,
+    commit: bool = True,
+) -> SoftwareInstallation:
+    if installation.uninstalled_date is not None:
+        raise ProTrackValidationError("Software is already uninstalled from this computer.")
+    installation.uninstalled_date = uninstalled_date or date.today()
+    db.add(installation)
+    db.flush()
+    if commit:
+        db.commit()
+        db.refresh(installation)
+    return installation
+

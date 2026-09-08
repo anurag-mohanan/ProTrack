@@ -240,6 +240,7 @@ class ActivityAction(enum.Enum):
     it_data_import_analyzed = "it_data_import_analyzed"
     it_data_import_committed = "it_data_import_committed"
     it_data_import_rolled_back = "it_data_import_rolled_back"
+    it_resource_package_assigned = "it_resource_package_assigned"
 
 
 class NotificationType(enum.Enum):
@@ -300,6 +301,7 @@ class EntityType(enum.Enum):
     it_ip_address = "it_ip_address"
     it_account = "it_account"
     it_settings = "it_settings"
+    it_resource_package = "it_resource_package"
 
 
 class CostNature(enum.Enum):

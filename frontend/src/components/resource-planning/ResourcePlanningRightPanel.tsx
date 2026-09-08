@@ -6,6 +6,7 @@ import type {
   ResourcePlanningGrid,
   UnassignedProjectBlock,
 } from '../../types/ResourcePlanning';
+import { ResourcePlanningEmployeeProfile } from './ResourcePlanningEmployeeProfile';
 import { DashboardPanel } from '../ui/design-system/DashboardPanel';
 import { HealthIndicator, ProgressRing, UtilizationBar } from '../ui/design-system';
 import { designTokens } from '../../theme/designTokens';
@@ -154,6 +155,13 @@ export function ResourcePlanningRightPanel({
             />
           </Stack>
         </DashboardPanel>
+      ) : null}
+
+      {selectedDesigner ? (
+        <ResourcePlanningEmployeeProfile
+          userId={selectedDesigner.user_id}
+          userName={selectedDesigner.designer_name}
+        />
       ) : null}
 
       {projectDetail.project || projectDetail.blocks.length ? (

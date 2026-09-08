@@ -434,6 +434,42 @@ def _license_domain_issues(gaps: dict) -> list[dict]:
     ]
 
 
+def _identity_issues(db: Session) -> list[dict]:
+    computers = list(
+        db.scalars(
+            select(Computer)
+            .options(selectinload(Computer.asset), selectinload(Computer.interfaces))
+            .order_by(Computer.computer_name)
+        ).all()
+    )
+    mac_mismatch: list[dict] = []
+    for computer in computers:
+        primary = next((row for row in (computer.interfaces or []) if row.is_primary), None)
+        nic_mac = (primary.mac_address if primary is not None else None) or None
+        denorm = computer.mac_address
+        if nic_mac and denorm and nic_mac.strip().upper() != denorm.strip().upper():
+            asset = computer.asset
+            mac_mismatch.append(
+                {
+                    "computer_id": str(computer.id),
+                    "computer_name": computer.computer_name,
+                    "asset_number": asset.asset_number if asset else None,
+                    "nic_mac": nic_mac,
+                    "computer_mac": denorm,
+                }
+            )
+    return [
+        _issue(
+            code="computer_mac_nic_mismatch",
+            severity="warning",
+            domain="computers",
+            title="Computer MAC differs from primary NIC (NIC is source of truth)",
+            count=len(mac_mismatch),
+            samples=mac_mismatch,
+        )
+    ]
+
+
 def build_data_quality_report(db: Session) -> dict:
     """Catalog-driven data-quality report for IT + Resource Planning."""
     computer_report = recon.computer_data_quality_report(db)
@@ -445,6 +481,7 @@ def build_data_quality_report(db: Session) -> dict:
         + _network_issues(db)
         + _license_domain_issues(gaps)
         + _lifecycle_issues(db)
+        + _identity_issues(db)
     )
 
     open_issues = [row for row in issues if int(row["count"]) > 0]

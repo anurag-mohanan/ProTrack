@@ -19,6 +19,10 @@ import {
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { useQuery } from '@tanstack/react-query';
+import { fetchHireImpact } from '../../api/resourcePlanning';
+import { QUERY_STALE_TIMES } from '../../config/queryConfig';
+import { LoadingState } from '../common/LoadingState';
 import {
   computeWhatIf,
   defaultWhatIfInputs,
@@ -93,6 +97,13 @@ export function FinanceWhatIfPanel({
     }));
   }, [inputs]);
 
+  const hireQuery = useQuery({
+    queryKey: ['finance', 'hire-impact', inputs.planned_hires],
+    queryFn: () => fetchHireImpact({ headcount: inputs.planned_hires }),
+    staleTime: QUERY_STALE_TIMES.dashboard,
+    enabled: inputs.planned_hires > 0,
+  });
+  const hire = hireQuery.data;
   const money = (n: number) => financeMoney(n, currencyCode);
   const summary = summarizeWhatIfDelta(current, scenario, money);
 
@@ -170,6 +181,42 @@ export function FinanceWhatIfPanel({
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>{numField('hours_per_day', 'Hours / day')}</Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>{numField('utilization_percent', 'Utilization %')}</Grid>
         </Grid>
+
+        {inputs.planned_hires > 0 ? (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {hireQuery.isLoading ? (
+              <LoadingState message="Loading hire impact…" />
+            ) : hire ? (
+              <Stack spacing={0.75}>
+                <Typography variant="subtitle2">IT hire impact (read-only)</Typography>
+                <Typography variant="body2">
+                  Computers to procure: {hire.computers_to_procure} (shortage{' '}
+                  {hire.computer_shortage ?? hire.computers_to_procure})
+                </Typography>
+                {(hire.software ?? []).map((row) => (
+                  <Typography key={row.software_id} variant="body2">
+                    {row.software_name}: {row.seats_available ?? 0} available, need {row.seats_needed}
+                    , shortage {row.seats_shortage ?? 0}
+                  </Typography>
+                ))}
+                {hire.estimated_hardware_cost != null ? (
+                  <Typography variant="body2">
+                    Recorded hardware cost estimate: {String(hire.estimated_hardware_cost)}
+                    {hire.currency_code ? ` ${hire.currency_code}` : ''}
+                  </Typography>
+                ) : null}
+                {hire.estimated_monthly_license_cost != null ? (
+                  <Typography variant="body2">
+                    Recorded monthly license cost: {String(hire.estimated_monthly_license_cost)}
+                    {hire.currency_code ? ` ${hire.currency_code}` : ''}
+                  </Typography>
+                ) : null}
+              </Stack>
+            ) : (
+              'IT hire impact is unavailable for this scenario.'
+            )}
+          </Alert>
+        ) : null}
 
         <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
           3. Cost & project assumptions

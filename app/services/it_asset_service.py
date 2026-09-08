@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import exists, not_, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.access_control import MODULE_IT_OPERATIONS
@@ -17,6 +17,7 @@ from app.models.it_operations import (
     AssetAssignment,
     AssetCustomerReturn,
     AssetLocationHistory,
+    AssetNumberHistory,
     AssetOwnershipHistory,
     AssetStatusHistory,
     AssetType,
@@ -131,41 +132,72 @@ def _format_asset_number(pattern: str, *, prefix: str, seq: int, type_code: str)
         raise ProTrackValidationError(f"Invalid asset numbering pattern: {pattern}") from exc
 
 
+def _seq_from_number(text: str, *, prefix_norm: str) -> int:
+    import re
+
+    raw = (text or "").strip()
+    if not raw.upper().startswith(prefix_norm.upper()):
+        return 0
+    match = re.search(r"(\d+)\s*$", raw)
+    if not match:
+        return 0
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return 0
+
+
 def _highest_seq_for_prefix(db: Session, *, prefix: str, pattern: str) -> int:
     """
     Highest numeric sequence among existing asset numbers for this prefix.
 
-    Default policy: highest existing + 1 (do not fill gaps). Includes disposed/retired.
+    Default policy: highest existing + 1 (do not fill gaps). Includes disposed,
+    retired, deleted, and historical numbers so retired identities are never reused.
     """
     prefix_norm = prefix.strip()
     if not prefix_norm:
         return 0
-    # Match numbers that start with prefix and end with digits (with optional separator)
     like = f"{prefix_norm}%"
-    numbers = list(
+    current_numbers = list(
         db.scalars(
-            select(Asset.asset_number).where(
-                Asset.is_deleted.is_(False),
-                Asset.asset_number.ilike(like),
+            select(Asset.asset_number).where(Asset.asset_number.ilike(like))
+        ).all()
+    )
+    history_numbers = list(
+        db.scalars(
+            select(AssetNumberHistory.asset_number).where(
+                AssetNumberHistory.asset_number.ilike(like)
             )
         ).all()
     )
     highest = 0
-    import re
-
-    # Extract trailing integer after last non-digit run
-    for num in numbers:
-        text = (num or "").strip()
-        if not text.upper().startswith(prefix_norm.upper()):
-            continue
-        m = re.search(r"(\d+)\s*$", text)
-        if not m:
-            continue
-        try:
-            highest = max(highest, int(m.group(1)))
-        except ValueError:
-            continue
+    for num in (*current_numbers, *history_numbers):
+        highest = max(highest, _seq_from_number(num or "", prefix_norm=prefix_norm))
     return highest
+
+
+def asset_number_is_reserved(
+    db: Session, number: str, *, exclude_asset_id: UUID | None = None
+) -> bool:
+    """True if the number is in use, historically used, or on a deleted asset."""
+    cleaned = (number or "").strip()
+    if not cleaned:
+        return False
+    current = select(Asset.id).where(Asset.asset_number == cleaned)
+    if exclude_asset_id is not None:
+        current = current.where(Asset.id != exclude_asset_id)
+    if db.scalar(current.limit(1)) is not None:
+        return True
+    history = select(AssetNumberHistory.id).where(AssetNumberHistory.asset_number == cleaned)
+    if exclude_asset_id is not None:
+        # The open period for this asset is the current number, not a reservation.
+        history = history.where(
+            not_(
+                (AssetNumberHistory.asset_id == exclude_asset_id)
+                & AssetNumberHistory.effective_to.is_(None)
+            )
+        )
+    return db.scalar(history.limit(1)) is not None
 
 
 def preview_next_asset_number(db: Session, asset_type: AssetType) -> dict:
@@ -179,13 +211,8 @@ def preview_next_asset_number(db: Session, asset_type: AssetType) -> dict:
     number = _format_asset_number(
         pattern, prefix=prefix, seq=seq, type_code=asset_type.code or ""
     )
-    # If collision (rare with custom patterns), walk forward
-    while db.scalar(
-        select(Asset.id).where(
-            Asset.is_deleted.is_(False),
-            Asset.asset_number == number,
-        )
-    ):
+    # If collision (rare with custom patterns), walk forward — history is reserved too
+    while asset_number_is_reserved(db, number):
         seq += 1
         number = _format_asset_number(
             pattern, prefix=prefix, seq=seq, type_code=asset_type.code or ""
@@ -226,12 +253,7 @@ def preview_next_asset_numbers(
         )
         if number in numbers:
             continue
-        if db.scalar(
-            select(Asset.id).where(
-                Asset.is_deleted.is_(False),
-                Asset.asset_number == number,
-            )
-        ):
+        if asset_number_is_reserved(db, number):
             continue
         numbers.append(number)
     return numbers
@@ -252,12 +274,7 @@ def next_asset_number(db: Session, asset_type: AssetType) -> str:
     number = _format_asset_number(
         pattern, prefix=prefix, seq=seq, type_code=asset_type.code or ""
     )
-    while db.scalar(
-        select(Asset.id).where(
-            Asset.is_deleted.is_(False),
-            Asset.asset_number == number,
-        )
-    ):
+    while asset_number_is_reserved(db, number):
         seq += 1
         number = _format_asset_number(
             pattern, prefix=prefix, seq=seq, type_code=asset_type.code or ""
@@ -423,6 +440,82 @@ def get_open_assignment_for_shift(
     )
 
 
+def _open_number_period(
+    db: Session,
+    asset: Asset,
+    *,
+    actor: User,
+    on_date: date,
+    reason: str | None = None,
+    notes: str | None = None,
+) -> None:
+    db.add(
+        AssetNumberHistory(
+            id=uuid4(),
+            asset_id=asset.id,
+            asset_number=asset.asset_number,
+            effective_from=on_date,
+            changed_by_user_id=actor.id,
+            reason=reason,
+            notes=notes,
+        )
+    )
+
+
+def _current_number_period(db: Session, asset_id: UUID) -> AssetNumberHistory | None:
+    return db.scalar(
+        select(AssetNumberHistory)
+        .where(
+            AssetNumberHistory.asset_id == asset_id,
+            AssetNumberHistory.effective_to.is_(None),
+        )
+        .order_by(AssetNumberHistory.effective_from.desc())
+        .limit(1)
+    )
+
+
+def apply_asset_number_change(
+    db: Session,
+    asset: Asset,
+    new_number: str,
+    *,
+    actor: User,
+    reason: str | None = None,
+    on_date: date | None = None,
+) -> str:
+    """Move an asset to a new number, closing the previous history period.
+
+    Previous numbers stay reserved forever (including deleted assets).
+    """
+    cleaned = (new_number or "").strip()
+    if not cleaned:
+        raise ProTrackValidationError("Asset number is required.")
+    if cleaned == asset.asset_number:
+        return cleaned
+    if asset_number_is_reserved(db, cleaned, exclude_asset_id=asset.id):
+        raise ProTrackValidationError(
+            f"Asset number '{cleaned}' is already used or historically reserved."
+        )
+    today = on_date or date.today()
+    prev = _current_number_period(db, asset.id)
+    if prev is None:
+        _open_number_period(db, asset, actor=actor, on_date=today, reason="open_before_change")
+        prev = _current_number_period(db, asset.id)
+    _end_open_period(prev, on_date=today)
+    if prev is not None:
+        db.add(prev)
+    old_number = asset.asset_number
+    if not asset.legacy_asset_number:
+        asset.legacy_asset_number = old_number
+    asset.asset_number = cleaned
+    db.add(asset)
+    db.flush()
+    _open_number_period(
+        db, asset, actor=actor, on_date=today, reason=reason or "renumber"
+    )
+    return old_number
+
+
 def _open_ownership_period(
     db: Session,
     asset: Asset,
@@ -560,6 +653,16 @@ def list_asset_lifecycle_history(db: Session, asset_id: UUID) -> dict:
             )
         ).all()
     )
+    numbers = list(
+        db.scalars(
+            select(AssetNumberHistory)
+            .where(AssetNumberHistory.asset_id == asset_id)
+            .order_by(
+                AssetNumberHistory.effective_to.is_(None).desc(),
+                AssetNumberHistory.effective_from.desc(),
+            )
+        ).all()
+    )
     return {
         "ownership": [
             {
@@ -595,6 +698,18 @@ def list_asset_lifecycle_history(db: Session, asset_id: UUID) -> dict:
                 "notes": row.notes,
             }
             for row in statuses
+        ],
+        "asset_numbers": [
+            {
+                "id": str(row.id),
+                "asset_number": row.asset_number,
+                "effective_from": row.effective_from.isoformat(),
+                "effective_to": row.effective_to.isoformat() if row.effective_to else None,
+                "changed_by_user_id": str(row.changed_by_user_id),
+                "reason": row.reason,
+                "notes": row.notes,
+            }
+            for row in numbers
         ],
     }
 
@@ -673,6 +788,10 @@ def list_assets(
         count_filters.append(Asset.customer_used_for_id == customer_used_for_id)
     if search:
         q = f"%{search.strip()}%"
+        history_match = exists().where(
+            AssetNumberHistory.asset_id == Asset.id,
+            AssetNumberHistory.asset_number.ilike(q),
+        )
         search_clause = or_(
             Asset.asset_number.ilike(q),
             Asset.legacy_asset_number.ilike(q),
@@ -682,6 +801,7 @@ def list_assets(
             Asset.model.ilike(q),
             Asset.location.ilike(q),
             Asset.description.ilike(q),
+            history_match,
         )
         stmt = stmt.where(search_clause)
         count_filters.append(search_clause)
@@ -788,16 +908,11 @@ def create_asset(
 
     preferred = (asset_number or "").strip() or None
     if preferred:
-        clash = db.scalar(
-            select(Asset).where(
-                Asset.is_deleted.is_(False),
-                Asset.asset_number == preferred,
-            )
-        )
-        if clash is not None:
+        if asset_number_is_reserved(db, preferred):
             suggested = preview_next_asset_number(db, asset_type)["asset_number"]
             raise ProTrackValidationError(
-                f"Asset number '{preferred}' already exists. Suggested next: {suggested}"
+                f"Asset number '{preferred}' already exists or was used historically. "
+                f"Suggested next: {suggested}"
             )
         number = preferred
     else:
@@ -831,6 +946,7 @@ def create_asset(
     db.add(asset)
     db.flush()
     today = date.today()
+    _open_number_period(db, asset, actor=actor, on_date=today, reason="created")
     _open_ownership_period(db, asset, actor=actor, on_date=today)
     _open_location_period(db, asset, actor=actor, on_date=today)
     _open_status_period(db, asset, actor=actor, on_date=today)
@@ -880,6 +996,7 @@ def update_asset(
     supplier_id: UUID | None = None,
     invoice_number: str | None = None,
     condition: str | None = None,
+    asset_number: str | None = None,
     fields_set: set[str] | None = None,
     commit: bool = True,
 ) -> Asset:
@@ -890,6 +1007,7 @@ def update_asset(
         "location": asset.location,
         "purchased_by": asset.purchased_by,
         "owner_customer_id": str(asset.owner_customer_id) if asset.owner_customer_id else None,
+        "asset_number": asset.asset_number,
     }
     touched = fields_set or set()
 
@@ -960,6 +1078,13 @@ def update_asset(
         if customer_used_for_id is not None and db.get(Customer, customer_used_for_id) is None:
             raise ProTrackValidationError("Customer used for not found.")
         asset.customer_used_for_id = customer_used_for_id
+
+    if "asset_number" in touched or (fields_set is None and asset_number is not None):
+        next_number = (asset_number or "").strip()
+        if next_number and next_number != asset.asset_number:
+            apply_asset_number_change(
+                db, asset, next_number, actor=actor, reason="manual_update"
+            )
 
     db.add(asset)
     db.flush()
@@ -1419,6 +1544,7 @@ def list_computers(
         select(Computer)
         .options(
             selectinload(Computer.asset).selectinload(Asset.asset_type),
+            selectinload(Computer.interfaces),
         )
         .join(Asset, Computer.asset_id == Asset.id)
         .where(Asset.is_deleted.is_(False))
@@ -1438,11 +1564,16 @@ def list_computers(
         stmt = stmt.where(Asset.status == "disposed")
     if search:
         q = f"%{search.strip()}%"
+        nic_mac_match = exists().where(
+            ComputerNetworkInterface.computer_id == Computer.id,
+            ComputerNetworkInterface.mac_address.ilike(q),
+        )
         stmt = stmt.where(
             or_(
                 Computer.computer_name.ilike(q),
                 Asset.asset_number.ilike(q),
                 Computer.mac_address.ilike(q),
+                nic_mac_match,
                 Asset.make.ilike(q),
                 Asset.model.ilike(q),
             )
@@ -1450,6 +1581,49 @@ def list_computers(
     rows_all = list(db.scalars(stmt.order_by(Computer.computer_name)).all())
     total = len(rows_all)
     return rows_all[skip : skip + limit], total
+
+
+def effective_mac_address(computer: Computer) -> str | None:
+    """Primary NIC MAC is SoT; computer.mac_address is a denormalized copy."""
+    interfaces = list(getattr(computer, "interfaces", None) or [])
+    primary = next((row for row in interfaces if row.is_primary and row.is_active), None)
+    if primary is None:
+        primary = next((row for row in interfaces if row.is_primary), None)
+    if primary is not None and primary.mac_address:
+        return primary.mac_address
+    active = next((row for row in interfaces if row.is_active and row.mac_address), None)
+    if active is not None:
+        return active.mac_address
+    return computer.mac_address
+
+
+def _sync_primary_mac(
+    db: Session, computer: Computer, mac_address: str | None
+) -> None:
+    """Write MAC to the primary NIC (SoT) and keep computer.mac_address in sync."""
+    mac = (mac_address or "").strip() or None
+    computer.mac_address = mac
+    db.add(computer)
+    existing = list_computer_interfaces(db, computer.id)
+    if not existing:
+        if mac:
+            create_computer_interface(
+                db,
+                computer,
+                name="LAN",
+                role="lan",
+                mac_address=mac,
+                is_primary=True,
+                commit=False,
+            )
+        return
+    primary = next((row for row in existing if row.is_primary), existing[0])
+    primary.mac_address = mac
+    if not primary.is_primary:
+        for row in existing:
+            row.is_primary = row.id == primary.id
+            db.add(row)
+    db.add(primary)
 
 
 def get_computer_current_assignee(
@@ -1765,7 +1939,7 @@ def update_computer(
     if "domain_joined" in touched or (fields_set is None and domain_joined is not None):
         computer.domain_joined = bool(domain_joined)
     if "mac_address" in touched or (fields_set is None and mac_address is not None):
-        computer.mac_address = (mac_address or "").strip() or None
+        _sync_primary_mac(db, computer, mac_address)
     db.add(computer)
     db.flush()
     log_activity(
@@ -1787,7 +1961,10 @@ def update_computer(
 def get_computer(db: Session, computer_id: UUID) -> Computer | None:
     return db.scalar(
         select(Computer)
-        .options(selectinload(Computer.asset).selectinload(Asset.asset_type))
+        .options(
+            selectinload(Computer.asset).selectinload(Asset.asset_type),
+            selectinload(Computer.interfaces),
+        )
         .where(Computer.id == computer_id)
     )
 

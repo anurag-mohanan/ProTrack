@@ -87,6 +87,7 @@ class AssetUpdate(BlankOptionalFieldsMixin, BaseModel):
     location: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
     legacy_asset_number: Optional[str] = Field(default=None, max_length=40)
+    asset_number: Optional[str] = Field(default=None, max_length=40)
     description: Optional[str] = Field(default=None, max_length=255)
     service_tag: Optional[str] = Field(default=None, max_length=100)
     purchased_by: Optional[str] = Field(default=None, max_length=40)
@@ -108,6 +109,9 @@ class AssetRead(TimestampSchema):
     service_tag: Optional[str] = None
     make: Optional[str] = None
     model: Optional[str] = None
+    make_id: Optional[UUID] = None
+    model_id: Optional[UUID] = None
+    previous_asset_numbers: list[str] = Field(default_factory=list)
     status: str
     purchased_by: str = "organization"
     owner_customer_id: Optional[UUID] = None
@@ -557,6 +561,9 @@ class ITProfileRead(BaseModel):
     missing_software: list[str] = Field(default_factory=list)
     is_compliant: bool = True
     shift: Optional[dict] = None
+    primary_tool: Optional[str] = None
+    primary_tool_source: Optional[str] = None
+    software_status: list[dict] = Field(default_factory=list)
 
 
 class ITDashboardSummary(BaseModel):
@@ -992,6 +999,29 @@ class SoftwareAssignmentUnassignRequest(BlankOptionalFieldsMixin, BaseModel):
     released_date: Optional[date] = None
 
 
+class SoftwareInstallationCreate(BlankOptionalFieldsMixin, BaseModel):
+    computer_id: UUID
+    software_id: UUID
+    installed_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class SoftwareInstallationUninstallRequest(BlankOptionalFieldsMixin, BaseModel):
+    uninstalled_date: Optional[date] = None
+
+
+class SoftwareInstallationRead(TimestampSchema):
+    computer_id: UUID
+    computer_name: Optional[str] = None
+    software_id: UUID
+    software_name: Optional[str] = None
+    installed_date: Optional[date] = None
+    uninstalled_date: Optional[date] = None
+    installed_by_user_id: Optional[UUID] = None
+    notes: Optional[str] = None
+    is_active: bool = True
+
+
 class SoftwareAssignmentRead(TimestampSchema):
     license_pool_id: UUID
     software_id: Optional[UUID] = None
@@ -1057,3 +1087,75 @@ class SoftwareComplianceRead(BaseModel):
     missing_required_count: int = 0
     licensed_without_requirement: list[dict] = Field(default_factory=list)
     is_compliant: bool = True
+
+
+class ResourcePackageHardwareLineIn(BlankOptionalFieldsMixin, BaseModel):
+    asset_type_id: UUID
+    quantity: int = Field(default=1, ge=1)
+    is_required: bool = True
+
+
+class ResourcePackageSoftwareLineIn(BlankOptionalFieldsMixin, BaseModel):
+    software_id: UUID
+    requirement_level: str = "required"
+    seats: int = Field(default=1, ge=1)
+
+
+class ResourcePackageCreate(BlankOptionalFieldsMixin, BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=120)
+    description: Optional[str] = None
+    requires_ip: bool = False
+    is_active: bool = True
+    hardware_lines: list[ResourcePackageHardwareLineIn] = Field(default_factory=list)
+    software_lines: list[ResourcePackageSoftwareLineIn] = Field(default_factory=list)
+
+
+class ResourcePackageUpdate(BlankOptionalFieldsMixin, BaseModel):
+    code: Optional[str] = Field(default=None, max_length=40)
+    name: Optional[str] = Field(default=None, max_length=120)
+    description: Optional[str] = None
+    requires_ip: Optional[bool] = None
+    is_active: Optional[bool] = None
+    hardware_lines: Optional[list[ResourcePackageHardwareLineIn]] = None
+    software_lines: Optional[list[ResourcePackageSoftwareLineIn]] = None
+
+
+class ResourcePackageHardwareLineRead(TimestampSchema):
+    asset_type_id: UUID
+    asset_type_name: Optional[str] = None
+    quantity: int
+    is_required: bool
+
+
+class ResourcePackageSoftwareLineRead(TimestampSchema):
+    software_id: UUID
+    software_name: Optional[str] = None
+    requirement_level: str
+    seats: int
+
+
+class ResourcePackageRead(TimestampSchema):
+    code: str
+    name: str
+    description: Optional[str] = None
+    requires_ip: bool = False
+    is_active: bool = True
+    hardware_lines: list[ResourcePackageHardwareLineRead] = Field(default_factory=list)
+    software_lines: list[ResourcePackageSoftwareLineRead] = Field(default_factory=list)
+
+
+class ResourcePackagePreviewRequest(BlankOptionalFieldsMixin, BaseModel):
+    user_id: UUID
+    on_date: Optional[date] = None
+
+
+class ResourcePackageAssignRequest(BlankOptionalFieldsMixin, BaseModel):
+    user_id: UUID
+    asset_ids: list[UUID] = Field(default_factory=list)
+    license_pool_ids: list[UUID] = Field(default_factory=list)
+    shift_id: Optional[UUID] = None
+    ip_address_id: Optional[UUID] = None
+    network_id: Optional[UUID] = None
+    notes: Optional[str] = None
+    assigned_date: Optional[date] = None

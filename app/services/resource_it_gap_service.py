@@ -20,6 +20,7 @@ from app.models.it_operations import (
     EmployeeSoftwareRequirement,
     SoftwareAssignment,
     SoftwareCatalog,
+    SoftwareInstallation,
     SoftwareLicensePool,
 )
 from app.models.models import Team, TeamMember, User
@@ -646,6 +647,67 @@ def _employee_shift(db: Session, user_id: UUID) -> dict | None:
     }
 
 
+_CAD_TOOL_HINTS = (
+    "nx",
+    "unigraphics",
+    "solidworks",
+    "solid works",
+    "catia",
+    "creo",
+    "pro/e",
+    "proe",
+    "autocad",
+    "inventor",
+    "solid edge",
+)
+
+
+def _prefer_cad_software_name(names: list[str]) -> str | None:
+    if not names:
+        return None
+    for hint in _CAD_TOOL_HINTS:
+        for name in names:
+            if hint in name.lower():
+                return name
+    return names[0]
+
+
+def resolve_primary_tool(db: Session, user_id: UUID) -> dict[str, str | None]:
+    """Assigned IT software is SoT; User.primary_tool is a fallback only.
+
+    Never invents a default tool name (e.g. NX Local).
+    """
+    user = db.get(User, user_id)
+    software_rows = db.execute(
+        select(SoftwareCatalog.name)
+        .join(SoftwareLicensePool, SoftwareLicensePool.software_id == SoftwareCatalog.id)
+        .join(
+            SoftwareAssignment,
+            SoftwareAssignment.license_pool_id == SoftwareLicensePool.id,
+        )
+        .where(
+            SoftwareAssignment.user_id == user_id,
+            SoftwareAssignment.released_date.is_(None),
+        )
+        .order_by(SoftwareAssignment.assigned_date.desc(), SoftwareCatalog.name)
+    ).all()
+    assigned = [str(row[0]).strip() for row in software_rows if row[0]]
+    assigned = [name for name in assigned if name]
+    chosen = _prefer_cad_software_name(assigned)
+    if chosen:
+        return {
+            "primary_tool": chosen,
+            "primary_tool_source": "software_assignment",
+        }
+    fallback = (user.primary_tool or "").strip() if user is not None else ""
+    if fallback:
+        return {
+            "primary_tool": fallback,
+            "primary_tool_source": "user_profile",
+        }
+    return {"primary_tool": None, "primary_tool_source": None}
+
+
 def get_employee_it_snapshot(db: Session, user_id: UUID) -> dict:
     """Read-only aggregate: assigned computer, software, shift. Writes nothing."""
     on_date = date.today()
@@ -673,6 +735,58 @@ def get_employee_it_snapshot(db: Session, user_id: UUID) -> dict:
         if row["requirement_level"] == "required" and row["software_id"] not in held
     ]
 
+    tool = resolve_primary_tool(db, user_id)
+    installed_ids: set[UUID] = set()
+    if computer and computer.get("computer_id"):
+        installed_ids = set(
+            db.scalars(
+                select(SoftwareInstallation.software_id).where(
+                    SoftwareInstallation.computer_id == computer["computer_id"],
+                    SoftwareInstallation.uninstalled_date.is_(None),
+                )
+            ).all()
+        )
+    status_rows: list[dict] = []
+    seen_software: set[UUID] = set()
+    for row in requirements:
+        sid = row["software_id"]
+        seen_software.add(sid)
+        required = row["requirement_level"] == "required"
+        licensed = sid in held
+        installed = sid in installed_ids
+        if required and licensed and installed:
+            state = "valid"
+        elif required and not installed and licensed:
+            state = "action_required"
+        elif required and installed and not licensed:
+            state = "unlicensed"
+        elif required and not licensed:
+            state = "action_required"
+        else:
+            state = "optional"
+        status_rows.append(
+            {
+                "software_id": sid,
+                "software_name": row["software_name"],
+                "required": required,
+                "installed": installed,
+                "licensed": licensed,
+                "status": state,
+            }
+        )
+    for assignment, pool, software in software_rows:
+        if software.id in seen_software:
+            continue
+        status_rows.append(
+            {
+                "software_id": software.id,
+                "software_name": software.name,
+                "required": False,
+                "installed": software.id in installed_ids,
+                "licensed": True,
+                "status": "licensed",
+            }
+        )
     return {
         "user_id": user_id,
         "computer": computer,
@@ -687,12 +801,15 @@ def get_employee_it_snapshot(db: Session, user_id: UUID) -> dict:
             }
             for assignment, pool, software in software_rows
         ],
+        "software_status": status_rows,
         "required_software_count": sum(
             1 for row in requirements if row["requirement_level"] == "required"
         ),
         "missing_software": missing,
         "is_compliant": not missing,
         "shift": _employee_shift(db, user_id),
+        "primary_tool": tool["primary_tool"],
+        "primary_tool_source": tool["primary_tool_source"],
     }
 
 
@@ -712,6 +829,7 @@ __all__ = [
     "gap_counts_for_dashboard",
     "get_computer_availability",
     "get_employee_it_snapshot",
+    "resolve_primary_tool",
     "get_license_availability",
     "get_resource_gaps",
     "get_resource_matrix",

@@ -46,6 +46,7 @@ export function ITProfilePanel({
   const ips = profile?.ips ?? [];
   const software = profile?.software ?? [];
   const missing = profile?.missing_software ?? [];
+  const softwareStatus = profile?.software_status ?? [];
   const computer = profile?.computer ?? null;
   const shift = profile?.shift ?? null;
   const isEmpty =
@@ -53,6 +54,8 @@ export function ITProfilePanel({
     accounts.length === 0 &&
     ips.length === 0 &&
     software.length === 0 &&
+    softwareStatus.length === 0 &&
+    missing.length === 0 &&
     !computer &&
     !shift;
 
@@ -75,6 +78,13 @@ export function ITProfilePanel({
         />
         {shiftLabel(shift) ? (
           <Chip size="small" label={`Shift: ${shiftLabel(shift)}`} variant="outlined" />
+        ) : null}
+        {profile?.primary_tool ? (
+          <Chip
+            size="small"
+            label={`Primary tool: ${profile.primary_tool}`}
+            variant="outlined"
+          />
         ) : null}
         {typeof profile?.required_software_count === 'number' ? (
           <Typography variant="caption" color="text.secondary">
@@ -152,6 +162,49 @@ export function ITProfilePanel({
                     <Chip size="small" label={asset.status} />
                   </TableCell>
                   <TableCell>{formatCellValue(asset.location)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+      ) : null}
+
+      {softwareStatus.length > 0 ? (
+        <Box>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Software status
+          </Typography>
+          <Table size="small" sx={{ mb: software.length || missing.length ? 1.5 : 0 }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>Software</TableCell>
+                <TableCell>Required</TableCell>
+                <TableCell>Installed</TableCell>
+                <TableCell>Licensed</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {softwareStatus.map((row) => (
+                <TableRow key={row.software_id}>
+                  <TableCell>{formatCellValue(row.software_name)}</TableCell>
+                  <TableCell>{row.required ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{row.installed ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{row.licensed ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      color={
+                        row.status === 'valid' || row.status === 'licensed'
+                          ? 'success'
+                          : row.status === 'optional'
+                            ? 'default'
+                            : 'warning'
+                      }
+                      label={row.status.replaceAll('_', ' ')}
+                      variant="outlined"
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

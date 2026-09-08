@@ -20,6 +20,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_REQUEST_TABS } from '../../components/it/ITSectionSubnav';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import type { ITOpenRequest } from '../../types/itOperations';
 import type { Ticket } from '../../types';
@@ -114,6 +115,8 @@ export function ITRequestsPage() {
           </RouterLink>
         }
       />
+
+      <ITSectionSubnav items={IT_REQUEST_TABS} />
 
       <ContentCard
         title="Open requests"

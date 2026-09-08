@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.enums import SkillProficiency
 from app.models.models import Stream, StreamSkill, Team, TeamMember, User, UserSkillRating
 from app.services.performance_review_service import format_tenure
+from app.services.resource_it_gap_service import resolve_primary_tool
 
 # Excel PP skill chart for mold design (industry-aligned 4-level scale).
 MOLD_DESIGN_SKILLS: list[str] = [
@@ -214,7 +215,7 @@ def build_team_skill_matrix(
                 "name": f"{member.first_name} {member.last_name}".strip(),
                 "role": member.designation
                 or (member.role.name if member.role is not None else None),
-                "primary_tool": member.primary_tool or "NX Local",
+                "primary_tool": resolve_primary_tool(db, member.id)["primary_tool"],
                 "work_function": member.work_function or "Design/Surfacing",
                 "team_id": member_team_id,
                 "team_name": team_name_by_id.get(member_team_id) if member_team_id else None,

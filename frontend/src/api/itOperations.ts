@@ -52,6 +52,7 @@ import type {
   NextAssetNumbersPreview,
   SoftwareAssignment,
   SoftwareAssignmentCreate,
+  SoftwareInstallation,
   SoftwareCatalogCreate,
   SoftwareCatalogItem,
   SoftwareCatalogUpdate,
@@ -63,6 +64,9 @@ import type {
   EmployeeSoftwareRequirement,
   EmployeeSoftwareRequirementCreate,
   EmployeeSoftwareRequirementUpdate,
+  ResourcePackage,
+  ResourcePackagePreview,
+  ResourcePackageUpsert,
 } from '../types/itOperations';
 
 export const itOperationsKeys = {
@@ -117,11 +121,15 @@ export const itOperationsKeys = {
     [...itOperationsKeys.all, 'software-licenses', filters ?? {}] as const,
   softwareAssignments: (filters?: ListParams) =>
     [...itOperationsKeys.all, 'software-assignments', filters ?? {}] as const,
+  softwareInstallations: (filters?: ListParams) =>
+    [...itOperationsKeys.all, 'software-installations', filters ?? {}] as const,
   softwareRequirements: (filters?: ListParams) =>
     [...itOperationsKeys.all, 'software-requirements', filters ?? {}] as const,
   softwareExpiry: () => [...itOperationsKeys.all, 'software-expiry'] as const,
   softwareCompliance: (userId: string) =>
     [...itOperationsKeys.all, 'software-compliance', userId] as const,
+  resourcePackages: (activeOnly?: boolean) =>
+    [...itOperationsKeys.all, 'resource-packages', activeOnly ? 'active' : 'all'] as const,
 };
 
 async function getListOrPage<T>(path: string, params?: ListParams): Promise<PaginatedResponse<T>> {
@@ -398,6 +406,7 @@ export type AssetLifecycleHistory = {
   ownership: Array<Record<string, unknown>>;
   locations: Array<Record<string, unknown>>;
   statuses: Array<Record<string, unknown>>;
+  asset_numbers?: Array<Record<string, unknown>>;
 };
 
 export async function fetchAssetLifecycleHistory(id: string): Promise<AssetLifecycleHistory> {
@@ -838,6 +847,28 @@ export async function fetchUserItProfile(userId: string): Promise<ITProfile> {
   return data;
 }
 
+export async function fetchResourcePackages(activeOnly = false): Promise<ResourcePackage[]> {
+  return getList<ResourcePackage>('/it/resource-packages', { active_only: activeOnly });
+}
+
+export async function createResourcePackage(payload: ResourcePackageUpsert): Promise<ResourcePackage> {
+  const { data } = await apiClient.post<ResourcePackage>('/it/resource-packages', payload);
+  return data;
+}
+
+export async function updateResourcePackage(
+  id: string,
+  payload: Partial<ResourcePackageUpsert>,
+): Promise<ResourcePackage> {
+  const { data } = await apiClient.patch<ResourcePackage>(`/it/resource-packages/${id}`, payload);
+  return data;
+}
+
+export async function deactivateResourcePackage(id: string): Promise<ResourcePackage> {
+  const { data } = await apiClient.delete<ResourcePackage>(`/it/resource-packages/${id}`);
+  return data;
+}
+
 export async function fetchItOnboardingTasks(): Promise<ITOnboardingTask[]> {
   return getList<ITOnboardingTask>('/it/dashboard/onboarding-tasks');
 }
@@ -938,6 +969,31 @@ export async function unassignSoftwareAssignment(
 ): Promise<SoftwareAssignment> {
   const { data } = await apiClient.post<SoftwareAssignment>(
     `/it/software/assignments/${id}/unassign`,
+    payload ?? {},
+  );
+  return data;
+}
+
+export async function fetchSoftwareInstallations(params?: ListParams): Promise<SoftwareInstallation[]> {
+  return getList<SoftwareInstallation>('/it/software/installations', params);
+}
+
+export async function createSoftwareInstallation(payload: {
+  computer_id: string;
+  software_id: string;
+  installed_date?: string | null;
+  notes?: string | null;
+}): Promise<SoftwareInstallation> {
+  const { data } = await apiClient.post<SoftwareInstallation>('/it/software/installations', payload);
+  return data;
+}
+
+export async function uninstallSoftwareInstallation(
+  id: string,
+  payload?: { uninstalled_date?: string | null },
+): Promise<SoftwareInstallation> {
+  const { data } = await apiClient.post<SoftwareInstallation>(
+    `/it/software/installations/${id}/uninstall`,
     payload ?? {},
   );
   return data;

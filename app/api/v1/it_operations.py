@@ -40,11 +40,15 @@ from app.models.it_operations import (
     Asset,
     AssetAssignment,
     AssetCustomerReturn,
+    AssetMake,
+    AssetModel,
+    AssetNumberHistory,
     Computer,
     IPAddress,
     Network,
     SoftwareAssignment,
     SoftwareCatalog,
+    SoftwareInstallation,
     SoftwareLicensePool,
     EmployeeSoftwareRequirement,
 )
@@ -111,9 +115,15 @@ from app.schemas.it_operations import (
     NetworkUpdate,
     OpenITRequestRow,
     PendingITOnboardingTask,
+    ResourcePackageCreate,
+    ResourcePackageRead,
+    ResourcePackageUpdate,
     SoftwareAssignmentCreate,
     SoftwareAssignmentRead,
     SoftwareAssignmentUnassignRequest,
+    SoftwareInstallationCreate,
+    SoftwareInstallationRead,
+    SoftwareInstallationUninstallRequest,
     SoftwareCatalogCreate,
     SoftwareCatalogRead,
     SoftwareCatalogUpdate,
@@ -137,6 +147,7 @@ from app.services import (
     it_reset_service,
     it_software_service,
     resource_it_gap_service,
+    resource_package_service,
 )
 from app.services import finance_software_bridge_service as sw_bridge
 from app.services.ticketing_service import OPEN_STATUSES
@@ -198,6 +209,28 @@ def _asset_read(db: Session, asset: Asset) -> AssetRead:
         db.get(Customer, asset.customer_used_for_id) if asset.customer_used_for_id else None
     )
     parent = db.get(Asset, asset.parent_asset_id) if getattr(asset, "parent_asset_id", None) else None
+    make_name = asset.make
+    model_name = asset.model
+    if getattr(asset, "make_id", None):
+        make_row = db.get(AssetMake, asset.make_id)
+        if make_row is not None and make_row.name:
+            make_name = make_row.name
+    if getattr(asset, "model_id", None):
+        model_row = db.get(AssetModel, asset.model_id)
+        if model_row is not None and model_row.name:
+            model_name = model_row.name
+    previous_numbers = [
+        row.asset_number
+        for row in db.scalars(
+            select(AssetNumberHistory)
+            .where(
+                AssetNumberHistory.asset_id == asset.id,
+                AssetNumberHistory.effective_to.is_not(None),
+            )
+            .order_by(AssetNumberHistory.effective_from.desc())
+        ).all()
+        if row.asset_number and row.asset_number != asset.asset_number
+    ]
     return AssetRead(
         id=asset.id,
         created_at=asset.created_at,
@@ -210,8 +243,11 @@ def _asset_read(db: Session, asset: Asset) -> AssetRead:
         description=asset.description,
         serial_number=asset.serial_number,
         service_tag=asset.service_tag,
-        make=asset.make,
-        model=asset.model,
+        make=make_name,
+        model=model_name,
+        make_id=getattr(asset, "make_id", None),
+        model_id=getattr(asset, "model_id", None),
+        previous_asset_numbers=previous_numbers,
         status=asset.status,
         purchased_by=getattr(asset, "purchased_by", None) or "organization",
         owner_customer_id=asset.owner_customer_id,
@@ -333,7 +369,7 @@ def _computer_read(db: Session, computer) -> ComputerRead:
         storage_type=computer.storage_type,
         storage_gb=computer.storage_gb,
         domain_joined=computer.domain_joined,
-        mac_address=computer.mac_address,
+        mac_address=it_asset_service.effective_mac_address(computer),
         asset_number=asset.asset_number if asset else None,
         asset_type_id=asset.asset_type_id if asset else None,
         asset_type_code=at.code if at else None,
@@ -504,6 +540,9 @@ def _profile_for_user(db: Session, user_id: UUID) -> ITProfileRead:
         missing_software=snapshot["missing_software"],
         is_compliant=snapshot["is_compliant"],
         shift=snapshot["shift"],
+        primary_tool=snapshot.get("primary_tool"),
+        primary_tool_source=snapshot.get("primary_tool_source"),
+        software_status=snapshot.get("software_status") or [],
     )
 
 
@@ -1187,6 +1226,7 @@ def update_asset(
             location=payload.location,
             notes=payload.notes,
             legacy_asset_number=payload.legacy_asset_number,
+            asset_number=payload.asset_number,
             description=payload.description,
             service_tag=payload.service_tag,
             purchased_by=payload.purchased_by,
@@ -2134,6 +2174,25 @@ def _assignment_software_read(db: Session, row: SoftwareAssignment) -> SoftwareA
     )
 
 
+def _installation_read(db: Session, row: SoftwareInstallation) -> SoftwareInstallationRead:
+    computer = db.get(Computer, row.computer_id)
+    soft = it_software_service.get_software(db, row.software_id)
+    return SoftwareInstallationRead(
+        id=row.id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        computer_id=row.computer_id,
+        computer_name=computer.computer_name if computer else None,
+        software_id=row.software_id,
+        software_name=soft.name if soft else None,
+        installed_date=row.installed_date,
+        uninstalled_date=row.uninstalled_date,
+        installed_by_user_id=row.installed_by_user_id,
+        notes=row.notes,
+        is_active=row.uninstalled_date is None,
+    )
+
+
 def _requirement_read(db: Session, row: EmployeeSoftwareRequirement) -> EmployeeSoftwareRequirementRead:
     user = db.get(User, row.user_id)
     soft = it_software_service.get_software(db, row.software_id)
@@ -2486,6 +2545,72 @@ def unassign_software_assignment(
         raise _handle_validation(exc) from exc
 
 
+@router.get("/software/installations", response_model=list[SoftwareInstallationRead])
+def list_software_installations(
+    computer_id: UUID | None = Query(None),
+    active_only: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    return [
+        _installation_read(db, row)
+        for row in it_software_service.list_installations(
+            db, computer_id=computer_id, active_only=active_only
+        )
+    ]
+
+
+@router.post(
+    "/software/installations",
+    response_model=SoftwareInstallationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def create_software_installation(
+    payload: SoftwareInstallationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        row = it_software_service.ensure_installation(
+            db,
+            computer_id=payload.computer_id,
+            software_id=payload.software_id,
+            on_date=payload.installed_date,
+            installed_by_user_id=current_user.id,
+            notes=payload.notes,
+        )
+        return _installation_read(db, row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post(
+    "/software/installations/{installation_id}/uninstall",
+    response_model=SoftwareInstallationRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_SOFTWARE))],
+)
+def uninstall_software_installation(
+    installation_id: UUID,
+    payload: SoftwareInstallationUninstallRequest | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = db.get(SoftwareInstallation, installation_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Installation not found.")
+    try:
+        updated = it_software_service.uninstall_software(
+            db,
+            row,
+            uninstalled_date=payload.uninstalled_date if payload else None,
+        )
+        return _installation_read(db, updated)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
 @router.get("/software/requirements", response_model=list[EmployeeSoftwareRequirementRead])
 def list_software_requirements(
     user_id: UUID | None = Query(None),
@@ -2576,6 +2701,149 @@ def delete_software_requirement(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement not found.")
     it_software_service.delete_requirement(db, row)
     return None
+
+
+def _package_read(row) -> ResourcePackageRead:
+    return ResourcePackageRead(
+        id=row.id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        code=row.code,
+        name=row.name,
+        description=row.description,
+        requires_ip=row.requires_ip,
+        is_active=row.is_active,
+        hardware_lines=[
+            {
+                "id": line.id,
+                "created_at": line.created_at,
+                "updated_at": line.updated_at,
+                "asset_type_id": line.asset_type_id,
+                "asset_type_name": line.asset_type.name if line.asset_type else None,
+                "quantity": line.quantity,
+                "is_required": line.is_required,
+            }
+            for line in row.hardware_lines
+        ],
+        software_lines=[
+            {
+                "id": line.id,
+                "created_at": line.created_at,
+                "updated_at": line.updated_at,
+                "software_id": line.software_id,
+                "software_name": line.software.name if line.software else None,
+                "requirement_level": line.requirement_level,
+                "seats": line.seats,
+            }
+            for line in row.software_lines
+        ],
+    )
+
+
+@router.get("/resource-packages", response_model=list[ResourcePackageRead])
+def list_resource_packages(
+    active_only: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    return [_package_read(row) for row in resource_package_service.list_packages(db, active_only=active_only)]
+
+
+@router.post(
+    "/resource-packages",
+    response_model=ResourcePackageRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def create_resource_package(
+    payload: ResourcePackageCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        row = resource_package_service.create_package(
+            db,
+            code=payload.code,
+            name=payload.name,
+            description=payload.description,
+            requires_ip=payload.requires_ip,
+            is_active=payload.is_active,
+            hardware_lines=[line.model_dump() for line in payload.hardware_lines],
+            software_lines=[line.model_dump() for line in payload.software_lines],
+        )
+        return _package_read(row)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.get("/resource-packages/{package_id}", response_model=ResourcePackageRead)
+def get_resource_package(
+    package_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_it_access(db, current_user)
+    row = resource_package_service.get_package(db, package_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource package not found.")
+    return _package_read(row)
+
+
+@router.patch(
+    "/resource-packages/{package_id}",
+    response_model=ResourcePackageRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def update_resource_package(
+    package_id: UUID,
+    payload: ResourcePackageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = resource_package_service.get_package(db, package_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource package not found.")
+    try:
+        updated = resource_package_service.update_package(
+            db,
+            row,
+            code=payload.code,
+            name=payload.name,
+            description=payload.description,
+            requires_ip=payload.requires_ip,
+            is_active=payload.is_active,
+            hardware_lines=(
+                [line.model_dump() for line in payload.hardware_lines]
+                if payload.hardware_lines is not None
+                else None
+            ),
+            software_lines=(
+                [line.model_dump() for line in payload.software_lines]
+                if payload.software_lines is not None
+                else None
+            ),
+            fields_set=set(payload.model_fields_set),
+        )
+        return _package_read(updated)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.delete(
+    "/resource-packages/{package_id}",
+    response_model=ResourcePackageRead,
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def deactivate_resource_package(
+    package_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = resource_package_service.get_package(db, package_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource package not found.")
+    return _package_read(resource_package_service.deactivate_package(db, row))
 
 
 # ---------------------------------------------------------------------------

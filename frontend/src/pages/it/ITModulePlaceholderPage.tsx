@@ -1,5 +1,6 @@
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_REQUEST_TABS } from '../../components/it/ITSectionSubnav';
 import { ContentCard } from '../../components/ui/cards';
 import { Box, Typography } from '@mui/material';
 
@@ -14,6 +15,7 @@ export function ITModulePlaceholderPage({
   return (
     <PageContainer>
       <PageHeader title={title} subtitle={description} />
+      <ITSectionSubnav items={IT_REQUEST_TABS} />
       <ContentCard>
         <Box sx={{ py: 3 }}>
           <Typography color="text.secondary">

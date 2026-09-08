@@ -286,6 +286,7 @@ def allocate_ip(
     hostname: str | None = None,
     notes: str | None = None,
     allocation_type: str | None = "static",
+    commit: bool = True,
 ) -> IPAddress:
     if ip_address_id is None and network_id is None:
         raise ProTrackValidationError("Provide ip_address_id or network_id.")
@@ -370,8 +371,9 @@ def allocate_ip(
         module=MODULE,
         commit=False,
     )
-    db.commit()
-    db.refresh(ip)
+    if commit:
+        db.commit()
+        db.refresh(ip)
     return ip
 
 

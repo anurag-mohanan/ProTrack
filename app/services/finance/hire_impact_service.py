@@ -21,6 +21,7 @@ from app.models.it_operations import (
     SoftwareLicensePool,
 )
 from app.models.models import TeamMember
+from app.services.it_software_service import available_seats
 from app.services.resource_it_gap_service import get_computer_availability
 
 # Recorded pool cost is treated as an annual subscription charge only for these
@@ -137,12 +138,16 @@ def estimate_hire_impact(
             max(0, int(pool.seat_count or 0)) for pool in pools
         )  # pool capacity, not availability — seats to buy are computed below
         seats_needed = headcount
+        seats_available = sum(max(0, available_seats(db, pool)) for pool in pools)
+        seats_shortage = max(0, seats_needed - seats_available)
         total_seats += seats_needed
 
         row: dict = {
             "software_id": software_id,
             "software_name": name,
             "seats_needed": seats_needed,
+            "seats_available": seats_available,
+            "seats_shortage": seats_shortage,
             "pool_seat_capacity": free_seats,
             "has_pool": bool(pools),
             "cost_per_seat": None,
@@ -214,6 +219,7 @@ def estimate_hire_impact(
         "required_computers": required_computers,
         "spare_computers": spare,
         "computers_to_procure": computers_to_procure,
+        "computer_shortage": computers_to_procure,
         "required_license_seats": total_seats,
         "software": software_rows,
         "estimated_license_cost": _quantize(license_term_cost) if license_term_cost else None,

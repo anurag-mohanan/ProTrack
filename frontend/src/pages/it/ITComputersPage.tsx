@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Chip,
@@ -35,6 +36,7 @@ import {
 import { getErrorMessage } from '../../api/client';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_INVENTORY_TABS } from '../../components/it/ITSectionSubnav';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
@@ -117,6 +119,7 @@ export function ITComputersPage() {
   const canAssign = canAssignItAssets(ctx);
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
   const [availability, setAvailability] = useState('all');
@@ -449,6 +452,12 @@ export function ITComputersPage() {
           <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
             <ProsohmButton
               buttonVariant="outlined"
+              onClick={() => navigate('/it/assets?category=computer')}
+            >
+              View as inventory
+            </ProsohmButton>
+            <ProsohmButton
+              buttonVariant="outlined"
               startIcon={<FactCheckRoundedIcon />}
               onClick={() => setQualityOpen(true)}
             >
@@ -471,6 +480,8 @@ export function ITComputersPage() {
           </Stack>
         }
       />
+
+      <ITSectionSubnav items={IT_INVENTORY_TABS} />
 
       <SearchToolbar sticky>
         <ToggleButtonGroup
@@ -641,11 +652,12 @@ export function ITComputersPage() {
           </FormSection>
           <FormSection title="Network & location">
             <FormField
-              label="MAC address"
+              label="Primary NIC MAC"
               value={form.mac_address}
               onChange={(event) =>
                 setForm((current) => ({ ...current, mac_address: event.target.value }))
               }
+              helper="Stored on the primary network interface. Extra NICs are managed from the NICs dialog."
             />
             <FormControlLabel
               control={

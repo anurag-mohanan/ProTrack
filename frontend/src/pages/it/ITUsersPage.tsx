@@ -21,6 +21,7 @@ import { getErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_INVENTORY_TABS } from '../../components/it/ITSectionSubnav';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { ContentCard } from '../../components/ui/cards';
 import { FormSelect, SearchToolbar, FormField } from '../../components/ui/design-system';
@@ -141,6 +142,8 @@ export function ITUsersPage() {
   return (
     <PageContainer>
       <PageHeader subtitle="IT Users reflect ProTrack employees/resources — not a separate employee database." />
+
+      <ITSectionSubnav items={IT_INVENTORY_TABS} />
 
       <SearchToolbar sticky>
         <FormSelect

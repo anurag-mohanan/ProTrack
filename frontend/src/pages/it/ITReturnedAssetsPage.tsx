@@ -9,6 +9,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_INVENTORY_TABS } from '../../components/it/ITSectionSubnav';
 import { ContentCard } from '../../components/ui/cards';
 import { FormSelect, SearchToolbar } from '../../components/ui/design-system';
 import type { AssetCustomerReturn } from '../../types/itOperations';
@@ -156,6 +157,8 @@ export function ITReturnedAssetsPage() {
         title="Returned Assets"
         subtitle="Customer-owned assets returned from Prosohm custody. Records are kept permanently and excluded from current inventory."
       />
+
+      <ITSectionSubnav items={IT_INVENTORY_TABS} />
 
       <SearchToolbar sticky>
         <FormSelect

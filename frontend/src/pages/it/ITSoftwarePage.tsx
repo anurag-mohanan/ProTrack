@@ -41,7 +41,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ContentCard } from '../../components/ui/cards';
+import { ITResourcePackagesPanel } from '../../components/it/ITResourcePackagesPanel';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
   FormDrawer,
@@ -59,9 +59,9 @@ import type {
 } from '../../types/itOperations';
 import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
-import { accessContextFromUser, canManageItSoftware } from '../../utils/permissions';
+import { accessContextFromUser, canManageItAssets, canManageItSoftware } from '../../utils/permissions';
 
-type TabKey = 'catalog' | 'licenses' | 'assignments' | 'requirements' | 'expiry';
+type TabKey = 'catalog' | 'licenses' | 'assignments' | 'requirements' | 'packages' | 'expiry';
 
 const ASSIGNMENT_MODEL_OPTIONS = [
   { value: 'named_user', label: 'Named user' },
@@ -168,6 +168,7 @@ export function ITSoftwarePage() {
   const { user } = useAuth();
   const access = accessContextFromUser(user);
   const canManage = canManageItSoftware(access);
+  const canManagePackages = canManageItAssets(access);
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
 
@@ -735,7 +736,7 @@ export function ITSoftwarePage() {
     <PageContainer>
       <PageHeader
         title="Software & Licenses"
-        subtitle="Catalog, seat pools, assignments, employee requirements, and expiry alerts."
+        subtitle="Catalog, seat pools, assignments, employee requirements, packages, and expiry alerts."
         action={
           canManage ? (
             <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
@@ -794,6 +795,7 @@ export function ITSoftwarePage() {
         <Tab value="licenses" label="Licenses" />
         <Tab value="assignments" label="Assignments" />
         <Tab value="requirements" label="Requirements" />
+        <Tab value="packages" label="Packages" />
         <Tab value="expiry" label="Expiry alerts" />
       </Tabs>
 
@@ -861,6 +863,8 @@ export function ITSoftwarePage() {
           )}
         </ContentCard>
       )}
+
+      {tab === 'packages' && <ITResourcePackagesPanel canManage={canManagePackages} />}
 
       {tab === 'expiry' && (
         <Stack spacing={2}>

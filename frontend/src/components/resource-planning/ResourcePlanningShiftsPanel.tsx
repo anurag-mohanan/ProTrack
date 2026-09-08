@@ -42,6 +42,7 @@ import {
   canAssignResourceShifts,
   canManageResourceShifts,
 } from '../../utils/permissions';
+import { ResourcePlanningShiftHierarchyPanel } from './ResourcePlanningShiftHierarchyPanel';
 import type { ShiftPayload } from '../../types/ResourceShifts';
 
 type DesignerOption = { user_id: string; designer_name: string };
@@ -104,9 +105,9 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
 
-  const [subTab, setSubTab] = useState<'overview' | 'board' | 'masters' | 'assign' | 'calendar'>(
-    'overview',
-  );
+  const [subTab, setSubTab] = useState<
+    'overview' | 'board' | 'hierarchy' | 'masters' | 'assign' | 'calendar'
+  >('overview');
   const [shiftForm, setShiftForm] = useState<ShiftPayload>(EMPTY_SHIFT);
   const [assignUserId, setAssignUserId] = useState('');
   const [assignShiftId, setAssignShiftId] = useState('');
@@ -301,6 +302,7 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
           [
             ['overview', 'Overview'],
             ['board', 'Shift board'],
+            ['hierarchy', 'Hierarchy'],
             ['calendar', 'Calendar'],
             ['assign', 'Assignments'],
             ['masters', 'Shift masters'],
@@ -567,6 +569,8 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
           )}
         </DashboardPanel>
       )}
+
+      {subTab === 'hierarchy' && <ResourcePlanningShiftHierarchyPanel teamId={teamId} />}
 
       {subTab === 'masters' && (
         <DashboardPanel title="Shift masters" subtitle="Company standard shifts used by Resource Planning">

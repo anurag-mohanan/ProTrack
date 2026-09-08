@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
+  List,
+  ListItemButton,
+  ListItemText,
   Stack,
   Tab,
   Tabs,
@@ -27,6 +30,7 @@ import { ResourcePlanningDataQualityPanel } from '../components/resource-plannin
 import { ResourcePlanningComputersByShiftPanel } from '../components/resource-planning/ResourcePlanningComputersByShiftPanel';
 import { ResourcePlanningForecastPanel } from '../components/resource-planning/ResourcePlanningForecastPanel';
 import { ResourcePlanningReportsPanel } from '../components/resource-planning/ResourcePlanningReportsPanel';
+import { ResourcePlanningEmployeeProfile } from '../components/resource-planning/ResourcePlanningEmployeeProfile';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
@@ -97,7 +101,7 @@ export function ResourcePlanningPage() {
     queryKey: resourcePlanningQueryKeys.grid(gridParams),
     queryFn: () => fetchResourcePlanningGrid(gridParams),
     staleTime: QUERY_STALE_TIMES.dashboard,
-    enabled: mainTab === 'planning' || mainTab === 'shifts' || mainTab === 'forecast',
+    enabled: mainTab === 'planning' || mainTab === 'shifts' || mainTab === 'forecast' || mainTab === 'it',
   });
 
   const [pendingAssign, setPendingAssign] = useState<{
@@ -310,6 +314,36 @@ export function ResourcePlanningPage() {
       {mainTab === 'it' && (
         <Box sx={{ mt: 1 }}>
           <Stack spacing={3}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: 'stretch' }}>
+              <Box sx={{ width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  People
+                </Typography>
+                <List dense disablePadding>
+                  {(planningQuery.data?.designers ?? []).map((designer) => (
+                    <ListItemButton
+                      key={designer.user_id}
+                      selected={selectedDesignerId === designer.user_id}
+                      onClick={() => setSelectedDesignerId(designer.user_id)}
+                    >
+                      <ListItemText
+                        primary={designer.designer_name}
+                        secondary={designer.team_name || 'Unassigned team'}
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <ResourcePlanningEmployeeProfile
+                  userId={selectedDesignerId}
+                  userName={
+                    planningQuery.data?.designers.find((d) => d.user_id === selectedDesignerId)
+                      ?.designer_name
+                  }
+                />
+              </Box>
+            </Stack>
             <ResourcePlanningItReadinessPanel teamId={teamParam} />
             <ResourcePlanningComputersByShiftPanel teamId={teamParam} />
           </Stack>

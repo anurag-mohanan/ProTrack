@@ -13,6 +13,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_SETTINGS_TABS } from '../../components/it/ITSectionSubnav';
 import { ContentCard } from '../../components/ui/cards';
 import { FormSelect, SearchToolbar } from '../../components/ui/design-system';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
@@ -166,7 +167,9 @@ export function ITReportsPage() {
     <PageContainer>
       <PageHeader
         title="Customer Asset Returns"
-        subtitle="IT report of customer-owned assets returned from Prosohm custody. Rows stay forever and are excluded from current inventory."
+      />
+
+      <ITSectionSubnav items={IT_SETTINGS_TABS} />
         action={
           <Stack direction="row" spacing={1}>
             <ProsohmButton
@@ -181,6 +184,8 @@ export function ITReportsPage() {
           </Stack>
         }
       />
+
+      <ITSectionSubnav items={IT_SETTINGS_TABS} />
 
       <SearchToolbar sticky>
         <FormSelect

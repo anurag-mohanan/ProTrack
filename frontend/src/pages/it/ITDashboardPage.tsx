@@ -76,7 +76,7 @@ export function ITDashboardPage() {
     <PageContainer>
       <PageHeader
         title="IT Operations"
-        subtitle="Asset register, computer inventory, network pools, and open IT requests."
+        subtitle="Assets & Inventory is the operational hub. Computer name, IP, MAC, software, and assignment live on the asset."
       />
 
       <Stack spacing={2.5}>
@@ -96,7 +96,7 @@ export function ITDashboardPage() {
               value={String(available)}
               icon={CheckCircleOutlineRoundedIcon}
               accent="success"
-              onClick={() => navigate('/it/assets')}
+              onClick={() => navigate('/it/assets?status=available')}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -105,7 +105,7 @@ export function ITDashboardPage() {
               value={String(assigned)}
               icon={PersonOutlineRoundedIcon}
               accent="info"
-              onClick={() => navigate('/it/assets')}
+              onClick={() => navigate('/it/assets?view=assignments')}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -114,7 +114,7 @@ export function ITDashboardPage() {
               value={String(maintenance)}
               icon={BuildRoundedIcon}
               accent="warning"
-              onClick={() => navigate('/it/assets')}
+              onClick={() => navigate('/it/assets?status=maintenance')}
             />
           </Grid>
         </Grid>
@@ -127,7 +127,7 @@ export function ITDashboardPage() {
                 value={String(totalComputers)}
                 icon={DevicesOtherRoundedIcon}
                 accent="primary"
-                onClick={() => navigate('/it/computers')}
+                onClick={() => navigate('/it/assets?category=computer')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 4, md: 2 }}>
@@ -136,7 +136,7 @@ export function ITDashboardPage() {
                 value={String(assignedComputers)}
                 icon={PersonOutlineRoundedIcon}
                 accent="info"
-                onClick={() => navigate('/it/computers?availability=assigned')}
+                onClick={() => navigate('/it/assets?category=computer&status=assigned')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 4, md: 2 }}>
@@ -145,7 +145,7 @@ export function ITDashboardPage() {
                 value={String(openComputers)}
                 icon={CheckCircleOutlineRoundedIcon}
                 accent="success"
-                onClick={() => navigate('/it/computers?availability=open')}
+                onClick={() => navigate('/it/assets?category=computer&status=available')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 4, md: 2 }}>
@@ -154,7 +154,7 @@ export function ITDashboardPage() {
                 value={String(maintenanceComputers)}
                 icon={BuildRoundedIcon}
                 accent="warning"
-                onClick={() => navigate('/it/computers?availability=maintenance')}
+                onClick={() => navigate('/it/assets?category=computer&status=maintenance')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 4, md: 2 }}>
@@ -163,7 +163,7 @@ export function ITDashboardPage() {
                 value={String(retiredComputers)}
                 icon={DevicesOtherRoundedIcon}
                 accent="primary"
-                onClick={() => navigate('/it/computers?availability=retired')}
+                onClick={() => navigate('/it/assets?category=computer&status=retired')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 4, md: 2 }}>
@@ -191,29 +191,17 @@ export function ITDashboardPage() {
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <KpiMetricCard
-                title="License pools"
-                value={String(licensePools)}
-                icon={DevicesOtherRoundedIcon}
-                accent="info"
-                onClick={() => navigate('/it/software')}
+                onClick={() => navigate('/it/software?tab=licenses')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <KpiMetricCard
-                title="Expiring (30d)"
-                value={String(licensesExpiring)}
-                icon={WarningAmberRoundedIcon}
-                accent="warning"
-                onClick={() => navigate('/it/software')}
+                onClick={() => navigate('/it/software?tab=expiry')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <KpiMetricCard
-                title="Expired"
-                value={String(licensesExpired)}
-                icon={EventBusyRoundedIcon}
-                accent="error"
-                onClick={() => navigate('/it/software')}
+                onClick={() => navigate('/it/software?tab=expiry')}
               />
             </Grid>
           </Grid>
@@ -231,7 +219,7 @@ export function ITDashboardPage() {
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <KpiMetricCard
-              title="Networks"
+              title="IP pools"
               value={String(networks)}
               icon={LanRoundedIcon}
               accent="primary"
@@ -240,11 +228,11 @@ export function ITDashboardPage() {
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <KpiMetricCard
-              title="Allocated IPs"
+              title="Computers with IP"
               value={String(allocatedIps)}
               icon={DnsRoundedIcon}
               accent="info"
-              onClick={() => navigate('/it/networks')}
+              onClick={() => navigate('/it/assets?category=computer')}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -309,8 +297,8 @@ export function ITDashboardPage() {
           <Grid container spacing={1.5}>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <DashboardCard
-                title="Assets"
-                subtitle="Register and assignments"
+                title="Assets & Inventory"
+                subtitle="Computers, peripherals, assignments"
                 icon={InventoryRoundedIcon}
                 accent="primary"
                 onClick={() => navigate('/it/assets')}
@@ -319,19 +307,19 @@ export function ITDashboardPage() {
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <DashboardCard
                 title="Computers"
-                subtitle="Named workstations"
+                subtitle="Inventory computers with IP and MAC"
                 icon={DevicesOtherRoundedIcon}
                 accent="info"
-                onClick={() => navigate('/it/computers')}
+                onClick={() => navigate('/it/assets?category=computer')}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <DashboardCard
-                title="Networks"
-                subtitle="CIDR pools and IPs"
-                icon={LanRoundedIcon}
+                title="Software"
+                subtitle="Licenses, installs, and expiry"
+                icon={AppsRoundedIcon}
                 accent="secondary"
-                onClick={() => navigate('/it/networks')}
+                onClick={() => navigate('/it/software')}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>

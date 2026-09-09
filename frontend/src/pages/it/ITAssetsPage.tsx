@@ -15,6 +15,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import AssignmentReturnRoundedIcon from '@mui/icons-material/AssignmentReturnRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
+import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded';
@@ -38,6 +39,8 @@ import {
   fetchMasterSuppliers,
   fetchMasterTypes,
   fetchNextAssetNumber,
+  fetchSuggestedComputerName,
+  fetchSuggestedIp,
   fetchAssetsPaginated,
   itOperationsKeys,
   returnAsset,
@@ -55,6 +58,7 @@ import { ITSectionSubnav, IT_INVENTORY_TABS } from '../../components/it/ITSectio
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { AssetBulkActionBar } from '../../components/it/AssetBulkActionBar';
 import { AssetLifecycleDrawer } from '../../components/it/AssetLifecycleDrawer';
+import { ResourcePlanningDataQualityPanel } from '../../components/resource-planning/ResourcePlanningDataQualityPanel';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
@@ -143,6 +147,9 @@ type AssetFormState = {
   location: string;
   notes: string;
   status: string;
+  computer_name: string;
+  mac_address: string;
+  allocate_ip: boolean;
 };
 
 const emptyForm: AssetFormState = {
@@ -159,6 +166,9 @@ const emptyForm: AssetFormState = {
   location: '',
   notes: '',
   status: 'available',
+  computer_name: '',
+  mac_address: '',
+  allocate_ip: true,
 };
 
 function statusColor(
@@ -235,29 +245,55 @@ export function ITAssetsPage({
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const urlView = searchParams.get('view') ?? '';
+  const urlStatus = searchParams.get('status');
+  const categoryFilter = searchParams.get('category') ?? '';
+  const statusFilter =
+    urlStatus === 'all' ? '' : urlStatus ? urlStatus : urlView === 'assignments' ? 'assigned' : '';
   const [inventoryScope, setInventoryScope] = useState(defaultInventoryScope);
+  const effectiveInventoryScope =
+    defaultInventoryScope === 'returned'
+      ? 'returned'
+      : urlView === 'history'
+        ? 'all'
+        : inventoryScope;
   const [ownershipFilter, setOwnershipFilter] = useState('');
   const [warrantyFilter, setWarrantyFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get('category') ?? '');
   const [makeFilter, setMakeFilter] = useState('');
   const [modelFilter, setModelFilter] = useState('');
 
-  const applyCategoryFilter = useCallback(
-    (value: string) => {
-      setCategoryFilter(value);
+  const patchSearchParams = useCallback(
+    (mutate: (next: URLSearchParams) => void) => {
       const next = new URLSearchParams(searchParams);
-      if (value) next.set('category', value);
-      else next.delete('category');
+      mutate(next);
       setSearchParams(next, { replace: true });
     },
     [searchParams, setSearchParams],
   );
 
-  useEffect(() => {
-    const fromUrl = searchParams.get('category') ?? '';
-    setCategoryFilter((current) => (current === fromUrl ? current : fromUrl));
-  }, [searchParams]);
+  const applyCategoryFilter = useCallback(
+    (value: string) => {
+      patchSearchParams((next) => {
+        if (value) next.set('category', value);
+        else next.delete('category');
+      });
+    },
+    [patchSearchParams],
+  );
+
+  const applyStatusFilter = useCallback(
+    (value: string) => {
+      patchSearchParams((next) => {
+        if (!value) {
+          if (urlView === 'assignments') next.set('status', 'all');
+          else next.delete('status');
+        } else {
+          next.set('status', value);
+        }
+      });
+    },
+    [patchSearchParams, urlView],
+  );
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ITAsset | null>(null);
   const [form, setForm] = useState<AssetFormState>(emptyForm);
@@ -273,6 +309,7 @@ export function ITAssetsPage({
   const [transferTarget, setTransferTarget] = useState<ITAsset | null>(null);
   const [customerReturnTarget, setCustomerReturnTarget] = useState<ITAsset | null>(null);
   const [historyTarget, setHistoryTarget] = useState<ITAsset | null>(null);
+  const [qualityOpen, setQualityOpen] = useState(false);
   const [assignUserId, setAssignUserId] = useState('');
   const [assignShiftId, setAssignShiftId] = useState('');
   const [assignDate, setAssignDate] = useState(new Date().toISOString().slice(0, 10));
@@ -348,6 +385,35 @@ export function ITAssetsPage({
     queryFn: () => fetchNextAssetNumber(form.asset_type_id),
     enabled: formOpen && !editing && Boolean(form.asset_type_id),
   });
+
+  const selectedType = (typesQuery.data ?? []).find((row) => row.id === form.asset_type_id);
+  const isComputerType = (selectedType?.category || form.category) === 'computer';
+  const showNetworkFields =
+    isComputerType || (selectedType?.category || form.category) === 'network_equipment';
+
+  const nameSuggestQuery = useQuery({
+    queryKey: itOperationsKeys.suggestComputerName(selectedType?.code),
+    queryFn: () => fetchSuggestedComputerName(selectedType?.code),
+    enabled: formOpen && !editing && isComputerType,
+  });
+
+  const ipSuggestQuery = useQuery({
+    queryKey: itOperationsKeys.suggestIp(form.computer_name || nameSuggestQuery.data?.computer_name),
+    queryFn: () =>
+      fetchSuggestedIp({
+        computer_name: form.computer_name || nameSuggestQuery.data?.computer_name,
+      }),
+    enabled: formOpen && !editing && showNetworkFields,
+  });
+
+  useEffect(() => {
+    if (editing || !nameSuggestQuery.data?.computer_name) return;
+    setForm((current) =>
+      current.computer_name
+        ? current
+        : { ...current, computer_name: nameSuggestQuery.data!.computer_name },
+    );
+  }, [nameSuggestQuery.data, editing]);
 
   const usersQuery = useQuery({
     queryKey: ['lookups', 'users'],
@@ -426,7 +492,7 @@ export function ITAssetsPage({
     () => ({
       status: statusFilter || undefined,
       q: search.trim() || undefined,
-      inventory_scope: statusFilter ? 'all' : inventoryScope,
+      inventory_scope: statusFilter ? 'all' : effectiveInventoryScope,
       purchased_by: ownershipFilter || undefined,
       warranty_status: warrantyFilter || undefined,
       category: categoryFilter || undefined,
@@ -436,7 +502,7 @@ export function ITAssetsPage({
     [
       search,
       statusFilter,
-      inventoryScope,
+      effectiveInventoryScope,
       ownershipFilter,
       warrantyFilter,
       categoryFilter,
@@ -549,6 +615,14 @@ export function ITAssetsPage({
       };
       if (canOverrideNumber && override && override !== suggested) {
         payload.asset_number = override;
+      }
+      if (isComputerType || showNetworkFields) {
+        payload.computer_name = optionalString(form.computer_name);
+        payload.mac_address = optionalString(form.mac_address);
+        payload.provision_computer = isComputerType;
+        if (form.allocate_ip && ipSuggestQuery.data?.available && ipSuggestQuery.data.ip_address_id) {
+          payload.ip_address_id = ipSuggestQuery.data.ip_address_id;
+        }
       }
       return createAsset(payload);
     },
@@ -838,6 +912,9 @@ export function ITAssetsPage({
       location: asset.location ?? '',
       notes: asset.notes ?? '',
       status: asset.status || 'available',
+      computer_name: asset.computer_name ?? '',
+      mac_address: asset.mac_address ?? '',
+      allocate_ip: true,
     });
     setFormOpen(true);
   };
@@ -970,6 +1047,23 @@ export function ITAssetsPage({
       valueGetter: (_value, row) =>
         [row.make, row.model].filter(Boolean).join(' ') || '—',
     },
+    ...(categoryFilter === 'peripheral'
+      ? []
+      : ([
+          {
+            field: 'computer_name',
+            headerName: 'Computer',
+            flex: 0.9,
+            minWidth: 120,
+            valueFormatter: (value) => formatCellValue(value) || '—',
+          },
+          {
+            field: 'primary_ip',
+            headerName: 'IP',
+            width: 130,
+            valueFormatter: (value) => formatCellValue(value) || '—',
+          },
+        ] as GridColDef<ITAsset>[])),
     {
       field: 'purchased_by',
       headerName: 'Owned by',
@@ -1025,10 +1119,22 @@ export function ITAssetsPage({
     },
     {
       field: 'assignee',
-      headerName: 'Assignee',
+      headerName: 'User',
       flex: 1,
       minWidth: 140,
       valueGetter: (_value, row) => assigneeName(row),
+    },
+    {
+      field: 'current_assignee_team',
+      headerName: 'Team',
+      width: 120,
+      valueFormatter: (value) => formatCellValue(value) || '—',
+    },
+    {
+      field: 'current_shift_display',
+      headerName: 'Shift',
+      width: 140,
+      valueFormatter: (value) => formatCellValue(value) || '—',
     },
     {
       field: 'actions',
@@ -1134,29 +1240,57 @@ export function ITAssetsPage({
     },
   ];
 
+  const inventoryTitle =
+    defaultInventoryScope === 'returned'
+      ? 'Returned Assets'
+      : urlView === 'assignments'
+        ? 'Asset Assignments'
+        : urlView === 'history'
+          ? 'Asset History'
+          : categoryFilter === 'peripheral'
+            ? 'Peripherals & Equipment'
+            : categoryFilter === 'network_equipment'
+              ? 'Network Devices'
+              : categoryFilter === 'computer'
+                ? 'Computers'
+                : 'Inventory';
+  const inventorySubtitle =
+    defaultInventoryScope === 'returned'
+      ? 'Customer-owned assets returned from Prosohm custody (historical record retained).'
+      : urlView === 'assignments'
+        ? 'Current assignments from the authoritative asset relationship. Ownership is separate from who uses the asset.'
+        : urlView === 'history'
+          ? 'Current and historical assets. Open lifecycle on a row to see assignment, ownership, IP, and status history.'
+          : categoryFilter === 'computer'
+            ? 'Computer assets with name, IP, user, team, and shift on the same inventory record. Network/IP is not a separate module.'
+            : 'Physical IT assets in one register. Filter by type and status instead of switching modules.';
+
   return (
     <PageContainer>
       <PageHeader
-        title={
-          defaultInventoryScope === 'returned' ? 'Returned Assets' : 'Assets & Inventory'
-        }
-        subtitle={
-          defaultInventoryScope === 'returned'
-            ? 'Customer-owned assets returned from Prosohm custody (historical record retained).'
-            : 'Current inventory by default. Ownership is separate from who uses the asset.'
-        }
+        title={inventoryTitle}
+        subtitle={inventorySubtitle}
         action={
-          canManage && defaultInventoryScope !== 'returned' ? (
-            <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
-              Add asset
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+            <ProsohmButton
+              buttonVariant="outlined"
+              startIcon={<FactCheckRoundedIcon />}
+              onClick={() => setQualityOpen(true)}
+            >
+              Data quality
             </ProsohmButton>
-          ) : undefined
+            {canManage && defaultInventoryScope !== 'returned' ? (
+              <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
+                {categoryFilter === 'computer' ? 'Add computer' : 'Add asset'}
+              </ProsohmButton>
+            ) : null}
+          </Stack>
         }
       />
 
       <ITSectionSubnav items={IT_INVENTORY_TABS} />
 
-      {defaultInventoryScope !== 'returned' ? (
+      {defaultInventoryScope !== 'returned' && !urlView ? (
         <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
           {(
             [
@@ -1185,10 +1319,10 @@ export function ITAssetsPage({
           placeholder="Asset number, serial, make…"
           sx={{ minWidth: 240, flex: 1, maxWidth: 420 }}
         />
-        {defaultInventoryScope !== 'returned' ? (
+        {defaultInventoryScope !== 'returned' && urlView !== 'history' ? (
           <FormSelect
             label="Inventory"
-            value={inventoryScope}
+            value={effectiveInventoryScope}
             onChange={(event) =>
               setInventoryScope(String(event.target.value) as typeof inventoryScope)
             }
@@ -1206,7 +1340,7 @@ export function ITAssetsPage({
         <FormSelect
           label="Status"
           value={statusFilter}
-          onChange={(event) => setStatusFilter(String(event.target.value))}
+          onChange={(event) => applyStatusFilter(String(event.target.value))}
           options={ASSET_STATUS_OPTIONS}
           sx={{ minWidth: 180 }}
         />
@@ -1347,7 +1481,10 @@ export function ITAssetsPage({
                     : ''
                 }
                 slotProps={{ input: { readOnly: true } }}
-                helper="Assigned automatically on create. Serial number is separate."
+                helper={
+                  nextNumberQuery.data?.message ||
+                  'Assigned automatically on create. Serial number is separate.'
+                }
               />
             ) : (
               <FormField
@@ -1377,6 +1514,66 @@ export function ITAssetsPage({
                 setForm((current) => ({ ...current, serial_number: event.target.value }))
               }
             />
+            {showNetworkFields ? (
+              <>
+                <FormField
+                  label="Computer name"
+                  value={form.computer_name}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, computer_name: event.target.value }))
+                  }
+                  helper={
+                    !editing
+                      ? nameSuggestQuery.data?.message || 'Suggested from existing computer names.'
+                      : undefined
+                  }
+                  placeholder={nameSuggestQuery.data?.computer_name ?? ''}
+                />
+                <FormField
+                  label="MAC address"
+                  value={form.mac_address}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, mac_address: event.target.value }))
+                  }
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                />
+                {!editing ? (
+                  <>
+                    <FormField
+                      label="Suggested IP"
+                      value={
+                        ipSuggestQuery.data?.address ??
+                        (ipSuggestQuery.isFetching ? 'Loading…' : '')
+                      }
+                      slotProps={{ input: { readOnly: true } }}
+                      helper={ipSuggestQuery.data?.message}
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={form.allocate_ip && Boolean(ipSuggestQuery.data?.available)}
+                          disabled={!ipSuggestQuery.data?.available}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              allocate_ip: event.target.checked,
+                            }))
+                          }
+                        />
+                      }
+                      label="Allocate the suggested IP on create"
+                    />
+                  </>
+                ) : (
+                  <FormField
+                    label="Primary IP"
+                    value={editing?.primary_ip ?? ''}
+                    slotProps={{ input: { readOnly: true } }}
+                    helper={editing?.network_cidr ? `Network ${editing.network_cidr}` : undefined}
+                  />
+                )}
+              </>
+            ) : null}
             <FormSelect
               label="Make"
               value={form.make_id}
@@ -1797,6 +1994,23 @@ export function ITAssetsPage({
             onClick={() => customerReturnMutation.mutate()}
           >
             Return to customer
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={qualityOpen}
+        onClose={() => setQualityOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>IT / Resource data quality</DialogTitle>
+        <DialogContent dividers>
+          {qualityOpen ? <ResourcePlanningDataQualityPanel /> : null}
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setQualityOpen(false)}>
+            Close
           </ProsohmButton>
         </DialogActions>
       </Dialog>

@@ -545,6 +545,14 @@ export default function App() {
                         }
                       />
                       <Route
+                        path="/it/service"
+                        element={<Navigate to="/it/requests" replace />}
+                      />
+                      <Route
+                        path="/it/admin"
+                        element={<Navigate to="/it/master-data" replace />}
+                      />
+                      <Route
                         path="/it/requests"
                         element={
                           <Suspense fallback={<LoadingState message="Loading IT requests…" />}>

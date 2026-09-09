@@ -34,7 +34,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
-import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_ADMIN_TABS } from '../../components/it/ITSectionSubnav';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
@@ -291,8 +291,8 @@ export function ITNetworksPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Networks"
-        subtitle="Manage CIDR pools and allocate IP addresses."
+        title="IP Pools"
+        subtitle="CIDR pools used when allocating a primary IP to a computer asset. Day-to-day IP assignment happens on the asset."
         action={
           canManage ? (
             <ProsohmButton
@@ -309,8 +309,10 @@ export function ITNetworksPage() {
         }
       />
 
+      <ITSectionSubnav items={IT_ADMIN_TABS} />
+
       <Stack spacing={2.5}>
-        <ContentCard noPadding title="Networks">
+        <ContentCard noPadding title="IP pools">
           {(networksQuery.data ?? []).length === 0 ? (
             <Box sx={{ p: 3 }}>
               <EmptyState

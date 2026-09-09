@@ -18,4 +18,25 @@ test.describe('IT Computers', () => {
       await page.getByRole('button', { name: 'Close' }).click();
     }
   });
+
+  test('inventory Computers tab shows computer columns and no top-level Network hub', async ({
+    page,
+  }) => {
+    await gotoAuthenticated(page, '/it/assets?category=computer');
+    const main = page.getByRole('main');
+    await expect(main.getByRole('tab', { name: 'Computers' })).toBeVisible({ timeout: 20_000 });
+    await expect(main.getByRole('columnheader', { name: 'Computer' })).toBeVisible();
+    await expect(main.getByRole('columnheader', { name: 'IP' })).toBeVisible();
+    await expect(main.getByRole('columnheader', { name: 'User' })).toBeVisible();
+
+    await expect(page.getByRole('link', { name: 'Assets & Inventory' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Network / IP' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /^Networks$/ })).toHaveCount(0);
+  });
+
+  test('software installations tab is reachable from the software hub', async ({ page }) => {
+    await gotoAuthenticated(page, '/it/software?tab=installations');
+    const main = page.getByRole('main');
+    await expect(main.getByRole('tab', { name: 'Installations' })).toBeVisible({ timeout: 20_000 });
+  });
 });

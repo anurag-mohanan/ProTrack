@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import exists, not_, or_, select
+from sqlalchemy import exists, func, not_, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.access_control import MODULE_IT_OPERATIONS
@@ -22,6 +22,7 @@ from app.models.it_operations import (
     AssetStatusHistory,
     AssetType,
     Computer,
+    ComputerNameHistory,
     ComputerNetworkInterface,
     ITSettings,
 )
@@ -474,6 +475,87 @@ def _current_number_period(db: Session, asset_id: UUID) -> AssetNumberHistory | 
     )
 
 
+def _open_computer_name_period(
+    db: Session,
+    computer: Computer,
+    *,
+    actor: User,
+    on_date: date,
+    reason: str | None = None,
+    notes: str | None = None,
+) -> None:
+    db.add(
+        ComputerNameHistory(
+            id=uuid4(),
+            computer_id=computer.id,
+            computer_name=computer.computer_name,
+            effective_from=on_date,
+            changed_by_user_id=actor.id,
+            reason=reason,
+            notes=notes,
+        )
+    )
+
+
+def _current_computer_name_period(db: Session, computer_id: UUID) -> ComputerNameHistory | None:
+    return db.scalar(
+        select(ComputerNameHistory)
+        .where(
+            ComputerNameHistory.computer_id == computer_id,
+            ComputerNameHistory.effective_to.is_(None),
+        )
+        .order_by(ComputerNameHistory.effective_from.desc())
+        .limit(1)
+    )
+
+
+def apply_computer_name_change(
+    db: Session,
+    computer: Computer,
+    new_name: str,
+    *,
+    actor: User,
+    reason: str | None = None,
+    notes: str | None = None,
+    on_date: date | None = None,
+) -> None:
+    from app.services import it_computer_suggest_service as suggest
+
+    cleaned = (new_name or "").strip()
+    if not cleaned:
+        raise ProTrackValidationError("Computer name is required.")
+    if cleaned == computer.computer_name:
+        return
+    if suggest.computer_name_is_taken(db, cleaned, exclude_computer_id=computer.id):
+        raise ProTrackValidationError(
+            f"Computer name '{cleaned}' is already in use or was used historically."
+        )
+    today = on_date or date.today()
+    current = _current_computer_name_period(db, computer.id)
+    if current is not None and current.effective_to is None:
+        current.effective_to = today
+        db.add(current)
+    computer.computer_name = cleaned
+    db.add(computer)
+    db.flush()
+    _open_computer_name_period(
+        db, computer, actor=actor, on_date=today, reason=reason or "manual_update", notes=notes
+    )
+
+
+def _serial_conflict(db: Session, serial: str, *, exclude_asset_id: UUID | None = None) -> Asset | None:
+    cleaned = (serial or "").strip()
+    if not cleaned:
+        return None
+    stmt = select(Asset).where(
+        Asset.is_deleted.is_(False),
+        func.lower(Asset.serial_number) == cleaned.lower(),
+    )
+    if exclude_asset_id is not None:
+        stmt = stmt.where(Asset.id != exclude_asset_id)
+    return db.scalar(stmt.limit(1))
+
+
 def apply_asset_number_change(
     db: Session,
     asset: Asset,
@@ -711,6 +793,28 @@ def list_asset_lifecycle_history(db: Session, asset_id: UUID) -> dict:
             }
             for row in numbers
         ],
+        "computer_names": [
+            {
+                "id": str(row.id),
+                "computer_name": row.computer_name,
+                "effective_from": row.effective_from.isoformat(),
+                "effective_to": row.effective_to.isoformat() if row.effective_to else None,
+                "changed_by_user_id": str(row.changed_by_user_id),
+                "reason": row.reason,
+                "notes": row.notes,
+            }
+            for row in (
+                db.scalars(
+                    select(ComputerNameHistory)
+                    .join(Computer, Computer.id == ComputerNameHistory.computer_id)
+                    .where(Computer.asset_id == asset_id)
+                    .order_by(
+                        ComputerNameHistory.effective_to.is_(None).desc(),
+                        ComputerNameHistory.effective_from.desc(),
+                    )
+                ).all()
+            )
+        ],
     }
 
 
@@ -733,7 +837,7 @@ def list_assets(
 ) -> tuple[list[Asset], int]:
     stmt = (
         select(Asset)
-        .options(selectinload(Asset.asset_type), selectinload(Asset.assignments))
+        .options(selectinload(Asset.asset_type), selectinload(Asset.assignments), selectinload(Asset.computer))
         .where(Asset.is_deleted.is_(False))
     )
     count_filters = [Asset.is_deleted.is_(False)]
@@ -792,6 +896,15 @@ def list_assets(
             AssetNumberHistory.asset_id == Asset.id,
             AssetNumberHistory.asset_number.ilike(q),
         )
+        computer_match = exists().where(
+            Computer.asset_id == Asset.id,
+            Computer.computer_name.ilike(q),
+        )
+        computer_history_match = exists().where(
+            ComputerNameHistory.computer_id == Computer.id,
+            Computer.asset_id == Asset.id,
+            ComputerNameHistory.computer_name.ilike(q),
+        )
         search_clause = or_(
             Asset.asset_number.ilike(q),
             Asset.legacy_asset_number.ilike(q),
@@ -802,6 +915,8 @@ def list_assets(
             Asset.location.ilike(q),
             Asset.description.ilike(q),
             history_match,
+            computer_match,
+            computer_history_match,
         )
         stmt = stmt.where(search_clause)
         count_filters.append(search_clause)
@@ -882,6 +997,10 @@ def create_asset(
     supplier_name: str | None = None,
     invoice_number: str | None = None,
     condition: str | None = None,
+    computer_name: str | None = None,
+    mac_address: str | None = None,
+    ip_address_id: UUID | None = None,
+    provision_computer: bool | None = None,
     commit: bool = True,
 ) -> Asset:
     from app.services.it_master_data_service import resolve_masters_for_asset
@@ -917,6 +1036,24 @@ def create_asset(
         number = preferred
     else:
         number = next_asset_number(db, asset_type)
+
+    serial = (serial_number or "").strip() or None
+    if serial:
+        conflict = _serial_conflict(db, serial)
+        if conflict is not None:
+            raise ProTrackValidationError(
+                f"Serial number '{serial}' is already assigned to {conflict.asset_number}."
+            )
+
+    from app.services import it_computer_suggest_service as suggest
+
+    mac = suggest.normalize_mac(mac_address)
+    if mac:
+        mac_owner = suggest.mac_is_taken(db, mac)
+        if mac_owner is not None:
+            raise ProTrackValidationError(
+                f"MAC address {mac} is already assigned to {mac_owner.computer_name}."
+            )
     asset = Asset(
         id=uuid4(),
         asset_number=number,
@@ -966,6 +1103,21 @@ def create_asset(
         module=MODULE,
         commit=False,
     )
+    wants_computer = provision_computer
+    if wants_computer is None:
+        wants_computer = False
+    if (computer_name or "").strip() or mac or ip_address_id:
+        wants_computer = True
+    if wants_computer:
+        create_computer(
+            db,
+            actor=actor,
+            asset_id=asset.id,
+            computer_name=(computer_name or "").strip() or None,
+            mac_address=mac,
+            ip_address_id=ip_address_id,
+            commit=False,
+        )
     if commit:
         db.commit()
         db.refresh(asset)
@@ -1657,6 +1809,9 @@ def create_computer(
     warranty_expiry: date | None = None,
     location: str | None = None,
     notes: str | None = None,
+    computer_name: str | None = None,
+    ip_address_id: UUID | None = None,
+    commit: bool = True,
 ) -> Computer:
     if asset_id is None and asset_type_id is None:
         raise ProTrackValidationError("Provide asset_id or asset_type_id.")
@@ -1689,28 +1844,62 @@ def create_computer(
             warranty_expiry=warranty_expiry,
             location=location,
             notes=notes,
+            provision_computer=False,
             commit=False,
         )
 
     type_code = (asset_type.code if asset_type else "PC")[:6]
-    computer_name = next_computer_name(db, type_code)
+    from app.services import it_computer_suggest_service as suggest
+
+    preferred_name = (computer_name or "").strip() or None
+    if preferred_name:
+        if suggest.computer_name_is_taken(db, preferred_name):
+            next_name = suggest.suggest_computer_name(db, type_code=type_code)["computer_name"]
+            raise ProTrackValidationError(
+                f"Computer name '{preferred_name}' is already in use. Suggested: {next_name}"
+            )
+        allocated_name = preferred_name
+    else:
+        allocated_name = suggest.suggest_computer_name(db, type_code=type_code)["computer_name"]
+
+    mac = suggest.normalize_mac(mac_address)
+    if mac:
+        mac_owner = suggest.mac_is_taken(db, mac)
+        if mac_owner is not None:
+            raise ProTrackValidationError(
+                f"MAC address {mac} is already assigned to {mac_owner.computer_name}."
+            )
+
     computer = Computer(
         id=uuid4(),
         asset_id=asset.id,
-        computer_name=computer_name,
+        computer_name=allocated_name,
         os=(os or "").strip() or None,
         processor=(processor or "").strip() or None,
         ram_gb=ram_gb,
         storage_type=(storage_type or "").strip() or None,
         storage_gb=storage_gb,
         domain_joined=bool(domain_joined),
-        mac_address=(mac_address or "").strip() or None,
+        mac_address=mac,
     )
     db.add(computer)
     db.flush()
-    mac = (mac_address or "").strip() or None
+    _open_computer_name_period(
+        db, computer, actor=actor, on_date=date.today(), reason="created"
+    )
     if mac:
         _ensure_primary_interface(db, computer, mac_address=mac, name="LAN")
+    if ip_address_id is not None:
+        from app.services import it_network_service
+
+        it_network_service.allocate_ip(
+            db,
+            actor=actor,
+            ip_address_id=ip_address_id,
+            assigned_to_asset_id=asset.id,
+            hostname=computer.computer_name,
+            commit=False,
+        )
     log_activity(
         db,
         user=actor,
@@ -1725,8 +1914,9 @@ def create_computer(
         module=MODULE,
         commit=False,
     )
-    db.commit()
-    db.refresh(computer)
+    if commit:
+        db.commit()
+        db.refresh(computer)
     return computer
 
 
@@ -1923,9 +2113,19 @@ def update_computer(
     storage_gb: int | None = None,
     domain_joined: bool | None = None,
     mac_address: str | None = None,
+    computer_name: str | None = None,
+    computer_name_reason: str | None = None,
     fields_set: set[str] | None = None,
 ) -> Computer:
     touched = fields_set or set()
+    if "computer_name" in touched or (fields_set is None and computer_name is not None):
+        apply_computer_name_change(
+            db,
+            computer,
+            computer_name or "",
+            actor=actor,
+            reason=(computer_name_reason or "").strip() or "manual_update",
+        )
     if "os" in touched or (fields_set is None and os is not None):
         computer.os = (os or "").strip() or None
     if "processor" in touched or (fields_set is None and processor is not None):
@@ -1939,7 +2139,16 @@ def update_computer(
     if "domain_joined" in touched or (fields_set is None and domain_joined is not None):
         computer.domain_joined = bool(domain_joined)
     if "mac_address" in touched or (fields_set is None and mac_address is not None):
-        _sync_primary_mac(db, computer, mac_address)
+        from app.services import it_computer_suggest_service as suggest
+
+        mac = suggest.normalize_mac(mac_address)
+        if mac:
+            mac_owner = suggest.mac_is_taken(db, mac, exclude_computer_id=computer.id)
+            if mac_owner is not None:
+                raise ProTrackValidationError(
+                    f"MAC address {mac} is already assigned to {mac_owner.computer_name}."
+                )
+        _sync_primary_mac(db, computer, mac)
     db.add(computer)
     db.flush()
     log_activity(

@@ -62,6 +62,19 @@ const ROUTE_LABELS: Record<string, string> = {
   '/admin/imports/historical-projects': 'Historical Projects',
   '/admin/imports/historical-timesheets': 'Historical Timesheets',
   '/admin/imports/history': 'History data packs',
+  '/it': 'IT Dashboard',
+  '/it/assets': 'Assets & Inventory',
+  '/it/returned-assets': 'Returned / Pending Return',
+  '/it/computers': 'Computer NICs',
+  '/it/networks': 'IP Pools',
+  '/it/accounts': 'People',
+  '/it/software': 'Software & Licenses',
+  '/it/requests': 'IT Requests',
+  '/it/maintenance': 'Maintenance',
+  '/it/master-data': 'Master Data',
+  '/it/data-import': 'Data Import',
+  '/it/reports': 'IT Reports',
+  '/it/settings': 'IT Settings',
 };
 
 function projectIdFromPath(pathname: string): string | null {
@@ -90,6 +103,12 @@ function resolveBreadcrumbs(pathname: string, projectLabel?: string | null): Bre
     if (pathname.startsWith('/hr/') && pathname !== '/hr') {
       return [
         { label: 'HR Dashboard', to: '/hr' },
+        { label: ROUTE_LABELS[pathname] },
+      ];
+    }
+    if (pathname.startsWith('/it/') && pathname !== '/it') {
+      return [
+        { label: 'IT Operations', to: '/it' },
         { label: ROUTE_LABELS[pathname] },
       ];
     }

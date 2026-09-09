@@ -16,7 +16,7 @@ import {
 import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
-import { NavLink } from 'react-router-dom';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { LogoHomeLink } from '../branding/LogoHomeLink';
 import type { CurrentUser } from '../../types';
 import { designTokens } from '../../theme/designTokens';
@@ -28,8 +28,10 @@ import {
   getItSectionNavItems,
   getMainNavItems,
   getOperationsSectionNavItems,
+  type MainNavItem,
 } from '../../utils/permissions';
 import { navItemNeedsExactMatch } from '../../utils/navActive';
+import { isNavItemActive, matchItNavPath, splitNavPath } from '../../utils/itNav';
 import { NAV_COMPACT_BREAKPOINT } from '../../hooks/useResponsiveShell';
 import { usePreferences } from '../../context/PreferencesContext';
 
@@ -78,6 +80,9 @@ function NavButton({
   accent = false,
   disabled = false,
   end = false,
+  nested = false,
+  trailingPad = false,
+  forceActive = false,
   onNavigate,
 }: {
   path: string;
@@ -86,18 +91,29 @@ function NavButton({
   accent?: boolean;
   disabled?: boolean;
   end?: boolean;
+  nested?: boolean;
+  trailingPad?: boolean;
+  forceActive?: boolean;
   onNavigate?: () => void;
 }) {
+  const location = useLocation();
+  const active = isNavItemActive(path, location.pathname, location.search, {
+    end,
+    forceActive,
+  });
+
   return (
     <ListItemButton
-      component={disabled ? 'div' : NavLink}
+      component={disabled ? 'div' : RouterLink}
       to={disabled ? undefined : path}
-      end={disabled ? undefined : end}
       disabled={disabled}
       onClick={disabled ? undefined : onNavigate}
+      className={active ? 'active' : undefined}
       sx={{
         mx: 1,
         mb: 0.25,
+        pl: nested ? 4 : undefined,
+        pr: trailingPad ? 5 : undefined,
         borderRadius: `${designTokens.radius.md}px`,
         color: accent ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.68)',
         transition: `all ${designTokens.motion.fast}`,
@@ -117,7 +133,7 @@ function NavButton({
       }}
     >
       {Icon ? (
-        <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
+        <ListItemIcon sx={{ minWidth: nested ? 28 : 40, color: 'inherit' }}>
           <Icon fontSize="small" />
         </ListItemIcon>
       ) : null}
@@ -130,6 +146,92 @@ function NavButton({
         }}
       />
     </ListItemButton>
+  );
+}
+
+function ITNavGroup({
+  item,
+  allNavPaths,
+  onNavigate,
+}: {
+  item: MainNavItem;
+  allNavPaths: string[];
+  onNavigate?: () => void;
+}) {
+  const location = useLocation();
+  const children = item.children ?? [];
+  const childActive = children.some((child) =>
+    matchItNavPath(child.path, location.pathname, location.search),
+  );
+  const selfActive =
+    !childActive && matchItNavPath(item.path, location.pathname, location.search);
+  const [open, setOpen] = useState(childActive || selfActive);
+
+  useEffect(() => {
+    if (childActive || selfActive) setOpen(true);
+  }, [childActive, selfActive]);
+
+  if (!children.length) {
+    return (
+      <NavButton
+        path={item.path}
+        label={item.label}
+        icon={item.icon}
+        end={navItemNeedsExactMatch(splitNavPath(item.path).pathname, allNavPaths)}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  return (
+    <>
+      <Box sx={{ position: 'relative' }}>
+        <NavButton
+          path={item.path}
+          label={item.label}
+          icon={item.icon}
+          trailingPad
+          forceActive={childActive}
+          end={navItemNeedsExactMatch(splitNavPath(item.path).pathname, allNavPaths)}
+          onNavigate={() => {
+            setOpen(true);
+            onNavigate?.();
+          }}
+        />
+        <IconButton
+          size="small"
+          aria-label={open ? `Collapse ${item.label}` : `Expand ${item.label}`}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen((value) => !value);
+          }}
+          sx={{
+            position: 'absolute',
+            right: 12,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: 'rgba(255,255,255,0.55)',
+          }}
+        >
+          {open ? <ExpandLessRoundedIcon fontSize="small" /> : <ExpandMoreRoundedIcon fontSize="small" />}
+        </IconButton>
+      </Box>
+      <Collapse in={open} timeout="auto" unmountOnExit>
+        <List disablePadding>
+          {children.map((child) => (
+            <NavButton
+              key={child.path}
+              path={child.path}
+              label={child.label}
+              nested
+              end={navItemNeedsExactMatch(splitNavPath(child.path).pathname, allNavPaths)}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </List>
+      </Collapse>
+    </>
   );
 }
 
@@ -272,7 +374,10 @@ export function AppSidebar({
       ...visibleNavItems.map((item) => item.path),
       ...operationsItems.map((item) => item.path),
       ...hrItems.map((item) => item.path),
-      ...itItems.map((item) => item.path),
+      ...itItems.flatMap((item) => [
+        splitNavPath(item.path).pathname,
+        ...(item.children ?? []).map((child) => splitNavPath(child.path).pathname),
+      ]),
     ],
     [visibleNavItems, operationsItems, hrItems, itItems],
   );
@@ -374,12 +479,10 @@ export function AppSidebar({
             >
               <List disablePadding>
                 {itItems.map((item) => (
-                  <NavButton
+                  <ITNavGroup
                     key={item.path}
-                    path={item.path}
-                    label={item.label}
-                    icon={item.icon}
-                    end={navItemNeedsExactMatch(item.path, allNavPaths)}
+                    item={item}
+                    allNavPaths={allNavPaths}
                     onNavigate={onMobileClose}
                   />
                 ))}

@@ -14,8 +14,10 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchAssetAssignments,
+  fetchAssetChildren,
   fetchAssetIpHistory,
   fetchAssetLifecycleHistory,
+  fetchSoftwareInstallations,
   itOperationsKeys,
 } from '../../api/itOperations';
 import type { ITAsset } from '../../types/itOperations';
@@ -52,6 +54,25 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
     enabled: open && Boolean(asset?.id) && tab === 'history',
   });
 
+  const childrenQuery = useQuery({
+    queryKey: itOperationsKeys.assetChildren(asset?.id ?? ''),
+    queryFn: () => fetchAssetChildren(asset!.id),
+    enabled: open && Boolean(asset?.id) && tab === 'overview',
+  });
+
+  const softwareQuery = useQuery({
+    queryKey: itOperationsKeys.softwareInstallations({
+      computer_id: asset?.computer_id ?? '',
+      active_only: true,
+    }),
+    queryFn: () =>
+      fetchSoftwareInstallations({
+        computer_id: asset!.computer_id!,
+        active_only: true,
+      }),
+    enabled: open && Boolean(asset?.computer_id) && tab === 'overview',
+  });
+
   const previousAssignments = (assignmentsQuery.data ?? []).filter((row) => row.returned_date);
   const openAssignments = (assignmentsQuery.data ?? []).filter((row) => !row.returned_date);
 
@@ -82,6 +103,9 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
                 />
               ) : null}
               <DetailRow label="Type" value={asset.asset_type_name || asset.asset_type_code} />
+              {asset.computer_name ? (
+                <DetailRow label="Computer name" value={asset.computer_name} />
+              ) : null}
               <DetailRow
                 label="Make / Model"
                 value={[asset.make, asset.model].filter(Boolean).join(' ') || null}
@@ -89,6 +113,21 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
               <DetailRow label="Serial" value={asset.serial_number} />
               <DetailRow label="Status" value={String(asset.status || '').replace(/_/g, ' ')} />
             </Section>
+            {asset.computer_name || asset.primary_ip || asset.mac_address ? (
+              <Section title="Network">
+                <DetailRow label="Primary IP" value={asset.primary_ip} />
+                <DetailRow label="IP type" value={asset.ip_allocation_type} />
+                <DetailRow label="MAC" value={asset.mac_address} />
+                <DetailRow
+                  label="Network"
+                  value={
+                    asset.network_cidr
+                      ? `${asset.network_name ? `${asset.network_name} · ` : ''}${asset.network_cidr}`
+                      : null
+                  }
+                />
+              </Section>
+            ) : null}
             <Section title="Ownership & location">
               <DetailRow label="Owner type" value={asset.purchased_by} />
               <DetailRow label="Owner customer" value={asset.owner_customer_name} />
@@ -100,9 +139,49 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
                 label="Assigned to"
                 value={asset.assigned_to_user_name || asset.current_assignee_name}
               />
+              <DetailRow label="Team" value={asset.current_assignee_team} />
+              <DetailRow label="Shift" value={asset.current_shift_display} />
               <Typography variant="caption" color="text.secondary">
-                Ownership is separate from who uses the asset.
+                Ownership is separate from who uses the asset. Shift comes from Resource Planning.
               </Typography>
+            </Section>
+            {asset.computer_id ? (
+              <Section title="Software">
+                {softwareQuery.isLoading ? (
+                  <LoadingState message="Loading software…" />
+                ) : (softwareQuery.data ?? []).length === 0 ? (
+                  <Typography color="text.secondary">No active installations on this computer.</Typography>
+                ) : (
+                  (softwareQuery.data ?? []).map((row) => (
+                    <DetailRow
+                      key={row.id}
+                      label={row.software_name || 'Software'}
+                      value={row.installed_date ? `Installed ${formatDate(row.installed_date)}` : 'Installed'}
+                    />
+                  ))
+                )}
+              </Section>
+            ) : null}
+            <Section title="Assigned peripherals">
+              {childrenQuery.isLoading ? (
+                <LoadingState message="Loading peripherals…" />
+              ) : (childrenQuery.data ?? []).length === 0 ? (
+                <Typography color="text.secondary">
+                  No child assets linked to this computer.
+                </Typography>
+              ) : (
+                (childrenQuery.data ?? []).map((child) => (
+                  <DetailRow
+                    key={child.id}
+                    label={child.asset_type_name || child.asset_type_code || 'Asset'}
+                    value={`${child.asset_number}${
+                      [child.make, child.model].filter(Boolean).length
+                        ? ` · ${[child.make, child.model].filter(Boolean).join(' ')}`
+                        : ''
+                    }`}
+                  />
+                ))
+              )}
             </Section>
           </Stack>
         ) : null}
@@ -173,12 +252,32 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
                   {(ipHistoryQuery.data ?? []).map((row) => (
                     <HistoryCard
                       key={row.id}
-                      title={row.hostname || `IP record ${row.ip_address_id.slice(0, 8)}…`}
+                      title={row.address || row.hostname || `IP ${row.ip_address_id.slice(0, 8)}…`}
                       subtitle={`${formatDate(row.assigned_date)} → ${
                         row.released_date ? formatDate(row.released_date) : 'Current'
                       }`}
                       current={!row.released_date}
-                      extra={row.notes}
+                      extra={[row.network_cidr, row.hostname, row.notes].filter(Boolean).join(' · ') || null}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </Section>
+
+            <Section title="Computer name history">
+              {(lifecycleQuery.data?.computer_names ?? []).length === 0 ? (
+                <Typography color="text.secondary">No computer-name periods recorded yet.</Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {(lifecycleQuery.data?.computer_names ?? []).map((row) => (
+                    <HistoryCard
+                      key={String(row.id)}
+                      title={String(row.computer_name || '—')}
+                      subtitle={`${formatDate(String(row.effective_from))} → ${
+                        row.effective_to ? formatDate(String(row.effective_to)) : 'Current'
+                      }`}
+                      current={!row.effective_to}
+                      extra={row.reason ? String(row.reason).replace(/_/g, ' ') : null}
                     />
                   ))}
                 </Stack>

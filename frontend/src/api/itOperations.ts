@@ -50,6 +50,8 @@ import type {
   MasterMergeResult,
   NextAssetNumberPreview,
   NextAssetNumbersPreview,
+  ComputerNameSuggestion,
+  ComputerIpSuggestion,
   SoftwareAssignment,
   SoftwareAssignmentCreate,
   SoftwareInstallation,
@@ -85,6 +87,10 @@ export const itOperationsKeys = {
     [...itOperationsKeys.all, 'master', 'suppliers', search ?? ''] as const,
   nextAssetNumber: (assetTypeId: string) =>
     [...itOperationsKeys.all, 'assets', 'next-number', assetTypeId] as const,
+  suggestComputerName: (typeCode?: string) =>
+    [...itOperationsKeys.all, 'computers', 'suggest-name', typeCode ?? ''] as const,
+  suggestIp: (computerName?: string, networkId?: string) =>
+    [...itOperationsKeys.all, 'ips', 'suggest', computerName ?? '', networkId ?? ''] as const,
   assets: (filters?: ListParams) => [...itOperationsKeys.all, 'assets', filters ?? {}] as const,
   asset: (id: string) => [...itOperationsKeys.all, 'assets', id] as const,
   customerReturns: (filters?: ListParams) =>
@@ -275,6 +281,25 @@ export async function fetchNextAssetNumbers(
   return data;
 }
 
+export async function fetchSuggestedComputerName(
+  typeCode?: string,
+): Promise<ComputerNameSuggestion> {
+  const { data } = await apiClient.get<ComputerNameSuggestion>(
+    `/it/computers/suggest-name${buildQuery({ type_code: typeCode })}`,
+  );
+  return data;
+}
+
+export async function fetchSuggestedIp(params?: {
+  computer_name?: string;
+  network_id?: string;
+}): Promise<ComputerIpSuggestion> {
+  const { data } = await apiClient.get<ComputerIpSuggestion>(
+    `/it/ips/suggest${buildQuery(params)}`,
+  );
+  return data;
+}
+
 // --- Assets ---
 
 export async function fetchAssetsPaginated(
@@ -407,6 +432,7 @@ export type AssetLifecycleHistory = {
   locations: Array<Record<string, unknown>>;
   statuses: Array<Record<string, unknown>>;
   asset_numbers?: Array<Record<string, unknown>>;
+  computer_names?: Array<Record<string, unknown>>;
 };
 
 export async function fetchAssetLifecycleHistory(id: string): Promise<AssetLifecycleHistory> {

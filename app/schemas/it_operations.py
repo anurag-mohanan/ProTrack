@@ -73,6 +73,10 @@ class AssetCreate(BlankOptionalFieldsMixin, BaseModel):
     supplier_name: Optional[str] = Field(default=None, max_length=200)
     invoice_number: Optional[str] = Field(default=None, max_length=80)
     condition: Optional[str] = Field(default=None, max_length=40)
+    computer_name: Optional[str] = Field(default=None, max_length=40)
+    mac_address: Optional[str] = Field(default=None, max_length=17)
+    ip_address_id: Optional[UUID] = None
+    provision_computer: Optional[bool] = None
 
 
 class AssetUpdate(BlankOptionalFieldsMixin, BaseModel):
@@ -132,6 +136,20 @@ class AssetRead(TimestampSchema):
     is_deleted: bool = False
     current_assignee_id: Optional[UUID] = None
     current_assignee_name: Optional[str] = None
+    current_assignee_team: Optional[str] = None
+    current_shift_code: Optional[str] = None
+    current_shift_name: Optional[str] = None
+    current_shift_display: Optional[str] = None
+    category: Optional[str] = None
+    computer_id: Optional[UUID] = None
+    computer_name: Optional[str] = None
+    mac_address: Optional[str] = None
+    primary_ip: Optional[str] = None
+    ip_address_id: Optional[UUID] = None
+    ip_allocation_type: Optional[str] = None
+    network_id: Optional[UUID] = None
+    network_name: Optional[str] = None
+    network_cidr: Optional[str] = None
 
 
 class AssetAssignRequest(BlankOptionalFieldsMixin, BaseModel):
@@ -298,9 +316,13 @@ class ComputerCreate(BlankOptionalFieldsMixin, BaseModel):
     warranty_expiry: Optional[date] = None
     location: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
+    computer_name: Optional[str] = Field(default=None, max_length=40)
+    ip_address_id: Optional[UUID] = None
 
 
 class ComputerUpdate(BlankOptionalFieldsMixin, BaseModel):
+    computer_name: Optional[str] = Field(default=None, max_length=40)
+    computer_name_reason: Optional[str] = Field(default=None, max_length=200)
     os: Optional[str] = Field(default=None, max_length=60)
     processor: Optional[str] = Field(default=None, max_length=100)
     ram_gb: Optional[int] = Field(default=None, ge=0)
@@ -351,6 +373,12 @@ class ComputerRead(TimestampSchema):
     is_open: bool = False
     assigned_date: Optional[date] = None
     interface_count: int = 0
+    primary_ip: Optional[str] = None
+    ip_address_id: Optional[UUID] = None
+    ip_allocation_type: Optional[str] = None
+    network_id: Optional[UUID] = None
+    network_name: Optional[str] = None
+    network_cidr: Optional[str] = None
 
 
 class ComputerNetworkInterfaceCreate(BlankOptionalFieldsMixin, BaseModel):
@@ -449,6 +477,8 @@ class IPReleaseRequest(BlankOptionalFieldsMixin, BaseModel):
 
 class IPAssignmentHistoryRead(TimestampSchema):
     ip_address_id: UUID
+    address: Optional[str] = None
+    network_cidr: Optional[str] = None
     assigned_to_asset_id: Optional[UUID] = None
     assigned_to_user_id: Optional[UUID] = None
     interface_id: Optional[UUID] = None
@@ -460,9 +490,26 @@ class IPAssignmentHistoryRead(TimestampSchema):
     notes: Optional[str] = None
 
 
-# ---------------------------------------------------------------------------
-# Accounts / credentials
-# ---------------------------------------------------------------------------
+class ComputerNameSuggestion(BaseModel):
+    computer_name: str
+    prefix: Optional[str] = None
+    sequence: Optional[int] = None
+    width: Optional[int] = None
+    source: str
+    highest_existing_sequence: Optional[int] = None
+    sample_names: list[str] = Field(default_factory=list)
+    message: str
+
+
+class ComputerIpSuggestion(BaseModel):
+    address: Optional[str] = None
+    ip_address_id: Optional[UUID] = None
+    network_id: Optional[UUID] = None
+    network_name: Optional[str] = None
+    network_cidr: Optional[str] = None
+    allocation_type: str = "static"
+    available: bool = False
+    message: str
 
 
 class ITUserAccountCreate(BlankOptionalFieldsMixin, BaseModel):

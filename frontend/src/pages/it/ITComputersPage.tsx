@@ -1,7 +1,8 @@
-import { useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
@@ -28,6 +29,8 @@ import {
   fetchComputerInterfaces,
   fetchComputersPaginated,
   fetchItPeoplePaginated,
+  fetchSuggestedComputerName,
+  fetchSuggestedIp,
   itOperationsKeys,
   reconcileOrphanAssignedComputers,
   unassignComputer,
@@ -69,6 +72,7 @@ const STORAGE_TYPE_OPTIONS = [
 
 type ComputerFormState = {
   asset_type_id: string;
+  computer_name: string;
   make: string;
   model: string;
   serial_number: string;
@@ -81,10 +85,12 @@ type ComputerFormState = {
   mac_address: string;
   location: string;
   notes: string;
+  allocate_ip: boolean;
 };
 
 const emptyForm: ComputerFormState = {
   asset_type_id: '',
+  computer_name: '',
   make: '',
   model: '',
   serial_number: '',
@@ -97,6 +103,7 @@ const emptyForm: ComputerFormState = {
   mac_address: '',
   location: '',
   notes: '',
+  allocate_ip: true,
 };
 
 function statusColor(status: string): 'default' | 'success' | 'info' | 'warning' {
@@ -120,9 +127,10 @@ export function ITComputersPage() {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [search, setSearch] = useState('');
-  const [availability, setAvailability] = useState('all');
+  const availability = searchParams.get('availability') || 'all';
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ITComputer | null>(null);
   const [form, setForm] = useState<ComputerFormState>(emptyForm);
@@ -210,10 +218,54 @@ export function ITComputersPage() {
           .filter((type) => type.is_active !== false)
           .map((type) => ({ value: type.id, label: `${type.name} (${type.code})` }));
 
+  const selectedType = (assetTypesQuery.data ?? []).find((type) => type.id === form.asset_type_id);
+
+  const nameSuggestQuery = useQuery({
+    queryKey: itOperationsKeys.suggestComputerName(selectedType?.code),
+    queryFn: () => fetchSuggestedComputerName(selectedType?.code),
+    enabled: formOpen && !editing,
+  });
+
+  const ipSuggestQuery = useQuery({
+    queryKey: itOperationsKeys.suggestIp(form.computer_name || nameSuggestQuery.data?.computer_name),
+    queryFn: () =>
+      fetchSuggestedIp({
+        computer_name: form.computer_name || nameSuggestQuery.data?.computer_name,
+      }),
+    enabled: formOpen && !editing,
+  });
+
+  useEffect(() => {
+    if (editing || !nameSuggestQuery.data?.computer_name) return;
+    setForm((current) =>
+      current.computer_name
+        ? current
+        : { ...current, computer_name: nameSuggestQuery.data!.computer_name },
+    );
+  }, [editing, nameSuggestQuery.data]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (editing) {
+        return updateComputer(editing.id, {
+          computer_name: optionalString(form.computer_name),
+          make: optionalString(form.make),
+          model: optionalString(form.model),
+          serial_number: optionalString(form.serial_number),
+          os: optionalString(form.os),
+          processor: optionalString(form.processor),
+          ram_gb: form.ram_gb.trim() ? Number(form.ram_gb) : null,
+          storage_type: optionalString(form.storage_type),
+          storage_gb: form.storage_gb.trim() ? Number(form.storage_gb) : null,
+          domain_joined: form.domain_joined,
+          mac_address: optionalString(form.mac_address),
+          location: optionalString(form.location),
+          notes: optionalString(form.notes),
+        });
+      }
       const payload: ITComputerCreate = {
         asset_type_id: form.asset_type_id,
+        computer_name: optionalString(form.computer_name),
         make: optionalString(form.make),
         model: optionalString(form.model),
         serial_number: optionalString(form.serial_number),
@@ -227,8 +279,8 @@ export function ITComputersPage() {
         location: optionalString(form.location),
         notes: optionalString(form.notes),
       };
-      if (editing) {
-        return updateComputer(editing.id, payload);
+      if (form.allocate_ip && ipSuggestQuery.data?.available && ipSuggestQuery.data.ip_address_id) {
+        payload.ip_address_id = ipSuggestQuery.data.ip_address_id;
       }
       return createComputer(payload);
     },
@@ -288,6 +340,7 @@ export function ITComputersPage() {
     setEditing(computer);
     setForm({
       asset_type_id: computer.asset_type_id ?? '',
+      computer_name: computer.computer_name ?? '',
       make: computer.make ?? '',
       model: computer.model ?? '',
       serial_number: computer.serial_number ?? '',
@@ -300,6 +353,7 @@ export function ITComputersPage() {
       mac_address: computer.mac_address ?? '',
       location: computer.location ?? '',
       notes: computer.notes ?? '',
+      allocate_ip: false,
     });
     setFormOpen(true);
   };
@@ -333,6 +387,18 @@ export function ITComputersPage() {
       flex: 0.8,
       minWidth: 120,
       valueFormatter: (value) => formatCellValue(value),
+    },
+    {
+      field: 'primary_ip',
+      headerName: 'IP',
+      width: 130,
+      valueFormatter: (value) => formatCellValue(value) || '—',
+    },
+    {
+      field: 'mac_address',
+      headerName: 'MAC',
+      width: 140,
+      valueFormatter: (value) => formatCellValue(value) || '—',
     },
     {
       field: 'os',
@@ -447,7 +513,7 @@ export function ITComputersPage() {
   return (
     <PageContainer>
       <PageHeader
-        subtitle="Named workstations. Open = Available with no employee assignment."
+        subtitle="NIC / MAC workspace for the same Computer records as Assets & Inventory. Day-to-day computer and IP management belongs on the inventory asset."
         action={
           <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
             <ProsohmButton
@@ -488,7 +554,13 @@ export function ITComputersPage() {
           exclusive
           size="small"
           value={availability}
-          onChange={(_e, value) => value && setAvailability(value)}
+          onChange={(_e, value) => {
+            if (!value) return;
+            const next = new URLSearchParams(searchParams);
+            if (value === 'all') next.delete('availability');
+            else next.set('availability', value);
+            setSearchParams(next, { replace: true });
+          }}
         >
           <ToggleButton value="all">All</ToggleButton>
           <ToggleButton value="open">Open</ToggleButton>
@@ -552,7 +624,11 @@ export function ITComputersPage() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title={editing ? 'Edit computer' : 'Add computer'}
-        subtitle="Computer names are generated by the server from IT settings."
+        subtitle={
+          editing
+            ? 'Computer name changes are recorded in history. The internal asset ID does not change.'
+            : 'Computer name and IP are suggested from existing inventory. You can edit either before save.'
+        }
         icon={DevicesOtherRoundedIcon}
         formId="it-computer-form"
         width={560}
@@ -580,6 +656,19 @@ export function ITComputersPage() {
                 options={typeOptions}
               />
             ) : null}
+            <FormField
+              label="Computer name"
+              value={form.computer_name}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, computer_name: event.target.value }))
+              }
+              helper={
+                !editing
+                  ? nameSuggestQuery.data?.message || 'Suggested from existing computer names.'
+                  : 'Changing the name records a history period. The asset ID stays the same.'
+              }
+              placeholder={nameSuggestQuery.data?.computer_name ?? ''}
+            />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <FormField
                 label="Make"
@@ -659,6 +748,41 @@ export function ITComputersPage() {
               }
               helper="Stored on the primary network interface. Extra NICs are managed from the NICs dialog."
             />
+            {!editing ? (
+              <>
+                <FormField
+                  label="Suggested IP"
+                  value={
+                    ipSuggestQuery.data?.address ??
+                    (ipSuggestQuery.isFetching ? 'Loading…' : '')
+                  }
+                  slotProps={{ input: { readOnly: true } }}
+                  helper={ipSuggestQuery.data?.message}
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={form.allocate_ip && Boolean(ipSuggestQuery.data?.available)}
+                      disabled={!ipSuggestQuery.data?.available}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          allocate_ip: event.target.checked,
+                        }))
+                      }
+                    />
+                  }
+                  label="Allocate the suggested IP on create"
+                />
+              </>
+            ) : (
+              <FormField
+                label="Primary IP"
+                value={editing?.primary_ip ?? ''}
+                slotProps={{ input: { readOnly: true } }}
+                helper="Change IP from the inventory asset so assignment history is preserved."
+              />
+            )}
             <FormControlLabel
               control={
                 <Switch

@@ -1,10 +1,9 @@
-import { useMemo, useState, type FormEvent, type SyntheticEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Chip,
   Stack,
-  Tab,
-  Tabs,
   Table,
   TableBody,
   TableCell,
@@ -25,12 +24,14 @@ import {
   fetchSoftwareAssignments,
   fetchSoftwareCatalog,
   fetchSoftwareExpirySummary,
+  fetchSoftwareInstallations,
   fetchSoftwareLicenses,
   fetchSoftwareRequirements,
   itOperationsKeys,
   renewSoftwareLicense,
   terminateSoftwareLicense,
   unassignSoftwareAssignment,
+  uninstallSoftwareInstallation,
   updateSoftwareCatalog,
 } from '../../api/itOperations';
 import { fetchUsers } from '../../api/lookups';
@@ -41,7 +42,9 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITSectionSubnav, IT_SOFTWARE_TABS } from '../../components/it/ITSectionSubnav';
 import { ITResourcePackagesPanel } from '../../components/it/ITResourcePackagesPanel';
+import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
   FormDrawer,
@@ -55,13 +58,39 @@ import type {
   EmployeeSoftwareRequirement,
   SoftwareAssignment,
   SoftwareCatalogItem,
+  SoftwareInstallation,
   SoftwareLicensePool,
 } from '../../types/itOperations';
 import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
 import { accessContextFromUser, canManageItAssets, canManageItSoftware } from '../../utils/permissions';
 
-type TabKey = 'catalog' | 'licenses' | 'assignments' | 'requirements' | 'packages' | 'expiry';
+type TabKey =
+  | 'catalog'
+  | 'licenses'
+  | 'assignments'
+  | 'installations'
+  | 'requirements'
+  | 'packages'
+  | 'expiry';
+
+const TAB_FROM_URL: Record<string, TabKey> = {
+  '': 'catalog',
+  software: 'catalog',
+  catalog: 'catalog',
+  licenses: 'licenses',
+  assignments: 'assignments',
+  installations: 'installations',
+  expiry: 'expiry',
+  requirements: 'requirements',
+  packages: 'packages',
+};
+
+const SOFTWARE_PAGE_TABS = [
+  ...IT_SOFTWARE_TABS,
+  { label: 'Requirements', path: '/it/software?tab=requirements' },
+  { label: 'Packages', path: '/it/software?tab=packages' },
+];
 
 const ASSIGNMENT_MODEL_OPTIONS = [
   { value: 'named_user', label: 'Named user' },
@@ -172,7 +201,8 @@ export function ITSoftwarePage() {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
 
-  const [tab, setTab] = useState<TabKey>('catalog');
+  const [searchParams] = useSearchParams();
+  const tab = TAB_FROM_URL[searchParams.get('tab') ?? ''] ?? 'catalog';
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogForm, setCatalogForm] = useState<CatalogForm>(emptyCatalog);
   const [editingCatalog, setEditingCatalog] = useState<SoftwareCatalogItem | null>(null);
@@ -199,6 +229,11 @@ export function ITSoftwarePage() {
   const assignmentsQuery = useQuery({
     queryKey: itOperationsKeys.softwareAssignments({ active_only: true }),
     queryFn: () => fetchSoftwareAssignments({ active_only: true }),
+  });
+  const installationsQuery = useQuery({
+    queryKey: itOperationsKeys.softwareInstallations(),
+    queryFn: () => fetchSoftwareInstallations(),
+    enabled: tab === 'installations',
   });
   const requirementsQuery = useQuery({
     queryKey: itOperationsKeys.softwareRequirements(),
@@ -362,6 +397,15 @@ export function ITSoftwarePage() {
     mutationFn: (id: string) => unassignSoftwareAssignment(id),
     onSuccess: () => {
       showSuccess('License released.');
+      invalidateSoftware();
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const uninstallMutation = useMutation({
+    mutationFn: (id: string) => uninstallSoftwareInstallation(id),
+    onSuccess: () => {
+      showSuccess('Installation marked uninstalled. License assignment is unchanged.');
       invalidateSoftware();
     },
     onError: (error) => showError(getErrorMessage(error)),
@@ -666,7 +710,65 @@ export function ITSoftwarePage() {
     [canManage, deleteRequirementMutation],
   );
 
-  const handleTabChange = (_: SyntheticEvent, value: TabKey) => setTab(value);
+  const installationColumns = useMemo<GridColDef<SoftwareInstallation>[]>(
+    () => [
+      {
+        field: 'software_name',
+        headerName: 'Software',
+        flex: 1.1,
+        minWidth: 140,
+        valueFormatter: (value) => formatCellValue(value),
+      },
+      {
+        field: 'computer_name',
+        headerName: 'Computer',
+        flex: 1,
+        minWidth: 140,
+        valueFormatter: (value) => formatCellValue(value),
+      },
+      {
+        field: 'installed_date',
+        headerName: 'Installed',
+        width: 120,
+        valueFormatter: (value) => formatDate(value as string | null) || '—',
+      },
+      {
+        field: 'uninstalled_date',
+        headerName: 'Uninstalled',
+        width: 120,
+        valueFormatter: (value) => formatDate(value as string | null) || '—',
+      },
+      {
+        field: 'is_active',
+        headerName: 'Status',
+        width: 110,
+        renderCell: (params) => (
+          <Chip
+            size="small"
+            label={params.value ? 'Installed' : 'Removed'}
+            color={params.value ? 'success' : 'default'}
+          />
+        ),
+      },
+      {
+        field: 'actions',
+        headerName: '',
+        width: 120,
+        sortable: false,
+        renderCell: (params) =>
+          canManage && params.row.is_active ? (
+            <ProsohmButton
+              size="small"
+              buttonVariant="secondary"
+              onClick={() => uninstallMutation.mutate(params.row.id)}
+            >
+              Uninstall
+            </ProsohmButton>
+          ) : null,
+      },
+    ],
+    [canManage, uninstallMutation],
+  );
 
   const handleCatalogSubmit = (event?: FormEvent) => {
     event?.preventDefault();
@@ -790,14 +892,7 @@ export function ITSoftwarePage() {
         }
       />
 
-      <Tabs value={tab} onChange={handleTabChange} sx={{ mb: 2 }}>
-        <Tab value="catalog" label="Catalog" />
-        <Tab value="licenses" label="Licenses" />
-        <Tab value="assignments" label="Assignments" />
-        <Tab value="requirements" label="Requirements" />
-        <Tab value="packages" label="Packages" />
-        <Tab value="expiry" label="Expiry alerts" />
-      </Tabs>
+      <ITSectionSubnav items={SOFTWARE_PAGE_TABS} />
 
       {tab === 'catalog' && (
         <ContentCard>
@@ -841,6 +936,24 @@ export function ITSoftwarePage() {
             <ClientPaginatedDataGrid
               rows={assignmentsQuery.data ?? []}
               columns={assignmentColumns}
+            />
+          )}
+        </ContentCard>
+      )}
+
+      {tab === 'installations' && (
+        <ContentCard>
+          {installationsQuery.isLoading ? (
+            <LoadingState message="Loading installations…" />
+          ) : (installationsQuery.data ?? []).length === 0 ? (
+            <EmptyState
+              title="No installations recorded"
+              description="Installations are created when a license is assigned to a computer. Uninstall does not release the license."
+            />
+          ) : (
+            <ClientPaginatedDataGrid
+              rows={installationsQuery.data ?? []}
+              columns={installationColumns}
             />
           )}
         </ContentCard>

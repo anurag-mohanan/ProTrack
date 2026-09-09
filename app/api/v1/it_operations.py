@@ -77,6 +77,8 @@ from app.schemas.it_operations import (
     ComputerNetworkInterfaceCreate,
     ComputerNetworkInterfaceRead,
     ComputerNetworkInterfaceUpdate,
+    ComputerIpSuggestion,
+    ComputerNameSuggestion,
     ComputerRead,
     ComputerTransferRequest,
     ComputerUnassignRequest,
@@ -201,7 +203,7 @@ def _require_reports(db: Session, user: User) -> None:
     )
 
 
-def _asset_read(db: Session, asset: Asset) -> AssetRead:
+def _asset_read(db: Session, asset: Asset, *, ip_snapshot: dict | None = None) -> AssetRead:
     assignee_id, assignee_name = it_asset_service.assignee_name_for_asset(db, asset)
     at = asset.asset_type
     owner = db.get(Customer, asset.owner_customer_id) if asset.owner_customer_id else None
@@ -231,6 +233,32 @@ def _asset_read(db: Session, asset: Asset) -> AssetRead:
         ).all()
         if row.asset_number and row.asset_number != asset.asset_number
     ]
+    computer = getattr(asset, "computer", None)
+    team_name = None
+    shift_code = shift_name = shift_display = None
+    if computer is not None:
+        from app.services import it_computer_reconciliation_service as recon
+
+        resolved = recon.resolve_computer_display(db, computer)
+        team_name = resolved.get("team_name")
+        shift_code = resolved.get("shift_code")
+        shift_name = resolved.get("shift_name")
+        shift_display = resolved.get("shift_display")
+        if not assignee_id:
+            assignee = resolved.get("assignee")
+            if assignee is not None:
+                assignee_id = assignee.id
+                assignee_name = _full_name(assignee)
+    elif assignee_id:
+        from app.services.it_computer_reconciliation_service import _resolve_team_name
+
+        user = db.get(User, assignee_id)
+        if user is not None:
+            team_name = _resolve_team_name(db, user)
+    if ip_snapshot is None:
+        from app.services import it_computer_suggest_service as suggest
+
+        ip_snapshot = suggest.current_ip_for_asset(db, asset.id)
     return AssetRead(
         id=asset.id,
         created_at=asset.created_at,
@@ -268,6 +296,20 @@ def _asset_read(db: Session, asset: Asset) -> AssetRead:
         is_deleted=asset.is_deleted,
         current_assignee_id=assignee_id,
         current_assignee_name=assignee_name,
+        current_assignee_team=team_name,
+        current_shift_code=shift_code,
+        current_shift_name=shift_name,
+        current_shift_display=shift_display,
+        category=at.category if at else None,
+        computer_id=computer.id if computer else None,
+        computer_name=computer.computer_name if computer else None,
+        mac_address=it_asset_service.effective_mac_address(computer) if computer else None,
+        primary_ip=ip_snapshot.get("address") if ip_snapshot else None,
+        ip_address_id=ip_snapshot.get("ip_address_id") if ip_snapshot else None,
+        ip_allocation_type=ip_snapshot.get("allocation_type") if ip_snapshot else None,
+        network_id=ip_snapshot.get("network_id") if ip_snapshot else None,
+        network_name=ip_snapshot.get("network_name") if ip_snapshot else None,
+        network_cidr=ip_snapshot.get("network_cidr") if ip_snapshot else None,
     )
 
 
@@ -357,6 +399,10 @@ def _computer_read(db: Session, computer) -> ComputerRead:
     team_name = resolved["team_name"]
     status = asset.status if asset else None
     is_open = status == "available"
+    ip_snapshot = None
+    from app.services import it_computer_suggest_service as suggest
+
+    ip_snapshot = suggest.current_ip_for_asset(db, computer.asset_id)
     return ComputerRead(
         id=computer.id,
         created_at=computer.created_at,
@@ -411,6 +457,12 @@ def _computer_read(db: Session, computer) -> ComputerRead:
         is_open=is_open,
         assigned_date=assignment.assigned_date if assignment else None,
         interface_count=len(it_asset_service.list_computer_interfaces(db, computer.id)),
+        primary_ip=ip_snapshot.get("address") if ip_snapshot else None,
+        ip_address_id=ip_snapshot.get("ip_address_id") if ip_snapshot else None,
+        ip_allocation_type=ip_snapshot.get("allocation_type") if ip_snapshot else None,
+        network_id=ip_snapshot.get("network_id") if ip_snapshot else None,
+        network_name=ip_snapshot.get("network_name") if ip_snapshot else None,
+        network_cidr=ip_snapshot.get("network_cidr") if ip_snapshot else None,
     )
 
 
@@ -435,11 +487,15 @@ def _ip_history_read(db: Session, row) -> IPAssignmentHistoryRead:
     if interface_id is not None:
         iface = it_asset_service.get_computer_interface(db, interface_id)
         interface_name = iface.name if iface else None
+    ip_row = db.get(IPAddress, row.ip_address_id)
+    network = db.get(Network, ip_row.network_id) if ip_row is not None else None
     return IPAssignmentHistoryRead(
         id=row.id,
         created_at=row.created_at,
         updated_at=row.updated_at,
         ip_address_id=row.ip_address_id,
+        address=ip_row.address if ip_row else None,
+        network_cidr=network.cidr if network else None,
         assigned_to_asset_id=row.assigned_to_asset_id,
         assigned_to_user_id=row.assigned_to_user_id,
         interface_id=interface_id,
@@ -977,8 +1033,11 @@ def list_assets(
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
+    from app.services import it_computer_suggest_service as suggest
+
+    snapshots = suggest.current_ips_for_assets(db, [row.id for row in rows])
     return PaginatedResponse.build(
-        items=[_asset_read(db, r) for r in rows],
+        items=[_asset_read(db, r, ip_snapshot=snapshots.get(r.id)) for r in rows],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,
@@ -1135,6 +1194,10 @@ def create_asset(
             supplier_name=payload.supplier_name,
             invoice_number=payload.invoice_number,
             condition=payload.condition,
+            computer_name=payload.computer_name,
+            mac_address=payload.mac_address,
+            ip_address_id=payload.ip_address_id,
+            provision_computer=payload.provision_computer,
         )
         asset = it_asset_service.get_asset(db, asset.id) or asset
         return _asset_read(db, asset)
@@ -1156,6 +1219,35 @@ def preview_asset_number(
     if asset_type is None:
         raise HTTPException(status_code=404, detail="Asset type not found.")
     return it_asset_service.preview_next_asset_number(db, asset_type)
+
+
+@router.get("/computers/suggest-name", response_model=ComputerNameSuggestion)
+def suggest_computer_name(
+    type_code: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Suggest the next computer name from live inventory (does not allocate)."""
+    _require_it_access(db, current_user)
+    from app.services import it_computer_suggest_service as suggest
+
+    return suggest.suggest_computer_name(db, type_code=type_code)
+
+
+@router.get("/ips/suggest", response_model=ComputerIpSuggestion)
+def suggest_computer_ip(
+    computer_name: str | None = Query(None),
+    network_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Suggest the next IP from live pools (does not allocate)."""
+    _require_it_access(db, current_user)
+    from app.services import it_computer_suggest_service as suggest
+
+    return suggest.suggest_computer_ip(
+        db, computer_name=computer_name, network_id=network_id
+    )
 
 
 @router.get("/assets/next-numbers")
@@ -1530,6 +1622,8 @@ def create_computer(
             warranty_expiry=payload.warranty_expiry,
             location=payload.location,
             notes=payload.notes,
+            computer_name=payload.computer_name,
+            ip_address_id=payload.ip_address_id,
         )
         computer = it_asset_service.get_computer(db, computer.id) or computer
         return _computer_read(db, computer)
@@ -1563,6 +1657,8 @@ def update_computer(
             storage_gb=payload.storage_gb,
             domain_joined=payload.domain_joined,
             mac_address=payload.mac_address,
+            computer_name=payload.computer_name,
+            computer_name_reason=payload.computer_name_reason,
             fields_set=set(payload.model_fields_set),
         )
         computer = it_asset_service.get_computer(db, computer.id) or computer

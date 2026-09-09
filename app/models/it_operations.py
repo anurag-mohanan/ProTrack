@@ -385,6 +385,10 @@ class Computer(Base, TimestampMixin, TenantMixin):
         cascade="all, delete-orphan",
         order_by="ComputerNetworkInterface.is_primary.desc(), ComputerNetworkInterface.name",
     )
+    name_history: Mapped[list["ComputerNameHistory"]] = relationship(
+        back_populates="computer",
+        order_by="ComputerNameHistory.effective_from.desc()",
+    )
 
 
 class ComputerNetworkInterface(Base, TimestampMixin, TenantMixin):
@@ -413,6 +417,27 @@ class ComputerNetworkInterface(Base, TimestampMixin, TenantMixin):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     computer: Mapped[Computer] = relationship(back_populates="interfaces")
+
+
+class ComputerNameHistory(Base, TimestampMixin, TenantMixin):
+    """Effective-dated computer names — never rewritten or recycled."""
+
+    __tablename__ = "it_computer_name_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    computer_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("computers.id"), nullable=False, index=True
+    )
+    computer_name: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date)
+    changed_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    reason: Mapped[Optional[str]] = mapped_column(String(200))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    computer: Mapped["Computer"] = relationship(back_populates="name_history")
 
 
 class AssetAssignment(Base, TimestampMixin, TenantMixin):

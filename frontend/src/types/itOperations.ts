@@ -148,6 +148,9 @@ export interface NextAssetNumberPreview {
   asset_number: string;
   prefix?: string;
   sequence?: number;
+  pattern?: string;
+  highest_existing_sequence?: number;
+  message?: string;
 }
 
 export interface NextAssetNumbersPreview {
@@ -155,6 +158,28 @@ export interface NextAssetNumbersPreview {
   count: number;
   asset_numbers: string[];
   message?: string;
+}
+
+export interface ComputerNameSuggestion {
+  computer_name: string;
+  prefix?: string | null;
+  sequence?: number | null;
+  width?: number | null;
+  source: string;
+  highest_existing_sequence?: number | null;
+  sample_names?: string[];
+  message: string;
+}
+
+export interface ComputerIpSuggestion {
+  address?: string | null;
+  ip_address_id?: string | null;
+  network_id?: string | null;
+  network_name?: string | null;
+  network_cidr?: string | null;
+  allocation_type?: string;
+  available: boolean;
+  message: string;
 }
 
 export type MasterKind = 'categories' | 'types' | 'makes' | 'models' | 'suppliers';
@@ -205,6 +230,20 @@ export interface ITAsset {
   assigned_to_user_id?: string | null;
   assigned_to_user_name?: string | null;
   current_assignee_name?: string | null;
+  current_assignee_team?: string | null;
+  current_shift_code?: string | null;
+  current_shift_name?: string | null;
+  current_shift_display?: string | null;
+  category?: string | null;
+  computer_id?: string | null;
+  computer_name?: string | null;
+  mac_address?: string | null;
+  primary_ip?: string | null;
+  ip_address_id?: string | null;
+  ip_allocation_type?: string | null;
+  network_id?: string | null;
+  network_name?: string | null;
+  network_cidr?: string | null;
   parent_asset_id?: string | null;
   parent_asset_number?: string | null;
   created_at?: string;
@@ -266,6 +305,10 @@ export interface ITAssetCreate {
   warranty_expiry?: string | null;
   location?: string | null;
   notes?: string | null;
+  computer_name?: string | null;
+  mac_address?: string | null;
+  ip_address_id?: string | null;
+  provision_computer?: boolean;
 }
 
 export interface ITAssetUpdate {
@@ -442,6 +485,12 @@ export interface ITComputer {
   assigned_date?: string | null;
   created_at?: string;
   updated_at?: string;
+  primary_ip?: string | null;
+  ip_address_id?: string | null;
+  ip_allocation_type?: string | null;
+  network_id?: string | null;
+  network_name?: string | null;
+  network_cidr?: string | null;
 }
 
 export interface ITPersonListItem {
@@ -511,6 +560,8 @@ export interface ITComputerCreate {
   mac_address?: string | null;
   location?: string | null;
   notes?: string | null;
+  computer_name?: string | null;
+  ip_address_id?: string | null;
 }
 
 export interface ITComputerUpdate {
@@ -526,6 +577,8 @@ export interface ITComputerUpdate {
   mac_address?: string | null;
   location?: string | null;
   notes?: string | null;
+  computer_name?: string | null;
+  computer_name_reason?: string | null;
   status?: AssetStatus | string;
 }
 
@@ -621,6 +674,8 @@ export interface ComputerNetworkInterfacePayload {
 export interface IPAssignmentHistory {
   id: string;
   ip_address_id: string;
+  address?: string | null;
+  network_cidr?: string | null;
   assigned_to_asset_id?: string | null;
   assigned_to_user_id?: string | null;
   interface_id?: string | null;

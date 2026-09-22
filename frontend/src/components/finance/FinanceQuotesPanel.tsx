@@ -4,6 +4,10 @@ import {
   Button,
   Chip,
   Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   FormControlLabel,
   Grid,
@@ -161,6 +165,8 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const [quotePdfOpen, setQuotePdfOpen] = useState(false);
   const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [search, setSearch] = useState('');
+  const [pendingExcelFile, setPendingExcelFile] = useState<File | null>(null);
+  const [excelTeamId, setExcelTeamId] = useState('');
 
   useEffect(() => {
     if (teamId && !editingId) setImportTeamId(teamId);
@@ -325,9 +331,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   });
 
   const importMutation = useMutation({
-    mutationFn: async (file: File) => {
-      if (!importTeamId) {
-        throw new Error('Select a team for this upload.');
+    mutationFn: async ({ file, teamId: uploadTeamId }: { file: File; teamId: string }) => {
+      if (!uploadTeamId) {
+        throw new Error('Select a specific team before uploading this quote file.');
       }
       const lower = file.name.toLowerCase();
       if (lower.endsWith('.pdf')) {
@@ -337,7 +343,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       }
       const form = new FormData();
       form.append('file', file);
-      form.append('team_id', importTeamId);
+      form.append('team_id', uploadTeamId);
       form.append('create_project', createProject ? 'true' : 'false');
       return (await apiClient.post<QuoteImportResult>('/finance/quotes/import', form)).data;
     },
@@ -450,7 +456,30 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     Boolean(manual.projectNumber.trim()) &&
     Boolean(manual.cost.trim()) &&
     !saveMutation.isPending;
-  const canUpload = Boolean(importTeamId) && !importMutation.isPending && !editingId;
+  // Start-import must never depend on team / save form validity.
+  // Buttons stay enabled unless a batch upload is actively in flight.
+  const importBusy = importMutation.isPending;
+
+  const startExcelUpload = (file: File) => {
+    if (importTeamId) {
+      importMutation.mutate({ file, teamId: importTeamId });
+      return;
+    }
+    setExcelTeamId('');
+    setPendingExcelFile(file);
+  };
+
+  const confirmExcelUpload = () => {
+    if (!pendingExcelFile) return;
+    if (!excelTeamId) {
+      showError('Select a specific team before uploading this quote file.');
+      return;
+    }
+    const file = pendingExcelFile;
+    setPendingExcelFile(null);
+    setImportTeamId(excelTeamId);
+    importMutation.mutate({ file, teamId: excelTeamId });
+  };
 
   const toggleFilter = (next: ListFilter) => {
     setListFilter((prev) => (prev === next ? 'all' : next));
@@ -632,6 +661,64 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
         </Grid>
       </Grid>
 
+      <FinanceSection
+        title="Import document"
+        subtitle="Start here: import a quote or invoice file. Extraction runs first; Team and other required fields are confirmed before save — not before opening the importer. All teams on the page filter does not block these buttons."
+      >
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Button
+            variant="contained"
+            data-testid="finance-import-quote-pdf"
+            disabled={importBusy}
+            onClick={() => {
+              if (editingId) cancelEdit();
+              setQuotePdfOpen(true);
+            }}
+          >
+            Import Quote PDF
+          </Button>
+          <Button
+            variant="contained"
+            color="secondary"
+            data-testid="finance-import-invoice-pdf"
+            disabled={importBusy}
+            onClick={() => {
+              if (editingId) cancelEdit();
+              setInvoicePdfOpen(true);
+            }}
+          >
+            Import Invoice PDF
+          </Button>
+          <Button
+            variant="outlined"
+            component="label"
+            data-testid="finance-upload-quote-file"
+            disabled={importBusy}
+          >
+            {importBusy ? 'Uploading…' : 'Upload Quote File'}
+            <input
+              hidden
+              type="file"
+              accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12,text/csv"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  if (editingId) cancelEdit();
+                  startExcelUpload(file);
+                }
+                event.target.value = '';
+              }}
+            />
+          </Button>
+        </Box>
+        {!importTeamId ? (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Page filter is All teams — that is fine for starting an import. A specific team is required
+            only when you confirm/save.
+          </Typography>
+        ) : null}
+      </FinanceSection>
+
       <Box ref={formRef}>
         <FinanceSection
           title={editingId ? 'Edit awarded quote' : 'Add awarded quote'}
@@ -648,8 +735,12 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                 <Select
                   label="Team"
                   value={importTeamId}
+                  displayEmpty
                   onChange={(e) => setImportTeamId(e.target.value)}
                 >
+                  <MenuItem value="">
+                    <em>Select a team…</em>
+                  </MenuItem>
                   {teams.map((team) => (
                     <MenuItem key={team.id} value={team.id}>
                       {team.name}
@@ -815,59 +906,27 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             </Stack>
             {!importTeamId ? (
               <Typography variant="caption" color="warning.main">
-                Select a team. All teams is not valid for save/import.
+                Select a specific team before saving. “All teams” is only for filtering the list.
+              </Typography>
+            ) : !canSaveManual && !saveMutation.isPending ? (
+              <Typography variant="caption" color="text.secondary">
+                Customer, Project #, and Cost are required before this quote can be saved.
               </Typography>
             ) : null}
           </Stack>
         </FinanceSection>
       </Box>
 
-      {!editingId ? (
-        <FinanceSection
-          title="Import document"
-          subtitle="Upload a quote or invoice PDF. ProTrack extracts fields for review — nothing is saved until you confirm. Manual entry remains available above."
-        >
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Button
-              variant="contained"
-              disabled={!importTeamId}
-              onClick={() => setQuotePdfOpen(true)}
-            >
-              Import Quote PDF
-            </Button>
-            <Button
-              variant="contained"
-              color="secondary"
-              disabled={!importTeamId}
-              onClick={() => setInvoicePdfOpen(true)}
-            >
-              Import Invoice PDF
-            </Button>
-            <Button variant="outlined" component="label" disabled={!canUpload}>
-              Upload Quote Excel/CSV
-              <input
-                hidden
-                type="file"
-                accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12,text/csv"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) importMutation.mutate(file);
-                  event.target.value = '';
-                }}
-              />
-            </Button>
-          </Box>
-        </FinanceSection>
-      ) : null}
-
       <QuotePdfImportDialog
         open={quotePdfOpen}
         onClose={() => setQuotePdfOpen(false)}
-        teamId={importTeamId}
+        teamId={importTeamId || undefined}
+        teams={teams}
         createProject={createProject}
         onImported={(data) => {
           applyImportResult(data as QuoteImportResult, 'Imported quote from PDF');
         }}
+        onTeamSelected={(id) => setImportTeamId(id)}
       />
 
       <InvoicePdfImportDialog
@@ -880,6 +939,45 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
         }}
       />
 
+      <Dialog
+        open={Boolean(pendingExcelFile)}
+        onClose={() => setPendingExcelFile(null)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Select team for upload</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {pendingExcelFile
+              ? `“${pendingExcelFile.name}” needs a specific team before it can be imported. All teams is not valid for save.`
+              : null}
+          </Typography>
+          <FormControl fullWidth size="small" required>
+            <InputLabel>Team</InputLabel>
+            <Select
+              label="Team"
+              value={excelTeamId}
+              onChange={(e) => setExcelTeamId(e.target.value)}
+            >
+              {teams.map((team) => (
+                <MenuItem key={team.id} value={team.id}>
+                  {team.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingExcelFile(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!excelTeamId || importMutation.isPending}
+            onClick={confirmExcelUpload}
+          >
+            Upload
+          </Button>
+        </DialogActions>
+      </Dialog>
       {lastImport.length > 0 && !editingId ? (
         <FinanceSection
           title="Last save / import"

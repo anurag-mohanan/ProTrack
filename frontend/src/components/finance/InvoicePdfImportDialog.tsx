@@ -157,8 +157,8 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Optional convenience — review every field before saving. Manual invoice entry remains available
-          on the quote cash ledger. Scanned image PDFs need OCR (not enabled yet); use a text PDF or enter
-          manually.
+          on the quote cash ledger. Team is optional for extraction; link to an awarded quote is required
+          before confirm.
         </Typography>
 
         {!extract ? (

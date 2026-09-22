@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
-import { fetchCustomers } from '../../api/lookups';
+import { fetchCustomers, fetchTeams } from '../../api/lookups';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
@@ -54,12 +54,17 @@ type QuoteImportResult = {
   items?: Array<Record<string, unknown>>;
 };
 
+type TeamOption = { id: string; name: string };
+
 type Props = {
   open: boolean;
   onClose: () => void;
-  teamId: string;
+  /** Optional pre-selected team from the Finance filter. Not required to start extract. */
+  teamId?: string;
+  teams?: TeamOption[];
   createProject?: boolean;
   onImported: (result: { imported_count: number; items?: Array<Record<string, unknown>> }) => void;
+  onTeamSelected?: (teamId: string) => void;
 };
 
 function fieldValue(fields: Record<string, FieldCandidate>, key: string): string {
@@ -70,13 +75,16 @@ export function QuotePdfImportDialog({
   open,
   onClose,
   teamId,
+  teams: teamsProp,
   createProject = true,
   onImported,
+  onTeamSelected,
 }: Props) {
   const { showSuccess, showError } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [extract, setExtract] = useState<ExtractResult | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState(teamId || '');
   const [customerId, setCustomerId] = useState('');
   const [quoteNumber, setQuoteNumber] = useState('');
   const [projectNumber, setProjectNumber] = useState('');
@@ -93,10 +101,25 @@ export function QuotePdfImportDialog({
     queryFn: fetchCustomers,
     enabled: open,
   });
+  const teamsQuery = useQuery({
+    queryKey: ['lookup-teams'],
+    queryFn: fetchTeams,
+    enabled: open && !(teamsProp && teamsProp.length > 0),
+  });
+
+  const teams = useMemo(() => {
+    if (teamsProp && teamsProp.length > 0) return teamsProp;
+    return (teamsQuery.data ?? []).map((t) => ({ id: t.id, name: t.name }));
+  }, [teamsProp, teamsQuery.data]);
+
+  useEffect(() => {
+    if (open) setSelectedTeamId(teamId || '');
+  }, [open, teamId]);
 
   const reset = () => {
     setFile(null);
     setExtract(null);
+    setSelectedTeamId(teamId || '');
     setCustomerId('');
     setQuoteNumber('');
     setProjectNumber('');
@@ -119,7 +142,7 @@ export function QuotePdfImportDialog({
     mutationFn: async (pdf: File) => {
       const form = new FormData();
       form.append('file', pdf);
-      if (teamId) form.append('team_id', teamId);
+      if (selectedTeamId) form.append('team_id', selectedTeamId);
       return (await apiClient.post<ExtractResult>('/finance/quotes/pdf/extract', form)).data;
     },
     onSuccess: (data) => {
@@ -142,12 +165,12 @@ export function QuotePdfImportDialog({
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
-      if (!teamId) throw new Error('Select a team before importing.');
+      if (!selectedTeamId) throw new Error('Select a specific team before saving this quote.');
       if (!customerId) throw new Error('Select a customer.');
       if (!projectNumber.trim()) throw new Error('Project # is required.');
       if (!cost.trim()) throw new Error('Cost (quoted amount) is required.');
       const form = new FormData();
-      form.append('team_id', teamId);
+      form.append('team_id', selectedTeamId);
       form.append('customer_id', customerId);
       form.append('tool_number', projectNumber.trim());
       form.append('quoted_revenue', String(cost).replace(/,/g, ''));
@@ -163,6 +186,7 @@ export function QuotePdfImportDialog({
       return (await apiClient.post<QuoteImportResult>('/finance/quotes/pdf/confirm', form)).data;
     },
     onSuccess: (data) => {
+      if (selectedTeamId) onTeamSelected?.(selectedTeamId);
       showSuccess('Quote imported from PDF');
       handleClose();
       onImported(data);
@@ -188,14 +212,30 @@ export function QuotePdfImportDialog({
     ];
   }, [customersQuery.data, extract?.customer_matches]);
 
+  const canConfirm =
+    Boolean(selectedTeamId) &&
+    Boolean(customerId) &&
+    Boolean(projectNumber.trim()) &&
+    Boolean(cost.trim()) &&
+    !confirmMutation.isPending;
+
+  const confirmBlockReason = !selectedTeamId
+    ? 'Select a specific team before this quote can be saved.'
+    : !customerId
+      ? 'Select a customer before saving.'
+      : !projectNumber.trim()
+        ? 'Project # is required before saving.'
+        : !cost.trim()
+          ? 'Quoted amount is required before saving.'
+          : null;
+
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
       <DialogTitle>Import quote from PDF</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Optional convenience — review every field before saving. Manual quote entry remains available
-          above. Scanned image PDFs need OCR (not enabled yet); use a text Prosohm QT PDF or enter
-          manually.
+          Extract first, then review and confirm. Nothing is saved until you confirm. Team is required
+          only at confirm — not to start extraction.
         </Typography>
 
         {!extract ? (
@@ -218,16 +258,11 @@ export function QuotePdfImportDialog({
             ) : null}
             <Button
               variant="contained"
-              disabled={!file || !teamId || extractMutation.isPending}
+              disabled={!file || extractMutation.isPending}
               onClick={() => file && extractMutation.mutate(file)}
             >
-              Extract for review
+              {extractMutation.isPending ? 'Extracting…' : 'Extract for review'}
             </Button>
-            {!teamId ? (
-              <Typography variant="caption" color="warning.main">
-                Select a team in the form above before importing a quote PDF.
-              </Typography>
-            ) : null}
           </Stack>
         ) : (
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -246,6 +281,26 @@ export function QuotePdfImportDialog({
                 Possible duplicate quote detected. Review existing records or check “Import anyway”.
               </Alert>
             ) : null}
+
+            <TextField
+              select
+              label="Team"
+              value={selectedTeamId}
+              onChange={(e) => setSelectedTeamId(e.target.value)}
+              required
+              helperText={
+                !selectedTeamId
+                  ? 'Required before save — All teams is not valid for quote import.'
+                  : undefined
+              }
+            >
+              <MenuItem value="">Select team</MenuItem>
+              {teams.map((t) => (
+                <MenuItem key={t.id} value={t.id}>
+                  {t.name}
+                </MenuItem>
+              ))}
+            </TextField>
 
             <TextField
               select
@@ -280,13 +335,13 @@ export function QuotePdfImportDialog({
               }
             />
             <TextField
-              label="Project #"
+              label="Project # (tool number)"
               value={projectNumber}
               onChange={(e) => setProjectNumber(e.target.value)}
               required
             />
             <TextField
-              label="Cost (quoted amount)"
+              label="Quoted amount"
               value={cost}
               onChange={(e) => setCost(e.target.value)}
               required
@@ -348,6 +403,11 @@ export function QuotePdfImportDialog({
               }
               label="Import anyway despite duplicate warning"
             />
+            {confirmBlockReason ? (
+              <Typography variant="caption" color="warning.main">
+                {confirmBlockReason}
+              </Typography>
+            ) : null}
           </Stack>
         )}
       </DialogContent>
@@ -365,13 +425,7 @@ export function QuotePdfImportDialog({
             </Button>
             <Button
               variant="contained"
-              disabled={
-                confirmMutation.isPending ||
-                !teamId ||
-                !customerId ||
-                !projectNumber.trim() ||
-                !cost.trim()
-              }
+              disabled={!canConfirm}
               onClick={() => confirmMutation.mutate()}
             >
               Confirm & import

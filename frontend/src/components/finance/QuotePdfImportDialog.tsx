@@ -26,13 +26,22 @@ type FieldCandidate = {
   needs_review?: boolean;
 };
 
+type StageHour = {
+  label: string;
+  hours: number;
+  source_line?: string;
+};
+
 type ExtractResult = {
   text_extractable: boolean;
   ocr_used: boolean;
   warnings: string[];
   content_sha256?: string | null;
   filename?: string | null;
+  document_type?: string;
+  document_type_confidence?: number;
   fields: Record<string, FieldCandidate>;
+  stage_hours?: StageHour[];
   customer_matches: Array<{ customer_id: string; name: string; code?: string; confidence: number }>;
   project_matches: Array<{
     project_id: string;
@@ -47,6 +56,7 @@ type ExtractResult = {
     reason: string;
   }>;
   suggested_customer_id?: string | null;
+  suggested_project_id?: string | null;
 };
 
 type QuoteImportResult = {
@@ -95,6 +105,8 @@ export function QuotePdfImportDialog({
   const [notes, setNotes] = useState('');
   const [importAnyway, setImportAnyway] = useState(false);
   const [createProjectLocal, setCreateProjectLocal] = useState(createProject);
+  const [documentType, setDocumentType] = useState('quote');
+  const [hoursResolved, setHoursResolved] = useState(false);
 
   const customersQuery = useQuery({
     queryKey: ['lookup-customers'],
@@ -130,6 +142,8 @@ export function QuotePdfImportDialog({
     setNotes('');
     setImportAnyway(false);
     setCreateProjectLocal(createProject);
+    setDocumentType('quote');
+    setHoursResolved(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -155,6 +169,8 @@ export function QuotePdfImportDialog({
       setQuotedDate(fieldValue(data.fields, 'quoted_date'));
       setNotes(fieldValue(data.fields, 'notes'));
       setCustomerId(data.suggested_customer_id || '');
+      setDocumentType(data.document_type || 'quote');
+      setHoursResolved(false);
       if (!data.text_extractable) {
         showError(data.warnings[0] || 'Unable to extract the document reliably.');
       }
@@ -202,6 +218,15 @@ export function QuotePdfImportDialog({
       .map(([key]) => key);
   }, [extract]);
 
+  const hourDiscrepancy = useMemo(() => {
+    if (!extract) return false;
+    return (extract.warnings ?? []).some((w) => w.includes('DATA REVIEW REQUIRED'));
+  }, [extract]);
+
+  const tableQty = fieldValue(extract?.fields ?? {}, 'raw_table_quantity');
+  const stageSum = fieldValue(extract?.fields ?? {}, 'stage_hours_sum');
+  const descTotal = fieldValue(extract?.fields ?? {}, 'raw_description_total_hours');
+
   const customers = useMemo(() => {
     const active = (customersQuery.data ?? []).filter((c) => c.is_active);
     const matchIds = new Set((extract?.customer_matches ?? []).map((m) => m.customer_id));
@@ -217,6 +242,7 @@ export function QuotePdfImportDialog({
     Boolean(customerId) &&
     Boolean(projectNumber.trim()) &&
     Boolean(cost.trim()) &&
+    (!hourDiscrepancy || hoursResolved) &&
     !confirmMutation.isPending;
 
   const confirmBlockReason = !selectedTeamId
@@ -227,11 +253,15 @@ export function QuotePdfImportDialog({
         ? 'Project # is required before saving.'
         : !cost.trim()
           ? 'Quoted amount is required before saving.'
-          : null;
+          : hourDiscrepancy && !hoursResolved
+            ? 'Resolve the hour discrepancy before saving.'
+            : null;
+
+  const topProject = extract?.project_matches?.[0];
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
-      <DialogTitle>Import quote from PDF</DialogTitle>
+      <DialogTitle>Quote import review</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Extract first, then review and confirm. Nothing is saved until you confirm. Team is required
@@ -266,6 +296,24 @@ export function QuotePdfImportDialog({
           </Stack>
         ) : (
           <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info">
+              Document detected: <strong>{(documentType || 'unknown').toUpperCase()}</strong>
+              {extract.document_type_confidence != null
+                ? ` · Confidence: ${Math.round(extract.document_type_confidence)}%`
+                : null}
+            </Alert>
+            <TextField
+              select
+              label="Document type"
+              value={documentType}
+              onChange={(e) => setDocumentType(e.target.value)}
+              helperText="Change if classification is wrong before confirming."
+            >
+              <MenuItem value="quote">QUOTE</MenuItem>
+              <MenuItem value="invoice">INVOICE</MenuItem>
+              <MenuItem value="unknown">UNKNOWN</MenuItem>
+            </TextField>
+
             {(extract.warnings ?? []).map((warning) => (
               <Alert key={warning} severity="warning">
                 {warning}
@@ -280,6 +328,89 @@ export function QuotePdfImportDialog({
               <Alert severity="error">
                 Possible duplicate quote detected. Review existing records or check “Import anyway”.
               </Alert>
+            ) : null}
+
+            {topProject || projectNumber ? (
+              <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                <Typography variant="subtitle2">Match</Typography>
+                <Typography variant="body2">
+                  Project: {projectNumber || topProject?.tool_number || '—'}
+                  {topProject?.name ? ` — ${topProject.name}` : ''}
+                </Typography>
+                <Typography variant="body2">
+                  Customer:{' '}
+                  {customers.find((c) => c.id === customerId)?.name ||
+                    fieldValue(extract.fields, 'customer_name') ||
+                    '—'}
+                </Typography>
+              </Box>
+            ) : (
+              <Alert severity="warning">
+                Project not found for Customer Project #. Create a project, select an existing one, or
+                continue only after confirming project #.
+              </Alert>
+            )}
+
+            {hourDiscrepancy ? (
+              <Alert severity="error">
+                <Typography variant="subtitle2" gutterBottom>
+                  Hour discrepancy — DATA REVIEW REQUIRED
+                </Typography>
+                <Typography variant="body2">Table quantity: {tableQty || '—'} Hrs</Typography>
+                <Typography variant="body2">Stage breakdown sum: {stageSum || '—'} Hrs</Typography>
+                <Typography variant="body2">
+                  Description stated total: {descTotal || '—'} Hrs
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1, mb: 1 }}>
+                  Confirm commercial quoted hours (original extracted values are preserved):
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  {tableQty ? (
+                    <Button
+                      size="small"
+                      variant={quotedHours === tableQty ? 'contained' : 'outlined'}
+                      onClick={() => {
+                        setQuotedHours(tableQty);
+                        setHoursResolved(true);
+                      }}
+                    >
+                      Use {tableQty}
+                    </Button>
+                  ) : null}
+                  {descTotal && descTotal !== tableQty ? (
+                    <Button
+                      size="small"
+                      variant={quotedHours === descTotal ? 'contained' : 'outlined'}
+                      onClick={() => {
+                        setQuotedHours(descTotal);
+                        setHoursResolved(true);
+                      }}
+                    >
+                      Use {descTotal}
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setHoursResolved(true)}
+                  >
+                    Keep edited value
+                  </Button>
+                </Stack>
+              </Alert>
+            ) : null}
+
+            {(extract.stage_hours ?? []).length > 0 ? (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Work breakdown
+                </Typography>
+                {(extract.stage_hours ?? []).map((s) => (
+                  <Typography key={`${s.label}-${s.hours}`} variant="body2">
+                    {s.label}: {s.hours}
+                  </Typography>
+                ))}
+              </Box>
             ) : null}
 
             <TextField
@@ -335,7 +466,7 @@ export function QuotePdfImportDialog({
               }
             />
             <TextField
-              label="Project # (tool number)"
+              label="Customer Project # (ProTrack project number)"
               value={projectNumber}
               onChange={(e) => setProjectNumber(e.target.value)}
               required
@@ -347,9 +478,17 @@ export function QuotePdfImportDialog({
               required
             />
             <TextField
-              label="Quoted hours"
+              label="Commercial quoted hours (confirmed)"
               value={quotedHours}
-              onChange={(e) => setQuotedHours(e.target.value)}
+              onChange={(e) => {
+                setQuotedHours(e.target.value);
+                if (hourDiscrepancy) setHoursResolved(true);
+              }}
+              helperText={
+                hourDiscrepancy
+                  ? `Raw table: ${tableQty || '—'} · Stage sum: ${stageSum || '—'} · Desc TOTAL: ${descTotal || '—'}`
+                  : undefined
+              }
             />
             <TextField
               label="Currency"
@@ -392,7 +531,7 @@ export function QuotePdfImportDialog({
                   onChange={(e) => setCreateProjectLocal(e.target.checked)}
                 />
               }
-              label="Create project if missing"
+              label="Create project if missing (requires confirmation via this checkbox)"
             />
             <FormControlLabel
               control={
@@ -419,6 +558,7 @@ export function QuotePdfImportDialog({
               onClick={() => {
                 setExtract(null);
                 setImportAnyway(false);
+                setHoursResolved(false);
               }}
             >
               Back

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
@@ -15,7 +15,6 @@ from app.models.models import Customer, Project, User
 from app.services.document_asset_service import store_document
 from app.services.finance.invoice_pdf_parser import (
     FieldCandidate,
-    InvoicePdfExtract,
     content_fingerprint,
     parse_invoice_pdf_text,
 )
@@ -350,12 +349,26 @@ def extract_invoice_pdf(
             "currency_code": _candidate_dict(parsed.currency_code),
             "customer_name": _candidate_dict(parsed.customer_name),
             "project_ref": _candidate_dict(parsed.project_ref),
+            "customer_project_number": _candidate_dict(parsed.project_ref),
             "po_number": _candidate_dict(parsed.po_number),
             "quote_ref": _candidate_dict(parsed.quote_ref),
             "tax_amount": _candidate_dict(parsed.tax_amount),
             "subtotal": _candidate_dict(parsed.subtotal),
+            "balance_due": _candidate_dict(parsed.balance_due),
+            "payment_terms": _candidate_dict(parsed.payment_terms),
+            "sales_person": _candidate_dict(parsed.sales_person),
+            "billing_attention": _candidate_dict(parsed.billing_attention),
+            "quantity": _candidate_dict(parsed.quantity),
+            "rate": _candidate_dict(parsed.rate),
+            "line_description": _candidate_dict(parsed.line_description),
+            "raw_table_quantity": _candidate_dict(parsed.raw_table_quantity),
+            "raw_description_total_hours": _candidate_dict(parsed.raw_description_total_hours),
+            "stage_hours_sum": _candidate_dict(parsed.stage_hours_sum),
             "notes": _candidate_dict(parsed.notes),
         },
+        "stage_hours": parsed.stage_hours,
+        "document_type": parsed.document_type,
+        "document_type_confidence": parsed.document_type_confidence,
         "customer_matches": customer_matches,
         "quote_matches": quote_matches,
         "duplicates": [

@@ -8,6 +8,12 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from app.core.exceptions import ProTrackValidationError
+from app.services.finance.prosohm_document_intelligence import (
+    StageHoursExtract,
+    detect_hours_discrepancy,
+    extract_stage_hours,
+    parse_prosohm_date,
+)
 
 
 @dataclass
@@ -22,8 +28,14 @@ class ProsohmQuoteExtract:
     quoted_hours: Decimal = Decimal("0")
     rate: Decimal | None = None
     quoted_revenue: Decimal = Decimal("0")
+    subtotal: Decimal | None = None
     currency_code: str = "USD"
+    payment_terms: str | None = None
     line_notes: str = ""
+    stage_hours: StageHoursExtract = field(default_factory=StageHoursExtract)
+    raw_table_quantity: Decimal | None = None
+    raw_description_total_hours: Decimal | None = None
+    confirmed_quoted_hours: Decimal | None = None
     warnings: list[str] = field(default_factory=list)
 
     def to_import_row(self) -> dict[str, object]:
@@ -32,10 +44,22 @@ class ProsohmQuoteExtract:
             notes_parts.append(f"Sales person: {self.sales_person}")
         if self.external_quote_number:
             notes_parts.append(f"Quote#: {self.external_quote_number}")
+        if self.payment_terms:
+            notes_parts.append(f"Terms: {self.payment_terms}")
+        if self.stage_hours.stages:
+            stage_txt = "; ".join(
+                f"{s.label}: {s.hours}" for s in self.stage_hours.stages
+            )
+            notes_parts.append(f"Stages: {stage_txt}")
+        hours = (
+            self.confirmed_quoted_hours
+            if self.confirmed_quoted_hours is not None
+            else self.quoted_hours
+        )
         return {
             "customer": self.prepared_for or "",
             "tool_number": self.tool_number,
-            "quoted_hours": self.quoted_hours,
+            "quoted_hours": hours,
             "estimated_cost": Decimal("0"),
             "quoted_revenue": self.quoted_revenue,
             "currency": self.currency_code,
@@ -48,6 +72,9 @@ class ProsohmQuoteExtract:
             "_soft_customer_match": True,
             "_rate": self.rate,
             "_warnings": list(self.warnings),
+            "_stage_hours": self.stage_hours,
+            "_raw_table_quantity": self.raw_table_quantity,
+            "_raw_description_total_hours": self.raw_description_total_hours,
         }
 
 
@@ -60,7 +87,9 @@ _PROJECT_RE = re.compile(
     re.IGNORECASE,
 )
 _DATE_RE = re.compile(
-    r"Quote\s+Date\s*[:：]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
+    r"Quote\s+Date\s*[:：]?\s*"
+    r"(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|"
+    r"October|November|December)\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
     re.IGNORECASE,
 )
 _SALES_RE = re.compile(
@@ -83,8 +112,11 @@ _LINE_RE = re.compile(
     r"^\s*\d+\s+(.+?)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)",
     re.MULTILINE,
 )
+_ADVANCE_TERMS_RE = re.compile(
+    r"(ADVANCE\s+OF\s+\d+%[^\n]*|50%\s+advance[^\n]*|Due\s+on\s+Receipt[^\n]*)",
+    re.IGNORECASE,
+)
 _FILENAME_QT_RE = re.compile(r"QT-[A-Z0-9\-]+", re.IGNORECASE)
-_FILENAME_HASH_RE = re.compile(r"(?:SY)?#(\d+)", re.IGNORECASE)
 
 
 def looks_like_prosohm_qt_pdf(*, filename: str | None, text: str) -> bool:
@@ -130,7 +162,7 @@ def _looks_like_address_line(line: str) -> bool:
         return True
     if re.match(r"^\d+[\w\s,.\-/#]*$", line) and len(line) < 80:
         return True
-    if re.search(r"\b[A-Z]\d[A-Z]\s?\d[A-Z]\d\b", line):  # Canadian postal
+    if re.search(r"\b[A-Z]\d[A-Z]\s?\d[A-Z]\d\b", line):
         return True
     return False
 
@@ -147,13 +179,9 @@ def _clean_customer_candidate(line: str) -> str | None:
 
 
 def _extract_prepared_for(text: str) -> str | None:
-    """Extract customer from Prepared For block across common QT PDF layouts."""
     patterns = [
-        # Classic multiline until Kind Attention / # Item
         r"Prepared\s+For\s*[:：]?\s*\n(.+?)(?:\n\s*Kind\s+Attention|\n\s*#\s*Item|\n\s*Quote\s*#)",
-        # Same-line colon form
         r"Prepared\s+For\s*[:：]\s*([^\n]+)",
-        # Label then next non-empty line without requiring Kind Attention
         r"Prepared\s+For\s*[:：]?\s*\n([^\n]+)",
     ]
     for pattern in patterns:
@@ -172,13 +200,11 @@ def recover_customer_from_candidates(
     text: str,
     candidates: list[tuple[str, str]],
 ) -> str | None:
-    """Pick best active customer name/code against QT text (substring + prefix)."""
     if not text or not candidates:
         return None
     prepared_idx = text.lower().find("prepared")
     window = text if prepared_idx < 0 else text[max(0, prepared_idx - 40) : prepared_idx + 600]
     haystacks = (window, text)
-    # Prefer the Prepared For first-line fragment when present.
     prepared = _extract_prepared_for(text)
     best: tuple[int, str] | None = None
     for name, code in candidates:
@@ -193,7 +219,6 @@ def recover_customer_from_candidates(
                 if prep_l == label_l:
                     score = 10_000 + len(label)
                 elif label_l.startswith(prep_l) or prep_l.startswith(label_l):
-                    # "Crest Mold" ↔ "Crest Mold Technologies (CMT)"
                     score = 5_000 + len(prep_l)
                 elif prep_l in label_l or label_l in prep_l:
                     score = 2_000 + len(prep_l)
@@ -226,14 +251,17 @@ def _hints_from_filename(filename: str | None) -> tuple[str | None, str | None]:
     if qt_match:
         quote_num = qt_match.group(0).upper()
     tool = None
-    hash_match = _FILENAME_HASH_RE.search(stem)
+    hash_match = re.search(r"(?:SY)?#(\d+)", stem, re.IGNORECASE)
     if hash_match:
         tool = hash_match.group(1)
+    else:
+        mid = re.search(r"(?:_|-)(\d{3,5})(?:_|-|\.|$)", stem)
+        if mid:
+            tool = mid.group(1)
     return quote_num, tool
 
 
 def extract_prosohm_quote_text(content: bytes) -> str:
-    """Reuse workorder PDF text extractors (pdfplumber → pypdf → stdlib)."""
     from app.services.workorder_pdf_extract import extract_pdf_text
 
     return extract_pdf_text(content)
@@ -259,16 +287,15 @@ def parse_prosohm_quote_text(
         raise ProTrackValidationError("Could not find Quote# on Prosohm QT PDF.")
 
     project_match = _PROJECT_RE.search(text)
-    tool_number = (
-        project_match.group(1).strip() if project_match else (file_tool or "")
-    )
+    tool_number = project_match.group(1).strip() if project_match else (file_tool or "")
     if not tool_number:
         raise ProTrackValidationError(
             "Could not find Customer Project # on Prosohm QT PDF."
         )
 
     date_match = _DATE_RE.search(text)
-    quote_date = date_match.group(1).strip() if date_match else None
+    quote_date_raw = date_match.group(1).strip() if date_match else None
+    quote_date = parse_prosohm_date(quote_date_raw) or quote_date_raw
 
     sales_match = _SALES_RE.search(text)
     sales_person = sales_match.group(1).strip() if sales_match else None
@@ -307,10 +334,13 @@ def parse_prosohm_quote_text(
         if total_amount > 0:
             amount = total_amount
 
+    subtotal: Decimal | None = None
     sub_match = _SUBTOTAL_RE.search(text)
-    if sub_match and amount == 0:
-        amount = _to_decimal(sub_match.group(1))
+    if sub_match:
+        subtotal = _to_decimal(sub_match.group(1))
         dollar_flag = dollar_flag or bool(sub_match.group(2))
+        if amount == 0:
+            amount = subtotal
 
     if hours == 0 or amount == 0:
         raise ProTrackValidationError(
@@ -321,19 +351,23 @@ def parse_prosohm_quote_text(
         expected = (hours * rate).quantize(Decimal("0.01"))
         if abs(expected - amount) > Decimal("0.05"):
             warnings.append(
-                f"Hours × rate ({expected}) does not match amount ({amount}); imported amount as printed."
+                f"Hours × rate ({expected}) does not match amount ({amount}); "
+                "imported amount as printed."
             )
 
-    phase_lines = [
-        line.strip()
-        for line in text.splitlines()
-        if re.search(r"\d+\s*hrs?", line, re.IGNORECASE)
-        and not re.match(r"^\s*\d+\s+", line)
-    ]
+    stages = extract_stage_hours(text)
+    warnings.extend(detect_hours_discrepancy(table_quantity=hours, stages=stages))
+
+    terms_match = _ADVANCE_TERMS_RE.search(text)
+    payment_terms = terms_match.group(1).strip() if terms_match else None
+    if not payment_terms and re.search(r"ADVANCE\s+OF\s+50%", text, re.IGNORECASE):
+        payment_terms = "ADVANCE OF 50% ALONG WITH PO TO START WORK"
+
     notes_bits: list[str] = []
     if line_description:
         notes_bits.append(line_description)
-    notes_bits.extend(phase_lines[:8])
+    for stage in stages.stages[:12]:
+        notes_bits.append(f"{stage.label}: {stage.hours}")
 
     currency = _detect_currency(text, amount_has_dollar=dollar_flag or "$" in text)
 
@@ -348,8 +382,14 @@ def parse_prosohm_quote_text(
         quoted_hours=hours,
         rate=rate,
         quoted_revenue=amount,
+        subtotal=subtotal,
         currency_code=currency,
+        payment_terms=payment_terms,
         line_notes="\n".join(notes_bits),
+        stage_hours=stages,
+        raw_table_quantity=hours,
+        raw_description_total_hours=stages.description_total_hours,
+        confirmed_quoted_hours=None,
         warnings=warnings,
     )
 

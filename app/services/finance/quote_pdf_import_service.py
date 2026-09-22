@@ -43,15 +43,9 @@ def _field(
 
 
 def _parse_quote_date_to_iso(raw: str | None) -> str | None:
-    if not raw:
-        return None
-    text = str(raw).strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y"):
-        try:
-            return datetime.strptime(text, fmt).date().isoformat()
-        except ValueError:
-            continue
-    return None
+    from app.services.finance.prosohm_document_intelligence import parse_prosohm_date
+
+    return parse_prosohm_date(raw)
 
 
 def suggest_project_matches(
@@ -212,16 +206,43 @@ def extract_quote_pdf(
         empty["warnings"] = ocr_warnings + [str(exc)]
         return empty
 
+    from app.services.finance.prosohm_document_intelligence import (
+        classify_finance_document,
+        stages_as_dicts,
+    )
+
+    classification = classify_finance_document(text=text, filename=filename)
     quote_date_iso = _parse_quote_date_to_iso(parsed.quote_date)
     customer_matches = suggest_customer_matches(db, parsed.prepared_for)
     top_customer_id = (
         UUID(customer_matches[0]["customer_id"]) if customer_matches else None
     )
+    # Prefer project match first (Customer Project # = ProTrack tool_number), then customer.
     project_matches = suggest_project_matches(
         db,
         tool_number=parsed.tool_number,
-        customer_id=top_customer_id,
+        customer_id=None,
     )
+    if project_matches and project_matches[0].get("customer_id") and not top_customer_id:
+        top_customer_id = UUID(project_matches[0]["customer_id"])
+        # Re-score customers using project-linked customer as authoritative.
+        project_customer = db.get(Customer, top_customer_id)
+        if project_customer is not None:
+            customer_matches = [
+                {
+                    "customer_id": str(project_customer.id),
+                    "name": project_customer.name,
+                    "code": project_customer.code,
+                    "confidence": 98.0,
+                    "match_reason": "project_customer",
+                }
+            ] + [m for m in customer_matches if m["customer_id"] != str(project_customer.id)]
+    elif top_customer_id is not None:
+        project_matches = suggest_project_matches(
+            db,
+            tool_number=parsed.tool_number,
+            customer_id=top_customer_id,
+        ) or project_matches
     duplicates = find_duplicate_quotes(
         db,
         external_quote_number=parsed.external_quote_number,
@@ -237,12 +258,18 @@ def extract_quote_pdf(
         )
     if top_customer_id is None:
         warnings.append("Customer match confidence is low — confirm customer before import.")
+    if not project_matches:
+        warnings.append(
+            f"Project not found for Customer Project # {parsed.tool_number}. "
+            "Select an existing project or enable Create project if missing."
+        )
     if quote_date_iso is None and parsed.quote_date:
         warnings.append(f"Could not normalize quote date '{parsed.quote_date}'.")
     elif quote_date_iso is None:
         warnings.append("Quote date not detected — confirm before import.")
 
-    _ = team_id  # reserved for future team-scoped matching
+    hours_need_review = any("DATA REVIEW REQUIRED" in w for w in warnings)
+    _ = team_id
 
     return {
         "text_extractable": True,
@@ -251,11 +278,18 @@ def extract_quote_pdf(
         "content_sha256": sha,
         "filename": filename,
         "warnings": warnings,
+        "document_type": classification.document_type,
+        "document_type_confidence": classification.confidence,
         "fields": {
             "external_quote_number": _field(
                 parsed.external_quote_number, confidence=95, source="quote_number"
             ),
-            "tool_number": _field(parsed.tool_number, confidence=95, source="project_number"),
+            "tool_number": _field(
+                parsed.tool_number, confidence=98, source="customer_project_number"
+            ),
+            "customer_project_number": _field(
+                parsed.tool_number, confidence=98, source="customer_project_number"
+            ),
             "quoted_date": _field(
                 quote_date_iso,
                 confidence=90 if quote_date_iso else 20,
@@ -269,10 +303,43 @@ def extract_quote_pdf(
                 needs_review=not customer_matches,
             ),
             "quoted_hours": _field(
-                str(parsed.quoted_hours), confidence=90, source="line_qty"
+                str(parsed.quoted_hours),
+                confidence=90,
+                source="line_qty",
+                needs_review=hours_need_review,
+            ),
+            "raw_table_quantity": _field(
+                str(parsed.raw_table_quantity) if parsed.raw_table_quantity is not None else None,
+                confidence=90,
+                source="line_qty",
+            ),
+            "raw_description_total_hours": _field(
+                str(parsed.raw_description_total_hours)
+                if parsed.raw_description_total_hours is not None
+                else None,
+                confidence=85,
+                source="description_total",
+                needs_review=hours_need_review,
+            ),
+            "stage_hours_sum": _field(
+                str(parsed.stage_hours.stage_hours_sum)
+                if parsed.stage_hours.stages
+                else None,
+                confidence=85,
+                source="stage_sum",
             ),
             "quoted_revenue": _field(
                 str(parsed.quoted_revenue), confidence=92, source="total"
+            ),
+            "subtotal": _field(
+                str(parsed.subtotal) if parsed.subtotal is not None else None,
+                confidence=80,
+                source="subtotal",
+            ),
+            "rate": _field(
+                str(parsed.rate) if parsed.rate is not None else None,
+                confidence=88,
+                source="rate",
             ),
             "currency_code": _field(
                 parsed.currency_code, confidence=85, source="currency"
@@ -283,8 +350,12 @@ def extract_quote_pdf(
             "sales_person": _field(
                 parsed.sales_person, confidence=75, source="sales_person"
             ),
+            "payment_terms": _field(
+                parsed.payment_terms, confidence=70, source="terms"
+            ),
             "notes": _field(parsed.line_notes or None, confidence=60, source="notes"),
         },
+        "stage_hours": stages_as_dicts(parsed.stage_hours),
         "customer_matches": customer_matches,
         "project_matches": project_matches,
         "duplicates": duplicates,

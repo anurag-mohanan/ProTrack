@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 
@@ -30,7 +29,20 @@ class InvoicePdfExtract:
     quote_ref: FieldCandidate = field(default_factory=FieldCandidate)
     tax_amount: FieldCandidate = field(default_factory=FieldCandidate)
     subtotal: FieldCandidate = field(default_factory=FieldCandidate)
+    balance_due: FieldCandidate = field(default_factory=FieldCandidate)
+    payment_terms: FieldCandidate = field(default_factory=FieldCandidate)
+    sales_person: FieldCandidate = field(default_factory=FieldCandidate)
+    billing_attention: FieldCandidate = field(default_factory=FieldCandidate)
+    quantity: FieldCandidate = field(default_factory=FieldCandidate)
+    rate: FieldCandidate = field(default_factory=FieldCandidate)
+    line_description: FieldCandidate = field(default_factory=FieldCandidate)
     notes: FieldCandidate = field(default_factory=FieldCandidate)
+    stage_hours: list[dict] = field(default_factory=list)
+    raw_table_quantity: FieldCandidate = field(default_factory=FieldCandidate)
+    raw_description_total_hours: FieldCandidate = field(default_factory=FieldCandidate)
+    stage_hours_sum: FieldCandidate = field(default_factory=FieldCandidate)
+    document_type: str = "invoice"
+    document_type_confidence: float = 0.0
     warnings: list[str] = field(default_factory=list)
     source_chars: int = 0
     text_extractable: bool = True
@@ -45,12 +57,42 @@ _INVOICE_NO_RE = re.compile(
 )
 _DATE_LABEL_RE = re.compile(
     r"(?:Invoice\s*Date|Date\s*of\s*Invoice|Inv\.?\s*Date)\s*[:：]?\s*"
-    r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+    r"(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|"
+    r"October|November|December)\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
     re.IGNORECASE,
 )
 _DUE_DATE_RE = re.compile(
     r"(?:Due\s*Date|Payment\s*Due)\s*[:：]?\s*"
-    r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+    r"(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|"
+    r"October|November|December)\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})",
+    re.IGNORECASE,
+)
+_BALANCE_DUE_RE = re.compile(
+    r"Balance\s*Due\s*[:：]?\s*(\$?|USD|INR|₹)?\s*([\d,]+\.?\d*)",
+    re.IGNORECASE,
+)
+_TERMS_RE = re.compile(
+    r"Terms\s*[:：]?\s*([^\n]+)",
+    re.IGNORECASE,
+)
+_SALES_RE = re.compile(
+    r"Sales\s+person\s*[:：]?\s*([^\n]+)",
+    re.IGNORECASE,
+)
+_BILLING_ATTN_RE = re.compile(
+    r"Billing\s+Attention\s*[:：]?\s*([^\n]+)",
+    re.IGNORECASE,
+)
+_LINE_RE = re.compile(
+    r"^\s*\d+\s+(.+?)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)",
+    re.MULTILINE,
+)
+_BILL_TO_BLOCK_RE = re.compile(
+    r"Bill\s+To\s*[:：]?\s*\n([^\n]+)",
+    re.IGNORECASE,
+)
+_CUSTOMER_PROJECT_RE = re.compile(
+    r"Customer\s+Project\s*#\s*[:：]?\s*([A-Za-z0-9\-_/]+)",
     re.IGNORECASE,
 )
 _TOTAL_RE = re.compile(
@@ -94,13 +136,9 @@ def _parse_money(raw: str) -> Decimal | None:
 
 
 def _parse_date(raw: str) -> str | None:
-    text = (raw or "").strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y", "%m/%d/%Y"):
-        try:
-            return datetime.strptime(text, fmt).date().isoformat()
-        except ValueError:
-            continue
-    return None
+    from app.services.finance.prosohm_document_intelligence import parse_prosohm_date
+
+    return parse_prosohm_date(raw)
 
 
 def _currency_from_symbol(symbol: str | None, text: str) -> FieldCandidate:
@@ -219,8 +257,15 @@ def parse_invoice_pdf_text(
             pass
 
     cust = _CUSTOMER_RE.search(text)
-    if cust:
-        name = re.sub(r"\s+", " ", cust.group(1)).strip(" .:;\t")
+    bill_block = _BILL_TO_BLOCK_RE.search(text)
+    if bill_block:
+        name = re.sub(r"\s+", " ", bill_block.group(1)).strip(" :;\t")
+        if name and len(name) > 1:
+            result.customer_name = FieldCandidate(
+                value=name[:200], confidence=90, source="bill_to"
+            )
+    elif cust:
+        name = re.sub(r"\s+", " ", cust.group(1)).strip(" :;\t")
         if name and len(name) > 1:
             result.customer_name = FieldCandidate(
                 value=name[:200], confidence=78, source="regex_customer"
@@ -235,8 +280,14 @@ def parse_invoice_pdf_text(
             value=po.group(1).strip(), confidence=85, source="regex_po"
         )
 
+    # Prefer explicit Customer Project # (ProTrack project number).
+    cust_proj = _CUSTOMER_PROJECT_RE.search(text)
     proj = _PROJECT_RE.search(text)
-    if proj:
+    if cust_proj:
+        result.project_ref = FieldCandidate(
+            value=cust_proj.group(1).strip(), confidence=98, source="customer_project_number"
+        )
+    elif proj:
         result.project_ref = FieldCandidate(
             value=proj.group(1).strip(), confidence=80, source="regex_project"
         )
@@ -244,16 +295,101 @@ def parse_invoice_pdf_text(
     quote = _QUOTE_RE.search(text)
     if quote:
         ref = quote.group(1).strip()
-        if not ref.upper().startswith("QT-") and "QT-" in text.upper():
-            # keep as-is
-            pass
         result.quote_ref = FieldCandidate(value=ref, confidence=82, source="regex_quote")
+
+    bal = _BALANCE_DUE_RE.search(text)
+    if bal:
+        money = _parse_money(bal.group(2))
+        if money is not None:
+            result.balance_due = FieldCandidate(
+                value=str(money), confidence=92, source="balance_due"
+            )
+            if not result.amount.value:
+                result.amount = FieldCandidate(
+                    value=str(money), confidence=85, source="balance_due"
+                )
+                result.currency_code = _currency_from_symbol(bal.group(1), text)
+
+    terms = _TERMS_RE.search(text)
+    if terms:
+        term_val = re.split(r"\s{2,}|Customer\s+Project", terms.group(1))[0].strip()
+        if term_val:
+            result.payment_terms = FieldCandidate(
+                value=term_val[:200], confidence=80, source="terms"
+            )
+
+    sales = _SALES_RE.search(text)
+    if sales:
+        sales_val = re.split(r"\s{2,}|Customer\s+Project", sales.group(1))[0].strip()
+        if sales_val:
+            result.sales_person = FieldCandidate(
+                value=sales_val[:120], confidence=75, source="sales_person"
+            )
+
+    attn = _BILLING_ATTN_RE.search(text)
+    if attn:
+        result.billing_attention = FieldCandidate(
+            value=attn.group(1).strip()[:120], confidence=75, source="billing_attention"
+        )
+
+    line = _LINE_RE.search(text)
+    table_qty: Decimal | None = None
+    if line:
+        result.line_description = FieldCandidate(
+            value=line.group(1).strip()[:200], confidence=80, source="line"
+        )
+        table_qty = _parse_money(line.group(2))
+        rate = _parse_money(line.group(3))
+        if table_qty is not None:
+            result.quantity = FieldCandidate(
+                value=str(table_qty), confidence=90, source="line_qty"
+            )
+            result.raw_table_quantity = FieldCandidate(
+                value=str(table_qty), confidence=90, source="line_qty"
+            )
+        if rate is not None:
+            result.rate = FieldCandidate(value=str(rate), confidence=88, source="line_rate")
+
+    from app.services.finance.prosohm_document_intelligence import (
+        classify_finance_document,
+        detect_hours_discrepancy,
+        extract_stage_hours,
+        stages_as_dicts,
+    )
+
+    stages = extract_stage_hours(text)
+    result.stage_hours = stages_as_dicts(stages)
+    if stages.stages:
+        result.stage_hours_sum = FieldCandidate(
+            value=str(stages.stage_hours_sum), confidence=85, source="stage_sum"
+        )
+    if stages.description_total_hours is not None:
+        result.raw_description_total_hours = FieldCandidate(
+            value=str(stages.description_total_hours),
+            confidence=85,
+            source="description_total",
+        )
+    hours_warnings = detect_hours_discrepancy(table_quantity=table_qty, stages=stages)
+    result.warnings.extend(hours_warnings)
+    if hours_warnings:
+        result.quantity.needs_review = True
+        result.raw_description_total_hours.needs_review = True
+
+    classification = classify_finance_document(text=text, filename=filename)
+    result.document_type = classification.document_type
+    result.document_type_confidence = classification.confidence
 
     note_bits = []
     if result.invoice_number.value:
         note_bits.append(f"Invoice#: {result.invoice_number.value}")
     if result.po_number.value:
         note_bits.append(f"PO: {result.po_number.value}")
+    if result.project_ref.value:
+        note_bits.append(f"Customer Project #: {result.project_ref.value}")
+    if stages.stages:
+        note_bits.append(
+            "Stages: " + "; ".join(f"{s['label']}: {s['hours']}" for s in result.stage_hours[:8])
+        )
     if note_bits:
         result.notes = FieldCandidate(
             value=" | ".join(note_bits), confidence=60, source="composed"

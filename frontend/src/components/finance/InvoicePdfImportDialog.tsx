@@ -25,13 +25,22 @@ type FieldCandidate = {
   needs_review?: boolean;
 };
 
+type StageHour = {
+  label: string;
+  hours: number;
+  source_line?: string;
+};
+
 type ExtractResult = {
   text_extractable: boolean;
   ocr_used: boolean;
   warnings: string[];
   content_sha256?: string | null;
   filename?: string | null;
+  document_type?: string;
+  document_type_confidence?: number;
   fields: Record<string, FieldCandidate>;
+  stage_hours?: StageHour[];
   customer_matches: Array<{ customer_id: string; name: string; code?: string; confidence: number }>;
   quote_matches: Array<{
     quote_id: string;
@@ -68,8 +77,12 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
   const [dueDate, setDueDate] = useState('');
   const [taxAmount, setTaxAmount] = useState('');
   const [subtotalAmount, setSubtotalAmount] = useState('');
+  const [balanceDue, setBalanceDue] = useState('');
+  const [quantity, setQuantity] = useState('');
   const [notes, setNotes] = useState('');
   const [importAnyway, setImportAnyway] = useState(false);
+  const [documentType, setDocumentType] = useState('invoice');
+  const [hoursResolved, setHoursResolved] = useState(false);
 
   const reset = () => {
     setFile(null);
@@ -81,8 +94,12 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
     setDueDate('');
     setTaxAmount('');
     setSubtotalAmount('');
+    setBalanceDue('');
+    setQuantity('');
     setNotes('');
     setImportAnyway(false);
+    setDocumentType('invoice');
+    setHoursResolved(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -107,8 +124,12 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       setDueDate(fieldValue(data.fields, 'due_date'));
       setTaxAmount(fieldValue(data.fields, 'tax_amount'));
       setSubtotalAmount(fieldValue(data.fields, 'subtotal'));
+      setBalanceDue(fieldValue(data.fields, 'balance_due'));
+      setQuantity(fieldValue(data.fields, 'quantity') || fieldValue(data.fields, 'raw_table_quantity'));
       setNotes(fieldValue(data.fields, 'notes'));
       setQuoteIdEdit(data.suggested_quote_id || quoteId || '');
+      setDocumentType(data.document_type || 'invoice');
+      setHoursResolved(false);
       if (!data.text_extractable) {
         showError(data.warnings[0] || 'Unable to extract the document reliably.');
       }
@@ -151,14 +172,31 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       .map(([key]) => key);
   }, [extract]);
 
+  const hourDiscrepancy = useMemo(() => {
+    if (!extract) return false;
+    return (extract.warnings ?? []).some((w) => w.includes('DATA REVIEW REQUIRED'));
+  }, [extract]);
+
+  const tableQty = fieldValue(extract?.fields ?? {}, 'raw_table_quantity') ||
+    fieldValue(extract?.fields ?? {}, 'quantity');
+  const stageSum = fieldValue(extract?.fields ?? {}, 'stage_hours_sum');
+  const descTotal = fieldValue(extract?.fields ?? {}, 'raw_description_total_hours');
+
+  const canConfirm =
+    Boolean(quoteIdEdit) &&
+    Boolean(amount) &&
+    Boolean(lineDate) &&
+    (!hourDiscrepancy || hoursResolved) &&
+    !confirmMutation.isPending;
+
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
-      <DialogTitle>Import invoice from PDF</DialogTitle>
+      <DialogTitle>Invoice import review</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Optional convenience — review every field before saving. Manual invoice entry remains available
-          on the quote cash ledger. Team is optional for extraction; link to an awarded quote is required
-          before confirm.
+          Review every field before saving. Balance Due never creates a payment — Paid stays $0 until
+          an actual payment is recorded. Team is optional for extraction; link to an awarded quote is
+          required before confirm.
         </Typography>
 
         {!extract ? (
@@ -189,6 +227,24 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
           </Stack>
         ) : (
           <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info">
+              Document detected: <strong>{(documentType || 'unknown').toUpperCase()}</strong>
+              {extract.document_type_confidence != null
+                ? ` · Confidence: ${Math.round(extract.document_type_confidence)}%`
+                : null}
+            </Alert>
+            <TextField
+              select
+              label="Document type"
+              value={documentType}
+              onChange={(e) => setDocumentType(e.target.value)}
+              helperText="Change if classification is wrong before confirming."
+            >
+              <MenuItem value="invoice">INVOICE</MenuItem>
+              <MenuItem value="quote">QUOTE</MenuItem>
+              <MenuItem value="unknown">UNKNOWN</MenuItem>
+            </TextField>
+
             {(extract.warnings ?? []).map((warning) => (
               <Alert key={warning} severity="warning">
                 {warning}
@@ -203,6 +259,79 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               <Alert severity="error">
                 Possible duplicate invoice detected. Review existing records or check “Import anyway”.
               </Alert>
+            ) : null}
+
+            <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+              <Typography variant="subtitle2">Match</Typography>
+              <Typography variant="body2">
+                Customer Project #: {fieldValue(extract.fields, 'customer_project_number') ||
+                  fieldValue(extract.fields, 'project_ref') ||
+                  '—'}
+              </Typography>
+              <Typography variant="body2">
+                Customer: {fieldValue(extract.fields, 'customer_name') || '—'}
+              </Typography>
+              <Typography variant="body2">
+                P.O. #: {fieldValue(extract.fields, 'po_number') || '—'}
+              </Typography>
+            </Box>
+
+            {hourDiscrepancy ? (
+              <Alert severity="error">
+                <Typography variant="subtitle2" gutterBottom>
+                  Hour discrepancy — REVIEW REQUIRED
+                </Typography>
+                <Typography variant="body2">Invoice quantity: {tableQty || '—'}</Typography>
+                <Typography variant="body2">Stage breakdown sum: {stageSum || '—'}</Typography>
+                <Typography variant="body2">
+                  Description total: {descTotal || '—'}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1, mb: 1 }}>
+                  Confirm the commercial quantity for the structured record (raw values preserved):
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  {tableQty ? (
+                    <Button
+                      size="small"
+                      variant={quantity === tableQty ? 'contained' : 'outlined'}
+                      onClick={() => {
+                        setQuantity(tableQty);
+                        setHoursResolved(true);
+                      }}
+                    >
+                      Use {tableQty}
+                    </Button>
+                  ) : null}
+                  {descTotal && descTotal !== tableQty ? (
+                    <Button
+                      size="small"
+                      variant={quantity === descTotal ? 'contained' : 'outlined'}
+                      onClick={() => {
+                        setQuantity(descTotal);
+                        setHoursResolved(true);
+                      }}
+                    >
+                      Use {descTotal}
+                    </Button>
+                  ) : null}
+                  <Button size="small" variant="outlined" onClick={() => setHoursResolved(true)}>
+                    Keep edited value
+                  </Button>
+                </Stack>
+              </Alert>
+            ) : null}
+
+            {(extract.stage_hours ?? []).length > 0 ? (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Work breakdown
+                </Typography>
+                {(extract.stage_hours ?? []).map((s) => (
+                  <Typography key={`${s.label}-${s.hours}`} variant="body2">
+                    {s.label}: {s.hours}
+                  </Typography>
+                ))}
+              </Box>
             ) : null}
 
             <TextField
@@ -268,7 +397,27 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
                 onChange={(e) => setTaxAmount(e.target.value)}
                 fullWidth
               />
+              <TextField
+                label="Balance due (informational)"
+                value={balanceDue}
+                onChange={(e) => setBalanceDue(e.target.value)}
+                fullWidth
+                helperText="Does not create a payment"
+              />
             </Stack>
+            <TextField
+              label="Confirmed quantity / hours"
+              value={quantity}
+              onChange={(e) => {
+                setQuantity(e.target.value);
+                if (hourDiscrepancy) setHoursResolved(true);
+              }}
+              helperText={
+                hourDiscrepancy
+                  ? `Raw qty: ${tableQty || '—'} · Stage sum: ${stageSum || '—'} · Desc TOTAL: ${descTotal || '—'}`
+                  : undefined
+              }
+            />
             <TextField
               label="Notes"
               value={notes}
@@ -299,6 +448,11 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               }
               label="Import anyway despite duplicate warning"
             />
+            {hourDiscrepancy && !hoursResolved ? (
+              <Typography variant="caption" color="warning.main">
+                Resolve the quantity / stage-hour discrepancy before saving.
+              </Typography>
+            ) : null}
           </Stack>
         )}
       </DialogContent>
@@ -310,15 +464,14 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               onClick={() => {
                 setExtract(null);
                 setImportAnyway(false);
+                setHoursResolved(false);
               }}
             >
               Back
             </Button>
             <Button
               variant="contained"
-              disabled={
-                confirmMutation.isPending || !quoteIdEdit || !amount || !lineDate
-              }
+              disabled={!canConfirm}
               onClick={() => confirmMutation.mutate()}
             >
               Confirm & import

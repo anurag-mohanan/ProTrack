@@ -559,6 +559,11 @@ class QuoteInvoiceLineRead(BaseModel):
     amount: Decimal
     line_date: date
     notes: str | None = None
+    invoice_number: str | None = None
+    due_date: date | None = None
+    tax_amount: Decimal | None = None
+    subtotal_amount: Decimal | None = None
+    content_sha256: str | None = None
     sort_order: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -573,6 +578,7 @@ class QuotePaymentLineRead(BaseModel):
     line_date: date
     reference: str | None = None
     notes: str | None = None
+    invoice_line_id: UUID | None = None
     sort_order: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -582,6 +588,10 @@ class QuoteInvoiceLineCreate(BaseModel):
     amount: Decimal = Field(..., gt=0)
     line_date: date
     notes: str | None = None
+    invoice_number: str | None = None
+    due_date: date | None = None
+    tax_amount: Decimal | None = None
+    subtotal_amount: Decimal | None = None
 
 
 class QuotePaymentLineCreate(BaseModel):
@@ -589,6 +599,7 @@ class QuotePaymentLineCreate(BaseModel):
     line_date: date
     reference: str | None = None
     notes: str | None = None
+    invoice_line_id: UUID | None = None
 
 
 class QuoteRead(BaseModel):
@@ -620,6 +631,16 @@ class QuoteRead(BaseModel):
     payment_status: str = "none"
     is_partially_invoiced: bool = False
     is_partially_paid: bool = False
+    financial_status: str = "not_invoiced"
+    invoice_percentage: Decimal = Decimal("0")
+    collection_percentage: Decimal = Decimal("0")
+    awarded_collection_percentage: Decimal = Decimal("0")
+    is_over_invoiced: bool = False
+    over_invoiced_variance: Decimal = Decimal("0")
+    is_overpayment: bool = False
+    overpayment_amount: Decimal = Decimal("0")
+    last_invoice_date: date | None = None
+    last_payment_date: date | None = None
     invoice_lines: list[QuoteInvoiceLineRead] = Field(default_factory=list)
     payment_lines: list[QuotePaymentLineRead] = Field(default_factory=list)
     current_version: int

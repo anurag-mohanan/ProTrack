@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
@@ -13,11 +13,36 @@ from app.core.exceptions import ProTrackValidationError
 from app.models.finance import Quote, QuoteInvoiceLine, QuotePaymentLine, QuoteRevision
 
 _TOLERANCE = Decimal("1.01")
+_AMOUNT_TOLERANCE = Decimal("0.01")
+
+# Lifecycle statuses derived from awarded + invoices + payments (never manual).
+STATUS_NOT_INVOICED = "not_invoiced"
+STATUS_PARTIALLY_INVOICED_PAID = "partially_invoiced_paid"
+STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING = "partially_invoiced_payment_pending"
+STATUS_FULLY_INVOICED_PAYMENT_PENDING = "fully_invoiced_payment_pending"
+STATUS_FULLY_INVOICED_FULLY_PAID = "fully_invoiced_fully_paid"
+STATUS_OVER_INVOICED_REQUIRES_REVIEW = "over_invoiced_requires_review"
+
+AWARDED_FINANCIAL_STATUSES = (
+    STATUS_NOT_INVOICED,
+    STATUS_PARTIALLY_INVOICED_PAID,
+    STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING,
+    STATUS_FULLY_INVOICED_PAYMENT_PENDING,
+    STATUS_FULLY_INVOICED_FULLY_PAID,
+    STATUS_OVER_INVOICED_REQUIRES_REVIEW,
+)
 
 
 def _d(value) -> Decimal:
     return Decimal(str(value or 0))
 
+
+def _pct(numerator: Decimal, denominator: Decimal) -> Decimal:
+    if denominator <= 0:
+        return Decimal("0")
+    return (numerator / denominator * Decimal("100")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
 def _current_revision(db: Session, quote: Quote) -> QuoteRevision | None:
     current = db.scalar(
@@ -124,8 +149,92 @@ def summarize_quote_cash(
         "is_partially_paid": payment_status == "partial",
         "payment_status": payment_status,
         "paid_date": latest_payment if is_paid else None,
+        "last_invoice_date": max((row.line_date for row in invoices), default=None),
+        "last_payment_date": latest_payment,
         "invoice_lines": invoices,
         "payment_lines": payments,
+    }
+
+
+def derive_awarded_quote_financial_status(
+    *,
+    awarded_amount: Decimal,
+    invoiced_amount: Decimal,
+    paid_amount: Decimal,
+) -> str:
+    """Deterministic lifecycle status from awarded / invoiced / paid amounts."""
+    awarded = _d(awarded_amount)
+    invoiced = _d(invoiced_amount)
+    paid = _d(paid_amount)
+    outstanding = max(Decimal("0"), invoiced - paid)
+
+    # Over-invoicing only when a positive awarded value exists (avoid false flags
+    # when quoted revenue is still zero / unknown).
+    if awarded > 0 and invoiced > awarded + _AMOUNT_TOLERANCE:
+        return STATUS_OVER_INVOICED_REQUIRES_REVIEW
+
+    if invoiced <= 0:
+        return STATUS_NOT_INVOICED
+
+    fully_invoiced = awarded <= 0 or invoiced >= awarded - _AMOUNT_TOLERANCE
+    settled = outstanding <= _AMOUNT_TOLERANCE
+
+    if not fully_invoiced:
+        if settled:
+            return STATUS_PARTIALLY_INVOICED_PAID
+        return STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING
+
+    if settled:
+        return STATUS_FULLY_INVOICED_FULLY_PAID
+    return STATUS_FULLY_INVOICED_PAYMENT_PENDING
+
+
+def calculate_awarded_quote_financial_status(
+    db: Session,
+    quote: Quote | UUID,
+    *,
+    revision: QuoteRevision | None = None,
+) -> dict:
+    """
+    Authoritative awarded-quote financial snapshot.
+
+    Status is always derived from Awarded Value + invoice lines + payment lines.
+    """
+    if isinstance(quote, UUID):
+        loaded = load_quote_with_ledger(db, quote)
+        if loaded is None:
+            raise ProTrackValidationError("Quote not found.")
+        quote = loaded
+    cash = summarize_quote_cash(db, quote, revision=revision)
+    awarded = _d(cash["quoted_revenue"])
+    invoiced = _d(cash["total_invoiced"])
+    paid = _d(cash["total_paid"])
+    outstanding = _d(cash["balance_due"])
+    remaining_to_invoice = _d(cash["remaining_to_invoice"])
+    status = derive_awarded_quote_financial_status(
+        awarded_amount=awarded,
+        invoiced_amount=invoiced,
+        paid_amount=paid,
+    )
+    overpayment_amount = max(Decimal("0"), paid - invoiced)
+    over_invoiced_variance = (
+        max(Decimal("0"), invoiced - awarded) if awarded > 0 else Decimal("0")
+    )
+    return {
+        **cash,
+        "awarded_amount": awarded,
+        "invoiced_amount": invoiced,
+        "paid_amount": paid,
+        "outstanding_amount": outstanding,
+        "remaining_to_invoice": remaining_to_invoice,
+        "invoice_percentage": _pct(invoiced, awarded),
+        "collection_percentage": _pct(paid, invoiced),
+        "awarded_collection_percentage": _pct(paid, awarded),
+        "financial_status": status,
+        "is_over_invoiced": status == STATUS_OVER_INVOICED_REQUIRES_REVIEW,
+        "over_invoiced_variance": over_invoiced_variance,
+        "is_overpayment": overpayment_amount > _AMOUNT_TOLERANCE,
+        "overpayment_amount": overpayment_amount,
     }
 
 
@@ -154,6 +263,11 @@ def add_invoice_line(
     amount: Decimal,
     line_date: date,
     notes: str | None = None,
+    invoice_number: str | None = None,
+    due_date: date | None = None,
+    tax_amount: Decimal | None = None,
+    subtotal_amount: Decimal | None = None,
+    content_sha256: str | None = None,
 ) -> QuoteInvoiceLine:
     amount = _d(amount)
     if amount <= 0:
@@ -171,13 +285,17 @@ def add_invoice_line(
         amount=amount,
         line_date=line_date,
         notes=(notes or "").strip() or None,
+        invoice_number=(invoice_number or "").strip() or None,
+        due_date=due_date,
+        tax_amount=_d(tax_amount) if tax_amount is not None else None,
+        subtotal_amount=_d(subtotal_amount) if subtotal_amount is not None else None,
+        content_sha256=(content_sha256 or "").strip() or None,
         sort_order=_next_sort_order(db, QuoteInvoiceLine, quote.id),
     )
     db.add(line)
     db.flush()
     sync_quote_cash_flags(db, quote)
     return line
-
 
 def delete_invoice_line(db: Session, *, quote: Quote, line_id: UUID) -> None:
     line = db.get(QuoteInvoiceLine, line_id)
@@ -209,6 +327,7 @@ def add_payment_line(
     line_date: date,
     reference: str | None = None,
     notes: str | None = None,
+    invoice_line_id: UUID | None = None,
 ) -> QuotePaymentLine:
     amount = _d(amount)
     if amount <= 0:
@@ -218,6 +337,10 @@ def add_payment_line(
         raise ProTrackValidationError(
             "Add at least one invoice before recording a payment."
         )
+    if invoice_line_id is not None:
+        target = next((row for row in invoices if row.id == invoice_line_id), None)
+        if target is None:
+            raise ProTrackValidationError("Invoice line not found for payment allocation.")
     total_invoiced = sum((_d(row.amount) for row in invoices), Decimal("0"))
     total_paid = sum((_d(row.amount) for row in list_payment_lines(db, quote.id)), Decimal("0"))
     if total_paid + amount > total_invoiced * _TOLERANCE:
@@ -232,13 +355,13 @@ def add_payment_line(
         line_date=line_date,
         reference=(reference or "").strip() or None,
         notes=(notes or "").strip() or None,
+        invoice_line_id=invoice_line_id,
         sort_order=_next_sort_order(db, QuotePaymentLine, quote.id),
     )
     db.add(line)
     db.flush()
     sync_quote_cash_flags(db, quote)
     return line
-
 
 def delete_payment_line(db: Session, *, quote: Quote, line_id: UUID) -> None:
     line = db.get(QuotePaymentLine, line_id)

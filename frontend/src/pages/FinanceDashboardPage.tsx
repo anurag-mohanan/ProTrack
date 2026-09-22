@@ -35,7 +35,7 @@ export const FINANCE_TABS = [
   { key: 'scenarios', label: 'Scenario Planning', aliases: ['scenarios', 'scenario', 'planning'] },
   { key: 'commercial', label: 'Teams / commercial', aliases: ['commercial', 'teams'] },
   { key: 'annual-plan', label: 'Forecasting / Annual Plan', aliases: ['annual-plan', 'forecast', 'forecasting', 'plan'] },
-  { key: 'quotes', label: 'Projects & revenue', aliases: ['quotes', 'revenue', 'projects', 'invoicing'] },
+  { key: 'quotes', label: 'Awarded Quotes & Revenue', aliases: ['quotes', 'revenue', 'projects', 'invoicing', 'awarded'] },
   { key: 'treasury', label: 'Treasury', aliases: ['treasury', 'loans', 'od', 'investments', 'cash'] },
   { key: 'budgets', label: 'Reports & budgets', aliases: ['budgets', 'reports', 'report'] },
 ] as const;

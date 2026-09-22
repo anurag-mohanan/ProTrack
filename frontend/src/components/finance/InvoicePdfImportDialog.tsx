@@ -65,6 +65,9 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
   const [amount, setAmount] = useState('');
   const [lineDate, setLineDate] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [taxAmount, setTaxAmount] = useState('');
+  const [subtotalAmount, setSubtotalAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [importAnyway, setImportAnyway] = useState(false);
 
@@ -75,6 +78,9 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
     setAmount('');
     setLineDate('');
     setInvoiceNumber('');
+    setDueDate('');
+    setTaxAmount('');
+    setSubtotalAmount('');
     setNotes('');
     setImportAnyway(false);
     if (fileRef.current) fileRef.current.value = '';
@@ -98,6 +104,9 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       setAmount(fieldValue(data.fields, 'amount'));
       setLineDate(fieldValue(data.fields, 'invoice_date'));
       setInvoiceNumber(fieldValue(data.fields, 'invoice_number'));
+      setDueDate(fieldValue(data.fields, 'due_date'));
+      setTaxAmount(fieldValue(data.fields, 'tax_amount'));
+      setSubtotalAmount(fieldValue(data.fields, 'subtotal'));
       setNotes(fieldValue(data.fields, 'notes'));
       setQuoteIdEdit(data.suggested_quote_id || quoteId || '');
       if (!data.text_extractable) {
@@ -117,6 +126,9 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       form.append('amount', String(amount).replace(/,/g, ''));
       form.append('line_date', lineDate);
       if (invoiceNumber) form.append('invoice_number', invoiceNumber);
+      if (dueDate) form.append('due_date', dueDate);
+      if (taxAmount) form.append('tax_amount', String(taxAmount).replace(/,/g, ''));
+      if (subtotalAmount) form.append('subtotal_amount', String(subtotalAmount).replace(/,/g, ''));
       if (notes) form.append('notes', notes);
       form.append('import_anyway', importAnyway ? 'true' : 'false');
       if (extract?.content_sha256) form.append('content_sha256', extract.content_sha256);
@@ -231,11 +243,32 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               helperText="Invoice date drives P&L turnover — not the payment date."
             />
             <TextField
-              label="Amount"
+              label="Due date"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <TextField
+              label="Amount (grand total)"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               required
             />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <TextField
+                label="Subtotal"
+                value={subtotalAmount}
+                onChange={(e) => setSubtotalAmount(e.target.value)}
+                fullWidth
+              />
+              <TextField
+                label="Tax / GST"
+                value={taxAmount}
+                onChange={(e) => setTaxAmount(e.target.value)}
+                fullWidth
+              />
+            </Stack>
             <TextField
               label="Notes"
               value={notes}

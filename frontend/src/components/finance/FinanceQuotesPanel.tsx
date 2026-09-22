@@ -83,6 +83,9 @@ type QuoteRow = {
   payment_status?: string | null;
   is_partially_invoiced?: boolean;
   is_partially_paid?: boolean;
+  financial_status?: string | null;
+  invoice_percentage?: number | string | null;
+  collection_percentage?: number | string | null;
   invoice_lines?: QuoteCashLine[];
   payment_lines?: QuoteCashLine[];
   billing_ready?: boolean;
@@ -122,6 +125,11 @@ type ListFilter =
   | 'all'
   | 'not_invoiced'
   | 'partially_invoiced'
+  | 'partially_invoiced_paid'
+  | 'partially_invoiced_payment_pending'
+  | 'fully_invoiced_payment_pending'
+  | 'fully_invoiced_fully_paid'
+  | 'over_invoiced'
   | 'missing_date'
   | 'unlinked'
   | 'invoiced'
@@ -359,9 +367,31 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const quotesAll = quotesStatsQuery.data ?? [];
   const filteredQuotes = quotesQuery.data ?? [];
   const quoteStats = useMemo(() => {
-    const invoicedRevenue = quotesAll
-      .filter((q) => q.invoice_status === 'full')
-      .reduce((s, q) => s + toFiniteNumber(q.base_quoted_revenue_inr), 0);
+    const awardedValue = quotesAll.reduce(
+      (s, q) => s + toFiniteNumber(q.base_quoted_revenue_inr ?? q.quoted_revenue),
+      0,
+    );
+    const totalInvoiced = quotesAll.reduce((s, q) => {
+      const invoiced = toFiniteNumber(q.total_invoiced);
+      const quoted = toFiniteNumber(q.quoted_revenue);
+      const base = toFiniteNumber(q.base_quoted_revenue_inr);
+      if (quoted > 0 && base > 0) return s + (invoiced / quoted) * base;
+      return s + invoiced;
+    }, 0);
+    const totalPaid = quotesAll.reduce((s, q) => {
+      const paid = toFiniteNumber(q.total_paid);
+      const quoted = toFiniteNumber(q.quoted_revenue);
+      const base = toFiniteNumber(q.base_quoted_revenue_inr);
+      if (quoted > 0 && base > 0) return s + (paid / quoted) * base;
+      return s + paid;
+    }, 0);
+    const toInvoice = quotesAll.reduce((s, q) => {
+      const remaining = toFiniteNumber(q.remaining_to_invoice);
+      const quoted = toFiniteNumber(q.quoted_revenue);
+      const base = toFiniteNumber(q.base_quoted_revenue_inr);
+      if (quoted > 0 && base > 0) return s + (remaining / quoted) * base;
+      return s + remaining;
+    }, 0);
     const unpaidReceivable = quotesAll.reduce((s, q) => {
       const balance = toFiniteNumber(q.balance_due);
       if (balance <= 0) return s;
@@ -370,27 +400,45 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       if (quoted > 0 && base > 0) return s + (balance / quoted) * base;
       return s + balance;
     }, 0);
+    const byStatus = (status: string) =>
+      quotesAll.filter((q) => (q.financial_status || '') === status);
+    const sumAwarded = (rows: QuoteRow[]) =>
+      rows.reduce((s, q) => s + toFiniteNumber(q.base_quoted_revenue_inr ?? q.quoted_revenue), 0);
+    const notInvoicedRows = byStatus('not_invoiced');
+    const partialPaidRows = byStatus('partially_invoiced_paid');
+    const partialPendingRows = byStatus('partially_invoiced_payment_pending');
+    const fullPendingRows = byStatus('fully_invoiced_payment_pending');
+    const fullPaidRows = byStatus('fully_invoiced_fully_paid');
+    const overRows = byStatus('over_invoiced_requires_review');
     const awaitingPaymentCount = quotesAll.filter(
       (q) => toFiniteNumber(q.balance_due) > 0,
     ).length;
     const followUpDue = quotesAll.filter((q) => q.payment_follow_up_due).length;
     const missingDate = quotesAll.filter((q) => !q.quoted_date).length;
-    const notInvoiced = quotesAll.filter((q) => (q.invoice_status || 'none') === 'none').length;
-    const partiallyInvoiced = quotesAll.filter((q) => q.invoice_status === 'partial').length;
-    const fullyInvoiced = quotesAll.filter((q) => q.invoice_status === 'full').length;
     const currencies = new Set(
       quotesAll.map((q) => (q.currency_code || 'INR').toUpperCase()).filter(Boolean),
     );
     return {
       count: quotesAll.length,
-      invoicedRevenue,
+      awardedValue,
+      totalInvoiced,
+      totalPaid,
+      toInvoice,
       unpaidReceivable,
       awaitingPaymentCount,
       followUpDue,
       missingDate,
-      notInvoiced,
-      partiallyInvoiced,
-      fullyInvoiced,
+      notInvoiced: notInvoicedRows.length,
+      notInvoicedValue: sumAwarded(notInvoicedRows),
+      partiallyInvoicedPaid: partialPaidRows.length,
+      partiallyInvoicedPaidValue: sumAwarded(partialPaidRows),
+      partiallyInvoicedPending: partialPendingRows.length,
+      partiallyInvoicedPendingValue: sumAwarded(partialPendingRows),
+      fullyInvoicedPending: fullPendingRows.length,
+      fullyInvoicedPendingValue: sumAwarded(fullPendingRows),
+      fullyPaid: fullPaidRows.length,
+      fullyPaidValue: sumAwarded(fullPaidRows),
+      overInvoiced: overRows.length,
       mixedFx: currencies.size > 1,
       currencyCount: currencies.size,
     };
@@ -426,12 +474,12 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   return (
     <Stack spacing={2.5}>
       <FinanceHeroBanner
-        title="Projects & revenue"
-        subtitle="Book awarded quotes, capture customer PO, and track invoice status (none / partial / full). Filters run on the server. Unpaid invoices get a follow-up at 30 days, then weekly."
+        title="Awarded Quotes & Revenue"
+        subtitle="Commercial lifecycle: Awarded → Invoiced → Paid. Status is derived from invoice and payment lines — never maintained manually. PDF import uses extract → review → confirm."
         chips={
           <>
             <Chip size="small" label={teamId ? 'Team scope' : 'All teams'} sx={{ fontWeight: 700 }} />
-            <Chip size="small" variant="outlined" label={`${quoteStats.count} quotes`} />
+            <Chip size="small" variant="outlined" label={`${quoteStats.count} awarded`} />
             {quoteStats.notInvoiced > 0 ? (
               <Chip
                 size="small"
@@ -473,32 +521,50 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       />
 
       <Grid container spacing={1.5}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 2 }}>
           <KpiMetricCard
             compact
             accent="primary"
             icon={RequestQuoteOutlinedIcon}
-            title="Awarded quotes"
-            value={String(quoteStats.count)}
-            subtitle="Click to show all"
+            title="Total awarded"
+            value={financeMoney(quoteStats.awardedValue, 'INR')}
+            subtitle={`${quoteStats.count} quotes · contract value`}
             selected={listFilter === 'all'}
             onClick={() => setListFilter('all')}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+          <KpiMetricCard
+            compact
+            accent="success"
+            icon={TrendingUpOutlinedIcon}
+            title="Total invoiced"
+            value={financeMoney(quoteStats.totalInvoiced, 'INR')}
+            subtitle="Billed via invoice lines"
+            selected={listFilter === 'invoiced'}
+            onClick={() => toggleFilter('invoiced')}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+          <KpiMetricCard
+            compact
+            accent="info"
+            icon={ReceiptLongOutlinedIcon}
+            title="Collected"
+            value={financeMoney(quoteStats.totalPaid, 'INR')}
+            subtitle="Cash received (payment date)"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KpiMetricCard
             compact
-            accent="success"
-            icon={TrendingUpOutlinedIcon}
-            title="Fully invoiced Σ"
-            value={financeMoney(quoteStats.invoicedRevenue, 'INR')}
-            subtitle={
-              quoteStats.mixedFx
-                ? `Fully invoiced · ${quoteStats.fullyInvoiced} quotes · ${quoteStats.currencyCount} FX`
-                : `Fully invoiced · ${quoteStats.fullyInvoiced} quotes`
-            }
-            selected={listFilter === 'invoiced'}
-            onClick={() => toggleFilter('invoiced')}
+            accent="warning"
+            icon={CalendarMonthOutlinedIcon}
+            title="To be invoiced"
+            value={financeMoney(quoteStats.toInvoice, 'INR')}
+            subtitle={`${quoteStats.notInvoiced} not started`}
+            selected={listFilter === 'not_invoiced'}
+            onClick={() => toggleFilter('not_invoiced')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -506,23 +572,62 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             compact
             accent="warning"
             icon={ReceiptLongOutlinedIcon}
-            title="Awaiting payment Σ"
+            title="Outstanding"
             value={financeMoney(quoteStats.unpaidReceivable, 'INR')}
-            subtitle={`${quoteStats.awaitingPaymentCount} invoiced · unpaid`}
+            subtitle={`${quoteStats.awaitingPaymentCount} with balance due`}
             selected={listFilter === 'awaiting_payment'}
             onClick={() => toggleFilter('awaiting_payment')}
+          />
+        </Grid>
+      </Grid>
+
+      <Grid container spacing={1.5}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="success"
+            icon={TrendingUpOutlinedIcon}
+            title="Fully invoiced & paid"
+            value={financeMoney(quoteStats.fullyPaidValue, 'INR')}
+            subtitle={`${quoteStats.fullyPaid} quotes · awarded value`}
+            selected={listFilter === 'fully_invoiced_fully_paid'}
+            onClick={() => toggleFilter('fully_invoiced_fully_paid')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KpiMetricCard
             compact
             accent="info"
+            icon={RequestQuoteOutlinedIcon}
+            title="Partially invoiced & paid"
+            value={financeMoney(quoteStats.partiallyInvoicedPaidValue, 'INR')}
+            subtitle={`${quoteStats.partiallyInvoicedPaid} · more to bill`}
+            selected={listFilter === 'partially_invoiced_paid'}
+            onClick={() => toggleFilter('partially_invoiced_paid')}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="warning"
+            icon={ReceiptLongOutlinedIcon}
+            title="Not invoiced"
+            value={financeMoney(quoteStats.notInvoicedValue, 'INR')}
+            subtitle={`${quoteStats.notInvoiced} awarded · ₹0 billed`}
+            selected={listFilter === 'not_invoiced'}
+            onClick={() => toggleFilter('not_invoiced')}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KpiMetricCard
+            compact
+            accent="warning"
             icon={CalendarMonthOutlinedIcon}
-            title="Payment follow-up"
-            value={String(quoteStats.followUpDue)}
-            subtitle="30+ days unpaid (then weekly)"
-            selected={listFilter === 'follow_up'}
-            onClick={() => toggleFilter('follow_up')}
+            title="Fully invoiced · pending"
+            value={financeMoney(quoteStats.fullyInvoicedPendingValue, 'INR')}
+            subtitle={`${quoteStats.fullyInvoicedPending} awaiting collection`}
+            selected={listFilter === 'fully_invoiced_payment_pending'}
+            onClick={() => toggleFilter('fully_invoiced_payment_pending')}
           />
         </Grid>
       </Grid>
@@ -719,12 +824,27 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
 
       {!editingId ? (
         <FinanceSection
-          title="Optional file upload"
-          subtitle="Batch Excel/CSV for quotes. Quote and invoice PDFs use extract → review → confirm (never auto-save)."
+          title="Import document"
+          subtitle="Upload a quote or invoice PDF. ProTrack extracts fields for review — nothing is saved until you confirm. Manual entry remains available above."
         >
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              disabled={!importTeamId}
+              onClick={() => setQuotePdfOpen(true)}
+            >
+              Import Quote PDF
+            </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              disabled={!importTeamId}
+              onClick={() => setInvoicePdfOpen(true)}
+            >
+              Import Invoice PDF
+            </Button>
             <Button variant="outlined" component="label" disabled={!canUpload}>
-              Upload Quote File
+              Upload Quote Excel/CSV
               <input
                 hidden
                 type="file"
@@ -735,20 +855,6 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                   event.target.value = '';
                 }}
               />
-            </Button>
-            <Button
-              variant="outlined"
-              disabled={!importTeamId}
-              onClick={() => setQuotePdfOpen(true)}
-            >
-              Import Quote PDF
-            </Button>
-            <Button
-              variant="outlined"
-              disabled={!importTeamId}
-              onClick={() => setInvoicePdfOpen(true)}
-            >
-              Import Invoice PDF
             </Button>
           </Box>
         </FinanceSection>
@@ -819,7 +925,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
         title="Awarded quotes"
         subtitle={
           listFilter === 'all' && !search.trim()
-            ? 'Scan booked quotes by amount, invoice status, and project link. Edit opens the form above.'
+            ? 'Status cards above filter by awarded-value classification. Amounts on status cards are Awarded Value (not double-counted with Invoiced/Paid KPIs).'
             : `Showing ${filteredQuotes.length} of ${quoteStats.count} quotes (server filter)`
         }
         action={
@@ -848,10 +954,18 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
               {(
                 [
                   { key: 'not_invoiced' as const, label: 'Not invoiced' },
-                  { key: 'partially_invoiced' as const, label: 'Partially invoiced' },
-                  { key: 'invoiced' as const, label: 'Invoiced' },
-                  { key: 'partially_paid' as const, label: 'Partially paid' },
-                  { key: 'awaiting_payment' as const, label: 'Awaiting payment' },
+                  { key: 'partially_invoiced_paid' as const, label: 'Partial & paid' },
+                  {
+                    key: 'partially_invoiced_payment_pending' as const,
+                    label: 'Partial · payment pending',
+                  },
+                  {
+                    key: 'fully_invoiced_payment_pending' as const,
+                    label: 'Fully invoiced · pending',
+                  },
+                  { key: 'fully_invoiced_fully_paid' as const, label: 'Fully paid' },
+                  { key: 'over_invoiced' as const, label: 'Over-invoiced' },
+                  { key: 'awaiting_payment' as const, label: 'Any balance due' },
                   { key: 'follow_up' as const, label: 'Follow-up due' },
                   { key: 'unlinked' as const, label: 'Unlinked' },
                   { key: 'missing_date' as const, label: 'No date' },

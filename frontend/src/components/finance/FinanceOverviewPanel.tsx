@@ -397,12 +397,12 @@ export function FinanceOverviewPanel({
 
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Tooltip title="Estimated contract value of active awarded quotes (base currency).">
+          <Tooltip title="Estimated contract value of active awarded quotes (base currency). Separate from invoiced / paid / revenue recognition.">
             <Box sx={{ height: '100%' }}>
               <KpiMetricCard
                 title="Awarded value"
                 value={financeMoney(data.quote_billing?.awarded_value_inr, currency)}
-                subtitle={`${data.quote_billing?.quote_count ?? 0} active quotes · estimated contract value`}
+                subtitle={`${data.quote_billing?.quote_count ?? 0} active quotes · awarded (not revenue)`}
                 icon={RequestQuoteOutlinedIcon}
                 accent="primary"
                 compact
@@ -411,10 +411,10 @@ export function FinanceOverviewPanel({
           </Tooltip>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Tooltip title="Remaining contract value not yet covered by invoice lines (derived invoice_status = none or partial remaining).">
+          <Tooltip title="Remaining awarded value not yet covered by invoice lines (to be invoiced).">
             <Box sx={{ height: '100%' }}>
               <KpiMetricCard
-                title="Not invoiced"
+                title="To be invoiced"
                 value={financeMoney(data.quote_billing?.remaining_to_invoice_inr, currency)}
                 subtitle={`${data.quote_billing?.not_invoiced_count ?? 0} none · ${data.quote_billing?.partially_invoiced_count ?? 0} partial`}
                 icon={ReceiptLongOutlinedIcon}
@@ -425,12 +425,12 @@ export function FinanceOverviewPanel({
           </Tooltip>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Tooltip title="Sum of actual invoice line amounts (cash ledger), converted to base currency.">
+          <Tooltip title="Sum of actual invoice line amounts (cash ledger), converted to base currency. Invoice date drives turnover.">
             <Box sx={{ height: '100%' }}>
               <KpiMetricCard
-                title="Invoiced (cash)"
+                title="Invoiced"
                 value={financeMoney(data.quote_billing?.total_invoiced_inr, currency)}
-                subtitle={`${data.quote_billing?.fully_invoiced_count ?? 0} fully invoiced · actual invoice lines`}
+                subtitle={`${data.quote_billing?.fully_invoiced_count ?? 0} fully invoiced · billed amount`}
                 icon={TrendingUpOutlinedIcon}
                 accent="success"
                 compact
@@ -439,12 +439,12 @@ export function FinanceOverviewPanel({
           </Tooltip>
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Tooltip title="Outstanding = invoiced − paid (balance due on the cash ledger).">
+          <Tooltip title="Outstanding = invoiced − paid. Payment date drives cash flow, not turnover.">
             <Box sx={{ height: '100%' }}>
               <KpiMetricCard
                 title="Outstanding"
                 value={financeMoney(data.quote_billing?.outstanding_balance_inr, currency)}
-                subtitle={`Paid ${financeMoney(data.quote_billing?.total_paid_inr, currency)} · balance due`}
+                subtitle={`Collected ${financeMoney(data.quote_billing?.total_paid_inr, currency)} · balance due`}
                 icon={PaymentsOutlinedIcon}
                 accent="info"
                 compact

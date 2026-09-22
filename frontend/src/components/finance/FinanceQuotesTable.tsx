@@ -49,9 +49,36 @@ export type AwardedQuoteRow = {
   payment_status?: 'none' | 'partial' | 'full' | string | null;
   is_partially_invoiced?: boolean;
   is_partially_paid?: boolean;
+  financial_status?: string | null;
+  invoice_percentage?: number | string | null;
+  collection_percentage?: number | string | null;
   billing_ready?: boolean;
   billing_gaps?: string[];
 };
+
+const FINANCIAL_STATUS_LABELS: Record<string, string> = {
+  not_invoiced: 'Not invoiced',
+  partially_invoiced_paid: 'Partially invoiced & paid',
+  partially_invoiced_payment_pending: 'Partially invoiced — payment pending',
+  fully_invoiced_payment_pending: 'Fully invoiced — payment pending',
+  fully_invoiced_fully_paid: 'Fully invoiced & fully paid',
+  over_invoiced_requires_review: 'Over-invoiced — review',
+};
+
+function resolveFinancialStatus(quote: AwardedQuoteRow): string {
+  if (quote.financial_status) return quote.financial_status;
+  const invoiceStatus = resolveInvoiceStatus(quote);
+  const paymentStatus = resolvePaymentStatus(quote, invoiceStatus);
+  if (invoiceStatus === 'none') return 'not_invoiced';
+  if (invoiceStatus === 'partial') {
+    return paymentStatus === 'none' || toFiniteNumber(quote.balance_due) > 0.01
+      ? 'partially_invoiced_payment_pending'
+      : 'partially_invoiced_paid';
+  }
+  return paymentStatus === 'full' || toFiniteNumber(quote.balance_due) <= 0.01
+    ? 'fully_invoiced_fully_paid'
+    : 'fully_invoiced_payment_pending';
+}
 
 function resolveInvoiceStatus(quote: AwardedQuoteRow): 'none' | 'partial' | 'full' {
   const quoted = toFiniteNumber(quote.quoted_revenue);
@@ -232,7 +259,7 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
               const showFx =
                 quote.base_quoted_revenue_inr != null && currency !== 'INR';
               const invoiceStatus = resolveInvoiceStatus(quote);
-              const paymentStatus = resolvePaymentStatus(quote, invoiceStatus);
+              const financialStatus = resolveFinancialStatus(quote);
               const remainingToInvoice =
                 quote.remaining_to_invoice != null
                   ? toFiniteNumber(quote.remaining_to_invoice)
@@ -357,33 +384,23 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                   <TableCell>
                     <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>
                       <StatusPill
+                        label={
+                          FINANCIAL_STATUS_LABELS[financialStatus] ??
+                          financialStatus.replace(/_/g, ' ')
+                        }
+                        tone={
+                          financialStatus === 'fully_invoiced_fully_paid' ||
+                          financialStatus === 'partially_invoiced_paid'
+                            ? 'success'
+                            : financialStatus === 'not_invoiced'
+                              ? 'neutral'
+                              : 'warning'
+                        }
+                      />
+                      <StatusPill
                         label={quote.project_linked ? 'Linked' : 'Unlinked'}
                         tone={quote.project_linked ? 'success' : 'neutral'}
                       />
-                      <StatusPill
-                        label={
-                          invoiceStatus === 'partial'
-                            ? 'Partially invoiced'
-                            : invoiceStatus === 'full'
-                              ? 'Invoiced'
-                              : 'Pending'
-                        }
-                        tone={invoiceStatus === 'none' ? 'warning' : 'success'}
-                      />
-                      {invoiceStatus !== 'none' ? (
-                        <StatusPill
-                          label={
-                            paymentStatus === 'partial'
-                              ? toFiniteNumber(quote.balance_due) > 0
-                                ? 'Partially paid'
-                                : 'Paid on invoices'
-                              : paymentStatus === 'full'
-                                ? 'Paid'
-                                : 'Unpaid'
-                          }
-                          tone={paymentStatus === 'full' ? 'success' : 'warning'}
-                        />
-                      ) : null}
                       {quote.payment_follow_up_due ? (
                         <StatusPill label="Follow up" tone="warning" />
                       ) : null}
@@ -400,6 +417,16 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                         <StatusPill label="Billing ready" tone="success" />
                       )}
                     </Stack>
+                    {toFiniteNumber(quote.invoice_percentage) > 0 ||
+                    toFiniteNumber(quote.collection_percentage) > 0 ? (
+                      <Typography
+                        variant="caption"
+                        sx={{ color: chartTheme.ink.secondary, display: 'block', mt: 0.5 }}
+                      >
+                        Invoice {toFiniteNumber(quote.invoice_percentage).toFixed(0)}% · Collection{' '}
+                        {toFiniteNumber(quote.collection_percentage).toFixed(0)}%
+                      </Typography>
+                    ) : null}
                   </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={0.25} sx={{ justifyContent: 'flex-end' }}>

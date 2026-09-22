@@ -857,6 +857,10 @@ def add_quote_invoice_line(
             amount=payload.amount,
             line_date=payload.line_date,
             notes=payload.notes,
+            invoice_number=payload.invoice_number,
+            due_date=payload.due_date,
+            tax_amount=payload.tax_amount,
+            subtotal_amount=payload.subtotal_amount,
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.detail) from exc
@@ -915,6 +919,7 @@ def add_quote_payment_line(
             line_date=payload.line_date,
             reference=payload.reference,
             notes=payload.notes,
+            invoice_line_id=payload.invoice_line_id,
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.detail) from exc
@@ -1698,11 +1703,22 @@ def list_quotes(
         default=None,
         description="Derived payment status: none|partial|full",
     ),
+    financial_status: str | None = Query(
+        default=None,
+        description=(
+            "Lifecycle status: not_invoiced|partially_invoiced_paid|"
+            "partially_invoiced_payment_pending|fully_invoiced_payment_pending|"
+            "fully_invoiced_fully_paid|over_invoiced_requires_review"
+        ),
+    ),
     list_filter: str | None = Query(
         default=None,
         description=(
-            "Finance UI chip filter: all|not_invoiced|partially_invoiced|invoiced|"
-            "awaiting_payment|partially_paid|follow_up|unlinked|missing_date"
+            "Finance UI chip filter: all|not_invoiced|partially_invoiced|"
+            "partially_invoiced_paid|partially_invoiced_payment_pending|"
+            "fully_invoiced_payment_pending|fully_invoiced_fully_paid|"
+            "over_invoiced|invoiced|awaiting_payment|partially_paid|"
+            "follow_up|unlinked|missing_date"
         ),
     ),
     q: str | None = Query(default=None, description="Search quote #, tool #, customer, team, PO"),
@@ -1713,6 +1729,7 @@ def list_quotes(
     current_user: User = Depends(get_current_user),
 ):
     from app.services.finance.quote_filter_service import (
+        normalize_financial_status,
         normalize_invoice_status,
         normalize_payment_status,
         quote_matches_filters,
@@ -1729,6 +1746,15 @@ def list_quotes(
             status_code=400,
             detail="payment_status must be none|partial|full",
         )
+    if financial_status is not None and normalize_financial_status(financial_status) is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "financial_status must be not_invoiced|partially_invoiced_paid|"
+                "partially_invoiced_payment_pending|fully_invoiced_payment_pending|"
+                "fully_invoiced_fully_paid|over_invoiced_requires_review"
+            ),
+        )
     stmt = select(Quote).where(Quote.is_active.is_(True)).order_by(Quote.tool_number)
     if team_id is not None:
         stmt = stmt.where(Quote.team_id == team_id)
@@ -1740,6 +1766,7 @@ def list_quotes(
             row.model_dump(),
             invoice_status=invoice_status,
             payment_status=payment_status,
+            financial_status=financial_status,
             list_filter=list_filter,
             q=q,
             project_linked=project_linked,
@@ -1949,7 +1976,9 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
         quote_billing_gaps,
         quote_billing_ready,
     )
-    from app.services.finance.quote_cash_ledger_service import summarize_quote_cash
+    from app.services.finance.quote_cash_ledger_service import (
+        calculate_awarded_quote_financial_status,
+    )
     from app.services.finance.quote_import_service import _current_revision
     from app.services.finance.quote_payment_notifier import (
         next_payment_follow_up_date,
@@ -1961,7 +1990,7 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
     team = db.get(Team, row.team_id) if row.team_id else None
     revision = _current_revision(db, row)
     gaps = quote_billing_gaps(row)
-    cash = summarize_quote_cash(db, row, revision=revision)
+    cash = calculate_awarded_quote_financial_status(db, row, revision=revision)
     invoice_status = cash["invoice_status"]
     # Legacy quotes marked invoiced before cash ledger lines existed.
     if invoice_status == "none" and bool(row.is_invoiced) and not cash["invoice_lines"]:
@@ -1974,6 +2003,11 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
         and invoice_status == "full"
     ):
         payment_status = "full"
+    financial_status = cash["financial_status"]
+    if invoice_status == "full" and payment_status == "full" and not cash["invoice_lines"]:
+        financial_status = "fully_invoiced_fully_paid"
+    elif invoice_status == "full" and not cash["invoice_lines"]:
+        financial_status = "fully_invoiced_payment_pending"
     data = QuoteRead.model_validate(row)
     return data.model_copy(
         update={
@@ -2007,6 +2041,16 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
             "payment_status": payment_status,
             "is_partially_invoiced": invoice_status == "partial",
             "is_partially_paid": payment_status == "partial",
+            "financial_status": financial_status,
+            "invoice_percentage": cash["invoice_percentage"],
+            "collection_percentage": cash["collection_percentage"],
+            "awarded_collection_percentage": cash["awarded_collection_percentage"],
+            "is_over_invoiced": cash["is_over_invoiced"],
+            "over_invoiced_variance": cash["over_invoiced_variance"],
+            "is_overpayment": cash["is_overpayment"],
+            "overpayment_amount": cash["overpayment_amount"],
+            "last_invoice_date": cash.get("last_invoice_date"),
+            "last_payment_date": cash.get("last_payment_date"),
             "invoice_lines": [
                 QuoteInvoiceLineRead.model_validate(line) for line in cash["invoice_lines"]
             ],
@@ -2831,6 +2875,9 @@ async def confirm_invoice_pdf(
     line_date: date = Form(...),
     invoice_number: str | None = Form(default=None),
     notes: str | None = Form(default=None),
+    due_date: date | None = Form(default=None),
+    tax_amount: Decimal | None = Form(default=None),
+    subtotal_amount: Decimal | None = Form(default=None),
     import_anyway: bool = Form(default=False),
     content_sha256: str | None = Form(default=None),
     file: UploadFile | None = File(default=None),
@@ -2855,6 +2902,9 @@ async def confirm_invoice_pdf(
             line_date=line_date,
             notes=notes,
             invoice_number=invoice_number,
+            due_date=due_date,
+            tax_amount=tax_amount,
+            subtotal_amount=subtotal_amount,
             import_anyway=import_anyway,
             content=content,
             filename=filename,

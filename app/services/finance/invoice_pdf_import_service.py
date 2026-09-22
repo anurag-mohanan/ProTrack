@@ -164,28 +164,73 @@ def find_duplicate_invoices(
     line_date: date | None,
     content_sha256: str | None,
 ) -> list[dict]:
+    from app.models.enterprise import DocumentAsset
+
     duplicates: list[dict] = []
+    seen_line_ids: set[str] = set()
+
+    def _append(row: QuoteInvoiceLine, reason: str) -> None:
+        key = str(row.id)
+        if key in seen_line_ids:
+            return
+        seen_line_ids.add(key)
+        duplicates.append(
+            {
+                "invoice_line_id": key,
+                "quote_id": str(row.quote_id),
+                "amount": row.amount,
+                "line_date": row.line_date.isoformat(),
+                "invoice_number": row.invoice_number,
+                "notes": row.notes,
+                "reason": reason,
+            }
+        )
+
+    if content_sha256:
+        sha = content_sha256.strip().lower()
+        if sha:
+            for row in db.scalars(
+                select(QuoteInvoiceLine).where(QuoteInvoiceLine.content_sha256 == sha)
+            ).all():
+                _append(row, "same_document_hash")
+            for asset in db.scalars(
+                select(DocumentAsset).where(
+                    DocumentAsset.checksum == sha,
+                    DocumentAsset.entity_type == "quote",
+                )
+            ).all():
+                # Match invoice lines on the same quote that may lack content_sha256.
+                for row in db.scalars(
+                    select(QuoteInvoiceLine).where(
+                        QuoteInvoiceLine.quote_id == asset.entity_id
+                    )
+                ).all():
+                    notes = (row.notes or "").lower()
+                    if "pdf import" in notes or (row.invoice_number and row.content_sha256 == sha):
+                        _append(row, "same_document_hash")
+
     if invoice_number:
         key = invoice_number.strip()
-        rows = db.scalars(
-            select(QuoteInvoiceLine)
-            .where(QuoteInvoiceLine.notes.is_not(None))
-            .order_by(QuoteInvoiceLine.line_date.desc())
-            .limit(500)
-        ).all()
-        for row in rows:
-            notes = row.notes or ""
-            if key and key.lower() in notes.lower():
-                duplicates.append(
-                    {
-                        "invoice_line_id": str(row.id),
-                        "quote_id": str(row.quote_id),
-                        "amount": row.amount,
-                        "line_date": row.line_date.isoformat(),
-                        "notes": notes,
-                        "reason": "invoice_number_in_notes",
-                    }
-                )
+        if key:
+            for row in db.scalars(
+                select(QuoteInvoiceLine)
+                .where(func.lower(QuoteInvoiceLine.invoice_number) == key.lower())
+                .order_by(QuoteInvoiceLine.line_date.desc())
+                .limit(50)
+            ).all():
+                _append(row, "same_invoice_number")
+            # Legacy: invoice number stored only in notes.
+            rows = db.scalars(
+                select(QuoteInvoiceLine)
+                .where(QuoteInvoiceLine.notes.is_not(None))
+                .order_by(QuoteInvoiceLine.line_date.desc())
+                .limit(500)
+            ).all()
+            for row in rows:
+                notes = row.notes or ""
+                if key.lower() in notes.lower():
+                    _append(row, "invoice_number_in_notes")
+
     if amount is not None and line_date is not None and not duplicates:
         rows = db.scalars(
             select(QuoteInvoiceLine).where(
@@ -194,18 +239,8 @@ def find_duplicate_invoices(
             )
         ).all()
         for row in rows:
-            duplicates.append(
-                {
-                    "invoice_line_id": str(row.id),
-                    "quote_id": str(row.quote_id),
-                    "amount": row.amount,
-                    "line_date": row.line_date.isoformat(),
-                    "notes": row.notes,
-                    "reason": "same_amount_and_date",
-                }
-            )
-    # content hash is retained on extract for client; DocumentAsset may store later
-    _ = content_sha256
+            _append(row, "same_amount_and_date")
+
     return duplicates[:10]
 
 
@@ -348,6 +383,9 @@ def confirm_invoice_pdf_import(
     filename: str | None,
     content_sha256: str | None,
     user: User,
+    due_date: date | None = None,
+    tax_amount: Decimal | None = None,
+    subtotal_amount: Decimal | None = None,
 ) -> Quote:
     """Create invoice line from reviewed fields. Optional PDF stored against quote."""
     quote = load_quote_with_ledger(db, quote_id)
@@ -380,6 +418,11 @@ def confirm_invoice_pdf_import(
         amount=amount,
         line_date=line_date,
         notes=final_notes,
+        invoice_number=invoice_number,
+        due_date=due_date,
+        tax_amount=tax_amount,
+        subtotal_amount=subtotal_amount,
+        content_sha256=content_sha256,
     )
     db.flush()
 

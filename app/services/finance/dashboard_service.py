@@ -844,7 +844,15 @@ def _overhead_metrics(
 
 def _quote_billing_summary(db: Session, *, team_id: UUID | None = None) -> dict:
     """Awarded / invoiced / outstanding totals from cash-ledger-derived quote status."""
-    from app.services.finance.quote_cash_ledger_service import summarize_quote_cash
+    from app.services.finance.quote_cash_ledger_service import (
+        STATUS_FULLY_INVOICED_FULLY_PAID,
+        STATUS_FULLY_INVOICED_PAYMENT_PENDING,
+        STATUS_NOT_INVOICED,
+        STATUS_OVER_INVOICED_REQUIRES_REVIEW,
+        STATUS_PARTIALLY_INVOICED_PAID,
+        STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING,
+        calculate_awarded_quote_financial_status,
+    )
 
     stmt = select(Quote).where(Quote.is_active.is_(True))
     if team_id is not None:
@@ -855,22 +863,42 @@ def _quote_billing_summary(db: Session, *, team_id: UUID | None = None) -> dict:
     balance_due = Decimal("0.00")
     total_paid = Decimal("0.00")
     counts = {"none": 0, "partial": 0, "full": 0, "total": 0}
+    status_awarded = {
+        STATUS_NOT_INVOICED: Decimal("0.00"),
+        STATUS_PARTIALLY_INVOICED_PAID: Decimal("0.00"),
+        STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING: Decimal("0.00"),
+        STATUS_FULLY_INVOICED_PAYMENT_PENDING: Decimal("0.00"),
+        STATUS_FULLY_INVOICED_FULLY_PAID: Decimal("0.00"),
+        STATUS_OVER_INVOICED_REQUIRES_REVIEW: Decimal("0.00"),
+    }
+    status_counts = {key: 0 for key in status_awarded}
     for quote in db.scalars(stmt).all():
         rev = _current_quote_revision(db, quote)
-        cash = summarize_quote_cash(db, quote, revision=rev)
+        cash = calculate_awarded_quote_financial_status(db, quote, revision=rev)
         status = str(cash["invoice_status"] or "none")
         if status == "none" and bool(quote.is_invoiced) and not cash["invoice_lines"]:
             status = "full"
+        financial_status = str(cash["financial_status"])
+        if status == "full" and not cash["invoice_lines"]:
+            financial_status = (
+                STATUS_FULLY_INVOICED_FULLY_PAID
+                if bool(quote.is_paid)
+                else STATUS_FULLY_INVOICED_PAYMENT_PENDING
+            )
         base = _d(rev.base_quoted_revenue_inr) if rev else Decimal("0")
         quoted = _d(cash["quoted_revenue"])
         fx = (base / quoted) if quoted > 0 and base > 0 else Decimal("1")
-        awarded += base if base > 0 else quoted
+        awarded_inr = base if base > 0 else quoted
+        awarded += awarded_inr
         remaining_to_invoice += _d(cash["remaining_to_invoice"]) * fx
         total_invoiced += _d(cash["total_invoiced"]) * fx
         balance_due += _d(cash["balance_due"]) * fx
         total_paid += _d(cash["total_paid"]) * fx
         counts[status] = counts.get(status, 0) + 1
         counts["total"] += 1
+        if financial_status in status_awarded:
+            status_awarded[financial_status] += awarded_inr
+            status_counts[financial_status] += 1
     return {
         "awarded_value_inr": awarded.quantize(Decimal("0.01")),
         "remaining_to_invoice_inr": remaining_to_invoice.quantize(Decimal("0.01")),
@@ -881,6 +909,11 @@ def _quote_billing_summary(db: Session, *, team_id: UUID | None = None) -> dict:
         "partially_invoiced_count": counts.get("partial", 0),
         "fully_invoiced_count": counts.get("full", 0),
         "quote_count": counts.get("total", 0),
+        # Status card amounts are Awarded Value classifications (no double-count).
+        "status_awarded_value_inr": {
+            key: value.quantize(Decimal("0.01")) for key, value in status_awarded.items()
+        },
+        "status_counts": status_counts,
     }
 
 

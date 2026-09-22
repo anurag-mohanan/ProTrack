@@ -352,9 +352,17 @@ class QuoteInvoiceLine(Base, TimestampMixin, TenantMixin):
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     line_date: Mapped[date] = mapped_column(Date, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    invoice_number: Mapped[Optional[str]] = mapped_column(String(100), index=True)
+    due_date: Mapped[Optional[date]] = mapped_column(Date)
+    tax_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    subtotal_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    content_sha256: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     quote: Mapped[Quote] = relationship(back_populates="invoice_lines")
+    payment_allocations: Mapped[list["QuotePaymentLine"]] = relationship(
+        back_populates="invoice_line"
+    )
 
 
 class QuotePaymentLine(Base, TimestampMixin, TenantMixin):
@@ -372,9 +380,18 @@ class QuotePaymentLine(Base, TimestampMixin, TenantMixin):
     line_date: Mapped[date] = mapped_column(Date, nullable=False)
     reference: Mapped[Optional[str]] = mapped_column(String(200))
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    invoice_line_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("quote_invoice_lines.id"),
+        nullable=True,
+        index=True,
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     quote: Mapped[Quote] = relationship(back_populates="payment_lines")
+    invoice_line: Mapped[Optional["QuoteInvoiceLine"]] = relationship(
+        back_populates="payment_allocations"
+    )
 
 
 class QuoteRevision(Base, TimestampMixin, TenantMixin):

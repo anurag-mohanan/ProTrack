@@ -8,8 +8,9 @@ import {
   Typography,
 } from '@mui/material';
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
+import { documentDownloadUrl, listDocuments } from '../../api/documents';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { toFiniteNumber } from '../../utils/format';
@@ -23,6 +24,8 @@ export type CashLine = {
   line_date: string;
   notes?: string | null;
   reference?: string | null;
+  invoice_number?: string | null;
+  due_date?: string | null;
 };
 
 export type QuoteCashSummary = {
@@ -34,6 +37,9 @@ export type QuoteCashSummary = {
   balance_due?: number | string | null;
   remaining_to_invoice?: number | string | null;
   remaining_contract?: number | string | null;
+  financial_status?: string | null;
+  invoice_percentage?: number | string | null;
+  collection_percentage?: number | string | null;
   invoice_lines?: CashLine[];
   payment_lines?: CashLine[];
 };
@@ -141,6 +147,11 @@ export function QuoteCashLedgerPanel({ quote, onChanged }: QuoteCashLedgerPanelP
     deleteInvoiceMutation.isPending ||
     deletePaymentMutation.isPending;
 
+  const documentsQuery = useQuery({
+    queryKey: ['quote-documents', quote.id],
+    queryFn: () => listDocuments({ entity_type: 'quote', entity_id: quote.id }),
+  });
+
   return (
     <Box
       sx={{
@@ -157,7 +168,7 @@ export function QuoteCashLedgerPanel({ quote, onChanged }: QuoteCashLedgerPanelP
       </Typography>
       <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: 'wrap', mb: 1.5 }}>
         <Typography variant="caption">
-          Quoted <strong>{financeMoney(quote.quoted_revenue, currency)}</strong>
+          Awarded <strong>{financeMoney(quote.quoted_revenue, currency)}</strong>
         </Typography>
         <Typography variant="caption">
           Invoiced <strong>{financeMoney(quote.total_invoiced, currency)}</strong>
@@ -166,11 +177,16 @@ export function QuoteCashLedgerPanel({ quote, onChanged }: QuoteCashLedgerPanelP
           Paid <strong>{financeMoney(quote.total_paid, currency)}</strong>
         </Typography>
         <Typography variant="caption" color={balanceDue > 0 ? 'warning.main' : 'success.main'}>
-          Balance due <strong>{financeMoney(quote.balance_due, currency)}</strong>
+          Outstanding <strong>{financeMoney(quote.balance_due, currency)}</strong>
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Left to invoice {financeMoney(quote.remaining_to_invoice, currency)}
+          To invoice {financeMoney(quote.remaining_to_invoice, currency)}
         </Typography>
+        {quote.financial_status ? (
+          <Typography variant="caption" sx={{ fontWeight: 700 }}>
+            Status: {quote.financial_status.replace(/_/g, ' ')}
+          </Typography>
+        ) : null}
       </Stack>
 
       <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.75 }}>
@@ -190,7 +206,9 @@ export function QuoteCashLedgerPanel({ quote, onChanged }: QuoteCashLedgerPanelP
               sx={{ alignItems: 'center', justifyContent: 'space-between' }}
             >
               <Typography variant="body2">
+                {line.invoice_number ? `${line.invoice_number} · ` : ''}
                 {line.line_date} · {financeMoney(line.amount, currency)}
+                {line.due_date ? ` · due ${line.due_date}` : ''}
                 {line.notes ? ` · ${line.notes}` : ''}
               </Typography>
               <IconButton
@@ -263,6 +281,7 @@ export function QuoteCashLedgerPanel({ quote, onChanged }: QuoteCashLedgerPanelP
         quoteId={quote.id}
         onImported={(data) => {
           if (data) onChanged(data as QuoteCashSummary);
+          void documentsQuery.refetch();
         }}
       />
 
@@ -346,9 +365,24 @@ export function QuoteCashLedgerPanel({ quote, onChanged }: QuoteCashLedgerPanelP
           </Button>
         ) : null}
       </Stack>
+      {(documentsQuery.data ?? []).length > 0 ? (
+        <Box sx={{ mt: 1.5 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.75 }}>
+            Attached documents
+          </Typography>
+          <Stack spacing={0.5}>
+            {(documentsQuery.data ?? []).map((doc) => (
+              <Typography key={doc.id} variant="caption" component="a" href={documentDownloadUrl(doc.id)}>
+                {doc.title || doc.filename}
+                {doc.notes?.includes('pdf') ? ' (PDF import)' : ''}
+              </Typography>
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
         Follow-up reminders start 30 days after the first invoice while balance due &gt; 0, then
-        weekly.
+        weekly. Financial status updates automatically when invoices or payments change.
       </Typography>
     </Box>
   );

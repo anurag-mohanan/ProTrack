@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from app.services.finance.quote_cash_ledger_service import (
+    STATUS_FULLY_INVOICED_FULLY_PAID,
+    STATUS_FULLY_INVOICED_PAYMENT_PENDING,
+    STATUS_NOT_INVOICED,
+    STATUS_OVER_INVOICED_REQUIRES_REVIEW,
+    STATUS_PARTIALLY_INVOICED_PAID,
+    STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING,
+)
+
 
 def normalize_invoice_status(status: str | None) -> str | None:
     if status is None:
@@ -38,6 +47,27 @@ def normalize_payment_status(status: str | None) -> str | None:
     return aliases.get(key)
 
 
+def normalize_financial_status(status: str | None) -> str | None:
+    if status is None:
+        return None
+    key = str(status).strip().lower().replace(" ", "_").replace("-", "_")
+    aliases = {
+        "not_invoiced": STATUS_NOT_INVOICED,
+        "none": STATUS_NOT_INVOICED,
+        "partially_invoiced_paid": STATUS_PARTIALLY_INVOICED_PAID,
+        "partially_invoiced_and_paid": STATUS_PARTIALLY_INVOICED_PAID,
+        "partially_invoiced_payment_pending": STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING,
+        "partially_invoiced_pending": STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING,
+        "fully_invoiced_payment_pending": STATUS_FULLY_INVOICED_PAYMENT_PENDING,
+        "fully_invoiced_pending": STATUS_FULLY_INVOICED_PAYMENT_PENDING,
+        "fully_invoiced_fully_paid": STATUS_FULLY_INVOICED_FULLY_PAID,
+        "fully_paid": STATUS_FULLY_INVOICED_FULLY_PAID,
+        "over_invoiced_requires_review": STATUS_OVER_INVOICED_REQUIRES_REVIEW,
+        "over_invoiced": STATUS_OVER_INVOICED_REQUIRES_REVIEW,
+    }
+    return aliases.get(key)
+
+
 def quote_matches_list_filter(row: Mapping[str, Any], list_filter: str | None) -> bool:
     """Apply Finance Quotes panel list-filter semantics to a QuoteRead-like mapping."""
     if not list_filter or list_filter in {"all", ""}:
@@ -45,18 +75,44 @@ def quote_matches_list_filter(row: Mapping[str, Any], list_filter: str | None) -
 
     invoice_status = str(row.get("invoice_status") or "none").lower()
     payment_status = str(row.get("payment_status") or "none").lower()
+    financial_status = str(row.get("financial_status") or "").lower()
     balance_due = float(row.get("balance_due") or 0)
     key = list_filter.strip().lower()
 
     if key in {"not_invoiced", "none"}:
-        return invoice_status == "none"
+        return financial_status == STATUS_NOT_INVOICED or (
+            not financial_status and invoice_status == "none"
+        )
+    if key in {"partially_invoiced_paid", "partially_invoiced_and_paid"}:
+        return financial_status == STATUS_PARTIALLY_INVOICED_PAID
+    if key in {
+        "partially_invoiced_payment_pending",
+        "partially_invoiced_pending",
+    }:
+        return financial_status == STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING
     if key in {"partially_invoiced", "partial"}:
-        return invoice_status == "partial"
+        return financial_status in {
+            STATUS_PARTIALLY_INVOICED_PAID,
+            STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING,
+        } or (not financial_status and invoice_status == "partial")
+    if key in {"fully_invoiced_payment_pending", "fully_invoiced_pending"}:
+        return financial_status == STATUS_FULLY_INVOICED_PAYMENT_PENDING
+    if key in {"fully_invoiced_fully_paid", "fully_paid"}:
+        return financial_status == STATUS_FULLY_INVOICED_FULLY_PAID
+    if key in {"over_invoiced", "over_invoiced_requires_review"}:
+        return financial_status == STATUS_OVER_INVOICED_REQUIRES_REVIEW
     if key in {"invoiced", "full", "fully_invoiced"}:
-        # Fully invoiced only — partials are a separate chip.
-        return invoice_status == "full"
+        # Fully invoiced (paid or pending) — excludes partials.
+        return financial_status in {
+            STATUS_FULLY_INVOICED_FULLY_PAID,
+            STATUS_FULLY_INVOICED_PAYMENT_PENDING,
+            STATUS_OVER_INVOICED_REQUIRES_REVIEW,
+        } or (not financial_status and invoice_status == "full")
     if key == "awaiting_payment":
-        return balance_due > 0
+        return balance_due > 0 or financial_status in {
+            STATUS_PARTIALLY_INVOICED_PAYMENT_PENDING,
+            STATUS_FULLY_INVOICED_PAYMENT_PENDING,
+        }
     if key in {"partially_paid"}:
         return payment_status == "partial" or bool(row.get("is_partially_paid"))
     if key == "follow_up":
@@ -72,6 +128,14 @@ def quote_matches_search(row: Mapping[str, Any], q: str | None) -> bool:
     if not q or not str(q).strip():
         return True
     needle = str(q).strip().lower()
+    invoice_numbers = []
+    for line in row.get("invoice_lines") or []:
+        if isinstance(line, Mapping):
+            inv = line.get("invoice_number")
+        else:
+            inv = getattr(line, "invoice_number", None)
+        if inv:
+            invoice_numbers.append(str(inv))
     blob = " ".join(
         str(part)
         for part in (
@@ -81,6 +145,7 @@ def quote_matches_search(row: Mapping[str, Any], q: str | None) -> bool:
             row.get("team_name"),
             row.get("currency_code"),
             row.get("customer_po_number"),
+            *invoice_numbers,
         )
         if part
     ).lower()
@@ -92,6 +157,7 @@ def quote_matches_filters(
     *,
     invoice_status: str | None = None,
     payment_status: str | None = None,
+    financial_status: str | None = None,
     list_filter: str | None = None,
     q: str | None = None,
     project_linked: bool | None = None,
@@ -100,6 +166,12 @@ def quote_matches_filters(
 ) -> bool:
     if list_filter and not quote_matches_list_filter(row, list_filter):
         return False
+
+    wanted_financial = normalize_financial_status(financial_status)
+    if wanted_financial is not None:
+        actual = str(row.get("financial_status") or "").lower()
+        if actual != wanted_financial:
+            return False
 
     wanted_invoice = normalize_invoice_status(invoice_status)
     if wanted_invoice is not None:

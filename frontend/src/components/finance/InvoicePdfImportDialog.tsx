@@ -62,6 +62,13 @@ type ExtractResult = {
     message?: string;
     values?: Record<string, number | null | undefined>;
   }>;
+  page_preview_data_url?: string | null;
+  page_count?: number | null;
+  extraction_status?: string | null;
+  quality_gate?: {
+    status?: string;
+    missing_fields?: string[];
+  } | null;
   customer_matches: Array<{ customer_id: string; name: string; code?: string; confidence: number }>;
   quote_matches: Array<{
     quote_id: string;
@@ -249,6 +256,41 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
           </Stack>
         ) : (
           <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert
+              severity={
+                extract.extraction_status === 'READY_FOR_REVIEW' ? 'success' : 'warning'
+              }
+            >
+              Extraction Status:{' '}
+              <strong>{extract.extraction_status || 'UNKNOWN'}</strong>
+              {' · '}
+              {(documentType || 'unknown').toUpperCase()} detected (
+              {Math.round(extract.document_type_confidence ?? 0)}%)
+              {' · '}
+              {extract.text_extraction_method || 'visual'}
+            </Alert>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
+              {extract.page_preview_data_url ? (
+                <Box sx={{ flex: '0 0 auto', width: { xs: '100%', md: 280 } }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Source document (page 1)
+                  </Typography>
+                  <Box
+                    component="img"
+                    src={extract.page_preview_data_url}
+                    alt="PDF page preview"
+                    sx={{
+                      mt: 0.5,
+                      width: '100%',
+                      border: 1,
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                    }}
+                  />
+                </Box>
+              ) : null}
+              <Stack spacing={2} sx={{ flex: 1, minWidth: 0 }}>
             <ReviewSection title="DOCUMENT">
               <ReviewRow label="Document" value={extract.filename || file?.name} emphasize />
               <ReviewRow
@@ -282,6 +324,8 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               <MenuItem value="quote">QUOTE</MenuItem>
               <MenuItem value="unknown">UNKNOWN</MenuItem>
             </TextField>
+              </Stack>
+            </Stack>
 
             {(extract.warnings ?? []).map((warning) => (
               <Alert key={warning} severity="warning">

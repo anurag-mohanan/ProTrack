@@ -15,10 +15,6 @@ from app.models.models import Customer, Project, User
 from app.services.document_asset_service import store_document
 from app.services.finance.invoice_pdf_parser import content_fingerprint
 from app.services.finance.invoice_pdf_import_service import suggest_customer_matches
-from app.services.finance.prosohm_quote_pdf_parser import (
-    looks_like_prosohm_qt_pdf,
-    parse_prosohm_quote_text,
-)
 from app.services.finance.quote_import_service import import_quote_row
 from app.services.finance.quote_field_recognizer import enrich_import_row
 
@@ -141,275 +137,113 @@ def extract_quote_pdf(
     filename: str,
     team_id: UUID | None = None,
 ) -> dict:
-    """Parse Prosohm QT PDF into review DTO. Does not create financial records.
-
-    Always returns raw_text + extraction_quality when bytes were received so the
-    review screen can show what was read — even when structured parse is partial.
-    """
-    from app.services.finance.document_import_extract import (
-        build_line_item,
-        extract_raw_document_text,
-        extraction_quality_dict,
-        hours_mismatch_warning,
-    )
-    from app.services.finance.prosohm_document_intelligence import (
-        classify_finance_document,
-        stages_as_dicts,
+    """Visual document intelligence → matching → review DTO. Never auto-saves."""
+    from app.services.finance.document_intelligence_service import (
+        get_document_intelligence_service,
     )
 
     sha = content_fingerprint(content)
-    raw = extract_raw_document_text(content, document_kind="quote", filename=filename)
-    text = raw.raw_text
-    classification = classify_finance_document(text=text, filename=filename)
+    analyzed = get_document_intelligence_service().analyze_quote_document(
+        content, filename=filename
+    )
+    fields = analyzed.get("fields") or {}
+    customer_name = (fields.get("customer_name") or {}).get("value")
+    tool_number = (
+        (fields.get("customer_project_number") or {}).get("value")
+        or (fields.get("tool_number") or {}).get("value")
+    )
+    quote_number = (
+        (fields.get("external_quote_number") or {}).get("value")
+        or (fields.get("quote_number") or {}).get("value")
+    )
 
-    base: dict = {
-        "text_extractable": raw.text_extractable,
-        "ocr_used": raw.ocr_used,
-        "source_chars": raw.character_count,
-        "content_sha256": sha,
-        "filename": filename,
-        "warnings": list(raw.warnings),
-        "document_type": classification.document_type,
-        "document_type_confidence": classification.confidence,
-        "text_extraction_method": raw.text_extraction_method,
-        "raw_text": text,
-        "extraction_quality": extraction_quality_dict(raw),
-        "fields": {},
-        "stage_hours": [],
-        "line_items": [],
-        "structured_warnings": [],
-        "customer_matches": [],
-        "project_matches": [],
-        "duplicates": [],
-        "suggested_customer_id": None,
-        "suggested_project_id": None,
-        "source": "pdf_quote_import",
-    }
-    _ = team_id
-
-    if not text.strip():
-        base["warnings"] = raw.warnings or [
-            "Unable to extract text from this PDF. Scanned image PDFs need OCR — "
-            "use a text PDF or enter the quote manually."
-        ]
-        return base
-
-    if not looks_like_prosohm_qt_pdf(filename=filename, text=text):
-        base["warnings"].append(
-            "PDF does not fully match Prosohm QT layout markers — "
-            "attempting structured extraction anyway from labels."
-        )
-
-    customers = list(db.scalars(select(Customer).where(Customer.is_active.is_(True))).all())
-    candidates = [(c.name or "", c.code or "") for c in customers]
-
-    try:
-        parsed = parse_prosohm_quote_text(
-            text,
-            filename=filename,
-            customer_candidates=candidates,
-        )
-    except ProTrackValidationError as exc:
-        base["warnings"].append(str(exc))
-        base["warnings"].append(
-            "Structured quote parse incomplete — raw extracted text is retained for review."
-        )
-        return base
-
-    quote_date_iso = _parse_quote_date_to_iso(parsed.quote_date)
-    customer_matches = suggest_customer_matches(db, parsed.prepared_for)
+    customer_matches = suggest_customer_matches(db, customer_name)
     top_customer_id: UUID | None = None
     if customer_matches:
         try:
             top_customer_id = UUID(str(customer_matches[0]["customer_id"]))
         except (ValueError, TypeError, KeyError):
-            top_customer_id = None
             customer_matches = []
 
-    project_matches = suggest_project_matches(
-        db,
-        tool_number=parsed.tool_number,
-        customer_id=None,
-    )
+    project_matches = suggest_project_matches(db, tool_number=tool_number, customer_id=None)
     if project_matches and project_matches[0].get("customer_id") and not top_customer_id:
         try:
             top_customer_id = UUID(str(project_matches[0]["customer_id"]))
+            project_customer = db.get(Customer, top_customer_id)
+            if project_customer is not None:
+                customer_matches = [
+                    {
+                        "customer_id": str(project_customer.id),
+                        "name": project_customer.name,
+                        "code": project_customer.code,
+                        "confidence": 98.0,
+                        "match_reason": "project_customer",
+                    }
+                ] + [
+                    m for m in customer_matches if m["customer_id"] != str(project_customer.id)
+                ]
         except (ValueError, TypeError):
-            top_customer_id = None
-        project_customer = db.get(Customer, top_customer_id) if top_customer_id else None
-        if project_customer is not None:
-            customer_matches = [
-                {
-                    "customer_id": str(project_customer.id),
-                    "name": project_customer.name,
-                    "code": project_customer.code,
-                    "confidence": 98.0,
-                    "match_reason": "project_customer",
-                }
-            ] + [m for m in customer_matches if m["customer_id"] != str(project_customer.id)]
+            pass
     elif top_customer_id is not None:
-        project_matches = suggest_project_matches(
-            db,
-            tool_number=parsed.tool_number,
-            customer_id=top_customer_id,
-        ) or project_matches
+        project_matches = (
+            suggest_project_matches(db, tool_number=tool_number, customer_id=top_customer_id)
+            or project_matches
+        )
 
     duplicates = find_duplicate_quotes(
         db,
-        external_quote_number=parsed.external_quote_number,
-        tool_number=parsed.tool_number,
+        external_quote_number=quote_number,
+        tool_number=tool_number,
         customer_id=top_customer_id,
         content_sha256=sha,
     )
-
-    warnings = list(base["warnings"]) + list(parsed.warnings)
+    warnings = list(analyzed.get("warnings") or [])
     if duplicates:
         warnings.append(
             "Possible duplicate quote detected — review existing record before importing."
         )
     if top_customer_id is None:
         warnings.append("Customer match confidence is low — confirm customer before import.")
-    if not project_matches:
+    if tool_number and not project_matches:
         warnings.append(
-            f"Project not found for Customer Project # {parsed.tool_number}. "
+            f"Project not found for Customer Project # {tool_number}. "
             "Select an existing project or enable Create project if missing."
         )
-    if quote_date_iso is None and parsed.quote_date:
-        warnings.append(f"Could not normalize quote date '{parsed.quote_date}'.")
-    elif quote_date_iso is None:
-        warnings.append("Quote date not detected — confirm before import.")
 
-    hours_need_review = any("DATA REVIEW REQUIRED" in w for w in warnings)
-    stage_dicts = stages_as_dicts(parsed.stage_hours)
-    table_qty = float(parsed.raw_table_quantity) if parsed.raw_table_quantity is not None else None
-    stage_sum = (
-        float(parsed.stage_hours.stage_hours_sum) if parsed.stage_hours.stages else None
-    )
-    stated_total = (
-        float(parsed.raw_description_total_hours)
-        if parsed.raw_description_total_hours is not None
-        else None
-    )
-    mismatch = hours_mismatch_warning(
-        table_quantity=table_qty,
-        stage_breakdown_total=stage_sum,
-        stated_total=stated_total,
-    )
-    structured_warnings = [mismatch] if mismatch else []
-
-    line_items = [
-        build_line_item(
-            description=parsed.line_description,
-            quantity=table_qty,
-            rate=float(parsed.rate) if parsed.rate is not None else None,
-            amount=float(parsed.quoted_revenue) if parsed.quoted_revenue is not None else None,
-            stage_hours=stage_dicts,
-            stated_total_hours=stated_total,
-        )
-    ]
-
-    base.update(
-        {
-            "text_extractable": True,
-            "warnings": warnings,
-            "fields": {
-                "external_quote_number": _field(
-                    parsed.external_quote_number, confidence=95, source="quote_number"
-                ),
-                "quote_number": _field(
-                    parsed.external_quote_number, confidence=95, source="quote_number"
-                ),
-                "tool_number": _field(
-                    parsed.tool_number, confidence=98, source="customer_project_number"
-                ),
-                "customer_project_number": _field(
-                    parsed.tool_number, confidence=98, source="customer_project_number"
-                ),
-                "quoted_date": _field(
-                    quote_date_iso,
-                    confidence=90 if quote_date_iso else 20,
-                    source="quote_date",
-                    needs_review=quote_date_iso is None,
-                ),
-                "customer_name": _field(
-                    parsed.prepared_for,
-                    confidence=85 if customer_matches else 40,
-                    source="prepared_for",
-                    needs_review=not customer_matches,
-                ),
-                "customer_contact": _field(
-                    parsed.kind_attention, confidence=75, source="kind_attention"
-                ),
-                "quoted_hours": _field(
-                    str(parsed.quoted_hours),
-                    confidence=90,
-                    source="line_qty",
-                    needs_review=hours_need_review,
-                ),
-                "raw_table_quantity": _field(
-                    str(parsed.raw_table_quantity)
-                    if parsed.raw_table_quantity is not None
-                    else None,
-                    confidence=90,
-                    source="line_qty",
-                ),
-                "raw_description_total_hours": _field(
-                    str(parsed.raw_description_total_hours)
-                    if parsed.raw_description_total_hours is not None
-                    else None,
-                    confidence=85,
-                    source="description_total",
-                    needs_review=hours_need_review,
-                ),
-                "stage_hours_sum": _field(
-                    str(parsed.stage_hours.stage_hours_sum)
-                    if parsed.stage_hours.stages
-                    else None,
-                    confidence=85,
-                    source="stage_sum",
-                ),
-                "quoted_revenue": _field(
-                    str(parsed.quoted_revenue), confidence=92, source="total"
-                ),
-                "subtotal": _field(
-                    str(parsed.subtotal) if parsed.subtotal is not None else None,
-                    confidence=80,
-                    source="subtotal",
-                ),
-                "rate": _field(
-                    str(parsed.rate) if parsed.rate is not None else None,
-                    confidence=88,
-                    source="rate",
-                ),
-                "currency_code": _field(
-                    parsed.currency_code, confidence=85, source="currency"
-                ),
-                "line_description": _field(
-                    parsed.line_description, confidence=70, source="line_description"
-                ),
-                "sales_person": _field(
-                    parsed.sales_person, confidence=75, source="sales_person"
-                ),
-                "payment_terms": _field(
-                    parsed.payment_terms, confidence=70, source="terms"
-                ),
-                "notes": _field(parsed.line_notes or None, confidence=60, source="notes"),
-            },
-            "stage_hours": stage_dicts,
-            "line_items": line_items,
-            "structured_warnings": structured_warnings,
-            "customer_matches": customer_matches,
-            "project_matches": project_matches,
-            "duplicates": duplicates,
-            "suggested_customer_id": (
-                customer_matches[0]["customer_id"] if customer_matches else None
-            ),
-            "suggested_project_id": (
-                project_matches[0]["project_id"] if project_matches else None
-            ),
-        }
-    )
-    return base
+    _ = team_id
+    return {
+        "text_extractable": analyzed.get("text_extractable", True),
+        "ocr_used": analyzed.get("ocr_used", False),
+        "source_chars": analyzed.get("source_chars", 0),
+        "content_sha256": sha,
+        "filename": filename,
+        "warnings": warnings,
+        "document_type": analyzed.get("document_type", "quote"),
+        "document_type_confidence": analyzed.get("document_type_confidence", 0),
+        "text_extraction_method": analyzed.get("text_extraction_method"),
+        "raw_text": analyzed.get("raw_text"),
+        "extraction_quality": analyzed.get("extraction_quality"),
+        "fields": fields,
+        "stage_hours": analyzed.get("stage_hours") or [],
+        "line_items": analyzed.get("line_items") or [],
+        "work_breakdown": analyzed.get("work_breakdown") or [],
+        "structured_warnings": analyzed.get("structured_warnings") or [],
+        "extraction_status": analyzed.get("extraction_status"),
+        "quality_gate": analyzed.get("quality_gate"),
+        "page_preview_data_url": analyzed.get("page_preview_data_url"),
+        "page_count": analyzed.get("page_count"),
+        "analysis": analyzed.get("analysis"),
+        "customer_matches": customer_matches,
+        "project_matches": project_matches,
+        "duplicates": duplicates,
+        "suggested_customer_id": (
+            customer_matches[0]["customer_id"] if customer_matches else None
+        ),
+        "suggested_project_id": (
+            project_matches[0]["project_id"] if project_matches else None
+        ),
+        "source": "document_intelligence",
+    }
 
 
 def confirm_quote_pdf_import(

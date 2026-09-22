@@ -13,22 +13,9 @@ from app.core.exceptions import ProTrackValidationError
 from app.models.finance import Quote, QuoteInvoiceLine, QuoteRevision
 from app.models.models import Customer, Project, User
 from app.services.document_asset_service import store_document
-from app.services.finance.invoice_pdf_parser import (
-    FieldCandidate,
-    content_fingerprint,
-    parse_invoice_pdf_text,
-)
+from app.services.finance.invoice_pdf_parser import content_fingerprint
 from app.services.finance.quote_cash_ledger_service import add_invoice_line, load_quote_with_ledger
 from app.services.finance.quote_import_service import _find_customer
-
-
-def _candidate_dict(field: FieldCandidate) -> dict:
-    return {
-        "value": field.value,
-        "confidence": field.confidence,
-        "source": field.source,
-        "needs_review": field.needs_review or field.confidence < 60 or not field.value,
-    }
 
 
 def _parse_amount(raw: str | None) -> Decimal | None:
@@ -249,66 +236,63 @@ def extract_invoice_pdf(
     team_id: UUID | None = None,
     quote_id: UUID | None = None,
 ) -> dict:
-    """Parse PDF into review DTO. Does not create financial records.
-
-    Always retains raw_text + extraction_quality for the review screen.
-    """
-    from app.services.finance.document_import_extract import (
-        build_line_item,
-        extract_raw_document_text,
-        extraction_quality_dict,
-        hours_mismatch_warning,
+    """Visual document intelligence → matching → review DTO. Never auto-saves."""
+    from app.services.finance.document_intelligence_service import (
+        get_document_intelligence_service,
     )
 
     sha = content_fingerprint(content)
-    raw = extract_raw_document_text(content, document_kind="invoice", filename=filename)
-    text = raw.raw_text
+    analyzed = get_document_intelligence_service().analyze_invoice_document(
+        content, filename=filename
+    )
+    fields = analyzed.get("fields") or {}
+    amount = _parse_amount((fields.get("amount") or {}).get("value"))
+    inv_date = _parse_iso_date((fields.get("invoice_date") or {}).get("value"))
+    customer_name = (fields.get("customer_name") or {}).get("value")
+    project_ref = (fields.get("customer_project_number") or fields.get("project_ref") or {}).get(
+        "value"
+    )
 
-    base: dict = {
-        "text_extractable": raw.text_extractable,
-        "ocr_used": raw.ocr_used,
-        "source_chars": raw.character_count,
-        "content_sha256": sha,
-        "filename": filename,
-        "warnings": list(raw.warnings),
-        "document_type": "invoice",
-        "document_type_confidence": 0.0,
-        "text_extraction_method": raw.text_extraction_method,
-        "raw_text": text,
-        "extraction_quality": extraction_quality_dict(raw),
-        "fields": {},
-        "stage_hours": [],
-        "line_items": [],
-        "structured_warnings": [],
-        "customer_matches": [],
-        "quote_matches": [],
-        "duplicates": [],
-        "suggested_quote_id": str(quote_id) if quote_id else None,
-        "source": "pdf_import",
-    }
-
-    if not text.strip():
-        return base
-
-    parsed = parse_invoice_pdf_text(text, filename=filename, content_sha256=sha)
-    parsed.ocr_used = raw.ocr_used
-    parsed.warnings = list(dict.fromkeys(list(base["warnings"]) + list(parsed.warnings)))
-    amount = _parse_amount(parsed.amount.value)
-    inv_date = _parse_iso_date(parsed.invoice_date.value)
-
-    customer_matches = suggest_customer_matches(db, parsed.customer_name.value)
+    customer_matches = suggest_customer_matches(db, customer_name)
     top_customer_id: UUID | None = None
     if customer_matches:
         try:
             top_customer_id = UUID(str(customer_matches[0]["customer_id"]))
         except (ValueError, TypeError, KeyError):
             customer_matches = []
-            top_customer_id = None
+
+    # Prefer project master lookup via Customer Project #
+    if project_ref:
+        from app.services.finance.quote_pdf_import_service import suggest_project_matches
+
+        project_matches = suggest_project_matches(db, tool_number=project_ref, customer_id=None)
+        if project_matches and project_matches[0].get("customer_id") and not top_customer_id:
+            try:
+                top_customer_id = UUID(str(project_matches[0]["customer_id"]))
+                project_customer = db.get(Customer, top_customer_id)
+                if project_customer is not None:
+                    customer_matches = [
+                        {
+                            "customer_id": str(project_customer.id),
+                            "name": project_customer.name,
+                            "code": project_customer.code,
+                            "confidence": 98.0,
+                            "match_reason": "project_customer",
+                        }
+                    ] + [
+                        m
+                        for m in customer_matches
+                        if m["customer_id"] != str(project_customer.id)
+                    ]
+            except (ValueError, TypeError):
+                pass
+    else:
+        project_matches = []
 
     quote_matches = suggest_quote_matches(
         db,
-        tool_or_project_ref=parsed.project_ref.value,
-        quote_ref=parsed.quote_ref.value,
+        tool_or_project_ref=project_ref,
+        quote_ref=(fields.get("quote_ref") or {}).get("value"),
         customer_id=top_customer_id,
         team_id=team_id,
     )
@@ -332,83 +316,70 @@ def extract_invoice_pdf(
 
     duplicates = find_duplicate_invoices(
         db,
-        invoice_number=parsed.invoice_number.value,
+        invoice_number=(fields.get("invoice_number") or {}).get("value"),
         amount=amount,
         line_date=inv_date,
         content_sha256=sha,
     )
+    warnings = list(analyzed.get("warnings") or [])
     if duplicates:
-        parsed.warnings.append(
+        warnings.append(
             "Possible duplicate invoice detected — review existing record before importing."
         )
 
     suggested_quote_id = quote_matches[0]["quote_id"] if quote_matches else None
     if suggested_quote_id and quote_matches[0]["confidence"] < 70:
-        parsed.warnings.append("Project/quote match confidence is low — confirm before import.")
+        warnings.append("Project/quote match confidence is low — confirm before import.")
         suggested_quote_id = None if quote_id is None else str(quote_id)
 
-    table_qty = _parse_amount(parsed.raw_table_quantity.value or parsed.quantity.value)
-    stage_sum = _parse_amount(parsed.stage_hours_sum.value)
-    stated = _parse_amount(parsed.raw_description_total_hours.value)
-    mismatch = hours_mismatch_warning(
-        table_quantity=float(table_qty) if table_qty is not None else None,
-        stage_breakdown_total=float(stage_sum) if stage_sum is not None else None,
-        stated_total=float(stated) if stated is not None else None,
-    )
-    rate_val = _parse_amount(parsed.rate.value)
-    amt_val = _parse_amount(parsed.amount.value)
-    line_items = [
-        build_line_item(
-            description=parsed.line_description.value,
-            quantity=float(table_qty) if table_qty is not None else None,
-            rate=float(rate_val) if rate_val is not None else None,
-            amount=float(amt_val) if amt_val is not None else None,
-            stage_hours=parsed.stage_hours,
-            stated_total_hours=float(stated) if stated is not None else None,
+    notes_bits = []
+    if (fields.get("invoice_number") or {}).get("value"):
+        notes_bits.append(f"Invoice#: {fields['invoice_number']['value']}")
+    if (fields.get("po_number") or {}).get("value"):
+        notes_bits.append(f"PO: {fields['po_number']['value']}")
+    if project_ref:
+        notes_bits.append(f"Customer Project #: {project_ref}")
+    stages = analyzed.get("stage_hours") or []
+    if stages:
+        notes_bits.append(
+            "Stages: "
+            + "; ".join(f"{s.get('label')}: {s.get('hours')}" for s in stages[:8])
         )
-    ]
+    if notes_bits:
+        fields = {
+            **fields,
+            "notes": {
+                "value": " | ".join(notes_bits),
+                "confidence": 60,
+                "source": "composed",
+                "needs_review": False,
+            },
+        }
 
     return {
-        "text_extractable": parsed.text_extractable,
-        "ocr_used": parsed.ocr_used,
-        "source_chars": parsed.source_chars or raw.character_count,
+        "text_extractable": analyzed.get("text_extractable", True),
+        "ocr_used": analyzed.get("ocr_used", False),
+        "source_chars": analyzed.get("source_chars", 0),
         "content_sha256": sha,
         "filename": filename,
-        "warnings": parsed.warnings,
-        "fields": {
-            "invoice_number": _candidate_dict(parsed.invoice_number),
-            "invoice_date": _candidate_dict(parsed.invoice_date),
-            "due_date": _candidate_dict(parsed.due_date),
-            "amount": _candidate_dict(parsed.amount),
-            "currency_code": _candidate_dict(parsed.currency_code),
-            "customer_name": _candidate_dict(parsed.customer_name),
-            "project_ref": _candidate_dict(parsed.project_ref),
-            "customer_project_number": _candidate_dict(parsed.project_ref),
-            "po_number": _candidate_dict(parsed.po_number),
-            "quote_ref": _candidate_dict(parsed.quote_ref),
-            "tax_amount": _candidate_dict(parsed.tax_amount),
-            "subtotal": _candidate_dict(parsed.subtotal),
-            "balance_due": _candidate_dict(parsed.balance_due),
-            "payment_terms": _candidate_dict(parsed.payment_terms),
-            "sales_person": _candidate_dict(parsed.sales_person),
-            "billing_attention": _candidate_dict(parsed.billing_attention),
-            "quantity": _candidate_dict(parsed.quantity),
-            "rate": _candidate_dict(parsed.rate),
-            "line_description": _candidate_dict(parsed.line_description),
-            "raw_table_quantity": _candidate_dict(parsed.raw_table_quantity),
-            "raw_description_total_hours": _candidate_dict(parsed.raw_description_total_hours),
-            "stage_hours_sum": _candidate_dict(parsed.stage_hours_sum),
-            "notes": _candidate_dict(parsed.notes),
-        },
-        "stage_hours": parsed.stage_hours,
-        "line_items": line_items,
-        "structured_warnings": [mismatch] if mismatch else [],
-        "document_type": parsed.document_type,
-        "document_type_confidence": parsed.document_type_confidence,
-        "text_extraction_method": raw.text_extraction_method,
-        "raw_text": text,
-        "extraction_quality": extraction_quality_dict(raw),
+        "warnings": warnings,
+        "document_type": analyzed.get("document_type", "invoice"),
+        "document_type_confidence": analyzed.get("document_type_confidence", 0),
+        "text_extraction_method": analyzed.get("text_extraction_method"),
+        "raw_text": analyzed.get("raw_text"),
+        "extraction_quality": analyzed.get("extraction_quality"),
+        "fields": fields,
+        "stage_hours": stages,
+        "line_items": analyzed.get("line_items") or [],
+        "work_breakdown": analyzed.get("work_breakdown") or [],
+        "structured_warnings": analyzed.get("structured_warnings") or [],
+        "extraction_status": analyzed.get("extraction_status"),
+        "quality_gate": analyzed.get("quality_gate"),
+        "page_preview_data_url": analyzed.get("page_preview_data_url"),
+        "page_count": analyzed.get("page_count"),
+        "analysis": analyzed.get("analysis"),
         "customer_matches": customer_matches,
+        "project_matches": project_matches if project_ref else [],
         "quote_matches": quote_matches,
         "duplicates": [
             {
@@ -418,7 +389,7 @@ def extract_invoice_pdf(
             for dup in duplicates
         ],
         "suggested_quote_id": suggested_quote_id,
-        "source": "pdf_import",
+        "source": "document_intelligence",
     }
 
 

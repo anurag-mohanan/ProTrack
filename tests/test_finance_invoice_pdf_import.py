@@ -53,6 +53,46 @@ def test_parse_does_not_invent_missing_date():
     assert any("Invoice date not detected" in w for w in result.warnings)
 
 
+def _mock_invoice_analysis(**overrides):
+    base = {
+        "text_extractable": True,
+        "ocr_used": False,
+        "source_chars": 400,
+        "warnings": ["Extraction Status: READY FOR REVIEW"],
+        "document_type": "invoice",
+        "document_type_confidence": 99.0,
+        "text_extraction_method": "visual_layout+native_pdf",
+        "raw_text": SAMPLE_INVOICE_TEXT,
+        "extraction_quality": {"character_count": 400, "expected_keywords_found": True},
+        "fields": {
+            "invoice_number": {"value": "INV-2026-0042", "confidence": 96, "source": "document_visual", "needs_review": False},
+            "invoice_date": {"value": "2026-07-15", "confidence": 95, "source": "document_visual", "needs_review": False},
+            "due_date": {"value": "2026-08-14", "confidence": 90, "source": "document_visual", "needs_review": False},
+            "amount": {"value": "118000.00", "confidence": 94, "source": "document_visual", "needs_review": False},
+            "currency_code": {"value": "INR", "confidence": 90, "source": "document_visual", "needs_review": False},
+            "customer_name": {"value": "Sample Customer Industries", "confidence": 95, "source": "document_visual", "needs_review": False},
+            "customer_project_number": {"value": "TOOL-7788", "confidence": 98, "source": "document_visual", "needs_review": False},
+            "project_ref": {"value": "TOOL-7788", "confidence": 98, "source": "document_visual", "needs_review": False},
+            "po_number": {"value": "PO-9911", "confidence": 90, "source": "document_visual", "needs_review": False},
+            "quote_ref": {"value": "QT-2026-27-100", "confidence": 85, "source": "document_visual", "needs_review": False},
+            "subtotal": {"value": "100000.00", "confidence": 90, "source": "document_visual", "needs_review": False},
+            "tax_amount": {"value": "18000.00", "confidence": 90, "source": "document_visual", "needs_review": False},
+        },
+        "stage_hours": [],
+        "line_items": [],
+        "work_breakdown": [],
+        "structured_warnings": [],
+        "extraction_status": "READY_FOR_REVIEW",
+        "quality_gate": {"status": "READY_FOR_REVIEW", "missing_fields": []},
+        "page_preview_data_url": None,
+        "page_count": 1,
+        "analysis": {},
+        "source": "document_intelligence",
+    }
+    base.update(overrides)
+    return base
+
+
 def test_extract_and_confirm_creates_invoice_line(session):
     team = Team(id=uuid.uuid4(), name="Inv PDF Team", is_active=True)
     customer = Customer(
@@ -94,8 +134,8 @@ def test_extract_and_confirm_creates_invoice_line(session):
     session.commit()
 
     with patch(
-        "app.services.finance.document_import_extract.extract_pdf_text",
-        return_value=SAMPLE_INVOICE_TEXT,
+        "app.services.finance.document_intelligence_service.DocumentIntelligenceService.analyze_invoice_document",
+        return_value=_mock_invoice_analysis(),
     ):
         extracted = extract_invoice_pdf(
             session,
@@ -106,6 +146,7 @@ def test_extract_and_confirm_creates_invoice_line(session):
     assert extracted["fields"]["invoice_number"]["value"] == "INV-2026-0042"
     assert extracted["suggested_quote_id"] == str(quote.id)
     assert extracted["ocr_used"] is False
+    assert extracted["extraction_status"] == "READY_FOR_REVIEW"
 
     admin = session.get(User, IDS["user_admin"])
     assert admin is not None
@@ -203,8 +244,8 @@ def test_duplicate_blocked_without_import_anyway(session):
 def test_extract_api_endpoint(client):
     headers = login(client, "admin@prosohm.com")
     with patch(
-        "app.services.finance.document_import_extract.extract_pdf_text",
-        return_value=SAMPLE_INVOICE_TEXT,
+        "app.services.finance.document_intelligence_service.DocumentIntelligenceService.analyze_invoice_document",
+        return_value=_mock_invoice_analysis(),
     ):
         response = client.post(
             "/api/v1/finance/invoices/pdf/extract",
@@ -214,4 +255,5 @@ def test_extract_api_endpoint(client):
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["fields"]["invoice_number"]["value"] == "INV-2026-0042"
-    assert body["source"] == "pdf_import"
+    assert body["source"] == "document_intelligence"
+    assert body["extraction_status"] == "READY_FOR_REVIEW"

@@ -1,7 +1,4 @@
-"""Acceptance tests for real Prosohm finance PDF fixtures.
-
-QT-2026-27-036 and INV-2026-27-051 are the authoritative document formats.
-"""
+"""Acceptance tests for visual document intelligence on Prosohm fixtures."""
 
 from __future__ import annotations
 
@@ -10,17 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from app.services.finance.invoice_pdf_parser import parse_invoice_pdf_text
-from app.services.finance.prosohm_document_intelligence import (
-    classify_finance_document,
-    detect_hours_discrepancy,
-    extract_stage_hours,
-)
-from app.services.finance.prosohm_quote_pdf_parser import (
-    parse_prosohm_quote_pdf,
-    parse_prosohm_quote_text,
-)
-from app.services.workorder_pdf_extract import extract_pdf_text
+from app.schemas.finance import InvoicePdfExtractResult, QuotePdfExtractResult
+from app.services.finance.document_intelligence_service import get_document_intelligence_service
+from app.services.finance.invoice_pdf_import_service import extract_invoice_pdf
+from app.services.finance.prosohm_layout_analyzer import analyze_prosohm_layout
+from app.services.finance.quote_pdf_import_service import extract_quote_pdf
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 QUOTE_PDF = FIXTURES / "quotes" / "QT-2026-27-036.pdf"
@@ -32,146 +23,102 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_qt_2026_27_036_fixture_extraction():
-    content = QUOTE_PDF.read_bytes()
-    extract = parse_prosohm_quote_pdf(content, filename=QUOTE_PDF.name)
-
-    assert extract.external_quote_number == "QT-2026-27-036"
-    assert extract.tool_number == "2654"
-    assert extract.prepared_for == "Crest Mold"
-    assert extract.sales_person == "Anurag Mohanan"
-    assert extract.quote_date == "2026-09-03"
-    assert extract.quoted_revenue == Decimal("4500.00")
-    assert extract.rate == Decimal("25.00")
-    assert extract.quoted_hours == Decimal("180.00")
-    assert extract.raw_table_quantity == Decimal("180.00")
-    assert extract.raw_description_total_hours == Decimal("280")
-    assert extract.currency_code == "USD"
-    assert extract.payment_terms and "50%" in extract.payment_terms.upper()
-
-    labels = {s.label.upper(): s.hours for s in extract.stage_hours.stages}
-    assert labels.get("ROUGHING STAGE DESIGN") == Decimal("40")
-    assert labels.get("INTERMEDIATE DESIGN+DOCUMENTATION") == Decimal("100")
-    assert labels.get("FINAL DESIGN+BOM+DOCUMENTATION") == Decimal("40")
-    assert extract.stage_hours.stage_hours_sum == Decimal("180")
-
-    # Discrepancy must be flagged — never silently pick 180 or 280.
-    assert any("DATA REVIEW REQUIRED" in w for w in extract.warnings)
-    assert any("280" in w for w in extract.warnings)
-    assert extract.confirmed_quoted_hours is None
-
-    text = extract_pdf_text(content)
-    classification = classify_finance_document(text=text, filename=QUOTE_PDF.name)
-    assert classification.document_type == "quote"
-    assert classification.confidence >= 80
-
-
-def test_qt_036_discrepancy_helpers_do_not_auto_correct():
-    text = extract_pdf_text(QUOTE_PDF.read_bytes())
-    stages = extract_stage_hours(text)
-    warnings = detect_hours_discrepancy(
-        table_quantity=Decimal("180"),
-        stages=stages,
-    )
-    assert stages.description_total_hours == Decimal("280")
-    assert stages.stage_hours_sum == Decimal("180")
-    assert len(warnings) >= 1
-    # Parser still keeps table quantity as commercial hours candidate.
-    parsed = parse_prosohm_quote_text(text, filename=QUOTE_PDF.name)
-    assert parsed.quoted_hours == Decimal("180.00")
-    assert parsed.raw_description_total_hours == Decimal("280")
-
-
-def test_inv_2026_27_051_fixture_extraction():
-    content = INVOICE_PDF.read_bytes()
-    text = extract_pdf_text(content)
-    result = parse_invoice_pdf_text(text, filename=INVOICE_PDF.name)
-
-    assert result.invoice_number.value == "INV-2026-27-051"
-    assert result.invoice_date.value == "2026-09-17"
-    assert result.project_ref.value == "3177"
-    assert result.customer_name.value == "B & B Tool & Mould Ltd."
-    assert result.po_number.value == "20774"
-    assert result.amount.value == "6000.00"
-    assert result.balance_due.value == "6000.00"
-    assert result.subtotal.value == "6000.00"
-    assert result.tax_amount.value == "0.00"
-    assert result.payment_terms.value and "Due on Receipt" in result.payment_terms.value
-    assert result.quantity.value == "240.00"
-    assert result.rate.value == "25.00"
-    assert result.raw_table_quantity.value == "240.00"
-    assert result.raw_description_total_hours.value == "320"
-    assert result.stage_hours_sum.value == "320"
-    assert result.currency_code.value == "USD"
-
-    stage_labels = {s["label"].upper(): s["hours"] for s in result.stage_hours}
-    assert stage_labels.get("FEASE") == 10.0
-    assert stage_labels.get("BLOCKOUT DESIGN+DOCUMENTATION") == 50.0
-    assert stage_labels.get("INTERMEDIATE DESIGN+DOCUMENTATION") == 180.0
-    assert stage_labels.get("FINAL DESIGN+DOCUMENTATION+BOM") == 80.0
-
-    assert any("DATA REVIEW REQUIRED" in w for w in result.warnings)
-    assert any("240" in w and "320" in w for w in result.warnings)
-
-    # Never fabricate a payment from Balance Due — extract only.
-    assert result.balance_due.value == "6000.00"
-    assert result.document_type == "invoice"
-    assert result.document_type_confidence >= 80
-
-    classification = classify_finance_document(text=text, filename=INVOICE_PDF.name)
-    assert classification.document_type == "invoice"
-
-
-def test_classification_does_not_rely_on_filename_alone():
-    qt_text = extract_pdf_text(QUOTE_PDF.read_bytes())
-    inv_text = extract_pdf_text(INVOICE_PDF.read_bytes())
-
-    qt = classify_finance_document(text=qt_text, filename="scan.pdf")
-    inv = classify_finance_document(text=inv_text, filename="scan.pdf")
-    assert qt.document_type == "quote"
-    assert inv.document_type == "invoice"
-
-
-def test_extract_quote_service_returns_raw_text_and_fields(session):
-    from app.schemas.finance import QuotePdfExtractResult
-    from app.services.finance.quote_pdf_import_service import extract_quote_pdf
-
-    content = QUOTE_PDF.read_bytes()
-    result = extract_quote_pdf(
-        session,
-        content=content,
+def test_layout_quote_visual_fields():
+    layout = analyze_prosohm_layout(
+        QUOTE_PDF.read_bytes(),
         filename="QT-2026-27-036_CTM_2654_09-03-2026.pdf",
     )
-    validated = QuotePdfExtractResult.model_validate(result)
-    assert validated.text_extractable is True
-    assert validated.text_extraction_method == "native_pdf"
-    assert validated.raw_text and "QT-2026-27-036" in validated.raw_text
-    assert validated.extraction_quality
-    assert validated.extraction_quality["character_count"] > 500
-    assert validated.fields["external_quote_number"].value == "QT-2026-27-036"
-    assert validated.fields["customer_project_number"].value == "2654"
-    assert validated.fields["customer_name"].value == "Crest Mold"
-    assert validated.fields["quoted_revenue"].value == "4500.00"
-    assert validated.fields["sales_person"].value == "Anurag Mohanan"
-    assert len(validated.stage_hours) == 3
-    assert validated.line_items
-    assert any(w.get("warning_type") == "HOURS_MISMATCH" for w in validated.structured_warnings)
+    assert layout.document_type == "QUOTE"
+    assert layout.document_type_confidence >= 0.9
+    assert layout.fields["quote_number"].value == "QT-2026-27-036"
+    assert layout.fields["quote_date"].value == "2026-09-03"
+    assert layout.fields["sales_person"].value == "Anurag Mohanan"
+    assert layout.fields["customer_project_number"].value == "2654"
+    assert layout.fields["customer_name"].value == "Crest Mold"
+    assert "Dave" in (layout.fields["customer_contact"].value or "")
+    assert layout.fields["quantity"].value == "180.0"
+    assert layout.fields["rate"].value == "25.0"
+    assert Decimal(layout.fields["total"].value) == Decimal("4500.00")
+    assert len(layout.work_breakdown) == 3
+    assert any("280" in w for w in layout.warnings)
 
 
-def test_extract_invoice_service_returns_raw_text_and_fields(session):
-    from app.schemas.finance import InvoicePdfExtractResult
-    from app.services.finance.invoice_pdf_import_service import extract_invoice_pdf
+def test_layout_invoice_visual_fields():
+    layout = analyze_prosohm_layout(
+        INVOICE_PDF.read_bytes(),
+        filename="INV-2026-27-051.pdf",
+    )
+    assert layout.document_type == "INVOICE"
+    assert layout.document_type_confidence >= 0.9
+    assert layout.fields["invoice_number"].value == "INV-2026-27-051"
+    assert layout.fields["invoice_date"].value == "2026-09-17"
+    assert layout.fields["due_date"].value == "2026-09-17"
+    assert "Due on Receipt" in (layout.fields["payment_terms"].value or "")
+    assert layout.fields["sales_person"].value == "Anurag Mohanan"
+    assert layout.fields["po_number"].value == "20774"
+    assert layout.fields["customer_project_number"].value == "3177"
+    assert "B & B Tool" in (layout.fields["customer_name"].value or "")
+    assert "Steve" in (layout.fields["billing_attention"].value or "")
+    assert layout.fields["quantity"].value == "240.0"
+    assert layout.fields["rate"].value == "25.0"
+    assert Decimal(layout.fields["total"].value) == Decimal("6000.00")
+    assert Decimal(layout.fields["balance_due"].value) == Decimal("6000.00")
+    assert Decimal(layout.fields["tax"].value) == Decimal("0.00")
+    assert len(layout.work_breakdown) == 4
 
-    content = INVOICE_PDF.read_bytes()
-    result = extract_invoice_pdf(session, content=content, filename="INV-2026-27-051.pdf")
+
+def test_document_intelligence_invoice_ready(session):
+    result = extract_invoice_pdf(
+        session,
+        content=INVOICE_PDF.read_bytes(),
+        filename="INV-2026-27-051.pdf",
+    )
     validated = InvoicePdfExtractResult.model_validate(result)
-    assert validated.text_extractable is True
-    assert validated.text_extraction_method == "native_pdf"
-    assert validated.raw_text and "INV-2026-27-051" in validated.raw_text
+    assert validated.document_type == "invoice"
+    assert validated.document_type_confidence >= 90
+    assert validated.extraction_status == "READY_FOR_REVIEW"
     assert validated.fields["invoice_number"].value == "INV-2026-27-051"
+    assert validated.fields["invoice_date"].value == "2026-09-17"
     assert validated.fields["customer_project_number"].value == "3177"
     assert validated.fields["amount"].value == "6000.00"
     assert validated.fields["balance_due"].value == "6000.00"
     assert validated.fields["po_number"].value == "20774"
+    assert validated.fields["sales_person"].value == "Anurag Mohanan"
     assert len(validated.stage_hours) == 4
-    assert any(w.get("warning_type") == "HOURS_MISMATCH" for w in validated.structured_warnings)
+    assert validated.page_preview_data_url
+    assert "visual" in (validated.text_extraction_method or "")
+
+
+def test_document_intelligence_quote_ready(session):
+    result = extract_quote_pdf(
+        session,
+        content=QUOTE_PDF.read_bytes(),
+        filename="QT-2026-27-036_CTM_2654_09-03-2026.pdf",
+    )
+    validated = QuotePdfExtractResult.model_validate(result)
+    assert validated.document_type == "quote"
+    assert validated.document_type_confidence >= 90
+    assert validated.extraction_status == "READY_FOR_REVIEW"
+    assert validated.fields["external_quote_number"].value == "QT-2026-27-036"
+    assert validated.fields["quoted_date"].value == "2026-09-03"
+    assert validated.fields["customer_project_number"].value == "2654"
+    assert validated.fields["customer_name"].value == "Crest Mold"
+    assert validated.fields["quoted_revenue"].value == "4500.00"
+    assert validated.fields["quoted_hours"].value == "180.0"
+    assert validated.fields["rate"].value == "25.0"
+    assert len(validated.stage_hours) == 3
+    assert validated.page_preview_data_url
+
+
+def test_intelligence_service_direct():
+    svc = get_document_intelligence_service()
+    inv = svc.analyze_invoice_document(
+        INVOICE_PDF.read_bytes(), filename="INV-2026-27-051.pdf"
+    )
+    assert inv["extraction_status"] == "READY_FOR_REVIEW"
+    assert inv["fields"]["invoice_number"]["value"] == "INV-2026-27-051"
+    qt = svc.analyze_quote_document(
+        QUOTE_PDF.read_bytes(), filename="QT-2026-27-036.pdf"
+    )
+    assert qt["extraction_status"] == "READY_FOR_REVIEW"
+    assert qt["fields"]["quote_number"]["value"] == "QT-2026-27-036"

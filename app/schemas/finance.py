@@ -1251,6 +1251,7 @@ class InvoicePdfFieldCandidate(BaseModel):
     confidence: float = 0
     source: str | None = None
     needs_review: bool = False
+    evidence: str | None = None
 
 
 class InvoicePdfExtractResult(BaseModel):
@@ -1270,8 +1271,15 @@ class InvoicePdfExtractResult(BaseModel):
     fields: dict[str, InvoicePdfFieldCandidate] = Field(default_factory=dict)
     stage_hours: list[dict] = Field(default_factory=list)
     line_items: list[dict] = Field(default_factory=list)
+    work_breakdown: list[dict] = Field(default_factory=list)
     structured_warnings: list[dict] = Field(default_factory=list)
+    extraction_status: str | None = None
+    quality_gate: dict | None = None
+    page_preview_data_url: str | None = None
+    page_count: int | None = None
+    analysis: dict | None = None
     customer_matches: list[dict] = Field(default_factory=list)
+    project_matches: list[dict] = Field(default_factory=list)
     quote_matches: list[dict] = Field(default_factory=list)
     duplicates: list[dict] = Field(default_factory=list)
     suggested_quote_id: str | None = None
@@ -1305,7 +1313,13 @@ class QuotePdfExtractResult(BaseModel):
     fields: dict[str, InvoicePdfFieldCandidate] = Field(default_factory=dict)
     stage_hours: list[dict] = Field(default_factory=list)
     line_items: list[dict] = Field(default_factory=list)
+    work_breakdown: list[dict] = Field(default_factory=list)
     structured_warnings: list[dict] = Field(default_factory=list)
+    extraction_status: str | None = None
+    quality_gate: dict | None = None
+    page_preview_data_url: str | None = None
+    page_count: int | None = None
+    analysis: dict | None = None
     customer_matches: list[dict] = Field(default_factory=list)
     project_matches: list[dict] = Field(default_factory=list)
     duplicates: list[dict] = Field(default_factory=list)

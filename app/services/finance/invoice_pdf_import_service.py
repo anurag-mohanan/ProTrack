@@ -18,10 +18,8 @@ from app.services.finance.invoice_pdf_parser import (
     content_fingerprint,
     parse_invoice_pdf_text,
 )
-from app.services.finance.pdf_ocr import extract_text_with_optional_ocr
 from app.services.finance.quote_cash_ledger_service import add_invoice_line, load_quote_with_ledger
 from app.services.finance.quote_import_service import _find_customer
-from app.services.workorder_pdf_extract import extract_pdf_text
 
 
 def _candidate_dict(field: FieldCandidate) -> dict:
@@ -251,44 +249,62 @@ def extract_invoice_pdf(
     team_id: UUID | None = None,
     quote_id: UUID | None = None,
 ) -> dict:
-    """Parse PDF into review DTO. Does not create financial records."""
-    sha = content_fingerprint(content)
-    try:
-        text = extract_pdf_text(content)
-    except ProTrackValidationError as exc:
-        text = ""
-        extract_error: str | None = str(exc)
-    else:
-        extract_error = None
+    """Parse PDF into review DTO. Does not create financial records.
 
-    ocr = extract_text_with_optional_ocr(content, existing_text=text)
-    text = ocr.text
+    Always retains raw_text + extraction_quality for the review screen.
+    """
+    from app.services.finance.document_import_extract import (
+        build_line_item,
+        extract_raw_document_text,
+        extraction_quality_dict,
+        hours_mismatch_warning,
+    )
+
+    sha = content_fingerprint(content)
+    raw = extract_raw_document_text(content, document_kind="invoice", filename=filename)
+    text = raw.raw_text
+
+    base: dict = {
+        "text_extractable": raw.text_extractable,
+        "ocr_used": raw.ocr_used,
+        "source_chars": raw.character_count,
+        "content_sha256": sha,
+        "filename": filename,
+        "warnings": list(raw.warnings),
+        "document_type": "invoice",
+        "document_type_confidence": 0.0,
+        "text_extraction_method": raw.text_extraction_method,
+        "raw_text": text,
+        "extraction_quality": extraction_quality_dict(raw),
+        "fields": {},
+        "stage_hours": [],
+        "line_items": [],
+        "structured_warnings": [],
+        "customer_matches": [],
+        "quote_matches": [],
+        "duplicates": [],
+        "suggested_quote_id": str(quote_id) if quote_id else None,
+        "source": "pdf_import",
+    }
 
     if not text.strip():
-        return {
-            "text_extractable": False,
-            "ocr_used": False,
-            "source_chars": 0,
-            "content_sha256": sha,
-            "filename": filename,
-            "warnings": [w for w in ([extract_error] if extract_error else []) + ocr.warnings],
-            "fields": {},
-            "customer_matches": [],
-            "quote_matches": [],
-            "duplicates": [],
-            "suggested_quote_id": str(quote_id) if quote_id else None,
-        }
+        return base
 
     parsed = parse_invoice_pdf_text(text, filename=filename, content_sha256=sha)
-    parsed.ocr_used = ocr.ocr_used
-    parsed.warnings.extend(ocr.warnings)
+    parsed.ocr_used = raw.ocr_used
+    parsed.warnings = list(dict.fromkeys(list(base["warnings"]) + list(parsed.warnings)))
     amount = _parse_amount(parsed.amount.value)
     inv_date = _parse_iso_date(parsed.invoice_date.value)
 
     customer_matches = suggest_customer_matches(db, parsed.customer_name.value)
-    top_customer_id = (
-        UUID(customer_matches[0]["customer_id"]) if customer_matches else None
-    )
+    top_customer_id: UUID | None = None
+    if customer_matches:
+        try:
+            top_customer_id = UUID(str(customer_matches[0]["customer_id"]))
+        except (ValueError, TypeError, KeyError):
+            customer_matches = []
+            top_customer_id = None
+
     quote_matches = suggest_quote_matches(
         db,
         tool_or_project_ref=parsed.project_ref.value,
@@ -297,10 +313,7 @@ def extract_invoice_pdf(
         team_id=team_id,
     )
     if quote_id is not None:
-        # Force selected quote to top if provided
-        quote_matches = [
-            m for m in quote_matches if m["quote_id"] != str(quote_id)
-        ]
+        quote_matches = [m for m in quote_matches if m["quote_id"] != str(quote_id)]
         quote = db.get(Quote, quote_id)
         if quote is not None:
             quote_matches.insert(
@@ -334,10 +347,31 @@ def extract_invoice_pdf(
         parsed.warnings.append("Project/quote match confidence is low — confirm before import.")
         suggested_quote_id = None if quote_id is None else str(quote_id)
 
+    table_qty = _parse_amount(parsed.raw_table_quantity.value or parsed.quantity.value)
+    stage_sum = _parse_amount(parsed.stage_hours_sum.value)
+    stated = _parse_amount(parsed.raw_description_total_hours.value)
+    mismatch = hours_mismatch_warning(
+        table_quantity=float(table_qty) if table_qty is not None else None,
+        stage_breakdown_total=float(stage_sum) if stage_sum is not None else None,
+        stated_total=float(stated) if stated is not None else None,
+    )
+    rate_val = _parse_amount(parsed.rate.value)
+    amt_val = _parse_amount(parsed.amount.value)
+    line_items = [
+        build_line_item(
+            description=parsed.line_description.value,
+            quantity=float(table_qty) if table_qty is not None else None,
+            rate=float(rate_val) if rate_val is not None else None,
+            amount=float(amt_val) if amt_val is not None else None,
+            stage_hours=parsed.stage_hours,
+            stated_total_hours=float(stated) if stated is not None else None,
+        )
+    ]
+
     return {
         "text_extractable": parsed.text_extractable,
         "ocr_used": parsed.ocr_used,
-        "source_chars": parsed.source_chars,
+        "source_chars": parsed.source_chars or raw.character_count,
         "content_sha256": sha,
         "filename": filename,
         "warnings": parsed.warnings,
@@ -367,8 +401,13 @@ def extract_invoice_pdf(
             "notes": _candidate_dict(parsed.notes),
         },
         "stage_hours": parsed.stage_hours,
+        "line_items": line_items,
+        "structured_warnings": [mismatch] if mismatch else [],
         "document_type": parsed.document_type,
         "document_type_confidence": parsed.document_type_confidence,
+        "text_extraction_method": raw.text_extraction_method,
+        "raw_text": text,
+        "extraction_quality": extraction_quality_dict(raw),
         "customer_matches": customer_matches,
         "quote_matches": quote_matches,
         "duplicates": [

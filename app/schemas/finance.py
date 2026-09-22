@@ -1264,8 +1264,13 @@ class InvoicePdfExtractResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     document_type: str = "invoice"
     document_type_confidence: float = 0
+    text_extraction_method: str | None = None
+    raw_text: str | None = None
+    extraction_quality: dict | None = None
     fields: dict[str, InvoicePdfFieldCandidate] = Field(default_factory=dict)
     stage_hours: list[dict] = Field(default_factory=list)
+    line_items: list[dict] = Field(default_factory=list)
+    structured_warnings: list[dict] = Field(default_factory=list)
     customer_matches: list[dict] = Field(default_factory=list)
     quote_matches: list[dict] = Field(default_factory=list)
     duplicates: list[dict] = Field(default_factory=list)
@@ -1294,8 +1299,13 @@ class QuotePdfExtractResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     document_type: str = "quote"
     document_type_confidence: float = 0
+    text_extraction_method: str | None = None
+    raw_text: str | None = None
+    extraction_quality: dict | None = None
     fields: dict[str, InvoicePdfFieldCandidate] = Field(default_factory=dict)
     stage_hours: list[dict] = Field(default_factory=list)
+    line_items: list[dict] = Field(default_factory=list)
+    structured_warnings: list[dict] = Field(default_factory=list)
     customer_matches: list[dict] = Field(default_factory=list)
     project_matches: list[dict] = Field(default_factory=list)
     duplicates: list[dict] = Field(default_factory=list)

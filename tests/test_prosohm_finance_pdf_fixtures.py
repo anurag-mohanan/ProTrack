@@ -130,3 +130,48 @@ def test_classification_does_not_rely_on_filename_alone():
     inv = classify_finance_document(text=inv_text, filename="scan.pdf")
     assert qt.document_type == "quote"
     assert inv.document_type == "invoice"
+
+
+def test_extract_quote_service_returns_raw_text_and_fields(session):
+    from app.schemas.finance import QuotePdfExtractResult
+    from app.services.finance.quote_pdf_import_service import extract_quote_pdf
+
+    content = QUOTE_PDF.read_bytes()
+    result = extract_quote_pdf(
+        session,
+        content=content,
+        filename="QT-2026-27-036_CTM_2654_09-03-2026.pdf",
+    )
+    validated = QuotePdfExtractResult.model_validate(result)
+    assert validated.text_extractable is True
+    assert validated.text_extraction_method == "native_pdf"
+    assert validated.raw_text and "QT-2026-27-036" in validated.raw_text
+    assert validated.extraction_quality
+    assert validated.extraction_quality["character_count"] > 500
+    assert validated.fields["external_quote_number"].value == "QT-2026-27-036"
+    assert validated.fields["customer_project_number"].value == "2654"
+    assert validated.fields["customer_name"].value == "Crest Mold"
+    assert validated.fields["quoted_revenue"].value == "4500.00"
+    assert validated.fields["sales_person"].value == "Anurag Mohanan"
+    assert len(validated.stage_hours) == 3
+    assert validated.line_items
+    assert any(w.get("warning_type") == "HOURS_MISMATCH" for w in validated.structured_warnings)
+
+
+def test_extract_invoice_service_returns_raw_text_and_fields(session):
+    from app.schemas.finance import InvoicePdfExtractResult
+    from app.services.finance.invoice_pdf_import_service import extract_invoice_pdf
+
+    content = INVOICE_PDF.read_bytes()
+    result = extract_invoice_pdf(session, content=content, filename="INV-2026-27-051.pdf")
+    validated = InvoicePdfExtractResult.model_validate(result)
+    assert validated.text_extractable is True
+    assert validated.text_extraction_method == "native_pdf"
+    assert validated.raw_text and "INV-2026-27-051" in validated.raw_text
+    assert validated.fields["invoice_number"].value == "INV-2026-27-051"
+    assert validated.fields["customer_project_number"].value == "3177"
+    assert validated.fields["amount"].value == "6000.00"
+    assert validated.fields["balance_due"].value == "6000.00"
+    assert validated.fields["po_number"].value == "20774"
+    assert len(validated.stage_hours) == 4
+    assert any(w.get("warning_type") == "HOURS_MISMATCH" for w in validated.structured_warnings)

@@ -1,5 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -14,10 +17,12 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useMutation } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { ReviewRow, ReviewSection } from './PdfImportReviewBits';
 
 type FieldCandidate = {
   value?: string | null;
@@ -26,7 +31,8 @@ type FieldCandidate = {
 };
 
 type StageHour = {
-  label: string;
+  label?: string;
+  stage?: string;
   hours: number;
   source_line?: string;
 };
@@ -34,13 +40,28 @@ type StageHour = {
 type ExtractResult = {
   text_extractable: boolean;
   ocr_used: boolean;
+  source_chars?: number;
   warnings: string[];
   content_sha256?: string | null;
   filename?: string | null;
   document_type?: string;
   document_type_confidence?: number;
+  text_extraction_method?: string | null;
+  raw_text?: string | null;
+  extraction_quality?: {
+    character_count?: number;
+    line_count?: number;
+    expected_keywords_found?: boolean;
+    text_extraction_method?: string;
+  } | null;
   fields: Record<string, FieldCandidate>;
   stage_hours?: StageHour[];
+  line_items?: Array<Record<string, unknown>>;
+  structured_warnings?: Array<{
+    warning_type?: string;
+    message?: string;
+    values?: Record<string, number | null | undefined>;
+  }>;
   customer_matches: Array<{ customer_id: string; name: string; code?: string; confidence: number }>;
   quote_matches: Array<{
     quote_id: string;
@@ -125,13 +146,19 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       setTaxAmount(fieldValue(data.fields, 'tax_amount'));
       setSubtotalAmount(fieldValue(data.fields, 'subtotal'));
       setBalanceDue(fieldValue(data.fields, 'balance_due'));
-      setQuantity(fieldValue(data.fields, 'quantity') || fieldValue(data.fields, 'raw_table_quantity'));
+      setQuantity(
+        fieldValue(data.fields, 'quantity') || fieldValue(data.fields, 'raw_table_quantity'),
+      );
       setNotes(fieldValue(data.fields, 'notes'));
       setQuoteIdEdit(data.suggested_quote_id || quoteId || '');
       setDocumentType(data.document_type || 'invoice');
       setHoursResolved(false);
-      if (!data.text_extractable) {
-        showError(data.warnings[0] || 'Unable to extract the document reliably.');
+      if (!data.text_extractable || !(data.source_chars && data.source_chars > 0)) {
+        showError(data.warnings?.[0] || 'Unable to extract the document reliably.');
+      } else if (!Object.keys(data.fields || {}).length) {
+        showError(
+          'Text was extracted but structured fields are empty. Check raw text below and enter values manually.',
+        );
       }
     },
     onError: (error: unknown) =>
@@ -165,22 +192,20 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       showError(apiErrorMessage(error, 'Could not confirm invoice import')),
   });
 
-  const needsReview = useMemo(() => {
-    if (!extract) return [];
-    return Object.entries(extract.fields)
-      .filter(([, field]) => field.needs_review)
-      .map(([key]) => key);
-  }, [extract]);
-
   const hourDiscrepancy = useMemo(() => {
     if (!extract) return false;
-    return (extract.warnings ?? []).some((w) => w.includes('DATA REVIEW REQUIRED'));
+    return (
+      (extract.structured_warnings ?? []).some((w) => w.warning_type === 'HOURS_MISMATCH') ||
+      (extract.warnings ?? []).some((w) => w.includes('DATA REVIEW REQUIRED'))
+    );
   }, [extract]);
 
-  const tableQty = fieldValue(extract?.fields ?? {}, 'raw_table_quantity') ||
+  const tableQty =
+    fieldValue(extract?.fields ?? {}, 'raw_table_quantity') ||
     fieldValue(extract?.fields ?? {}, 'quantity');
   const stageSum = fieldValue(extract?.fields ?? {}, 'stage_hours_sum');
   const descTotal = fieldValue(extract?.fields ?? {}, 'raw_description_total_hours');
+  const quality = extract?.extraction_quality;
 
   const canConfirm =
     Boolean(quoteIdEdit) &&
@@ -194,9 +219,8 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       <DialogTitle>Invoice import review</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Review every field before saving. Balance Due never creates a payment — Paid stays $0 until
-          an actual payment is recorded. Team is optional for extraction; link to an awarded quote is
-          required before confirm.
+          Review every field ProTrack read from the PDF. Balance Due never creates a payment — Paid
+          stays $0 until an actual payment is recorded.
         </Typography>
 
         {!extract ? (
@@ -214,31 +238,45 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
                 }}
               />
             </Button>
-            {file ? (
-              <Typography variant="body2">Selected: {file.name}</Typography>
-            ) : null}
+            {file ? <Typography variant="body2">Selected: {file.name}</Typography> : null}
             <Button
               variant="contained"
               disabled={!file || extractMutation.isPending}
               onClick={() => file && extractMutation.mutate(file)}
             >
-              Extract for review
+              {extractMutation.isPending ? 'Extracting…' : 'Extract for review'}
             </Button>
           </Stack>
         ) : (
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <Alert severity="info">
-              Document detected: <strong>{(documentType || 'unknown').toUpperCase()}</strong>
-              {extract.document_type_confidence != null
-                ? ` · Confidence: ${Math.round(extract.document_type_confidence)}%`
-                : null}
-            </Alert>
+            <ReviewSection title="DOCUMENT">
+              <ReviewRow label="Document" value={extract.filename || file?.name} emphasize />
+              <ReviewRow
+                label="Document Type"
+                value={`${(documentType || 'unknown').toUpperCase()} (${Math.round(extract.document_type_confidence ?? 0)}%)`}
+              />
+              <ReviewRow
+                label="Extraction"
+                value={`${extract.text_extraction_method || quality?.text_extraction_method || '—'} · ${extract.source_chars || quality?.character_count || 0} chars`}
+              />
+              <ReviewRow
+                label="Invoice Number"
+                value={fieldValue(extract.fields, 'invoice_number')}
+                emphasize
+              />
+              <ReviewRow label="Invoice Date" value={fieldValue(extract.fields, 'invoice_date')} />
+              <ReviewRow label="Due Date" value={fieldValue(extract.fields, 'due_date')} />
+              <ReviewRow label="Terms" value={fieldValue(extract.fields, 'payment_terms')} />
+              <ReviewRow label="Sales Person" value={fieldValue(extract.fields, 'sales_person')} />
+              <ReviewRow label="P.O. #" value={fieldValue(extract.fields, 'po_number')} />
+            </ReviewSection>
+
             <TextField
               select
-              label="Document type"
+              size="small"
+              label="Document type (override)"
               value={documentType}
               onChange={(e) => setDocumentType(e.target.value)}
-              helperText="Change if classification is wrong before confirming."
             >
               <MenuItem value="invoice">INVOICE</MenuItem>
               <MenuItem value="quote">QUOTE</MenuItem>
@@ -250,46 +288,90 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
                 {warning}
               </Alert>
             ))}
-            {needsReview.length > 0 ? (
-              <Alert severity="info">
-                Needs review: {needsReview.join(', ')}. Confirm or correct before import.
-              </Alert>
-            ) : null}
             {(extract.duplicates ?? []).length > 0 ? (
               <Alert severity="error">
                 Possible duplicate invoice detected. Review existing records or check “Import anyway”.
               </Alert>
             ) : null}
 
-            <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
-              <Typography variant="subtitle2">Match</Typography>
-              <Typography variant="body2">
-                Customer Project #: {fieldValue(extract.fields, 'customer_project_number') ||
-                  fieldValue(extract.fields, 'project_ref') ||
-                  '—'}
-              </Typography>
-              <Typography variant="body2">
-                Customer: {fieldValue(extract.fields, 'customer_name') || '—'}
-              </Typography>
-              <Typography variant="body2">
-                P.O. #: {fieldValue(extract.fields, 'po_number') || '—'}
-              </Typography>
-            </Box>
+            <ReviewSection title="PROJECT">
+              <ReviewRow
+                label="Extracted Customer Project #"
+                value={
+                  fieldValue(extract.fields, 'customer_project_number') ||
+                  fieldValue(extract.fields, 'project_ref')
+                }
+                emphasize
+              />
+              <ReviewRow
+                label="Related Quote candidates"
+                value={
+                  (extract.quote_matches ?? []).length
+                    ? (extract.quote_matches ?? [])
+                        .slice(0, 3)
+                        .map(
+                          (m) =>
+                            `${m.tool_number}${m.external_quote_number ? ` · ${m.external_quote_number}` : ''} (${Math.round(m.confidence)}%)`,
+                        )
+                        .join('; ')
+                    : 'None — select quote below'
+                }
+              />
+            </ReviewSection>
+
+            <ReviewSection title="CUSTOMER">
+              <ReviewRow
+                label="Bill To"
+                value={fieldValue(extract.fields, 'customer_name')}
+                emphasize
+              />
+              <ReviewRow
+                label="Billing Attention"
+                value={fieldValue(extract.fields, 'billing_attention')}
+              />
+            </ReviewSection>
+
+            <ReviewSection title="COMMERCIAL">
+              <ReviewRow label="Currency" value={fieldValue(extract.fields, 'currency_code')} />
+              <ReviewRow label="Quantity" value={tableQty} />
+              <ReviewRow label="Rate" value={fieldValue(extract.fields, 'rate')} />
+              <ReviewRow label="Subtotal" value={fieldValue(extract.fields, 'subtotal')} />
+              <ReviewRow label="Tax / IGST" value={fieldValue(extract.fields, 'tax_amount')} />
+              <ReviewRow label="Total" value={fieldValue(extract.fields, 'amount')} emphasize />
+              <ReviewRow
+                label="Balance Due (informational — not a payment)"
+                value={fieldValue(extract.fields, 'balance_due')}
+              />
+              <ReviewRow label="Description" value={fieldValue(extract.fields, 'line_description')} />
+            </ReviewSection>
+
+            <ReviewSection title="WORK BREAKDOWN">
+              {(extract.stage_hours ?? []).length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No stage lines detected.
+                </Typography>
+              ) : (
+                (extract.stage_hours ?? []).map((s) => (
+                  <ReviewRow
+                    key={`${s.label || s.stage}-${s.hours}`}
+                    label={s.label || s.stage || 'Stage'}
+                    value={`${s.hours} Hrs`}
+                  />
+                ))
+              )}
+              <ReviewRow label="Stage sum" value={stageSum ? `${stageSum} Hrs` : null} />
+              <ReviewRow label="Stated TOTAL in description" value={descTotal ? `${descTotal} Hrs` : null} />
+            </ReviewSection>
 
             {hourDiscrepancy ? (
               <Alert severity="error">
                 <Typography variant="subtitle2" gutterBottom>
-                  Hour discrepancy — REVIEW REQUIRED
+                  ⚠ Hour discrepancy — REVIEW REQUIRED
                 </Typography>
                 <Typography variant="body2">Invoice quantity: {tableQty || '—'}</Typography>
-                <Typography variant="body2">Stage breakdown sum: {stageSum || '—'}</Typography>
-                <Typography variant="body2">
-                  Description total: {descTotal || '—'}
-                </Typography>
-                <Typography variant="body2" sx={{ mt: 1, mb: 1 }}>
-                  Confirm the commercial quantity for the structured record (raw values preserved):
-                </Typography>
-                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                <Typography variant="body2">Stage breakdown: {stageSum || '—'}</Typography>
+                <Typography variant="body2">Description total: {descTotal || '—'}</Typography>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, mt: 1 }}>
                   {tableQty ? (
                     <Button
                       size="small"
@@ -321,19 +403,7 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               </Alert>
             ) : null}
 
-            {(extract.stage_hours ?? []).length > 0 ? (
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>
-                  Work breakdown
-                </Typography>
-                {(extract.stage_hours ?? []).map((s) => (
-                  <Typography key={`${s.label}-${s.hours}`} variant="body2">
-                    {s.label}: {s.hours}
-                  </Typography>
-                ))}
-              </Box>
-            ) : null}
-
+            <Typography variant="subtitle2">Confirm / edit before save</Typography>
             <TextField
               select
               label="Link to quote / project"
@@ -351,16 +421,10 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
                 </MenuItem>
               ))}
             </TextField>
-
             <TextField
               label="Invoice number"
               value={invoiceNumber}
               onChange={(e) => setInvoiceNumber(e.target.value)}
-              helperText={
-                extract.fields.invoice_number?.needs_review
-                  ? `Low confidence (${extract.fields.invoice_number.confidence ?? 0}%)`
-                  : undefined
-              }
             />
             <TextField
               label="Invoice date (turnover month)"
@@ -369,7 +433,6 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               onChange={(e) => setLineDate(e.target.value)}
               slotProps={{ inputLabel: { shrink: true } }}
               required
-              helperText="Invoice date drives P&L turnover — not the payment date."
             />
             <TextField
               label="Due date"
@@ -402,7 +465,6 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
                 value={balanceDue}
                 onChange={(e) => setBalanceDue(e.target.value)}
                 fullWidth
-                helperText="Does not create a payment"
               />
             </Stack>
             <TextField
@@ -412,11 +474,6 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
                 setQuantity(e.target.value);
                 if (hourDiscrepancy) setHoursResolved(true);
               }}
-              helperText={
-                hourDiscrepancy
-                  ? `Raw qty: ${tableQty || '—'} · Stage sum: ${stageSum || '—'} · Desc TOTAL: ${descTotal || '—'}`
-                  : undefined
-              }
             />
             <TextField
               label="Notes"
@@ -425,19 +482,6 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               multiline
               minRows={2}
             />
-
-            {(extract.customer_matches ?? []).length > 0 ? (
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Suggested customers (confirm via quote selection)
-                </Typography>
-                {(extract.customer_matches ?? []).map((c) => (
-                  <Typography key={c.customer_id} variant="body2">
-                    {c.name} ({Math.round(c.confidence)}%)
-                  </Typography>
-                ))}
-              </Box>
-            ) : null}
 
             <FormControlLabel
               control={
@@ -448,6 +492,31 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               }
               label="Import anyway despite duplicate warning"
             />
+
+            <Accordion disableGutters>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="body2">
+                  Raw extracted text ({extract.source_chars || 0} chars)
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Box
+                  component="pre"
+                  sx={{
+                    m: 0,
+                    p: 1,
+                    maxHeight: 240,
+                    overflow: 'auto',
+                    bgcolor: 'action.hover',
+                    fontSize: 12,
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {extract.raw_text || '(empty)'}
+                </Box>
+              </AccordionDetails>
+            </Accordion>
+
             {hourDiscrepancy && !hoursResolved ? (
               <Typography variant="caption" color="warning.main">
                 Resolve the quantity / stage-hour discrepancy before saving.
@@ -474,7 +543,7 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               disabled={!canConfirm}
               onClick={() => confirmMutation.mutate()}
             >
-              Confirm & import
+              Confirm Import
             </Button>
           </>
         ) : null}

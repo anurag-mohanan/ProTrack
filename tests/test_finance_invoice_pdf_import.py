@@ -94,7 +94,7 @@ def test_extract_and_confirm_creates_invoice_line(session):
     session.commit()
 
     with patch(
-        "app.services.finance.invoice_pdf_import_service.extract_pdf_text",
+        "app.services.finance.document_import_extract.extract_pdf_text",
         return_value=SAMPLE_INVOICE_TEXT,
     ):
         extracted = extract_invoice_pdf(
@@ -203,7 +203,7 @@ def test_duplicate_blocked_without_import_anyway(session):
 def test_extract_api_endpoint(client):
     headers = login(client, "admin@prosohm.com")
     with patch(
-        "app.services.finance.invoice_pdf_import_service.extract_pdf_text",
+        "app.services.finance.document_import_extract.extract_pdf_text",
         return_value=SAMPLE_INVOICE_TEXT,
     ):
         response = client.post(

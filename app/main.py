@@ -253,6 +253,9 @@ from app.db.phase96_software_installations_schema_sync import (
 from app.db.phase97_it_computer_name_history_schema_sync import (
     ensure_phase97_it_computer_name_history_foundation,
 )
+from app.db.phase_milestone_stage_schema_sync import (
+    ensure_phase_milestone_stage_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
@@ -412,6 +415,7 @@ async def lifespan(app: FastAPI):
         ("phase95_it_asset_number_history", ensure_phase95_it_asset_number_history_foundation),
         ("phase96_software_installations", ensure_phase96_software_installations_foundation),
         ("phase97_it_computer_name_history", ensure_phase97_it_computer_name_history_foundation),
+        ("phase_milestone_stage", ensure_phase_milestone_stage_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

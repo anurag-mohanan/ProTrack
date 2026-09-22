@@ -1045,6 +1045,21 @@ def create_asset(
                 f"Serial number '{serial}' is already assigned to {conflict.asset_number}."
             )
 
+    tag = (service_tag or "").strip()
+    if tag:
+        tag_conflict = db.scalar(
+            select(Asset)
+            .where(
+                Asset.is_deleted.is_(False),
+                func.lower(Asset.service_tag) == tag.lower(),
+            )
+            .limit(1)
+        )
+        if tag_conflict is not None:
+            raise ProTrackValidationError(
+                f"Service tag '{tag}' is already assigned to {tag_conflict.asset_number}."
+            )
+
     from app.services import it_computer_suggest_service as suggest
 
     mac = suggest.normalize_mac(mac_address)
@@ -1149,6 +1164,8 @@ def update_asset(
     invoice_number: str | None = None,
     condition: str | None = None,
     asset_number: str | None = None,
+    computer_name: str | None = None,
+    computer_name_reason: str | None = None,
     fields_set: set[str] | None = None,
     commit: bool = True,
 ) -> Asset:
@@ -1236,6 +1253,19 @@ def update_asset(
         if next_number and next_number != asset.asset_number:
             apply_asset_number_change(
                 db, asset, next_number, actor=actor, reason="manual_update"
+            )
+
+    if "computer_name" in touched or (fields_set is None and computer_name is not None):
+        computer = getattr(asset, "computer", None) or db.scalar(
+            select(Computer).where(Computer.asset_id == asset.id)
+        )
+        if computer is not None and computer_name:
+            apply_computer_name_change(
+                db,
+                computer,
+                computer_name,
+                actor=actor,
+                reason=computer_name_reason or "manual_update",
             )
 
     db.add(asset)

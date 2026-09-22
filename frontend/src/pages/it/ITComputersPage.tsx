@@ -26,9 +26,11 @@ import {
   createComputerInterface,
   deleteComputerInterface,
   fetchAssetTypes,
+  fetchAssignmentPreview,
   fetchComputerInterfaces,
   fetchComputersPaginated,
   fetchItPeoplePaginated,
+  fetchRecommendedComputers,
   fetchSuggestedComputerName,
   fetchSuggestedIp,
   itOperationsKeys,
@@ -40,6 +42,7 @@ import { getErrorMessage } from '../../api/client';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ITSectionSubnav, IT_INVENTORY_TABS } from '../../components/it/ITSectionSubnav';
+import { AssignmentAvailabilityPanel } from '../../components/it/AssignmentAvailabilityPanel';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
@@ -159,6 +162,21 @@ export function ITComputersPage() {
     queryKey: itOperationsKeys.people({ status: 'active', page_size: 200 }),
     queryFn: () => fetchItPeoplePaginated({ status: 'active', page_size: 200 }),
     enabled: canAssign && Boolean(assignTarget),
+  });
+
+  const assignPreviewQuery = useQuery({
+    queryKey: itOperationsKeys.assignmentPreview(assignTarget?.asset_id ?? '', assignUserId),
+    queryFn: () =>
+      fetchAssignmentPreview(assignTarget!.asset_id, {
+        user_id: assignUserId || undefined,
+      }),
+    enabled: Boolean(assignTarget?.asset_id),
+  });
+
+  const recommendQuery = useQuery({
+    queryKey: itOperationsKeys.recommendComputers(assignUserId),
+    queryFn: () => fetchRecommendedComputers(assignUserId),
+    enabled: Boolean(assignTarget) && Boolean(assignUserId),
   });
 
   const interfacesQuery = useQuery({
@@ -591,11 +609,36 @@ export function ITComputersPage() {
       <Dialog
         open={Boolean(assignTarget)}
         onClose={() => setAssignTarget(null)}
-        maxWidth="xs"
+        maxWidth="sm"
         fullWidth
       >
         <DialogTitle>Assign {assignTarget?.computer_name}</DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <AssignmentAvailabilityPanel
+            preview={assignPreviewQuery.data}
+            loading={assignPreviewQuery.isFetching}
+            recommendations={recommendQuery.data?.recommendations}
+            currentAssetId={assignTarget?.asset_id}
+            onSelectRecommendation={(row) => {
+              setAssignTarget((current) =>
+                current
+                  ? {
+                      ...current,
+                      id: row.computer_id,
+                      asset_id: row.asset_id,
+                      computer_name: row.computer_name,
+                      asset_number: row.asset_number,
+                      make: row.make,
+                      model: row.model,
+                      status: row.status,
+                      primary_ip: row.primary_ip,
+                      mac_address: row.mac_address,
+                      location: row.location,
+                    }
+                  : current,
+              );
+            }}
+          />
           <FormSelect
             label="Employee"
             value={assignUserId}
@@ -604,7 +647,6 @@ export function ITComputersPage() {
               value: p.user_id,
               label: `${p.full_name}${p.team ? ` (${p.team})` : ''}`,
             }))}
-            sx={{ mt: 1 }}
           />
         </DialogContent>
         <DialogActions>
@@ -612,7 +654,11 @@ export function ITComputersPage() {
             Cancel
           </ProsohmButton>
           <ProsohmButton
-            disabled={!assignUserId || assignMutation.isPending}
+            disabled={
+              !assignUserId ||
+              assignMutation.isPending ||
+              (Boolean(assignUserId) && assignPreviewQuery.data?.ok === false)
+            }
             onClick={() => assignMutation.mutate()}
           >
             Confirm assignment

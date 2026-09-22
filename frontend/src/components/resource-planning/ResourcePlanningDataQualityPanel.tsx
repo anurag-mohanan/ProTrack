@@ -15,6 +15,7 @@ import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   fetchResourceDataQuality,
   resourcePlanningQueryKeys,
@@ -92,15 +93,31 @@ function IssueAccordion({ issue }: { issue: DataQualityIssue }) {
           </Typography>
         ) : (
           <Stack spacing={0.75}>
-            {issue.samples.slice(0, 20).map((sample, index) => (
-              <Typography key={`${issue.code}-${index}`} variant="body2" color="text.secondary">
-                {sampleLabel(sample)}
-                {sample.detail ? ` — ${String(sample.detail)}` : ''}
-                {sample.seat_shortfall != null
+            {issue.samples.slice(0, 20).map((sample, index) => {
+              const href = typeof sample.href === 'string' ? sample.href : null;
+              const label = `${sampleLabel(sample)}${
+                sample.detail ? ` — ${String(sample.detail)}` : ''
+              }${
+                sample.seat_shortfall != null
                   ? ` (shortfall ${String(sample.seat_shortfall)})`
-                  : ''}
-              </Typography>
-            ))}
+                  : ''
+              }`;
+              return href ? (
+                <Typography
+                  key={`${issue.code}-${index}`}
+                  variant="body2"
+                  component={RouterLink}
+                  to={href}
+                  sx={{ color: 'primary.main', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                >
+                  {label}
+                </Typography>
+              ) : (
+                <Typography key={`${issue.code}-${index}`} variant="body2" color="text.secondary">
+                  {label}
+                </Typography>
+              );
+            })}
             {issue.samples.length > 20 ? (
               <Typography variant="caption" color="text.secondary">
                 +{issue.samples.length - 20} more in API sample

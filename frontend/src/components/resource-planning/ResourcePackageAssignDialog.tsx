@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
+  Chip,
   Checkbox,
   Dialog,
   DialogActions,
@@ -25,7 +26,7 @@ import {
 } from '../../api/resourcePlanning';
 import { fetchShifts } from '../../api/resourceShifts';
 import { getErrorMessage } from '../../api/client';
-import { itOperationsKeys } from '../../api/itOperations';
+import { fetchRecommendedComputers, itOperationsKeys } from '../../api/itOperations';
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { LoadingState } from '../common/LoadingState';
 import { useToast } from '../../context/ToastContext';
@@ -88,6 +89,11 @@ export function ResourcePackageAssignDialog({ open, userId, userName, onClose }:
     queryFn: () => previewResourcePackage(packageId, userId),
     enabled: open && Boolean(packageId) && Boolean(userId),
   });
+  const recommendQuery = useQuery({
+    queryKey: itOperationsKeys.recommendComputers(userId),
+    queryFn: () => fetchRecommendedComputers(userId),
+    enabled: open && Boolean(userId) && activeStep === 5,
+  });
 
   useEffect(() => {
     if (!open) {
@@ -140,6 +146,12 @@ export function ResourcePackageAssignDialog({ open, userId, userName, onClose }:
   const selectedPackage = packages.find((row) => row.id === packageId);
   const lastStep = WIZARD_STEPS.length - 1;
   const selectedShift = (shiftsQuery.data ?? []).find((row) => row.id === shiftId);
+  const recommendedAssetIds = new Set(
+    (recommendQuery.data?.recommendations ?? []).map((row) => row.asset_id),
+  );
+  const recommendedReasons = new Map(
+    (recommendQuery.data?.recommendations ?? []).map((row) => [row.asset_id, row.reasons]),
+  );
 
   const canAdvance = useMemo(() => {
     if (activeStep === 1) return Boolean(packageId);
@@ -292,7 +304,23 @@ export function ResourcePackageAssignDialog({ open, userId, userName, onClose }:
                           }}
                         />
                       }
-                      label={`${asset.asset_number}${asset.make ? ` · ${asset.make}` : ''}${asset.model ? ` ${asset.model}` : ''}`}
+                      label={
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span>
+                            {`${asset.asset_number}${asset.make ? ` · ${asset.make}` : ''}${
+                              asset.model ? ` ${asset.model}` : ''
+                            }`}
+                          </span>
+                          {recommendedAssetIds.has(asset.id) ? (
+                            <Chip
+                              size="small"
+                              color="primary"
+                              label="Recommended"
+                              title={(recommendedReasons.get(asset.id) ?? []).join('; ')}
+                            />
+                          ) : null}
+                        </Stack>
+                      }
                     />
                   );
                 })}

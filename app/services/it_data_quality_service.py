@@ -22,6 +22,7 @@ from app.models.it_operations import (
     IPAddress,
     IPAssignmentHistory,
 )
+from app.models.models import User
 from app.services import it_computer_reconciliation_service as recon
 from app.services import resource_it_gap_service
 
@@ -258,6 +259,26 @@ def _lifecycle_issues(db: Session) -> list[dict]:
             }
         )
 
+    inactive_assignee: list[dict] = []
+    for assignment in open_assignments:
+        user = db.get(User, assignment.assigned_to_user_id)
+        if user is None:
+            continue
+        if user.is_active and not getattr(user, "is_deleted", False):
+            continue
+        asset = db.get(Asset, assignment.asset_id)
+        if asset is None or getattr(asset, "is_deleted", False):
+            continue
+        inactive_assignee.append(
+            {
+                "asset_id": str(asset.id),
+                "asset_number": asset.asset_number,
+                "user_id": str(user.id),
+                "user_name": f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email,
+                "status": asset.status,
+            }
+        )
+
     return [
         _issue(
             code="inactive_asset_with_open_assignment",
@@ -274,6 +295,14 @@ def _lifecycle_issues(db: Session) -> list[dict]:
             title="Customer-owned assets missing owner customer",
             count=len(missing_owner),
             samples=missing_owner,
+        ),
+        _issue(
+            code="assigned_to_inactive_employee",
+            severity="error",
+            domain="people",
+            title="Assets assigned to inactive or deleted employees",
+            count=len(inactive_assignee),
+            samples=inactive_assignee,
         ),
     ]
 
@@ -443,12 +472,25 @@ def _identity_issues(db: Session) -> list[dict]:
         ).all()
     )
     mac_mismatch: list[dict] = []
+    computers_without_mac: list[dict] = []
     for computer in computers:
         primary = next((row for row in (computer.interfaces or []) if row.is_primary), None)
         nic_mac = (primary.mac_address if primary is not None else None) or None
         denorm = computer.mac_address
+        asset = computer.asset
+        if not (nic_mac or denorm):
+            if asset is not None and not getattr(asset, "is_deleted", False):
+                status = (asset.status or "").lower()
+                if status in CURRENT_INVENTORY_STATUSES:
+                    computers_without_mac.append(
+                        {
+                            "computer_id": str(computer.id),
+                            "computer_name": computer.computer_name,
+                            "asset_number": asset.asset_number,
+                            "status": status,
+                        }
+                    )
         if nic_mac and denorm and nic_mac.strip().upper() != denorm.strip().upper():
-            asset = computer.asset
             mac_mismatch.append(
                 {
                     "computer_id": str(computer.id),
@@ -466,8 +508,37 @@ def _identity_issues(db: Session) -> list[dict]:
             title="Computer MAC differs from primary NIC (NIC is source of truth)",
             count=len(mac_mismatch),
             samples=mac_mismatch,
-        )
+        ),
+        _issue(
+            code="computers_without_mac",
+            severity="warning",
+            domain="computers",
+            title="Active computers with no MAC address",
+            count=len(computers_without_mac),
+            samples=computers_without_mac,
+        ),
     ]
+
+
+def _href_for_sample(sample: dict) -> str | None:
+    asset_number = sample.get("asset_number")
+    if isinstance(asset_number, str) and asset_number.strip():
+        return f"/it/assets?search={asset_number}"
+    if sample.get("user_id"):
+        return "/resource-planning"
+    if sample.get("address"):
+        return "/it/networks"
+    return None
+
+
+def _annotate_sample_hrefs(issues: list[dict]) -> None:
+    for issue in issues:
+        for sample in issue.get("samples") or []:
+            if sample.get("href"):
+                continue
+            href = _href_for_sample(sample)
+            if href:
+                sample["href"] = href
 
 
 def build_data_quality_report(db: Session) -> dict:
@@ -483,6 +554,7 @@ def build_data_quality_report(db: Session) -> dict:
         + _lifecycle_issues(db)
         + _identity_issues(db)
     )
+    _annotate_sample_hrefs(issues)
 
     open_issues = [row for row in issues if int(row["count"]) > 0]
     by_severity = {"error": 0, "warning": 0, "info": 0}

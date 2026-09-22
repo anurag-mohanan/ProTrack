@@ -244,6 +244,8 @@ class MilestoneBase(BaseModel):
     progress_percent: int = Field(default=0, ge=0, le=100)
     assigned_user_id: UUID | None = None
     sort_order: int = 0
+    is_required: bool = True
+    project_stage: ProjectStage | None = None
 
 
 class MilestoneCreate(BlankOptionalFieldsMixin, MilestoneBase):
@@ -267,6 +269,8 @@ class MilestoneUpdate(BlankOptionalFieldsMixin, BaseModel):
     assigned_user_id: UUID | None = None
     sort_order: int | None = None
     qa_acknowledged: bool | None = None
+    is_required: bool | None = None
+    project_stage: ProjectStage | None = None
 
 
 class MilestoneRead(MilestoneBase, TimestampSchema):
@@ -274,6 +278,7 @@ class MilestoneRead(MilestoneBase, TimestampSchema):
     assigned_user_name: str | None = None
     qa_acknowledged: bool = False
     qa_gate_required: bool = False
+    stage_sync: dict | None = None
 
 
 class MilestoneReorderItem(BaseModel):

@@ -109,6 +109,22 @@ export function ITProfilePanel({
                 <TableCell>{formatCellValue(computer.asset_number)}</TableCell>
               </TableRow>
               <TableRow>
+                <TableCell>Make / Model</TableCell>
+                <TableCell>{[computer.make, computer.model].filter(Boolean).join(' ') || '—'}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>IP</TableCell>
+                <TableCell>{formatCellValue(computer.primary_ip)}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>MAC</TableCell>
+                <TableCell>{formatCellValue(computer.mac_address)}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Location</TableCell>
+                <TableCell>{formatCellValue(computer.location)}</TableCell>
+              </TableRow>
+              <TableRow>
                 <TableCell>Status</TableCell>
                 <TableCell>
                   {computer.asset_status ? (

@@ -67,6 +67,13 @@ class DesignerProductivityRow(BaseModel):
     applicable_end_date: date | None = None
     applicable_working_days: int = 0
     available_hours: Decimal = Decimal("0")
+    weekday_hours: Decimal = Decimal("0")
+    saturday_hours: Decimal = Decimal("0")
+    sunday_hours: Decimal = Decimal("0")
+    weekend_hours: Decimal = Decimal("0")
+    weekend_working_days: int = 0
+    weekend_entries: int = 0
+    weekend_work_percent: Decimal = Decimal("0")
 
 
 class DesignerToolBreakdownRow(BaseModel):

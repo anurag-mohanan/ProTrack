@@ -15,6 +15,10 @@ from app.models.models import (
     User,
 )
 from app.schemas.timesheet import TimesheetEntryRead
+from app.services.reporting.weekend_work_service import (
+    is_weekend_date,
+    weekend_hours_for_entry,
+)
 
 
 def _entry_timestamp(entry: TimesheetEntry, field: str) -> datetime:
@@ -106,6 +110,8 @@ def build_timesheet_entry_read(db: Session, entry: TimesheetEntry) -> TimesheetE
         user_id=owner_id,
         user_name=owner_name,
         home_team_id=entry.home_team_id,
+        is_weekend_work=is_weekend_date(entry.entry_date),
+        weekend_hours=weekend_hours_for_entry(entry.entry_date, entry.hours),
     )
 
 

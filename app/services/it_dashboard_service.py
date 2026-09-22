@@ -130,6 +130,43 @@ def dashboard_summary(db: Session) -> dict[str, int]:
     from app.services import resource_it_gap_service
 
     gap_stats = resource_it_gap_service.gap_counts_for_dashboard(db)
+
+    returned_assets = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Asset)
+            .where(Asset.is_deleted.is_(False), Asset.status == "returned_to_customer")
+        )
+        or 0
+    )
+    retired_assets = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Asset)
+            .where(Asset.is_deleted.is_(False), Asset.status == "retired")
+        )
+        or 0
+    )
+    disposed_assets = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Asset)
+            .where(Asset.is_deleted.is_(False), Asset.status == "disposed")
+        )
+        or 0
+    )
+    reserved_assets = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Asset)
+            .where(Asset.is_deleted.is_(False), Asset.status == "awaiting_return")
+        )
+        or 0
+    )
+    from app.services import it_data_quality_service
+
+    dq = it_data_quality_service.build_data_quality_report(db)
+    open_by_code = {row["code"]: int(row["count"]) for row in dq.get("open_issues") or []}
     return {
         "total_assets": total_assets,
         "assigned_assets": assigned_assets,
@@ -143,6 +180,13 @@ def dashboard_summary(db: Session) -> dict[str, int]:
         "employees_without_computer": employees_without,
         **software_stats,
         **gap_stats,
+        "returned_assets": returned_assets,
+        "retired_assets": retired_assets,
+        "disposed_assets": disposed_assets,
+        "reserved_assets": reserved_assets,
+        "computers_without_ip": open_by_code.get("computers_without_ip", 0),
+        "computers_without_mac": open_by_code.get("computers_without_mac", 0),
+        "data_quality_open_issues": int((dq.get("totals") or {}).get("issue_types") or 0),
     }
 
 

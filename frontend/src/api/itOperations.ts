@@ -52,6 +52,9 @@ import type {
   NextAssetNumbersPreview,
   ComputerNameSuggestion,
   ComputerIpSuggestion,
+  DuplicateCheckResult,
+  AssignmentPreview,
+  ComputerRecommendResult,
   SoftwareAssignment,
   SoftwareAssignmentCreate,
   SoftwareInstallation,
@@ -67,7 +70,6 @@ import type {
   EmployeeSoftwareRequirementCreate,
   EmployeeSoftwareRequirementUpdate,
   ResourcePackage,
-  ResourcePackagePreview,
   ResourcePackageUpsert,
 } from '../types/itOperations';
 
@@ -91,6 +93,12 @@ export const itOperationsKeys = {
     [...itOperationsKeys.all, 'computers', 'suggest-name', typeCode ?? ''] as const,
   suggestIp: (computerName?: string, networkId?: string) =>
     [...itOperationsKeys.all, 'ips', 'suggest', computerName ?? '', networkId ?? ''] as const,
+  duplicates: (params: ListParams) =>
+    [...itOperationsKeys.all, 'assets', 'duplicates', params] as const,
+  recommendComputers: (userId: string) =>
+    [...itOperationsKeys.all, 'computers', 'recommend', userId] as const,
+  assignmentPreview: (assetId: string, userId?: string, shiftId?: string) =>
+    [...itOperationsKeys.all, 'assets', assetId, 'assignment-preview', userId ?? '', shiftId ?? ''] as const,
   assets: (filters?: ListParams) => [...itOperationsKeys.all, 'assets', filters ?? {}] as const,
   asset: (id: string) => [...itOperationsKeys.all, 'assets', id] as const,
   customerReturns: (filters?: ListParams) =>
@@ -296,6 +304,41 @@ export async function fetchSuggestedIp(params?: {
 }): Promise<ComputerIpSuggestion> {
   const { data } = await apiClient.get<ComputerIpSuggestion>(
     `/it/ips/suggest${buildQuery(params)}`,
+  );
+  return data;
+}
+
+export async function checkAssetDuplicates(params: {
+  asset_number?: string;
+  computer_name?: string;
+  serial_number?: string;
+  service_tag?: string;
+  mac_address?: string;
+  ip_address?: string;
+  exclude_asset_id?: string;
+}): Promise<DuplicateCheckResult> {
+  const { data } = await apiClient.get<DuplicateCheckResult>(
+    `/it/assets/check-duplicates${buildQuery(params)}`,
+  );
+  return data;
+}
+
+export async function fetchRecommendedComputers(
+  userId: string,
+  limit = 8,
+): Promise<ComputerRecommendResult> {
+  const { data } = await apiClient.get<ComputerRecommendResult>(
+    `/it/computers/recommend${buildQuery({ user_id: userId, limit })}`,
+  );
+  return data;
+}
+
+export async function fetchAssignmentPreview(
+  assetId: string,
+  params?: { user_id?: string; shift_id?: string },
+): Promise<AssignmentPreview> {
+  const { data } = await apiClient.get<AssignmentPreview>(
+    `/it/assets/${assetId}/assignment-preview${buildQuery(params)}`,
   );
   return data;
 }

@@ -100,6 +100,8 @@ class AssetUpdate(BlankOptionalFieldsMixin, BaseModel):
     supplier_id: Optional[UUID] = None
     invoice_number: Optional[str] = Field(default=None, max_length=80)
     condition: Optional[str] = Field(default=None, max_length=40)
+    computer_name: Optional[str] = Field(default=None, max_length=40)
+    computer_name_reason: Optional[str] = Field(default=None, max_length=200)
 
 
 class AssetRead(TimestampSchema):
@@ -512,6 +514,65 @@ class ComputerIpSuggestion(BaseModel):
     message: str
 
 
+class DuplicateConflict(BaseModel):
+    field: str
+    value: Optional[str] = None
+    message: str
+    asset_number: Optional[str] = None
+    computer_name: Optional[str] = None
+    href: Optional[str] = None
+
+
+class DuplicateCheckResult(BaseModel):
+    ok: bool
+    conflicts: list[DuplicateConflict] = Field(default_factory=list)
+
+
+class AssignmentPreviewCheck(BaseModel):
+    code: str
+    ok: bool
+    message: str
+    team: Optional[str] = None
+    location: Optional[str] = None
+    shift_id: Optional[str] = None
+    derived: bool = False
+
+
+class AssignmentPreview(BaseModel):
+    ok: bool
+    asset_number: Optional[str] = None
+    computer_name: Optional[str] = None
+    status: Optional[str] = None
+    primary_ip: Optional[str] = None
+    mac_address: Optional[str] = None
+    checks: list[AssignmentPreviewCheck] = Field(default_factory=list)
+
+
+class ComputerRecommendation(BaseModel):
+    computer_id: UUID
+    asset_id: UUID
+    computer_name: str
+    asset_number: Optional[str] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    status: Optional[str] = None
+    primary_ip: Optional[str] = None
+    mac_address: Optional[str] = None
+    location: Optional[str] = None
+    score: int
+    reasons: list[str] = Field(default_factory=list)
+    href: Optional[str] = None
+
+
+class ComputerRecommendResult(BaseModel):
+    user_id: UUID
+    user_name: Optional[str] = None
+    team: Optional[str] = None
+    shift: Optional[str] = None
+    recommendations: list[ComputerRecommendation] = Field(default_factory=list)
+    message: str
+
+
 class ITUserAccountCreate(BlankOptionalFieldsMixin, BaseModel):
     user_id: UUID
     account_type: str = Field(min_length=1, max_length=40)
@@ -585,6 +646,11 @@ class ITProfileComputer(BaseModel):
     asset_number: Optional[str] = None
     asset_status: Optional[str] = None
     assigned_date: Optional[date] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    primary_ip: Optional[str] = None
+    mac_address: Optional[str] = None
+    location: Optional[str] = None
 
 
 class ITProfileSoftware(BaseModel):
@@ -643,6 +709,13 @@ class ITDashboardSummary(BaseModel):
     gap_oversubscribed_software: int = 0
     gap_software_without_pool: int = 0
     gap_spare_computers: int = 0
+    returned_assets: int = 0
+    retired_assets: int = 0
+    disposed_assets: int = 0
+    reserved_assets: int = 0
+    computers_without_ip: int = 0
+    computers_without_mac: int = 0
+    data_quality_open_issues: int = 0
 
 
 class ITPersonListItem(BaseModel):

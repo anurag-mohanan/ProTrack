@@ -75,6 +75,32 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
         recalculate_project_planned_hours(db, updated.project_id)
         recalculate_project(db, updated.project_id)
 
+        from app.models.models import Project
+        from app.services.project_stage_sync_service import (
+            TRIGGER_MILESTONE_COMPLETION,
+            TRIGGER_MILESTONE_REOPEN,
+            sync_project_stage_from_milestones,
+        )
+
+        project = db.get(Project, updated.project_id)
+        stage_sync_result = None
+        if project is not None and "status" in update_data:
+            if update_data["status"] == MilestoneStatus.completed:
+                trigger = TRIGGER_MILESTONE_COMPLETION
+            elif previous_status == MilestoneStatus.completed:
+                trigger = TRIGGER_MILESTONE_REOPEN
+            else:
+                trigger = TRIGGER_MILESTONE_COMPLETION
+            stage_sync_result = sync_project_stage_from_milestones(
+                db,
+                project,
+                actor=actor,
+                trigger=trigger,
+                related_milestone=updated,
+            )
+            db.commit()
+            db.refresh(updated)
+
         if actor is not None:
             log_milestone_field_changes(
                 db,

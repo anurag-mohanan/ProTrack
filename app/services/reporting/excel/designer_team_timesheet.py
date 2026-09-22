@@ -617,6 +617,11 @@ def _write_utilization_sheet(
         "WORKING DAYS",
         "AVAILABLE HOURS",
         "PRODUCTIVE HOURS",
+        "WEEKDAY HOURS",
+        "SATURDAY HOURS",
+        "SUNDAY HOURS",
+        "WEEKEND HOURS",
+        "WEEKEND %",
         "UTILIZATION %",
     ]
     col_span = len(headers)
@@ -660,6 +665,11 @@ def _write_utilization_sheet(
             row.applicable_working_days,
             format_hours(row.available_hours),
             format_hours(row.productive_hours),
+            format_hours(row.weekday_hours),
+            format_hours(row.saturday_hours),
+            format_hours(row.sunday_hours),
+            format_hours(row.weekend_hours),
+            format_hours(row.weekend_work_percent),
             _utilization_display(row),
         ]
         for col, value in enumerate(values, start=1):
@@ -668,14 +678,14 @@ def _write_utilization_sheet(
                 cell.alignment = LEFT
             else:
                 cell.alignment = RIGHT
-                if col in (6, 7) and isinstance(value, (int, float)):
+                if col in (6, 7, 8, 9, 10, 11) and isinstance(value, (int, float)):
                     cell.number_format = HOURS_FORMAT
 
     last_data_row = header_row + len(payload.designers)
     if payload.designers:
         style_body_rows(sheet, header_row + 1, last_data_row, col_span)
         apply_utilization_conditional_format(
-            sheet, start_row=header_row + 1, end_row=last_data_row, col=8
+            sheet, start_row=header_row + 1, end_row=last_data_row, col=13
         )
         total_row = last_data_row + 1
         total_available = sum(row.available_hours for row in payload.designers)
@@ -689,15 +699,35 @@ def _write_utilization_sheet(
         sheet.cell(
             row=total_row, column=7, value=format_hours(ctx.total_productive_hours)
         ).number_format = HOURS_FORMAT
+        sheet.cell(
+            row=total_row,
+            column=8,
+            value=format_hours(sum(row.weekday_hours for row in payload.designers)),
+        ).number_format = HOURS_FORMAT
+        sheet.cell(
+            row=total_row,
+            column=9,
+            value=format_hours(sum(row.saturday_hours for row in payload.designers)),
+        ).number_format = HOURS_FORMAT
+        sheet.cell(
+            row=total_row,
+            column=10,
+            value=format_hours(sum(row.sunday_hours for row in payload.designers)),
+        ).number_format = HOURS_FORMAT
+        sheet.cell(
+            row=total_row,
+            column=11,
+            value=format_hours(sum(row.weekend_hours for row in payload.designers)),
+        ).number_format = HOURS_FORMAT
         team_util = (
             format_percent_display(ctx.average_utilization_percent)
             if total_available > 0
             else "N/A"
         )
-        sheet.cell(row=total_row, column=8, value=team_util).alignment = RIGHT
-        for col in (5, 6, 7, 8):
+        sheet.cell(row=total_row, column=13, value=team_util).alignment = RIGHT
+        for col in (5, 6, 7, 8, 9, 10, 11, 12, 13):
             sheet.cell(row=total_row, column=col).alignment = RIGHT
-        style_total_row(sheet, total_row, col_span, emphasize_cols={1, 7})
+        style_total_row(sheet, total_row, col_span, emphasize_cols={1, 7, 11})
         filter_end = total_row
         notes_start = total_row + 2
     else:
@@ -712,6 +742,10 @@ def _write_utilization_sheet(
         (
             "Utilization",
             "Productive hours ÷ available hours. Team total uses aggregate hours, not an average of percentages.",
+        ),
+        (
+            "Weekend Hours",
+            "Hours logged on Saturday or Sunday (from the timesheet entry date). Factual KPI — not a performance score.",
         ),
         (
             "Applicable Period",

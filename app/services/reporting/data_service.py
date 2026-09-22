@@ -55,6 +55,10 @@ from app.services.reporting.utilization_capacity import (
     calculate_utilization_percent,
     designer_available_hours,
 )
+from app.services.reporting.weekend_work_service import (
+    WeekendKpi,
+    add_entry_to_weekend_kpi,
+)
 
 
 def _pct(numerator: Decimal, denominator: Decimal) -> Decimal:
@@ -444,6 +448,7 @@ def _designer_productivity(
                     "billable": Decimal("0"),
                     "project_ids": set(),
                     "customer_ids": set(),
+                    "weekend": WeekendKpi(),
                 },
             )
             continue
@@ -472,6 +477,7 @@ def _designer_productivity(
                     "billable": Decimal("0"),
                     "project_ids": set(),
                     "customer_ids": set(),
+                    "weekend": WeekendKpi(),
                 }
                 buckets[key] = bucket
 
@@ -480,6 +486,12 @@ def _designer_productivity(
                 bucket["leave_days"] += _decimal(entry.leave_count) or Decimal("1")
                 bucket["leave_hours"] += hours
                 continue
+            add_entry_to_weekend_kpi(
+                bucket["weekend"],
+                entry_date=entry.entry_date,
+                hours=hours,
+                user_id=person.id,
+            )
             if entry.work_category == WorkCategory.non_productive:
                 bucket["np_hours"] += hours
             else:
@@ -521,6 +533,7 @@ def _designer_productivity(
             daily_hours=daily_hours,
         )
         utilization = calculate_utilization_percent(productive, available)
+        weekend = bucket["weekend"].finalize()
         rows.append(
             DesignerProductivityRow(
                 user_id=user_id,
@@ -539,6 +552,13 @@ def _designer_productivity(
                 applicable_end_date=applicable_end,
                 applicable_working_days=working_days,
                 available_hours=_round_hours(available),
+                weekday_hours=_round_hours(weekend.weekday_hours),
+                saturday_hours=_round_hours(weekend.saturday_hours),
+                sunday_hours=_round_hours(weekend.sunday_hours),
+                weekend_hours=_round_hours(weekend.weekend_hours),
+                weekend_working_days=weekend.weekend_working_days,
+                weekend_entries=weekend.weekend_entries,
+                weekend_work_percent=weekend.weekend_work_percent,
             )
         )
 

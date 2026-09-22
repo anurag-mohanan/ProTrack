@@ -118,7 +118,7 @@ export function ResourcePlanningForecastPanel({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {hire.software.map((row) => (
+                  {(hire.software ?? []).map((row) => (
                     <TableRow key={row.software_id}>
                       <TableCell>{row.software_name || row.software_id}</TableCell>
                       <TableCell>{row.seats_available ?? 0}</TableCell>

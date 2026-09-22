@@ -26,8 +26,19 @@ PROJECT_TYPE_NAMES = (
     "Tooling Support",
 )
 
-# (name, description, due_offset_days, is_required, assigned_role)
-MilestoneDef = tuple[str, str | None, int | None, bool, str | None]
+# (name, description, due_offset_days, is_required, assigned_role[, project_stage])
+MilestoneDef = tuple
+
+
+def _unpack_milestone_def(row: MilestoneDef) -> tuple[str, str | None, int | None, bool, str | None, str | None]:
+    name = row[0]
+    description = row[1] if len(row) > 1 else None
+    offset_days = row[2] if len(row) > 2 else None
+    is_required = bool(row[3]) if len(row) > 3 else True
+    assigned_role = row[4] if len(row) > 4 else None
+    project_stage = row[5] if len(row) > 5 else None
+    return name, description, offset_days, is_required, assigned_role, project_stage
+
 
 TEMPLATE_DEFINITIONS: list[dict] = [
     {
@@ -36,13 +47,13 @@ TEMPLATE_DEFINITIONS: list[dict] = [
         "customer": None,
         "is_default": True,
         "milestones": [
-            ("Feasibility", None, 7, True, "Surfacer"),
-            ("Blockout", None, 14, True, "Designer"),
-            ("Roughing", None, 21, True, "Designer"),
-            ("Intermediate Review", None, 28, True, "Designer"),
-            ("Final Review", None, 35, True, "Designer"),
-            ("File Release", None, 42, True, "Designer"),
-            ("BOM Release", None, 49, True, "Designer"),
+            ("Feasibility", None, 7, True, "Surfacer", "feasibility"),
+            ("Blockout", None, 14, True, "Designer", "preliminary"),
+            ("Roughing", None, 21, True, "Designer", "preliminary"),
+            ("Intermediate Review", None, 28, True, "Designer", "intermediate"),
+            ("Final Review", None, 35, True, "Designer", "final"),
+            ("File Release", None, 42, True, "Designer", None),
+            ("BOM Release", None, 49, True, "Designer", None),
         ],
     },
     {
@@ -262,9 +273,18 @@ def _add_milestones(
     template: ProjectTemplate,
     milestones: list[MilestoneDef],
 ) -> None:
-    for sort_order, (name, description, offset_days, is_required, assigned_role) in enumerate(
-        milestones, start=1
-    ):
+    from app.models.enums import ProjectStage
+
+    for sort_order, raw in enumerate(milestones, start=1):
+        name, description, offset_days, is_required, assigned_role, stage_raw = _unpack_milestone_def(
+            raw
+        )
+        stage = None
+        if stage_raw:
+            try:
+                stage = ProjectStage(stage_raw)
+            except ValueError:
+                stage = None
         session.add(
             ProjectTemplateMilestone(
                 project_template_id=template.id,
@@ -275,6 +295,7 @@ def _add_milestones(
                 is_required=is_required,
                 is_visible=True,
                 assigned_role=assigned_role,
+                project_stage=stage,
             )
         )
 

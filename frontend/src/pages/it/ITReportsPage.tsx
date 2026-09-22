@@ -167,9 +167,6 @@ export function ITReportsPage() {
     <PageContainer>
       <PageHeader
         title="Customer Asset Returns"
-      />
-
-      <ITSectionSubnav items={IT_SETTINGS_TABS} />
         action={
           <Stack direction="row" spacing={1}>
             <ProsohmButton

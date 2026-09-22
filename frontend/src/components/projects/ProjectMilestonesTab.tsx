@@ -56,6 +56,7 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
   const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Milestone | null>(null);
   const [qaCompleteTarget, setQaCompleteTarget] = useState<Milestone | null>(null);
+  const [completeTarget, setCompleteTarget] = useState<Milestone | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   const { data, isLoading, error } = useQuery({
@@ -80,8 +81,9 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
     },
     onSuccess: () => {
       refreshRelatedQueries();
-      showSuccess('Milestone marked as completed');
+      showSuccess('Milestone marked as completed — project stage updated automatically.');
       setQaCompleteTarget(null);
+      setCompleteTarget(null);
     },
     onError: (err) => showError(getErrorMessage(err)),
     onSettled: () => setPendingAction(null),
@@ -126,7 +128,7 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
       setQaCompleteTarget(milestone);
       return;
     }
-    completeMutation.mutate({ milestoneId: milestone.id });
+    setCompleteTarget(milestone);
   };
 
   if (isLoading) return <LoadingState message="Loading milestones…" />;
@@ -287,11 +289,27 @@ export function ProjectMilestonesTab({ projectId }: ProjectMilestonesTabProps) {
       />
 
       <ConfirmDialog
+        open={Boolean(completeTarget)}
+        title="Complete milestone"
+        message={
+          completeTarget
+            ? `Completing "${completeTarget.name}" will advance this project's stage according to the milestone workflow. If this is the last required milestone, the project will be marked Completed.`
+            : ''
+        }
+        confirmLabel="Complete"
+        loading={completeMutation.isPending}
+        onClose={() => setCompleteTarget(null)}
+        onConfirm={() =>
+          completeTarget && completeMutation.mutate({ milestoneId: completeTarget.id })
+        }
+      />
+
+      <ConfirmDialog
         open={Boolean(qaCompleteTarget)}
         title="QA acknowledgement"
         message={
           qaCompleteTarget
-            ? `QA gate is enabled for this project. Confirm that QA checks are complete for "${qaCompleteTarget.name}" before marking it done.`
+            ? `QA gate is enabled for this project. Confirm that QA checks are complete for "${qaCompleteTarget.name}" before marking it done. Completing it will also update the project stage automatically.`
             : ''
         }
         confirmLabel="Acknowledge & complete"

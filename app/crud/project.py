@@ -561,6 +561,13 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
                 ),
             )
 
+        previous_stage = db_obj.project_stage
+        stage_changed = (
+            "project_stage" in update_data
+            and update_data["project_stage"] is not None
+            and update_data["project_stage"] != previous_stage
+        )
+
         if "execution_status" in update_data:
             new_status = update_data["execution_status"]
             if new_status == ExecutionStatus.completed and db_obj.completed_at is None:
@@ -578,6 +585,17 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         for field, value in update_data.items():
             setattr(db_obj, field, value)
         db.add(db_obj)
+        if stage_changed:
+            from app.services.project_stage_sync_service import record_manual_stage_override
+
+            record_manual_stage_override(
+                db,
+                db_obj,
+                previous_stage=previous_stage,
+                new_stage=update_data["project_stage"],  # type: ignore[arg-type]
+                actor=None,
+                reason="Manual project stage override",
+            )
         _safe_commit(db)
         db.refresh(db_obj)
         recalculate_project(db, db_obj.id)

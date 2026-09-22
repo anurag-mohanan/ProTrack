@@ -4,7 +4,12 @@ export interface Timestamped {
   updated_at: string;
 }
 
-export type ProjectStage = 'preliminary' | 'intermediate' | 'final';
+export type ProjectStage =
+  | 'feasibility'
+  | 'preliminary'
+  | 'intermediate'
+  | 'final'
+  | 'completed';
 
 export type ExecutionStatus =
   | 'planning'
@@ -40,9 +45,11 @@ export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 export type ProjectHealth = 'green' | 'yellow' | 'red';
 
 export const PROJECT_STAGE_LABELS: Record<ProjectStage, string> = {
+  feasibility: 'Feasibility',
   preliminary: 'Preliminary',
   intermediate: 'Intermediate',
   final: 'Final',
+  completed: 'Completed',
 };
 
 export const EXECUTION_STATUS_LABELS: Record<ExecutionStatus, string> = {

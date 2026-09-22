@@ -8,6 +8,7 @@ import { DashboardPanel } from '../ui/design-system/DashboardPanel';
 import { accessContextFromUser, canAssignItAssets } from '../../utils/permissions';
 import { useAuth } from '../../context/AuthContext';
 import { ResourcePackageAssignDialog } from './ResourcePackageAssignDialog';
+import { NewEmployeeResourceChecklist } from './NewEmployeeResourceChecklist';
 
 type Props = {
   userId: string | null;
@@ -53,6 +54,12 @@ export function ResourcePlanningEmployeeProfile({ userId, userName }: Props) {
           loading={profileQuery.isLoading}
           emptyMessage="No shift, hardware, software, or IP assigned yet. The employee remains visible."
         />
+      </DashboardPanel>
+      <DashboardPanel
+        title="New employee checklist"
+        subtitle="Live inventory vs the standard resource package — nothing is assigned until you confirm."
+      >
+        <NewEmployeeResourceChecklist userId={userId} userName={userName} />
       </DashboardPanel>
       <ResourcePackageAssignDialog
         open={assignOpen}

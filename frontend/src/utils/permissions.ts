@@ -16,7 +16,6 @@ import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import HistoryEduRoundedIcon from '@mui/icons-material/HistoryEduRounded';
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
-import LanRoundedIcon from '@mui/icons-material/LanRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
 import AppsRoundedIcon from '@mui/icons-material/AppsRounded';

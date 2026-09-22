@@ -9,6 +9,10 @@ import {
   Typography,
 } from '@mui/material';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
+import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
+import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
+import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchShiftHierarchy,
@@ -128,24 +132,27 @@ export function ResourcePlanningShiftHierarchyPanel({ teamId }: Props) {
       subtitle={`SHIFT → TEAM → EMPLOYEE → computer / IP / software / project · ${report.on_date}`}
     >
       <KpiStrip columns={4}>
-        <KpiMetricCard compact title="Employees" value={String(report.totals.employees)} />
+        <KpiMetricCard compact title="Employees" value={String(report.totals.employees)} icon={GroupsRoundedIcon} />
         <KpiMetricCard
           compact
           title="With computer"
           value={String(report.totals.with_computer)}
           accent="success"
+          icon={DevicesOtherRoundedIcon}
         />
         <KpiMetricCard
           compact
           title="Unassigned shift"
           value={String(report.totals.unassigned_shift)}
           accent={report.totals.unassigned_shift > 0 ? 'warning' : 'success'}
+          icon={ScheduleRoundedIcon}
         />
         <KpiMetricCard
           compact
           title="Shortages"
           value={String(report.totals.with_shortage)}
           accent={report.totals.with_shortage > 0 ? 'warning' : 'success'}
+          icon={WarningAmberRoundedIcon}
         />
       </KpiStrip>
 

@@ -34,7 +34,7 @@ import {
   type TimesheetToolOption,
 } from './timesheetToolOptions';
 import type { NonProductiveCode } from '../../types';
-import { todayIsoDate } from '../../utils/timesheetMonth';
+import { isWeekend, todayIsoDate } from '../../utils/timesheetMonth';
 import {
   resolveTaskTypeIdForProject,
   taskTypesForProjectStream,
@@ -332,6 +332,24 @@ export function TimesheetEntryForm({
           {postCompletionBlocked
             ? ' — this team or workstream does not allow post-completion timesheet hours.'
             : ' — hours logged now are post-completion work, not original project hours. Status stays Completed.'}
+        </Alert>
+      ) : null}
+
+      <Alert severity="info" sx={{ mb: 1.25 }}>
+        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+          Timesheet Guideline
+        </Typography>
+        <Typography variant="body2">
+          Record only the actual hours worked on the selected project/task. Do not enter planned,
+          estimated, quoted, allocated, or expected hours. Timesheets should reflect the work
+          actually performed on the selected date.
+        </Typography>
+      </Alert>
+
+      {form.entryDate && isWeekend(form.entryDate) ? (
+        <Alert severity="info" sx={{ mb: 1, py: 0 }}>
+          This date is a weekend — hours will count toward the Weekend Working KPI (factual activity,
+          not a performance score).
         </Alert>
       ) : null}
 

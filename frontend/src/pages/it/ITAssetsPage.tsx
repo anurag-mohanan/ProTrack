@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Checkbox,
   Chip,
@@ -14,10 +15,12 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import AssignmentReturnRoundedIcon from '@mui/icons-material/AssignmentReturnRounded';
+import BuildRoundedIcon from '@mui/icons-material/BuildRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
+import LanRoundedIcon from '@mui/icons-material/LanRounded';
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded';
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
 import UndoRoundedIcon from '@mui/icons-material/UndoRounded';
@@ -25,7 +28,10 @@ import type { GridColDef, GridRowClassNameParams } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   assignAsset,
+  allocateIp,
+  checkAssetDuplicates,
   createAsset,
+  fetchAsset,
   createMasterMake,
   createMasterModel,
   createMasterSupplier,
@@ -33,6 +39,8 @@ import {
   fetchAssetAssignments,
   fetchAssetChildren,
   fetchAssetIds,
+  fetchAssignmentPreview,
+  fetchRecommendedComputers,
   fetchMasterCategories,
   fetchMasterMakes,
   fetchMasterModels,
@@ -58,6 +66,7 @@ import { ITSectionSubnav, IT_INVENTORY_TABS } from '../../components/it/ITSectio
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { AssetBulkActionBar } from '../../components/it/AssetBulkActionBar';
 import { AssetLifecycleDrawer } from '../../components/it/AssetLifecycleDrawer';
+import { AssignmentAvailabilityPanel } from '../../components/it/AssignmentAvailabilityPanel';
 import { ResourcePlanningDataQualityPanel } from '../../components/resource-planning/ResourcePlanningDataQualityPanel';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
@@ -78,6 +87,7 @@ import { optionalString, validateRequiredFields } from '../../utils/formValues';
 import {
   accessContextFromUser,
   canAssignItAssets,
+  canAllocateItIps,
   canManageItAssets,
   canOverrideItAssetNumber,
   canReturnCustomerAssets,
@@ -150,6 +160,10 @@ type AssetFormState = {
   computer_name: string;
   mac_address: string;
   allocate_ip: boolean;
+  service_tag: string;
+  computer_name_reason: string;
+  purchased_by: string;
+  owner_customer_id: string;
 };
 
 const emptyForm: AssetFormState = {
@@ -169,6 +183,10 @@ const emptyForm: AssetFormState = {
   computer_name: '',
   mac_address: '',
   allocate_ip: true,
+  service_tag: '',
+  computer_name_reason: '',
+  purchased_by: 'organization',
+  owner_customer_id: '',
 };
 
 function statusColor(
@@ -238,6 +256,7 @@ export function ITAssetsPage({
   const access = accessContextFromUser(user);
   const canManage = canManageItAssets(access);
   const canAssign = canAssignItAssets(access);
+  const canAllocateIp = canAllocateItIps(access);
   const canReturnToCustomer = canReturnCustomerAssets(access);
   const canOverrideNumber = canOverrideItAssetNumber(access);
   const { showSuccess, showError } = useToast();
@@ -310,6 +329,7 @@ export function ITAssetsPage({
   const [customerReturnTarget, setCustomerReturnTarget] = useState<ITAsset | null>(null);
   const [historyTarget, setHistoryTarget] = useState<ITAsset | null>(null);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [ipTarget, setIpTarget] = useState<ITAsset | null>(null);
   const [assignUserId, setAssignUserId] = useState('');
   const [assignShiftId, setAssignShiftId] = useState('');
   const [assignDate, setAssignDate] = useState(new Date().toISOString().slice(0, 10));
@@ -405,6 +425,64 @@ export function ITAssetsPage({
       }),
     enabled: formOpen && !editing && showNetworkFields,
   });
+
+  const duplicateQuery = useQuery({
+    queryKey: itOperationsKeys.duplicates({
+      asset_number: form.asset_number_override,
+      computer_name: form.computer_name,
+      serial_number: form.serial_number,
+      service_tag: form.service_tag,
+      mac_address: form.mac_address,
+      ip_address: ipSuggestQuery.data?.address ?? undefined,
+      exclude_asset_id: editing?.id,
+    }),
+    queryFn: () =>
+      checkAssetDuplicates({
+        asset_number: optionalString(form.asset_number_override) ?? undefined,
+        computer_name: optionalString(form.computer_name) ?? undefined,
+        serial_number: optionalString(form.serial_number) ?? undefined,
+        service_tag: optionalString(form.service_tag) ?? undefined,
+        mac_address: optionalString(form.mac_address) ?? undefined,
+        ip_address: form.allocate_ip ? ipSuggestQuery.data?.address ?? undefined : undefined,
+        exclude_asset_id: editing?.id,
+      }),
+    enabled: formOpen,
+  });
+
+  const assignPreviewQuery = useQuery({
+    queryKey: itOperationsKeys.assignmentPreview(
+      assignTarget?.id ?? '',
+      assignUserId,
+      assignShiftId,
+    ),
+    queryFn: () =>
+      fetchAssignmentPreview(assignTarget!.id, {
+        user_id: assignUserId || undefined,
+        shift_id: assignShiftId || undefined,
+      }),
+    enabled: Boolean(assignTarget),
+  });
+
+  const ipSuggestForAssignQuery = useQuery({
+    queryKey: itOperationsKeys.suggestIp(ipTarget?.computer_name ?? undefined),
+    queryFn: () => fetchSuggestedIp({ computer_name: ipTarget?.computer_name ?? undefined }),
+    enabled: Boolean(ipTarget),
+  });
+
+  const recommendQuery = useQuery({
+    queryKey: itOperationsKeys.recommendComputers(assignUserId),
+    queryFn: () => fetchRecommendedComputers(assignUserId),
+    enabled: Boolean(assignTarget?.computer_id) && Boolean(assignUserId),
+  });
+
+  useEffect(() => {
+    const checks = assignPreviewQuery.data?.checks ?? [];
+    const needsShift = checks.some((row) => row.code === 'conflict' && !row.ok);
+    const derivedShiftId = checks.find((row) => row.code === 'shift')?.shift_id;
+    if (needsShift && derivedShiftId && !assignShiftId) {
+      setAssignShiftId(derivedShiftId);
+    }
+  }, [assignPreviewQuery.data, assignShiftId]);
 
   useEffect(() => {
     if (editing || !nameSuggestQuery.data?.computer_name) return;
@@ -591,7 +669,18 @@ export function ITAssetsPage({
           location: optionalString(form.location),
           notes: optionalString(form.notes),
           status: optionalString(form.status) ?? 'available',
+          service_tag: optionalString(form.service_tag),
+          purchased_by: optionalString(form.purchased_by) ?? 'organization',
+          owner_customer_id:
+            form.purchased_by === 'customer' ? optionalString(form.owner_customer_id) : null,
         };
+        if (canOverrideNumber && optionalString(form.asset_number_override)) {
+          payload.asset_number = optionalString(form.asset_number_override);
+        }
+        if (showNetworkFields) {
+          payload.computer_name = optionalString(form.computer_name);
+          payload.computer_name_reason = optionalString(form.computer_name_reason);
+        }
         return updateAsset(editing.id, payload);
       }
 
@@ -612,6 +701,10 @@ export function ITAssetsPage({
         warranty_expiry: optionalString(form.warranty_expiry),
         location: optionalString(form.location),
         notes: optionalString(form.notes),
+        service_tag: optionalString(form.service_tag),
+        purchased_by: optionalString(form.purchased_by) ?? 'organization',
+        owner_customer_id:
+          form.purchased_by === 'customer' ? optionalString(form.owner_customer_id) : null,
       };
       if (canOverrideNumber && override && override !== suggested) {
         payload.asset_number = override;
@@ -692,6 +785,37 @@ export function ITAssetsPage({
     onSuccess: () => {
       showSuccess('Asset deleted.');
       setDeleteTarget(null);
+      invalidateAssets();
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const allocateIpMutation = useMutation({
+    mutationFn: () =>
+      allocateIp({
+        ip_address_id: ipSuggestForAssignQuery.data?.ip_address_id,
+        assigned_to_asset_id: ipTarget!.id,
+        hostname: ipTarget?.computer_name,
+      }),
+    onSuccess: () => {
+      showSuccess('IP allocated to this computer.');
+      setIpTarget(null);
+      invalidateAssets();
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
+
+  const maintenanceMutation = useMutation({
+    mutationFn: (asset: ITAsset) =>
+      updateAsset(asset.id, {
+        status: asset.status === 'maintenance' ? 'available' : 'maintenance',
+      }),
+    onSuccess: (row) => {
+      showSuccess(
+        row.status === 'maintenance'
+          ? 'Asset marked as maintenance.'
+          : 'Asset returned to available from maintenance.',
+      );
       invalidateAssets();
     },
     onError: (error) => showError(getErrorMessage(error)),
@@ -915,6 +1039,10 @@ export function ITAssetsPage({
       computer_name: asset.computer_name ?? '',
       mac_address: asset.mac_address ?? '',
       allocate_ip: true,
+      service_tag: asset.service_tag ?? '',
+      computer_name_reason: '',
+      purchased_by: asset.purchased_by || 'organization',
+      owner_customer_id: asset.owner_customer_id ?? '',
     });
     setFormOpen(true);
   };
@@ -989,6 +1117,14 @@ export function ITAssetsPage({
     );
     if (validationError) {
       showError(validationError);
+      return;
+    }
+    if (form.purchased_by === 'customer' && !optionalString(form.owner_customer_id)) {
+      showError('Select the owner customer for a customer-owned asset.');
+      return;
+    }
+    if (duplicateQuery.data?.ok === false) {
+      showError(duplicateQuery.data.conflicts[0]?.message || 'A matching asset already exists.');
       return;
     }
     saveMutation.mutate();
@@ -1143,7 +1279,9 @@ export function ITAssetsPage({
         DATA_GRID_ACTIONS_COLUMN_WIDTH +
         40 +
         (canAssign ? 72 : 0) +
-        (canReturnToCustomer ? 40 : 0),
+        (canReturnToCustomer ? 40 : 0) +
+        (canAllocateIp ? 40 : 0) +
+        (canManage ? 40 : 0),
       sortable: false,
       filterable: false,
       renderCell: (params) => (
@@ -1179,15 +1317,46 @@ export function ITAssetsPage({
               buttonVariant="outlined"
               size="small"
               aria-label="Assign"
+              title="Assign"
               onClick={() => {
                 setAssignTarget(params.row);
                 setAssignUserId('');
+                setAssignShiftId('');
                 setAssignDate(new Date().toISOString().slice(0, 10));
                 setAssignNotes('');
               }}
               sx={{ minWidth: 0, px: 0.75 }}
             >
               <PersonAddAlt1RoundedIcon fontSize="small" />
+            </ProsohmButton>
+          ) : null}
+          {canAllocateIp && params.row.computer_id && !params.row.primary_ip ? (
+            <ProsohmButton
+              buttonVariant="outlined"
+              size="small"
+              aria-label="Assign IP"
+              title="Assign IP"
+              onClick={() => setIpTarget(params.row)}
+              sx={{ minWidth: 0, px: 0.75 }}
+            >
+              <LanRoundedIcon fontSize="small" />
+            </ProsohmButton>
+          ) : null}
+          {canManage &&
+          !['retired', 'disposed', 'returned_to_customer'].includes(String(params.row.status)) ? (
+            <ProsohmButton
+              buttonVariant="outlined"
+              size="small"
+              aria-label={
+                params.row.status === 'maintenance' ? 'Return from maintenance' : 'Mark maintenance'
+              }
+              title={
+                params.row.status === 'maintenance' ? 'Return from maintenance' : 'Mark maintenance'
+              }
+              onClick={() => maintenanceMutation.mutate(params.row)}
+              sx={{ minWidth: 0, px: 0.75 }}
+            >
+              <BuildRoundedIcon fontSize="small" />
             </ProsohmButton>
           ) : null}
           {canAssign && params.row.status === 'assigned' ? (
@@ -1486,6 +1655,18 @@ export function ITAssetsPage({
                   'Assigned automatically on create. Serial number is separate.'
                 }
               />
+            ) : canOverrideNumber ? (
+              <FormField
+                label="Asset number"
+                value={form.asset_number_override || editing.asset_number}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    asset_number_override: event.target.value,
+                  }))
+                }
+                helper="Internal asset ID stays the same. Changing the number records history."
+              />
             ) : (
               <FormField
                 label="Asset number"
@@ -1514,6 +1695,28 @@ export function ITAssetsPage({
                 setForm((current) => ({ ...current, serial_number: event.target.value }))
               }
             />
+            <FormField
+              label="Service tag"
+              value={form.service_tag}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, service_tag: event.target.value }))
+              }
+            />
+            {(duplicateQuery.data?.conflicts ?? []).length > 0 ? (
+              <Stack spacing={1}>
+                {duplicateQuery.data!.conflicts.map((row) => (
+                  <Alert key={`${row.field}-${row.value}`} severity="warning">
+                    {row.message}
+                    {row.href ? (
+                      <>
+                        {' '}
+                        <RouterLink to={row.href}>Open existing record</RouterLink>
+                      </>
+                    ) : null}
+                  </Alert>
+                ))}
+              </Stack>
+            ) : null}
             {showNetworkFields ? (
               <>
                 <FormField
@@ -1529,6 +1732,19 @@ export function ITAssetsPage({
                   }
                   placeholder={nameSuggestQuery.data?.computer_name ?? ''}
                 />
+                {editing ? (
+                  <FormField
+                    label="Reason for name change"
+                    value={form.computer_name_reason}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        computer_name_reason: event.target.value,
+                      }))
+                    }
+                    helper="Recorded in computer name history. The internal asset ID does not change."
+                  />
+                ) : null}
                 <FormField
                   label="MAC address"
                   value={form.mac_address}
@@ -1630,6 +1846,34 @@ export function ITAssetsPage({
             ) : null}
           </FormSection>
           <FormSection title="Purchase & location">
+            <FormSelect
+              label="Ownership"
+              value={form.purchased_by}
+              onChange={(event) => {
+                const purchased_by = String(event.target.value);
+                setForm((current) => ({
+                  ...current,
+                  purchased_by,
+                  owner_customer_id: purchased_by === 'customer' ? current.owner_customer_id : '',
+                }));
+              }}
+              options={OWNERSHIP_OPTIONS.filter((opt) => opt.value)}
+            />
+            {form.purchased_by === 'customer' ? (
+              <FormSelect
+                label="Owner customer"
+                required
+                value={form.owner_customer_id}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    owner_customer_id: String(event.target.value),
+                  }))
+                }
+                options={customerOptions}
+                placeholder="Select customer"
+              />
+            ) : null}
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <FormField
                 label="Purchase date"
@@ -1780,11 +2024,28 @@ export function ITAssetsPage({
       <Dialog open={Boolean(assignTarget)} onClose={() => setAssignTarget(null)} fullWidth maxWidth="sm">
         <DialogTitle>Assign asset</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <AssignmentAvailabilityPanel
+            preview={assignPreviewQuery.data}
+            loading={assignPreviewQuery.isFetching}
+            recommendations={recommendQuery.data?.recommendations}
+            currentAssetId={assignTarget?.id}
+            onSelectRecommendation={(row) => {
+              void fetchAsset(row.asset_id)
+                .then((asset) => {
+                  setAssignTarget(asset);
+                  setAssignShiftId('');
+                })
+                .catch((error) => showError(getErrorMessage(error)));
+            }}
+          />
           <FormSelect
             label="Assignee"
             required
             value={assignUserId}
-            onChange={(event) => setAssignUserId(String(event.target.value))}
+            onChange={(event) => {
+              setAssignUserId(String(event.target.value));
+              setAssignShiftId('');
+            }}
             options={userOptions}
           />
           <FormSelect
@@ -1792,7 +2053,7 @@ export function ITAssetsPage({
             value={assignShiftId}
             onChange={(event) => setAssignShiftId(String(event.target.value))}
             options={[{ value: '', label: 'None (single assignee)' }, ...shiftOptions]}
-            helper="Set a shift to allow a second occupant on a different shift."
+            helper="Defaults from this person’s Resource Planning shift. Change only for a shared-desk slot."
           />
           <FormField
             label="Assigned date"
@@ -1816,10 +2077,50 @@ export function ITAssetsPage({
           <ProsohmButton
             buttonVariant="primary"
             loading={assignMutation.isPending}
-            disabled={!assignUserId}
+            disabled={!assignUserId || (Boolean(assignUserId) && assignPreviewQuery.data?.ok === false)}
             onClick={() => assignMutation.mutate()}
           >
             Assign
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(ipTarget)} onClose={() => setIpTarget(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Assign IP</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Typography variant="body2">
+            {ipTarget?.computer_name || ipTarget?.asset_number}
+            {ipTarget?.mac_address ? ` · MAC ${ipTarget.mac_address}` : ''}
+          </Typography>
+          {ipSuggestForAssignQuery.isFetching ? (
+            <Typography variant="body2" color="text.secondary">
+              Looking up the next free IP…
+            </Typography>
+          ) : ipSuggestForAssignQuery.data?.available && ipSuggestForAssignQuery.data.address ? (
+            <Alert severity="info">
+              Suggested {ipSuggestForAssignQuery.data.address}
+              {ipSuggestForAssignQuery.data.network_cidr
+                ? ` on ${ipSuggestForAssignQuery.data.network_name || ipSuggestForAssignQuery.data.network_cidr}`
+                : ''}
+              . {ipSuggestForAssignQuery.data.message}
+            </Alert>
+          ) : (
+            <Alert severity="warning">
+              {ipSuggestForAssignQuery.data?.message || 'No free IP is available to allocate.'}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="outlined" onClick={() => setIpTarget(null)}>
+            Cancel
+          </ProsohmButton>
+          <ProsohmButton
+            buttonVariant="primary"
+            loading={allocateIpMutation.isPending}
+            disabled={!ipSuggestForAssignQuery.data?.ip_address_id}
+            onClick={() => allocateIpMutation.mutate()}
+          >
+            Allocate suggested IP
           </ProsohmButton>
         </DialogActions>
       </Dialog>

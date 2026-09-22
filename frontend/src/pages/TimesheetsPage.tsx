@@ -697,6 +697,29 @@ export function TimesheetsPage() {
 
       {viewAllUsers ? (
         <>
+          {workspace.overviewContext?.weekend_working ? (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                Weekend Working ({periodLabel})
+              </Typography>
+              <Typography variant="body2">
+                Employees worked weekend:{' '}
+                {workspace.overviewContext.weekend_working.employees_worked_weekend}
+                {' · '}
+                Weekend hours: {workspace.overviewContext.weekend_working.weekend_hours}h
+                {' · '}
+                Saturday: {workspace.overviewContext.weekend_working.saturday_hours}h
+                {' · '}
+                Sunday: {workspace.overviewContext.weekend_working.sunday_hours}h
+                {' · '}
+                Weekend work %: {workspace.overviewContext.weekend_working.weekend_work_percent}%
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                Factual activity indicator — not an automatic performance judgment. Open Reports →
+                Designer / Team Timesheet for filtered detail.
+              </Typography>
+            </Alert>
+          ) : null}
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
             Timesheets for {periodLabel}
           </Typography>

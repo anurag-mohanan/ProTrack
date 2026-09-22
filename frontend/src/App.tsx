@@ -149,9 +149,9 @@ const ITSoftwarePage = lazy(() =>
     default: module.ITSoftwarePage,
   })),
 );
-const ITModulePlaceholderPage = lazy(() =>
-  import('./pages/it/ITModulePlaceholderPage').then((module) => ({
-    default: module.ITModulePlaceholderPage,
+const ITMaintenancePage = lazy(() =>
+  import('./pages/it/ITMaintenancePage').then((module) => ({
+    default: module.ITMaintenancePage,
   })),
 );
 
@@ -564,10 +564,7 @@ export default function App() {
                         path="/it/maintenance"
                         element={
                           <Suspense fallback={<LoadingState message="Loading maintenance…" />}>
-                            <ITModulePlaceholderPage
-                              title="Maintenance"
-                              description="Maintenance schedules and warranty follow-up."
-                            />
+                            <ITMaintenancePage />
                           </Suspense>
                         }
                       />

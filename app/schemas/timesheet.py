@@ -130,6 +130,8 @@ class TimesheetEntryRead(TimesheetEntryBase, TimestampSchema):
     user_id: UUID | None = None
     user_name: str | None = None
     home_team_id: UUID | None = None
+    is_weekend_work: bool = False
+    weekend_hours: Decimal = Decimal("0")
 
 
 class TimesheetEntryBulkUpsert(BaseModel):
@@ -316,9 +318,23 @@ class TimesheetOverviewUser(BaseModel):
     requires_timesheet: bool = False
 
 
+class WeekendWorkingSummary(BaseModel):
+    """Period weekend KPI for the timesheet dashboard card."""
+
+    employees_worked_weekend: int = 0
+    weekend_hours: Decimal = Decimal("0")
+    saturday_hours: Decimal = Decimal("0")
+    sunday_hours: Decimal = Decimal("0")
+    weekday_hours: Decimal = Decimal("0")
+    weekend_working_days: int = 0
+    weekend_entries: int = 0
+    weekend_work_percent: Decimal = Decimal("0")
+
+
 class TimesheetOverviewContext(BaseModel):
     teams: list[TimesheetOverviewTeam] = Field(default_factory=list)
     users: list[TimesheetOverviewUser] = Field(default_factory=list)
     scope_all_teams: bool = False
     month_start: date | None = None
     month_end: date | None = None
+    weekend_working: WeekendWorkingSummary | None = None

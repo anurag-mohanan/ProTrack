@@ -56,6 +56,13 @@ export interface DesignerProductivityRow {
   applicable_end_date?: string | null;
   applicable_working_days?: number;
   available_hours?: number;
+  weekday_hours?: number;
+  saturday_hours?: number;
+  sunday_hours?: number;
+  weekend_hours?: number;
+  weekend_working_days?: number;
+  weekend_entries?: number;
+  weekend_work_percent?: number;
 }
 
 export interface ToolHoursRow {

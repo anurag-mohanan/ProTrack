@@ -1185,6 +1185,13 @@ class Milestone(Base, TimestampMixin, TenantMixin):
     qa_acknowledged: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )
+    is_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    project_stage: Mapped[Optional[ProjectStage]] = mapped_column(
+        Enum(ProjectStage, name="milestone_project_stage", native_enum=False),
+        nullable=True,
+    )
 
     project: Mapped[Project] = relationship(back_populates="milestones")
     assigned_user: Mapped[Optional[User]] = relationship(
@@ -1192,6 +1199,41 @@ class Milestone(Base, TimestampMixin, TenantMixin):
     )
     timesheet_entries: Mapped[list[TimesheetEntry]] = relationship(
         back_populates="milestone"
+    )
+
+
+class ProjectStageHistory(Base, TimestampMixin, TenantMixin):
+    """Audit trail when Project.project_stage changes (auto or manual)."""
+
+    __tablename__ = "project_stage_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    previous_stage: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    new_stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    trigger: Mapped[str] = mapped_column(String(40), nullable=False)
+    triggered_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    related_milestone_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("milestones.id"), nullable=True
+    )
+    reason: Mapped[Optional[str]] = mapped_column(Text)
+
+    project: Mapped[Project] = relationship()
+    triggered_by: Mapped[Optional[User]] = relationship(
+        foreign_keys=[triggered_by_user_id]
+    )
+    related_milestone: Mapped[Optional[Milestone]] = relationship(
+        foreign_keys=[related_milestone_id]
     )
 
 

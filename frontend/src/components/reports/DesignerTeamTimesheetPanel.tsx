@@ -457,6 +457,11 @@ export function DesignerTeamTimesheetPanel({
                     <TableCell align="right">Productive</TableCell>
                     <TableCell align="right">NP</TableCell>
                     <TableCell align="right">Leave days</TableCell>
+                    <TableCell align="right">Weekday</TableCell>
+                    <TableCell align="right">Saturday</TableCell>
+                    <TableCell align="right">Sunday</TableCell>
+                    <TableCell align="right">Weekend</TableCell>
+                    <TableCell align="right">Weekend %</TableCell>
                     <TableCell align="right">Total</TableCell>
                     <TableCell align="right">Utilization</TableCell>
                   </TableRow>
@@ -464,7 +469,7 @@ export function DesignerTeamTimesheetPanel({
                 <TableBody>
                   {designers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7}>
+                      <TableCell colSpan={12}>
                         <Typography variant="body2" color="text.secondary">
                           No designer hours for this period and filter.
                         </Typography>
@@ -485,6 +490,13 @@ export function DesignerTeamTimesheetPanel({
                         <TableCell align="right">{formatNumber(row.productive_hours)}</TableCell>
                         <TableCell align="right">{formatNumber(row.non_productive_hours)}</TableCell>
                         <TableCell align="right">{formatNumber(row.leave_days)}</TableCell>
+                        <TableCell align="right">{formatNumber(row.weekday_hours ?? 0)}</TableCell>
+                        <TableCell align="right">{formatNumber(row.saturday_hours ?? 0)}</TableCell>
+                        <TableCell align="right">{formatNumber(row.sunday_hours ?? 0)}</TableCell>
+                        <TableCell align="right">{formatNumber(row.weekend_hours ?? 0)}</TableCell>
+                        <TableCell align="right">
+                          {formatNumber(row.weekend_work_percent ?? 0)}%
+                        </TableCell>
                         <TableCell align="right">{formatNumber(row.total_hours)}</TableCell>
                         <TableCell align="right">{formatUtilization(row)}</TableCell>
                       </TableRow>

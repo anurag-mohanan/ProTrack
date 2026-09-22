@@ -16,6 +16,8 @@ export interface Milestone extends Timestamped {
   sort_order: number;
   qa_acknowledged?: boolean;
   qa_gate_required?: boolean;
+  is_required?: boolean;
+  project_stage?: string | null;
 }
 
 export interface MilestoneUpdate {

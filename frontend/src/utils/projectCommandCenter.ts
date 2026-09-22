@@ -84,7 +84,9 @@ const PRIORITY_ORDER: Record<string, number> = {
 
 export function formatProjectStageDisplay(project: Project): string {
   if (project.is_archived) return 'Archived';
-  if (project.execution_status === 'completed') return 'Completed';
+  if (project.execution_status === 'completed' || project.project_stage === 'completed') {
+    return 'Completed';
+  }
   if (project.execution_status === 'cancelled') return 'Cancelled';
   return PROJECT_STAGE_LABELS[project.project_stage] ?? '—';
 }

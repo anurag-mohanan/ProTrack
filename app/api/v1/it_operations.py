@@ -80,12 +80,15 @@ from app.schemas.it_operations import (
     ComputerIpSuggestion,
     ComputerNameSuggestion,
     ComputerRead,
+    ComputerRecommendResult,
     ComputerTransferRequest,
     ComputerUnassignRequest,
     ComputerUpdate,
     CredentialGenerateRequest,
     CredentialGenerateResponse,
     CustomerAssetReturnReportRow,
+    DuplicateCheckResult,
+    AssignmentPreview,
     EmployeeSoftwareRequirementCreate,
     EmployeeSoftwareRequirementRead,
     EmployeeSoftwareRequirementUpdate,
@@ -1250,6 +1253,65 @@ def suggest_computer_ip(
     )
 
 
+@router.get("/assets/check-duplicates", response_model=DuplicateCheckResult)
+def check_asset_duplicates(
+    asset_number: str | None = Query(None),
+    computer_name: str | None = Query(None),
+    serial_number: str | None = Query(None),
+    service_tag: str | None = Query(None),
+    mac_address: str | None = Query(None),
+    ip_address: str | None = Query(None),
+    exclude_asset_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Preview uniqueness conflicts before save. Does not allocate."""
+    _require_it_access(db, current_user)
+    from app.services import it_computer_recommend_service as recommend
+
+    return recommend.check_duplicates(
+        db,
+        asset_number=asset_number,
+        computer_name=computer_name,
+        serial_number=serial_number,
+        service_tag=service_tag,
+        mac_address=mac_address,
+        ip_address=ip_address,
+        exclude_asset_id=exclude_asset_id,
+    )
+
+
+@router.get("/computers/recommend", response_model=ComputerRecommendResult)
+def recommend_computers(
+    user_id: UUID = Query(...),
+    limit: int = Query(8, ge=1, le=20),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Rank available computers for an employee. Recommendation only."""
+    _require_it_access(db, current_user)
+    from app.services import it_computer_recommend_service as recommend
+
+    return recommend.recommend_computers(db, user_id=user_id, limit=limit)
+
+
+@router.get("/assets/{asset_id}/assignment-preview", response_model=AssignmentPreview)
+def preview_asset_assignment(
+    asset_id: UUID,
+    user_id: UUID | None = Query(None),
+    shift_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Read-only assignment checks (availability, IP, shift, conflicts)."""
+    _require_it_access(db, current_user)
+    from app.services import it_computer_recommend_service as recommend
+
+    return recommend.assignment_preview(
+        db, asset_id=asset_id, user_id=user_id, shift_id=shift_id
+    )
+
+
 @router.get("/assets/next-numbers")
 def preview_asset_numbers(
     asset_type_id: UUID = Query(...),
@@ -1327,6 +1389,8 @@ def update_asset(
             supplier_id=payload.supplier_id,
             invoice_number=payload.invoice_number,
             condition=payload.condition,
+            computer_name=payload.computer_name,
+            computer_name_reason=payload.computer_name_reason,
             fields_set=set(payload.model_fields_set),
         )
         asset = it_asset_service.get_asset(db, asset.id) or asset

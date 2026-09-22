@@ -17,6 +17,7 @@ import {
   fetchAssetChildren,
   fetchAssetIpHistory,
   fetchAssetLifecycleHistory,
+  fetchComputerInterfaces,
   fetchSoftwareInstallations,
   itOperationsKeys,
 } from '../../api/itOperations';
@@ -73,6 +74,12 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
     enabled: open && Boolean(asset?.computer_id) && tab === 'overview',
   });
 
+  const interfacesQuery = useQuery({
+    queryKey: itOperationsKeys.computerInterfaces(asset?.computer_id ?? ''),
+    queryFn: () => fetchComputerInterfaces(asset!.computer_id!),
+    enabled: open && Boolean(asset?.computer_id) && tab === 'overview',
+  });
+
   const previousAssignments = (assignmentsQuery.data ?? []).filter((row) => row.returned_date);
   const openAssignments = (assignmentsQuery.data ?? []).filter((row) => !row.returned_date);
 
@@ -126,6 +133,28 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
                       : null
                   }
                 />
+              </Section>
+            ) : null}
+            {asset.computer_id ? (
+              <Section title="Network interfaces">
+                {interfacesQuery.isLoading ? (
+                  <LoadingState message="Loading interfaces…" />
+                ) : (interfacesQuery.data ?? []).length === 0 ? (
+                  <Typography color="text.secondary">
+                    No extra NICs recorded. Add interfaces from Computers when this machine has more
+                    than one adapter.
+                  </Typography>
+                ) : (
+                  (interfacesQuery.data ?? []).map((row) => (
+                    <DetailRow
+                      key={row.id}
+                      label={row.name}
+                      value={`${row.role}${row.mac_address ? ` · ${row.mac_address}` : ''}${
+                        row.is_primary ? ' · primary' : ''
+                      }`}
+                    />
+                  ))
+                )}
               </Section>
             ) : null}
             <Section title="Ownership & location">

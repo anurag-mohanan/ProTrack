@@ -2,9 +2,11 @@ import enum
 
 
 class ProjectStage(enum.Enum):
+    feasibility = "feasibility"
     preliminary = "preliminary"
     intermediate = "intermediate"
     final = "final"
+    completed = "completed"
 
 
 class ExecutionStatus(enum.Enum):

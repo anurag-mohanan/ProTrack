@@ -284,6 +284,8 @@ def create_milestones_from_template(
                 planned_hours=template_milestone.estimated_hours or Decimal("0"),
                 assigned_user_id=assigned_user_id,
                 assignment_manual=template_milestone.default_assigned_user_id is not None,
+                is_required=bool(template_milestone.is_required),
+                project_stage=template_milestone.project_stage,
             )
         )
     from app.services.milestone_workspace_service import recalculate_project_planned_hours

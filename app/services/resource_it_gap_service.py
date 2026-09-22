@@ -152,8 +152,20 @@ def _computer_assignment_map(db: Session, on_date: date) -> dict[UUID, dict]:
                 "asset_number": asset.asset_number,
                 "asset_status": asset.status,
                 "assigned_date": assignment.assigned_date,
+                "make": asset.make,
+                "model": asset.model,
+                "mac_address": computer.mac_address,
+                "location": asset.location,
+                "primary_ip": None,
             },
         )
+    from app.services import it_computer_suggest_service as suggest
+
+    ips = suggest.current_ips_for_assets(db, [row["asset_id"] for row in assigned.values()])
+    for row in assigned.values():
+        snap = ips.get(row["asset_id"])
+        if snap:
+            row["primary_ip"] = snap.get("address")
     return assigned
 
 

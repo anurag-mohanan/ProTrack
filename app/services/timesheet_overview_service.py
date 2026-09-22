@@ -21,8 +21,10 @@ from app.core.permissions import (
 from app.core.timesheet_eligibility import user_requires_timesheet
 from app.db.phase33_management_team_schema_sync import is_overhead_home_team
 from app.models.enums import TeamRelationshipType
-from app.models.models import Project, Team, TeamMember, User
+from app.models.models import Project, Team, TeamMember, Timesheet, TimesheetEntry, User
+from app.core.non_productive_categories import is_leave_entry
 from app.services.reporting.team_membership_windows import membership_windows_for_teams
+from app.services.reporting.weekend_work_service import WeekendKpi, add_entry_to_weekend_kpi
 from app.services.user_team_service import get_user_team_ids
 
 
@@ -386,10 +388,43 @@ def build_timesheet_overview(
             }
         )
 
+    weekend = WeekendKpi()
+    if required_ids:
+        rows = db.execute(
+            select(TimesheetEntry, Timesheet.user_id)
+            .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+            .where(
+                Timesheet.user_id.in_(required_ids),
+                TimesheetEntry.entry_date >= month_start,
+                TimesheetEntry.entry_date <= month_end,
+                TimesheetEntry.is_deleted.is_(False),
+            )
+        ).all()
+        for entry, user_id in rows:
+            if is_leave_entry(entry):
+                continue
+            add_entry_to_weekend_kpi(
+                weekend,
+                entry_date=entry.entry_date,
+                hours=entry.hours,
+                user_id=user_id,
+            )
+    weekend.finalize()
+
     return {
         "teams": overview_teams,
         "users": overview_users,
         "scope_all_teams": team_scope is None,
         "month_start": month_start,
         "month_end": month_end,
+        "weekend_working": {
+            "employees_worked_weekend": weekend.employees_worked_weekend,
+            "weekend_hours": weekend.weekend_hours,
+            "saturday_hours": weekend.saturday_hours,
+            "sunday_hours": weekend.sunday_hours,
+            "weekday_hours": weekend.weekday_hours,
+            "weekend_working_days": weekend.weekend_working_days,
+            "weekend_entries": weekend.weekend_entries,
+            "weekend_work_percent": weekend.weekend_work_percent,
+        },
     }

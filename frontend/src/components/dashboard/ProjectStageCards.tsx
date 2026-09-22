@@ -5,9 +5,14 @@ import { designTokens } from '../../theme/designTokens';
 import { formatNumber } from '../../utils/format';
 
 const STAGE_COLORS: Record<ProjectStage, { main: string; soft: string }> = {
+  feasibility: designTokens.stage.preliminary,
   preliminary: designTokens.stage.preliminary,
   intermediate: designTokens.stage.intermediate,
   final: designTokens.stage.final,
+  completed: {
+    main: designTokens.semantic.success,
+    soft: designTokens.semantic.successSoft,
+  },
 };
 
 interface ProjectStageCardsProps {

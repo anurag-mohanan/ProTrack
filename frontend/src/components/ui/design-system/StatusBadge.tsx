@@ -24,9 +24,14 @@ const executionStyles: Record<ExecutionStatus, { bg: string; color: string; labe
 };
 
 const stageStyles: Record<ProjectStage, { bg: string; color: string }> = {
+  feasibility: {
+    bg: designTokens.stage.preliminary.soft,
+    color: designTokens.stage.preliminary.main,
+  },
   preliminary: { bg: designTokens.stage.preliminary.soft, color: designTokens.stage.preliminary.main },
   intermediate: { bg: designTokens.stage.intermediate.soft, color: designTokens.stage.intermediate.main },
   final: { bg: designTokens.stage.final.soft, color: designTokens.stage.final.main },
+  completed: { bg: designTokens.semantic.successSoft, color: designTokens.semantic.success },
 };
 
 const healthStyles: Record<ProjectHealth, { bg: string; color: string; label: string }> = {

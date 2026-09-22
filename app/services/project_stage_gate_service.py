@@ -49,12 +49,20 @@ def incomplete_required_milestones(db: Session, project_id: UUID) -> list[Milest
     if project is None:
         return []
 
-    required_names = required_milestone_names(db, project)
-    rows = db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all()
+    rows = list(db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all())
+    # Prefer persisted is_required on project milestones.
+    if any(hasattr(row, "is_required") for row in rows):
+        flagged = [row for row in rows if bool(getattr(row, "is_required", True))]
+        candidates = flagged if flagged else rows
+    else:
+        required_names = required_milestone_names(db, project)
+        if required_names is None:
+            candidates = rows
+        else:
+            candidates = [row for row in rows if row.name in required_names]
+
     incomplete: list[Milestone] = []
-    for row in rows:
-        if required_names is not None and row.name not in required_names:
-            continue
+    for row in candidates:
         if _status_done(row.status):
             continue
         incomplete.append(row)
@@ -76,7 +84,11 @@ def assert_stage_gate(
     if hasattr(stage_raw, "value"):
         stage_raw = stage_raw.value  # type: ignore[union-attr]
 
-    needs_gate = exec_raw == ExecutionStatus.completed.value or stage_raw == ProjectStage.final.value
+    needs_gate = (
+        exec_raw == ExecutionStatus.completed.value
+        or stage_raw
+        in {ProjectStage.final.value, ProjectStage.completed.value}
+    )
     if not needs_gate:
         return
 

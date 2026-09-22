@@ -66,6 +66,12 @@ export function ITDashboardPage() {
   const maintenanceComputers = data?.maintenance_computers ?? 0;
   const retiredComputers = data?.retired_computers ?? 0;
   const employeesWithout = data?.employees_without_computer ?? 0;
+  const reserved = data?.reserved_assets ?? 0;
+  const returned = data?.returned_assets ?? 0;
+  const retiredAssets = data?.retired_assets ?? 0;
+  const disposed = data?.disposed_assets ?? 0;
+  const computersWithoutIp = data?.computers_without_ip ?? 0;
+  const dataQualityIssues = data?.data_quality_open_issues ?? 0;
   const softwareCatalog = data?.software_catalog_count ?? 0;
   const licensePools = data?.license_pool_count ?? 0;
   const licensesExpiring = data?.licenses_expiring_30 ?? 0;
@@ -115,6 +121,63 @@ export function ITDashboardPage() {
               icon={BuildRoundedIcon}
               accent="warning"
               onClick={() => navigate('/it/assets?status=maintenance')}
+            />
+          </Grid>
+        </Grid>
+
+        <Grid container spacing={1.5}>
+          <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+            <KpiMetricCard
+              title="Reserved"
+              value={String(reserved)}
+              icon={InventoryRoundedIcon}
+              accent="warning"
+              onClick={() => navigate('/it/assets?status=awaiting_return')}
+            />
+          </Grid>
+          <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+            <KpiMetricCard
+              title="Returned"
+              value={String(returned)}
+              icon={InventoryRoundedIcon}
+              accent="info"
+              onClick={() => navigate('/it/returned-assets')}
+            />
+          </Grid>
+          <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+            <KpiMetricCard
+              title="Retired"
+              value={String(retiredAssets)}
+              icon={InventoryRoundedIcon}
+              accent="primary"
+              onClick={() => navigate('/it/assets?status=retired')}
+            />
+          </Grid>
+          <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+            <KpiMetricCard
+              title="Disposed"
+              value={String(disposed)}
+              icon={InventoryRoundedIcon}
+              accent="primary"
+              onClick={() => navigate('/it/assets?status=disposed')}
+            />
+          </Grid>
+          <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+            <KpiMetricCard
+              title="Computers without IP"
+              value={String(computersWithoutIp)}
+              icon={DnsRoundedIcon}
+              accent="warning"
+              onClick={() => navigate('/it/assets?category=computer')}
+            />
+          </Grid>
+          <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+            <KpiMetricCard
+              title="Data quality"
+              value={String(dataQualityIssues)}
+              icon={WarningAmberRoundedIcon}
+              accent={dataQualityIssues > 0 ? 'warning' : 'success'}
+              onClick={() => navigate('/it/assets')}
             />
           </Grid>
         </Grid>
@@ -191,16 +254,28 @@ export function ITDashboardPage() {
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <KpiMetricCard
+                title="License pools"
+                value={String(licensePools)}
+                icon={AppsRoundedIcon}
+                accent="info"
                 onClick={() => navigate('/it/software?tab=licenses')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <KpiMetricCard
+                title="Expiring (30d)"
+                value={String(licensesExpiring)}
+                icon={WarningAmberRoundedIcon}
+                accent="warning"
                 onClick={() => navigate('/it/software?tab=expiry')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <KpiMetricCard
+                title="Expired"
+                value={String(licensesExpired)}
+                icon={EventBusyRoundedIcon}
+                accent="error"
                 onClick={() => navigate('/it/software?tab=expiry')}
               />
             </Grid>

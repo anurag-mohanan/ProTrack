@@ -49,6 +49,13 @@ export interface ITDashboardSummary {
   retired_computers?: number;
   disposed_computers?: number;
   employees_without_computer?: number;
+  returned_assets?: number;
+  retired_assets?: number;
+  disposed_assets?: number;
+  reserved_assets?: number;
+  computers_without_ip?: number;
+  computers_without_mac?: number;
+  data_quality_open_issues?: number;
   software_catalog_count?: number;
   active_software_count?: number;
   license_pool_count?: number;
@@ -182,6 +189,65 @@ export interface ComputerIpSuggestion {
   message: string;
 }
 
+export interface DuplicateConflict {
+  field: string;
+  value?: string | null;
+  message: string;
+  asset_number?: string | null;
+  computer_name?: string | null;
+  href?: string | null;
+}
+
+export interface DuplicateCheckResult {
+  ok: boolean;
+  conflicts: DuplicateConflict[];
+}
+
+export interface AssignmentPreviewCheck {
+  code: string;
+  ok: boolean;
+  message: string;
+  team?: string | null;
+  location?: string | null;
+  shift_id?: string | null;
+  derived?: boolean;
+}
+
+export interface AssignmentPreview {
+  ok: boolean;
+  asset_number?: string | null;
+  computer_name?: string | null;
+  status?: string | null;
+  primary_ip?: string | null;
+  mac_address?: string | null;
+  checks: AssignmentPreviewCheck[];
+}
+
+export interface ComputerRecommendation {
+  computer_id: string;
+  asset_id: string;
+  computer_name: string;
+  asset_number?: string | null;
+  make?: string | null;
+  model?: string | null;
+  status?: string | null;
+  primary_ip?: string | null;
+  mac_address?: string | null;
+  location?: string | null;
+  score: number;
+  reasons: string[];
+  href?: string | null;
+}
+
+export interface ComputerRecommendResult {
+  user_id: string;
+  user_name?: string | null;
+  team?: string | null;
+  shift?: string | null;
+  recommendations: ComputerRecommendation[];
+  message: string;
+}
+
 export type MasterKind = 'categories' | 'types' | 'makes' | 'models' | 'suppliers';
 
 export interface MasterMergeResult {
@@ -297,6 +363,9 @@ export interface ITAssetCreate {
   model?: string | null;
   make_id?: string | null;
   model_id?: string | null;
+  purchased_by?: PurchasedBy;
+  owner_customer_id?: string | null;
+  customer_used_for_id?: string | null;
   supplier_id?: string | null;
   asset_number?: string | null;
   status?: AssetStatus | string;
@@ -309,6 +378,7 @@ export interface ITAssetCreate {
   mac_address?: string | null;
   ip_address_id?: string | null;
   provision_computer?: boolean;
+  service_tag?: string | null;
 }
 
 export interface ITAssetUpdate {
@@ -323,6 +393,12 @@ export interface ITAssetUpdate {
   warranty_expiry?: string | null;
   location?: string | null;
   notes?: string | null;
+  service_tag?: string | null;
+  asset_number?: string | null;
+  computer_name?: string | null;
+  computer_name_reason?: string | null;
+  purchased_by?: PurchasedBy;
+  owner_customer_id?: string | null;
 }
 
 export interface AssetAssignPayload {
@@ -719,6 +795,11 @@ export interface ITProfileComputer {
   asset_number?: string | null;
   asset_status?: string | null;
   assigned_date?: string | null;
+  make?: string | null;
+  model?: string | null;
+  primary_ip?: string | null;
+  mac_address?: string | null;
+  location?: string | null;
 }
 
 export interface ITProfileSoftware {

@@ -224,7 +224,7 @@ export function ITResourcePackagesPanel({ canManage }: { canManage: boolean }) {
   return (
     <>
       {canManage ? (
-        <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1 }}>
+        <Stack direction="row" sx={{ mb: 1, justifyContent: 'flex-end' }}>
           <ProsohmButton
             startIcon={<AddIcon />}
             onClick={() => {

@@ -234,10 +234,22 @@ export interface TimesheetOverviewUser {
   requires_timesheet?: boolean;
 }
 
+export interface WeekendWorkingSummary {
+  employees_worked_weekend: number;
+  weekend_hours: number;
+  saturday_hours: number;
+  sunday_hours: number;
+  weekday_hours: number;
+  weekend_working_days: number;
+  weekend_entries: number;
+  weekend_work_percent: number;
+}
+
 export interface TimesheetOverviewContext {
   teams: TimesheetOverviewTeam[];
   users: TimesheetOverviewUser[];
   scope_all_teams: boolean;
   month_start?: string | null;
   month_end?: string | null;
+  weekend_working?: WeekendWorkingSummary | null;
 }

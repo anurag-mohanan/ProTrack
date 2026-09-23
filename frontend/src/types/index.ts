@@ -267,8 +267,33 @@ export interface Customer {
   project_number_format?: string | null;
   project_number_prefix?: string | null;
   default_currency_code?: string | null;
+  default_payment_terms?: string | null;
+  default_payment_terms_days?: number | null;
+  default_payment_model?: string | null;
+  default_payment_terms_description?: string | null;
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  website?: string | null;
+  tax_registration_number?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface CustomerPaymentMilestone {
+  id?: string;
+  customer_id?: string;
+  sequence: number;
+  name: string;
+  percentage?: number | null;
+  fixed_amount?: number | null;
+  trigger_type: string;
+  trigger_description?: string | null;
+  invoice_timing?: string;
+  payment_timing?: string;
+  payment_terms_days?: number | null;
+  due_date_rule?: string | null;
+  is_active?: boolean;
 }
 
 export interface TaskType {

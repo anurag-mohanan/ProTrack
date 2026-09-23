@@ -417,11 +417,21 @@ def extract_invoice_pdf(
         cust_terms = None
         cust_days = None
         cust_id = None
+        project_terms = None
+        project_days = None
+        qrow = None
         if customer_matches:
             cust_id = customer_matches[0].get("customer_id")
         elif preview_quote_id:
             qrow = db.get(Quote, UUID(str(preview_quote_id)))
             if qrow:
+                cust_id = qrow.customer_id
+        if preview_quote_id and qrow is None:
+            qrow = db.get(Quote, UUID(str(preview_quote_id)))
+        if qrow is not None:
+            project_terms = getattr(qrow, "payment_terms", None)
+            project_days = getattr(qrow, "payment_terms_days", None)
+            if cust_id is None:
                 cust_id = qrow.customer_id
         if cust_id:
             cust = db.get(
@@ -437,6 +447,8 @@ def extract_invoice_pdf(
             invoice_date=inv_date,
             customer_default_terms=cust_terms,
             customer_default_days=cust_days,
+            project_terms=project_terms,
+            project_days=project_days,
         )
         label, days = normalize_payment_terms(terms_raw)
         payment_terms_preview = {
@@ -562,11 +574,14 @@ def confirm_invoice_pdf_import(
             customer_default_days=getattr(customer, "default_payment_terms_days", None)
             if customer
             else None,
+            project_terms=getattr(quote, "payment_terms", None),
+            project_days=getattr(quote, "payment_terms_days", None),
         )
     final_terms = terms_resolved.get("payment_terms")
     final_terms_days = terms_resolved.get("payment_terms_days")
     final_due = terms_resolved.get("due_date")
     final_terms_source = terms_resolved.get("payment_terms_source")
+    final_due_source = terms_resolved.get("due_date_source")
 
     qty = None
     if quantity_hours is not None:
@@ -648,6 +663,8 @@ def confirm_invoice_pdf_import(
         payment_terms=final_terms,
         payment_terms_days=final_terms_days,
         payment_terms_source=final_terms_source,
+        payment_model=getattr(quote, "payment_model", None),
+        due_date_source=final_due_source,
     )
     db.flush()
 

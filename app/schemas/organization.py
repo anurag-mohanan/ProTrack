@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -87,6 +88,13 @@ class CustomerBase(BaseModel):
     default_currency_code: str = Field(default="INR", min_length=3, max_length=3)
     default_payment_terms: str | None = Field(default=None, max_length=100)
     default_payment_terms_days: int | None = Field(default=None, ge=0, le=365)
+    default_payment_model: str | None = Field(default=None, max_length=40)
+    default_payment_terms_description: str | None = Field(default=None, max_length=500)
+    country: str | None = Field(default=None, max_length=100)
+    state: str | None = Field(default=None, max_length=100)
+    city: str | None = Field(default=None, max_length=100)
+    website: str | None = Field(default=None, max_length=255)
+    tax_registration_number: str | None = Field(default=None, max_length=100)
 
 
 class CustomerCreate(BlankOptionalFieldsMixin, CustomerBase):
@@ -110,10 +118,66 @@ class CustomerUpdate(BlankOptionalFieldsMixin, BaseModel):
     default_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     default_payment_terms: str | None = Field(default=None, max_length=100)
     default_payment_terms_days: int | None = Field(default=None, ge=0, le=365)
+    default_payment_model: str | None = Field(default=None, max_length=40)
+    default_payment_terms_description: str | None = Field(default=None, max_length=500)
+    country: str | None = Field(default=None, max_length=100)
+    state: str | None = Field(default=None, max_length=100)
+    city: str | None = Field(default=None, max_length=100)
+    website: str | None = Field(default=None, max_length=255)
+    tax_registration_number: str | None = Field(default=None, max_length=100)
 
 
 class CustomerRead(CustomerBase, TimestampSchema):
     pass
+
+
+class PaymentMilestoneBase(BaseModel):
+    sequence: int = Field(default=1, ge=1)
+    name: str = Field(max_length=200)
+    percentage: float | None = Field(default=None, ge=0, le=100)
+    fixed_amount: float | None = Field(default=None, ge=0)
+    trigger_type: str = Field(default="CUSTOM_EVENT", max_length=60)
+    trigger_description: str | None = Field(default=None, max_length=500)
+    invoice_timing: str = Field(default="ON_TRIGGER", max_length=40)
+    payment_timing: str = Field(default="NET_DAYS", max_length=40)
+    payment_terms_days: int | None = Field(default=None, ge=0, le=365)
+    due_date_rule: str | None = Field(default=None, max_length=200)
+    is_active: bool = True
+
+
+class CustomerPaymentMilestoneCreate(PaymentMilestoneBase):
+    pass
+
+
+class CustomerPaymentMilestoneRead(PaymentMilestoneBase, TimestampSchema):
+    id: UUID
+    customer_id: UUID
+
+
+class CustomerPaymentMilestonesReplace(BaseModel):
+    milestones: list[CustomerPaymentMilestoneCreate] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class QuotePaymentMilestoneCreate(PaymentMilestoneBase):
+    pass
+
+
+class QuotePaymentMilestoneRead(PaymentMilestoneBase, TimestampSchema):
+    id: UUID
+    quote_id: UUID
+    trigger_status: str = "NOT_YET_TRIGGERED"
+    triggered_at: datetime | None = None
+    triggered_by_id: UUID | None = None
+    fulfilled_invoice_line_id: UUID | None = None
+
+
+class QuotePaymentScheduleReplace(BaseModel):
+    payment_model: str | None = Field(default=None, max_length=40)
+    payment_terms: str | None = Field(default=None, max_length=100)
+    payment_terms_days: int | None = Field(default=None, ge=0, le=365)
+    milestones: list[QuotePaymentMilestoneCreate] = Field(default_factory=list)
+    reason: str | None = None
 
 
 class ContactBase(BaseModel):

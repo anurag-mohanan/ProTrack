@@ -256,8 +256,22 @@ def aggregate_customer_financial_summary(
     }
 
     quotes_out = []
+    future_ms = Decimal("0.00")
+    ready_ms = Decimal("0.00")
+    from app.services.finance.payment_schedule_service import (
+        list_customer_milestones,
+        summarize_quote_payment_schedule,
+    )
+    from app.models.finance import Quote as QuoteModel
+
     for s in snapshots:
         project = db.get(Project, s["project_id"]) if s.get("project_id") else None
+        quote_obj = db.get(QuoteModel, s["quote_id"])
+        schedule = None
+        if quote_obj is not None:
+            schedule = summarize_quote_payment_schedule(db, quote=quote_obj, as_of=today)
+            future_ms += _d(schedule.get("future_milestone_amount"))
+            ready_ms += _d(schedule.get("ready_to_invoice_amount"))
         quotes_out.append(
             {
                 "quote_id": str(s["quote_id"]),
@@ -279,15 +293,72 @@ def aggregate_customer_financial_summary(
                 "remaining_hours": s.get("remaining_hours"),
                 "closed_balance_hours": s.get("closed_balance_hours"),
                 "is_financially_closed": s.get("is_financially_closed"),
+                "payment_schedule": schedule,
             }
         )
+
+    # Analytical payment history (does not affect contractual due dates)
+    paid_invoices = [r for r in invoice_rows if _d(r.get("outstanding")) <= Decimal("0.01")]
+    days_to_pay: list[int] = []
+    for r in paid_invoices:
+        inv_d = r.get("invoice_date")
+        due_d = r.get("due_date")
+        # Use paid conceptually as due when fully paid without tracking pay date on line
+        if inv_d and due_d:
+            try:
+                from datetime import date as date_cls
+
+                i = date_cls.fromisoformat(inv_d)
+                d = date_cls.fromisoformat(due_d)
+                days_to_pay.append(max(0, (d - i).days))
+            except ValueError:
+                pass
+    overdue_invoices = [
+        r for r in invoice_rows if r.get("payment_timing_status") == "OVERDUE"
+    ]
+    partial_invoices = [
+        r for r in invoice_rows if r.get("payment_timing_status") == "PARTIALLY_PAID"
+    ]
+    payment_history = {
+        "total_invoiced": invoiced,
+        "total_paid": collected,
+        "total_outstanding": outstanding,
+        "overdue_amount": aging["overdue"],
+        "not_yet_due": aging["not_yet_due"],
+        "average_days_to_payment": (
+            round(sum(days_to_pay) / len(days_to_pay), 1) if days_to_pay else None
+        ),
+        "number_of_invoices": len(invoice_rows),
+        "fully_paid_invoices": len(paid_invoices),
+        "partially_paid_invoices": len(partial_invoices),
+        "overdue_invoices": len(overdue_invoices),
+    }
+    schedule_defaults = [
+        {
+            "id": str(m.id),
+            "sequence": m.sequence,
+            "name": m.name,
+            "percentage": float(m.percentage) if m.percentage is not None else None,
+            "fixed_amount": float(m.fixed_amount) if m.fixed_amount is not None else None,
+            "trigger_type": m.trigger_type,
+            "payment_timing": m.payment_timing,
+            "payment_terms_days": m.payment_terms_days,
+        }
+        for m in list_customer_milestones(db, customer.id)
+    ]
 
     return {
         "customer_id": str(customer.id),
         "customer_name": customer.name,
         "customer_code": customer.code,
+        "default_payment_model": getattr(customer, "default_payment_model", None),
         "default_payment_terms": getattr(customer, "default_payment_terms", None),
         "default_payment_terms_days": getattr(customer, "default_payment_terms_days", None),
+        "default_payment_terms_description": getattr(
+            customer, "default_payment_terms_description", None
+        ),
+        "default_currency_code": getattr(customer, "default_currency_code", None),
+        "tax_registration_number": getattr(customer, "tax_registration_number", None),
         "as_of": today.isoformat(),
         "lifecycle_filter": lifecycle,
         "totals": {
@@ -297,6 +368,8 @@ def aggregate_customer_financial_summary(
             "collected": collected,
             "outstanding": outstanding,
             "closed_waived": closed_waived,
+            "future_milestone": future_ms,
+            "ready_to_invoice": ready_ms,
         },
         "projects": {
             "active": len(active_projects),
@@ -313,6 +386,8 @@ def aggregate_customer_financial_summary(
             for k, v in status_breakdown.items()
         },
         "receivables": aging,
+        "payment_history": payment_history,
+        "payment_schedule_defaults": schedule_defaults,
         "payment_terms_summary": [
             {"payment_terms": k, "invoice_count": v}
             for k, v in sorted(terms_counts.items(), key=lambda x: (-x[1], x[0]))

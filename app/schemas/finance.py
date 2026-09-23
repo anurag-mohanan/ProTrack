@@ -567,6 +567,13 @@ class QuoteInvoiceLineRead(BaseModel):
     payment_terms: str | None = None
     payment_terms_days: int | None = None
     payment_terms_source: str | None = None
+    payment_model: str | None = None
+    payment_milestone_id: UUID | None = None
+    payment_milestone_name: str | None = None
+    payment_milestone_percent: Decimal | None = None
+    payment_milestone_amount: Decimal | None = None
+    trigger_event: str | None = None
+    due_date_source: str | None = None
     content_sha256: str | None = None
     sort_order: int = 0
     created_at: datetime | None = None
@@ -596,6 +603,12 @@ class QuoteInvoiceLineCreate(BaseModel):
     due_date: date | None = None
     tax_amount: Decimal | None = None
     subtotal_amount: Decimal | None = None
+    payment_terms: str | None = None
+    payment_terms_days: int | None = Field(default=None, ge=0, le=365)
+    payment_terms_source: str | None = None
+    payment_model: str | None = None
+    payment_milestone_id: UUID | None = None
+    due_date_source: str | None = None
 
 
 class QuotePaymentLineCreate(BaseModel):
@@ -624,6 +637,10 @@ class QuoteRead(BaseModel):
     customer_po_number: str | None = None
     is_paid: bool = False
     paid_date: date | None = None
+    payment_model: str | None = None
+    payment_terms: str | None = None
+    payment_terms_days: int | None = None
+    payment_schedule_source: str | None = None
     payment_follow_up_due: bool = False
     payment_follow_up_on: date | None = None
     total_invoiced: Decimal = Decimal("0")

@@ -15,6 +15,7 @@ SOURCE_DOCUMENT = "DOCUMENT"
 SOURCE_CUSTOMER_DEFAULT = "CUSTOMER_DEFAULT"
 SOURCE_USER_OVERRIDE = "USER_OVERRIDE"
 SOURCE_SYSTEM_CALCULATED = "SYSTEM_CALCULATED"
+SOURCE_PROJECT_OVERRIDE = "PROJECT_OVERRIDE"
 SOURCE_NONE = "NONE"
 
 TIMING_NOT_YET_DUE = "NOT_YET_DUE"
@@ -77,6 +78,9 @@ def resolve_invoice_payment_terms(
     invoice_date: date | None = None,
     customer_default_terms: str | None = None,
     customer_default_days: int | None = None,
+    project_terms: str | None = None,
+    project_days: int | None = None,
+    project_due_date: date | None = None,
     user_terms: str | None = None,
     user_terms_days: int | None = None,
     user_due_date: date | None = None,
@@ -86,8 +90,9 @@ def resolve_invoice_payment_terms(
 
     1. User override (when provided)
     2. Explicit document due date / terms
-    3. Customer default
-    4. None
+    3. Project/quote override
+    4. Customer default
+    5. None
 
     Never invent terms. Preserve document due date when present.
     """
@@ -108,6 +113,7 @@ def resolve_invoice_payment_terms(
             "payment_terms_days": days,
             "due_date": due,
             "payment_terms_source": SOURCE_USER_OVERRIDE,
+            "due_date_source": SOURCE_USER_OVERRIDE if user_due_date else SOURCE_SYSTEM_CALCULATED,
             "calculated_due_date": calculate_due_date(invoice_date, days),
             "warnings": warnings,
         }
@@ -115,18 +121,43 @@ def resolve_invoice_payment_terms(
     doc_label, doc_days = normalize_payment_terms(document_terms)
     calc_from_doc = calculate_due_date(invoice_date, doc_days)
 
+    proj_label, proj_days = normalize_payment_terms(project_terms)
+    if project_days is not None:
+        proj_days = int(project_days)
+        if proj_label is None:
+            proj_label = "Due on Receipt" if proj_days == 0 else f"Net {proj_days}"
+    calc_from_project = (
+        project_due_date
+        if project_due_date is not None
+        else calculate_due_date(invoice_date, proj_days)
+    )
+
+    cust_label, cust_days = normalize_payment_terms(customer_default_terms)
+    if customer_default_days is not None:
+        cust_days = int(customer_default_days)
+        if cust_label is None:
+            cust_label = "Due on Receipt" if cust_days == 0 else f"Net {cust_days}"
+    calc_from_customer = calculate_due_date(invoice_date, cust_days)
+
     if document_due_date is not None:
         if calc_from_doc is not None and calc_from_doc != document_due_date:
             warnings.append(
                 f"Invoice states Due Date {document_due_date.isoformat()}, "
                 f"while payment terms calculate to {calc_from_doc.isoformat()}."
             )
+        baseline = calc_from_project or calc_from_customer
+        if baseline is not None and baseline != document_due_date:
+            warnings.append(
+                "Invoice contains an explicit due date that differs from the "
+                "customer/project default. Review before confirmation."
+            )
         return {
             "payment_terms": doc_label or document_terms,
-            "payment_terms_days": doc_days,
+            "payment_terms_days": doc_days if doc_days is not None else proj_days or cust_days,
             "due_date": document_due_date,
             "payment_terms_source": SOURCE_DOCUMENT,
-            "calculated_due_date": calc_from_doc,
+            "due_date_source": SOURCE_DOCUMENT,
+            "calculated_due_date": baseline or calc_from_doc,
             "warnings": warnings,
         }
 
@@ -138,18 +169,29 @@ def resolve_invoice_payment_terms(
             "payment_terms_source": SOURCE_DOCUMENT
             if doc_days is not None
             else SOURCE_NONE,
+            "due_date_source": SOURCE_SYSTEM_CALCULATED if calc_from_doc else SOURCE_NONE,
             "calculated_due_date": calc_from_doc,
             "warnings": warnings,
         }
 
+    # Project / quote override
+    if proj_days is not None or proj_label is not None or project_due_date is not None:
+        due = project_due_date if project_due_date is not None else calc_from_project
+        return {
+            "payment_terms": proj_label,
+            "payment_terms_days": proj_days,
+            "due_date": due,
+            "payment_terms_source": SOURCE_PROJECT_OVERRIDE,
+            "due_date_source": (
+                SOURCE_PROJECT_OVERRIDE if project_due_date else SOURCE_SYSTEM_CALCULATED
+            ),
+            "calculated_due_date": calc_from_project,
+            "warnings": warnings,
+        }
+
     # Customer default fallback
-    cust_label, cust_days = normalize_payment_terms(customer_default_terms)
-    if customer_default_days is not None:
-        cust_days = int(customer_default_days)
-        if cust_label is None:
-            cust_label = "Due on Receipt" if cust_days == 0 else f"Net {cust_days}"
     if cust_days is not None:
-        calc = calculate_due_date(invoice_date, cust_days)
+        calc = calc_from_customer
         warnings.append(
             f"Payment terms were not found in the invoice. "
             f"Customer default of {cust_days} days has been suggested."
@@ -159,6 +201,7 @@ def resolve_invoice_payment_terms(
             "payment_terms_days": cust_days,
             "due_date": calc,
             "payment_terms_source": SOURCE_CUSTOMER_DEFAULT,
+            "due_date_source": SOURCE_SYSTEM_CALCULATED,
             "calculated_due_date": calc,
             "warnings": warnings,
         }
@@ -168,6 +211,7 @@ def resolve_invoice_payment_terms(
         "payment_terms_days": None,
         "due_date": None,
         "payment_terms_source": SOURCE_NONE,
+        "due_date_source": SOURCE_NONE,
         "calculated_due_date": None,
         "warnings": warnings,
     }

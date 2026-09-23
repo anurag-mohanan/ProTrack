@@ -346,6 +346,182 @@ def finance_receivables(
     )
 
 
+@router.get("/customers/{customer_id}/payment-milestones")
+def get_customer_payment_milestones(
+    customer_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.schemas.organization import CustomerPaymentMilestoneRead
+    from app.services.finance.payment_schedule_service import list_customer_milestones
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    customer = db.get(Customer, customer_id)
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    rows = list_customer_milestones(db, customer_id)
+    return [CustomerPaymentMilestoneRead.model_validate(row) for row in rows]
+
+
+@router.put("/customers/{customer_id}/payment-milestones")
+def put_customer_payment_milestones(
+    customer_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.schemas.organization import (
+        CustomerPaymentMilestoneRead,
+        CustomerPaymentMilestonesReplace,
+    )
+    from app.services.finance.payment_schedule_service import (
+        commercial_snapshot_for_audit,
+        list_customer_milestones,
+        replace_customer_milestones,
+    )
+
+    _require_finance_action(db, current_user, MODULE_ACTION_CONFIGURE)
+    customer = db.get(Customer, customer_id)
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    body = CustomerPaymentMilestonesReplace.model_validate(payload)
+    before = commercial_snapshot_for_audit(customer, list_customer_milestones(db, customer_id))
+    try:
+        rows = replace_customer_milestones(
+            db,
+            customer=customer,
+            milestones=[m.model_dump() for m in body.milestones],
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    after = commercial_snapshot_for_audit(customer, rows)
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.customer_updated,
+        entity_type=EntityType.customer,
+        entity_id=customer.id,
+        new_value=f"payment_milestones: {before} → {after}"
+        + (f" | reason={body.reason}" if body.reason else ""),
+    )
+    db.commit()
+    return [CustomerPaymentMilestoneRead.model_validate(row) for row in rows]
+
+
+@router.get("/quotes/{quote_id}/payment-schedule")
+def get_quote_payment_schedule(
+    quote_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.payment_schedule_service import (
+        seed_quote_schedule_from_customer,
+        summarize_quote_payment_schedule,
+    )
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    seed_quote_schedule_from_customer(db, quote=row)
+    db.commit()
+    return summarize_quote_payment_schedule(db, quote=row)
+
+
+@router.put("/quotes/{quote_id}/payment-schedule")
+def put_quote_payment_schedule(
+    quote_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.schemas.organization import QuotePaymentScheduleReplace
+    from app.services.finance.payment_schedule_service import (
+        replace_quote_schedule,
+        summarize_quote_payment_schedule,
+    )
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    body = QuotePaymentScheduleReplace.model_validate(payload)
+    try:
+        replace_quote_schedule(
+            db,
+            quote=row,
+            milestones=[m.model_dump() for m in body.milestones],
+            payment_model=body.payment_model,
+            payment_terms=body.payment_terms,
+            payment_terms_days=body.payment_terms_days,
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _audit(
+        db,
+        user=current_user,
+        action=ActivityAction.quote_revised,
+        entity_type=EntityType.quote,
+        entity_id=row.id,
+        new_value=f"payment_schedule updated"
+        + (f" | reason={body.reason}" if body.reason else ""),
+    )
+    db.commit()
+    return summarize_quote_payment_schedule(db, quote=row)
+
+
+@router.post("/quotes/{quote_id}/payment-milestones/{milestone_id}/trigger")
+def trigger_quote_payment_milestone(
+    quote_id: UUID,
+    milestone_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.payment_schedule_service import (
+        mark_milestone_triggered,
+        summarize_quote_payment_schedule,
+    )
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    try:
+        mark_milestone_triggered(
+            db, quote=row, milestone_id=milestone_id, user_id=current_user.id
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.commit()
+    return summarize_quote_payment_schedule(db, quote=row)
+
+
+@router.post("/quotes/{quote_id}/payment-milestones/trigger-by-type")
+def trigger_quote_payment_milestones_by_type(
+    quote_id: UUID,
+    trigger_type: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.finance.payment_schedule_service import (
+        mark_milestone_triggered,
+        summarize_quote_payment_schedule,
+    )
+
+    _require_finance_action(db, current_user, MODULE_ACTION_EDIT)
+    row = db.get(Quote, quote_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    try:
+        mark_milestone_triggered(
+            db, quote=row, trigger_type=trigger_type, user_id=current_user.id
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.commit()
+    return summarize_quote_payment_schedule(db, quote=row)
+
+
 @router.get("/customers/{customer_id}/financial-summary")
 def customer_financial_summary(
     customer_id: UUID,
@@ -916,6 +1092,12 @@ def add_quote_invoice_line(
             due_date=payload.due_date,
             tax_amount=payload.tax_amount,
             subtotal_amount=payload.subtotal_amount,
+            payment_terms=payload.payment_terms,
+            payment_terms_days=payload.payment_terms_days,
+            payment_terms_source=payload.payment_terms_source,
+            payment_model=payload.payment_model,
+            payment_milestone_id=payload.payment_milestone_id,
+            due_date_source=payload.due_date_source,
         )
     except ProTrackValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.detail) from exc

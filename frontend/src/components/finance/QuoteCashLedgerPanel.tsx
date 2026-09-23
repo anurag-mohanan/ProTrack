@@ -16,6 +16,7 @@ import { apiErrorMessage } from '../../utils/apiErrorMessage';
 import { toFiniteNumber } from '../../utils/format';
 import { financeMoney } from './FinanceCockpitPrimitives';
 import { InvoicePdfImportDialog } from './InvoicePdfImportDialog';
+import { QuotePaymentSchedulePanel } from './QuotePaymentSchedulePanel';
 import { designTokens } from '../../theme/designTokens';
 
 export type CashLine = {
@@ -189,7 +190,12 @@ export function QuoteCashLedgerPanel({ quote, onChanged }: QuoteCashLedgerPanelP
         ) : null}
       </Stack>
 
-      <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.75 }}>
+      <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.75, mt: 1 }}>
+        Payment schedule
+      </Typography>
+      <QuotePaymentSchedulePanel quoteId={quote.id} currency={currency} />
+
+      <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.75, mt: 1.5 }}>
         Invoice lines
       </Typography>
       <Stack spacing={0.5} sx={{ mb: 1.5 }}>

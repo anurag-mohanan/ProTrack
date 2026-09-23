@@ -5,8 +5,11 @@ import {
   FormControlLabel,
   Grid,
   Link,
+  Stack,
   Switch,
+  Typography,
 } from '@mui/material';
+import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlined';
 import AddIcon from '@mui/icons-material/Add';
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined';
 import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
@@ -25,7 +28,11 @@ import { contactsApi, customersApi } from '../../api/resources';
 import { fetchTeams, fetchWorkingModels } from '../../api/lookups';
 import { fetchProjectTemplates, fetchProjectTypes } from '../../api/projectTemplates';
 import { ensureArray } from '../../types/pagination';
-import type { Contact, Customer, WorkingModel } from '../../types';
+import type { Contact, Customer, CustomerPaymentMilestone, WorkingModel } from '../../types';
+import {
+  fetchCustomerPaymentMilestones,
+  replaceCustomerPaymentMilestones,
+} from '../../api/paymentSchedule';
 import type { ProjectTemplate, ProjectType } from '../../types/ProjectTemplate';
 import type { Team } from '../../types/Team';
 import { ContentCard } from '../../components/ui/cards';
@@ -54,6 +61,7 @@ interface CustomerFormState {
   name: string;
   code: string;
   notes: string;
+  address: string;
   is_active: boolean;
   default_project_template_id: string;
   default_team_id: string;
@@ -64,12 +72,22 @@ interface CustomerFormState {
   project_number_format: string;
   project_number_prefix: string;
   default_currency_code: string;
+  default_payment_model: string;
+  default_payment_terms: string;
+  default_payment_terms_days: string;
+  default_payment_terms_description: string;
+  country: string;
+  state: string;
+  city: string;
+  website: string;
+  tax_registration_number: string;
 }
 
 const emptyForm: CustomerFormState = {
   name: '',
   code: '',
   notes: '',
+  address: '',
   is_active: true,
   default_project_template_id: '',
   default_team_id: '',
@@ -80,6 +98,15 @@ const emptyForm: CustomerFormState = {
   project_number_format: '',
   project_number_prefix: '',
   default_currency_code: 'INR',
+  default_payment_model: '',
+  default_payment_terms: '',
+  default_payment_terms_days: '',
+  default_payment_terms_description: '',
+  country: '',
+  state: '',
+  city: '',
+  website: '',
+  tax_registration_number: '',
 };
 
 const CUSTOMER_SECTION_STORAGE_KEY = 'protrack:sections:customer-form';
@@ -102,6 +129,7 @@ export default function CustomersPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [form, setForm] = useState<CustomerFormState>(emptyForm);
+  const [milestones, setMilestones] = useState<CustomerPaymentMilestone[]>([]);
   const baselineRef = useRef('');
 
   const serializeForm = (values: CustomerFormState) => JSON.stringify(values);
@@ -168,6 +196,7 @@ export default function CustomersPage() {
   const openCreate = () => {
     setEditingCustomer(null);
     setForm(emptyForm);
+    setMilestones([]);
     baselineRef.current = serializeForm(emptyForm);
     setFormOpen(true);
   };
@@ -176,10 +205,11 @@ export default function CustomersPage() {
 
   const openEdit = (customer: Customer) => {
     setEditingCustomer(customer);
-    const nextForm = {
+    const nextForm: CustomerFormState = {
       name: customer.name,
       code: customer.code ?? '',
       notes: customer.notes ?? '',
+      address: customer.address ?? '',
       is_active: customer.is_active,
       default_project_template_id: customer.default_project_template_id ?? '',
       default_team_id: customer.default_team_id ?? '',
@@ -190,10 +220,44 @@ export default function CustomersPage() {
       project_number_format: customer.project_number_format ?? '',
       project_number_prefix: customer.project_number_prefix ?? '',
       default_currency_code: customer.default_currency_code ?? 'INR',
+      default_payment_model: customer.default_payment_model ?? '',
+      default_payment_terms: customer.default_payment_terms ?? '',
+      default_payment_terms_days:
+        customer.default_payment_terms_days != null
+          ? String(customer.default_payment_terms_days)
+          : '',
+      default_payment_terms_description: customer.default_payment_terms_description ?? '',
+      country: customer.country ?? '',
+      state: customer.state ?? '',
+      city: customer.city ?? '',
+      website: customer.website ?? '',
+      tax_registration_number: customer.tax_registration_number ?? '',
     };
     setForm(nextForm);
     baselineRef.current = serializeForm(nextForm);
     setFormOpen(true);
+    void (async () => {
+      try {
+        const rows = await fetchCustomerPaymentMilestones(customer.id);
+        setMilestones(
+          rows.map((m) => ({
+            sequence: m.sequence,
+            name: m.name,
+            percentage: m.percentage ?? null,
+            fixed_amount: m.fixed_amount ?? null,
+            trigger_type: m.trigger_type,
+            trigger_description: m.trigger_description ?? null,
+            invoice_timing: m.invoice_timing ?? 'ON_TRIGGER',
+            payment_timing: m.payment_timing ?? 'NET_DAYS',
+            payment_terms_days: m.payment_terms_days ?? null,
+            due_date_rule: m.due_date_rule ?? null,
+            is_active: m.is_active ?? true,
+          })),
+        );
+      } catch {
+        setMilestones([]);
+      }
+    })();
   };
 
   const handleSave = async () => {
@@ -212,6 +276,7 @@ export default function CustomersPage() {
         name: form.name,
         code: optionalString(form.code),
         notes: optionalString(form.notes),
+        address: optionalString(form.address),
         is_active: form.is_active,
         default_project_template_id: optionalUuid(form.default_project_template_id),
         default_team_id: optionalUuid(form.default_team_id),
@@ -222,13 +287,31 @@ export default function CustomersPage() {
         project_number_format: optionalString(form.project_number_format),
         project_number_prefix: optionalString(form.project_number_prefix),
         default_currency_code: form.default_currency_code || 'INR',
+        default_payment_model: optionalString(form.default_payment_model),
+        default_payment_terms: optionalString(form.default_payment_terms),
+        default_payment_terms_days: form.default_payment_terms_days
+          ? Number(form.default_payment_terms_days)
+          : null,
+        default_payment_terms_description: optionalString(
+          form.default_payment_terms_description,
+        ),
+        country: optionalString(form.country),
+        state: optionalString(form.state),
+        city: optionalString(form.city),
+        website: optionalString(form.website),
+        tax_registration_number: optionalString(form.tax_registration_number),
       };
+      let savedId = editingCustomer?.id;
       if (editingCustomer) {
         await customersApi.update(editingCustomer.id, payload);
         showSuccess('Customer updated successfully.');
       } else {
-        await customersApi.create(payload);
+        const created = await customersApi.create(payload);
+        savedId = (created as Customer).id;
         showSuccess('Customer created successfully.');
+      }
+      if (savedId) {
+        await replaceCustomerPaymentMilestones(savedId, milestones);
       }
       setFormOpen(false);
       await loadData();
@@ -452,6 +535,298 @@ export default function CustomersPage() {
                   }))
                 }
               />
+            </Grid>
+          </CollapsibleFormSection>
+
+          <CollapsibleFormSection
+            sectionId="commercial-payment"
+            storageKey={CUSTOMER_SECTION_STORAGE_KEY}
+            title="Commercial / Payment Profile"
+            icon={AccountBalanceOutlinedIcon}
+          >
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Default payment model"
+                value={form.default_payment_model}
+                options={[
+                  { value: '', label: 'Not set' },
+                  { value: 'NET_TERMS', label: 'Net terms' },
+                  { value: 'MILESTONE_BASED', label: 'Milestone based' },
+                  { value: 'MIXED', label: 'Mixed' },
+                  { value: 'DUE_ON_RECEIPT', label: 'Due on receipt' },
+                  { value: 'CUSTOM', label: 'Custom' },
+                ]}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    default_payment_model: String(event.target.value),
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Default payment terms"
+                value={form.default_payment_terms}
+                options={[
+                  { value: '', label: 'No terms' },
+                  { value: 'Due on Receipt', label: 'Due on Receipt' },
+                  { value: 'Net 15', label: 'Net 15' },
+                  { value: 'Net 30', label: 'Net 30' },
+                  { value: 'Net 45', label: 'Net 45' },
+                  { value: 'Net 60', label: 'Net 60' },
+                  { value: 'Net 90', label: 'Net 90' },
+                  { value: 'Net 120', label: 'Net 120' },
+                ]}
+                onChange={(event) => {
+                  const label = String(event.target.value);
+                  const daysMatch = label.match(/Net\s+(\d+)/i);
+                  setForm((current) => ({
+                    ...current,
+                    default_payment_terms: label,
+                    default_payment_terms_days: daysMatch
+                      ? daysMatch[1]
+                      : label === 'Due on Receipt'
+                        ? '0'
+                        : current.default_payment_terms_days,
+                  }));
+                }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FormField
+                label="Payment terms days"
+                value={form.default_payment_terms_days}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    default_payment_terms_days: event.target.value,
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 8 }}>
+              <FormField
+                label="Payment terms description"
+                value={form.default_payment_terms_description}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    default_payment_terms_description: event.target.value,
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormField
+                label="Address"
+                value={form.address}
+                multiline
+                minRows={2}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, address: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FormField
+                label="Country"
+                value={form.country}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, country: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FormField
+                label="State"
+                value={form.state}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, state: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FormField
+                label="City"
+                value={form.city}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, city: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Website"
+                value={form.website}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, website: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Tax / GST / VAT #"
+                value={form.tax_registration_number}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    tax_registration_number: event.target.value,
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="subtitle2">Default payment schedule</Typography>
+                <ProsohmButton
+                  size="small"
+                  onClick={() =>
+                    setMilestones((current) => [
+                      ...current,
+                      {
+                        sequence: current.length + 1,
+                        name: '',
+                        percentage: null,
+                        trigger_type: 'PROJECT_COMPLETION',
+                        invoice_timing: 'ON_TRIGGER',
+                        payment_timing: 'NET_DAYS',
+                        payment_terms_days: form.default_payment_terms_days
+                          ? Number(form.default_payment_terms_days)
+                          : null,
+                        is_active: true,
+                      },
+                    ])
+                  }
+                >
+                  Add milestone
+                </ProsohmButton>
+              </Box>
+              <Stack spacing={1}>
+                {milestones.length === 0 ? (
+                  <Typography variant="caption" color="text.secondary">
+                    No milestone template. Net-terms customers can leave this empty.
+                  </Typography>
+                ) : null}
+                {milestones.map((m, index) => (
+                  <Stack
+                    key={`ms-${index}`}
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1}
+                    useFlexGap
+                    sx={{ flexWrap: 'wrap' }}
+                  >
+                    <FormField
+                      label="Name"
+                      value={m.name}
+                      sx={{ minWidth: 140, flex: 1 }}
+                      onChange={(event) =>
+                        setMilestones((rows) =>
+                          rows.map((row, i) =>
+                            i === index ? { ...row, name: event.target.value } : row,
+                          ),
+                        )
+                      }
+                    />
+                    <FormField
+                      label="%"
+                      value={m.percentage != null ? String(m.percentage) : ''}
+                      sx={{ width: 90 }}
+                      onChange={(event) =>
+                        setMilestones((rows) =>
+                          rows.map((row, i) =>
+                            i === index
+                              ? {
+                                  ...row,
+                                  percentage: event.target.value
+                                    ? Number(event.target.value)
+                                    : null,
+                                }
+                              : row,
+                          ),
+                        )
+                      }
+                    />
+                    <FormSelect
+                      label="Trigger"
+                      value={m.trigger_type}
+                      sx={{ minWidth: 180 }}
+                      options={[
+                        { value: 'PROJECT_KICKOFF', label: 'Project kickoff' },
+                        { value: 'PROJECT_START', label: 'Project start' },
+                        { value: 'OKTT_PART_DATA_RECEIVED', label: 'OKTT part data' },
+                        { value: 'OKTT_DATA_RECEIVED', label: 'OKTT data' },
+                        { value: 'PROJECT_COMPLETION', label: 'Project completion' },
+                        { value: 'CUSTOM_EVENT', label: 'Custom event' },
+                      ]}
+                      onChange={(event) =>
+                        setMilestones((rows) =>
+                          rows.map((row, i) =>
+                            i === index
+                              ? { ...row, trigger_type: String(event.target.value) }
+                              : row,
+                          ),
+                        )
+                      }
+                    />
+                    <FormSelect
+                      label="Payment timing"
+                      value={m.payment_timing || 'NET_DAYS'}
+                      sx={{ minWidth: 150 }}
+                      options={[
+                        { value: 'DUE_ON_RECEIPT', label: 'Due on receipt' },
+                        { value: 'NET_DAYS', label: 'Net days' },
+                        { value: 'CUSTOM_DATE', label: 'Custom date' },
+                      ]}
+                      onChange={(event) =>
+                        setMilestones((rows) =>
+                          rows.map((row, i) =>
+                            i === index
+                              ? {
+                                  ...row,
+                                  payment_timing: String(event.target.value),
+                                  payment_terms_days:
+                                    String(event.target.value) === 'DUE_ON_RECEIPT'
+                                      ? 0
+                                      : row.payment_terms_days,
+                                }
+                              : row,
+                          ),
+                        )
+                      }
+                    />
+                    <FormField
+                      label="Net days"
+                      value={
+                        m.payment_terms_days != null ? String(m.payment_terms_days) : ''
+                      }
+                      sx={{ width: 90 }}
+                      onChange={(event) =>
+                        setMilestones((rows) =>
+                          rows.map((row, i) =>
+                            i === index
+                              ? {
+                                  ...row,
+                                  payment_terms_days: event.target.value
+                                    ? Number(event.target.value)
+                                    : null,
+                                }
+                              : row,
+                          ),
+                        )
+                      }
+                    />
+                    <ProsohmButton
+                      size="small"
+                      onClick={() =>
+                        setMilestones((rows) => rows.filter((_, i) => i !== index))
+                      }
+                    >
+                      Remove
+                    </ProsohmButton>
+                  </Stack>
+                ))}
+              </Stack>
             </Grid>
           </CollapsibleFormSection>
 

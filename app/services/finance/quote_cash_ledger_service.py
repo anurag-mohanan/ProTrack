@@ -305,6 +305,10 @@ def add_invoice_line(
     payment_terms: str | None = None,
     payment_terms_days: int | None = None,
     payment_terms_source: str | None = None,
+    payment_model: str | None = None,
+    payment_milestone_id: UUID | None = None,
+    due_date_source: str | None = None,
+    trigger_event: str | None = None,
 ) -> QuoteInvoiceLine:
     amount = _d(amount)
     if amount <= 0:
@@ -339,11 +343,20 @@ def add_invoice_line(
         payment_terms=terms_label,
         payment_terms_days=terms_days,
         payment_terms_source=(payment_terms_source or "").strip() or None,
+        payment_model=(payment_model or quote.payment_model or "").strip() or None,
+        due_date_source=(due_date_source or "").strip() or None,
+        trigger_event=(trigger_event or "").strip() or None,
         content_sha256=(content_sha256 or "").strip() or None,
         sort_order=_next_sort_order(db, QuoteInvoiceLine, quote.id),
     )
     db.add(line)
     db.flush()
+    if payment_milestone_id is not None:
+        from app.services.finance.payment_schedule_service import link_invoice_to_milestone
+
+        link_invoice_to_milestone(
+            db, quote=quote, invoice_line=line, milestone_id=payment_milestone_id
+        )
     sync_quote_cash_flags(db, quote)
     return line
 

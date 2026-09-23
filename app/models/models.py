@@ -813,9 +813,21 @@ class Customer(Base, TimestampMixin, TenantMixin):
     default_currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
     default_payment_terms: Mapped[Optional[str]] = mapped_column(String(100))
     default_payment_terms_days: Mapped[Optional[int]] = mapped_column(Integer)
+    default_payment_model: Mapped[Optional[str]] = mapped_column(String(40))
+    default_payment_terms_description: Mapped[Optional[str]] = mapped_column(String(500))
+    country: Mapped[Optional[str]] = mapped_column(String(100))
+    state: Mapped[Optional[str]] = mapped_column(String(100))
+    city: Mapped[Optional[str]] = mapped_column(String(100))
+    website: Mapped[Optional[str]] = mapped_column(String(255))
+    tax_registration_number: Mapped[Optional[str]] = mapped_column(String(100))
 
     contacts: Mapped[list[Contact]] = relationship(
         back_populates="customer", cascade="all, delete-orphan"
+    )
+    payment_milestones: Mapped[list["CustomerPaymentMilestone"]] = relationship(
+        back_populates="customer",
+        cascade="all, delete-orphan",
+        order_by="CustomerPaymentMilestone.sequence",
     )
     projects: Mapped[list[Project]] = relationship(back_populates="customer")
     project_templates: Mapped[list[ProjectTemplate]] = relationship(
@@ -857,7 +869,42 @@ class Contact(Base, TimestampMixin, TenantMixin):
     contact_type: Mapped[Optional["ContactType"]] = relationship(
         back_populates="contacts"
     )
-    projects: Mapped[list[Project]] = relationship(back_populates="customer_contact")
+    projects: Mapped[list["Project"]] = relationship(back_populates="customer_contact")
+
+
+class CustomerPaymentMilestone(Base, TimestampMixin, TenantMixin):
+    """Default commercial payment milestone template for a customer."""
+
+    __tablename__ = "customer_payment_milestones"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("customers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    percentage: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    fixed_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    trigger_type: Mapped[str] = mapped_column(
+        String(60), nullable=False, default="CUSTOM_EVENT"
+    )
+    trigger_description: Mapped[Optional[str]] = mapped_column(String(500))
+    invoice_timing: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="ON_TRIGGER"
+    )
+    payment_timing: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="NET_DAYS"
+    )
+    payment_terms_days: Mapped[Optional[int]] = mapped_column(Integer)
+    due_date_rule: Mapped[Optional[str]] = mapped_column(String(200))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    customer: Mapped[Customer] = relationship(back_populates="payment_milestones")
 
 
 class ProjectType(Base, TimestampMixin, TenantMixin):

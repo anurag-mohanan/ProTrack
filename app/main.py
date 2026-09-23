@@ -265,6 +265,9 @@ from app.db.phase99_quote_hours_balance_schema_sync import (
 from app.db.phase100_payment_terms_schema_sync import (
     ensure_phase100_payment_terms_foundation,
 )
+from app.db.phase101_customer_commercial_schema_sync import (
+    ensure_phase101_customer_commercial_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
@@ -452,6 +455,7 @@ async def lifespan(app: FastAPI):
         ("phase98_quote_invoice_enrichment", ensure_phase98_quote_invoice_enrichment_foundation),
         ("phase99_quote_hours_balance", ensure_phase99_quote_hours_balance_foundation),
         ("phase100_payment_terms", ensure_phase100_payment_terms_foundation),
+        ("phase101_customer_commercial", ensure_phase101_customer_commercial_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

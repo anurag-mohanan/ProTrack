@@ -319,6 +319,10 @@ class Quote(Base, TimestampMixin, TenantMixin):
     is_paid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     paid_date: Mapped[Optional[date]] = mapped_column(Date)
     last_payment_reminder_at: Mapped[Optional[date]] = mapped_column(Date)
+    payment_model: Mapped[Optional[str]] = mapped_column(String(40))
+    payment_terms: Mapped[Optional[str]] = mapped_column(String(100))
+    payment_terms_days: Mapped[Optional[int]] = mapped_column(Integer)
+    payment_schedule_source: Mapped[Optional[str]] = mapped_column(String(40))
     current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     current_revision: Mapped[str] = mapped_column(String(20), nullable=False, default="A")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -339,6 +343,11 @@ class Quote(Base, TimestampMixin, TenantMixin):
     balance_closures: Mapped[list["QuoteBalanceClosure"]] = relationship(
         back_populates="quote",
         cascade="all, delete-orphan",
+    )
+    payment_milestones: Mapped[list["QuotePaymentMilestone"]] = relationship(
+        back_populates="quote",
+        cascade="all, delete-orphan",
+        order_by="QuotePaymentMilestone.sequence",
     )
 
 
@@ -364,6 +373,17 @@ class QuoteInvoiceLine(Base, TimestampMixin, TenantMixin):
     payment_terms: Mapped[Optional[str]] = mapped_column(String(100))
     payment_terms_days: Mapped[Optional[int]] = mapped_column(Integer)
     payment_terms_source: Mapped[Optional[str]] = mapped_column(String(40))
+    payment_model: Mapped[Optional[str]] = mapped_column(String(40))
+    payment_milestone_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+    payment_milestone_name: Mapped[Optional[str]] = mapped_column(String(200))
+    payment_milestone_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    payment_milestone_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    trigger_event: Mapped[Optional[str]] = mapped_column(String(60))
+    due_date_source: Mapped[Optional[str]] = mapped_column(String(40))
     content_sha256: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
@@ -371,6 +391,51 @@ class QuoteInvoiceLine(Base, TimestampMixin, TenantMixin):
     payment_allocations: Mapped[list["QuotePaymentLine"]] = relationship(
         back_populates="invoice_line"
     )
+
+
+class QuotePaymentMilestone(Base, TimestampMixin, TenantMixin):
+    """Project/quote-specific commercial payment schedule line."""
+
+    __tablename__ = "quote_payment_milestones"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    quote_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("quotes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    percentage: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    fixed_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    trigger_type: Mapped[str] = mapped_column(
+        String(60), nullable=False, default="CUSTOM_EVENT"
+    )
+    trigger_description: Mapped[Optional[str]] = mapped_column(String(500))
+    invoice_timing: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="ON_TRIGGER"
+    )
+    payment_timing: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="NET_DAYS"
+    )
+    payment_terms_days: Mapped[Optional[int]] = mapped_column(Integer)
+    due_date_rule: Mapped[Optional[str]] = mapped_column(String(200))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    trigger_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="NOT_YET_TRIGGERED"
+    )
+    triggered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    triggered_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    fulfilled_invoice_line_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("quote_invoice_lines.id"), nullable=True
+    )
+
+    quote: Mapped[Quote] = relationship(back_populates="payment_milestones")
 
 
 class QuoteBalanceClosure(Base, TimestampMixin, TenantMixin):

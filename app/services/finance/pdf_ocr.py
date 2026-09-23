@@ -42,7 +42,15 @@ def ocr_available() -> bool:
 
 
 def looks_scanned(text: str | None, *, min_chars: int = MIN_TEXT_CHARS) -> bool:
-    return len((text or "").strip()) < min_chars
+    """True when native text is missing or not usable as a document text layer."""
+    try:
+        from app.services.finance.pdf_text_quality import is_usable_pdf_text
+    except Exception:
+        return len((text or "").strip()) < min_chars
+    body = (text or "").strip()
+    if len(body) < min_chars:
+        return True
+    return not is_usable_pdf_text(body, min_chars=min_chars)
 
 
 def ocr_pdf_text(content: bytes, *, max_pages: int = MAX_OCR_PAGES) -> OcrOutcome:

@@ -336,6 +336,10 @@ class Quote(Base, TimestampMixin, TenantMixin):
         cascade="all, delete-orphan",
         order_by="QuotePaymentLine.sort_order, QuotePaymentLine.line_date",
     )
+    balance_closures: Mapped[list["QuoteBalanceClosure"]] = relationship(
+        back_populates="quote",
+        cascade="all, delete-orphan",
+    )
 
 
 class QuoteInvoiceLine(Base, TimestampMixin, TenantMixin):
@@ -356,12 +360,51 @@ class QuoteInvoiceLine(Base, TimestampMixin, TenantMixin):
     due_date: Mapped[Optional[date]] = mapped_column(Date)
     tax_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
     subtotal_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    quantity_hours: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    payment_terms: Mapped[Optional[str]] = mapped_column(String(100))
+    payment_terms_days: Mapped[Optional[int]] = mapped_column(Integer)
+    payment_terms_source: Mapped[Optional[str]] = mapped_column(String(40))
     content_sha256: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     quote: Mapped[Quote] = relationship(back_populates="invoice_lines")
     payment_allocations: Mapped[list["QuotePaymentLine"]] = relationship(
         back_populates="invoice_line"
+    )
+
+
+class QuoteBalanceClosure(Base, TimestampMixin, TenantMixin):
+    """Explicit user-confirmed closure of remaining quote balance (hours and/or value).
+
+    Original quoted hours/value stay on QuoteRevision. This record only marks
+    remaining billable balance as no longer pending invoicing.
+    """
+
+    __tablename__ = "quote_balance_closures"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    quote_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("quotes.id"), nullable=False, index=True
+    )
+    related_invoice_line_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("quote_invoice_lines.id"), nullable=True
+    )
+    closed_hours: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    closed_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    quoted_hours_snapshot: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    invoiced_hours_snapshot: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    quoted_amount_snapshot: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    invoiced_amount_snapshot: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2))
+    reason: Mapped[Optional[str]] = mapped_column(Text)
+    closed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    quote: Mapped[Quote] = relationship(
+        back_populates="balance_closures",
     )
 
 

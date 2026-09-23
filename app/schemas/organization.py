@@ -85,6 +85,8 @@ class CustomerBase(BaseModel):
     project_number_format: str | None = Field(default=None, max_length=100)
     project_number_prefix: str | None = Field(default=None, max_length=50)
     default_currency_code: str = Field(default="INR", min_length=3, max_length=3)
+    default_payment_terms: str | None = Field(default=None, max_length=100)
+    default_payment_terms_days: int | None = Field(default=None, ge=0, le=365)
 
 
 class CustomerCreate(BlankOptionalFieldsMixin, CustomerBase):
@@ -106,6 +108,8 @@ class CustomerUpdate(BlankOptionalFieldsMixin, BaseModel):
     project_number_format: str | None = Field(default=None, max_length=100)
     project_number_prefix: str | None = Field(default=None, max_length=50)
     default_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    default_payment_terms: str | None = Field(default=None, max_length=100)
+    default_payment_terms_days: int | None = Field(default=None, ge=0, le=365)
 
 
 class CustomerRead(CustomerBase, TimestampSchema):

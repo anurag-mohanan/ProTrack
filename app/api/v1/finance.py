@@ -47,7 +47,7 @@ from app.models.finance import (
     TeamCommercialFeeBand,
     TeamCommercialTerms,
 )
-from app.models.models import Activity, Customer, Team, TeamMember, User, WorkingModel
+from app.models.models import Activity, Customer, Project, Team, TeamMember, User, WorkingModel
 from app.schemas.finance import (
     BudgetCockpitRead,
     BudgetCreate,
@@ -325,16 +325,71 @@ def finance_fy_turnover(
 @router.get("/receivables")
 def finance_receivables(
     team_id: UUID | None = Query(default=None),
+    customer_id: UUID | None = Query(default=None),
+    due_soon_days: int = Query(default=7, ge=0, le=90),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Receivables aging buckets from quote invoice/payment ledgers."""
+    """Receivables aging buckets from quote invoice/payment ledgers (due-date based)."""
     from app.services.finance.receivables_service import build_receivables_aging
 
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
     if team_id is not None and db.get(Team, team_id) is None:
         raise HTTPException(status_code=400, detail="Team not found")
-    return build_receivables_aging(db, team_id=team_id)
+    if customer_id is not None and db.get(Customer, customer_id) is None:
+        raise HTTPException(status_code=400, detail="Customer not found")
+    return build_receivables_aging(
+        db,
+        team_id=team_id,
+        customer_id=customer_id,
+        due_soon_days=due_soon_days,
+    )
+
+
+@router.get("/customers/{customer_id}/financial-summary")
+def customer_financial_summary(
+    customer_id: UUID,
+    team_id: UUID | None = Query(default=None),
+    lifecycle: str | None = Query(
+        default=None, description="active | closed | omit for all"
+    ),
+    due_soon_days: int = Query(default=7, ge=0, le=90),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Customer roll-up from central awarded-quote financial status."""
+    from app.services.finance.customer_financial_service import (
+        aggregate_customer_financial_summary,
+    )
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if db.get(Customer, customer_id) is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    if lifecycle is not None and lifecycle not in {"active", "closed"}:
+        raise HTTPException(status_code=400, detail="lifecycle must be active or closed")
+    return aggregate_customer_financial_summary(
+        db,
+        customer_id=customer_id,
+        team_id=team_id,
+        lifecycle=lifecycle,
+        due_soon_days=due_soon_days,
+    )
+
+
+@router.get("/projects/{project_id}/financial-summary")
+def project_financial_summary_endpoint(
+    project_id: UUID,
+    team_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Project roll-up across all awarded quotes (active until every quote clears)."""
+    from app.services.finance.customer_financial_service import project_financial_summary
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project_financial_summary(db, project_id=project_id, team_id=team_id)
 
 
 @router.get("/hire-impact", response_model=HireImpactResult)
@@ -1695,6 +1750,10 @@ def sync_budget_spent(
 @router.get("/quotes", response_model=list[QuoteRead])
 def list_quotes(
     team_id: UUID | None = Query(default=None),
+    customer_id: UUID | None = Query(default=None),
+    lifecycle: str | None = Query(
+        default=None, description="active | closed — financially closed quotes"
+    ),
     invoice_status: str | None = Query(
         default=None,
         description="Derived cash status: none|partial|full (aliases: not_invoiced, invoiced)",
@@ -1736,6 +1795,10 @@ def list_quotes(
     )
 
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if lifecycle is not None and lifecycle not in {"active", "closed"}:
+        raise HTTPException(status_code=400, detail="lifecycle must be active or closed")
+    if customer_id is not None and db.get(Customer, customer_id) is None:
+        raise HTTPException(status_code=400, detail="Customer not found")
     if invoice_status is not None and normalize_invoice_status(invoice_status) is None:
         raise HTTPException(
             status_code=400,
@@ -1758,8 +1821,10 @@ def list_quotes(
     stmt = select(Quote).where(Quote.is_active.is_(True)).order_by(Quote.tool_number)
     if team_id is not None:
         stmt = stmt.where(Quote.team_id == team_id)
+    if customer_id is not None:
+        stmt = stmt.where(Quote.customer_id == customer_id)
     rows = [_quote_read(db, row) for row in db.scalars(stmt).all()]
-    return [
+    filtered = [
         row
         for row in rows
         if quote_matches_filters(
@@ -1774,6 +1839,11 @@ def list_quotes(
             payment_follow_up_due=payment_follow_up_due,
         )
     ]
+    if lifecycle == "closed":
+        filtered = [row for row in filtered if row.is_financially_closed]
+    elif lifecycle == "active":
+        filtered = [row for row in filtered if not row.is_financially_closed]
+    return filtered
 
 
 @router.patch("/quotes/{quote_id}", response_model=QuoteRead)
@@ -2059,6 +2129,13 @@ def _quote_read(db: Session, row: Quote) -> QuoteRead:
             ],
             "payment_follow_up_due": payment_follow_up_due(db, row),
             "payment_follow_up_on": next_payment_follow_up_date(db, row),
+            "invoiced_hours": cash.get("invoiced_hours"),
+            "remaining_hours": cash.get("remaining_hours"),
+            "closed_balance_hours": cash.get("closed_balance_hours"),
+            "closed_balance_amount": cash.get("closed_balance_amount"),
+            "hours_status": cash.get("hours_status"),
+            "remaining_hours_value": cash.get("remaining_hours_value"),
+            "is_financially_closed": bool(cash.get("is_financially_closed")),
         }
     )
 
@@ -2901,6 +2978,28 @@ async def extract_invoice_pdf(
         ) from exc
 
 
+@router.get('/quotes/{quote_id}/hours-balance')
+def get_quote_hours_balance(
+    quote_id: UUID,
+    this_invoice_hours: Decimal | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Commercial hours balance preview for invoice import / Awarded Quotes."""
+    from app.services.finance.quote_hours_balance_service import (
+        preview_partial_invoice_for_import,
+        serialize_hours_balance,
+    )
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if db.get(Quote, quote_id) is None:
+        raise HTTPException(status_code=404, detail='Quote not found')
+    preview = preview_partial_invoice_for_import(
+        db, quote_id=quote_id, this_invoice_hours=this_invoice_hours
+    )
+    return serialize_hours_balance(preview) or {}
+
+
 @router.post('/invoices/pdf/confirm')
 async def confirm_invoice_pdf(
     quote_id: UUID = Form(...),
@@ -2911,6 +3010,13 @@ async def confirm_invoice_pdf(
     due_date: date | None = Form(default=None),
     tax_amount: Decimal | None = Form(default=None),
     subtotal_amount: Decimal | None = Form(default=None),
+    quantity_hours: Decimal | None = Form(default=None),
+    remaining_balance_action: str | None = Form(default=None),
+    acknowledge_over_hours: bool = Form(default=False),
+    close_balance_reason: str | None = Form(default=None),
+    payment_terms: str | None = Form(default=None),
+    payment_terms_days: int | None = Form(default=None),
+    payment_terms_source: str | None = Form(default=None),
     import_anyway: bool = Form(default=False),
     content_sha256: str | None = Form(default=None),
     file: UploadFile | None = File(default=None),
@@ -2938,6 +3044,13 @@ async def confirm_invoice_pdf(
             due_date=due_date,
             tax_amount=tax_amount,
             subtotal_amount=subtotal_amount,
+            quantity_hours=quantity_hours,
+            remaining_balance_action=remaining_balance_action,
+            acknowledge_over_hours=acknowledge_over_hours,
+            close_balance_reason=close_balance_reason,
+            payment_terms=payment_terms,
+            payment_terms_days=payment_terms_days,
+            payment_terms_source=payment_terms_source,
             import_anyway=import_anyway,
             content=content,
             filename=filename,

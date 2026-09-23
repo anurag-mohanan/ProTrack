@@ -356,6 +356,104 @@ def extract_invoice_pdf(
             },
         }
 
+    hours_balance = None
+    preview_quote_id = suggested_quote_id or (str(quote_id) if quote_id else None)
+    this_hours = None
+    qty_raw = (fields.get("quantity") or fields.get("raw_table_quantity") or {}).get("value")
+    if qty_raw is not None and str(qty_raw).strip() != "":
+        try:
+            this_hours = Decimal(str(qty_raw).replace(",", "").strip())
+        except Exception:
+            this_hours = None
+    if preview_quote_id and this_hours is not None:
+        try:
+            from app.services.finance.quote_hours_balance_service import (
+                preview_partial_invoice_for_import,
+                serialize_hours_balance,
+            )
+
+            hours_balance = serialize_hours_balance(
+                preview_partial_invoice_for_import(
+                    db,
+                    quote_id=UUID(str(preview_quote_id)),
+                    this_invoice_hours=this_hours,
+                )
+            )
+            if hours_balance and hours_balance.get("is_partial_invoice"):
+                warnings.append(
+                    f"Partial invoice detected — remaining "
+                    f"{hours_balance.get('remaining_hours_before_closure')} commercial hours."
+                )
+            if hours_balance and hours_balance.get("is_over_invoiced_hours"):
+                warnings.append(
+                    hours_balance.get("message") or "Invoice hours exceed quoted hours."
+                )
+        except Exception:
+            hours_balance = None
+
+    payment_terms_preview = None
+    try:
+        from app.models.models import Customer as CustModel
+        from app.services.finance.payment_terms_service import (
+            normalize_payment_terms,
+            resolve_invoice_payment_terms,
+        )
+
+        terms_raw = (fields.get("payment_terms") or {}).get("value")
+        due_raw = (fields.get("due_date") or {}).get("value")
+        inv_date_raw = (fields.get("invoice_date") or {}).get("value")
+        inv_date = None
+        doc_due = None
+        if inv_date_raw:
+            try:
+                inv_date = date.fromisoformat(str(inv_date_raw)[:10])
+            except Exception:
+                inv_date = None
+        if due_raw:
+            try:
+                doc_due = date.fromisoformat(str(due_raw)[:10])
+            except Exception:
+                doc_due = None
+        cust_terms = None
+        cust_days = None
+        cust_id = None
+        if customer_matches:
+            cust_id = customer_matches[0].get("customer_id")
+        elif preview_quote_id:
+            qrow = db.get(Quote, UUID(str(preview_quote_id)))
+            if qrow:
+                cust_id = qrow.customer_id
+        if cust_id:
+            cust = db.get(
+                CustModel,
+                UUID(str(cust_id)) if not isinstance(cust_id, UUID) else cust_id,
+            )
+            if cust:
+                cust_terms = getattr(cust, "default_payment_terms", None)
+                cust_days = getattr(cust, "default_payment_terms_days", None)
+        terms_preview = resolve_invoice_payment_terms(
+            document_terms=terms_raw,
+            document_due_date=doc_due,
+            invoice_date=inv_date,
+            customer_default_terms=cust_terms,
+            customer_default_days=cust_days,
+        )
+        label, days = normalize_payment_terms(terms_raw)
+        payment_terms_preview = {
+            **{
+                k: (v.isoformat() if isinstance(v, date) else v)
+                for k, v in terms_preview.items()
+            },
+            "document_terms_raw": terms_raw,
+            "normalized_label": label,
+            "normalized_days": days,
+        }
+        for w in terms_preview.get("warnings") or []:
+            if w not in warnings:
+                warnings.append(w)
+    except Exception:
+        payment_terms_preview = None
+
     return {
         "pipeline": analyzed.get("pipeline", "document_intelligence_v2"),
         "text_extractable": analyzed.get("text_extractable", True),
@@ -392,6 +490,8 @@ def extract_invoice_pdf(
         ],
         "suggested_quote_id": suggested_quote_id,
         "source": "document_intelligence",
+        "hours_balance": hours_balance,
+        "payment_terms_preview": payment_terms_preview,
     }
 
 
@@ -411,11 +511,101 @@ def confirm_invoice_pdf_import(
     due_date: date | None = None,
     tax_amount: Decimal | None = None,
     subtotal_amount: Decimal | None = None,
+    quantity_hours: Decimal | None = None,
+    remaining_balance_action: str | None = None,
+    acknowledge_over_hours: bool = False,
+    close_balance_reason: str | None = None,
+    payment_terms: str | None = None,
+    payment_terms_days: int | None = None,
+    payment_terms_source: str | None = None,
 ) -> Quote:
-    """Create invoice line from reviewed fields. Optional PDF stored against quote."""
+    """Create invoice line from reviewed fields. Optional PDF stored against quote.
+
+    When commercial hours leave a remaining balance, ``remaining_balance_action`` must be
+    ``keep_balance`` (default) or ``close_remaining_balance``. Closing does not alter the
+    original quote — it records an explicit QuoteBalanceClosure.
+    """
+    from app.models.models import Customer
+    from app.services.finance.payment_terms_service import resolve_invoice_payment_terms
+    from app.services.finance.quote_hours_balance_service import (
+        close_remaining_balance,
+        preview_partial_invoice_for_import,
+    )
+
     quote = load_quote_with_ledger(db, quote_id)
     if quote is None or not quote.is_active:
         raise ProTrackValidationError("Quote not found")
+
+    customer = db.get(Customer, quote.customer_id) if quote.customer_id else None
+    source_key = (payment_terms_source or "").strip().upper() or None
+    if source_key == "USER_OVERRIDE":
+        terms_resolved = resolve_invoice_payment_terms(
+            invoice_date=line_date,
+            customer_default_terms=getattr(customer, "default_payment_terms", None)
+            if customer
+            else None,
+            customer_default_days=getattr(customer, "default_payment_terms_days", None)
+            if customer
+            else None,
+            user_terms=payment_terms,
+            user_terms_days=payment_terms_days,
+            user_due_date=due_date,
+        )
+    else:
+        terms_resolved = resolve_invoice_payment_terms(
+            document_terms=payment_terms,
+            document_due_date=due_date,
+            invoice_date=line_date,
+            customer_default_terms=getattr(customer, "default_payment_terms", None)
+            if customer
+            else None,
+            customer_default_days=getattr(customer, "default_payment_terms_days", None)
+            if customer
+            else None,
+        )
+    final_terms = terms_resolved.get("payment_terms")
+    final_terms_days = terms_resolved.get("payment_terms_days")
+    final_due = terms_resolved.get("due_date")
+    final_terms_source = terms_resolved.get("payment_terms_source")
+
+    qty = None
+    if quantity_hours is not None:
+        try:
+            qty = Decimal(str(quantity_hours))
+        except Exception as exc:
+            raise ProTrackValidationError("Invalid quantity_hours") from exc
+        if qty < 0:
+            raise ProTrackValidationError("quantity_hours cannot be negative")
+
+    action = (remaining_balance_action or "").strip().lower() or None
+    if action in ("", "none"):
+        action = None
+    if action not in (None, "keep_balance", "close_remaining_balance"):
+        raise ProTrackValidationError(
+            "remaining_balance_action must be keep_balance or close_remaining_balance"
+        )
+
+    hours_preview = preview_partial_invoice_for_import(
+        db, quote_id=quote_id, this_invoice_hours=qty
+    )
+    if hours_preview:
+        if hours_preview.get("is_over_invoiced_hours") and not acknowledge_over_hours:
+            raise ProTrackValidationError(
+                hours_preview.get("message")
+                or "Invoice quantity exceeds quoted quantity. Acknowledge over-hours to continue."
+            )
+        if hours_preview.get("decision_required"):
+            if action is None:
+                # Default KEEP BALANCE when decision required but omitted
+                action = "keep_balance"
+            if action not in ("keep_balance", "close_remaining_balance"):
+                raise ProTrackValidationError(
+                    "Partial invoice detected — choose keep_balance or close_remaining_balance."
+                )
+        elif action == "close_remaining_balance":
+            raise ProTrackValidationError(
+                "Cannot close remaining balance — no billable hours remain to close."
+            )
 
     note_parts = [part for part in (notes, ) if part]
     if invoice_number:
@@ -423,6 +613,12 @@ def confirm_invoice_pdf_import(
         if tag not in (notes or ""):
             note_parts.insert(0, tag)
     note_parts.append("Source: PDF Import")
+    if action == "keep_balance" and hours_preview and hours_preview.get("decision_required"):
+        rem = hours_preview.get("remaining_hours_before_closure")
+        note_parts.append(f"Balance decision: KEEP ({rem} hrs remaining)")
+    elif action == "close_remaining_balance":
+        rem = (hours_preview or {}).get("remaining_hours_before_closure")
+        note_parts.append(f"Balance decision: CLOSE ({rem} hrs waived)")
     final_notes = " | ".join(note_parts)
 
     duplicates = find_duplicate_invoices(
@@ -437,19 +633,32 @@ def confirm_invoice_pdf_import(
             "Possible duplicate invoice detected. Review existing invoice or set import_anyway=true."
         )
 
-    add_invoice_line(
+    line = add_invoice_line(
         db,
         quote=quote,
         amount=amount,
         line_date=line_date,
         notes=final_notes,
         invoice_number=invoice_number,
-        due_date=due_date,
+        due_date=final_due,
         tax_amount=tax_amount,
         subtotal_amount=subtotal_amount,
         content_sha256=content_sha256,
+        quantity_hours=qty,
+        payment_terms=final_terms,
+        payment_terms_days=final_terms_days,
+        payment_terms_source=final_terms_source,
     )
     db.flush()
+
+    if action == "close_remaining_balance":
+        close_remaining_balance(
+            db,
+            quote=quote,
+            related_invoice_line=line,
+            user=user,
+            reason=close_balance_reason,
+        )
 
     if content and filename:
         store_document(

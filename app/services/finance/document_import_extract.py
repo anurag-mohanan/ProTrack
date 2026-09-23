@@ -64,6 +64,8 @@ def extract_raw_document_text(
     filename: str | None = None,
 ) -> RawExtraction:
     """STEP 1–3: native PDF text, quality check, OCR fallback only if needed."""
+    from app.services.finance.pdf_text_quality import is_usable_pdf_text
+
     result = RawExtraction(pages=_count_pages(content))
     native = ""
     try:
@@ -75,25 +77,55 @@ def extract_raw_document_text(
         result.warnings.append(f"Native PDF text extraction failed: {exc}")
         native = ""
 
+    # Reject binary/stdlib scrape noise so OCR (or a clearer error) can run.
+    if native and not is_usable_pdf_text(native):
+        result.warnings.append(
+            f"Discarded unusable PDF scrape ({len(native)} chars). "
+            "Install pdfplumber/pypdf on the API host (pip install -r requirements.txt) "
+            "and restart the API for reliable Prosohm invoice/quote extraction."
+        )
+        native = ""
+
     ocr = extract_text_with_optional_ocr(content, existing_text=native)
     text = (ocr.text or "").strip()
+    if text and not is_usable_pdf_text(text) and not ocr.ocr_used:
+        text = ""
+
     result.raw_text = text
     result.ocr_used = ocr.ocr_used
     result.warnings.extend(ocr.warnings)
     result.character_count = len(text)
     result.line_count = len([ln for ln in text.splitlines() if ln.strip()]) if text else 0
-    result.text_extractable = result.character_count >= MIN_TEXT_CHARS
+    result.text_extractable = bool(text) and is_usable_pdf_text(text)
 
     if ocr.ocr_used:
         result.text_extraction_method = "ocr"
-    elif native.strip():
+    elif text:
         result.text_extraction_method = "native_pdf"
     else:
         result.text_extraction_method = "none"
 
     keywords = QUOTE_KEYWORDS if document_kind == "quote" else INVOICE_KEYWORDS
-    hits = [kw for kw in keywords if re.search(re.escape(kw), text, re.IGNORECASE)]
-    # Quote# without space also matches Quote#
+    # Flexible label match (spaces / # placement) — avoid false "labels not found".
+    flexible = {
+        "INVOICE": r"\bINVOICE\b",
+        "Invoice #": r"Invoice\s*#",
+        "Invoice#": r"Invoice\s*#",
+        "Invoice Date": r"Invoice\s*Date",
+        "QUOTE": r"\bQUOTE\b",
+        "Quote #": r"Quote\s*#",
+        "Quote#": r"Quote\s*#",
+        "Quote Date": r"Quote\s*Date",
+        "Customer Project #": r"Customer\s+Project\s*#",
+        "Balance Due": r"Balance\s*Due",
+        "Bill To": r"Bill\s*To",
+        "Prepared For": r"Prepared\s+For",
+    }
+    hits: list[str] = []
+    for kw in keywords:
+        pattern = flexible.get(kw) or re.escape(kw)
+        if re.search(pattern, text, re.IGNORECASE):
+            hits.append(kw)
     if document_kind == "quote" and re.search(r"Quote\s*#", text, re.IGNORECASE):
         if "Quote #" not in hits and "Quote#" not in hits:
             hits.append("Quote #")
@@ -101,10 +133,12 @@ def extract_raw_document_text(
     result.expected_keywords_found = len(hits) >= 2
 
     if not result.text_extractable:
-        result.warnings.append(
-            "Extracted text is empty or too short. "
-            "If this is a scanned PDF, OCR is required; otherwise check the upload."
-        )
+        if not any("pdfplumber" in w.lower() or "pypdf" in w.lower() for w in result.warnings):
+            result.warnings.append(
+                "Extracted text is empty or unreadable. "
+                "Ensure pdfplumber and pypdf are installed on the API host, "
+                "then restart the API. Scanned PDFs also need OCR (tesseract/pdf2image)."
+            )
     elif not result.expected_keywords_found:
         result.warnings.append(
             f"Text extracted ({result.character_count} chars) but expected "

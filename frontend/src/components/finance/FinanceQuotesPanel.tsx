@@ -90,6 +90,13 @@ type QuoteRow = {
   financial_status?: string | null;
   invoice_percentage?: number | string | null;
   collection_percentage?: number | string | null;
+  invoiced_hours?: number | string | null;
+  remaining_hours?: number | string | null;
+  closed_balance_hours?: number | string | null;
+  closed_balance_amount?: number | string | null;
+  hours_status?: string | null;
+  remaining_hours_value?: number | string | null;
+  is_financially_closed?: boolean;
   invoice_lines?: QuoteCashLine[];
   payment_lines?: QuoteCashLine[];
   billing_ready?: boolean;
@@ -165,6 +172,8 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const [quotePdfOpen, setQuotePdfOpen] = useState(false);
   const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [search, setSearch] = useState('');
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [lifecycleFilter, setLifecycleFilter] = useState<'all' | 'active' | 'closed'>('all');
   const [pendingExcelFile, setPendingExcelFile] = useState<File | null>(null);
   const [excelTeamId, setExcelTeamId] = useState('');
 
@@ -191,20 +200,66 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     queryFn: async () => (await apiClient.get<QuoteRow[]>(`/finance/quotes${listQ}`)).data,
   });
   const quotesQuery = useQuery({
-    queryKey: ['finance-quotes', teamId || 'all', listFilter, search.trim()],
+    queryKey: [
+      'finance-quotes',
+      teamId || 'all',
+      listFilter,
+      search.trim(),
+      customerFilter || 'all',
+      lifecycleFilter,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (teamId) params.set('team_id', teamId);
       if (listFilter !== 'all') params.set('list_filter', listFilter);
       if (search.trim()) params.set('q', search.trim());
+      if (customerFilter) params.set('customer_id', customerFilter);
+      if (lifecycleFilter !== 'all') params.set('lifecycle', lifecycleFilter);
       const qs = params.toString();
       return (await apiClient.get<QuoteRow[]>(`/finance/quotes${qs ? `?${qs}` : ''}`)).data;
+    },
+  });
+
+  type CustomerFinancialSummary = {
+    customer_name?: string;
+    totals?: {
+      awarded?: number | string;
+      invoiced?: number | string;
+      to_be_invoiced?: number | string;
+      collected?: number | string;
+      outstanding?: number | string;
+      closed_waived?: number | string;
+    };
+    projects?: {
+      active?: number;
+      financially_closed?: number;
+      to_be_invoiced?: number;
+      payment_pending?: number;
+    };
+    receivables?: Record<string, number | string>;
+  };
+
+  const customerSummaryQuery = useQuery({
+    queryKey: ['finance-customer-summary', customerFilter, teamId || 'all', lifecycleFilter],
+    enabled: Boolean(customerFilter),
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (teamId) params.set('team_id', teamId);
+      if (lifecycleFilter !== 'all') params.set('lifecycle', lifecycleFilter);
+      const qs = params.toString();
+      return (
+        await apiClient.get<CustomerFinancialSummary>(
+          `/finance/customers/${customerFilter}/financial-summary${qs ? `?${qs}` : ''}`,
+        )
+      ).data;
     },
   });
 
   const invalidateFinance = () => {
     void queryClient.invalidateQueries({ queryKey: ['finance-quotes'] });
     void queryClient.invalidateQueries({ queryKey: ['finance-dashboard'] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-receivables'] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-customer-summary'] });
     void queryClient.invalidateQueries({ queryKey: ['projects'] });
   };
 
@@ -1019,6 +1074,47 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
         </FinanceSection>
       ) : null}
 
+      {customerFilter && customerSummaryQuery.data ? (
+        <FinanceSection
+          title={`Customer: ${customerSummaryQuery.data.customer_name || 'Selected'}`}
+          subtitle={
+            lifecycleFilter === 'all'
+              ? 'Overall customer financial totals from the central Finance calculation.'
+              : `Filtered results (${lifecycleFilter} finance lifecycle).`
+          }
+        >
+          <Grid container spacing={1.5}>
+            {(
+              [
+                ['Awarded', customerSummaryQuery.data.totals?.awarded],
+                ['Invoiced', customerSummaryQuery.data.totals?.invoiced],
+                ['To be invoiced', customerSummaryQuery.data.totals?.to_be_invoiced],
+                ['Collected', customerSummaryQuery.data.totals?.collected],
+                ['Outstanding', customerSummaryQuery.data.totals?.outstanding],
+              ] as const
+            ).map(([label, value]) => (
+              <Grid key={label} size={{ xs: 6, sm: 4, md: 2.4 }}>
+                <KpiMetricCard compact title={label} value={financeMoney(value, 'INR')} />
+              </Grid>
+            ))}
+          </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+            Active projects: {customerSummaryQuery.data.projects?.active ?? 0}
+            {' · '}
+            Financially closed: {customerSummaryQuery.data.projects?.financially_closed ?? 0}
+            {' · '}
+            To invoice: {customerSummaryQuery.data.projects?.to_be_invoiced ?? 0}
+            {' · '}
+            Payment pending: {customerSummaryQuery.data.projects?.payment_pending ?? 0}
+            {' · '}
+            Not yet due:{' '}
+            {financeMoney(customerSummaryQuery.data.receivables?.not_yet_due, 'INR')}
+            {' · '}
+            Overdue: {financeMoney(customerSummaryQuery.data.receivables?.overdue, 'INR')}
+          </Typography>
+        </FinanceSection>
+      ) : null}
+
       <FinanceSection
         title="Awarded quotes"
         subtitle={
@@ -1032,6 +1128,35 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
             spacing={1}
             sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: 'wrap' }}
           >
+            <TextField
+              select
+              size="small"
+              label="Customer"
+              value={customerFilter}
+              onChange={(e) => setCustomerFilter(e.target.value)}
+              sx={{ minWidth: { xs: '100%', sm: 220 } }}
+            >
+              <MenuItem value="">All customers</MenuItem>
+              {customers.map((c) => (
+                <MenuItem key={c.id} value={c.id}>
+                  {c.name}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label="Finance lifecycle"
+              value={lifecycleFilter}
+              onChange={(e) =>
+                setLifecycleFilter(e.target.value as 'all' | 'active' | 'closed')
+              }
+              sx={{ minWidth: { xs: '100%', sm: 160 } }}
+            >
+              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="active">Active finance</MenuItem>
+              <MenuItem value="closed">Financially closed</MenuItem>
+            </TextField>
             <TextField
               size="small"
               placeholder="Search quote, project, customer…"
@@ -1078,13 +1203,18 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                   onClick={() => toggleFilter(chip.key)}
                 />
               ))}
-              {(listFilter !== 'all' || search.trim()) && (
+              {(listFilter !== 'all' ||
+                search.trim() ||
+                customerFilter ||
+                lifecycleFilter !== 'all') && (
                 <Chip
                   size="small"
                   label="Clear"
                   onClick={() => {
                     setListFilter('all');
                     setSearch('');
+                    setCustomerFilter('');
+                    setLifecycleFilter('all');
                   }}
                 />
               )}

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -18,7 +18,7 @@ import {
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
@@ -35,6 +35,25 @@ type StageHour = {
   stage?: string;
   hours: number;
   source_line?: string;
+};
+
+type HoursBalance = {
+  quoted_hours?: number;
+  previously_invoiced_hours?: number;
+  this_invoice_hours?: number | null;
+  invoiced_hours?: number;
+  remaining_hours?: number;
+  remaining_hours_before_closure?: number;
+  closed_balance_hours?: number;
+  hours_status?: string;
+  requires_balance_decision?: boolean;
+  decision_required?: boolean;
+  is_partial_invoice?: boolean;
+  is_over_invoiced_hours?: boolean;
+  over_invoiced_hours?: number;
+  message?: string;
+  default_decision?: string;
+  remaining_value?: number | null;
 };
 
 type ExtractResult = {
@@ -80,6 +99,16 @@ type ExtractResult = {
   }>;
   duplicates: Array<{ invoice_line_id: string; quote_id: string; reason: string; notes?: string }>;
   suggested_quote_id?: string | null;
+  hours_balance?: HoursBalance | null;
+  payment_terms_preview?: {
+    payment_terms?: string | null;
+    payment_terms_days?: number | null;
+    due_date?: string | null;
+    payment_terms_source?: string | null;
+    warnings?: string[];
+    normalized_label?: string | null;
+    normalized_days?: number | null;
+  } | null;
 };
 
 type Props = {
@@ -92,6 +121,12 @@ type Props = {
 
 function fieldValue(fields: Record<string, FieldCandidate>, key: string): string {
   return fields[key]?.value ?? '';
+}
+
+function formatHrs(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(Number(value))) return '—';
+  const n = Number(value);
+  return Number.isInteger(n) ? `${n} hrs` : `${n} hrs`;
 }
 
 export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImported }: Props) {
@@ -112,6 +147,16 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
   const [importAnyway, setImportAnyway] = useState(false);
   const [documentType, setDocumentType] = useState('invoice');
   const [hoursResolved, setHoursResolved] = useState(false);
+  const [balanceDecision, setBalanceDecision] = useState<'keep_balance' | 'close_remaining_balance'>(
+    'keep_balance',
+  );
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [acknowledgeOverHours, setAcknowledgeOverHours] = useState(false);
+  const [hoursBalance, setHoursBalance] = useState<HoursBalance | null>(null);
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [paymentTermsDays, setPaymentTermsDays] = useState('');
+  const [paymentTermsSource, setPaymentTermsSource] = useState('DOCUMENT');
+  const [termsOverridden, setTermsOverridden] = useState(false);
 
   const reset = () => {
     setFile(null);
@@ -129,6 +174,14 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
     setImportAnyway(false);
     setDocumentType('invoice');
     setHoursResolved(false);
+    setBalanceDecision('keep_balance');
+    setCloseConfirmOpen(false);
+    setAcknowledgeOverHours(false);
+    setHoursBalance(null);
+    setPaymentTerms('');
+    setPaymentTermsDays('');
+    setPaymentTermsSource('DOCUMENT');
+    setTermsOverridden(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -137,13 +190,44 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
     onClose();
   };
 
+  const qtyNumber = useMemo(() => {
+    const raw = String(quantity || '').replace(/,/g, '').trim();
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, [quantity]);
+
+  const hoursPreviewQuery = useQuery({
+    queryKey: ['invoice-hours-balance', quoteIdEdit, qtyNumber],
+    enabled: Boolean(extract && quoteIdEdit && qtyNumber != null && qtyNumber > 0),
+    queryFn: async () => {
+      const { data } = await apiClient.get<HoursBalance>(
+        `/finance/quotes/${quoteIdEdit}/hours-balance`,
+        { params: { this_invoice_hours: qtyNumber } },
+      );
+      return data;
+    },
+  });
+
+  useEffect(() => {
+    if (hoursPreviewQuery.data) {
+      setHoursBalance(hoursPreviewQuery.data);
+      if (hoursPreviewQuery.data.default_decision === 'close_remaining_balance') {
+        setBalanceDecision('close_remaining_balance');
+      } else {
+        setBalanceDecision('keep_balance');
+      }
+    } else if (extract?.hours_balance && quoteIdEdit === (extract.suggested_quote_id || quoteId || '')) {
+      setHoursBalance(extract.hours_balance);
+    }
+  }, [hoursPreviewQuery.data, extract, quoteIdEdit, quoteId]);
+
   const extractMutation = useMutation({
     mutationFn: async (pdf: File) => {
       const form = new FormData();
       form.append('file', pdf);
       if (teamId) form.append('team_id', teamId);
       if (quoteId) form.append('quote_id', quoteId);
-      // Document analysis can include layout render + optional vision; allow IIS/ARR headroom.
       return (
         await apiClient.post<ExtractResult>('/finance/invoices/pdf/extract', form, {
           timeout: 120_000,
@@ -166,6 +250,28 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       setQuoteIdEdit(data.suggested_quote_id || quoteId || '');
       setDocumentType(data.document_type || 'invoice');
       setHoursResolved(false);
+      setBalanceDecision('keep_balance');
+      setAcknowledgeOverHours(false);
+      setHoursBalance(data.hours_balance ?? null);
+      const preview = data.payment_terms_preview;
+      setPaymentTerms(
+        preview?.payment_terms ||
+          preview?.normalized_label ||
+          fieldValue(data.fields, 'payment_terms') ||
+          '',
+      );
+      setPaymentTermsDays(
+        preview?.payment_terms_days != null
+          ? String(preview.payment_terms_days)
+          : preview?.normalized_days != null
+            ? String(preview.normalized_days)
+            : '',
+      );
+      setPaymentTermsSource(preview?.payment_terms_source || 'DOCUMENT');
+      setTermsOverridden(false);
+      if (preview?.due_date && !fieldValue(data.fields, 'due_date')) {
+        setDueDate(preview.due_date);
+      }
       if (data.pipeline !== 'document_intelligence_v2') {
         showError(
           `Backend returned unexpected pipeline "${data.pipeline || 'none'}". Restart the API server so document_intelligence_v2 is loaded.`,
@@ -202,7 +308,22 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       if (dueDate) form.append('due_date', dueDate);
       if (taxAmount) form.append('tax_amount', String(taxAmount).replace(/,/g, ''));
       if (subtotalAmount) form.append('subtotal_amount', String(subtotalAmount).replace(/,/g, ''));
+      if (quantity.trim()) form.append('quantity_hours', String(quantity).replace(/,/g, ''));
+      if (paymentTerms.trim()) form.append('payment_terms', paymentTerms.trim());
+      if (paymentTermsDays.trim() !== '') {
+        form.append('payment_terms_days', String(paymentTermsDays).replace(/,/g, ''));
+      }
+      form.append(
+        'payment_terms_source',
+        termsOverridden ? 'USER_OVERRIDE' : paymentTermsSource || 'DOCUMENT',
+      );
       if (notes) form.append('notes', notes);
+      if (hoursBalance?.decision_required) {
+        form.append('remaining_balance_action', balanceDecision);
+      }
+      if (hoursBalance?.is_over_invoiced_hours) {
+        form.append('acknowledge_over_hours', acknowledgeOverHours ? 'true' : 'false');
+      }
       form.append('import_anyway', importAnyway ? 'true' : 'false');
       if (extract?.content_sha256) form.append('content_sha256', extract.content_sha256);
       if (file) form.append('file', file);
@@ -232,12 +353,25 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
   const descTotal = fieldValue(extract?.fields ?? {}, 'raw_description_total_hours');
   const quality = extract?.extraction_quality;
 
+  const decisionRequired = Boolean(hoursBalance?.decision_required);
+  const overHours = Boolean(hoursBalance?.is_over_invoiced_hours);
+
   const canConfirm =
     Boolean(quoteIdEdit) &&
     Boolean(amount) &&
     Boolean(lineDate) &&
     (!hourDiscrepancy || hoursResolved) &&
+    (!overHours || acknowledgeOverHours) &&
+    (!decisionRequired || balanceDecision === 'keep_balance' || balanceDecision === 'close_remaining_balance') &&
     !confirmMutation.isPending;
+
+  const handleConfirmClick = () => {
+    if (decisionRequired && balanceDecision === 'close_remaining_balance') {
+      setCloseConfirmOpen(true);
+      return;
+    }
+    confirmMutation.mutate();
+  };
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
@@ -538,6 +672,160 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
                 if (hourDiscrepancy) setHoursResolved(true);
               }}
             />
+
+            {hoursBalance && (hoursBalance.quoted_hours ?? 0) > 0 ? (
+              <Box
+                sx={{
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 1.5,
+                  bgcolor: 'action.hover',
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ mb: 1, letterSpacing: '0.04em' }}>
+                  AWARDED QUOTE CHECK
+                </Typography>
+                <ReviewRow label="Quoted" value={formatHrs(hoursBalance.quoted_hours)} emphasize />
+                <ReviewRow
+                  label="Previously Invoiced"
+                  value={formatHrs(hoursBalance.previously_invoiced_hours)}
+                />
+                <ReviewRow
+                  label="This Invoice"
+                  value={formatHrs(hoursBalance.this_invoice_hours)}
+                />
+                <ReviewRow
+                  label="Total Invoiced"
+                  value={formatHrs(hoursBalance.invoiced_hours)}
+                />
+                <ReviewRow
+                  label="Remaining"
+                  value={formatHrs(hoursBalance.remaining_hours_before_closure)}
+                  emphasize
+                />
+                {hoursBalance.hours_status === 'FULLY_INVOICED' ? (
+                  <Alert severity="success" sx={{ mt: 1 }}>
+                    FULLY INVOICED — commercial hours match the awarded quote.
+                  </Alert>
+                ) : null}
+                {overHours ? (
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    <Typography variant="body2" gutterBottom>
+                      {hoursBalance.message ||
+                        `Invoice quantity exceeds quoted quantity by ${hoursBalance.over_invoiced_hours} hours.`}
+                    </Typography>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={acknowledgeOverHours}
+                          onChange={(e) => setAcknowledgeOverHours(e.target.checked)}
+                        />
+                      }
+                      label="I have reviewed the over-quantity and want to proceed (quote will not change)"
+                    />
+                  </Alert>
+                ) : null}
+                {decisionRequired ? (
+                  <Alert severity="warning" sx={{ mt: 1 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      ⚠ Partial invoice detected
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                      {hoursBalance.message ||
+                        `${hoursBalance.remaining_hours_before_closure} hours remain to be invoiced. Do you want to keep this balance?`}
+                    </Typography>
+                    <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant={balanceDecision === 'keep_balance' ? 'contained' : 'outlined'}
+                        onClick={() => setBalanceDecision('keep_balance')}
+                      >
+                        Keep Balance
+                      </Button>
+                      <Button
+                        size="small"
+                        color="warning"
+                        variant={
+                          balanceDecision === 'close_remaining_balance' ? 'contained' : 'outlined'
+                        }
+                        onClick={() => setBalanceDecision('close_remaining_balance')}
+                      >
+                        Close Remaining Balance
+                      </Button>
+                    </Stack>
+                  </Alert>
+                ) : null}
+              </Box>
+            ) : null}
+
+            <Box
+              sx={{
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 1.5,
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ mb: 1, letterSpacing: '0.04em' }}>
+                PAYMENT TERMS
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                Terms define expected timing only — they never create a payment. Source:{' '}
+                {termsOverridden ? 'USER_OVERRIDE' : paymentTermsSource || '—'}
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField
+                  label="Payment Terms"
+                  value={paymentTerms}
+                  onChange={(e) => {
+                    setPaymentTerms(e.target.value);
+                    setTermsOverridden(true);
+                  }}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="Lead Time (days)"
+                  value={paymentTermsDays}
+                  onChange={(e) => {
+                    setPaymentTermsDays(e.target.value);
+                    setTermsOverridden(true);
+                  }}
+                  fullWidth
+                  size="small"
+                />
+              </Stack>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 1.5 }}>
+                <TextField
+                  label="Invoice Date"
+                  type="date"
+                  value={lineDate}
+                  onChange={(e) => setLineDate(e.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="Due Date"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => {
+                    setDueDate(e.target.value);
+                    setTermsOverridden(true);
+                  }}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  fullWidth
+                  size="small"
+                />
+              </Stack>
+              {(extract.payment_terms_preview?.warnings ?? []).map((w) => (
+                <Alert key={w} severity="info" sx={{ mt: 1 }}>
+                  {w}
+                </Alert>
+              ))}
+            </Box>
+
             <TextField
               label="Notes"
               value={notes}
@@ -597,6 +885,9 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
                 setExtract(null);
                 setImportAnyway(false);
                 setHoursResolved(false);
+                setHoursBalance(null);
+                setAcknowledgeOverHours(false);
+                setBalanceDecision('keep_balance');
               }}
             >
               Back
@@ -604,13 +895,37 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
             <Button
               variant="contained"
               disabled={!canConfirm}
-              onClick={() => confirmMutation.mutate()}
+              onClick={handleConfirmClick}
             >
               Confirm Import
             </Button>
           </>
         ) : null}
       </DialogActions>
+
+      <Dialog open={closeConfirmOpen} onClose={() => setCloseConfirmOpen(false)}>
+        <DialogTitle>Close remaining balance?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Closing the remaining {hoursBalance?.remaining_hours_before_closure ?? '—'} hours will
+            mark the balance as no longer pending invoicing. The original quote will remain
+            unchanged.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCloseConfirmOpen(false)}>Cancel</Button>
+          <Button
+            color="warning"
+            variant="contained"
+            onClick={() => {
+              setCloseConfirmOpen(false);
+              confirmMutation.mutate();
+            }}
+          >
+            Confirm Close Balance
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }

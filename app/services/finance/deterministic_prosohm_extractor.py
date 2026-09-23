@@ -283,8 +283,17 @@ def extract_currency(text: str) -> ExtractedField | None:
 
 
 def extract_commercial_line(text: str) -> dict[str, Any] | None:
-    """Main Qty/Rate/Amount row — ignore stage hour lines."""
-    # Prefer numbered Full Tool Design line
+    """Main Qty/Rate/Amount row — ignore stage hour lines.
+
+    Handles both single-line (pdfplumber) and split (pypdf) layouts:
+      1 Full Tool Design (Export) 240.00 25.00 6,000.00
+    or:
+      1 Full Tool Design (Export)
+      FEASE: 10 Hrs.
+      ...
+      240.00 25.00 6,000.00
+    """
+    # Prefer numbered Full Tool Design line with qty/rate/amount on same line
     m = re.search(
         r"(?m)^\s*\d+\s+(Full\s+Tool\s+Design[^\n]*?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})",
         text,
@@ -295,20 +304,72 @@ def extract_commercial_line(text: str) -> dict[str, Any] | None:
             r"(?m)^\s*\d+\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})",
             text,
         )
-    if not m:
-        return None
-    desc = re.sub(r"\s+", " ", m.group(1)).strip()
-    qty, rate, amount = _money(m.group(2)), _money(m.group(3)), _money(m.group(4))
-    return {
-        "item_number": "1",
-        "description": desc,
-        "quantity": float(qty) if qty is not None else None,
-        "unit": "Hrs",
-        "rate": float(rate) if rate is not None else None,
-        "amount": float(amount) if amount is not None else None,
-        "raw_description": m.group(0).strip(),
-        "evidence": m.group(0).strip(),
-    }
+    if m:
+        desc = re.sub(r"\s+", " ", m.group(1)).strip()
+        # Reject if description is mostly stage hours
+        if re.search(r"\bHrs\.?\b", desc, re.IGNORECASE) and "tool design" not in desc.lower():
+            m = None
+    if m:
+        qty, rate, amount = _money(m.group(2)), _money(m.group(3)), _money(m.group(4))
+        return {
+            "item_number": "1",
+            "description": re.sub(r"\s+", " ", m.group(1)).strip(),
+            "quantity": float(qty) if qty is not None else None,
+            "unit": "Hrs",
+            "rate": float(rate) if rate is not None else None,
+            "amount": float(amount) if amount is not None else None,
+            "raw_description": m.group(0).strip(),
+            "evidence": m.group(0).strip(),
+        }
+
+    # Split layout: description line, then later qty/rate/amount alone
+    desc_m = re.search(
+        r"(?im)^\s*\d+\s+(Full\s+Tool\s+Design[^\n]+)\s*$",
+        text,
+    )
+    if not desc_m:
+        desc_m = re.search(
+            r"(?im)(?:Item\s*&\s*Description|Qty\s+Rate\s+Amount)\s*\n+\s*\d+\s+([^\n]+?)\s*$",
+            text,
+        )
+    money_m = re.search(
+        r"(?m)^\s*([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+[\d,]+\.\d{2})?\s*$",
+        text,
+    )
+    if desc_m and money_m:
+        qty, rate, amount = _money(money_m.group(1)), _money(money_m.group(2)), _money(money_m.group(3))
+        # Prefer commercial qty (not stage total) when multiple money-only lines exist
+        money_lines = list(
+            re.finditer(
+                r"(?m)^\s*([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+[\d,]+\.\d{2})?\s*$",
+                text,
+            )
+        )
+        chosen = money_m
+        for candidate in money_lines:
+            q = _money(candidate.group(1))
+            r = _money(candidate.group(2))
+            a = _money(candidate.group(3))
+            if q is None or r is None or a is None:
+                continue
+            # Classic Prosohm commercial row: rate around 25, amount = qty * rate
+            if abs(float(q) * float(r) - float(a)) < 0.05:
+                chosen = candidate
+                qty, rate, amount = q, r, a
+                break
+        desc = re.sub(r"\s+", " ", desc_m.group(1)).strip()
+        evidence = f"{desc_m.group(0).strip()} | {chosen.group(0).strip()}"
+        return {
+            "item_number": "1",
+            "description": desc,
+            "quantity": float(qty) if qty is not None else None,
+            "unit": "Hrs",
+            "rate": float(rate) if rate is not None else None,
+            "amount": float(amount) if amount is not None else None,
+            "raw_description": evidence,
+            "evidence": evidence,
+        }
+    return None
 
 
 def extract_money_labeled(text: str, label: str, *, avoid: str | None = None) -> ExtractedField | None:
@@ -331,10 +392,10 @@ def extract_money_labeled(text: str, label: str, *, avoid: str | None = None) ->
         # Prefer currency-marked money lines
         conf = 0.96 if "$" in snippet or "USD" in snippet.upper() else 0.9
         candidates.append(ExtractedField(value=str(money), confidence=conf, evidence=snippet.strip()))
-    # Sub Total often followed by amount on next line
+    # Sub Total often followed by amount on next line (possibly after "(Tax Inclusive)")
     if "sub" in label.lower():
         m = re.search(
-            rf"(?im){label}\s*\n\s*(?:\$|USD)?\s*([\d,]+\.\d{{2}})",
+            rf"(?im){label}\s*\n\s*(?:\(Tax Inclusive\)\s*)?(?:\$|USD)?\s*([\d,]+\.\d{{2}})",
             text,
         )
         if m:
@@ -342,6 +403,16 @@ def extract_money_labeled(text: str, label: str, *, avoid: str | None = None) ->
             if money is not None:
                 candidates.append(
                     ExtractedField(value=str(money), confidence=0.93, evidence=m.group(0).strip())
+                )
+        m2 = re.search(
+            rf"(?im){label}\s+(?:\(Tax Inclusive\)\s*)?(?:\$|USD)?\s*([\d,]+\.\d{{2}})",
+            text,
+        )
+        if m2:
+            money = _money(m2.group(1))
+            if money is not None:
+                candidates.append(
+                    ExtractedField(value=str(money), confidence=0.94, evidence=m2.group(0).strip())
                 )
     if not candidates:
         return None
@@ -479,18 +550,31 @@ def extract_deterministic_document(
     put("stage_hours_sum", stage_sum)
     put("stated_total_hours", stated)
 
-    # Hours conflict warning
+    # Hours conflict warning — preserve document values; do not auto-correct.
     qty = result.fields.get("quantity")
     if qty and stage_sum and stated:
         try:
-            values = {
-                float(Decimal(str(qty.value))),
-                float(Decimal(str(stage_sum.value))),
-                float(Decimal(str(stated.value))),
-            }
+            qv = float(Decimal(str(qty.value)))
+            sv = float(Decimal(str(stage_sum.value)))
+            tv = float(Decimal(str(stated.value)))
+            values = {qv, sv, tv}
             if len(values) > 1:
                 result.warnings.append(
-                    "HOURS_VALUE_CONFLICT: commercial quantity, stage sum, and stated TOTAL differ."
+                    "Document work-breakdown total does not match commercial line-item quantity "
+                    f"(commercial qty={qv}, stage sum={sv}, stated TOTAL={tv}). "
+                    "Values are preserved as extracted — confirm before import."
+                )
+        except Exception:
+            pass
+    elif qty and stage_sum:
+        try:
+            qv = float(Decimal(str(qty.value)))
+            sv = float(Decimal(str(stage_sum.value)))
+            if abs(qv - sv) > 0.01:
+                result.warnings.append(
+                    "Document work-breakdown total does not match commercial line-item quantity "
+                    f"(commercial qty={qv}, stage sum={sv}). "
+                    "Values are preserved as extracted — confirm before import."
                 )
         except Exception:
             pass

@@ -259,6 +259,12 @@ from app.db.phase_milestone_stage_schema_sync import (
 from app.db.phase98_quote_invoice_enrichment_schema_sync import (
     ensure_phase98_quote_invoice_enrichment_foundation,
 )
+from app.db.phase99_quote_hours_balance_schema_sync import (
+    ensure_phase99_quote_hours_balance_foundation,
+)
+from app.db.phase100_payment_terms_schema_sync import (
+    ensure_phase100_payment_terms_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
@@ -300,6 +306,21 @@ async def lifespan(app: FastAPI):
 
     for problem in assert_production_security():
         logger.warning("SECURITY: %s", problem)
+
+    # Program-level: ensure pdfplumber/pypdf on THIS API process (not per browser).
+    try:
+        import os
+
+        from app.core.ensure_runtime_deps import ensure_critical_runtime_dependencies
+
+        auto = os.getenv("PROTRACK_AUTO_INSTALL_DEPS", "1").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+        }
+        ensure_critical_runtime_dependencies(auto_install=auto)
+    except Exception:  # noqa: BLE001
+        logger.exception("Runtime dependency ensure failed")
 
     try:
         from app.services.finance.document_import_deps import (
@@ -429,6 +450,8 @@ async def lifespan(app: FastAPI):
         ("phase97_it_computer_name_history", ensure_phase97_it_computer_name_history_foundation),
         ("phase_milestone_stage", ensure_phase_milestone_stage_foundation),
         ("phase98_quote_invoice_enrichment", ensure_phase98_quote_invoice_enrichment_foundation),
+        ("phase99_quote_hours_balance", ensure_phase99_quote_hours_balance_foundation),
+        ("phase100_payment_terms", ensure_phase100_payment_terms_foundation),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

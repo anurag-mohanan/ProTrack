@@ -863,6 +863,8 @@ def _quote_billing_summary(db: Session, *, team_id: UUID | None = None) -> dict:
     balance_due = Decimal("0.00")
     total_paid = Decimal("0.00")
     counts = {"none": 0, "partial": 0, "full": 0, "total": 0}
+    active_finance_count = 0
+    financially_closed_count = 0
     status_awarded = {
         STATUS_NOT_INVOICED: Decimal("0.00"),
         STATUS_PARTIALLY_INVOICED_PAID: Decimal("0.00"),
@@ -896,6 +898,10 @@ def _quote_billing_summary(db: Session, *, team_id: UUID | None = None) -> dict:
         total_paid += _d(cash["total_paid"]) * fx
         counts[status] = counts.get(status, 0) + 1
         counts["total"] += 1
+        if cash.get("is_financially_closed"):
+            financially_closed_count += 1
+        else:
+            active_finance_count += 1
         if financial_status in status_awarded:
             status_awarded[financial_status] += awarded_inr
             status_counts[financial_status] += 1
@@ -909,6 +915,8 @@ def _quote_billing_summary(db: Session, *, team_id: UUID | None = None) -> dict:
         "partially_invoiced_count": counts.get("partial", 0),
         "fully_invoiced_count": counts.get("full", 0),
         "quote_count": counts.get("total", 0),
+        "active_finance_count": active_finance_count,
+        "financially_closed_count": financially_closed_count,
         # Status card amounts are Awarded Value classifications (no double-count).
         "status_awarded_value_inr": {
             key: value.quantize(Decimal("0.01")) for key, value in status_awarded.items()

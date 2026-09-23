@@ -33,6 +33,13 @@ export type AwardedQuoteRow = {
   project_linked?: boolean;
   quoted_revenue?: number | string | null;
   base_quoted_revenue_inr?: number | string | null;
+  quoted_hours?: number | string | null;
+  invoiced_hours?: number | string | null;
+  remaining_hours?: number | string | null;
+  closed_balance_hours?: number | string | null;
+  closed_balance_amount?: number | string | null;
+  hours_status?: string | null;
+  remaining_hours_value?: number | string | null;
   quoted_date?: string | null;
   invoiced_date?: string | null;
   is_invoiced?: boolean;
@@ -64,6 +71,25 @@ const FINANCIAL_STATUS_LABELS: Record<string, string> = {
   fully_invoiced_fully_paid: 'Fully invoiced & fully paid',
   over_invoiced_requires_review: 'Over-invoiced — review',
 };
+
+const HOURS_STATUS_LABELS: Record<string, string> = {
+  NOT_INVOICED: 'Not invoiced',
+  PARTIALLY_INVOICED: 'Partially invoiced',
+  FULLY_INVOICED: 'Fully invoiced',
+  OVER_INVOICED: 'Over-invoiced',
+  BALANCE_CLOSED: 'Balance closed',
+  UNKNOWN: '',
+};
+
+function formatHoursPair(hours: number | string | null | undefined, amount: number | string | null | undefined, currency: string): string {
+  const h = toFiniteNumber(hours);
+  const money = financeMoney(amount, currency);
+  if (h > 0) {
+    const hrs = Number.isInteger(h) ? `${h} hrs` : `${h} hrs`;
+    return `${hrs} / ${money}`;
+  }
+  return money;
+}
 
 function resolveFinancialStatus(quote: AwardedQuoteRow): string {
   if (quote.financial_status) return quote.financial_status;
@@ -312,7 +338,9 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                       variant="body2"
                       sx={{ fontWeight: 700, color: chartTheme.ink.primary, fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {financeMoney(quote.quoted_revenue, currency)}
+                      {toFiniteNumber(quote.quoted_hours) > 0
+                        ? formatHoursPair(quote.quoted_hours, quote.quoted_revenue, currency)
+                        : financeMoney(quote.quoted_revenue, currency)}
                     </Typography>
                     {showFx ? (
                       <Typography
@@ -320,6 +348,62 @@ export function FinanceQuotesTable<T extends AwardedQuoteRow>({
                         sx={{ color: chartTheme.ink.secondary, display: 'block', fontVariantNumeric: 'tabular-nums' }}
                       >
                         ≈ {financeMoney(quote.base_quoted_revenue_inr, 'INR')}
+                      </Typography>
+                    ) : null}
+                    {toFiniteNumber(quote.quoted_hours) > 0 ? (
+                      <Typography
+                        variant="caption"
+                        sx={{ color: chartTheme.ink.secondary, display: 'block', mt: 0.5 }}
+                      >
+                        Invoiced{' '}
+                        {formatHoursPair(quote.invoiced_hours, quote.total_invoiced, currency)}
+                      </Typography>
+                    ) : null}
+                    {quote.hours_status === 'BALANCE_CLOSED' ? (
+                      <Typography
+                        variant="caption"
+                        sx={{ color: chartTheme.ink.secondary, display: 'block' }}
+                      >
+                        Closed{' '}
+                        {formatHoursPair(
+                          quote.closed_balance_hours,
+                          quote.closed_balance_amount,
+                          currency,
+                        )}
+                      </Typography>
+                    ) : toFiniteNumber(quote.quoted_hours) > 0 &&
+                      toFiniteNumber(quote.remaining_hours) > 0 ? (
+                      <Typography
+                        variant="caption"
+                        sx={{ color: designTokens.semantic.warning, display: 'block', fontWeight: 600 }}
+                      >
+                        Remaining{' '}
+                        {formatHoursPair(
+                          quote.remaining_hours,
+                          quote.remaining_to_invoice,
+                          currency,
+                        )}
+                      </Typography>
+                    ) : null}
+                    {quote.hours_status &&
+                    quote.hours_status !== 'UNKNOWN' &&
+                    HOURS_STATUS_LABELS[quote.hours_status] ? (
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          display: 'block',
+                          mt: 0.25,
+                          fontWeight: 600,
+                          color:
+                            quote.hours_status === 'PARTIALLY_INVOICED' ||
+                            quote.hours_status === 'OVER_INVOICED'
+                              ? designTokens.semantic.warning
+                              : quote.hours_status === 'BALANCE_CLOSED'
+                                ? chartTheme.ink.secondary
+                                : designTokens.semantic.success,
+                        }}
+                      >
+                        Hours: {HOURS_STATUS_LABELS[quote.hours_status]}
                       </Typography>
                     ) : null}
                   </TableCell>

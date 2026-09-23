@@ -563,6 +563,10 @@ class QuoteInvoiceLineRead(BaseModel):
     due_date: date | None = None
     tax_amount: Decimal | None = None
     subtotal_amount: Decimal | None = None
+    quantity_hours: Decimal | None = None
+    payment_terms: str | None = None
+    payment_terms_days: int | None = None
+    payment_terms_source: str | None = None
     content_sha256: str | None = None
     sort_order: int = 0
     created_at: datetime | None = None
@@ -654,6 +658,13 @@ class QuoteRead(BaseModel):
     base_quoted_revenue_inr: Decimal | None = None
     fx_rate: Decimal | None = None
     fx_date: date | None = None
+    invoiced_hours: Decimal | None = None
+    remaining_hours: Decimal | None = None
+    closed_balance_hours: Decimal | None = None
+    closed_balance_amount: Decimal | None = None
+    hours_status: str | None = None
+    remaining_hours_value: Decimal | None = None
+    is_financially_closed: bool = False
     revisions: list[QuoteRevisionRead] = Field(default_factory=list)
     billing_ready: bool = True
     billing_gaps: list[str] = Field(default_factory=list)
@@ -1286,6 +1297,8 @@ class InvoicePdfExtractResult(BaseModel):
     duplicates: list[dict] = Field(default_factory=list)
     suggested_quote_id: str | None = None
     source: str = "pdf_import"
+    hours_balance: dict | None = None
+    payment_terms_preview: dict | None = None
 
 
 class InvoicePdfConfirmRequest(BaseModel):
@@ -1294,6 +1307,10 @@ class InvoicePdfConfirmRequest(BaseModel):
     line_date: date
     invoice_number: str | None = None
     notes: str | None = None
+    quantity_hours: Decimal | None = None
+    remaining_balance_action: str | None = None
+    acknowledge_over_hours: bool = False
+    close_balance_reason: str | None = None
     import_anyway: bool = False
     content_sha256: str | None = None
 

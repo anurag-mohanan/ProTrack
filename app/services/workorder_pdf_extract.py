@@ -522,7 +522,18 @@ def _extract_text_pypdf(content: bytes) -> str:
 
 
 def extract_pdf_text(content: bytes) -> str:
+    """Extract readable PDF text. Prefer pdfplumber → pypdf → curated stdlib.
+
+    Low-quality binary scrapes are rejected so callers do not treat noise as
+    a successful text layer (which would skip OCR and break label matching).
+    """
+    from app.services.finance.pdf_text_quality import (
+        finance_text_signal_score,
+        is_usable_pdf_text,
+    )
+
     errors: list[str] = []
+    candidates: list[tuple[float, str, str]] = []
     for extractor, label in (
         (_extract_text_pdfplumber, "pdfplumber"),
         (_extract_text_pypdf, "pypdf"),
@@ -530,9 +541,19 @@ def extract_pdf_text(content: bytes) -> str:
     ):
         try:
             combined = extractor(content)
-            if combined:
-                return combined
-            errors.append(f"{label} found no text")
+            if not combined:
+                errors.append(f"{label} found no text")
+                continue
+            if not is_usable_pdf_text(combined):
+                errors.append(f"{label} returned unusable/binary text ({len(combined)} chars)")
+                continue
+            score = finance_text_signal_score(combined)
+            # Prefer real PDF libraries over stdlib even at equal signal.
+            if label == "pdfplumber":
+                score += 50
+            elif label == "pypdf":
+                score += 40
+            candidates.append((score, label, combined))
         except ImportError:
             errors.append(f"{label} not installed")
         except ProTrackValidationError:
@@ -540,10 +561,16 @@ def extract_pdf_text(content: bytes) -> str:
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{label} failed: {exc}")
 
-    if any("found no text" in item for item in errors):
+    if candidates:
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return candidates[0][2]
+
+    if any("found no text" in item or "unusable" in item for item in errors):
         raise ProTrackValidationError(
             "No extractable text found. Use a text-based PDF/Excel (not a scanned image) "
-            "or enter details manually."
+            "or enter details manually. "
+            "If this is a Prosohm invoice/quote: install pdfplumber/pypdf "
+            "(pip install -r requirements.txt) and restart the API."
         )
     raise ProTrackValidationError(
         f"Could not read workorder file ({'; '.join(errors)}). "

@@ -107,7 +107,18 @@ def summarize_quote_cash(
     total_invoiced = sum((_d(row.amount) for row in invoices), Decimal("0"))
     total_paid = sum((_d(row.amount) for row in payments), Decimal("0"))
     balance_due = max(Decimal("0"), total_invoiced - total_paid)
-    remaining_to_invoice = max(Decimal("0"), quoted - total_invoiced)
+
+    from app.services.finance.quote_hours_balance_service import (
+        calculate_quote_hours_balance,
+        sum_closed_amount,
+    )
+
+    hours_snap = calculate_quote_hours_balance(
+        db, quote, revision=revision, invoice_lines=invoices
+    )
+    closed_amount = sum_closed_amount(db, quote.id)
+    # Billable remaining value: awarded − invoiced − explicitly closed balance
+    remaining_to_invoice = max(Decimal("0"), quoted - total_invoiced - closed_amount)
     remaining_contract = max(Decimal("0"), quoted - total_paid)
     earliest_invoice = min((row.line_date for row in invoices), default=None)
     latest_payment = max((row.line_date for row in payments), default=None)
@@ -153,6 +164,8 @@ def summarize_quote_cash(
         "last_payment_date": latest_payment,
         "invoice_lines": invoices,
         "payment_lines": payments,
+        "hours": hours_snap,
+        "closed_balance_amount": closed_amount,
     }
 
 
@@ -216,6 +229,13 @@ def calculate_awarded_quote_financial_status(
         invoiced_amount=invoiced,
         paid_amount=paid,
     )
+    # Balance closed: treat remaining-to-invoice as settled for status when hours closed
+    hours = cash.get("hours") or {}
+    if hours.get("hours_status") == "BALANCE_CLOSED" and remaining_to_invoice <= _AMOUNT_TOLERANCE:
+        if paid >= invoiced - _AMOUNT_TOLERANCE:
+            status = STATUS_FULLY_INVOICED_FULLY_PAID if invoiced > 0 else status
+        elif invoiced > 0:
+            status = STATUS_FULLY_INVOICED_PAYMENT_PENDING
     overpayment_amount = max(Decimal("0"), paid - invoiced)
     over_invoiced_variance = (
         max(Decimal("0"), invoiced - awarded) if awarded > 0 else Decimal("0")
@@ -235,6 +255,19 @@ def calculate_awarded_quote_financial_status(
         "over_invoiced_variance": over_invoiced_variance,
         "is_overpayment": overpayment_amount > _AMOUNT_TOLERANCE,
         "overpayment_amount": overpayment_amount,
+        "quoted_hours": hours.get("quoted_hours", Decimal("0")),
+        "invoiced_hours": hours.get("invoiced_hours", Decimal("0")),
+        "remaining_hours": hours.get("remaining_hours", Decimal("0")),
+        "closed_balance_hours": hours.get("closed_balance_hours", Decimal("0")),
+        "closed_balance_amount": cash.get("closed_balance_amount", Decimal("0")),
+        "hours_status": hours.get("hours_status", "UNKNOWN"),
+        "remaining_hours_value": hours.get("remaining_value"),
+        "is_financially_closed": (
+            status != STATUS_OVER_INVOICED_REQUIRES_REVIEW
+            and remaining_to_invoice <= _AMOUNT_TOLERANCE
+            and outstanding <= _AMOUNT_TOLERANCE
+            and (awarded > 0 or invoiced > 0)
+        ),
     }
 
 
@@ -268,6 +301,10 @@ def add_invoice_line(
     tax_amount: Decimal | None = None,
     subtotal_amount: Decimal | None = None,
     content_sha256: str | None = None,
+    quantity_hours: Decimal | None = None,
+    payment_terms: str | None = None,
+    payment_terms_days: int | None = None,
+    payment_terms_source: str | None = None,
 ) -> QuoteInvoiceLine:
     amount = _d(amount)
     if amount <= 0:
@@ -279,6 +316,15 @@ def add_invoice_line(
         raise ProTrackValidationError(
             f"Invoice total would exceed quoted revenue ({quoted})."
         )
+    qty = _d(quantity_hours) if quantity_hours is not None else None
+    if qty is not None and qty < 0:
+        raise ProTrackValidationError("Invoice quantity hours cannot be negative.")
+    terms_label = (payment_terms or "").strip() or None
+    terms_days = payment_terms_days
+    if terms_days is not None:
+        terms_days = int(terms_days)
+        if terms_days < 0 or terms_days > 365:
+            raise ProTrackValidationError("payment_terms_days must be between 0 and 365.")
     line = QuoteInvoiceLine(
         id=uuid4(),
         quote_id=quote.id,
@@ -289,6 +335,10 @@ def add_invoice_line(
         due_date=due_date,
         tax_amount=_d(tax_amount) if tax_amount is not None else None,
         subtotal_amount=_d(subtotal_amount) if subtotal_amount is not None else None,
+        quantity_hours=qty if qty is not None and qty > 0 else None,
+        payment_terms=terms_label,
+        payment_terms_days=terms_days,
+        payment_terms_source=(payment_terms_source or "").strip() or None,
         content_sha256=(content_sha256 or "").strip() or None,
         sort_order=_next_sort_order(db, QuoteInvoiceLine, quote.id),
     )

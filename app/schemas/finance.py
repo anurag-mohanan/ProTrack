@@ -1267,7 +1267,9 @@ class InvoicePdfExtractResult(BaseModel):
     document_type_confidence: float = 0
     text_extraction_method: str | None = None
     raw_text: str | None = None
+    normalized_text: str | None = None
     extraction_quality: dict | None = None
+    pipeline: str | None = None
     fields: dict[str, InvoicePdfFieldCandidate] = Field(default_factory=dict)
     stage_hours: list[dict] = Field(default_factory=list)
     line_items: list[dict] = Field(default_factory=list)
@@ -1309,7 +1311,9 @@ class QuotePdfExtractResult(BaseModel):
     document_type_confidence: float = 0
     text_extraction_method: str | None = None
     raw_text: str | None = None
+    normalized_text: str | None = None
     extraction_quality: dict | None = None
+    pipeline: str | None = None
     fields: dict[str, InvoicePdfFieldCandidate] = Field(default_factory=dict)
     stage_hours: list[dict] = Field(default_factory=list)
     line_items: list[dict] = Field(default_factory=list)

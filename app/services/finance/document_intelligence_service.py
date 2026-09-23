@@ -200,7 +200,10 @@ def _call_vision_llm(
 
 
 class DocumentIntelligenceService:
-    """Central finance document understanding — visual layout + optional LLM vision."""
+    """Central finance document understanding.
+
+    Order: native text → deterministic field extractors → layout/visual → optional LLM.
+    """
 
     def analyze_document(
         self,
@@ -209,6 +212,11 @@ class DocumentIntelligenceService:
         filename: str | None = None,
         expected_kind: str | None = None,
     ) -> dict[str, Any]:
+        from app.services.finance.deterministic_prosohm_extractor import (
+            deterministic_to_review_fields,
+            extract_deterministic_document,
+        )
+
         raw = extract_raw_document_text(
             content,
             document_kind=(expected_kind or "invoice"),
@@ -216,12 +224,26 @@ class DocumentIntelligenceService:
         )
         page_images = render_pdf_page_images(content)
         layout = analyze_prosohm_layout(content, filename=filename)
+        deterministic = extract_deterministic_document(
+            raw.raw_text,
+            filename=filename,
+            expected_kind=expected_kind,
+        )
 
-        kind = (expected_kind or layout.document_type or "UNKNOWN").lower()
-        if kind == "unknown":
-            kind = "invoice" if layout.document_type == "INVOICE" else "quote"
+        # Prefer deterministic classification when strong; never leave UNKNOWN for Prosohm docs
+        doc_type = deterministic.document_type
+        doc_conf = deterministic.document_type_confidence
+        if doc_type == "UNKNOWN" and layout.document_type != "UNKNOWN":
+            doc_type = layout.document_type
+            doc_conf = layout.document_type_confidence
+        if doc_type == "UNKNOWN" and expected_kind:
+            doc_type = expected_kind.upper()
+            doc_conf = max(doc_conf, 0.85)
 
-        # Optional LLM vision enhancement (does not replace layout when unavailable)
+        kind = doc_type.lower() if doc_type in {"INVOICE", "QUOTE"} else (
+            (expected_kind or "invoice").lower()
+        )
+
         vision_json = _call_vision_llm(
             page_images=page_images,
             native_text=raw.raw_text,
@@ -231,12 +253,21 @@ class DocumentIntelligenceService:
         if vision_json:
             layout = _merge_vision_into_layout(layout, vision_json)
 
-        fields = _layout_to_review_fields(layout, kind=kind if kind in {"quote", "invoice"} else "invoice")
+        det_fields = deterministic_to_review_fields(deterministic)
+        layout_fields = _layout_to_review_fields(
+            layout, kind=kind if kind in {"quote", "invoice"} else "invoice"
+        )
+        fields = _fuse_fields(det_fields, layout_fields)
+
         stages = [
-            {"label": s.get("stage") or s.get("label"), "hours": s.get("hours"), "source_line": s.get("evidence")}
-            for s in layout.work_breakdown
+            {
+                "label": s.get("stage") or s.get("label"),
+                "hours": s.get("hours"),
+                "source_line": s.get("evidence"),
+            }
+            for s in (deterministic.work_breakdown or layout.work_breakdown)
         ]
-        line_items = layout.line_items or []
+        line_items = deterministic.line_items or layout.line_items or []
         if not line_items and fields.get("line_description", {}).get("value"):
             line_items = [
                 build_line_item(
@@ -254,7 +285,7 @@ class DocumentIntelligenceService:
             stage_breakdown_total=_float_or_none(fields.get("stage_hours_sum")),
             stated_total=_float_or_none(fields.get("raw_description_total_hours")),
         )
-        warnings = list(raw.warnings) + list(layout.warnings)
+        warnings = list(raw.warnings) + list(deterministic.warnings) + list(layout.warnings)
         if mismatch:
             warnings.append(mismatch["message"])
 
@@ -267,44 +298,48 @@ class DocumentIntelligenceService:
         else:
             warnings.append("Extraction Status: READY FOR REVIEW")
 
-        # Preview: first page as data URL for review UI
         preview_data_url = None
         if page_images:
             b64 = base64.b64encode(page_images[0]).decode("ascii")
             preview_data_url = f"data:image/png;base64,{b64}"
 
-        doc_type = layout.document_type
-        if doc_type == "UNKNOWN" and expected_kind:
-            doc_type = expected_kind.upper()
-
         return {
+            "pipeline": "document_intelligence_v2",
             "text_extractable": bool(raw.raw_text.strip()) or layout.word_count > 0,
             "ocr_used": raw.ocr_used,
             "source_chars": raw.character_count or len(raw.raw_text),
             "filename": filename,
             "warnings": warnings,
-            "document_type": doc_type.lower() if doc_type != "UNKNOWN" else "unknown",
-            "document_type_confidence": round(layout.document_type_confidence * 100, 1),
-            "text_extraction_method": "visual_layout+native_pdf"
+            "document_type": kind,
+            "document_type_confidence": round(max(doc_conf, 0.01) * 100, 1),
+            "text_extraction_method": "deterministic+visual_layout+native_pdf"
             + ("+llm_vision" if vision_json else ""),
             "raw_text": raw.raw_text,
+            "normalized_text": deterministic.normalized_text,
             "extraction_quality": {
                 **extraction_quality_dict(raw),
                 "word_count": layout.word_count,
                 "pages": layout.page_count,
-                "analysis_method": layout.method,
+                "analysis_method": "deterministic+layout",
                 "llm_vision_used": bool(vision_json),
+                "deterministic_field_count": len(det_fields),
+                "layout_field_count": len(layout_fields),
             },
             "fields": fields,
             "stage_hours": stages,
             "line_items": line_items,
-            "work_breakdown": layout.work_breakdown,
+            "work_breakdown": deterministic.work_breakdown or layout.work_breakdown,
             "structured_warnings": [mismatch] if mismatch else [],
             "extraction_status": gate["status"],
             "quality_gate": gate,
             "page_preview_data_url": preview_data_url,
             "page_count": layout.page_count,
             "analysis": {
+                "deterministic": {
+                    "document_type": deterministic.document_type,
+                    "confidence": deterministic.document_type_confidence,
+                    "field_count": len(deterministic.fields),
+                },
                 "layout": {
                     "document_type": layout.document_type,
                     "confidence": layout.document_type_confidence,
@@ -321,6 +356,98 @@ class DocumentIntelligenceService:
 
     def analyze_invoice_document(self, content: bytes, *, filename: str | None = None) -> dict[str, Any]:
         return self.analyze_document(content, filename=filename, expected_kind="invoice")
+
+    def analyze_debug(
+        self,
+        content: bytes,
+        *,
+        filename: str | None = None,
+        expected_kind: str | None = None,
+    ) -> dict[str, Any]:
+        """Full diagnostic payload — no Finance persistence."""
+        from app.services.workorder_pdf_extract import extract_pdf_text
+        from app.services.finance.deterministic_prosohm_extractor import (
+            extract_deterministic_document,
+            normalize_pdf_text,
+        )
+
+        native_ok = True
+        native_text = ""
+        native_error = None
+        try:
+            native_text = extract_pdf_text(content) or ""
+        except Exception as exc:  # noqa: BLE001
+            native_ok = False
+            native_error = str(exc)
+
+        images = render_pdf_page_images(content)
+        dims = None
+        if images:
+            try:
+                from PIL import Image
+
+                im = Image.open(io.BytesIO(images[0]))
+                dims = f"{im.width}x{im.height}"
+            except Exception:
+                dims = f"bytes={len(images[0])}"
+
+        structured = self.analyze_document(
+            content, filename=filename, expected_kind=expected_kind
+        )
+        det = extract_deterministic_document(
+            native_text, filename=filename, expected_kind=expected_kind
+        )
+
+        # Compact structured summary for logs
+        field_summary = {
+            k: (v.get("value") if isinstance(v, dict) else v)
+            for k, v in (structured.get("fields") or {}).items()
+            if isinstance(v, dict) and v.get("value")
+        }
+
+        return {
+            "filename": filename,
+            "page_count": structured.get("page_count"),
+            "pipeline": "document_intelligence_v2",
+            "native_text": {
+                "success": native_ok and bool(native_text.strip()),
+                "length": len(native_text),
+                "error": native_error,
+                "text": native_text,
+                "normalized_length": len(normalize_pdf_text(native_text)),
+                "contains_invoice_number": "INV-2026-27-051" in native_text,
+                "contains_quote_number": "QT-2026-27-036" in native_text,
+            },
+            "render": {
+                "success": bool(images),
+                "page_count": len(images),
+                "image_dimensions": dims,
+            },
+            "document_classification": {
+                "type": structured.get("document_type"),
+                "confidence": structured.get("document_type_confidence"),
+                "deterministic_type": det.document_type,
+            },
+            "structured_extraction": field_summary,
+            "full_result": structured,
+            "validation": structured.get("quality_gate"),
+            "stage_hours": structured.get("stage_hours"),
+        }
+
+
+def _fuse_fields(primary: dict[str, dict], secondary: dict[str, dict]) -> dict[str, dict]:
+    """Prefer primary non-empty values; fill gaps from secondary; keep higher confidence."""
+    out = dict(secondary)
+    for key, cand in primary.items():
+        if not cand or not cand.get("value"):
+            continue
+        existing = out.get(key)
+        if not existing or not existing.get("value"):
+            out[key] = cand
+            continue
+        if float(cand.get("confidence") or 0) >= float(existing.get("confidence") or 0):
+            out[key] = cand
+    return out
 
 
 def _float_or_none(field: dict | None) -> float | None:

@@ -357,6 +357,7 @@ def extract_invoice_pdf(
         }
 
     return {
+        "pipeline": analyzed.get("pipeline", "document_intelligence_v2"),
         "text_extractable": analyzed.get("text_extractable", True),
         "ocr_used": analyzed.get("ocr_used", False),
         "source_chars": analyzed.get("source_chars", 0),
@@ -367,6 +368,7 @@ def extract_invoice_pdf(
         "document_type_confidence": analyzed.get("document_type_confidence", 0),
         "text_extraction_method": analyzed.get("text_extraction_method"),
         "raw_text": analyzed.get("raw_text"),
+        "normalized_text": analyzed.get("normalized_text"),
         "extraction_quality": analyzed.get("extraction_quality"),
         "fields": fields,
         "stage_hours": stages,

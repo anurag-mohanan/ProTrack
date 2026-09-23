@@ -2916,6 +2916,92 @@ async def confirm_invoice_pdf(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.post('/document-import/analyze')
+async def analyze_finance_document(
+    file: UploadFile = File(...),
+    document_kind: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Analyze quote/invoice PDF only — no Finance records created.
+
+    Returns structured DocumentAnalysisResult for independent verification.
+    """
+    from app.services.finance.document_intelligence_service import (
+        get_document_intelligence_service,
+    )
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if not file.filename:
+        raise HTTPException(status_code=400, detail='A file name is required.')
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail='Only PDF files are supported.')
+    content = await file.read()
+    enforce_upload_size(content)
+    kind = (document_kind or '').strip().lower() or None
+    if kind not in (None, 'quote', 'invoice'):
+        raise HTTPException(status_code=400, detail='document_kind must be quote or invoice')
+    # Infer from filename when not provided
+    if kind is None:
+        upper = file.filename.upper()
+        if 'INV-' in upper or 'INVOICE' in upper:
+            kind = 'invoice'
+        elif 'QT-' in upper or 'QUOTE' in upper:
+            kind = 'quote'
+    svc = get_document_intelligence_service()
+    if kind == 'quote':
+        result = svc.analyze_quote_document(content, filename=file.filename)
+    elif kind == 'invoice':
+        result = svc.analyze_invoice_document(content, filename=file.filename)
+    else:
+        result = svc.analyze_document(content, filename=file.filename)
+    # Compact API shape for debugging without matching
+    return {
+        'pipeline': result.get('pipeline'),
+        'filename': file.filename,
+        'document_type': result.get('document_type'),
+        'document_type_confidence': result.get('document_type_confidence'),
+        'text_extraction_method': result.get('text_extraction_method'),
+        'source_chars': result.get('source_chars'),
+        'extraction_status': result.get('extraction_status'),
+        'quality_gate': result.get('quality_gate'),
+        'fields': result.get('fields'),
+        'stage_hours': result.get('stage_hours'),
+        'line_items': result.get('line_items'),
+        'work_breakdown': result.get('work_breakdown'),
+        'warnings': result.get('warnings'),
+        'structured_warnings': result.get('structured_warnings'),
+        'page_count': result.get('page_count'),
+        'analysis': result.get('analysis'),
+        'raw_text_preview': (result.get('raw_text') or '')[:500],
+    }
+
+
+@router.post('/document-import/analyze-debug')
+async def analyze_finance_document_debug(
+    file: UploadFile = File(...),
+    document_kind: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Development diagnostic: raw text + render + structured extraction stages."""
+    from app.services.finance.document_intelligence_service import (
+        get_document_intelligence_service,
+    )
+
+    _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail='PDF file required.')
+    content = await file.read()
+    enforce_upload_size(content)
+    kind = (document_kind or '').strip().lower() or None
+    if kind not in (None, 'quote', 'invoice'):
+        kind = None
+    return get_document_intelligence_service().analyze_debug(
+        content, filename=file.filename, expected_kind=kind
+    )
+
+
 @router.post("/quotes/pdf/extract")
 async def extract_quote_pdf(
     file: UploadFile = File(...),

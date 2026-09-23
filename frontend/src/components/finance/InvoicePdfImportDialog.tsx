@@ -65,6 +65,7 @@ type ExtractResult = {
   page_preview_data_url?: string | null;
   page_count?: number | null;
   extraction_status?: string | null;
+  pipeline?: string | null;
   quality_gate?: {
     status?: string;
     missing_fields?: string[];
@@ -160,11 +161,20 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       setQuoteIdEdit(data.suggested_quote_id || quoteId || '');
       setDocumentType(data.document_type || 'invoice');
       setHoursResolved(false);
+      if (data.pipeline !== 'document_intelligence_v2') {
+        showError(
+          `Backend returned unexpected pipeline "${data.pipeline || 'none'}". Restart the API server so document_intelligence_v2 is loaded.`,
+        );
+      }
       if (!data.text_extractable || !(data.source_chars && data.source_chars > 0)) {
         showError(data.warnings?.[0] || 'Unable to extract the document reliably.');
       } else if (!Object.keys(data.fields || {}).length) {
         showError(
           'Text was extracted but structured fields are empty. Check raw text below and enter values manually.',
+        );
+      } else if (data.extraction_status === 'INCOMPLETE') {
+        showError(
+          `Extraction incomplete — missing: ${(data.quality_gate?.missing_fields || []).join(', ') || 'required fields'}`,
         );
       }
     },
@@ -268,6 +278,7 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               {Math.round(extract.document_type_confidence ?? 0)}%)
               {' · '}
               {extract.text_extraction_method || 'visual'}
+              {extract.pipeline ? ` · ${extract.pipeline}` : ''}
             </Alert>
 
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>

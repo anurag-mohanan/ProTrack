@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -12,7 +12,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import {
   executeAssetBulkAction,
   fetchItPeoplePaginated,
@@ -85,6 +85,7 @@ export function AssetBulkActionBar({
   // Shared form state
   const [userId, setUserId] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [debouncedUserSearch, setDebouncedUserSearch] = useState('');
   const [assignMode, setAssignMode] = useState<'replace' | 'only_unassigned' | ''>('');
   const [location, setLocation] = useState('');
   const [status, setStatus] = useState('available');
@@ -100,15 +101,21 @@ export function AssetBulkActionBar({
   const [returnCustomerId, setReturnCustomerId] = useState('');
   const [selectingMatching, setSelectingMatching] = useState(false);
 
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedUserSearch(userSearch.trim()), 300);
+    return () => window.clearTimeout(handle);
+  }, [userSearch]);
+
   const peopleQuery = useQuery({
-    queryKey: [...itOperationsKeys.people({ search: userSearch, status: 'active' })],
+    queryKey: [...itOperationsKeys.people({ search: debouncedUserSearch, status: 'active' })],
     queryFn: () =>
       fetchItPeoplePaginated({
-        search: userSearch.trim() || undefined,
+        search: debouncedUserSearch || undefined,
         status: 'active',
         page_size: 50,
       }),
     enabled: dialog === 'assign_user' && canAssign,
+    placeholderData: keepPreviousData,
   });
 
   const customersQuery = useQuery({

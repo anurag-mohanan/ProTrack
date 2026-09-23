@@ -144,7 +144,7 @@ function PlanSectionGrid({
                       <TextField
                         size="small"
                         defaultValue={Number(line[key] || 0)}
-                        key={`${line.id}-${key}-${Number(line[key] || 0)}`}
+                        key={`${line.id}-${key}`}
                         slotProps={{
                           htmlInput: { style: { textAlign: 'right' } },
                         }}

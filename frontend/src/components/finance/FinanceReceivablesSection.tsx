@@ -1,7 +1,6 @@
 import {
   Chip,
   Grid,
-  Stack,
   Table,
   TableBody,
   TableCell,
@@ -15,6 +14,9 @@ import { LoadingState } from '../common/LoadingState';
 import { KpiMetricCard } from '../ui/design-system/KpiMetricCard';
 import { FinanceSection, financeMoney } from './FinanceCockpitPrimitives';
 import { teamQueryParam } from './FinanceTeamFilter';
+import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined';
+import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
+import TodayOutlinedIcon from '@mui/icons-material/TodayOutlined';
 import TimelapseOutlinedIcon from '@mui/icons-material/TimelapseOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import { toFiniteNumber } from '../../utils/format';
@@ -105,6 +107,7 @@ export function FinanceReceivablesSection({
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <KpiMetricCard
             compact
+            icon={EventAvailableOutlinedIcon}
             title="Not yet due"
             value={financeMoney(data.not_yet_due, currency)}
           />
@@ -112,6 +115,7 @@ export function FinanceReceivablesSection({
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <KpiMetricCard
             compact
+            icon={ScheduleOutlinedIcon}
             title="Due soon"
             value={financeMoney(data.due_soon, currency)}
           />
@@ -119,6 +123,7 @@ export function FinanceReceivablesSection({
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <KpiMetricCard
             compact
+            icon={TodayOutlinedIcon}
             title="Due today"
             value={financeMoney(data.due_today, currency)}
           />
@@ -139,6 +144,7 @@ export function FinanceReceivablesSection({
           <Grid key={key} size={{ xs: 6, sm: 3 }}>
             <KpiMetricCard
               compact
+              icon={TimelapseOutlinedIcon}
               title={OVERDUE_LABELS[key]}
               value={financeMoney(buckets[key], currency)}
             />
@@ -162,7 +168,7 @@ export function FinanceReceivablesSection({
             {rows.map((row) => (
               <TableRow key={`${row.quote_id}-${row.invoice_number || row.invoice_date}`}>
                 <TableCell>
-                  <Typography variant="body2" fontWeight={600}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     {row.customer_name || '—'}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">

@@ -292,7 +292,7 @@ export function FinancePeopleCostsPanel({ teamId }: { teamId: string }) {
     setSortDirection(field === 'name' || field === 'team' ? 'asc' : 'desc');
   };
 
-  if (rosterQuery.isLoading) {
+  if (rosterQuery.isLoading && !rosterQuery.data) {
     return <LoadingState message="Loading people costs…" />;
   }
 

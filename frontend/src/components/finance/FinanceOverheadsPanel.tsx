@@ -945,7 +945,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               <Select
                 label="Cost centre"
                 value={form.cost_centre_id}
-                onChange={(e) => setForm({ ...form, cost_centre_id: e.target.value })}
+                onChange={(e) => setForm((prev) => ({ ...prev, cost_centre_id: e.target.value }))}
               >
                 {centres
                   .filter((c) => OVERHEAD_CATEGORIES.some((cat) => cat.code === (c.code || '').toUpperCase()) || (c.code || '').toUpperCase() === 'MISC')
@@ -960,21 +960,23 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               size="small"
               label="Name"
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
               sx={{ minWidth: 180 }}
             />
             <TextField
               size="small"
               label="Amount / period"
               value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
               sx={{ width: 130 }}
             />
             <TextField
               size="small"
               label="Currency"
               value={form.currency_code}
-              onChange={(e) => setForm({ ...form, currency_code: e.target.value.toUpperCase() })}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, currency_code: e.target.value.toUpperCase() }))
+              }
               sx={{ width: 90 }}
             />
             <FormControl size="small" sx={{ minWidth: 110 }}>
@@ -983,7 +985,10 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
                 label="Nature"
                 value={form.nature}
                 onChange={(e) =>
-                  setForm({ ...form, nature: e.target.value as 'opex' | 'capex' })
+                  setForm((prev) => ({
+                    ...prev,
+                    nature: e.target.value as 'opex' | 'capex',
+                  }))
                 }
               >
                 <MenuItem value="opex">OpEx</MenuItem>
@@ -995,7 +1000,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               <Select
                 label="Frequency"
                 value={form.frequency}
-                onChange={(e) => setForm({ ...form, frequency: e.target.value })}
+                onChange={(e) => setForm((prev) => ({ ...prev, frequency: e.target.value }))}
               >
                 <MenuItem value="monthly">Monthly</MenuItem>
                 <MenuItem value="quarterly">Quarterly</MenuItem>
@@ -1008,7 +1013,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               type="date"
               label="Start / purchase"
               value={form.purchase_date}
-              onChange={(e) => setForm({ ...form, purchase_date: e.target.value })}
+              onChange={(e) => setForm((prev) => ({ ...prev, purchase_date: e.target.value }))}
               slotProps={{ inputLabel: { shrink: true } }}
             />
             <TextField
@@ -1016,7 +1021,7 @@ export function FinanceOverheadsPanel({ teamId }: { teamId: string }) {
               type="date"
               label="End date"
               value={form.end_date}
-              onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+              onChange={(e) => setForm((prev) => ({ ...prev, end_date: e.target.value }))}
               slotProps={{ inputLabel: { shrink: true } }}
             />
             <Button

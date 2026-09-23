@@ -463,10 +463,10 @@ export function FinanceTreasuryPanel({
         <DialogTitle>Add loan</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Lender" value={loanForm.lender_name} onChange={(e) => setLoanForm({ ...loanForm, lender_name: e.target.value })} required />
-            <TextField label="Loan name" value={loanForm.name} onChange={(e) => setLoanForm({ ...loanForm, name: e.target.value })} required />
-            <TextField label="Original principal" type="number" value={loanForm.original_principal} onChange={(e) => setLoanForm({ ...loanForm, original_principal: e.target.value })} required />
-            <TextField label="Interest rate %" type="number" value={loanForm.interest_rate_percent} onChange={(e) => setLoanForm({ ...loanForm, interest_rate_percent: e.target.value })} />
+            <TextField label="Lender" value={loanForm.lender_name} onChange={(e) => setLoanForm((prev) => ({ ...prev, lender_name: e.target.value }))} required />
+            <TextField label="Loan name" value={loanForm.name} onChange={(e) => setLoanForm((prev) => ({ ...prev, name: e.target.value }))} required />
+            <TextField label="Original principal" type="number" value={loanForm.original_principal} onChange={(e) => setLoanForm((prev) => ({ ...prev, original_principal: e.target.value }))} required />
+            <TextField label="Interest rate %" type="number" value={loanForm.interest_rate_percent} onChange={(e) => setLoanForm((prev) => ({ ...prev, interest_rate_percent: e.target.value }))} />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -481,10 +481,10 @@ export function FinanceTreasuryPanel({
         <DialogTitle>Add OD facility</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Bank" value={odForm.bank_name} onChange={(e) => setOdForm({ ...odForm, bank_name: e.target.value })} required />
-            <TextField label="Facility name" value={odForm.name} onChange={(e) => setOdForm({ ...odForm, name: e.target.value })} required />
-            <TextField label="Sanctioned limit" type="number" value={odForm.sanctioned_limit} onChange={(e) => setOdForm({ ...odForm, sanctioned_limit: e.target.value })} required />
-            <TextField label="Current utilization" type="number" value={odForm.current_utilization} onChange={(e) => setOdForm({ ...odForm, current_utilization: e.target.value })} />
+            <TextField label="Bank" value={odForm.bank_name} onChange={(e) => setOdForm((prev) => ({ ...prev, bank_name: e.target.value }))} required />
+            <TextField label="Facility name" value={odForm.name} onChange={(e) => setOdForm((prev) => ({ ...prev, name: e.target.value }))} required />
+            <TextField label="Sanctioned limit" type="number" value={odForm.sanctioned_limit} onChange={(e) => setOdForm((prev) => ({ ...prev, sanctioned_limit: e.target.value }))} required />
+            <TextField label="Current utilization" type="number" value={odForm.current_utilization} onChange={(e) => setOdForm((prev) => ({ ...prev, current_utilization: e.target.value }))} />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -499,15 +499,15 @@ export function FinanceTreasuryPanel({
         <DialogTitle>Add investment</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Name" value={investForm.name} onChange={(e) => setInvestForm({ ...investForm, name: e.target.value })} required />
-            <TextField select label="Type" value={investForm.investment_type} onChange={(e) => setInvestForm({ ...investForm, investment_type: e.target.value })}>
+            <TextField label="Name" value={investForm.name} onChange={(e) => setInvestForm((prev) => ({ ...prev, name: e.target.value }))} required />
+            <TextField select label="Type" value={investForm.investment_type} onChange={(e) => setInvestForm((prev) => ({ ...prev, investment_type: e.target.value }))}>
               <MenuItem value="fixed_deposit">Fixed deposit</MenuItem>
               <MenuItem value="mutual_fund">Mutual fund</MenuItem>
               <MenuItem value="bond">Bond</MenuItem>
               <MenuItem value="other">Other</MenuItem>
             </TextField>
-            <TextField label="Institution" value={investForm.institution} onChange={(e) => setInvestForm({ ...investForm, institution: e.target.value })} />
-            <TextField label="Amount invested" type="number" value={investForm.amount_invested} onChange={(e) => setInvestForm({ ...investForm, amount_invested: e.target.value })} required />
+            <TextField label="Institution" value={investForm.institution} onChange={(e) => setInvestForm((prev) => ({ ...prev, institution: e.target.value }))} />
+            <TextField label="Amount invested" type="number" value={investForm.amount_invested} onChange={(e) => setInvestForm((prev) => ({ ...prev, amount_invested: e.target.value }))} required />
             <Typography variant="caption" color="text.secondary">
               This is recorded as an investment asset, not an operating expense.
             </Typography>
@@ -530,10 +530,10 @@ export function FinanceTreasuryPanel({
               type="date"
               slotProps={{ inputLabel: { shrink: true } }}
               value={repayForm.payment_date}
-              onChange={(e) => setRepayForm({ ...repayForm, payment_date: e.target.value })}
+              onChange={(e) => setRepayForm((prev) => ({ ...prev, payment_date: e.target.value }))}
             />
-            <TextField label="Total payment (cash outflow)" type="number" value={repayForm.total_amount} onChange={(e) => setRepayForm({ ...repayForm, total_amount: e.target.value })} />
-            <TextField label="Interest portion (P&L finance cost)" type="number" value={repayForm.interest_amount} onChange={(e) => setRepayForm({ ...repayForm, interest_amount: e.target.value })} />
+            <TextField label="Total payment (cash outflow)" type="number" value={repayForm.total_amount} onChange={(e) => setRepayForm((prev) => ({ ...prev, total_amount: e.target.value }))} />
+            <TextField label="Interest portion (P&L finance cost)" type="number" value={repayForm.interest_amount} onChange={(e) => setRepayForm((prev) => ({ ...prev, interest_amount: e.target.value }))} />
             <Typography variant="body2">
               Principal (debt reduction): {financeMoney(repayPreview.principal, currency)}
             </Typography>
@@ -556,10 +556,10 @@ export function FinanceTreasuryPanel({
               type="date"
               slotProps={{ inputLabel: { shrink: true } }}
               value={cashForm.as_of_date}
-              onChange={(e) => setCashForm({ ...cashForm, as_of_date: e.target.value })}
+              onChange={(e) => setCashForm((prev) => ({ ...prev, as_of_date: e.target.value }))}
             />
-            <TextField label="Bank balance" type="number" value={cashForm.bank_balance} onChange={(e) => setCashForm({ ...cashForm, bank_balance: e.target.value })} />
-            <TextField label="Cash balance" type="number" value={cashForm.cash_balance} onChange={(e) => setCashForm({ ...cashForm, cash_balance: e.target.value })} />
+            <TextField label="Bank balance" type="number" value={cashForm.bank_balance} onChange={(e) => setCashForm((prev) => ({ ...prev, bank_balance: e.target.value }))} />
+            <TextField label="Cash balance" type="number" value={cashForm.cash_balance} onChange={(e) => setCashForm((prev) => ({ ...prev, cash_balance: e.target.value }))} />
           </Stack>
         </DialogContent>
         <DialogActions>

@@ -18,7 +18,7 @@ import {
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
@@ -197,16 +197,23 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
     return Number.isFinite(n) ? n : null;
   }, [quantity]);
 
+  const [debouncedQty, setDebouncedQty] = useState<number | null>(null);
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedQty(qtyNumber), 350);
+    return () => window.clearTimeout(handle);
+  }, [qtyNumber]);
+
   const hoursPreviewQuery = useQuery({
-    queryKey: ['invoice-hours-balance', quoteIdEdit, qtyNumber],
-    enabled: Boolean(extract && quoteIdEdit && qtyNumber != null && qtyNumber > 0),
+    queryKey: ['invoice-hours-balance', quoteIdEdit, debouncedQty],
+    enabled: Boolean(extract && quoteIdEdit && debouncedQty != null && debouncedQty > 0),
     queryFn: async () => {
       const { data } = await apiClient.get<HoursBalance>(
         `/finance/quotes/${quoteIdEdit}/hours-balance`,
-        { params: { this_invoice_hours: qtyNumber } },
+        { params: { this_invoice_hours: debouncedQty } },
       );
       return data;
     },
+    placeholderData: keepPreviousData,
   });
 
   useEffect(() => {
@@ -770,7 +777,7 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
               <Typography variant="subtitle2" sx={{ mb: 1, letterSpacing: '0.04em' }}>
                 PAYMENT TERMS
               </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                 Terms define expected timing only — they never create a payment. Source:{' '}
                 {termsOverridden ? 'USER_OVERRIDE' : paymentTermsSource || '—'}
               </Typography>

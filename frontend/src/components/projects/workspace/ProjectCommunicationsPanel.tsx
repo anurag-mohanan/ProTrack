@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Chip,
@@ -15,7 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { ProsohmButton } from '../../ui/ProsohmButton';
 import {
   fetchProjectCommunications,
@@ -54,9 +54,15 @@ export function ProjectCommunicationsPanel({ projectId }: ProjectCommunicationsP
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [message, setMessage] = useState('');
   const [selected, setSelected] = useState<EmailMessage | null>(null);
   const [customerTemplate, setCustomerTemplate] = useState<string>(CUSTOMER_TEMPLATES[0].slug);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(handle);
+  }, [search]);
 
   const canSend = (
     [
@@ -68,8 +74,9 @@ export function ProjectCommunicationsPanel({ projectId }: ProjectCommunicationsP
   ).includes(user?.role_name ?? '');
 
   const query = useQuery({
-    queryKey: ['project-communications', projectId, search],
-    queryFn: () => fetchProjectCommunications(projectId, search || undefined),
+    queryKey: ['project-communications', projectId, debouncedSearch],
+    queryFn: () => fetchProjectCommunications(projectId, debouncedSearch || undefined),
+    placeholderData: keepPreviousData,
   });
 
   const oneClickMutation = useMutation({

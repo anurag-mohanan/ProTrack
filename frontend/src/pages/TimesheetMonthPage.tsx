@@ -35,6 +35,7 @@ import {
 import { ProsohmButton } from '../components/ui/ProsohmButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { isEditableKeyboardTarget } from '../utils/keyboardFocus';
 import {
   approveTimesheet,
   rejectTimesheet,
@@ -170,6 +171,8 @@ export function TimesheetMonthPage() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || readOnly) return;
+      // Do not steal Ctrl+Z / Ctrl+Y from text fields while typing.
+      if (isEditableKeyboardTarget(event.target)) return;
       if (event.key === 'z' && !event.shiftKey) {
         event.preventDefault();
         const previous = historyRef.current.past.pop();

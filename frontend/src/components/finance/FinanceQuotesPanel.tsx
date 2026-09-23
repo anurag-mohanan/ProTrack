@@ -20,11 +20,14 @@ import {
   Typography,
 } from '@mui/material';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
+import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
+import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import RequestQuoteOutlinedIcon from '@mui/icons-material/RequestQuoteOutlined';
 import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import PendingActionsOutlinedIcon from '@mui/icons-material/PendingActionsOutlined';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { fetchCustomers, fetchTeams } from '../../api/lookups';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -172,10 +175,16 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
   const [quotePdfOpen, setQuotePdfOpen] = useState(false);
   const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState<'all' | 'active' | 'closed'>('all');
   const [pendingExcelFile, setPendingExcelFile] = useState<File | null>(null);
   const [excelTeamId, setExcelTeamId] = useState('');
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(handle);
+  }, [search]);
 
   useEffect(() => {
     if (teamId && !editingId) setImportTeamId(teamId);
@@ -204,7 +213,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       'finance-quotes',
       teamId || 'all',
       listFilter,
-      search.trim(),
+      debouncedSearch,
       customerFilter || 'all',
       lifecycleFilter,
     ],
@@ -212,12 +221,13 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
       const params = new URLSearchParams();
       if (teamId) params.set('team_id', teamId);
       if (listFilter !== 'all') params.set('list_filter', listFilter);
-      if (search.trim()) params.set('q', search.trim());
+      if (debouncedSearch) params.set('q', debouncedSearch);
       if (customerFilter) params.set('customer_id', customerFilter);
       if (lifecycleFilter !== 'all') params.set('lifecycle', lifecycleFilter);
       const qs = params.toString();
       return (await apiClient.get<QuoteRow[]>(`/finance/quotes${qs ? `?${qs}` : ''}`)).data;
     },
+    placeholderData: keepPreviousData,
   });
 
   type CustomerFinancialSummary = {
@@ -540,15 +550,17 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
     setListFilter((prev) => (prev === next ? 'all' : next));
   };
 
-  if (quotesStatsQuery.isLoading || quotesQuery.isLoading) {
+  // Only block the whole panel on the *initial* load. Refetching after filter/search
+  // changes must NOT remount inputs (that steals focus after every keystroke).
+  if (quotesStatsQuery.isLoading && !quotesStatsQuery.data) {
     return <LoadingState message="Loading awarded quotes…" />;
   }
 
-  if (quotesStatsQuery.isError || quotesQuery.isError) {
+  if (quotesStatsQuery.isError && !quotesStatsQuery.data) {
     return (
       <Typography color="error" variant="body2">
         {apiErrorMessage(
-          quotesQuery.error ?? quotesStatsQuery.error,
+          quotesStatsQuery.error,
           "We couldn't load the financial data. Please try again.",
         )}
       </Typography>
@@ -836,7 +848,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                 label="Quote #"
                 placeholder="e.g. QT-2026-27-005"
                 value={manual.quoteNumber}
-                onChange={(e) => setManual({ ...manual, quoteNumber: e.target.value })}
+                onChange={(e) =>
+                  setManual((prev) => ({ ...prev, quoteNumber: e.target.value }))
+                }
                 sx={{ minWidth: 200, flex: 1 }}
               />
               <TextField
@@ -845,7 +859,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                 label="Project #"
                 placeholder="Customer Project #"
                 value={manual.projectNumber}
-                onChange={(e) => setManual({ ...manual, projectNumber: e.target.value })}
+                onChange={(e) =>
+                  setManual((prev) => ({ ...prev, projectNumber: e.target.value }))
+                }
                 sx={{ minWidth: 160, flex: 1 }}
               />
               <TextField
@@ -854,7 +870,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                 label="Cost"
                 placeholder="Quoted amount"
                 value={manual.cost}
-                onChange={(e) => setManual({ ...manual, cost: e.target.value })}
+                onChange={(e) => setManual((prev) => ({ ...prev, cost: e.target.value }))}
                 sx={{ minWidth: 140, flex: 1 }}
                 helperText="Quoted revenue / Total"
               />
@@ -863,7 +879,9 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                 type="date"
                 label="Quoted date"
                 value={manual.quotedDate}
-                onChange={(e) => setManual({ ...manual, quotedDate: e.target.value })}
+                onChange={(e) =>
+                  setManual((prev) => ({ ...prev, quotedDate: e.target.value }))
+                }
                 slotProps={{ inputLabel: { shrink: true } }}
                 sx={{ minWidth: 160 }}
                 helperText="FY quarter for Annual Plan sales"
@@ -875,7 +893,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                   placeholder="PO number"
                   value={manual.customerPoNumber}
                   onChange={(e) =>
-                    setManual({ ...manual, customerPoNumber: e.target.value })
+                    setManual((prev) => ({ ...prev, customerPoNumber: e.target.value }))
                   }
                   sx={{ minWidth: 160, flex: 1 }}
                   helperText="Customer purchase order"
@@ -887,7 +905,10 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                   label="Currency"
                   value={manual.currencyCode || ''}
                   onChange={(e) =>
-                    setManual({ ...manual, currencyCode: String(e.target.value).toUpperCase() })
+                    setManual((prev) => ({
+                      ...prev,
+                      currencyCode: String(e.target.value).toUpperCase(),
+                    }))
                   }
                 >
                   {currencyOptions.map((currency) => (
@@ -1086,15 +1107,28 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
           <Grid container spacing={1.5}>
             {(
               [
-                ['Awarded', customerSummaryQuery.data.totals?.awarded],
-                ['Invoiced', customerSummaryQuery.data.totals?.invoiced],
-                ['To be invoiced', customerSummaryQuery.data.totals?.to_be_invoiced],
-                ['Collected', customerSummaryQuery.data.totals?.collected],
-                ['Outstanding', customerSummaryQuery.data.totals?.outstanding],
+                ['Awarded', customerSummaryQuery.data.totals?.awarded, RequestQuoteOutlinedIcon],
+                ['Invoiced', customerSummaryQuery.data.totals?.invoiced, ReceiptLongOutlinedIcon],
+                [
+                  'To be invoiced',
+                  customerSummaryQuery.data.totals?.to_be_invoiced,
+                  PendingActionsOutlinedIcon,
+                ],
+                ['Collected', customerSummaryQuery.data.totals?.collected, PaymentsOutlinedIcon],
+                [
+                  'Outstanding',
+                  customerSummaryQuery.data.totals?.outstanding,
+                  AccountBalanceWalletOutlinedIcon,
+                ],
               ] as const
-            ).map(([label, value]) => (
+            ).map(([label, value, icon]) => (
               <Grid key={label} size={{ xs: 6, sm: 4, md: 2.4 }}>
-                <KpiMetricCard compact title={label} value={financeMoney(value, 'INR')} />
+                <KpiMetricCard
+                  compact
+                  icon={icon}
+                  title={label}
+                  value={financeMoney(value, 'INR')}
+                />
               </Grid>
             ))}
           </Grid>
@@ -1213,6 +1247,7 @@ export function FinanceQuotesPanel({ teamId }: { teamId: string }) {
                   onClick={() => {
                     setListFilter('all');
                     setSearch('');
+                    setDebouncedSearch('');
                     setCustomerFilter('');
                     setLifecycleFilter('all');
                   }}

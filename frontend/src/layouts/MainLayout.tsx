@@ -19,6 +19,7 @@ import {
   useResponsiveShell,
 } from '../hooks/useResponsiveShell';
 import { resolveModuleHome } from '../navigation/moduleHomes';
+import { isEditableKeyboardTarget } from '../utils/keyboardFocus';
 
 export function MainLayout() {
   const { user, displayName, logout } = useAuth();
@@ -37,6 +38,8 @@ export function MainLayout() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // Never intercept while the user is typing in a form field.
+      if (isEditableKeyboardTarget(event.target)) return;
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
 
@@ -66,6 +69,9 @@ export function MainLayout() {
 
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      // Allow native Escape behavior inside inputs (clear / blur) unless a dialog is open.
+      const dialogOpen = Boolean(document.querySelector('.MuiDialog-root, .MuiModal-root'));
+      if (!dialogOpen && isEditableKeyboardTarget(event.target)) return;
       const closeButton = document.querySelector(
         '[aria-label="Close"], button[aria-label="Close dialog"], .MuiDialog-root button[type="button"]',
       ) as HTMLButtonElement | null;

@@ -188,7 +188,11 @@ export function QuotePdfImportDialog({
       const form = new FormData();
       form.append('file', pdf);
       if (selectedTeamId) form.append('team_id', selectedTeamId);
-      return (await apiClient.post<ExtractResult>('/finance/quotes/pdf/extract', form)).data;
+      return (
+        await apiClient.post<ExtractResult>('/finance/quotes/pdf/extract', form, {
+          timeout: 120_000,
+        })
+      ).data;
     },
     onSuccess: (data) => {
       setExtract(data);
@@ -221,8 +225,11 @@ export function QuotePdfImportDialog({
         );
       }
     },
-    onError: (error: unknown) =>
-      showError(apiErrorMessage(error, 'Unable to extract the document reliably.')),
+    onError: (error: unknown) => {
+      const msg = apiErrorMessage(error, 'Unable to extract the document reliably.');
+      console.error('[Quote PDF extract failed]', error);
+      showError(msg);
+    },
   });
 
   const confirmMutation = useMutation({

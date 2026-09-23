@@ -11,11 +11,54 @@ export const API_BASE_URL = getApiBaseUrl();
 
 export class ApiError extends Error {
   status: number;
+  /** Request path relative to API base (when known). */
+  url?: string;
+  /** Raw FastAPI `detail` payload when present. */
+  detail?: unknown;
+  /** Full response body for diagnostics. */
+  body?: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(
+    status: number,
+    message: string,
+    opts?: { url?: string; detail?: unknown; body?: unknown },
+  ) {
     super(message);
     this.status = status;
+    this.url = opts?.url;
+    this.detail = opts?.detail;
+    this.body = opts?.body;
   }
+}
+
+function formatDetailPayload(detail: unknown): string | null {
+  if (typeof detail === 'string' && detail.trim()) return detail.trim();
+  if (Array.isArray(detail) && detail.length) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return JSON.stringify(item);
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+  if (detail && typeof detail === 'object') {
+    const obj = detail as Record<string, unknown>;
+    const parts: string[] = [];
+    if (typeof obj.message === 'string' && obj.message.trim()) parts.push(obj.message.trim());
+    if (typeof obj.error_code === 'string' && obj.error_code.trim()) {
+      parts.push(`code=${obj.error_code.trim()}`);
+    }
+    if (typeof obj.stage === 'string' && obj.stage.trim()) {
+      parts.push(`stage=${obj.stage.trim()}`);
+    }
+    if (typeof obj.details === 'string' && obj.details.trim()) parts.push(obj.details.trim());
+    if (parts.length) return parts.join(' · ');
+  }
+  return null;
 }
 
 export function getErrorMessage(error: unknown): string {
@@ -24,10 +67,8 @@ export function getErrorMessage(error: unknown): string {
   }
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data?.detail;
-    if (typeof detail === 'string' && detail.trim()) return detail;
-    if (Array.isArray(detail)) {
-      return detail.map((item) => item.msg ?? JSON.stringify(item)).join(', ');
-    }
+    const fromDetail = formatDetailPayload(detail);
+    if (fromDetail) return fromDetail;
     if (error.response?.status === 409) {
       return 'This record already exists or conflicts with existing data.';
     }
@@ -35,7 +76,24 @@ export function getErrorMessage(error: unknown): string {
       return 'The requested record could not be found.';
     }
     if (error.response?.status && error.response.status >= 500) {
-      return 'Unable to complete this action. Please try again.';
+      const status = error.response.status;
+      const url = error.config?.url ?? '';
+      const bodyPreview =
+        typeof error.response.data === 'string'
+          ? error.response.data.slice(0, 240)
+          : error.response.data != null
+            ? JSON.stringify(error.response.data).slice(0, 240)
+            : '';
+      const bits = [`HTTP ${status}`];
+      if (url) bits.push(url);
+      if (bodyPreview) bits.push(bodyPreview);
+      return `PDF extraction / API failed (${bits.join(' · ')}). Check server logs.`;
+    }
+    if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message)) {
+      return `Request timed out${error.config?.url ? ` (${error.config.url})` : ''}. The document analysis may need more time.`;
+    }
+    if (error.code === 'ERR_CANCELED' || /cancel/i.test(error.message)) {
+      return 'Request was cancelled before the server responded.';
     }
     return error.message;
   }
@@ -125,7 +183,7 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{ detail?: string }>) => {
+  (error: AxiosError<{ detail?: unknown }>) => {
     const requestUrl = error.config?.url ?? '';
     if (
       error.response?.status === 401 &&
@@ -135,7 +193,24 @@ apiClient.interceptors.response.use(
     }
     const message = getErrorMessage(error);
     const status = error.response?.status ?? 500;
-    return Promise.reject(new ApiError(status, message));
+    if (typeof console !== 'undefined' && console.error) {
+      console.error('[ProTrack API error]', {
+        status,
+        url: requestUrl,
+        method: error.config?.method,
+        detail: error.response?.data?.detail,
+        body: error.response?.data,
+        axiosMessage: error.message,
+        code: error.code,
+      });
+    }
+    return Promise.reject(
+      new ApiError(status, message, {
+        url: requestUrl,
+        detail: error.response?.data?.detail,
+        body: error.response?.data,
+      }),
+    );
   },
 );
 

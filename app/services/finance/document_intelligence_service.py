@@ -176,8 +176,12 @@ def _call_vision_llm(
     native_text: str,
     kind: str,
     filename: str | None,
+    timeout_seconds: float = 12.0,
 ) -> dict[str, Any] | None:
-    """Optional multimodal JSON extraction via configured OpenAI-compatible provider."""
+    """Optional multimodal JSON extraction via configured OpenAI-compatible provider.
+
+    Keep timeout short so IIS/ARR reverse proxies (often ~30s) are not tripped.
+    """
     from app.core import config
     from app.services.ai.providers.registry import get_llm_provider
 
@@ -193,6 +197,7 @@ def _call_vision_llm(
             native_text=native_text[:8000],
             page_images_png=page_images[:2],
             filename=filename,
+            timeout_seconds=timeout_seconds,
         )
     except Exception as exc:  # noqa: BLE001
         logger.info("Vision LLM analysis skipped: %s", exc)
@@ -244,20 +249,40 @@ class DocumentIntelligenceService:
             (expected_kind or "invoice").lower()
         )
 
-        vision_json = _call_vision_llm(
-            page_images=page_images,
-            native_text=raw.raw_text,
-            kind=kind,
-            filename=filename,
-        )
-        if vision_json:
-            layout = _merge_vision_into_layout(layout, vision_json)
-
         det_fields = deterministic_to_review_fields(deterministic)
         layout_fields = _layout_to_review_fields(
             layout, kind=kind if kind in {"quote", "invoice"} else "invoice"
         )
         fields = _fuse_fields(det_fields, layout_fields)
+        gate = _quality_gate(fields, kind="invoice" if kind == "invoice" else "quote")
+
+        # Only call vision when deterministic+layout is incomplete. Avoids IIS/ARR
+        # proxy timeouts when OpenAI is configured but fields are already complete.
+        vision_json = None
+        if gate["status"] == "INCOMPLETE":
+            vision_json = _call_vision_llm(
+                page_images=page_images,
+                native_text=raw.raw_text,
+                kind=kind,
+                filename=filename,
+                timeout_seconds=12.0,
+            )
+            if vision_json:
+                layout = _merge_vision_into_layout(layout, vision_json)
+                layout_fields = _layout_to_review_fields(
+                    layout, kind=kind if kind in {"quote", "invoice"} else "invoice"
+                )
+                fields = _fuse_fields(det_fields, layout_fields)
+                gate = _quality_gate(fields, kind="invoice" if kind == "invoice" else "quote")
+
+        # Alias fill for review UI (quantity / quote_date)
+        if not (fields.get("quantity") or {}).get("value") and (fields.get("raw_table_quantity") or {}).get("value"):
+            fields["quantity"] = dict(fields["raw_table_quantity"])
+        if kind == "quote":
+            if not (fields.get("quote_date") or {}).get("value") and (fields.get("quoted_date") or {}).get("value"):
+                fields["quote_date"] = dict(fields["quoted_date"])
+            if not (fields.get("quoted_date") or {}).get("value") and (fields.get("quote_date") or {}).get("value"):
+                fields["quoted_date"] = dict(fields["quote_date"])
 
         stages = [
             {
@@ -289,7 +314,6 @@ class DocumentIntelligenceService:
         if mismatch:
             warnings.append(mismatch["message"])
 
-        gate = _quality_gate(fields, kind="invoice" if kind == "invoice" else "quote")
         if gate["status"] == "INCOMPLETE":
             warnings.append(
                 "Extraction Status: INCOMPLETE — missing "

@@ -21,12 +21,12 @@ Write-Host "Executable: $py"
 
 Write-Host ""
 Write-Host "==== Required dependencies ====" -ForegroundColor Cyan
-foreach ($mod in @("cryptography", "slowapi", "fastapi", "uvicorn", "sqlalchemy")) {
+foreach ($mod in @("cryptography", "slowapi", "fastapi", "uvicorn", "sqlalchemy", "pdfplumber", "pypdf")) {
     $result = python -c "import $mod; print(getattr($mod, '__version__', 'ok'))" 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host ("  {0,-14} {1}" -f $mod, $result) -ForegroundColor Green
     } else {
-        Write-Host ("  {0,-14} MISSING  -> pip install -r requirements.txt" -f $mod) -ForegroundColor Red
+        Write-Host ("  {0,-14} MISSING  -> pip install -r requirements.txt  (or .\scripts\install_pdf_deps.ps1)" -f $mod) -ForegroundColor Red
     }
 }
 

@@ -20,5 +20,9 @@ Get-CimInstance Win32_Process -Filter "name='python.exe'" |
 
 Start-Sleep -Seconds 2
 
+Write-Host "Ensuring PDF import dependencies (pdfplumber)..."
+python -m pip install -r requirements.txt -q
+python -c "import pdfplumber; print('pdfplumber', pdfplumber.__version__)"
+
 Write-Host "Starting ProTrack API on http://127.0.0.1:$port"
 python -m uvicorn app.main:app --host 127.0.0.1 --port $port --reload

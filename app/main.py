@@ -301,6 +301,15 @@ async def lifespan(app: FastAPI):
     for problem in assert_production_security():
         logger.warning("SECURITY: %s", problem)
 
+    try:
+        from app.services.finance.document_import_deps import (
+            log_document_import_dependency_status,
+        )
+
+        log_document_import_dependency_status(logger)
+    except Exception:  # noqa: BLE001
+        logger.exception("Finance PDF Import dependency probe failed")
+
     Base.metadata.create_all(bind=engine)
 
     startup_steps = [
@@ -652,6 +661,22 @@ def health_check():
         checks["upload_dir_error"] = exc.__class__.__name__
         if status == "ok":
             status = "degraded"
+
+    try:
+        from app.services.finance.document_import_deps import (
+            probe_document_import_dependencies,
+        )
+
+        doc_import = probe_document_import_dependencies()
+        checks["document_import"] = doc_import
+        if not doc_import.get("available"):
+            if status == "ok":
+                status = "degraded"
+    except Exception as exc:  # noqa: BLE001
+        checks["document_import"] = {
+            "available": False,
+            "error": exc.__class__.__name__,
+        }
 
     return {
         "status": status,

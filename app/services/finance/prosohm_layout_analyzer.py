@@ -47,7 +47,14 @@ def _dec(raw: str | None) -> Decimal | None:
 
 
 def _words_from_pdf(content: bytes) -> tuple[list[dict], int, str]:
-    import pdfplumber
+    try:
+        import pdfplumber
+    except ImportError as exc:
+        raise ImportError(
+            "pdfplumber is required for layout-aware Finance PDF import. "
+            "On the API host run: python -m pip install -r requirements.txt "
+            "(or .\\scripts\\install_pdf_deps.ps1), then restart the API."
+        ) from exc
 
     all_words: list[dict] = []
     texts: list[str] = []
@@ -263,7 +270,17 @@ def _extract_stages(lines: list[list[dict]]) -> tuple[list[dict[str, Any]], Deci
 
 def analyze_prosohm_layout(content: bytes, *, filename: str | None = None) -> LayoutAnalysis:
     """Visual layout analysis for Prosohm quote/invoice PDFs."""
-    words, page_count, flat_text = _words_from_pdf(content)
+    try:
+        words, page_count, flat_text = _words_from_pdf(content)
+    except ImportError as exc:
+        result = LayoutAnalysis(method="layout_unavailable")
+        result.warnings.append(str(exc))
+        return result
+    except Exception as exc:  # noqa: BLE001
+        result = LayoutAnalysis(method="layout_error")
+        result.warnings.append(f"Layout analysis failed: {type(exc).__name__}: {exc}")
+        return result
+
     result = LayoutAnalysis(page_count=page_count, word_count=len(words))
     if not words:
         result.warnings.append("No positioned words found in PDF text layer.")

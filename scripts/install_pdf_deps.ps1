@@ -7,16 +7,25 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
+Write-Host "==== ProTrack PDF dependency install ====" -ForegroundColor Cyan
+Write-Host "Working directory: $(Get-Location)"
 Write-Host "Python: $(python -c 'import sys; print(sys.executable)')"
-Write-Host "Installing pdfplumber + pypdf..."
-python -m pip install "pdfplumber>=0.11,<1.0" "pypdf>=5.0,<7.0"
+Write-Host "Version: $(python -c 'import sys; print(sys.version)')"
+Write-Host ""
+Write-Host "Installing from requirements.txt (pdfplumber, pypdf, Pillow, ...)..."
+python -m pip install -r requirements.txt
 
+Write-Host ""
 python -c @"
 import importlib
-for name in ('pdfplumber', 'pypdf'):
-    mod = importlib.import_module(name)
-    print(f'OK {name} {getattr(mod, \"__version__\", \"?\")}')
+import sys
+print('exe', sys.executable)
+for name in ('pdfplumber', 'pypdf', 'PIL'):
+    mod = importlib.import_module(name if name != 'PIL' else 'PIL')
+    ver = getattr(mod, '__version__', '?')
+    print(f'OK {name} {ver} -> {mod.__file__}')
 "@
 
 Write-Host ""
-Write-Host "Done. Restart the ProTrack API process now, then retry Import workorder PDF."
+Write-Host "Done. Restart the ProTrack API process / IIS app pool now." -ForegroundColor Green
+Write-Host "Then open Finance and retry Extract for review."

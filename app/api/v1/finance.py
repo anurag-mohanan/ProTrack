@@ -2844,28 +2844,61 @@ async def extract_invoice_pdf(
     current_user: User = Depends(get_current_user),
 ):
     """Extract invoice fields for review. Does not create financial records."""
+    import logging
+
     from app.schemas.finance import InvoicePdfExtractResult
     from app.services.finance.invoice_pdf_import_service import extract_invoice_pdf as do_extract
 
+    logger = logging.getLogger('protrack.finance.pdf_extract')
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
     if not file.filename:
         raise HTTPException(status_code=400, detail='A file name is required.')
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail='Only PDF invoice files are supported.')
     content = await file.read()
+    logger.info(
+        'REQUEST RECEIVED invoices/pdf/extract filename=%s content_type=%s file_size=%s user=%s',
+        file.filename,
+        file.content_type,
+        len(content),
+        getattr(current_user, 'email', None),
+    )
     enforce_upload_size(content)
     if team_id is not None and db.get(Team, team_id) is None:
         raise HTTPException(status_code=400, detail='Team not found')
     if quote_id is not None and db.get(Quote, quote_id) is None:
         raise HTTPException(status_code=400, detail='Quote not found')
-    result = do_extract(
-        db,
-        content=content,
-        filename=file.filename,
-        team_id=team_id,
-        quote_id=quote_id,
-    )
-    return InvoicePdfExtractResult.model_validate(result)
+    try:
+        result = do_extract(
+            db,
+            content=content,
+            filename=file.filename,
+            team_id=team_id,
+            quote_id=quote_id,
+        )
+        payload = InvoicePdfExtractResult.model_validate(result)
+        logger.info(
+            'EXTRACT OK invoices/pdf/extract filename=%s pipeline=%s chars=%s status=%s',
+            file.filename,
+            result.get('pipeline'),
+            result.get('source_chars'),
+            result.get('extraction_status'),
+        )
+        return payload
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception('EXTRACT FAILED invoices/pdf/extract filename=%s', file.filename)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                'success': False,
+                'error_code': 'DOCUMENT_EXTRACTION_FAILED',
+                'message': f'Invoice PDF extraction failed: {type(exc).__name__}: {exc}',
+                'details': str(exc),
+                'stage': 'STRUCTURED_EXTRACTION',
+            },
+        ) from exc
 
 
 @router.post('/invoices/pdf/confirm')
@@ -3010,25 +3043,58 @@ async def extract_quote_pdf(
     current_user: User = Depends(get_current_user),
 ):
     """Extract Prosohm quote PDF fields for review. Does not create financial records."""
+    import logging
+
     from app.schemas.finance import QuotePdfExtractResult
     from app.services.finance.quote_pdf_import_service import extract_quote_pdf as do_extract
 
+    logger = logging.getLogger("protrack.finance.pdf_extract")
     _require_finance_action(db, current_user, MODULE_ACTION_VIEW)
     if not file.filename:
         raise HTTPException(status_code=400, detail="A file name is required.")
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF quote files are supported.")
     content = await file.read()
+    logger.info(
+        "REQUEST RECEIVED quotes/pdf/extract filename=%s content_type=%s file_size=%s user=%s",
+        file.filename,
+        file.content_type,
+        len(content),
+        getattr(current_user, "email", None),
+    )
     enforce_upload_size(content)
     if team_id is not None and db.get(Team, team_id) is None:
         raise HTTPException(status_code=400, detail="Team not found")
-    result = do_extract(
-        db,
-        content=content,
-        filename=file.filename,
-        team_id=team_id,
-    )
-    return QuotePdfExtractResult.model_validate(result)
+    try:
+        result = do_extract(
+            db,
+            content=content,
+            filename=file.filename,
+            team_id=team_id,
+        )
+        payload = QuotePdfExtractResult.model_validate(result)
+        logger.info(
+            "EXTRACT OK quotes/pdf/extract filename=%s pipeline=%s chars=%s status=%s",
+            file.filename,
+            result.get("pipeline"),
+            result.get("source_chars"),
+            result.get("extraction_status"),
+        )
+        return payload
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("EXTRACT FAILED quotes/pdf/extract filename=%s", file.filename)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "error_code": "DOCUMENT_EXTRACTION_FAILED",
+                "message": f"Quote PDF extraction failed: {type(exc).__name__}: {exc}",
+                "details": str(exc),
+                "stage": "STRUCTURED_EXTRACTION",
+            },
+        ) from exc
 
 
 @router.post("/quotes/pdf/confirm", response_model=QuoteImportResult)

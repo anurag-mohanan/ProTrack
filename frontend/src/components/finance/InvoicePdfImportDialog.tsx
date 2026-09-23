@@ -143,7 +143,12 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
       form.append('file', pdf);
       if (teamId) form.append('team_id', teamId);
       if (quoteId) form.append('quote_id', quoteId);
-      return (await apiClient.post<ExtractResult>('/finance/invoices/pdf/extract', form)).data;
+      // Document analysis can include layout render + optional vision; allow IIS/ARR headroom.
+      return (
+        await apiClient.post<ExtractResult>('/finance/invoices/pdf/extract', form, {
+          timeout: 120_000,
+        })
+      ).data;
     },
     onSuccess: (data) => {
       setExtract(data);
@@ -178,8 +183,11 @@ export function InvoicePdfImportDialog({ open, onClose, teamId, quoteId, onImpor
         );
       }
     },
-    onError: (error: unknown) =>
-      showError(apiErrorMessage(error, 'Unable to extract the document reliably.')),
+    onError: (error: unknown) => {
+      const msg = apiErrorMessage(error, 'Unable to extract the document reliably.');
+      console.error('[Invoice PDF extract failed]', error);
+      showError(msg);
+    },
   });
 
   const confirmMutation = useMutation({

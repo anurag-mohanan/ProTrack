@@ -1,11 +1,28 @@
+import { ApiError } from '../api/client';
+
 /** Normalize FastAPI / Axios error payloads into a toast-safe string. */
 export function apiErrorMessage(error: unknown, fallback: string): string {
   const friendlyFieldRequired =
     'Upload did not reach the server correctly (missing file or team). ' +
     'Hard-refresh the page and try again — select a team, then upload the quote file.';
 
-  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data
-    ?.detail;
+  if (error instanceof ApiError) {
+    const parts: string[] = [];
+    if (error.message?.trim()) parts.push(error.message.trim());
+    if (error.status) parts.push(`HTTP ${error.status}`);
+    if (error.url) parts.push(error.url);
+    const detail = error.detail;
+    if (detail && typeof detail === 'object' && 'stage' in (detail as object)) {
+      parts.push(`stage=${String((detail as { stage: unknown }).stage)}`);
+    }
+    const joined = parts.filter(Boolean).join(' · ');
+    if (joined) {
+      return joined.toLowerCase().includes('field required') ? friendlyFieldRequired : joined;
+    }
+  }
+
+  const detail = (error as { response?: { data?: { detail?: unknown } }; detail?: unknown })
+    ?.response?.data?.detail ?? (error as { detail?: unknown })?.detail;
   if (typeof detail === 'string' && detail.trim()) {
     return detail.toLowerCase().includes('field required') ? friendlyFieldRequired : detail;
   }

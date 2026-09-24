@@ -19,6 +19,7 @@ import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchComputersByShift,
+  fetchWorkstationCapacityForPlanning,
   resourcePlanningQueryKeys,
   type ComputersByShiftReport,
 } from '../../api/resourcePlanning';
@@ -115,6 +116,12 @@ export function ResourcePlanningComputersByShiftPanel({ teamId }: Props) {
     staleTime: QUERY_STALE_TIMES.dashboard,
   });
 
+  const capacityQuery = useQuery({
+    queryKey: resourcePlanningQueryKeys.workstationCapacity({ on_date: onDate }),
+    queryFn: () => fetchWorkstationCapacityForPlanning({ on_date: onDate }),
+    staleTime: QUERY_STALE_TIMES.dashboard,
+  });
+
   const report = query.data;
   const shiftTotals = useMemo(
     () => (report?.shifts ?? []).map((s) => ({ code: s.shift_code, count: s.assigned_count })),
@@ -157,6 +164,46 @@ export function ResourcePlanningComputersByShiftPanel({ teamId }: Props) {
           accent={report.summary.assigned_without_shift > 0 ? 'warning' : 'success'}
         />
       </KpiStrip>
+
+      {capacityQuery.data?.length ? (
+        <DashboardPanel
+          title="Workstation package capacity"
+          subtitle="Physical packages available per shift — same inventory as IT"
+        >
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Type</TableCell>
+                <TableCell align="right">Total</TableCell>
+                <TableCell>Shift availability</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {capacityQuery.data
+                .filter((row) => row.total > 0)
+                .map((row) => (
+                  <TableRow key={row.computer_type}>
+                    <TableCell>{row.label}</TableCell>
+                    <TableCell align="right">{row.total}</TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                        {row.shifts.map((s) => (
+                          <Chip
+                            key={s.shift_code}
+                            size="small"
+                            label={`${s.shift_name}: ${s.available} avail`}
+                            color={s.available > 0 ? 'success' : 'default'}
+                            variant="outlined"
+                          />
+                        ))}
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+            </TableBody>
+          </Table>
+        </DashboardPanel>
+      ) : null}
 
       <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
         {shiftTotals.map((row) => (

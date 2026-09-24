@@ -102,6 +102,12 @@ TENANT_SCOPED_TABLES: tuple[str, ...] = (
     "project_knowledge_records",
     "training_assignments",
     "training_courses",
+    # IT provisioning (phase102)
+    "it_provisioning_hardware",
+    "it_provisioning_requests",
+    "it_workstation_package_assignments",
+    "it_workstation_package_members",
+    "it_workstation_packages",
     # Public API / webhooks
     "api_keys",
     "webhook_deliveries",

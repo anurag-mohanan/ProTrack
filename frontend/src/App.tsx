@@ -104,6 +104,11 @@ const ITComputersPage = lazy(() =>
     default: module.ITComputersPage,
   })),
 );
+const ITWorkstationPackagesPage = lazy(() =>
+  import('./pages/it/ITWorkstationPackagesPage').then((module) => ({
+    default: module.ITWorkstationPackagesPage,
+  })),
+);
 const ITNetworksPage = lazy(() =>
   import('./pages/it/ITNetworksPage').then((module) => ({
     default: module.ITNetworksPage,
@@ -517,6 +522,16 @@ export default function App() {
                         element={
                           <Suspense fallback={<LoadingState message="Loading computers…" />}>
                             <ITComputersPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/workstation-packages"
+                        element={
+                          <Suspense
+                            fallback={<LoadingState message="Loading workstation packages…" />}
+                          >
+                            <ITWorkstationPackagesPage />
                           </Suspense>
                         }
                       />

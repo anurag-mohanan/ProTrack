@@ -152,6 +152,10 @@ class AssetRead(TimestampSchema):
     network_id: Optional[UUID] = None
     network_name: Optional[str] = None
     network_cidr: Optional[str] = None
+    utilization: Optional[str] = None
+    active_assignment_users: Optional[int] = None
+    active_assignment_shifts: Optional[int] = None
+    configured_shifts: Optional[int] = None
 
 
 class AssetAssignRequest(BlankOptionalFieldsMixin, BaseModel):
@@ -159,6 +163,9 @@ class AssetAssignRequest(BlankOptionalFieldsMixin, BaseModel):
     assigned_date: Optional[date] = None
     notes: Optional[str] = None
     shift_id: Optional[UUID] = None
+    assignment_type: Optional[str] = None
+    force_override: bool = False
+    override_reason: Optional[str] = Field(default=None, max_length=500)
 
 
 class AssetReturnRequest(BlankOptionalFieldsMixin, BaseModel):
@@ -232,6 +239,8 @@ class AssetAssignmentRead(TimestampSchema):
     shift_code: Optional[str] = None
     shift_name: Optional[str] = None
     shift_display: Optional[str] = None
+    assignment_type: Optional[str] = None
+    override_reason: Optional[str] = None
     assigned_date: date
     returned_date: Optional[date] = None
     return_condition: Optional[str] = None
@@ -1167,6 +1176,10 @@ class EmployeeSoftwareRequirementCreate(BlankOptionalFieldsMixin, BaseModel):
     effective_to: Optional[date] = None
     reason: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
+    license_required: bool = True
+    priority: str = "medium"
+    purpose: Optional[str] = Field(default=None, max_length=500)
+    status: str = "REQUESTED"
 
 
 class EmployeeSoftwareRequirementUpdate(BlankOptionalFieldsMixin, BaseModel):
@@ -1176,6 +1189,10 @@ class EmployeeSoftwareRequirementUpdate(BlankOptionalFieldsMixin, BaseModel):
     effective_to: Optional[date] = None
     reason: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
+    license_required: Optional[bool] = None
+    priority: Optional[str] = None
+    purpose: Optional[str] = Field(default=None, max_length=500)
+    status: Optional[str] = None
 
 
 class EmployeeSoftwareRequirementRead(TimestampSchema):
@@ -1189,6 +1206,12 @@ class EmployeeSoftwareRequirementRead(TimestampSchema):
     effective_to: Optional[date] = None
     reason: Optional[str] = None
     notes: Optional[str] = None
+    provisioning_request_id: Optional[UUID] = None
+    license_required: bool = True
+    priority: str = "medium"
+    purpose: Optional[str] = None
+    requested_by_id: Optional[UUID] = None
+    status: str = "REQUESTED"
 
 
 class SoftwareExpirySummary(BaseModel):

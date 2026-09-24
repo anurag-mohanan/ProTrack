@@ -1367,8 +1367,18 @@ def assign_asset(
     assigned_date: date | None = None,
     notes: str | None = None,
     shift_id: UUID | None = None,
+    assignment_type: str | None = None,
+    force_override: bool = False,
+    override_reason: str | None = None,
     commit: bool = True,
 ) -> AssetAssignment:
+    from app.models.it_operations import (
+        ASSIGNMENT_TYPE_PRIMARY,
+        ASSIGNMENT_TYPE_SHIFT_SHARED,
+        ASSET_ASSIGNMENT_TYPES,
+    )
+    from app.services import it_provisioning_service as provisioning
+
     if asset.is_deleted:
         raise ProTrackValidationError("Cannot assign a deleted asset.")
     if asset.status in {"returned_to_customer", "disposed", "retired"}:
@@ -1381,13 +1391,20 @@ def assign_asset(
             f"(current status: {asset.status})."
         )
 
+    resolved_type = (assignment_type or "").strip().upper() or None
+    if resolved_type and resolved_type not in ASSET_ASSIGNMENT_TYPES:
+        raise ProTrackValidationError(f"Invalid assignment_type: {resolved_type}")
+
     open_rows = list_open_assignments(db, asset.id)
+    is_laptop = provisioning.asset_is_laptop(db, asset)
+
     if shift_id is None:
         if open_rows:
             raise ProTrackValidationError(
                 "Asset already has an open assignment. "
                 "Provide shift_id for shared-desk occupancy, or return the current user first."
             )
+        resolved_type = resolved_type or ASSIGNMENT_TYPE_PRIMARY
     else:
         from app.models.resource_shifts import ResourceShift
 
@@ -1404,6 +1421,28 @@ def assign_asset(
                 "This asset already has an open assignment for that shift."
             )
 
+        # Laptops default to single occupant unless explicitly shared
+        if is_laptop and open_rows and resolved_type != ASSIGNMENT_TYPE_SHIFT_SHARED:
+            raise ProTrackValidationError(
+                "Laptops normally have one active user. "
+                "Set assignment_type=SHIFT_SHARED to allow shift sharing."
+            )
+
+        conflicts = provisioning.find_shift_time_conflicts(
+            db, asset_id=asset.id, shift_id=shift_id
+        )
+        if conflicts:
+            if not force_override:
+                raise ProTrackValidationError(
+                    provisioning.CONFLICT_MSG,
+                    status_code=409,
+                )
+            if not (override_reason or "").strip():
+                raise ProTrackValidationError(
+                    "override_reason is required when forcing a shift schedule conflict."
+                )
+        resolved_type = resolved_type or ASSIGNMENT_TYPE_SHIFT_SHARED
+
     user = db.get(User, user_id)
     if user is None or user.is_deleted:
         raise ProTrackValidationError("Assignee user not found.")
@@ -1414,6 +1453,8 @@ def assign_asset(
         assigned_to_user_id=user_id,
         assigned_by_user_id=by_user.id,
         shift_id=shift_id,
+        assignment_type=resolved_type or ASSIGNMENT_TYPE_PRIMARY,
+        override_reason=(override_reason or "").strip() or None,
         assigned_date=when,
         notes=(notes or "").strip() or None,
     )
@@ -1439,6 +1480,8 @@ def assign_asset(
             "assigned_to_user_id": str(user_id),
             "assigned_date": str(when),
             "shift_id": str(shift_id) if shift_id else None,
+            "assignment_type": assignment.assignment_type,
+            "override_reason": assignment.override_reason,
         },
         outcome="success",
         module=MODULE,

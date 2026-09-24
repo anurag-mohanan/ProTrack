@@ -109,6 +109,18 @@ def apply_live_offboard(
         ),
         commit=False,
     )
+    try:
+        from app.services import it_provisioning_service as provisioning
+
+        provisioning.end_assignments_for_offboard(
+            db,
+            user_id=user.id,
+            actor=actor or user,
+            end_date=user.leaving_date,
+            commit=False,
+        )
+    except Exception:
+        pass
     log_activity(
         db,
         user=actor,

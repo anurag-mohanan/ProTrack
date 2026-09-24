@@ -40,6 +40,7 @@ import {
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { LoadingState } from '../common/LoadingState';
 import { ITProfilePanel } from '../it/ITProfilePanel';
+import { Employee360Panel } from './Employee360Panel';
 import { useAuth } from '../../context/AuthContext';
 import {
   accessContextFromUser,
@@ -331,6 +332,12 @@ export function UserDetailsDrawer({
                 }
                 slotProps={{ input: { readOnly: true } }}
               />
+            </Grid>
+          </FormSection>
+
+          <FormSection title="Employee 360" icon={PersonIcon}>
+            <Grid size={{ xs: 12 }}>
+              <Employee360Panel userId={user.id} />
             </Grid>
           </FormSection>
 

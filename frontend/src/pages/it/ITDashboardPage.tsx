@@ -18,6 +18,14 @@ import {
   fetchItOnboardingTasks,
   itOperationsKeys,
 } from '../../api/itOperations';
+import {
+  fetchProvisioningDashboard,
+  itProvisioningKeys,
+} from '../../api/itProvisioning';
+import {
+  fetchWorkstationCapacity,
+  workstationPackageKeys,
+} from '../../api/workstationPackages';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingState } from '../../components/common/LoadingState';
@@ -35,6 +43,14 @@ export function ITDashboardPage() {
   const onboardingQuery = useQuery({
     queryKey: itOperationsKeys.onboardingTasks(),
     queryFn: fetchItOnboardingTasks,
+  });
+  const provisioningQuery = useQuery({
+    queryKey: itProvisioningKeys.dashboard(),
+    queryFn: fetchProvisioningDashboard,
+  });
+  const capacityQuery = useQuery({
+    queryKey: workstationPackageKeys.capacity(),
+    queryFn: () => fetchWorkstationCapacity(),
   });
 
   if (query.isLoading) {
@@ -321,6 +337,127 @@ export function ITDashboardPage() {
             />
           </Grid>
         </Grid>
+
+        {provisioningQuery.data ? (
+          <ContentCard
+            title="New employee IT provisioning"
+            subtitle="Demand from hire-with-IT requests (not yet completed)."
+          >
+            <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+              <Grid size={{ xs: 6, md: 3 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Open requests
+                </Typography>
+                <Typography variant="h6">{provisioningQuery.data.open_it_requests}</Typography>
+              </Grid>
+              <Grid size={{ xs: 6, md: 3 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Overdue
+                </Typography>
+                <Typography variant="h6">{provisioningQuery.data.overdue_requests}</Typography>
+              </Grid>
+              <Grid size={{ xs: 6, md: 3 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Waiting for license
+                </Typography>
+                <Typography variant="h6">
+                  {provisioningQuery.data.waiting_for_software_license}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 6, md: 3 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Ready for joining
+                </Typography>
+                <Typography variant="h6">{provisioningQuery.data.ready_for_joining}</Typography>
+              </Grid>
+            </Grid>
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+              Hardware demand
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, mb: 1 }}>
+              {(provisioningQuery.data.hardware_demand.by_computer_type || []).map((row) =>
+                row.required ? (
+                  <Chip
+                    key={row.code}
+                    size="small"
+                    label={`${row.label}: ${row.required}`}
+                  />
+                ) : null,
+              )}
+              <Chip
+                size="small"
+                label={`Monitors: ${provisioningQuery.data.hardware_demand.monitors_required ?? 0}`}
+              />
+              <Chip
+                size="small"
+                label={`3D mice: ${provisioningQuery.data.hardware_demand.mice_3d_required ?? 0}`}
+              />
+            </Stack>
+            {(provisioningQuery.data.software_demand || []).length ? (
+              <>
+                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                  Software / license demand
+                </Typography>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Software</TableCell>
+                      <TableCell align="right">Requested</TableCell>
+                      <TableCell align="right">Available</TableCell>
+                      <TableCell align="right">Shortage</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {provisioningQuery.data.software_demand.map((row) => (
+                      <TableRow key={row.software_id}>
+                        <TableCell>{row.software_name || row.software_id}</TableCell>
+                        <TableCell align="right">{row.requested}</TableCell>
+                        <TableCell align="right">{row.available}</TableCell>
+                        <TableCell align="right">{row.shortage}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </>
+            ) : null}
+          </ContentCard>
+        ) : null}
+
+        {capacityQuery.data?.length ? (
+          <ContentCard
+            title="Workstation capacity by shift"
+            subtitle="Physical workstation packages — available vs assigned per shift."
+          >
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Type</TableCell>
+                  <TableCell align="right">Total</TableCell>
+                  <TableCell>Shift availability</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {capacityQuery.data.map((row) => (
+                  <TableRow key={row.computer_type}>
+                    <TableCell>{row.label}</TableCell>
+                    <TableCell align="right">{row.total}</TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                        {row.shifts.map((s) => (
+                          <Chip
+                            key={s.shift_code}
+                            size="small"
+                            label={`${s.shift_name}: ${s.available} avail / ${s.assigned} used`}
+                          />
+                        ))}
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ContentCard>
+        ) : null}
 
         <ContentCard
           title="Pending IT onboarding tasks"

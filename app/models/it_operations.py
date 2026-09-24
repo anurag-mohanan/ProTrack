@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
@@ -440,6 +440,77 @@ class ComputerNameHistory(Base, TimestampMixin, TenantMixin):
     computer: Mapped["Computer"] = relationship(back_populates="name_history")
 
 
+# AssetAssignment.assignment_type values
+ASSIGNMENT_TYPE_PRIMARY = "PRIMARY"
+ASSIGNMENT_TYPE_SHIFT_SHARED = "SHIFT_SHARED"
+ASSIGNMENT_TYPE_TEMPORARY = "TEMPORARY"
+ASSIGNMENT_TYPE_BACKUP = "BACKUP"
+ASSET_ASSIGNMENT_TYPES = frozenset(
+    {
+        ASSIGNMENT_TYPE_PRIMARY,
+        ASSIGNMENT_TYPE_SHIFT_SHARED,
+        ASSIGNMENT_TYPE_TEMPORARY,
+        ASSIGNMENT_TYPE_BACKUP,
+    }
+)
+
+# Onboarding computer type codes (requirement only — not asset numbers)
+COMPUTER_TYPE_ENG_WS = "ENG_WS"
+COMPUTER_TYPE_GENERAL_WS = "GENERAL_WS"
+COMPUTER_TYPE_IT_WS = "IT_WS"
+COMPUTER_TYPE_ENG_LAPTOP = "ENG_LAPTOP"
+COMPUTER_TYPE_GENERAL_LAPTOP = "GENERAL_LAPTOP"
+COMPUTER_TYPES = frozenset(
+    {
+        COMPUTER_TYPE_ENG_WS,
+        COMPUTER_TYPE_GENERAL_WS,
+        COMPUTER_TYPE_IT_WS,
+        COMPUTER_TYPE_ENG_LAPTOP,
+        COMPUTER_TYPE_GENERAL_LAPTOP,
+    }
+)
+COMPUTER_TYPE_LABELS = {
+    COMPUTER_TYPE_ENG_WS: "Engineering Workstation",
+    COMPUTER_TYPE_GENERAL_WS: "General Workstation",
+    COMPUTER_TYPE_IT_WS: "IT Workstation",
+    COMPUTER_TYPE_ENG_LAPTOP: "Engineering Laptop",
+    COMPUTER_TYPE_GENERAL_LAPTOP: "General Laptop",
+}
+LAPTOP_COMPUTER_TYPES = frozenset({COMPUTER_TYPE_ENG_LAPTOP, COMPUTER_TYPE_GENERAL_LAPTOP})
+
+PROVISIONING_STATUSES = frozenset(
+    {
+        "OPEN",
+        "IN_PROGRESS",
+        "WAITING_FOR_ASSET",
+        "WAITING_FOR_LICENSE",
+        "READY",
+        "COMPLETED",
+        "REJECTED",
+        "CANCELLED",
+    }
+)
+PROVISIONING_TERMINAL = frozenset({"COMPLETED", "REJECTED", "CANCELLED"})
+
+SOFTWARE_REQUIREMENT_STATUSES = frozenset(
+    {
+        "REQUESTED",
+        "UNDER_REVIEW",
+        "APPROVED",
+        "AVAILABLE",
+        "LICENSE_ASSIGNED",
+        "INSTALLATION_PENDING",
+        "INSTALLED",
+        "LICENSE_NOT_AVAILABLE",
+        "REJECTED",
+        "CANCELLED",
+    }
+)
+
+DEFAULT_MONITOR_MAX = 4
+ONBOARDING_SOFTWARE_MAX = 5
+
+
 class AssetAssignment(Base, TimestampMixin, TenantMixin):
     __tablename__ = "asset_assignments"
 
@@ -457,6 +528,10 @@ class AssetAssignment(Base, TimestampMixin, TenantMixin):
     shift_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("rp_shifts.id"), nullable=True, index=True
     )
+    assignment_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ASSIGNMENT_TYPE_PRIMARY
+    )
+    override_reason: Mapped[Optional[str]] = mapped_column(String(500))
     assigned_date: Mapped[date] = mapped_column(Date, nullable=False)
     returned_date: Mapped[Optional[date]] = mapped_column(Date)
     return_condition: Mapped[Optional[str]] = mapped_column(String(40))
@@ -850,6 +925,19 @@ class EmployeeSoftwareRequirement(Base, TimestampMixin, TenantMixin):
     effective_to: Mapped[Optional[date]] = mapped_column(Date)
     reason: Mapped[Optional[str]] = mapped_column(String(200))
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    provisioning_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("it_provisioning_requests.id"),
+        nullable=True,
+        index=True,
+    )
+    license_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    priority: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+    purpose: Mapped[Optional[str]] = mapped_column(String(500))
+    requested_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="REQUESTED")
 
 
 class ResourcePackage(Base, TimestampMixin, TenantMixin):
@@ -925,3 +1013,207 @@ class ResourcePackageSoftwareLine(Base, TimestampMixin, TenantMixin):
 
     package: Mapped[ResourcePackage] = relationship(back_populates="software_lines")
     software: Mapped["SoftwareCatalog"] = relationship()
+
+
+class ItProvisioningRequest(Base, TimestampMixin, TenantMixin):
+    """Structured IT onboarding request (requirements) linked to Help Desk ticket."""
+
+    __tablename__ = "it_provisioning_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    checklist_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("onboarding_checklists.id"), nullable=True
+    )
+    ticket_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tickets.id"), nullable=True, index=True
+    )
+    shift_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("rp_shifts.id"), nullable=True
+    )
+    required_by: Mapped[Optional[date]] = mapped_column(Date)
+    priority: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="OPEN", index=True)
+    assigned_it_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    processing_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    hardware: Mapped[Optional["ItProvisioningHardware"]] = relationship(
+        back_populates="request",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    software_requirements: Mapped[list["EmployeeSoftwareRequirement"]] = relationship(
+        foreign_keys="EmployeeSoftwareRequirement.provisioning_request_id",
+        primaryjoin=(
+            "ItProvisioningRequest.id == EmployeeSoftwareRequirement.provisioning_request_id"
+        ),
+        viewonly=True,
+    )
+
+
+class ItProvisioningHardware(Base, TimestampMixin, TenantMixin):
+    """Hardware requirements for an IT provisioning request (not asset assignment)."""
+
+    __tablename__ = "it_provisioning_hardware"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provisioning_request_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("it_provisioning_requests.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    computer_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    computer_type: Mapped[Optional[str]] = mapped_column(String(40))
+    computer_is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    monitor_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    monitor_is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    mouse_3d_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    mouse_3d_is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    mouse_3d_model_hint: Mapped[Optional[str]] = mapped_column(String(200))
+    mouse_3d_asset_type_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("asset_types.id"), nullable=True
+    )
+    wireless_mouse_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    laptop_dock_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    laptop_bag_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    headset_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    wireless_keyboard_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    request: Mapped["ItProvisioningRequest"] = relationship(back_populates="hardware")
+
+
+# --- Physical workstation equipment packages (distinct from ResourcePackage templates) ---
+
+PACKAGE_STATUS_ACTIVE = "ACTIVE"
+PACKAGE_STATUS_MAINTENANCE = "MAINTENANCE"
+PACKAGE_STATUS_INCOMPLETE = "INCOMPLETE"
+PACKAGE_STATUS_RETIRED = "RETIRED"
+PACKAGE_STATUSES = frozenset(
+    {
+        PACKAGE_STATUS_ACTIVE,
+        PACKAGE_STATUS_MAINTENANCE,
+        PACKAGE_STATUS_INCOMPLETE,
+        PACKAGE_STATUS_RETIRED,
+    }
+)
+
+MEMBER_ROLE_PRIMARY_COMPUTER = "PRIMARY_COMPUTER"
+MEMBER_ROLE_PRIMARY_MONITOR = "PRIMARY_MONITOR"
+MEMBER_ROLE_SECONDARY_MONITOR = "SECONDARY_MONITOR"
+MEMBER_ROLE_3D_MOUSE = "3D_MOUSE"
+MEMBER_ROLE_WIRELESS_MOUSE = "WIRELESS_MOUSE"
+MEMBER_ROLE_KEYBOARD = "KEYBOARD"
+MEMBER_ROLE_DOCK = "DOCK"
+MEMBER_ROLE_BAG = "BAG"
+MEMBER_ROLE_HEADSET = "HEADSET"
+MEMBER_ROLE_OTHER = "OTHER"
+MEMBER_ROLES = frozenset(
+    {
+        MEMBER_ROLE_PRIMARY_COMPUTER,
+        MEMBER_ROLE_PRIMARY_MONITOR,
+        MEMBER_ROLE_SECONDARY_MONITOR,
+        MEMBER_ROLE_3D_MOUSE,
+        MEMBER_ROLE_WIRELESS_MOUSE,
+        MEMBER_ROLE_KEYBOARD,
+        MEMBER_ROLE_DOCK,
+        MEMBER_ROLE_BAG,
+        MEMBER_ROLE_HEADSET,
+        MEMBER_ROLE_OTHER,
+    }
+)
+
+SHIFT_AVAIL_AVAILABLE = "AVAILABLE"
+SHIFT_AVAIL_ASSIGNED = "ASSIGNED"
+SHIFT_AVAIL_CONFLICT = "CONFLICT"
+SHIFT_AVAIL_PARTIAL = "PARTIALLY_AVAILABLE"
+SHIFT_AVAIL_UNAVAILABLE = "UNAVAILABLE"
+
+
+class WorkstationPackage(Base, TimestampMixin, TenantMixin):
+    """Physical equipment grouping: one computer + peripherals (not a requirement template)."""
+
+    __tablename__ = "it_workstation_packages"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_it_workstation_packages_tenant_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(60), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    primary_computer_asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True
+    )
+    computer_type: Mapped[Optional[str]] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default=PACKAGE_STATUS_ACTIVE)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    members: Mapped[list["WorkstationPackageMember"]] = relationship(
+        back_populates="package",
+        cascade="all, delete-orphan",
+        order_by="WorkstationPackageMember.created_at",
+    )
+    assignments: Mapped[list["WorkstationPackageAssignment"]] = relationship(
+        back_populates="package",
+        cascade="all, delete-orphan",
+    )
+
+
+class WorkstationPackageMember(Base, TimestampMixin, TenantMixin):
+    """Effective-dated package membership for a physical asset."""
+
+    __tablename__ = "it_workstation_package_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    package_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_workstation_packages.id"), nullable=False, index=True
+    )
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(40), nullable=False)
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    follows_workstation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date)
+    removed_reason: Mapped[Optional[str]] = mapped_column(String(200))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    package: Mapped["WorkstationPackage"] = relationship(back_populates="members")
+
+
+class WorkstationPackageAssignment(Base, TimestampMixin, TenantMixin):
+    """Employee + shift + date-range assignment of an entire workstation package."""
+
+    __tablename__ = "it_workstation_package_assignments"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    package_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_workstation_packages.id"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    shift_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("rp_shifts.id"), nullable=False, index=True
+    )
+    assigned_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="ACTIVE")
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    override_reason: Mapped[Optional[str]] = mapped_column(String(500))
+    provisioning_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_provisioning_requests.id"), nullable=True
+    )
+
+    package: Mapped["WorkstationPackage"] = relationship(back_populates="assignments")

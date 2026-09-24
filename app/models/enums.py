@@ -227,6 +227,15 @@ class ActivityAction(enum.Enum):
     it_asset_returned_to_customer = "it_asset_returned_to_customer"
     it_asset_transferred = "it_asset_transferred"
     it_asset_ownership_changed = "it_asset_ownership_changed"
+    it_provisioning_created = "it_provisioning_created"
+    it_provisioning_updated = "it_provisioning_updated"
+    it_provisioning_status_changed = "it_provisioning_status_changed"
+    it_provisioning_requirement_changed = "it_provisioning_requirement_changed"
+    it_workstation_package_created = "it_workstation_package_created"
+    it_workstation_package_updated = "it_workstation_package_updated"
+    it_workstation_package_member_changed = "it_workstation_package_member_changed"
+    it_workstation_package_assigned = "it_workstation_package_assigned"
+    it_workstation_package_returned = "it_workstation_package_returned"
     it_computer_created = "it_computer_created"
     it_computer_updated = "it_computer_updated"
     it_network_created = "it_network_created"
@@ -304,6 +313,8 @@ class EntityType(enum.Enum):
     it_account = "it_account"
     it_settings = "it_settings"
     it_resource_package = "it_resource_package"
+    it_provisioning_request = "it_provisioning_request"
+    it_workstation_package = "it_workstation_package"
 
 
 class CostNature(enum.Enum):

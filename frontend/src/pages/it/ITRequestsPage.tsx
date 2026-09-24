@@ -1,6 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Link,
   Stack,
   Table,
@@ -10,10 +14,17 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router-dom';
-import { fetchOpenItRequests, itOperationsKeys } from '../../api/itOperations';
+import {
+  fetchProvisioningDashboard,
+  fetchProvisioningRequests,
+  itProvisioningKeys,
+  updateProvisioningStatus,
+  type ProvisioningRequest,
+} from '../../api/itProvisioning';
 import { ticketsApi } from '../../api/resources';
+import { getErrorMessage } from '../../api/client';
 import { ContentCard } from '../../components/ui/cards';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -21,85 +32,85 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
 import { ITSectionSubnav, IT_REQUEST_TABS } from '../../components/it/ITSectionSubnav';
+import { FormSelect } from '../../components/ui/design-system';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
-import type { ITOpenRequest } from '../../types/itOperations';
+import { FindAvailableComputerDialog } from '../../components/it/FindAvailableComputerDialog';
+import { useToast } from '../../context/ToastContext';
 import type { Ticket } from '../../types';
+import { formatDate } from '../../utils/format';
 
 type ChipColor = 'default' | 'primary' | 'info' | 'warning' | 'error' | 'success';
 
 const STATUS_COLOR: Record<string, ChipColor> = {
-  open: 'info',
-  in_progress: 'primary',
-  on_hold: 'warning',
-  resolved: 'success',
-  closed: 'default',
-  cancelled: 'default',
+  OPEN: 'info',
+  IN_PROGRESS: 'primary',
+  WAITING_FOR_ASSET: 'warning',
+  WAITING_FOR_LICENSE: 'warning',
+  READY: 'success',
+  COMPLETED: 'success',
+  REJECTED: 'error',
+  CANCELLED: 'default',
 };
 
-const PRIORITY_COLOR: Record<string, ChipColor> = {
-  low: 'default',
-  medium: 'info',
-  high: 'warning',
-  urgent: 'error',
-};
-
-function ticketToOpenRequest(ticket: Ticket): ITOpenRequest {
-  return {
-    id: ticket.id,
-    ticket_number: ticket.ticket_number,
-    title: ticket.title,
-    status: ticket.status,
-    status_label: ticket.status_label,
-    priority: ticket.priority,
-    requester_name: ticket.requester_name,
-    assignee_name: ticket.assignee_name,
-    created_at: ticket.created_at,
-    category: ticket.category,
-  };
-}
-
-function formatWhen(value?: string | null): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString(undefined, {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-async function loadOpenItRequests(): Promise<ITOpenRequest[]> {
-  try {
-    return await fetchOpenItRequests();
-  } catch {
-    const tickets = await ticketsApi.list({ category: 'it', status: 'open' });
-    const openish = tickets.filter((ticket) =>
-      ['open', 'in_progress', 'on_hold'].includes(ticket.status),
-    );
-    return openish.map(ticketToOpenRequest);
-  }
-}
+const STATUSES = [
+  'OPEN',
+  'IN_PROGRESS',
+  'WAITING_FOR_ASSET',
+  'WAITING_FOR_LICENSE',
+  'READY',
+  'COMPLETED',
+  'REJECTED',
+  'CANCELLED',
+];
 
 export function ITRequestsPage() {
-  const query = useQuery({
-    queryKey: itOperationsKeys.openRequests(),
-    queryFn: loadOpenItRequests,
+  const { showSuccess, showError } = useToast();
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<ProvisioningRequest | null>(null);
+  const [statusDraft, setStatusDraft] = useState('OPEN');
+  const [findOpen, setFindOpen] = useState(false);
+
+  const provisioningQuery = useQuery({
+    queryKey: itProvisioningKeys.requests({}),
+    queryFn: () => fetchProvisioningRequests(),
+  });
+  const dashboardQuery = useQuery({
+    queryKey: itProvisioningKeys.dashboard(),
+    queryFn: fetchProvisioningDashboard,
+  });
+  const ticketsQuery = useQuery({
+    queryKey: ['tickets', 'it', 'open'],
+    queryFn: () => ticketsApi.list({ category: 'it', status: 'open' }),
   });
 
-  const rows = useMemo(() => query.data ?? [], [query.data]);
+  const statusMutation = useMutation({
+    mutationFn: () =>
+      updateProvisioningStatus(selected!.id, { status: statusDraft }),
+    onSuccess: (row) => {
+      showSuccess(`Request updated to ${row.status}`);
+      setSelected(row);
+      void queryClient.invalidateQueries({ queryKey: itProvisioningKeys.all });
+    },
+    onError: (error) => showError(getErrorMessage(error)),
+  });
 
-  if (query.isLoading) {
+  const rows = provisioningQuery.data ?? [];
+  const dash = dashboardQuery.data;
+  const genericTickets: Ticket[] = useMemo(() => {
+    const data = ticketsQuery.data;
+    if (Array.isArray(data)) return data;
+    return (data as { items?: Ticket[] } | undefined)?.items ?? [];
+  }, [ticketsQuery.data]);
+
+  if (provisioningQuery.isLoading) {
     return <LoadingState message="Loading IT requests…" />;
   }
-
-  if (query.isError) {
+  if (provisioningQuery.isError) {
     return (
       <ErrorState
-        error={query.error}
+        error={provisioningQuery.error}
         title="Unable to load IT requests"
-        onRetry={() => void query.refetch()}
+        onRetry={() => void provisioningQuery.refetch()}
       />
     );
   }
@@ -108,87 +119,207 @@ export function ITRequestsPage() {
     <PageContainer>
       <PageHeader
         title="IT Requests"
-        subtitle="Open IT-category tickets from Help Desk."
-        action={
-          <RouterLink to="/help-desk" style={{ textDecoration: 'none' }}>
-            <ProsohmButton buttonVariant="outlined">Open Help Desk</ProsohmButton>
-          </RouterLink>
-        }
+        subtitle="Onboarding provisioning requests and Help Desk IT tickets."
       />
-
       <ITSectionSubnav items={IT_REQUEST_TABS} />
 
-      <ContentCard
-        title="Open requests"
-        subtitle={`${rows.length} open IT ticket${rows.length === 1 ? '' : 's'}`}
-      >
+      {dash ? (
+        <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          <Chip label={`Open ${dash.open_it_requests}`} color="info" size="small" />
+          <Chip label={`Due today ${dash.due_today}`} color="warning" size="small" />
+          <Chip label={`Overdue ${dash.overdue_requests}`} color="error" size="small" />
+          <Chip label={`Waiting license ${dash.waiting_for_software_license}`} size="small" />
+          <Chip label={`Ready ${dash.ready_for_joining}`} color="success" size="small" />
+        </Stack>
+      ) : null}
+
+      <ContentCard title="Employee onboarding IT requests">
         {rows.length === 0 ? (
-          <EmptyState
-            title="No open IT requests"
-            description="New IT tickets appear here and in Help Desk."
-          />
+          <EmptyState title="No provisioning requests" description="New hires with IT requirements will appear here." />
         ) : (
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Ticket</TableCell>
-                <TableCell>Title</TableCell>
+                <TableCell>Request / Ticket</TableCell>
+                <TableCell>Employee</TableCell>
+                <TableCell>Computer</TableCell>
+                <TableCell>Required by</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell>Priority</TableCell>
-                <TableCell>Requester</TableCell>
-                <TableCell>Assignee</TableCell>
-                <TableCell>Opened</TableCell>
+                <TableCell />
               </TableRow>
             </TableHead>
             <TableBody>
               {rows.map((row) => (
                 <TableRow key={row.id} hover>
                   <TableCell>
-                    <Link component={RouterLink} to="/help-desk" underline="hover">
-                      {row.ticket_number || row.id.slice(0, 8)}
-                    </Link>
+                    {row.ticket_number || row.id.slice(0, 8)}
+                    {row.is_overdue ? (
+                      <Chip size="small" color="error" label="Overdue" sx={{ ml: 1 }} />
+                    ) : null}
                   </TableCell>
                   <TableCell>
-                    <Typography sx={{ fontWeight: 600 }}>{row.title}</Typography>
+                    <Typography variant="body2">{row.employee_name}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {row.designation || '—'} · {row.shift_display || 'No shift'}
+                    </Typography>
                   </TableCell>
+                  <TableCell>
+                    {row.hardware?.computer_type_label || '—'}
+                    {row.hardware
+                      ? ` · ${row.hardware.monitor_quantity} mon`
+                      : ''}
+                  </TableCell>
+                  <TableCell>{formatDate(row.required_by) || '—'}</TableCell>
                   <TableCell>
                     <Chip
                       size="small"
-                      label={row.status_label || String(row.status).replace(/_/g, ' ')}
-                      color={STATUS_COLOR[row.status] ?? 'default'}
-                      variant="outlined"
+                      color={STATUS_COLOR[row.status] || 'default'}
+                      label={row.status}
                     />
                   </TableCell>
-                  <TableCell>
-                    {row.priority ? (
-                      <Chip
-                        size="small"
-                        label={row.priority}
-                        color={PRIORITY_COLOR[row.priority] ?? 'default'}
-                        variant="outlined"
-                      />
-                    ) : (
-                      '—'
-                    )}
+                  <TableCell align="right">
+                    <ProsohmButton
+                      buttonVariant="secondary"
+                      onClick={() => {
+                        setSelected(row);
+                        setStatusDraft(row.status);
+                      }}
+                    >
+                      Open
+                    </ProsohmButton>
                   </TableCell>
-                  <TableCell>{row.requester_name || '—'}</TableCell>
-                  <TableCell>{row.assignee_name || '—'}</TableCell>
-                  <TableCell>{formatWhen(row.created_at)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
-        <Stack direction="row" sx={{ justifyContent: 'flex-end', mt: 2 }}>
-          <Typography variant="body2" color="text.secondary">
-            Manage full ticket workflows in{' '}
-            <Link component={RouterLink} to="/help-desk">
-              Help Desk
-            </Link>
-            .
-          </Typography>
-        </Stack>
       </ContentCard>
+
+      <ContentCard title="Other open IT Help Desk tickets">
+        {genericTickets.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            No other open IT tickets.
+          </Typography>
+        ) : (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Ticket</TableCell>
+                <TableCell>Title</TableCell>
+                <TableCell>Requester</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {genericTickets.map((ticket) => (
+                <TableRow key={ticket.id}>
+                  <TableCell>
+                    <Link component={RouterLink} to={`/help-desk/${ticket.id}`}>
+                      {ticket.ticket_number}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{ticket.title}</TableCell>
+                  <TableCell>{ticket.requester_name}</TableCell>
+                  <TableCell>{ticket.status_label || ticket.status}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </ContentCard>
+
+      <Dialog
+        open={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>
+          {selected?.ticket_number || 'Provisioning request'} · {selected?.employee_name}
+        </DialogTitle>
+        <DialogContent>
+          {selected ? (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Typography variant="body2">
+                Joining {formatDate(selected.joining_date) || '—'} · Required by{' '}
+                {formatDate(selected.required_by) || '—'} · Shift{' '}
+                {selected.shift_display || '—'}
+              </Typography>
+
+              <Typography variant="subtitle2">Hardware</Typography>
+              <Typography variant="body2">
+                Computer: {selected.hardware?.computer_type_label || 'Not required'}
+              </Typography>
+              <Typography variant="body2">
+                Monitors: {selected.hardware?.monitor_quantity ?? 0}
+              </Typography>
+              <Typography variant="body2">
+                3D Mouse: {selected.hardware?.mouse_3d_required ? 'Yes' : 'No'}
+              </Typography>
+              <Typography variant="body2">
+                Wireless Mouse: {selected.hardware?.wireless_mouse_required ? 'Yes' : 'No'}
+              </Typography>
+
+              <Typography variant="subtitle2">Software</Typography>
+              {(selected.software || []).length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No software requirements.
+                </Typography>
+              ) : (
+                (selected.software || []).map((line) => (
+                  <Typography key={line.id || line.software_id} variant="body2">
+                    {line.software_name || line.software_id} · License:{' '}
+                    {line.license_required ? 'Yes' : 'No'} · {line.status}
+                  </Typography>
+                ))
+              )}
+
+              <FormSelect
+                label="Request status"
+                value={statusDraft}
+                options={STATUSES.map((s) => ({ value: s, label: s }))}
+                onChange={(e) => setStatusDraft(String(e.target.value))}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Assign assets and licenses from Assets / Software pages for this employee, then update
+                status here.
+              </Typography>
+              {selected.hardware?.computer_required ? (
+                <ProsohmButton buttonVariant="primary" onClick={() => setFindOpen(true)}>
+                  Find Available Computer
+                </ProsohmButton>
+              ) : null}
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <ProsohmButton buttonVariant="secondary" onClick={() => setSelected(null)}>
+            Close
+          </ProsohmButton>
+          <ProsohmButton
+            buttonVariant="primary"
+            disabled={statusMutation.isPending}
+            onClick={() => statusMutation.mutate()}
+          >
+            Save status
+          </ProsohmButton>
+        </DialogActions>
+      </Dialog>
+
+      <FindAvailableComputerDialog
+        open={findOpen}
+        onClose={() => setFindOpen(false)}
+        defaults={{
+          on_date: selected?.required_by || selected?.joining_date || undefined,
+          shift_id: selected?.shift_id || undefined,
+          computer_type: selected?.hardware?.computer_type || undefined,
+          monitor_quantity: selected?.hardware?.monitor_quantity ?? 0,
+          mouse_3d_required: selected?.hardware?.mouse_3d_required ?? false,
+          user_id: selected?.user_id,
+          employee_name: selected?.employee_name || undefined,
+          provisioning_request_id: selected?.id,
+        }}
+      />
     </PageContainer>
   );
 }

@@ -17,6 +17,8 @@ from app.api.v1 import (
     hr,
     imports,
     it_operations,
+    it_provisioning,
+    workstation_packages,
     timesheet_imports,
     lookups,
     milestones,
@@ -173,4 +175,7 @@ api_router.include_router(imports.router)
 api_router.include_router(history_imports.router)
 api_router.include_router(timesheet_imports.router)
 api_router.include_router(it_operations.router)
+api_router.include_router(it_provisioning.router)
+api_router.include_router(it_provisioning.users_360_router)
+api_router.include_router(workstation_packages.router)
 api_router.include_router(resource_shifts.router)

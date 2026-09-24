@@ -12,6 +12,7 @@ import {
   FormControlLabel,
   Grid,
   InputAdornment,
+  Stack,
   Switch,
   Tooltip,
   Typography,
@@ -28,6 +29,7 @@ import type { GridColDef } from '@mui/x-data-grid';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageContainer } from '../../components/common/PageContainer';
 import { UserDetailsDrawer } from '../../components/admin/UserDetailsDrawer';
+import { HireEmployeeWizard } from '../../components/admin/HireEmployeeWizard';
 import { UserRowActions } from '../../components/admin/UserRowActions';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
@@ -175,6 +177,7 @@ export default function UsersPage() {
   const [appliedActiveFilter, setAppliedActiveFilter] = useState<string>('all');
   const [draftActiveFilter, setDraftActiveFilter] = useState<string>('all');
   const [formOpen, setFormOpen] = useState(false);
+  const [hireWizardOpen, setHireWizardOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState<UserFormState>(emptyForm);
@@ -947,9 +950,14 @@ export default function UsersPage() {
         title="Users"
         subtitle="Identify team members quickly and manage accounts from the details panel."
         action={
-          <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
-            Create User
-          </ProsohmButton>
+          <Stack direction="row" spacing={1}>
+            <ProsohmButton buttonVariant="secondary" startIcon={<AddIcon />} onClick={() => setHireWizardOpen(true)}>
+              Add Employee
+            </ProsohmButton>
+            <ProsohmButton buttonVariant="primary" startIcon={<AddIcon />} onClick={openCreate}>
+              Create User
+            </ProsohmButton>
+          </Stack>
         }
       />
 
@@ -1839,6 +1847,13 @@ export default function UsersPage() {
           </Box>
         </FilterGroup>
       </FilterDrawer>
+
+      <HireEmployeeWizard
+        open={hireWizardOpen}
+        onClose={() => setHireWizardOpen(false)}
+        roles={roles}
+        defaultRoleId={roles[0]?.id}
+      />
     </PageContainer>
   );
 }

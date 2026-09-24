@@ -262,6 +262,22 @@ def _asset_read(db: Session, asset: Asset, *, ip_snapshot: dict | None = None) -
         from app.services import it_computer_suggest_service as suggest
 
         ip_snapshot = suggest.current_ip_for_asset(db, asset.id)
+
+    utilization = None
+    active_users = None
+    active_shifts = None
+    configured_shifts = None
+    try:
+        from app.services import it_provisioning_service as provisioning
+
+        util = provisioning.derive_computer_utilization(db, asset)
+        utilization = util.get("utilization")
+        active_users = util.get("active_users")
+        active_shifts = util.get("active_shifts")
+        configured_shifts = util.get("configured_shifts")
+    except Exception:
+        pass
+
     return AssetRead(
         id=asset.id,
         created_at=asset.created_at,
@@ -313,6 +329,10 @@ def _asset_read(db: Session, asset: Asset, *, ip_snapshot: dict | None = None) -
         network_id=ip_snapshot.get("network_id") if ip_snapshot else None,
         network_name=ip_snapshot.get("network_name") if ip_snapshot else None,
         network_cidr=ip_snapshot.get("network_cidr") if ip_snapshot else None,
+        utilization=utilization,
+        active_assignment_users=active_users,
+        active_assignment_shifts=active_shifts,
+        configured_shifts=configured_shifts,
     )
 
 
@@ -342,6 +362,8 @@ def _assignment_read(db: Session, row: AssetAssignment) -> AssetAssignmentRead:
         shift_code=shift_code,
         shift_name=shift_name,
         shift_display=shift_display,
+        assignment_type=getattr(row, "assignment_type", None),
+        override_reason=getattr(row, "override_reason", None),
         assigned_date=row.assigned_date,
         returned_date=row.returned_date,
         return_condition=row.return_condition,
@@ -1442,6 +1464,9 @@ def assign_asset(
             assigned_date=payload.assigned_date,
             notes=payload.notes,
             shift_id=payload.shift_id,
+            assignment_type=payload.assignment_type,
+            force_override=payload.force_override,
+            override_reason=payload.override_reason,
         )
         return _assignment_read(db, row)
     except ProTrackValidationError as exc:
@@ -2370,6 +2395,12 @@ def _requirement_read(db: Session, row: EmployeeSoftwareRequirement) -> Employee
         effective_to=row.effective_to,
         reason=row.reason,
         notes=row.notes,
+        provisioning_request_id=getattr(row, "provisioning_request_id", None),
+        license_required=bool(getattr(row, "license_required", True)),
+        priority=getattr(row, "priority", None) or "medium",
+        purpose=getattr(row, "purpose", None),
+        requested_by_id=getattr(row, "requested_by_id", None),
+        status=getattr(row, "status", None) or "REQUESTED",
     )
 
 

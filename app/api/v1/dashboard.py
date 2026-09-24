@@ -364,6 +364,19 @@ def dashboard_resource_planning_computers_by_shift(
     )
 
 
+@router.get("/resource-planning/workstation-capacity")
+def dashboard_resource_planning_workstation_capacity(
+    on_date: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Shift-aware workstation package capacity for Resource Planning."""
+    _require_it_readiness_access(db, current_user)
+    from app.services import workstation_package_service as ws_packages
+
+    return ws_packages.capacity_by_computer_type(db, on_date=on_date)
+
+
 @router.get("/resource-planning/shift-hierarchy")
 def dashboard_resource_planning_shift_hierarchy(
     on_date: date | None = None,

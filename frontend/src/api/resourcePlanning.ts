@@ -149,6 +149,29 @@ export async function fetchComputersByShift(params?: {
   return data;
 }
 
+export type WorkstationCapacityRow = {
+  computer_type: string;
+  label: string;
+  total: number;
+  maintenance: number;
+  incomplete: number;
+  shifts: {
+    shift_code: string;
+    shift_name: string;
+    available: number;
+    assigned: number;
+  }[];
+};
+
+export async function fetchWorkstationCapacityForPlanning(params?: {
+  on_date?: string;
+}): Promise<WorkstationCapacityRow[]> {
+  const { data } = await apiClient.get<WorkstationCapacityRow[]>(
+    `/dashboard/resource-planning/workstation-capacity${buildQuery(params)}`,
+  );
+  return data;
+}
+
 export type ShiftHierarchyPerson = {
   user_id: string;
   name: string;
@@ -260,6 +283,8 @@ export const resourcePlanningQueryKeys = {
   dataQuality: () => ['resource-planning', 'data-quality'] as const,
   computersByShift: (params?: { team_id?: string; on_date?: string }) =>
     ['resource-planning', 'computers-by-shift', params ?? {}] as const,
+  workstationCapacity: (params?: { on_date?: string }) =>
+    ['resource-planning', 'workstation-capacity', params ?? {}] as const,
   shiftHierarchy: (params?: { team_id?: string; on_date?: string }) =>
     ['resource-planning', 'shift-hierarchy', params ?? {}] as const,
   packages: () => ['resource-planning', 'packages'] as const,

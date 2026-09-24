@@ -8,6 +8,8 @@ export const workstationPackageKeys = {
   capacity: (onDate?: string) =>
     [...workstationPackageKeys.all, 'capacity', onDate ?? 'today'] as const,
   forUser: (userId: string) => [...workstationPackageKeys.all, 'user', userId] as const,
+  groupedByUser: (onDate?: string) =>
+    [...workstationPackageKeys.all, 'grouped-by-user', onDate ?? 'today'] as const,
 };
 
 export async function fetchWorkstationPackages(params?: {
@@ -35,6 +37,31 @@ export async function fetchWorkstationCapacity(on_date?: string) {
     incomplete: number;
     shifts: { shift_code: string; shift_name: string; available: number; assigned: number }[];
   }[];
+}
+
+export async function fetchVirtualSeatsGroupedByUser(on_date?: string) {
+  const { data } = await apiClient.get('/it/workstation-packages/grouped-by-user', {
+    params: on_date ? { on_date } : undefined,
+  });
+  return data as {
+    user_id: string;
+    user_name?: string | null;
+    shift_id: string;
+    shift_display?: string | null;
+    virtual_seat_id: string;
+    virtual_seat_code: string;
+    shared: boolean;
+    other_users: { user_id: string; user_name?: string | null; shift_id: string }[];
+    assets: { asset_id: string; asset_number?: string | null; role: string }[];
+  }[];
+}
+
+export async function reconcileVirtualSeats() {
+  const { data } = await apiClient.post('/it/workstation-packages/reconcile');
+  return data as {
+    seats_created: number;
+    flagged_for_review: { asset_number?: string; reason?: string; user_id?: string }[];
+  };
 }
 
 export async function findAvailableComputer(payload: {

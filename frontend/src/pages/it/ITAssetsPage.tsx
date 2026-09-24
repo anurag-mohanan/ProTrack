@@ -280,6 +280,12 @@ export function ITAssetsPage({
   const [warrantyFilter, setWarrantyFilter] = useState('');
   const [makeFilter, setMakeFilter] = useState('');
   const [modelFilter, setModelFilter] = useState('');
+  const [availabilityShiftId, setAvailabilityShiftId] = useState(
+    () => searchParams.get('availability_shift_id') ?? '',
+  );
+  const [availabilityStatus, setAvailabilityStatus] = useState(
+    () => searchParams.get('availability_status') ?? '',
+  );
 
   const patchSearchParams = useCallback(
     (mutate: (next: URLSearchParams) => void) => {
@@ -576,6 +582,8 @@ export function ITAssetsPage({
       category: categoryFilter || undefined,
       make_id: makeFilter || undefined,
       model_id: modelFilter || undefined,
+      availability_shift_id: availabilityShiftId || undefined,
+      availability_status: availabilityStatus || undefined,
     }),
     [
       search,
@@ -586,6 +594,8 @@ export function ITAssetsPage({
       categoryFilter,
       makeFilter,
       modelFilter,
+      availabilityShiftId,
+      availabilityStatus,
     ],
   );
 
@@ -1255,7 +1265,7 @@ export function ITAssetsPage({
     },
     {
       field: 'assignee',
-      headerName: 'User',
+      headerName: 'User(s)',
       flex: 1,
       minWidth: 140,
       valueGetter: (_value, row) => assigneeName(row),
@@ -1267,10 +1277,69 @@ export function ITAssetsPage({
       valueFormatter: (value) => formatCellValue(value) || '—',
     },
     {
-      field: 'current_shift_display',
-      headerName: 'Shift',
+      field: 'virtual_seat_code',
+      headerName: 'Virtual Seat',
       width: 140,
-      valueFormatter: (value) => formatCellValue(value) || '—',
+      renderCell: (params) =>
+        params.row.virtual_seat_code ? (
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+            <Typography variant="body2">{params.row.virtual_seat_code}</Typography>
+            {params.row.is_shared_seat ? (
+              <Chip size="small" label="Shared" color="info" variant="outlined" />
+            ) : null}
+          </Stack>
+        ) : (
+          '—'
+        ),
+    },
+    {
+      field: 'shift_availability',
+      headerName: 'Shift availability',
+      flex: 1.6,
+      minWidth: 280,
+      sortable: false,
+      renderCell: (params) => {
+        const rows = params.row.shift_availability || [];
+        if (!rows.length) {
+          return formatCellValue(params.row.current_shift_display) || '—';
+        }
+        return (
+          <Stack spacing={0.25} sx={{ py: 0.5 }}>
+            {rows.map((s) => {
+              const who =
+                s.assignees
+                  ?.map((a) => a.user_name)
+                  .filter(Boolean)
+                  .join(', ') || null;
+              const color =
+                s.status === 'AVAILABLE'
+                  ? 'success'
+                  : s.status === 'ASSIGNED'
+                    ? 'info'
+                    : s.status === 'CONFLICT' || s.status === 'UNAVAILABLE'
+                      ? 'error'
+                      : 'warning';
+              return (
+                <Stack
+                  key={String(s.shift_code || s.shift_id || s.shift_name)}
+                  direction="row"
+                  spacing={0.5}
+                  sx={{ alignItems: 'center' }}
+                >
+                  <Typography variant="caption" sx={{ minWidth: 72 }}>
+                    {s.shift_name || s.shift_code}:
+                  </Typography>
+                  <Chip
+                    size="small"
+                    color={color}
+                    label={who && s.status === 'ASSIGNED' ? `${s.status} — ${who}` : s.status}
+                  />
+                </Stack>
+              );
+            })}
+          </Stack>
+        );
+      },
     },
     {
       field: 'actions',
@@ -1543,6 +1612,33 @@ export function ITAssetsPage({
           onChange={(event) => setModelFilter(String(event.target.value))}
           options={modelFilterOptions}
           sx={{ minWidth: 180 }}
+        />
+        <FormSelect
+          label="Availability shift"
+          value={availabilityShiftId}
+          onChange={(event) => setAvailabilityShiftId(String(event.target.value))}
+          options={[
+            { value: '', label: 'Any shift' },
+            ...(shiftsQuery.data ?? []).map((s) => ({
+              value: s.id,
+              label: `${s.name} (${s.start_time}–${s.end_time})`,
+            })),
+          ]}
+          sx={{ minWidth: 220 }}
+        />
+        <FormSelect
+          label="Shift availability"
+          value={availabilityStatus}
+          onChange={(event) => setAvailabilityStatus(String(event.target.value))}
+          options={[
+            { value: '', label: 'All' },
+            { value: 'AVAILABLE', label: 'Available' },
+            { value: 'ASSIGNED', label: 'Assigned' },
+            { value: 'CONFLICT', label: 'Conflict' },
+            { value: 'PARTIALLY_AVAILABLE', label: 'Partially available' },
+            { value: 'UNAVAILABLE', label: 'Unavailable' },
+          ]}
+          sx={{ minWidth: 200 }}
         />
       </SearchToolbar>
 

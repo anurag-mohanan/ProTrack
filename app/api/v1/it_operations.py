@@ -206,7 +206,13 @@ def _require_reports(db: Session, user: User) -> None:
     )
 
 
-def _asset_read(db: Session, asset: Asset, *, ip_snapshot: dict | None = None) -> AssetRead:
+def _asset_read(
+    db: Session,
+    asset: Asset,
+    *,
+    ip_snapshot: dict | None = None,
+    availability: dict | None = None,
+) -> AssetRead:
     assignee_id, assignee_name = it_asset_service.assignee_name_for_asset(db, asset)
     at = asset.asset_type
     owner = db.get(Customer, asset.owner_customer_id) if asset.owner_customer_id else None
@@ -278,6 +284,35 @@ def _asset_read(db: Session, asset: Asset, *, ip_snapshot: dict | None = None) -
     except Exception:
         pass
 
+    if availability is None:
+        try:
+            from app.services import workstation_package_service as ws_packages
+
+            availability = ws_packages.inventory_availability_for_asset(db, asset)
+        except Exception:
+            availability = {}
+
+    # Prefer assignment/seat occupancy for shift display over employee RP shift
+    occupants = availability.get("occupants") or []
+    if occupants:
+        labels = []
+        for o in occupants:
+            who = o.get("user_name") or "User"
+            slot = o.get("shift_display") or o.get("shift_name") or o.get("shift_code") or ""
+            labels.append(f"{who} ({slot})" if slot else who)
+        shift_display = " / ".join(labels)
+        if len(occupants) == 1:
+            shift_code = occupants[0].get("shift_code") or shift_code
+            shift_name = occupants[0].get("shift_name") or shift_name
+            if occupants[0].get("user_name"):
+                assignee_name = occupants[0].get("user_name") or assignee_name
+            if occupants[0].get("user_id"):
+                try:
+                    assignee_id = UUID(str(occupants[0]["user_id"]))
+                except Exception:
+                    pass
+
+    seat_id = availability.get("virtual_seat_id")
     return AssetRead(
         id=asset.id,
         created_at=asset.created_at,
@@ -333,6 +368,13 @@ def _asset_read(db: Session, asset: Asset, *, ip_snapshot: dict | None = None) -
         active_assignment_users=active_users,
         active_assignment_shifts=active_shifts,
         configured_shifts=configured_shifts,
+        virtual_seat_id=UUID(seat_id) if seat_id else None,
+        virtual_seat_code=availability.get("virtual_seat_code"),
+        virtual_seat_status=availability.get("virtual_seat_status"),
+        availability_source=availability.get("availability_source"),
+        shift_availability=availability.get("shift_availability") or [],
+        occupants=occupants,
+        is_shared_seat=bool(availability.get("is_shared")),
     )
 
 
@@ -428,6 +470,32 @@ def _computer_read(db: Session, computer) -> ComputerRead:
     from app.services import it_computer_suggest_service as suggest
 
     ip_snapshot = suggest.current_ip_for_asset(db, computer.asset_id)
+
+    availability: dict = {}
+    if asset is not None:
+        try:
+            from app.services import workstation_package_service as ws_packages
+
+            availability = ws_packages.inventory_availability_for_asset(db, asset)
+        except Exception:
+            availability = {}
+
+    occupants = availability.get("occupants") or []
+    shift_code = resolved["shift_code"]
+    shift_name = resolved["shift_name"]
+    shift_display = resolved["shift_display"]
+    if occupants:
+        labels = []
+        for o in occupants:
+            who = o.get("user_name") or "User"
+            slot = o.get("shift_display") or o.get("shift_name") or o.get("shift_code") or ""
+            labels.append(f"{who} ({slot})" if slot else who)
+        shift_display = " / ".join(labels)
+        if len(occupants) == 1:
+            shift_code = occupants[0].get("shift_code") or shift_code
+            shift_name = occupants[0].get("shift_name") or shift_name
+
+    seat_id = availability.get("virtual_seat_id")
     return ComputerRead(
         id=computer.id,
         created_at=computer.created_at,
@@ -453,9 +521,9 @@ def _computer_read(db: Session, computer) -> ComputerRead:
         assigned_to_user_id=assignee.id if assignee else None,
         assigned_to_name=_full_name(assignee) if assignee else None,
         assigned_to_team=team_name,
-        current_shift_code=resolved["shift_code"],
-        current_shift_name=resolved["shift_name"],
-        current_shift_display=resolved["shift_display"],
+        current_shift_code=shift_code,
+        current_shift_name=shift_name,
+        current_shift_display=shift_display,
         next_shift_code=resolved.get("next_shift_code"),
         next_shift_name=resolved.get("next_shift_name"),
         next_shift_display=resolved.get("next_shift_display"),
@@ -477,7 +545,9 @@ def _computer_read(db: Session, computer) -> ComputerRead:
         other_shift_code=resolved.get("other_shift_code"),
         other_shift_name=resolved.get("other_shift_name"),
         other_shift_display=resolved.get("other_shift_display"),
-        is_shared_candidate=bool(resolved.get("is_shared_candidate")),
+        is_shared_candidate=bool(
+            resolved.get("is_shared_candidate") or availability.get("is_shared")
+        ),
         data_quality_flags=resolved["data_quality"],
         is_open=is_open,
         assigned_date=assignment.assigned_date if assignment else None,
@@ -488,6 +558,12 @@ def _computer_read(db: Session, computer) -> ComputerRead:
         network_id=ip_snapshot.get("network_id") if ip_snapshot else None,
         network_name=ip_snapshot.get("network_name") if ip_snapshot else None,
         network_cidr=ip_snapshot.get("network_cidr") if ip_snapshot else None,
+        virtual_seat_id=UUID(seat_id) if seat_id else None,
+        virtual_seat_code=availability.get("virtual_seat_code"),
+        virtual_seat_status=availability.get("virtual_seat_status"),
+        shift_availability=availability.get("shift_availability") or [],
+        occupants=occupants,
+        is_shared_seat=bool(availability.get("is_shared")),
     )
 
 
@@ -1034,12 +1110,23 @@ def list_assets(
         None,
         description="none | active | expiring_soon | expired",
     ),
+    availability_shift_id: UUID | None = Query(
+        None, description="Filter by calculated availability for this shift"
+    ),
+    availability_status: str | None = Query(
+        None,
+        description="AVAILABLE | ASSIGNED | CONFLICT | UNAVAILABLE | PARTIALLY_AVAILABLE",
+    ),
+    virtual_seat_id: UUID | None = Query(None),
     pagination: PaginationParams = Depends(pagination_query),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_it_access(db, current_user)
     try:
+        # When shift-availability filters are set, fetch a wider window then filter
+        # so pagination remains correct for the filtered set.
+        use_avail_filter = bool(availability_shift_id or availability_status or virtual_seat_id)
         rows, total = it_asset_service.list_assets(
             db,
             status=status_filter,
@@ -1053,16 +1140,42 @@ def list_assets(
             owner_customer_id=owner_customer_id,
             customer_used_for_id=customer_used_for_id,
             warranty_status=warranty_status,
-            skip=pagination.skip,
-            limit=pagination.limit,
+            skip=0 if use_avail_filter else pagination.skip,
+            limit=10_000 if use_avail_filter else pagination.limit,
         )
     except ProTrackValidationError as exc:
         raise _handle_validation(exc) from exc
     from app.services import it_computer_suggest_service as suggest
+    from app.services import workstation_package_service as ws_packages
+
+    enrich_map = ws_packages.batch_inventory_availability(db, rows)
+    if use_avail_filter:
+        filtered = []
+        for row in rows:
+            enrich = enrich_map.get(row.id) or {}
+            if virtual_seat_id and enrich.get("virtual_seat_id") != str(virtual_seat_id):
+                continue
+            if not ws_packages.asset_matches_availability_filter(
+                enrich,
+                availability_shift_id=availability_shift_id,
+                availability_status=availability_status,
+            ):
+                continue
+            filtered.append(row)
+        total = len(filtered)
+        rows = filtered[pagination.skip : pagination.skip + pagination.limit]
 
     snapshots = suggest.current_ips_for_assets(db, [row.id for row in rows])
     return PaginatedResponse.build(
-        items=[_asset_read(db, r, ip_snapshot=snapshots.get(r.id)) for r in rows],
+        items=[
+            _asset_read(
+                db,
+                r,
+                ip_snapshot=snapshots.get(r.id),
+                availability=enrich_map.get(r.id),
+            )
+            for r in rows
+        ],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,

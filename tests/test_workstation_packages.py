@@ -213,3 +213,79 @@ def test_find_partial_match_insufficient_monitors(session):
     )
     assert str(pkg.id) not in {r["id"] for r in found["exact_matches"]}
     assert str(pkg.id) in {r["id"] for r in found["partial_matches"]}
+
+
+def test_asset_inventory_shows_shift_availability_from_virtual_seat(session):
+    """Asset inventory enrichment must use Virtual Seat assignments, not RP employee shift."""
+    shifts.ensure_company_standard_shifts(session)
+    first = session.scalar(select(ResourceShift).where(ResourceShift.code == "FIRST"))
+    second = session.scalar(select(ResourceShift).where(ResourceShift.code == "SECOND"))
+    general = session.scalar(select(ResourceShift).where(ResourceShift.code == "GENERAL"))
+    admin = session.get(User, IDS["user_admin"])
+    anurag = session.get(User, IDS["user_anurag"])
+    binil = session.get(User, IDS["user_binil"])
+
+    desktop = _type(session, "DESKTOP", "Desktop", "computer")
+    monitor = _type(session, "MONITOR", "Monitor", "peripheral")
+    computer = it_asset_service.create_asset(
+        session,
+        actor=admin,
+        asset_type_id=desktop.id,
+        asset_number=f"ENG-WS-{uuid4().hex[:5].upper()}",
+        commit=True,
+    )
+    mon1 = it_asset_service.create_asset(
+        session, actor=admin, asset_type_id=monitor.id, asset_number=f"MON-{uuid4().hex[:4].upper()}", commit=True
+    )
+    mon2 = it_asset_service.create_asset(
+        session, actor=admin, asset_type_id=monitor.id, asset_number=f"MON-{uuid4().hex[:4].upper()}", commit=True
+    )
+
+    package = packages.create_package(
+        session,
+        actor=admin,
+        code=f"VSEAT-{computer.asset_number}",
+        name="Core acceptance seat",
+        primary_computer_asset_id=computer.id,
+        computer_type="ENG_WS",
+        members=[
+            {"asset_id": mon1.id, "role": "PRIMARY_MONITOR"},
+            {"asset_id": mon2.id, "role": "SECONDARY_MONITOR"},
+        ],
+        commit=True,
+    )
+    packages.assign_package(
+        session, package, actor=admin, user_id=anurag.id, shift_id=first.id, commit=True
+    )
+    packages.assign_package(
+        session, package, actor=admin, user_id=binil.id, shift_id=second.id, commit=True
+    )
+
+    for asset in (computer, mon1, mon2):
+        enrich = packages.inventory_availability_for_asset(session, asset)
+        assert enrich["virtual_seat_code"] == package.code
+        by_code = {r["shift_code"]: r for r in enrich["shift_availability"]}
+        assert by_code[first.code]["status"] == "ASSIGNED"
+        assert by_code[second.code]["status"] == "ASSIGNED"
+        assert by_code[general.code]["status"] == "CONFLICT"
+        assert enrich["is_shared"] is True
+
+    grouped = packages.grouped_by_user(session)
+    codes = {(g["user_id"], g["virtual_seat_code"]) for g in grouped}
+    assert (str(anurag.id), package.code) in codes
+    assert (str(binil.id), package.code) in codes
+    shared_rows = [g for g in grouped if g["virtual_seat_code"] == package.code]
+    assert all(g["shared"] for g in shared_rows)
+
+    # Filter: available in First Shift must exclude this seat's computer
+    enrich_map = packages.batch_inventory_availability(session, [computer])
+    assert not packages.asset_matches_availability_filter(
+        enrich_map[computer.id],
+        availability_shift_id=first.id,
+        availability_status="AVAILABLE",
+    )
+    assert packages.asset_matches_availability_filter(
+        enrich_map[computer.id],
+        availability_shift_id=first.id,
+        availability_status="ASSIGNED",
+    )

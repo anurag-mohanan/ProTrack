@@ -312,6 +312,33 @@ export interface ITAsset {
   network_cidr?: string | null;
   parent_asset_id?: string | null;
   parent_asset_number?: string | null;
+  utilization?: string | null;
+  active_assignment_users?: number | null;
+  active_assignment_shifts?: number | null;
+  configured_shifts?: number | null;
+  virtual_seat_id?: string | null;
+  virtual_seat_code?: string | null;
+  virtual_seat_status?: string | null;
+  availability_source?: string | null;
+  shift_availability?: {
+    shift_id?: string | null;
+    shift_code?: string | null;
+    shift_name?: string | null;
+    shift_display?: string | null;
+    status: string;
+    reason?: string | null;
+    assignees?: { user_id?: string; user_name?: string | null }[];
+  }[];
+  occupants?: {
+    user_id?: string | null;
+    user_name?: string | null;
+    shift_id?: string | null;
+    shift_code?: string | null;
+    shift_name?: string | null;
+    shift_display?: string | null;
+    status?: string | null;
+  }[];
+  is_shared_seat?: boolean;
   created_at?: string;
   updated_at?: string;
 }

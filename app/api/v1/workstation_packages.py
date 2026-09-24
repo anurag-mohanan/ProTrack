@@ -85,6 +85,32 @@ def workstation_capacity(
     return packages.capacity_by_computer_type(db, on_date=on_date)
 
 
+@router.get("/grouped-by-user")
+def workstation_packages_grouped_by_user(
+    on_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """User → shift → virtual seat → physical assets."""
+    _require_it(db, current_user)
+    return packages.grouped_by_user(db, on_date=on_date)
+
+
+@router.post(
+    "/reconcile",
+    dependencies=[Depends(require_special(SPECIAL_MANAGE_IT_ASSETS))],
+)
+def reconcile_virtual_seats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create Virtual Seats for assigned computers missing a package."""
+    _require_it(db, current_user)
+    return packages.reconcile_orphan_assigned_computers_into_seats(
+        db, actor=current_user, commit=True
+    )
+
+
 @router.get("/for-user/{user_id}")
 def packages_for_user(
     user_id: UUID,

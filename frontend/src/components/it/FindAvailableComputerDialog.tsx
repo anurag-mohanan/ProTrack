@@ -23,6 +23,7 @@ import {
 } from '../../api/workstationPackages';
 import { fetchShifts } from '../../api/resourceShifts';
 import { fetchComputerTypes, itProvisioningKeys } from '../../api/itProvisioning';
+import { fetchItPeoplePaginated } from '../../api/itOperations';
 import { getErrorMessage } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { FormField, FormSelect } from '../ui/design-system';
@@ -55,6 +56,7 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
     monitor_quantity: defaults?.monitor_quantity ?? 2,
     mouse_3d_required: defaults?.mouse_3d_required ?? false,
   });
+  const [assignUserId, setAssignUserId] = useState(defaults?.user_id || '');
   const [results, setResults] = useState<{
     exact_matches: Record<string, unknown>[];
     partial_matches: Record<string, unknown>[];
@@ -71,6 +73,13 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
     queryFn: fetchComputerTypes,
     enabled: open,
   });
+  const peopleQuery = useQuery({
+    queryKey: ['it-people', 'find-available'],
+    queryFn: () => fetchItPeoplePaginated({ page: 1, page_size: 200 }),
+    enabled: open && !defaults?.user_id,
+  });
+
+  const resolvedUserId = defaults?.user_id || assignUserId;
 
   const searchMutation = useMutation({
     mutationFn: () =>
@@ -80,7 +89,7 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
         computer_type: form.computer_type || null,
         monitor_quantity: form.monitor_quantity,
         mouse_3d_required: form.mouse_3d_required,
-        user_id: defaults?.user_id || null,
+        user_id: resolvedUserId || null,
         provisioning_request_id: defaults?.provisioning_request_id || null,
       }),
     onSuccess: (data) => setResults(data),
@@ -90,17 +99,19 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
   const assignMutation = useMutation({
     mutationFn: (packageId: string) =>
       assignWorkstationPackage(packageId, {
-        user_id: defaults?.user_id || '',
+        user_id: resolvedUserId,
         shift_id: form.shift_id,
         effective_from: form.on_date,
         provisioning_request_id: defaults?.provisioning_request_id || null,
       }),
     onSuccess: () => {
-      showSuccess(
-        `Workstation package assigned${defaults?.employee_name ? ` to ${defaults.employee_name}` : ''}.`,
-      );
+      const name =
+        defaults?.employee_name ||
+        (peopleQuery.data?.items || []).find((p) => p.user_id === resolvedUserId)?.full_name;
+      showSuccess(`Virtual seat assigned${name ? ` to ${name}` : ''}.`);
       void queryClient.invalidateQueries({ queryKey: workstationPackageKeys.all });
       void queryClient.invalidateQueries({ queryKey: itProvisioningKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ['it-assets'] });
       onClose();
     },
     onError: (error) => showError(getErrorMessage(error)),
@@ -140,7 +151,7 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
                     {String(row.monitor_count)} monitors
                     {row.has_3d_mouse ? ' · 3D mouse' : ''}
                   </Typography>
-                  {allowAssign && defaults?.user_id ? (
+                  {allowAssign && resolvedUserId ? (
                     <ProsohmButton
                       buttonVariant="primary"
                       onClick={(e) => {
@@ -150,7 +161,7 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
                       disabled={assignMutation.isPending}
                     >
                       Assign
-                      {defaults.employee_name ? ` to ${defaults.employee_name}` : ''}
+                      {defaults?.employee_name ? ` to ${defaults.employee_name}` : ''}
                     </ProsohmButton>
                   ) : null}
                 </Stack>
@@ -204,7 +215,20 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
               Searching for {defaults.employee_name}
               {defaults.shift_id ? ' using their onboarding requirements.' : '.'}
             </Alert>
-          ) : null}
+          ) : (
+            <FormSelect
+              label="Assign to employee"
+              value={assignUserId}
+              options={[
+                { value: '', label: 'Select employee to enable Assign' },
+                ...(peopleQuery.data?.items || []).map((p) => ({
+                  value: p.user_id,
+                  label: p.full_name,
+                })),
+              ]}
+              onChange={(e) => setAssignUserId(String(e.target.value))}
+            />
+          )}
           <FormField
             label="Date"
             type="date"

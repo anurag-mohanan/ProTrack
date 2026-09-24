@@ -265,15 +265,14 @@ def package_shift_availability(
     for asg in opens:
         user = db.get(User, asg.user_id)
         sh = db.get(ResourceShift, asg.shift_id)
-        assignees.append(
-            {
-                "user_id": str(asg.user_id),
-                "user_name": _full_name(user),
-                "shift_id": str(asg.shift_id),
-                "shift_display": shifts.format_shift_label(sh) if sh else None,
-            }
-        )
+        slot = {
+            "user_id": str(asg.user_id),
+            "user_name": _full_name(user),
+            "shift_id": str(asg.shift_id),
+            "shift_display": shifts.format_shift_label(sh) if sh else None,
+        }
         if asg.shift_id == shift_id:
+            assignees.append(slot)
             return {
                 "status": SHIFT_AVAIL_ASSIGNED,
                 "reason": f"Assigned to {_full_name(user)}",
@@ -281,6 +280,7 @@ def package_shift_availability(
                 "assignees": assignees,
             }
         if target and sh and provisioning.shift_windows_overlap(target, sh):
+            assignees.append(slot)
             return {
                 "status": SHIFT_AVAIL_CONFLICT,
                 "reason": (
@@ -1002,3 +1002,352 @@ def packages_for_user(
         }
         rows.append(summary)
     return rows
+
+
+def package_for_asset(
+    db: Session, asset_id: UUID, *, on_date: date | None = None
+) -> WorkstationPackage | None:
+    """Resolve the active Virtual Seat (WorkstationPackage) containing this asset."""
+    when = on_date or date.today()
+    mem = db.scalar(
+        select(WorkstationPackageMember)
+        .where(
+            WorkstationPackageMember.asset_id == asset_id,
+            WorkstationPackageMember.effective_from <= when,
+            or_(
+                WorkstationPackageMember.effective_to.is_(None),
+                WorkstationPackageMember.effective_to >= when,
+            ),
+        )
+        .order_by(WorkstationPackageMember.effective_from.desc())
+        .limit(1)
+    )
+    if mem is None:
+        return None
+    return db.get(WorkstationPackage, mem.package_id)
+
+
+def inventory_availability_for_asset(
+    db: Session, asset: Asset, *, on_date: date | None = None
+) -> dict[str, Any]:
+    """
+    Central inventory enrichment: Virtual Seat + per-shift availability.
+
+    Asset status (ACTIVE/MAINTENANCE/…) stays separate from shift availability.
+    All inventory UIs must use this helper (or package_shift_availability).
+    """
+    when = on_date or date.today()
+    package = package_for_asset(db, asset.id, on_date=when)
+
+    if package is not None:
+        shift_rows = all_shifts_availability(db, package, on_date=when)
+        source = "virtual_seat"
+        seat_id = str(package.id)
+        seat_code = package.code
+        seat_status = package.status
+    else:
+        shifts.ensure_company_standard_shifts(db)
+        shift_rows = []
+        for shift in db.scalars(
+            select(ResourceShift)
+            .where(ResourceShift.is_active.is_(True))
+            .order_by(ResourceShift.start_time)
+        ).all():
+            avail = asset_shift_availability(db, asset, shift_id=shift.id, on_date=when)
+            shift_rows.append(
+                {
+                    "shift_id": str(shift.id),
+                    "shift_code": shift.code,
+                    "shift_name": shift.name,
+                    "shift_display": shifts.format_shift_label(shift),
+                    **avail,
+                }
+            )
+        source = "asset"
+        seat_id = None
+        seat_code = None
+        seat_status = None
+
+    occupants: list[dict[str, Any]] = []
+    for row in shift_rows:
+        for a in row.get("assignees") or []:
+            occupants.append(
+                {
+                    "user_id": a.get("user_id"),
+                    "user_name": a.get("user_name"),
+                    "shift_id": a.get("shift_id") or row.get("shift_id"),
+                    "shift_code": row.get("shift_code"),
+                    "shift_name": row.get("shift_name"),
+                    "shift_display": row.get("shift_display"),
+                    "status": row.get("status"),
+                }
+            )
+        # Also surface ASSIGNED user from reason when assignees empty but status ASSIGNED
+        if row.get("status") == SHIFT_AVAIL_ASSIGNED and not (row.get("assignees") or []):
+            occupants.append(
+                {
+                    "user_id": None,
+                    "user_name": row.get("reason"),
+                    "shift_id": row.get("shift_id"),
+                    "shift_code": row.get("shift_code"),
+                    "shift_name": row.get("shift_name"),
+                    "shift_display": row.get("shift_display"),
+                    "status": row.get("status"),
+                }
+            )
+
+    return {
+        "virtual_seat_id": seat_id,
+        "virtual_seat_code": seat_code,
+        "virtual_seat_status": seat_status,
+        "availability_source": source,
+        "shift_availability": shift_rows,
+        "occupants": occupants,
+        "is_shared": len({o.get("user_id") for o in occupants if o.get("user_id")}) > 1,
+    }
+
+
+def batch_inventory_availability(
+    db: Session, assets: list[Asset], *, on_date: date | None = None
+) -> dict[UUID, dict[str, Any]]:
+    """Enrich a page of assets (avoids N+1 package lookups where possible)."""
+    when = on_date or date.today()
+    if not assets:
+        return {}
+    asset_ids = [a.id for a in assets]
+    members = list(
+        db.scalars(
+            select(WorkstationPackageMember).where(
+                WorkstationPackageMember.asset_id.in_(asset_ids),
+                WorkstationPackageMember.effective_from <= when,
+                or_(
+                    WorkstationPackageMember.effective_to.is_(None),
+                    WorkstationPackageMember.effective_to >= when,
+                ),
+            )
+        ).all()
+    )
+    asset_to_pkg: dict[UUID, UUID] = {}
+    for m in members:
+        # Prefer latest membership if multiple
+        asset_to_pkg[m.asset_id] = m.package_id
+
+    pkg_ids = set(asset_to_pkg.values())
+    packages = {
+        p.id: p
+        for p in db.scalars(
+            select(WorkstationPackage).where(WorkstationPackage.id.in_(pkg_ids))
+        ).all()
+    } if pkg_ids else {}
+
+    # Cache per-package shift matrices
+    pkg_matrix: dict[UUID, list[dict[str, Any]]] = {}
+    for pid, pkg in packages.items():
+        pkg_matrix[pid] = all_shifts_availability(db, pkg, on_date=when)
+
+    out: dict[UUID, dict[str, Any]] = {}
+    for asset in assets:
+        pid = asset_to_pkg.get(asset.id)
+        if pid and pid in packages:
+            package = packages[pid]
+            shift_rows = pkg_matrix[pid]
+            occupants = []
+            for row in shift_rows:
+                for a in row.get("assignees") or []:
+                    occupants.append(
+                        {
+                            "user_id": a.get("user_id"),
+                            "user_name": a.get("user_name"),
+                            "shift_id": a.get("shift_id") or row.get("shift_id"),
+                            "shift_code": row.get("shift_code"),
+                            "shift_name": row.get("shift_name"),
+                            "shift_display": row.get("shift_display"),
+                            "status": row.get("status"),
+                        }
+                    )
+            out[asset.id] = {
+                "virtual_seat_id": str(package.id),
+                "virtual_seat_code": package.code,
+                "virtual_seat_status": package.status,
+                "availability_source": "virtual_seat",
+                "shift_availability": shift_rows,
+                "occupants": occupants,
+                "is_shared": len({o.get("user_id") for o in occupants if o.get("user_id")}) > 1,
+            }
+        else:
+            out[asset.id] = inventory_availability_for_asset(db, asset, on_date=when)
+    return out
+
+
+def asset_matches_availability_filter(
+    enrich: dict[str, Any],
+    *,
+    availability_shift_id: UUID | None,
+    availability_status: str | None,
+) -> bool:
+    if not availability_shift_id and not availability_status:
+        return True
+    rows = enrich.get("shift_availability") or []
+    if availability_shift_id:
+        rows = [r for r in rows if r.get("shift_id") == str(availability_shift_id)]
+        if not rows:
+            return False
+    if availability_status:
+        wanted = availability_status.upper()
+        if wanted == "AVAILABLE_NOW":
+            # Caller should resolve current shift; treat as AVAILABLE for matched rows
+            wanted = SHIFT_AVAIL_AVAILABLE
+        return any(r.get("status") == wanted for r in rows)
+    return True
+
+
+def grouped_by_user(db: Session, *, on_date: date | None = None) -> list[dict[str, Any]]:
+    """User → shift → virtual seat → physical assets (same assets may repeat when shared)."""
+    when = on_date or date.today()
+    asgs = list(
+        db.scalars(
+            select(WorkstationPackageAssignment).where(
+                WorkstationPackageAssignment.status == "ACTIVE",
+                WorkstationPackageAssignment.effective_from <= when,
+                or_(
+                    WorkstationPackageAssignment.effective_to.is_(None),
+                    WorkstationPackageAssignment.effective_to >= when,
+                ),
+            )
+        ).all()
+    )
+    groups: list[dict[str, Any]] = []
+    for asg in asgs:
+        package = db.get(WorkstationPackage, asg.package_id)
+        if package is None:
+            continue
+        user = db.get(User, asg.user_id)
+        shift = db.get(ResourceShift, asg.shift_id)
+        members = active_members(db, package.id, on_date=when)
+        others = [
+            a
+            for a in open_package_assignments(db, package.id, on_date=when)
+            if a.user_id != asg.user_id
+        ]
+        groups.append(
+            {
+                "user_id": str(asg.user_id),
+                "user_name": _full_name(user),
+                "shift_id": str(asg.shift_id),
+                "shift_display": shifts.format_shift_label(shift) if shift else None,
+                "virtual_seat_id": str(package.id),
+                "virtual_seat_code": package.code,
+                "shared": len(others) > 0,
+                "other_users": [
+                    {
+                        "user_id": str(o.user_id),
+                        "user_name": _full_name(db.get(User, o.user_id)),
+                        "shift_id": str(o.shift_id),
+                    }
+                    for o in others
+                ],
+                "assets": [
+                    {
+                        "asset_id": str(m.asset_id),
+                        "asset_number": (db.get(Asset, m.asset_id).asset_number if db.get(Asset, m.asset_id) else None),
+                        "role": m.role,
+                    }
+                    for m in members
+                ],
+            }
+        )
+    groups.sort(key=lambda g: (g.get("user_name") or "", g.get("shift_display") or ""))
+    return groups
+
+
+def reconcile_orphan_assigned_computers_into_seats(
+    db: Session, *, actor: User, commit: bool = True
+) -> dict[str, Any]:
+    """
+    Safe reconciliation: for computers with open AssetAssignments but no Virtual Seat,
+    create a single-computer seat so shift availability surfaces in inventory.
+
+    Does not invent peripherals. Flags multi-user no-shift cases for IT review.
+    """
+    created = 0
+    flagged: list[dict[str, Any]] = []
+    computers = list(db.scalars(select(Asset).where(Asset.is_deleted.is_(False))).all())
+    for asset in computers:
+        at = asset.asset_type or db.get(AssetType, asset.asset_type_id)
+        if at is None or at.category != "computer":
+            continue
+        if package_for_asset(db, asset.id) is not None:
+            continue
+        opens = open_asset_assignments_on_date(db, asset.id, on_date=date.today())
+        if not opens:
+            continue
+        # Children via parent_asset_id become optional members
+        children = list(
+            db.scalars(
+                select(Asset).where(
+                    Asset.parent_asset_id == asset.id,
+                    Asset.is_deleted.is_(False),
+                )
+            ).all()
+        )
+        members = []
+        for child in children:
+            members.append(
+                {
+                    "asset_id": child.id,
+                    "role": infer_member_role(db, child),
+                    "is_required": False,
+                }
+            )
+        code = f"VSEAT-{asset.asset_number}"
+        try:
+            create_package(
+                db,
+                actor=actor,
+                code=code,
+                name=f"Virtual Seat {asset.asset_number}",
+                primary_computer_asset_id=asset.id,
+                members=members,
+                notes="Auto-reconciled from existing asset assignments",
+                commit=False,
+            )
+            package = package_for_asset(db, asset.id)
+            if package is None:
+                continue
+            for row in opens:
+                if row.shift_id is None:
+                    flagged.append(
+                        {
+                            "asset_number": asset.asset_number,
+                            "user_id": str(row.assigned_to_user_id),
+                            "reason": "Open assignment has no shift_id — seat created but not auto-assigned",
+                        }
+                    )
+                    continue
+                try:
+                    assign_package(
+                        db,
+                        package,
+                        actor=actor,
+                        user_id=row.assigned_to_user_id,
+                        shift_id=row.shift_id,
+                        effective_from=row.assigned_date,
+                        force_override=True,
+                        override_reason="Reconciliation from existing AssetAssignment",
+                        commit=False,
+                    )
+                except ProTrackValidationError as exc:
+                    flagged.append(
+                        {
+                            "asset_number": asset.asset_number,
+                            "user_id": str(row.assigned_to_user_id),
+                            "reason": str(exc.detail),
+                        }
+                    )
+            created += 1
+        except ProTrackValidationError as exc:
+            flagged.append({"asset_number": asset.asset_number, "reason": str(exc.detail)})
+
+    if commit:
+        db.commit()
+    return {"seats_created": created, "flagged_for_review": flagged}

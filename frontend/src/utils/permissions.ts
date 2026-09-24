@@ -420,7 +420,7 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
     children: [
       { label: 'All Assets', path: '/it/assets' },
       { label: 'Computers', path: '/it/assets?category=computer' },
-      { label: 'Workstation Packages', path: '/it/workstation-packages' },
+      { label: 'Virtual Seats', path: '/it/workstation-packages' },
       { label: 'Peripherals & Equipment', path: '/it/assets?category=peripheral' },
       { label: 'Returned / Pending Return', path: '/it/returned-assets' },
       { label: 'Assignments', path: '/it/assets?view=assignments' },

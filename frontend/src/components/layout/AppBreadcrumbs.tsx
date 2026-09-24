@@ -64,7 +64,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/admin/imports/history': 'History data packs',
   '/it': 'IT Dashboard',
   '/it/assets': 'Assets & Inventory',
-  '/it/workstation-packages': 'Workstation Packages',
+  '/it/workstation-packages': 'Virtual Seats',
   '/it/returned-assets': 'Returned / Pending Return',
   '/it/computers': 'Computer NICs',
   '/it/networks': 'IP Pools',

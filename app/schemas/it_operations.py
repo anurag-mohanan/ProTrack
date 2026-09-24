@@ -104,6 +104,27 @@ class AssetUpdate(BlankOptionalFieldsMixin, BaseModel):
     computer_name_reason: Optional[str] = Field(default=None, max_length=200)
 
 
+class ShiftAvailabilitySlot(BaseModel):
+    shift_id: Optional[str] = None
+    shift_code: Optional[str] = None
+    shift_name: Optional[str] = None
+    shift_display: Optional[str] = None
+    status: str
+    reason: Optional[str] = None
+    assignees: list[dict] = Field(default_factory=list)
+    member_issues: list[dict] = Field(default_factory=list)
+
+
+class AssetOccupantSlot(BaseModel):
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
+    shift_id: Optional[str] = None
+    shift_code: Optional[str] = None
+    shift_name: Optional[str] = None
+    shift_display: Optional[str] = None
+    status: Optional[str] = None
+
+
 class AssetRead(TimestampSchema):
     asset_number: str
     legacy_asset_number: Optional[str] = None
@@ -156,6 +177,14 @@ class AssetRead(TimestampSchema):
     active_assignment_users: Optional[int] = None
     active_assignment_shifts: Optional[int] = None
     configured_shifts: Optional[int] = None
+    # Virtual Seat (= WorkstationPackage) + calculated shift availability
+    virtual_seat_id: Optional[UUID] = None
+    virtual_seat_code: Optional[str] = None
+    virtual_seat_status: Optional[str] = None
+    availability_source: Optional[str] = None
+    shift_availability: list[ShiftAvailabilitySlot] = Field(default_factory=list)
+    occupants: list[AssetOccupantSlot] = Field(default_factory=list)
+    is_shared_seat: bool = False
 
 
 class AssetAssignRequest(BlankOptionalFieldsMixin, BaseModel):
@@ -390,6 +419,12 @@ class ComputerRead(TimestampSchema):
     network_id: Optional[UUID] = None
     network_name: Optional[str] = None
     network_cidr: Optional[str] = None
+    virtual_seat_id: Optional[UUID] = None
+    virtual_seat_code: Optional[str] = None
+    virtual_seat_status: Optional[str] = None
+    shift_availability: list[ShiftAvailabilitySlot] = Field(default_factory=list)
+    occupants: list[AssetOccupantSlot] = Field(default_factory=list)
+    is_shared_seat: bool = False
 
 
 class ComputerNetworkInterfaceCreate(BlankOptionalFieldsMixin, BaseModel):

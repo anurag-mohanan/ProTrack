@@ -75,7 +75,8 @@ import type {
 
 export const itOperationsKeys = {
   all: ['it'] as const,
-  dashboard: () => [...itOperationsKeys.all, 'dashboard'] as const,
+  dashboard: (warrantyDays?: number) =>
+    [...itOperationsKeys.all, 'dashboard', warrantyDays ?? 'default'] as const,
   onboardingTasks: () => [...itOperationsKeys.all, 'dashboard', 'onboarding-tasks'] as const,
   assetTypes: () => [...itOperationsKeys.all, 'asset-types'] as const,
   masterCategories: () => [...itOperationsKeys.all, 'master', 'categories'] as const,
@@ -158,8 +159,10 @@ async function getList<T>(path: string, params?: ListParams): Promise<T[]> {
 
 // --- Dashboard ---
 
-export async function fetchItDashboard(): Promise<ITDashboardSummary> {
-  const { data } = await apiClient.get<ITDashboardSummary>('/it/dashboard');
+export async function fetchItDashboard(warrantyDays?: number): Promise<ITDashboardSummary> {
+  const { data } = await apiClient.get<ITDashboardSummary>('/it/dashboard', {
+    params: warrantyDays ? { warranty_days: warrantyDays } : undefined,
+  });
   return data;
 }
 

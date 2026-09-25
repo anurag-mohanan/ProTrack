@@ -20,23 +20,6 @@ export function matchItNavPath(itemPath: string, pathname: string, search: strin
   return keys.every((key) => have.get(key) === want.get(key));
 }
 
-export function currentItTabPath(
-  items: ReadonlyArray<{ path: string }>,
-  pathname: string,
-  search: string,
-): string {
-  const specific = items.find((item) => {
-    const { search: wantSearch } = splitNavPath(item.path);
-    return Boolean(wantSearch) && matchItNavPath(item.path, pathname, search);
-  });
-  if (specific) return specific.path;
-  const generic = items.find((item) => {
-    const { pathname: p, search: q } = splitNavPath(item.path);
-    return p === pathname && !q;
-  });
-  return generic?.path ?? items[0]?.path ?? pathname;
-}
-
 export function isNavItemActive(
   itemPath: string,
   pathname: string,

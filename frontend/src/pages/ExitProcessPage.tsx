@@ -18,6 +18,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -79,8 +80,9 @@ function groupQuestions(questions: ExitInterviewQuestion[]) {
 export default function ExitProcessPage() {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') ?? 'all');
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get('id'));
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<ExitInterviewCreate>(emptyCreate());
   const [deleteTarget, setDeleteTarget] = useState<ExitInterview | null>(null);

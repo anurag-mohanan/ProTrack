@@ -35,7 +35,7 @@ import RadioButtonUncheckedRoundedIcon from '@mui/icons-material/RadioButtonUnch
 import UnfoldLessRoundedIcon from '@mui/icons-material/UnfoldLessRounded';
 import UnfoldMoreRoundedIcon from '@mui/icons-material/UnfoldMoreRounded';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { PageContainer } from '../components/common/PageContainer';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingState } from '../components/common/LoadingState';
@@ -77,8 +77,11 @@ type FormPayload = OnboardingChecklistCreate;
 export default function OnboardingPage() {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState('in_progress');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState(
+    () => searchParams.get('status') ?? (searchParams.get('id') ? 'all' : 'in_progress'),
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get('id'));
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<OnboardingChecklist | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OnboardingChecklist | null>(null);

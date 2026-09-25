@@ -53,8 +53,24 @@ WARRANTY_STATUSES = frozenset({"none", "active", "expiring_soon", "expired"})
 NIC_ROLES = frozenset({"lan", "wifi", "vpn", "other"})
 # Days before expiry counted as "expiring soon"
 WARRANTY_EXPIRING_SOON_DAYS = 30
+# Selectable warranty alert windows (ITSettings.settings_json["warranty_alert_days"])
+WARRANTY_ALERT_DAY_OPTIONS = (7, 30, 60, 90)
 # Upper bound for the bulk "next numbers" preview
 MAX_NUMBER_PREVIEW = 200
+
+
+def warranty_alert_days(db: Session) -> int:
+    """Configured warranty alert window; falls back to WARRANTY_EXPIRING_SOON_DAYS."""
+    import json
+
+    raw = db.scalar(select(ITSettings.settings_json).limit(1))
+    if not raw:
+        return WARRANTY_EXPIRING_SOON_DAYS
+    try:
+        value = int((json.loads(raw) or {}).get("warranty_alert_days"))
+    except (TypeError, ValueError, AttributeError):
+        return WARRANTY_EXPIRING_SOON_DAYS
+    return value if value in WARRANTY_ALERT_DAY_OPTIONS else WARRANTY_EXPIRING_SOON_DAYS
 
 
 def warranty_status_for(expiry: date | None, *, today: date | None = None) -> str:
@@ -832,6 +848,7 @@ def list_assets(
     owner_customer_id: UUID | None = None,
     customer_used_for_id: UUID | None = None,
     warranty_status: str | None = None,
+    warranty_within_days: int | None = None,
     skip: int = 0,
     limit: int = 25,
 ) -> tuple[list[Asset], int]:
@@ -929,7 +946,12 @@ def list_assets(
                 f"Allowed: {', '.join(sorted(WARRANTY_STATUSES))}"
             )
         today = date.today()
-        soon = today + timedelta(days=WARRANTY_EXPIRING_SOON_DAYS)
+        window = (
+            warranty_within_days
+            if warranty_within_days and warranty_within_days > 0
+            else WARRANTY_EXPIRING_SOON_DAYS
+        )
+        soon = today + timedelta(days=window)
         if warranty_key == "none":
             w_clause = Asset.warranty_expiry.is_(None)
         elif warranty_key == "expired":
@@ -945,8 +967,9 @@ def list_assets(
         stmt = stmt.where(w_clause)
         count_filters.append(w_clause)
 
-    count_stmt = select(Asset.id).where(*count_filters)
-    total = len(list(db.scalars(count_stmt).all()))
+    total = int(
+        db.scalar(select(func.count()).select_from(Asset).where(*count_filters)) or 0
+    )
     rows = list(
         db.scalars(stmt.order_by(Asset.asset_number).offset(skip).limit(limit)).all()
     )
@@ -2286,6 +2309,24 @@ def return_assets_for_user(
     """Return every open assignment held by ``user_id`` (exit / offboard reclaim)."""
     when = returned_date or date.today()
     note = notes or "Returned on employee exit"
+    from app.models.it_operations import WorkstationPackageAssignment
+    from app.services import workstation_package_service
+
+    seat_rows = db.scalars(
+        select(WorkstationPackageAssignment).where(
+            WorkstationPackageAssignment.user_id == user_id,
+            WorkstationPackageAssignment.status == "ACTIVE",
+            or_(
+                WorkstationPackageAssignment.effective_to.is_(None),
+                WorkstationPackageAssignment.effective_to >= when,
+            ),
+        )
+    ).all()
+    for seat_assignment in seat_rows:
+        workstation_package_service.return_package_assignment(
+            db, seat_assignment, actor=by_user, returned_date=when, notes=note, commit=False
+        )
+    db.flush()
     open_rows = list(
         db.scalars(
             select(AssetAssignment).where(

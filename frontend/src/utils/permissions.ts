@@ -429,6 +429,12 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
   },
   {
     module: MODULE_IT_OPERATIONS,
+    label: 'IT People',
+    path: '/it/accounts',
+    icon: BadgeRoundedIcon,
+  },
+  {
+    module: MODULE_IT_OPERATIONS,
     label: 'Software & Licenses',
     path: '/it/software',
     icon: AppsRoundedIcon,
@@ -440,6 +446,8 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
       { label: 'Assignments', path: '/it/software?tab=assignments' },
       { label: 'Installations', path: '/it/software?tab=installations' },
       { label: 'Renewals / Expiry', path: '/it/software?tab=expiry' },
+      { label: 'Requirements', path: '/it/software?tab=requirements' },
+      { label: 'Packages', path: '/it/software?tab=packages' },
     ],
   },
   {
@@ -450,7 +458,6 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
     children: [
       { label: 'Requests', path: '/it/requests' },
       { label: 'Maintenance', path: '/it/maintenance' },
-      { label: 'Repairs / Downtime', path: '/it/maintenance?tab=repairs' },
     ],
   },
   {

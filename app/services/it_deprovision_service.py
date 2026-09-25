@@ -48,6 +48,10 @@ def ensure_offboard_tasks(
     """
     existing = find_open_offboard_ticket(db, user.id)
     if existing is not None:
+        if user.leaving_date and existing.due_date != user.leaving_date:
+            existing.due_date = user.leaving_date
+            db.add(existing)
+            db.flush()
         return existing
 
     assets = it_asset_service.list_assets_for_user(db, user.id)
@@ -61,8 +65,11 @@ def ensure_offboard_tasks(
     from app.services import it_software_service
 
     software_rows = it_software_service.list_assignments(db, user_id=user.id, active_only=True)
+    from app.services import workstation_package_service
 
-    if not assets and not accounts and not ips and not software_rows:
+    seats = workstation_package_service.packages_for_user(db, user.id)
+
+    if not assets and not accounts and not ips and not software_rows and not seats:
         return None
 
     label = _employee_label(user)
@@ -83,11 +90,17 @@ def ensure_offboard_tasks(
         name = software.name if software else str(row.license_pool_id)
         software_lines_parts.append(f"- {name}")
     software_lines = "\n".join(software_lines_parts) or "- None"
+    seat_lines = "\n".join(
+        f"- {seat['code']} ({(seat.get('assignment') or {}).get('shift_display') or 'no shift'})"
+        + (" · shared with other shifts" if (seat.get("assignment") or {}).get("shared") else "")
+        for seat in seats
+    ) or "- None"
 
     description = (
         f"{OFFBOARD_TICKET_MARKER} for {label}.\n"
         f"Employee user_id: {user.id}\n"
         f"Leaving date: {user.leaving_date.isoformat() if user.leaving_date else 'TBD'}\n\n"
+        f"Virtual seat shifts to release:\n{seat_lines}\n\n"
         f"Assigned assets to return:\n{asset_lines}\n\n"
         f"Software licenses to unassign:\n{software_lines}\n\n"
         f"Active IT accounts to deactivate:\n{account_lines}\n\n"
@@ -104,6 +117,7 @@ def ensure_offboard_tasks(
         category="it",
         priority="high",
         status="open",
+        due_date=user.leaving_date,
         requester_id=requester.id,
         assignee_id=assignee_id,
         org_department_id=tickets.default_department_id_for_category(db, "it"),

@@ -1,10 +1,9 @@
 import { Chip, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { fetchAssetsPaginated, fetchOpenItRequests, itOperationsKeys } from '../../api/itOperations';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ITSectionSubnav, IT_SERVICE_TABS } from '../../components/it/ITSectionSubnav';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { ClientPaginatedDataGrid } from '../../components/common/ClientPaginatedDataGrid';
@@ -17,8 +16,6 @@ import { formatCellValue } from '../../utils/format';
 
 export function ITMaintenancePage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const isRepairs = searchParams.get('tab') === 'repairs';
 
   const assetsQuery = useQuery({
     queryKey: itOperationsKeys.assets({ status: 'maintenance', page_size: 200 }),
@@ -51,18 +48,14 @@ export function ITMaintenancePage() {
   return (
     <PageContainer>
       <PageHeader
-        subtitle={
-          isRepairs
-            ? 'Repair tickets and downtime. Assets in maintenance are listed below; raise an IT request for a repair workflow.'
-            : 'Assets currently in maintenance. Status is set from the inventory asset; IT requests capture the work ticket.'
-        }
+        title="Maintenance"
+        subtitle="Assets currently in maintenance. Status is set from the inventory asset; IT requests capture the work ticket."
         action={
           <ProsohmButton buttonVariant="outlined" onClick={() => navigate('/it/assets?status=maintenance')}>
             Open in inventory
           </ProsohmButton>
         }
       />
-      <ITSectionSubnav items={IT_SERVICE_TABS} />
 
       <Stack spacing={2.5}>
         <ContentCard title="Assets in maintenance" noPadding>

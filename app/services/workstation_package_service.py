@@ -124,7 +124,7 @@ def open_asset_assignments_on_date(
                 AssetAssignment.assigned_date <= on_date,
                 or_(
                     AssetAssignment.returned_date.is_(None),
-                    AssetAssignment.returned_date >= on_date,
+                    AssetAssignment.returned_date > on_date,
                 ),
             )
         ).all()

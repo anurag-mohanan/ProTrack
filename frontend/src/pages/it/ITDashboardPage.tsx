@@ -1,6 +1,22 @@
-import { Chip, Grid, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import {
+  Chip,
+  Grid,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import VerifiedUserRoundedIcon from '@mui/icons-material/VerifiedUserRounded';
+import AssignmentLateRoundedIcon from '@mui/icons-material/AssignmentLateRounded';
+import EventSeatRoundedIcon from '@mui/icons-material/EventSeatRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
@@ -30,15 +46,19 @@ import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
-import { ContentCard, DashboardCard } from '../../components/ui/cards';
+import { ContentCard } from '../../components/ui/cards';
 import { KpiMetricCard } from '../../components/ui/design-system';
 import { formatCellValue, formatDate } from '../../utils/format';
 
+const WARRANTY_WINDOWS = [7, 30, 60, 90] as const;
+
 export function ITDashboardPage() {
   const navigate = useNavigate();
+  const [warrantyDays, setWarrantyDays] = useState<number | undefined>(undefined);
   const query = useQuery({
-    queryKey: itOperationsKeys.dashboard(),
-    queryFn: fetchItDashboard,
+    queryKey: itOperationsKeys.dashboard(warrantyDays),
+    queryFn: () => fetchItDashboard(warrantyDays),
+    placeholderData: keepPreviousData,
   });
   const onboardingQuery = useQuery({
     queryKey: itOperationsKeys.onboardingTasks(),
@@ -82,30 +102,63 @@ export function ITDashboardPage() {
   const maintenanceComputers = data?.maintenance_computers ?? 0;
   const retiredComputers = data?.retired_computers ?? 0;
   const employeesWithout = data?.employees_without_computer ?? 0;
-  const reserved = data?.reserved_assets ?? 0;
+  const awaitingReturn = data?.awaiting_return_assets ?? 0;
   const returned = data?.returned_assets ?? 0;
   const retiredAssets = data?.retired_assets ?? 0;
   const disposed = data?.disposed_assets ?? 0;
+  const lostDamaged = (data?.lost_assets ?? 0) + (data?.damaged_assets ?? 0);
   const computersWithoutIp = data?.computers_without_ip ?? 0;
   const dataQualityIssues = data?.data_quality_open_issues ?? 0;
+  const dataQualityRecords = data?.data_quality_open_records ?? 0;
   const softwareCatalog = data?.software_catalog_count ?? 0;
   const licensePools = data?.license_pool_count ?? 0;
-  const licensesExpiring = data?.licenses_expiring_30 ?? 0;
+  const licensesExpiring = data?.licenses_expiring_window ?? data?.licenses_expiring_30 ?? 0;
   const licensesExpired = data?.licenses_expired ?? 0;
+  const seatsTotal = data?.license_seats_total ?? 0;
+  const seatsAssigned = data?.license_seats_assigned ?? 0;
+  const seatsAvailable = data?.license_seats_available ?? 0;
+  const windowDays = data?.warranty_window_days ?? 30;
+  const warrantyExpiring = data?.warranty_expiring_assets ?? 0;
+  const warrantyExpired = data?.warranty_expired_assets ?? 0;
+  const warrantyMissing = data?.warranty_missing_assets ?? 0;
+  const overdueRequests = data?.overdue_it_requests ?? 0;
+  const unassignedRequests = data?.unassigned_it_requests ?? 0;
+  const movements = data?.recent_movements ?? [];
   const onboardingTasks = onboardingQuery.data ?? [];
 
   return (
     <PageContainer>
       <PageHeader
         title="IT Operations"
-        subtitle="Assets & Inventory is the operational hub. Computer name, IP, MAC, software, and assignment live on the asset."
+        subtitle="Live counts from inventory, Help Desk, licenses and Virtual Seats. Click any figure to open the matching records."
+        action={
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Typography variant="caption" color="text.secondary">
+              Expiry window
+            </Typography>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={windowDays}
+              onChange={(_, value: number | null) => {
+                if (value) setWarrantyDays(value);
+              }}
+            >
+              {WARRANTY_WINDOWS.map((days) => (
+                <ToggleButton key={days} value={days}>
+                  {days}d
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+          </Stack>
+        }
       />
 
       <Stack spacing={2.5}>
         <Grid container spacing={1.5}>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <KpiMetricCard
-              title="Total assets"
+              title="Total assets (in inventory)"
               value={String(total)}
               icon={InventoryRoundedIcon}
               accent="primary"
@@ -136,7 +189,51 @@ export function ITDashboardPage() {
               value={String(maintenance)}
               icon={BuildRoundedIcon}
               accent="warning"
-              onClick={() => navigate('/it/assets?status=maintenance')}
+              onClick={() => navigate('/it/maintenance')}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <KpiMetricCard
+              title={`Warranty expiring (${windowDays}d)`}
+              value={String(warrantyExpiring)}
+              icon={VerifiedUserRoundedIcon}
+              accent={warrantyExpiring > 0 ? 'warning' : 'success'}
+              subtitle={`${warrantyExpired} expired · ${warrantyMissing} no date`}
+              onClick={() =>
+                navigate(
+                  `/it/assets?warranty_status=expiring_soon&warranty_within_days=${windowDays}`,
+                )
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <KpiMetricCard
+              title="Open IT requests"
+              value={String(openRequests)}
+              icon={SupportAgentRoundedIcon}
+              accent="info"
+              subtitle={`${unassignedRequests} unassigned`}
+              onClick={() => navigate('/it/requests')}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <KpiMetricCard
+              title="Overdue IT requests"
+              value={String(overdueRequests)}
+              icon={AssignmentLateRoundedIcon}
+              accent={overdueRequests > 0 ? 'error' : 'success'}
+              subtitle="Past Help Desk due date"
+              onClick={() => navigate('/it/requests?overdue=1')}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <KpiMetricCard
+              title="Data quality"
+              value={String(dataQualityRecords)}
+              icon={WarningAmberRoundedIcon}
+              accent={dataQualityIssues > 0 ? 'warning' : 'success'}
+              subtitle={`${dataQualityIssues} issue type(s)`}
+              onClick={() => navigate('/it/assets?data_quality=1')}
             />
           </Grid>
         </Grid>
@@ -144,8 +241,8 @@ export function ITDashboardPage() {
         <Grid container spacing={1.5}>
           <Grid size={{ xs: 6, sm: 3, md: 2 }}>
             <KpiMetricCard
-              title="Reserved"
-              value={String(reserved)}
+              title="Awaiting return"
+              value={String(awaitingReturn)}
               icon={InventoryRoundedIcon}
               accent="warning"
               onClick={() => navigate('/it/assets?status=awaiting_return')}
@@ -180,20 +277,20 @@ export function ITDashboardPage() {
           </Grid>
           <Grid size={{ xs: 6, sm: 3, md: 2 }}>
             <KpiMetricCard
-              title="Computers without IP"
-              value={String(computersWithoutIp)}
-              icon={DnsRoundedIcon}
-              accent="warning"
-              onClick={() => navigate('/it/assets?category=computer')}
+              title="Lost / damaged"
+              value={String(lostDamaged)}
+              icon={InventoryRoundedIcon}
+              accent={lostDamaged > 0 ? 'error' : 'primary'}
+              onClick={() => navigate('/it/assets?status=lost')}
             />
           </Grid>
           <Grid size={{ xs: 6, sm: 3, md: 2 }}>
             <KpiMetricCard
-              title="Data quality"
-              value={String(dataQualityIssues)}
-              icon={WarningAmberRoundedIcon}
-              accent={dataQualityIssues > 0 ? 'warning' : 'success'}
-              onClick={() => navigate('/it/assets')}
+              title="Computers without IP"
+              value={String(computersWithoutIp)}
+              icon={DnsRoundedIcon}
+              accent="warning"
+              onClick={() => navigate('/it/assets?data_quality=1')}
             />
           </Grid>
         </Grid>
@@ -270,16 +367,17 @@ export function ITDashboardPage() {
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <KpiMetricCard
-                title="License pools"
-                value={String(licensePools)}
+                title="License seats"
+                value={String(seatsTotal)}
                 icon={AppsRoundedIcon}
                 accent="info"
+                subtitle={`${seatsAssigned} assigned · ${seatsAvailable} available · ${licensePools} pools`}
                 onClick={() => navigate('/it/software?tab=licenses')}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <KpiMetricCard
-                title="Expiring (30d)"
+                title={`Expiring (${windowDays}d)`}
                 value={String(licensesExpiring)}
                 icon={WarningAmberRoundedIcon}
                 accent="warning"
@@ -301,11 +399,11 @@ export function ITDashboardPage() {
         <Grid container spacing={1.5}>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <KpiMetricCard
-              title="Open IT requests"
-              value={String(openRequests)}
-              icon={SupportAgentRoundedIcon}
-              accent="error"
-              onClick={() => navigate('/it/requests')}
+              title="Virtual Seats"
+              value={String((capacityQuery.data ?? []).reduce((sum, row) => sum + row.total, 0))}
+              icon={EventSeatRoundedIcon}
+              accent="primary"
+              onClick={() => navigate('/it/workstation-packages')}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -505,45 +603,50 @@ export function ITDashboardPage() {
           )}
         </ContentCard>
 
-        <ContentCard title="Quick links" subtitle="Jump into common IT Operations workspaces.">
-          <Grid container spacing={1.5}>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <DashboardCard
-                title="Assets & Inventory"
-                subtitle="Computers, peripherals, assignments"
-                icon={InventoryRoundedIcon}
-                accent="primary"
-                onClick={() => navigate('/it/assets')}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <DashboardCard
-                title="Computers"
-                subtitle="Inventory computers with IP and MAC"
-                icon={DevicesOtherRoundedIcon}
-                accent="info"
-                onClick={() => navigate('/it/assets?category=computer')}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <DashboardCard
-                title="Software"
-                subtitle="Licenses, installs, and expiry"
-                icon={AppsRoundedIcon}
-                accent="secondary"
-                onClick={() => navigate('/it/software')}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <DashboardCard
-                title="IT Requests"
-                subtitle="Open help-desk tickets"
-                icon={SupportAgentRoundedIcon}
-                accent="warning"
-                onClick={() => navigate('/it/requests')}
-              />
-            </Grid>
-          </Grid>
+        <ContentCard
+          title="Recent asset movements"
+          subtitle="Latest assignment starts and returns from asset assignment history."
+        >
+          {movements.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No asset assignments recorded yet.
+            </Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Asset</TableCell>
+                  <TableCell>Employee</TableCell>
+                  <TableCell>Movement</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {movements.map((row, index) => (
+                  <TableRow key={`${row.asset_id}-${row.user_id}-${index}`}>
+                    <TableCell>{formatDate(row.date) || '—'}</TableCell>
+                    <TableCell>
+                      <RouterLink to={`/it/assets?search=${encodeURIComponent(row.asset_number)}`}>
+                        {row.asset_number}
+                      </RouterLink>
+                    </TableCell>
+                    <TableCell>
+                      <RouterLink to={`/it/accounts?user=${row.user_id}&status=all`}>
+                        {row.user_name}
+                      </RouterLink>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        color={row.movement === 'assigned' ? 'info' : 'default'}
+                        label={row.movement === 'assigned' ? 'Assigned' : 'Returned'}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </ContentCard>
       </Stack>
     </PageContainer>

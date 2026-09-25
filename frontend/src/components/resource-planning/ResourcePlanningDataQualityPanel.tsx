@@ -23,7 +23,7 @@ import {
   type DataQualityReport,
 } from '../../api/resourcePlanning';
 import { getErrorMessage } from '../../api/client';
-import { reconcileOrphanAssignedComputers } from '../../api/itOperations';
+import { itOperationsKeys, reconcileOrphanAssignedComputers } from '../../api/itOperations';
 import { LoadingState } from '../common/LoadingState';
 import { ErrorState } from '../common/ErrorState';
 import { DashboardPanel, KpiMetricCard } from '../ui/design-system';
@@ -98,6 +98,10 @@ function IssueAccordion({ issue }: { issue: DataQualityIssue }) {
               const label = `${sampleLabel(sample)}${
                 sample.detail ? ` — ${String(sample.detail)}` : ''
               }${
+                sample.field && sample.value
+                  ? ` — duplicate ${String(sample.field).replace('_', ' ')} ${String(sample.value)}`
+                  : ''
+              }${
                 sample.seat_shortfall != null
                   ? ` (shortfall ${String(sample.seat_shortfall)})`
                   : ''
@@ -153,7 +157,7 @@ export function ResourcePlanningDataQualityPanel({ showRepairs = true }: Props) 
           : 'No orphan assigned statuses found.',
       );
       void queryClient.invalidateQueries({ queryKey: resourcePlanningQueryKeys.dataQuality() });
-      void queryClient.invalidateQueries({ queryKey: ['it-operations'] });
+      void queryClient.invalidateQueries({ queryKey: itOperationsKeys.all });
     },
     onError: (error) => showError(getErrorMessage(error)),
   });

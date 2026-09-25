@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.access_control import MODULE_IT_OPERATIONS
 from app.models.enums import ActivityAction, EntityType
-from app.models.it_operations import Asset, IPAddress, ITSettings, Network
+from app.models.it_operations import Asset, AssetAssignment, IPAddress, ITSettings, Network
 from app.models.models import OnboardingChecklist, OnboardingChecklistItem, Ticket, User
 from app.services.activity_service import log_activity
-from app.services.it_asset_service import get_or_create_settings
+from app.services.it_asset_service import (
+    CURRENT_INVENTORY_STATUSES,
+    get_or_create_settings,
+    warranty_alert_days,
+)
 from app.services.ticketing_service import OPEN_STATUSES
 
 MODULE = MODULE_IT_OPERATIONS
@@ -49,49 +55,94 @@ def list_pending_it_onboarding_tasks(db: Session, *, limit: int = 50) -> list[di
     return result
 
 
-def dashboard_summary(db: Session) -> dict[str, int]:
-    total_assets = int(
+def _recent_asset_movements(db: Session, *, limit: int = 10) -> list[dict]:
+    """Latest assignment starts / returns, newest first."""
+    rows = db.execute(
+        select(AssetAssignment, Asset.asset_number, User.first_name, User.last_name)
+        .join(Asset, Asset.id == AssetAssignment.asset_id)
+        .join(User, User.id == AssetAssignment.assigned_to_user_id)
+        .where(Asset.is_deleted.is_(False))
+        .order_by(AssetAssignment.updated_at.desc())
+        .limit(limit)
+    ).all()
+    movements: list[dict] = []
+    for assignment, asset_number, first_name, last_name in rows:
+        returned = assignment.returned_date is not None
+        movements.append(
+            {
+                "asset_id": str(assignment.asset_id),
+                "asset_number": asset_number,
+                "user_id": str(assignment.assigned_to_user_id),
+                "user_name": f"{first_name} {last_name}".strip(),
+                "movement": "returned" if returned else "assigned",
+                "date": (assignment.returned_date if returned else assignment.assigned_date),
+            }
+        )
+    return movements
+
+
+def dashboard_summary(db: Session, *, warranty_days: int | None = None) -> dict:
+    today = date.today()
+    window_days = warranty_days or warranty_alert_days(db)
+    status_counts = {
+        str(status): int(count)
+        for status, count in db.execute(
+            select(Asset.status, func.count())
+            .where(Asset.is_deleted.is_(False))
+            .group_by(Asset.status)
+        ).all()
+    }
+    total_assets = sum(status_counts.get(s, 0) for s in CURRENT_INVENTORY_STATUSES)
+    assigned_assets = status_counts.get("assigned", 0)
+    available_assets = status_counts.get("available", 0)
+    maintenance_assets = status_counts.get("maintenance", 0)
+
+    in_inventory = (Asset.is_deleted.is_(False), Asset.status.in_(CURRENT_INVENTORY_STATUSES))
+    warranty_expiring = int(
         db.scalar(
             select(func.count())
             .select_from(Asset)
             .where(
-                Asset.is_deleted.is_(False),
-                Asset.status.in_(
-                    ("available", "assigned", "maintenance", "awaiting_return")
-                ),
+                *in_inventory,
+                Asset.warranty_expiry.is_not(None),
+                Asset.warranty_expiry >= today,
+                Asset.warranty_expiry <= today + timedelta(days=window_days),
             )
         )
         or 0
     )
-    assigned_assets = int(
+    warranty_expired = int(
         db.scalar(
             select(func.count())
             .select_from(Asset)
-            .where(Asset.is_deleted.is_(False), Asset.status == "assigned")
+            .where(*in_inventory, Asset.warranty_expiry.is_not(None), Asset.warranty_expiry < today)
         )
         or 0
     )
-    available_assets = int(
+    warranty_missing = int(
         db.scalar(
             select(func.count())
             .select_from(Asset)
-            .where(Asset.is_deleted.is_(False), Asset.status == "available")
+            .where(*in_inventory, Asset.warranty_expiry.is_(None))
         )
         or 0
     )
-    maintenance_assets = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Asset)
-            .where(Asset.is_deleted.is_(False), Asset.status == "maintenance")
-        )
-        or 0
-    )
+
+    it_open = (Ticket.category == "it", Ticket.status.in_(OPEN_STATUSES))
     open_it_requests = int(
+        db.scalar(select(func.count()).select_from(Ticket).where(*it_open)) or 0
+    )
+    overdue_it_requests = int(
         db.scalar(
             select(func.count())
             .select_from(Ticket)
-            .where(Ticket.category == "it", Ticket.status.in_(OPEN_STATUSES))
+            .where(*it_open, Ticket.due_date.is_not(None), Ticket.due_date < today)
+        )
+        or 0
+    )
+    unassigned_it_requests = int(
+        db.scalar(
+            select(func.count()).select_from(Ticket).where(*it_open, Ticket.assignee_id.is_(None))
         )
         or 0
     )
@@ -126,53 +177,33 @@ def dashboard_summary(db: Session) -> dict[str, int]:
     employees_without = it_people_service.count_active_employees_without_computer(db)
     from app.services import it_software_service
 
-    software_stats = it_software_service.software_counts_for_dashboard(db)
+    software_stats = it_software_service.software_counts_for_dashboard(
+        db, expiring_within_days=window_days
+    )
     from app.services import resource_it_gap_service
 
     gap_stats = resource_it_gap_service.gap_counts_for_dashboard(db)
 
-    returned_assets = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Asset)
-            .where(Asset.is_deleted.is_(False), Asset.status == "returned_to_customer")
-        )
-        or 0
-    )
-    retired_assets = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Asset)
-            .where(Asset.is_deleted.is_(False), Asset.status == "retired")
-        )
-        or 0
-    )
-    disposed_assets = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Asset)
-            .where(Asset.is_deleted.is_(False), Asset.status == "disposed")
-        )
-        or 0
-    )
-    reserved_assets = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Asset)
-            .where(Asset.is_deleted.is_(False), Asset.status == "awaiting_return")
-        )
-        or 0
-    )
     from app.services import it_data_quality_service
 
     dq = it_data_quality_service.build_data_quality_report(db)
-    open_by_code = {row["code"]: int(row["count"]) for row in dq.get("open_issues") or []}
+    open_issues = dq.get("open_issues") or []
+    open_by_code = {row["code"]: int(row["count"]) for row in open_issues}
     return {
         "total_assets": total_assets,
         "assigned_assets": assigned_assets,
         "available_assets": available_assets,
         "maintenance_assets": maintenance_assets,
+        "awaiting_return_assets": status_counts.get("awaiting_return", 0),
+        "lost_assets": status_counts.get("lost", 0),
+        "damaged_assets": status_counts.get("damaged", 0),
+        "warranty_window_days": window_days,
+        "warranty_expiring_assets": warranty_expiring,
+        "warranty_expired_assets": warranty_expired,
+        "warranty_missing_assets": warranty_missing,
         "open_it_requests": open_it_requests,
+        "overdue_it_requests": overdue_it_requests,
+        "unassigned_it_requests": unassigned_it_requests,
         "pending_onboarding_tasks": pending_onboarding_tasks,
         "networks": networks,
         "allocated_ips": allocated_ips,
@@ -180,13 +211,14 @@ def dashboard_summary(db: Session) -> dict[str, int]:
         "employees_without_computer": employees_without,
         **software_stats,
         **gap_stats,
-        "returned_assets": returned_assets,
-        "retired_assets": retired_assets,
-        "disposed_assets": disposed_assets,
-        "reserved_assets": reserved_assets,
+        "returned_assets": status_counts.get("returned_to_customer", 0),
+        "retired_assets": status_counts.get("retired", 0),
+        "disposed_assets": status_counts.get("disposed", 0),
         "computers_without_ip": open_by_code.get("computers_without_ip", 0),
         "computers_without_mac": open_by_code.get("computers_without_mac", 0),
         "data_quality_open_issues": int((dq.get("totals") or {}).get("issue_types") or 0),
+        "data_quality_open_records": sum(open_by_code.values()),
+        "recent_movements": _recent_asset_movements(db),
     }
 
 

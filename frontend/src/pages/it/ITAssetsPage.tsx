@@ -62,7 +62,6 @@ import { getErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ITSectionSubnav, IT_INVENTORY_TABS } from '../../components/it/ITSectionSubnav';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { AssetBulkActionBar } from '../../components/it/AssetBulkActionBar';
 import { AssetLifecycleDrawer } from '../../components/it/AssetLifecycleDrawer';
@@ -103,6 +102,8 @@ const ASSET_STATUS_OPTIONS = [
   { value: 'maintenance', label: 'Maintenance' },
   { value: 'awaiting_return', label: 'Awaiting return' },
   { value: 'returned_to_customer', label: 'Returned to customer' },
+  { value: 'lost', label: 'Lost' },
+  { value: 'damaged', label: 'Damaged' },
   { value: 'retired', label: 'Retired' },
   { value: 'disposed', label: 'Disposed' },
 ];
@@ -263,8 +264,9 @@ export function ITAssetsPage({
   const queryClient = useQueryClient();
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? searchParams.get('q') ?? '');
   const urlView = searchParams.get('view') ?? '';
+  const warrantyWithinDays = Number(searchParams.get('warranty_within_days')) || undefined;
   const urlStatus = searchParams.get('status');
   const categoryFilter = searchParams.get('category') ?? '';
   const statusFilter =
@@ -277,7 +279,9 @@ export function ITAssetsPage({
         ? 'all'
         : inventoryScope;
   const [ownershipFilter, setOwnershipFilter] = useState('');
-  const [warrantyFilter, setWarrantyFilter] = useState('');
+  const [warrantyFilter, setWarrantyFilter] = useState(
+    () => searchParams.get('warranty_status') ?? '',
+  );
   const [makeFilter, setMakeFilter] = useState('');
   const [modelFilter, setModelFilter] = useState('');
   const [availabilityShiftId, setAvailabilityShiftId] = useState(
@@ -334,7 +338,7 @@ export function ITAssetsPage({
   const [transferTarget, setTransferTarget] = useState<ITAsset | null>(null);
   const [customerReturnTarget, setCustomerReturnTarget] = useState<ITAsset | null>(null);
   const [historyTarget, setHistoryTarget] = useState<ITAsset | null>(null);
-  const [qualityOpen, setQualityOpen] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(() => searchParams.get('data_quality') === '1');
   const [ipTarget, setIpTarget] = useState<ITAsset | null>(null);
   const [assignUserId, setAssignUserId] = useState('');
   const [assignShiftId, setAssignShiftId] = useState('');
@@ -579,6 +583,7 @@ export function ITAssetsPage({
       inventory_scope: statusFilter ? 'all' : effectiveInventoryScope,
       purchased_by: ownershipFilter || undefined,
       warranty_status: warrantyFilter || undefined,
+      warranty_within_days: warrantyFilter ? warrantyWithinDays : undefined,
       category: categoryFilter || undefined,
       make_id: makeFilter || undefined,
       model_id: modelFilter || undefined,
@@ -591,6 +596,7 @@ export function ITAssetsPage({
       effectiveInventoryScope,
       ownershipFilter,
       warrantyFilter,
+      warrantyWithinDays,
       categoryFilter,
       makeFilter,
       modelFilter,
@@ -1526,7 +1532,6 @@ export function ITAssetsPage({
         }
       />
 
-      <ITSectionSubnav items={IT_INVENTORY_TABS} />
 
       {defaultInventoryScope !== 'returned' && !urlView ? (
         <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>

@@ -24,8 +24,9 @@ test.describe('IT Computers', () => {
   }) => {
     await gotoAuthenticated(page, '/it/assets?category=computer');
     const main = page.getByRole('main');
-    await expect(main.getByRole('tab', { name: 'Computers' })).toBeVisible({ timeout: 20_000 });
-    await expect(main.getByRole('columnheader', { name: 'Computer' })).toBeVisible();
+    await expect(main.getByRole('columnheader', { name: 'Computer' })).toBeVisible({ timeout: 20_000 });
+    // Section navigation lives only in the sidebar; no duplicate top tab bar.
+    await expect(main.getByRole('tab', { name: 'Computers' })).toHaveCount(0);
     await expect(main.getByRole('columnheader', { name: 'IP' })).toBeVisible();
     await expect(main.getByRole('columnheader', { name: 'User' })).toBeVisible();
 
@@ -36,7 +37,7 @@ test.describe('IT Computers', () => {
 
   test('software installations tab is reachable from the software hub', async ({ page }) => {
     await gotoAuthenticated(page, '/it/software?tab=installations');
-    const main = page.getByRole('main');
-    await expect(main.getByRole('tab', { name: 'Installations' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('link', { name: 'Installations' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('main').getByRole('tab', { name: 'Installations' })).toHaveCount(0);
   });
 });

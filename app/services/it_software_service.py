@@ -754,7 +754,9 @@ def user_compliance(db: Session, user_id: UUID) -> dict:
     }
 
 
-def software_counts_for_dashboard(db: Session) -> dict[str, int]:
+def software_counts_for_dashboard(
+    db: Session, *, expiring_within_days: int = 30
+) -> dict[str, int]:
     catalog_count = int(db.scalar(select(func.count()).select_from(SoftwareCatalog)) or 0)
     active_catalog = int(
         db.scalar(
@@ -766,7 +768,7 @@ def software_counts_for_dashboard(db: Session) -> dict[str, int]:
     )
     pool_count = int(db.scalar(select(func.count()).select_from(SoftwareLicensePool)) or 0)
     today = date.today()
-    until = today + timedelta(days=30)
+    until = today + timedelta(days=expiring_within_days)
     expiring_30 = int(
         db.scalar(
             select(func.count())
@@ -798,13 +800,38 @@ def software_counts_for_dashboard(db: Session) -> dict[str, int]:
         )
         or 0
     )
+    active_pool = or_(
+        SoftwareLicensePool.status.is_(None),
+        SoftwareLicensePool.status.notin_(("terminated", "cancelled", "suspended", "draft")),
+    )
+    assigned_sq = (
+        select(
+            SoftwareAssignment.license_pool_id.label("pool_id"),
+            func.count().label("assigned"),
+        )
+        .where(_active_assignment_filter())
+        .group_by(SoftwareAssignment.license_pool_id)
+        .subquery()
+    )
+    pool_rows = db.execute(
+        select(SoftwareLicensePool.seat_count, func.coalesce(assigned_sq.c.assigned, 0))
+        .outerjoin(assigned_sq, assigned_sq.c.pool_id == SoftwareLicensePool.id)
+        .where(active_pool)
+    ).all()
+    seats_total = sum(int(seats or 0) for seats, _ in pool_rows)
+    seats_assigned = sum(int(assigned or 0) for _, assigned in pool_rows)
+    seats_available = sum(max(0, int(seats or 0) - int(assigned or 0)) for seats, assigned in pool_rows)
     return {
         "software_catalog_count": catalog_count,
         "active_software_count": active_catalog,
         "license_pool_count": pool_count,
         "software_assignments_count": active_assignments,
         "licenses_expiring_30": expiring_30,
+        "licenses_expiring_window": expiring_30,
         "licenses_expired": expired,
+        "license_seats_total": seats_total,
+        "license_seats_assigned": seats_assigned,
+        "license_seats_available": seats_available,
     }
 
 

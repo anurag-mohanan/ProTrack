@@ -1121,6 +1121,74 @@ def hr_dashboard(
     }
 
 
+def _hr_dashboard_scope(db: Session, current_user: User) -> set | None:
+    accessible = get_accessible_team_ids(db, current_user)
+    if accessible is None:
+        return None
+    member_ids = team_member_user_ids(db, list(accessible)) if accessible else set()
+    member_ids.add(current_user.id)
+    return member_ids
+
+
+def _hr_dashboard_filters(
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    org_department_id: UUID | None = Query(None),
+    designation: str | None = Query(None),
+    manager_id: UUID | None = Query(None),
+    shift_id: UUID | None = Query(None),
+    employment_type: str | None = Query(None),
+    team_id: UUID | None = Query(None),
+    status_filter: str = Query("active", alias="status", pattern="^(active|inactive|all)$"),
+    horizon_days: int = Query(30, ge=1, le=365),
+):
+    from app.services.hr_dashboard_service import HrDashboardFilters
+
+    return HrDashboardFilters(
+        start_date=start_date,
+        end_date=end_date,
+        org_department_id=org_department_id,
+        designation=(designation or "").strip() or None,
+        manager_id=manager_id,
+        shift_id=shift_id,
+        employment_type=(employment_type or "").strip() or None,
+        team_id=team_id,
+        status=status_filter,
+        horizon_days=horizon_days,
+    )
+
+
+@router.get("/dashboard/overview")
+def hr_dashboard_overview(
+    filters=Depends(_hr_dashboard_filters),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Headcount, joiners/exits, onboarding, shifts, reviews and HR actions — server-side."""
+    _require_hr_view(db, current_user)
+    from app.services import hr_dashboard_service
+
+    return hr_dashboard_service.build_overview(
+        db, filters, scoped_user_ids=_hr_dashboard_scope(db, current_user)
+    )
+
+
+@router.get("/dashboard/employees")
+def hr_dashboard_employees(
+    segment: str = Query(..., min_length=1, max_length=120),
+    filters=Depends(_hr_dashboard_filters),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Employees behind a dashboard figure (same filters and scope as the overview)."""
+    _require_hr_view(db, current_user)
+    from app.services import hr_dashboard_service
+
+    return hr_dashboard_service.segment_employees(
+        db, filters, segment, scoped_user_ids=_hr_dashboard_scope(db, current_user)
+    )
+
+
 @router.get("/timesheet-compliance")
 def hr_timesheet_compliance(
     db: Session = Depends(get_db),

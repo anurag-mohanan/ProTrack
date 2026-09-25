@@ -301,12 +301,11 @@ def count_active_employees_without_computer(db: Session) -> int:
             )
         ).all()
     )
-    assigned_user_ids = set()
-    for asg in db.scalars(
-        select(AssetAssignment).where(AssetAssignment.returned_date.is_(None))
-    ).all():
-        # Only count computer assets
-        comp = db.scalar(select(Computer).where(Computer.asset_id == asg.asset_id))
-        if comp is not None:
-            assigned_user_ids.add(asg.assigned_to_user_id)
+    assigned_user_ids = set(
+        db.scalars(
+            select(AssetAssignment.assigned_to_user_id)
+            .join(Computer, Computer.asset_id == AssetAssignment.asset_id)
+            .where(AssetAssignment.returned_date.is_(None))
+        ).all()
+    )
     return len(active_ids - assigned_user_ids)

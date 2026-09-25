@@ -215,7 +215,9 @@ def list_tickets(
     current_user: User = Depends(get_current_user),
 ):
     stmt = tickets.build_visible_tickets_query(db, current_user)
-    if status_filter and status_filter != "all":
+    if status_filter == "active":
+        stmt = stmt.where(Ticket.status.in_(tickets.OPEN_STATUSES))
+    elif status_filter and status_filter != "all":
         stmt = stmt.where(Ticket.status == status_filter)
     if category and category != "all":
         stmt = stmt.where(Ticket.category == category)

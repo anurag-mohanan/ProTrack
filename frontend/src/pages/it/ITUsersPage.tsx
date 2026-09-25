@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import type { GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   fetchItPeoplePaginated,
   fetchItPerson,
@@ -37,9 +38,10 @@ const STATUS_OPTIONS = [
 ];
 
 export function ITUsersPage() {
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('active');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
+  const [status, setStatus] = useState(() => searchParams.get('status') ?? 'active');
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get('user'));
   const [confirmReturn, setConfirmReturn] = useState(false);
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();

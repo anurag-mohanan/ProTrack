@@ -11,7 +11,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.it_operations import (
@@ -21,13 +21,15 @@ from app.models.it_operations import (
     Computer,
     IPAddress,
     IPAssignmentHistory,
+    WorkstationPackage,
+    WorkstationPackageAssignment,
 )
 from app.models.models import User
 from app.services import it_computer_reconciliation_service as recon
 from app.services import resource_it_gap_service
 
 
-_INACTIVE_ASSET_STATUSES = frozenset({"retired", "disposed", "returned"})
+_INACTIVE_ASSET_STATUSES = frozenset({"retired", "disposed", "returned_to_customer", "lost"})
 _SAMPLE_LIMIT = 50
 
 
@@ -355,10 +357,7 @@ def _people_domain_issues(computer_report: dict, gaps: dict) -> list[dict]:
             severity="error",
             domain="people",
             title="Active employees without a computer",
-            count=max(
-                int(computer_report.get("employees_without_computer") or 0),
-                len(users_without_computer),
-            ),
+            count=int(computer_report.get("employees_without_computer") or 0),
             samples=list(samples.get("employees_without_computer") or [])
             or [
                 {
@@ -520,12 +519,125 @@ def _identity_issues(db: Session) -> list[dict]:
     ]
 
 
+def _asset_record_issues(db: Session) -> list[dict]:
+    """Duplicate identifiers and missing lifecycle fields on current inventory."""
+    assets = list(
+        db.scalars(
+            select(Asset)
+            .where(
+                Asset.is_deleted.is_(False),
+                Asset.status.in_(CURRENT_INVENTORY_STATUSES),
+            )
+            .order_by(Asset.asset_number)
+        ).all()
+    )
+    by_serial: dict[str, list[Asset]] = defaultdict(list)
+    by_tag: dict[str, list[Asset]] = defaultdict(list)
+    missing_serial: list[dict] = []
+    missing_warranty: list[dict] = []
+    for asset in assets:
+        serial = (asset.serial_number or "").strip().upper()
+        tag = (asset.service_tag or "").strip().upper()
+        if serial:
+            by_serial[serial].append(asset)
+        if tag:
+            by_tag[tag].append(asset)
+        if not serial and not tag:
+            missing_serial.append(
+                {"asset_id": str(asset.id), "asset_number": asset.asset_number, "status": asset.status}
+            )
+        if asset.warranty_expiry is None and (asset.purchased_by or "organization") == "organization":
+            missing_warranty.append(
+                {"asset_id": str(asset.id), "asset_number": asset.asset_number, "status": asset.status}
+            )
+
+    duplicates: list[dict] = []
+    for label, groups in (("serial_number", by_serial), ("service_tag", by_tag)):
+        for value, rows in groups.items():
+            if len(rows) < 2:
+                continue
+            for asset in rows:
+                duplicates.append(
+                    {
+                        "asset_id": str(asset.id),
+                        "asset_number": asset.asset_number,
+                        "field": label,
+                        "value": value,
+                        "duplicate_count": len(rows),
+                    }
+                )
+
+    return [
+        _issue(
+            code="duplicate_asset_identifiers",
+            severity="error",
+            domain="assets",
+            title="Assets sharing a serial number or service tag",
+            count=len(duplicates),
+            samples=duplicates,
+        ),
+        _issue(
+            code="assets_without_serial",
+            severity="warning",
+            domain="assets",
+            title="Assets with no serial number or service tag",
+            count=len(missing_serial),
+            samples=missing_serial,
+        ),
+        _issue(
+            code="assets_without_warranty",
+            severity="info",
+            domain="assets",
+            title="Organization-owned assets with no warranty date",
+            count=len(missing_warranty),
+            samples=missing_warranty,
+        ),
+    ]
+
+
+def _seat_issues(db: Session) -> list[dict]:
+    """Virtual seat shift assignments still held by inactive / exited employees."""
+    rows = db.execute(
+        select(WorkstationPackageAssignment, WorkstationPackage.code, User)
+        .join(WorkstationPackage, WorkstationPackage.id == WorkstationPackageAssignment.package_id)
+        .join(User, User.id == WorkstationPackageAssignment.user_id)
+        .where(
+            WorkstationPackageAssignment.status == "ACTIVE",
+            or_(
+                User.is_active.is_(False),
+                User.is_deleted.is_(True),
+                User.is_archived.is_(True),
+            ),
+        )
+    ).all()
+    samples = [
+        {
+            "user_id": str(user.id),
+            "user_name": f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email,
+            "detail": f"Seat {code}",
+        }
+        for _assignment, code, user in rows
+    ]
+    return [
+        _issue(
+            code="seat_assigned_to_inactive_employee",
+            severity="error",
+            domain="people",
+            title="Virtual seat shifts held by inactive employees",
+            count=len(samples),
+            samples=samples,
+        )
+    ]
+
+
 def _href_for_sample(sample: dict) -> str | None:
     asset_number = sample.get("asset_number")
     if isinstance(asset_number, str) and asset_number.strip():
         return f"/it/assets?search={asset_number}"
     if sample.get("user_id"):
-        return "/resource-planning"
+        return f"/it/accounts?user={sample['user_id']}&status=all"
+    if sample.get("pool_id") or sample.get("software_id"):
+        return "/it/software?tab=licenses"
     if sample.get("address"):
         return "/it/networks"
     return None
@@ -553,6 +665,8 @@ def build_data_quality_report(db: Session) -> dict:
         + _license_domain_issues(gaps)
         + _lifecycle_issues(db)
         + _identity_issues(db)
+        + _asset_record_issues(db)
+        + _seat_issues(db)
     )
     _annotate_sample_hrefs(issues)
 

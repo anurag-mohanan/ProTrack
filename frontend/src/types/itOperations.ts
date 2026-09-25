@@ -52,16 +52,39 @@ export interface ITDashboardSummary {
   returned_assets?: number;
   retired_assets?: number;
   disposed_assets?: number;
-  reserved_assets?: number;
+  awaiting_return_assets?: number;
+  lost_assets?: number;
+  damaged_assets?: number;
+  warranty_window_days?: number;
+  warranty_expiring_assets?: number;
+  warranty_expired_assets?: number;
+  warranty_missing_assets?: number;
+  overdue_it_requests?: number;
+  unassigned_it_requests?: number;
   computers_without_ip?: number;
   computers_without_mac?: number;
   data_quality_open_issues?: number;
+  data_quality_open_records?: number;
   software_catalog_count?: number;
   active_software_count?: number;
   license_pool_count?: number;
   software_assignments_count?: number;
   licenses_expiring_30?: number;
+  licenses_expiring_window?: number;
   licenses_expired?: number;
+  license_seats_total?: number;
+  license_seats_assigned?: number;
+  license_seats_available?: number;
+  recent_movements?: ITAssetMovement[];
+}
+
+export interface ITAssetMovement {
+  asset_id: string;
+  asset_number: string;
+  user_id: string;
+  user_name: string;
+  movement: 'assigned' | 'returned';
+  date: string | null;
 }
 
 export interface AssetType {

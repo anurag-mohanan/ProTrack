@@ -13,7 +13,6 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ITSectionSubnav, IT_SETTINGS_TABS } from '../../components/it/ITSectionSubnav';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { FormField, FormSelect } from '../../components/ui/design-system';
@@ -34,6 +33,7 @@ type SettingsFormState = {
   default_domain: string;
   default_email_domain: string;
   ip_allocation_strategy: string;
+  warranty_alert_days: string;
 };
 
 const emptyForm: SettingsFormState = {
@@ -42,7 +42,23 @@ const emptyForm: SettingsFormState = {
   default_domain: '',
   default_email_domain: '',
   ip_allocation_strategy: 'sequential',
+  warranty_alert_days: '30',
 };
+
+const WARRANTY_WINDOW_OPTIONS = ['7', '30', '60', '90'].map((value) => ({
+  value,
+  label: `${value} days`,
+}));
+
+function parseSettingsJson(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
 
 const STRATEGY_OPTIONS = [
   { value: 'sequential', label: 'Sequential' },
@@ -71,6 +87,9 @@ export function ITSettingsPage() {
       default_domain: query.data.default_domain ?? '',
       default_email_domain: query.data.default_email_domain ?? '',
       ip_allocation_strategy: query.data.ip_allocation_strategy || 'sequential',
+      warranty_alert_days: String(
+        parseSettingsJson(query.data.settings_json).warranty_alert_days ?? '30',
+      ),
     });
   }, [query.data]);
 
@@ -79,6 +98,7 @@ export function ITSettingsPage() {
     onSuccess: () => {
       showSuccess('IT settings saved.');
       void queryClient.invalidateQueries({ queryKey: itOperationsKeys.settings() });
+      void queryClient.invalidateQueries({ queryKey: [...itOperationsKeys.all, 'dashboard'] });
     },
     onError: (error) => showError(getErrorMessage(error)),
   });
@@ -91,6 +111,10 @@ export function ITSettingsPage() {
       default_domain: optionalString(form.default_domain),
       default_email_domain: optionalString(form.default_email_domain),
       ip_allocation_strategy: form.ip_allocation_strategy,
+      settings_json: JSON.stringify({
+        ...parseSettingsJson(query.data?.settings_json),
+        warranty_alert_days: Number(form.warranty_alert_days),
+      }),
     });
   };
 
@@ -98,7 +122,6 @@ export function ITSettingsPage() {
     return (
       <PageContainer>
         <PageHeader title="IT Settings" subtitle="Naming and allocation conventions." />
-        <ITSectionSubnav items={IT_SETTINGS_TABS} />
         <ErrorState error={new Error('You do not have permission to manage IT settings.')} />
       </PageContainer>
     );
@@ -135,7 +158,6 @@ export function ITSettingsPage() {
         }
       />
 
-      <ITSectionSubnav items={IT_SETTINGS_TABS} />
 
       <ContentCard title="Conventions">
         <Box
@@ -196,6 +218,17 @@ export function ITSettingsPage() {
               }))
             }
             options={STRATEGY_OPTIONS}
+          />
+          <FormSelect
+            label="Warranty & license expiry alert window"
+            value={form.warranty_alert_days}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                warranty_alert_days: String(event.target.value),
+              }))
+            }
+            options={WARRANTY_WINDOW_OPTIONS}
           />
         </Box>
       </ContentCard>

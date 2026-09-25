@@ -15,7 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import {
   fetchProvisioningDashboard,
   fetchProvisioningRequests,
@@ -31,7 +31,6 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ITSectionSubnav, IT_REQUEST_TABS } from '../../components/it/ITSectionSubnav';
 import { FormSelect } from '../../components/ui/design-system';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { FindAvailableComputerDialog } from '../../components/it/FindAvailableComputerDialog';
@@ -69,6 +68,8 @@ export function ITRequestsPage() {
   const [selected, setSelected] = useState<ProvisioningRequest | null>(null);
   const [statusDraft, setStatusDraft] = useState('OPEN');
   const [findOpen, setFindOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const overdueOnly = searchParams.get('overdue') === '1';
 
   const provisioningQuery = useQuery({
     queryKey: itProvisioningKeys.requests({}),
@@ -79,8 +80,8 @@ export function ITRequestsPage() {
     queryFn: fetchProvisioningDashboard,
   });
   const ticketsQuery = useQuery({
-    queryKey: ['tickets', 'it', 'open'],
-    queryFn: () => ticketsApi.list({ category: 'it', status: 'open' }),
+    queryKey: ['tickets', 'it', 'active'],
+    queryFn: () => ticketsApi.list({ category: 'it', status: 'active' }),
   });
 
   const statusMutation = useMutation({
@@ -94,13 +95,21 @@ export function ITRequestsPage() {
     onError: (error) => showError(getErrorMessage(error)),
   });
 
-  const rows = provisioningQuery.data ?? [];
+  const allRows = provisioningQuery.data ?? [];
+  const rows = overdueOnly ? allRows.filter((row) => row.is_overdue) : allRows;
   const dash = dashboardQuery.data;
+  const todayIso = new Date().toISOString().slice(0, 10);
   const genericTickets: Ticket[] = useMemo(() => {
     const data = ticketsQuery.data;
-    if (Array.isArray(data)) return data;
-    return (data as { items?: Ticket[] } | undefined)?.items ?? [];
-  }, [ticketsQuery.data]);
+    const list = Array.isArray(data) ? data : ((data as { items?: Ticket[] } | undefined)?.items ?? []);
+    const provisioningTickets = new Set(
+      (provisioningQuery.data ?? []).map((row) => row.ticket_number).filter(Boolean),
+    );
+    return list
+      .filter((ticket) => !provisioningTickets.has(ticket.ticket_number))
+      .filter((ticket) => !overdueOnly || (ticket.due_date != null && ticket.due_date < todayIso))
+      .sort((a, b) => (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999'));
+  }, [ticketsQuery.data, provisioningQuery.data, overdueOnly, todayIso]);
 
   if (provisioningQuery.isLoading) {
     return <LoadingState message="Loading IT requests…" />;
@@ -121,7 +130,6 @@ export function ITRequestsPage() {
         title="IT Requests"
         subtitle="Onboarding provisioning requests and Help Desk IT tickets."
       />
-      <ITSectionSubnav items={IT_REQUEST_TABS} />
 
       {dash ? (
         <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
@@ -130,6 +138,15 @@ export function ITRequestsPage() {
           <Chip label={`Overdue ${dash.overdue_requests}`} color="error" size="small" />
           <Chip label={`Waiting license ${dash.waiting_for_software_license}`} size="small" />
           <Chip label={`Ready ${dash.ready_for_joining}`} color="success" size="small" />
+          <Chip
+            label={overdueOnly ? 'Showing overdue only — show all' : 'Show overdue only'}
+            color={overdueOnly ? 'error' : 'default'}
+            variant={overdueOnly ? 'filled' : 'outlined'}
+            size="small"
+            onClick={() =>
+              setSearchParams(overdueOnly ? {} : { overdue: '1' }, { replace: true })
+            }
+          />
         </Stack>
       ) : null}
 
@@ -195,10 +212,13 @@ export function ITRequestsPage() {
         )}
       </ContentCard>
 
-      <ContentCard title="Other open IT Help Desk tickets">
+      <ContentCard
+        title="Other IT Help Desk tickets"
+        subtitle="Open, in progress and on hold — sorted by due date."
+      >
         {genericTickets.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            No other open IT tickets.
+            {overdueOnly ? 'No overdue IT tickets.' : 'No other active IT tickets.'}
           </Typography>
         ) : (
           <Table size="small">
@@ -207,22 +227,36 @@ export function ITRequestsPage() {
                 <TableCell>Ticket</TableCell>
                 <TableCell>Title</TableCell>
                 <TableCell>Requester</TableCell>
+                <TableCell>Assignee</TableCell>
+                <TableCell>Priority</TableCell>
+                <TableCell>Due</TableCell>
                 <TableCell>Status</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {genericTickets.map((ticket) => (
-                <TableRow key={ticket.id}>
-                  <TableCell>
-                    <Link component={RouterLink} to={`/help-desk/${ticket.id}`}>
-                      {ticket.ticket_number}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{ticket.title}</TableCell>
-                  <TableCell>{ticket.requester_name}</TableCell>
-                  <TableCell>{ticket.status_label || ticket.status}</TableCell>
-                </TableRow>
-              ))}
+              {genericTickets.map((ticket) => {
+                const overdue = ticket.due_date != null && ticket.due_date < todayIso;
+                return (
+                  <TableRow key={ticket.id}>
+                    <TableCell>
+                      <Link component={RouterLink} to={`/help-desk/${ticket.id}`}>
+                        {ticket.ticket_number}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{ticket.title}</TableCell>
+                    <TableCell>{ticket.requester_name || '—'}</TableCell>
+                    <TableCell>{ticket.assignee_name || 'Unassigned'}</TableCell>
+                    <TableCell sx={{ textTransform: 'capitalize' }}>{ticket.priority}</TableCell>
+                    <TableCell>
+                      {formatDate(ticket.due_date) || '—'}
+                      {overdue ? (
+                        <Chip size="small" color="error" label="Overdue" sx={{ ml: 1 }} />
+                      ) : null}
+                    </TableCell>
+                    <TableCell>{ticket.status_label || ticket.status}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}

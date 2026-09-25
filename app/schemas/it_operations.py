@@ -756,10 +756,24 @@ class ITDashboardSummary(BaseModel):
     returned_assets: int = 0
     retired_assets: int = 0
     disposed_assets: int = 0
-    reserved_assets: int = 0
+    awaiting_return_assets: int = 0
+    lost_assets: int = 0
+    damaged_assets: int = 0
+    warranty_window_days: int = 30
+    warranty_expiring_assets: int = 0
+    warranty_expired_assets: int = 0
+    warranty_missing_assets: int = 0
+    overdue_it_requests: int = 0
+    unassigned_it_requests: int = 0
+    licenses_expiring_window: int = 0
+    license_seats_total: int = 0
+    license_seats_assigned: int = 0
+    license_seats_available: int = 0
     computers_without_ip: int = 0
     computers_without_mac: int = 0
     data_quality_open_issues: int = 0
+    data_quality_open_records: int = 0
+    recent_movements: list[dict] = Field(default_factory=list)
 
 
 class ITPersonListItem(BaseModel):

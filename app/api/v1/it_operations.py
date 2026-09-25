@@ -710,11 +710,18 @@ def _profile_for_user(db: Session, user_id: UUID) -> ITProfileRead:
 
 @router.get("/dashboard", response_model=ITDashboardSummary)
 def it_dashboard(
+    warranty_days: int | None = Query(
+        None, description="Warranty/license expiry window: 7, 30, 60 or 90 days"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_it_access(db, current_user)
-    return ITDashboardSummary(**it_dashboard_service.dashboard_summary(db))
+    if warranty_days is not None and warranty_days not in it_asset_service.WARRANTY_ALERT_DAY_OPTIONS:
+        raise HTTPException(status_code=400, detail="warranty_days must be one of 7, 30, 60, 90.")
+    return ITDashboardSummary(
+        **it_dashboard_service.dashboard_summary(db, warranty_days=warranty_days)
+    )
 
 
 @router.get("/dashboard/onboarding-tasks", response_model=list[PendingITOnboardingTask])
@@ -1110,6 +1117,9 @@ def list_assets(
         None,
         description="none | active | expiring_soon | expired",
     ),
+    warranty_within_days: int | None = Query(
+        None, ge=1, le=366, description="Window (days) used for expiring_soon/active"
+    ),
     availability_shift_id: UUID | None = Query(
         None, description="Filter by calculated availability for this shift"
     ),
@@ -1140,6 +1150,7 @@ def list_assets(
             owner_customer_id=owner_customer_id,
             customer_used_for_id=customer_used_for_id,
             warranty_status=warranty_status,
+            warranty_within_days=warranty_within_days,
             skip=0 if use_avail_filter else pagination.skip,
             limit=10_000 if use_avail_filter else pagination.limit,
         )

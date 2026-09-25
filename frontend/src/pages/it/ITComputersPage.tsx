@@ -41,7 +41,6 @@ import {
 import { getErrorMessage } from '../../api/client';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ITSectionSubnav, IT_INVENTORY_TABS } from '../../components/it/ITSectionSubnav';
 import { AssignmentAvailabilityPanel } from '../../components/it/AssignmentAvailabilityPanel';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { ContentCard } from '../../components/ui/cards';
@@ -531,6 +530,7 @@ export function ITComputersPage() {
   return (
     <PageContainer>
       <PageHeader
+        title="Computers — NIC / MAC"
         subtitle="NIC / MAC workspace for the same Computer records as Assets & Inventory. Day-to-day computer and IP management belongs on the inventory asset."
         action={
           <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
@@ -565,7 +565,6 @@ export function ITComputersPage() {
         }
       />
 
-      <ITSectionSubnav items={IT_INVENTORY_TABS} />
 
       <SearchToolbar sticky>
         <ToggleButtonGroup

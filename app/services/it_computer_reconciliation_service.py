@@ -268,13 +268,17 @@ def _employees_without_computer(db: Session, open_assignment_asset_ids: set[UUID
     _ = open_assignment_asset_ids
     assigned_user_ids = set(
         db.scalars(
-            select(AssetAssignment.assigned_to_user_id).where(
-                AssetAssignment.returned_date.is_(None)
-            )
+            select(AssetAssignment.assigned_to_user_id)
+            .join(Computer, Computer.asset_id == AssetAssignment.asset_id)
+            .where(AssetAssignment.returned_date.is_(None))
         ).all()
     )
     users = db.scalars(
-        select(User).where(User.is_deleted.is_(False), User.is_active.is_(True))
+        select(User).where(
+            User.is_deleted.is_(False),
+            User.is_active.is_(True),
+            User.is_archived.is_(False),
+        )
     ).all()
     out = []
     for user in users:

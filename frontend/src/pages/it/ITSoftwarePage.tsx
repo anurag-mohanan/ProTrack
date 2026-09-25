@@ -42,7 +42,6 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ITSectionSubnav, IT_SOFTWARE_TABS } from '../../components/it/ITSectionSubnav';
 import { ITResourcePackagesPanel } from '../../components/it/ITResourcePackagesPanel';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
@@ -74,6 +73,16 @@ type TabKey =
   | 'packages'
   | 'expiry';
 
+const TAB_TITLES: Record<TabKey, string> = {
+  catalog: 'Software',
+  licenses: 'Licenses',
+  assignments: 'Assignments',
+  installations: 'Installations',
+  requirements: 'Requirements',
+  packages: 'Packages',
+  expiry: 'Renewals / Expiry',
+};
+
 const TAB_FROM_URL: Record<string, TabKey> = {
   '': 'catalog',
   software: 'catalog',
@@ -85,12 +94,6 @@ const TAB_FROM_URL: Record<string, TabKey> = {
   requirements: 'requirements',
   packages: 'packages',
 };
-
-const SOFTWARE_PAGE_TABS = [
-  ...IT_SOFTWARE_TABS,
-  { label: 'Requirements', path: '/it/software?tab=requirements' },
-  { label: 'Packages', path: '/it/software?tab=packages' },
-];
 
 const ASSIGNMENT_MODEL_OPTIONS = [
   { value: 'named_user', label: 'Named user' },
@@ -837,7 +840,7 @@ export function ITSoftwarePage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Software & Licenses"
+        title={`Software & Licenses — ${TAB_TITLES[tab]}`}
         subtitle="Catalog, seat pools, assignments, employee requirements, packages, and expiry alerts."
         action={
           canManage ? (
@@ -891,8 +894,6 @@ export function ITSoftwarePage() {
           ) : undefined
         }
       />
-
-      <ITSectionSubnav items={SOFTWARE_PAGE_TABS} />
 
       {tab === 'catalog' && (
         <ContentCard>

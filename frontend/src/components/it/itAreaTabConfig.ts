@@ -2,13 +2,18 @@ import { matchItNavPath } from '../../utils/itNav';
 
 export type ITAreaTab = { label: string; path: string };
 
-/** Views of the physical-asset area (one sidebar entry: Assets). */
+/** Views of the Assets & Inventory area (one sidebar entry). */
 export const IT_ASSET_AREA_TABS: readonly ITAreaTab[] = [
-  { label: 'All assets', path: '/it/assets' },
+  { label: 'Physical assets', path: '/it/assets' },
   { label: 'Computers', path: '/it/assets?category=computer' },
   { label: 'Peripherals', path: '/it/assets?category=peripheral' },
   { label: 'Network devices', path: '/it/assets?category=network_equipment' },
-  { label: 'Virtual seats', path: '/it/workstation-packages' },
+  { label: 'Inventory', path: '/it/inventory' },
+  { label: 'Virtual seats', path: '/it/virtual-seats' },
+  { label: 'Low stock', path: '/it/inventory?view=low-stock' },
+  { label: 'Stock movements', path: '/it/inventory?view=movements' },
+  { label: 'Restock', path: '/it/inventory?view=restock' },
+  { label: 'Availability', path: '/it/inventory?view=availability' },
   { label: 'Assignments', path: '/it/assets?view=assignments' },
   { label: 'History', path: '/it/assets?view=history' },
   { label: 'Maintenance', path: '/it/maintenance' },
@@ -38,7 +43,8 @@ export const IT_ADMIN_AREA_TABS: readonly ITAreaTab[] = [
 
 export const IT_ASSET_AREA_PATHS = [
   '/it/assets',
-  '/it/workstation-packages',
+  '/it/inventory',
+  '/it/virtual-seats',
   '/it/maintenance',
   '/it/returned-assets',
   '/it/accounts',

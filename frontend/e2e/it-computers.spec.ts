@@ -30,12 +30,12 @@ test.describe('IT Computers', () => {
     await expect(main.getByRole('columnheader', { name: 'IP' })).toBeVisible();
     await expect(main.getByRole('columnheader', { name: 'User' })).toBeVisible();
 
-    await expect(page.getByRole('link', { name: /^Assets$/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: /^Assets & Inventory$/ })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Computers' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Network / IP' })).toHaveCount(0);
 
     await main.getByRole('tab', { name: 'Virtual seats' }).click();
-    await expect(page).toHaveURL(/\/it\/workstation-packages/);
+    await expect(page).toHaveURL(/\/it\/virtual-seats/);
     await expect(page.getByRole('main').getByRole('tab', { name: 'Virtual seats' })).toHaveAttribute(
       'aria-selected',
       'true',

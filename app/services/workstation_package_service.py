@@ -131,6 +131,71 @@ def open_asset_assignments_on_date(
     )
 
 
+ASSIGNABLE_ASSET_STATUSES = frozenset({"available", "assigned"})
+_STATUS_REASONS = {
+    "maintenance": "In maintenance",
+    "reserved": "Reserved",
+    "awaiting_return": "Pending return",
+    "damaged": "Damaged",
+    "lost": "Lost",
+    "retired": "Retired",
+    "disposed": "Disposed",
+    "returned_to_customer": "Returned to customer",
+}
+
+
+def evaluate_asset_shift(
+    asset: Asset,
+    target: ResourceShift,
+    open_rows: list[AssetAssignment],
+    *,
+    shift_lookup: dict[UUID, ResourceShift],
+    name_lookup: dict[UUID, str | None],
+) -> dict[str, Any] | None:
+    """The single shift-availability rule for a physical asset.
+
+    Returns a blocking result (UNAVAILABLE / ASSIGNED / CONFLICT) or ``None`` when
+    lifecycle status and open assignments leave the asset free for ``target``.
+    Overlap uses ``startA < endB and startB < endA`` (overnight shifts split).
+    """
+    if asset.is_deleted or asset.status not in ASSIGNABLE_ASSET_STATUSES:
+        label = _STATUS_REASONS.get(asset.status or "", asset.status)
+        return {
+            "status": SHIFT_AVAIL_UNAVAILABLE,
+            "reason": f"{asset.asset_number}: {label}",
+            "assignee_name": None,
+        }
+    for row in open_rows:
+        name = name_lookup.get(row.assigned_to_user_id)
+        if row.shift_id == target.id:
+            return {
+                "status": SHIFT_AVAIL_ASSIGNED,
+                "reason": f"Assigned to {name} on this shift",
+                "assignee_name": name,
+                "assignee_user_id": str(row.assigned_to_user_id),
+                "assignment_id": str(row.id),
+            }
+        if row.shift_id is None:
+            return {
+                "status": SHIFT_AVAIL_UNAVAILABLE,
+                "reason": f"Assigned to {name} for all hours (no shift)",
+                "assignee_name": name,
+                "assignee_user_id": str(row.assigned_to_user_id),
+            }
+        other = shift_lookup.get(row.shift_id)
+        if other is not None and provisioning.shift_windows_overlap(target, other):
+            return {
+                "status": SHIFT_AVAIL_CONFLICT,
+                "reason": (
+                    f"Overlaps {other.name} assignment to {name} "
+                    f"({other.start_time}–{other.end_time})"
+                ),
+                "assignee_name": name,
+                "assignee_user_id": str(row.assigned_to_user_id),
+            }
+    return None
+
+
 def asset_shift_availability(
     db: Session,
     asset: Asset,
@@ -139,58 +204,24 @@ def asset_shift_availability(
     on_date: date,
 ) -> dict[str, Any]:
     """Compute availability of one asset for a shift on a date."""
-    if asset.is_deleted or asset.status in {
-        "retired",
-        "disposed",
-        "returned_to_customer",
-        "maintenance",
-    }:
-        return {
-            "status": SHIFT_AVAIL_UNAVAILABLE,
-            "reason": f"Asset {asset.asset_number} status is {asset.status}",
-            "assignee_name": None,
-        }
-
     target = db.get(ResourceShift, shift_id)
     if target is None:
         raise ProTrackValidationError("Shift not found.")
-
     opens = open_asset_assignments_on_date(db, asset.id, on_date=on_date)
-    if not opens:
-        # Also blocked by package assignments covering this asset
-        pkg_block = _package_blocks_asset(db, asset.id, shift_id=shift_id, on_date=on_date)
-        if pkg_block:
-            return pkg_block
-        return {"status": SHIFT_AVAIL_AVAILABLE, "reason": None, "assignee_name": None}
-
-    for row in opens:
-        if row.shift_id == shift_id:
-            user = db.get(User, row.assigned_to_user_id)
-            return {
-                "status": SHIFT_AVAIL_ASSIGNED,
-                "reason": f"Assigned to {_full_name(user)} on this shift",
-                "assignee_name": _full_name(user),
-                "assignment_id": str(row.id),
-            }
-        if row.shift_id is None:
-            user = db.get(User, row.assigned_to_user_id)
-            return {
-                "status": SHIFT_AVAIL_UNAVAILABLE,
-                "reason": f"Legacy assignment to {_full_name(user)} without shift",
-                "assignee_name": _full_name(user),
-            }
-        other = db.get(ResourceShift, row.shift_id)
-        if other and provisioning.shift_windows_overlap(target, other):
-            user = db.get(User, row.assigned_to_user_id)
-            return {
-                "status": SHIFT_AVAIL_CONFLICT,
-                "reason": (
-                    f"Overlaps {other.name} assignment to {_full_name(user)} "
-                    f"({other.start_time}–{other.end_time})"
-                ),
-                "assignee_name": _full_name(user),
-            }
-
+    shift_lookup = {
+        s.id: s
+        for s in db.scalars(
+            select(ResourceShift).where(
+                ResourceShift.id.in_({r.shift_id for r in opens if r.shift_id})
+            )
+        ).all()
+    } if opens else {}
+    name_lookup = {r.assigned_to_user_id: _full_name(db.get(User, r.assigned_to_user_id)) for r in opens}
+    blocked = evaluate_asset_shift(
+        asset, target, opens, shift_lookup=shift_lookup, name_lookup=name_lookup
+    )
+    if blocked:
+        return blocked
     pkg_block = _package_blocks_asset(db, asset.id, shift_id=shift_id, on_date=on_date)
     if pkg_block:
         return pkg_block
@@ -664,6 +695,10 @@ def assign_package(
             db.add(asset)
         db.add(row)
 
+    db.flush()
+    from app.services import virtual_seat_service
+
+    virtual_seat_service.sync_seats(db, actor=actor, user_ids={user_id})
     log_activity(
         db,
         user=actor,

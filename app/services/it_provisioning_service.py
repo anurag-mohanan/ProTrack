@@ -541,6 +541,12 @@ def update_request_status(
         from app.services import onboarding_task_service as onboarding_tasks
 
         onboarding_tasks.sync_from_provisioning(db, request, actor=actor)
+        if status in {"CANCELLED", "REJECTED"}:
+            from app.services import it_stock_service
+
+            it_stock_service.release_for_provisioning(
+                db, request.id, actor=actor, reason=f"Provisioning request {status.lower()}"
+            )
     if commit:
         db.commit()
         db.refresh(request)

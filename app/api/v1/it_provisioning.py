@@ -600,6 +600,11 @@ def build_employee_360(db: Session, user_id: UUID) -> Employee360Read:
     except Exception:
         workstation_packages = []
 
+    from app.services import it_stock_service, virtual_seat_service
+
+    virtual_seats = virtual_seat_service.seats_for_user(db, user_id)
+    consumables = it_stock_service.employee_consumables(db, user_id)
+
     return Employee360Read(
         overview={
             "name": _full_name(user),
@@ -617,6 +622,7 @@ def build_employee_360(db: Session, user_id: UUID) -> Employee360Read:
                 "other_assets": sum(1 for a in it_assets if (a.get("category") or "") != "computer"),
                 "software_licenses": len(software_licenses),
                 "workstation_packages": len(workstation_packages),
+                "virtual_seats": sum(1 for s in virtual_seats if s.get("primary")),
             },
             "work_summary": {
                 "active_projects": len(projects),
@@ -646,6 +652,8 @@ def build_employee_360(db: Session, user_id: UUID) -> Employee360Read:
         shift=shift_info if isinstance(shift_info, dict) else None,
         it_assets=it_assets,
         workstation_packages=workstation_packages,
+        virtual_seats=virtual_seats,
+        consumables=consumables,
         software_licenses=software_licenses,
         performance_reviews=performance_reviews,
         projects=projects,

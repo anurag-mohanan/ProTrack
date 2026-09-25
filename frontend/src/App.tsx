@@ -104,9 +104,14 @@ const ITComputersPage = lazy(() =>
     default: module.ITComputersPage,
   })),
 );
-const ITWorkstationPackagesPage = lazy(() =>
-  import('./pages/it/ITWorkstationPackagesPage').then((module) => ({
-    default: module.ITWorkstationPackagesPage,
+const ITVirtualSeatsPage = lazy(() =>
+  import('./pages/it/ITVirtualSeatsPage').then((module) => ({
+    default: module.ITVirtualSeatsPage,
+  })),
+);
+const ITInventoryPage = lazy(() =>
+  import('./pages/it/ITInventoryPage').then((module) => ({
+    default: module.ITInventoryPage,
   })),
 );
 const ITNetworksPage = lazy(() =>
@@ -526,12 +531,22 @@ export default function App() {
                         }
                       />
                       <Route
-                        path="/it/workstation-packages"
+                        path="/it/virtual-seats"
                         element={
-                          <Suspense
-                            fallback={<LoadingState message="Loading workstation packages…" />}
-                          >
-                            <ITWorkstationPackagesPage />
+                          <Suspense fallback={<LoadingState message="Loading virtual seats…" />}>
+                            <ITVirtualSeatsPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/workstation-packages"
+                        element={<Navigate to="/it/virtual-seats" replace />}
+                      />
+                      <Route
+                        path="/it/inventory"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading inventory…" />}>
+                            <ITInventoryPage />
                           </Suspense>
                         }
                       />

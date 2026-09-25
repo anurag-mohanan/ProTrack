@@ -44,6 +44,16 @@ router = APIRouter(
 MODULE = "tickets"
 
 
+def _sync_ticket_side_effects(db: Session, ticket: Ticket, actor: User) -> None:
+    onboarding_tasks.sync_from_ticket(db, ticket, actor=actor)
+    if ticket.status == "cancelled":
+        from app.services import it_stock_service
+
+        it_stock_service.release_for_ticket(
+            db, ticket.id, actor=actor, reason=f"Request {ticket.ticket_number} was cancelled"
+        )
+
+
 def _full_name(user: User | None) -> str | None:
     if user is None:
         return None
@@ -344,7 +354,7 @@ def update_ticket(
 
     db.flush()
     if status_changed:
-        onboarding_tasks.sync_from_ticket(db, ticket, actor=current_user)
+        _sync_ticket_side_effects(db, ticket, current_user)
         log_activity(
             db,
             user=current_user,
@@ -395,7 +405,7 @@ def assign_ticket(
     if payload.assignee_id is not None and ticket.status == "open":
         tickets.apply_status_timestamps(ticket, "in_progress")
     db.flush()
-    onboarding_tasks.sync_from_ticket(db, ticket, actor=current_user)
+    _sync_ticket_side_effects(db, ticket, current_user)
     log_activity(
         db,
         user=current_user,
@@ -436,7 +446,7 @@ def change_status(
         ticket.resolution = payload.resolution
     tickets.apply_status_timestamps(ticket, payload.status)
     db.flush()
-    onboarding_tasks.sync_from_ticket(db, ticket, actor=current_user)
+    _sync_ticket_side_effects(db, ticket, current_user)
     action = ActivityAction.ticket_status_changed
     if payload.status == "resolved":
         action = ActivityAction.ticket_resolved

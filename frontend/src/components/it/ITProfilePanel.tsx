@@ -10,6 +10,7 @@ import {
   Typography,
 } from '@mui/material';
 import { LoadingState } from '../common/LoadingState';
+import { EmployeeItSetupPanel } from './seats/EmployeeItSetupPanel';
 import type { ITProfile } from '../../types/itOperations';
 import { formatCellValue, formatDate } from '../../utils/format';
 
@@ -92,6 +93,8 @@ export function ITProfilePanel({
           </Typography>
         ) : null}
       </Stack>
+
+      {profile?.user_id ? <EmployeeItSetupPanel userId={profile.user_id} /> : null}
 
       {computer ? (
         <Box>

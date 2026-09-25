@@ -34,9 +34,12 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { FormSelect } from '../../components/ui/design-system';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { FindAvailableComputerDialog } from '../../components/it/FindAvailableComputerDialog';
+import { ProvisioningStockCheckPanel } from '../../components/it/inventory/ProvisioningStockCheckPanel';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import type { Ticket } from '../../types';
 import { formatDate } from '../../utils/format';
+import { accessContextFromUser, canAssignItAssets, canManageItAssets } from '../../utils/permissions';
 
 type ChipColor = 'default' | 'primary' | 'info' | 'warning' | 'error' | 'success';
 
@@ -64,6 +67,9 @@ const STATUSES = [
 
 export function ITRequestsPage() {
   const { showSuccess, showError } = useToast();
+  const { user } = useAuth();
+  const access = accessContextFromUser(user);
+  const canReserve = canAssignItAssets(access) || canManageItAssets(access);
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<ProvisioningRequest | null>(null);
   const [statusDraft, setStatusDraft] = useState('OPEN');
@@ -293,6 +299,11 @@ export function ITRequestsPage() {
               <Typography variant="body2">
                 Wireless Mouse: {selected.hardware?.wireless_mouse_required ? 'Yes' : 'No'}
               </Typography>
+              <ProvisioningStockCheckPanel
+                requestId={selected.id}
+                employeeUserId={selected.user_id}
+                canReserve={canReserve}
+              />
 
               <Typography variant="subtitle2">Software</Typography>
               {(selected.software || []).length === 0 ? (

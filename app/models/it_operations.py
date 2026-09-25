@@ -21,7 +21,7 @@ PURCHASED_BY_CODES = frozenset(
 
 # Default "current inventory" statuses (returned/disposed/retired excluded).
 CURRENT_INVENTORY_STATUSES = frozenset(
-    {"available", "assigned", "maintenance", "awaiting_return"}
+    {"available", "assigned", "reserved", "maintenance", "awaiting_return"}
 )
 
 
@@ -260,6 +260,8 @@ class Asset(Base, TimestampMixin, TenantMixin):
     purchase_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
     warranty_expiry: Mapped[Optional[date]] = mapped_column(Date)
     location: Mapped[Optional[str]] = mapped_column(String(120))
+    # Computing class for primary devices (ENG_WS, GENERAL_LAPTOP, …); null for peripherals.
+    computer_type: Mapped[Optional[str]] = mapped_column(String(40), index=True)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Durable import lineage (sequential IT Data Import)
@@ -340,6 +342,7 @@ class InventoryItem(Base, TimestampMixin, TenantMixin):
     supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("it_suppliers.id"), nullable=True
     )
+    # Imported snapshot quantities (kept for lineage); stock control uses on_hand_qty.
     total_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     issued_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     unit_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
@@ -353,6 +356,22 @@ class InventoryItem(Base, TimestampMixin, TenantMixin):
     )
     source_system: Mapped[Optional[str]] = mapped_column(String(120))
     source_record_id: Mapped[Optional[str]] = mapped_column(String(80), index=True)
+
+    # Stock control (quantity-based; never one Asset per unit)
+    item_kind: Mapped[Optional[str]] = mapped_column(String(40), index=True)
+    on_hand_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    min_stock: Mapped[Optional[int]] = mapped_column(Integer)
+    reorder_point: Mapped[Optional[int]] = mapped_column(Integer)
+    target_stock: Mapped[Optional[int]] = mapped_column(Integer)
+    reorder_qty: Mapped[Optional[int]] = mapped_column(Integer)
+    supplier_sku: Mapped[Optional[str]] = mapped_column(String(80))
+    lead_time_days: Mapped[Optional[int]] = mapped_column(Integer)
+    last_purchase_date: Mapped[Optional[date]] = mapped_column(Date)
+    last_purchase_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    is_returnable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    location_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_stock_locations.id"), nullable=True, index=True
+    )
 
 
 class Computer(Base, TimestampMixin, TenantMixin):
@@ -1217,3 +1236,197 @@ class WorkstationPackageAssignment(Base, TimestampMixin, TenantMixin):
     )
 
     package: Mapped["WorkstationPackage"] = relationship(back_populates="assignments")
+
+
+# --- Virtual Seats (logical; derived from AssetAssignment) ---
+
+
+class VirtualSeat(Base, TimestampMixin, TenantMixin):
+    """Stable identity for a derived seat: employee + shift slot + primary computing device.
+
+    Holds no asset data. Components are always read live from AssetAssignment.
+    """
+
+    __tablename__ = "it_virtual_seats"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_it_virtual_seats_tenant_code"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    shift_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("rp_shifts.id"), nullable=True, index=True
+    )
+    primary_asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True
+    )
+    primary_assignment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("asset_assignments.id"), nullable=True
+    )
+    # active | ended
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", index=True)
+    started_on: Mapped[date] = mapped_column(Date, nullable=False)
+    ended_on: Mapped[Optional[date]] = mapped_column(Date)
+    # Last observed component asset ids (JSON list) — only used to audit add/remove.
+    component_snapshot: Mapped[Optional[str]] = mapped_column(Text)
+
+
+# --- Consumable stock control ---
+
+STOCK_MOVEMENT_RECEIVE = "receive"
+STOCK_MOVEMENT_ISSUE = "issue"
+STOCK_MOVEMENT_RETURN = "return"
+STOCK_MOVEMENT_ADJUST = "adjust"
+STOCK_MOVEMENT_DAMAGE = "damage"
+STOCK_MOVEMENT_DISPOSE = "dispose"
+STOCK_MOVEMENT_TRANSFER_OUT = "transfer_out"
+STOCK_MOVEMENT_TRANSFER_IN = "transfer_in"
+STOCK_MOVEMENT_OPENING = "opening_balance"
+STOCK_MOVEMENT_TYPES = frozenset(
+    {
+        STOCK_MOVEMENT_RECEIVE,
+        STOCK_MOVEMENT_ISSUE,
+        STOCK_MOVEMENT_RETURN,
+        STOCK_MOVEMENT_ADJUST,
+        STOCK_MOVEMENT_DAMAGE,
+        STOCK_MOVEMENT_DISPOSE,
+        STOCK_MOVEMENT_TRANSFER_OUT,
+        STOCK_MOVEMENT_TRANSFER_IN,
+        STOCK_MOVEMENT_OPENING,
+    }
+)
+
+
+class StockLocation(Base, TimestampMixin, TenantMixin):
+    __tablename__ = "it_stock_locations"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_it_stock_locations_tenant_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class StockMovement(Base, TimestampMixin, TenantMixin):
+    """Immutable ledger row for every on-hand quantity change."""
+
+    __tablename__ = "it_stock_movements"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("inventory_items.id"), nullable=False, index=True
+    )
+    movement_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    previous_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    new_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
+    performed_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    employee_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    reason: Mapped[Optional[str]] = mapped_column(String(300))
+    reference: Mapped[Optional[str]] = mapped_column(String(120))
+    related_movement_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_stock_movements.id"), nullable=True
+    )
+    reservation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_stock_reservations.id"), nullable=True
+    )
+    restock_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_restock_requests.id"), nullable=True
+    )
+    ticket_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tickets.id"), nullable=True
+    )
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_suppliers.id"), nullable=True
+    )
+    purchase_order: Mapped[Optional[str]] = mapped_column(String(80))
+    invoice_number: Mapped[Optional[str]] = mapped_column(String(80))
+    unit_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    counterpart_location_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_stock_locations.id"), nullable=True
+    )
+    # For issues of returnable items: how many units have come back.
+    returned_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class StockReservation(Base, TimestampMixin, TenantMixin):
+    """Units held for a request; reduces available (not on-hand) stock."""
+
+    __tablename__ = "it_stock_reservations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("inventory_items.id"), nullable=False, index=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    # active | fulfilled | released
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", index=True)
+    for_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    ticket_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tickets.id"), nullable=True, index=True
+    )
+    provisioning_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_provisioning_requests.id"), nullable=True, index=True
+    )
+    reason: Mapped[Optional[str]] = mapped_column(String(300))
+    reserved_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    close_reason: Mapped[Optional[str]] = mapped_column(String(300))
+
+
+class StockAlert(Base, TimestampMixin, TenantMixin):
+    """One row per low/out-of-stock episode; resolved when stock is restored."""
+
+    __tablename__ = "it_stock_alerts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("inventory_items.id"), nullable=False, index=True
+    )
+    # low_stock | out_of_stock
+    alert_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # active | resolved
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", index=True)
+    available_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    min_stock: Mapped[int] = mapped_column(Integer, nullable=False)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
+class RestockRequest(Base, TimestampMixin, TenantMixin):
+    """IT purchase request for a stock item (requested → ordered → received)."""
+
+    __tablename__ = "it_restock_requests"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_it_restock_requests_tenant_code"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("inventory_items.id"), nullable=False, index=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    received_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # requested | ordered | partially_received | received | cancelled
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="requested", index=True)
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_suppliers.id"), nullable=True
+    )
+    purchase_order: Mapped[Optional[str]] = mapped_column(String(80))
+    expected_date: Mapped[Optional[date]] = mapped_column(Date)
+    alert_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_stock_alerts.id"), nullable=True
+    )
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)

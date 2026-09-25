@@ -80,6 +80,7 @@ import {
   TableRowActions,
 } from '../../components/ui/design-system';
 import { useAuth } from '../../context/AuthContext';
+import { fetchComputerTypes, itProvisioningKeys } from '../../api/itProvisioning';
 import { useToast } from '../../context/ToastContext';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 import type { ITAsset, ITAssetCreate, ITAssetUpdate } from '../../types/itOperations';
@@ -102,6 +103,7 @@ const ASSET_STATUS_OPTIONS = [
   { value: 'available', label: 'Available' },
   { value: 'assigned', label: 'Assigned' },
   { value: 'maintenance', label: 'Maintenance' },
+  { value: 'reserved', label: 'Reserved' },
   { value: 'awaiting_return', label: 'Awaiting return' },
   { value: 'returned_to_customer', label: 'Returned to customer' },
   { value: 'lost', label: 'Lost' },
@@ -165,6 +167,7 @@ type AssetFormState = {
   allocate_ip: boolean;
   service_tag: string;
   computer_name_reason: string;
+  computer_type: string;
   purchased_by: string;
   owner_customer_id: string;
 };
@@ -188,6 +191,7 @@ const emptyForm: AssetFormState = {
   allocate_ip: true,
   service_tag: '',
   computer_name_reason: '',
+  computer_type: '',
   purchased_by: 'organization',
   owner_customer_id: '',
 };
@@ -201,6 +205,7 @@ function statusColor(
     case 'assigned':
       return 'info';
     case 'maintenance':
+    case 'reserved':
     case 'awaiting_return':
       return 'warning';
     case 'returned_to_customer':
@@ -422,6 +427,13 @@ export function ITAssetsPage({
   const isComputerType = (selectedType?.category || form.category) === 'computer';
   const showNetworkFields =
     isComputerType || (selectedType?.category || form.category) === 'network_equipment';
+
+  const computerTypesQuery = useQuery({
+    queryKey: itProvisioningKeys.computerTypes(),
+    queryFn: fetchComputerTypes,
+    enabled: formOpen && isComputerType,
+    staleTime: 5 * 60_000,
+  });
 
   const nameSuggestQuery = useQuery({
     queryKey: itOperationsKeys.suggestComputerName(selectedType?.code),
@@ -695,6 +707,9 @@ export function ITAssetsPage({
         if (canOverrideNumber && optionalString(form.asset_number_override)) {
           payload.asset_number = optionalString(form.asset_number_override);
         }
+        if (isComputerType) {
+          payload.computer_type = optionalString(form.computer_type);
+        }
         if (showNetworkFields) {
           payload.computer_name = optionalString(form.computer_name);
           payload.computer_name_reason = optionalString(form.computer_name_reason);
@@ -731,6 +746,7 @@ export function ITAssetsPage({
         payload.computer_name = optionalString(form.computer_name);
         payload.mac_address = optionalString(form.mac_address);
         payload.provision_computer = isComputerType;
+        if (isComputerType) payload.computer_type = optionalString(form.computer_type);
         if (form.allocate_ip && ipSuggestQuery.data?.available && ipSuggestQuery.data.ip_address_id) {
           payload.ip_address_id = ipSuggestQuery.data.ip_address_id;
         }
@@ -1059,6 +1075,7 @@ export function ITAssetsPage({
       allocate_ip: true,
       service_tag: asset.service_tag ?? '',
       computer_name_reason: '',
+      computer_type: asset.computer_type ?? '',
       purchased_by: asset.purchased_by || 'organization',
       owner_customer_id: asset.owner_customer_id ?? '',
     });
@@ -1798,6 +1815,20 @@ export function ITAssetsPage({
                   </Alert>
                 ))}
               </Stack>
+            ) : null}
+            {isComputerType ? (
+              <FormSelect
+                label="Computer type"
+                value={form.computer_type}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, computer_type: String(event.target.value) }))
+                }
+                options={[
+                  { value: '', label: 'Not classified' },
+                  ...(computerTypesQuery.data ?? []).map((t) => ({ value: t.code, label: t.label })),
+                ]}
+                helper="Drives Virtual Seat setup requirements and availability by type."
+              />
             ) : null}
             {showNetworkFields ? (
               <>

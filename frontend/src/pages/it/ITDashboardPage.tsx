@@ -29,6 +29,9 @@ import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
 import AppsRoundedIcon from '@mui/icons-material/AppsRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import EventBusyRoundedIcon from '@mui/icons-material/EventBusyRounded';
+import LocalShippingRoundedIcon from '@mui/icons-material/LocalShippingRounded';
+import RemoveShoppingCartRoundedIcon from '@mui/icons-material/RemoveShoppingCartRounded';
+import ShoppingCartRoundedIcon from '@mui/icons-material/ShoppingCartRounded';
 import {
   fetchItDashboard,
   fetchItOnboardingTasks,
@@ -38,10 +41,7 @@ import {
   fetchProvisioningDashboard,
   itProvisioningKeys,
 } from '../../api/itProvisioning';
-import {
-  fetchWorkstationCapacity,
-  workstationPackageKeys,
-} from '../../api/workstationPackages';
+import { fetchComputerAvailability, itInventoryKeys } from '../../api/itInventory';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingState } from '../../components/common/LoadingState';
@@ -69,8 +69,8 @@ export function ITDashboardPage() {
     queryFn: fetchProvisioningDashboard,
   });
   const capacityQuery = useQuery({
-    queryKey: workstationPackageKeys.capacity(),
-    queryFn: () => fetchWorkstationCapacity(),
+    queryKey: itInventoryKeys.availability({}),
+    queryFn: () => fetchComputerAvailability({}),
   });
 
   if (query.isLoading) {
@@ -355,6 +355,65 @@ export function ITDashboardPage() {
           </Grid>
         </ContentCard>
 
+        <ContentCard title="Consumable stock">
+          <Grid container spacing={1.5}>
+            {[
+              {
+                title: 'Low stock',
+                value: data?.stock_low_items ?? 0,
+                icon: WarningAmberRoundedIcon,
+                accent: 'warning' as const,
+                to: '/it/inventory?view=low-stock',
+              },
+              {
+                title: 'Out of stock',
+                value: data?.stock_out_items ?? 0,
+                icon: RemoveShoppingCartRoundedIcon,
+                accent: 'error' as const,
+                to: '/it/inventory?view=low-stock',
+              },
+              {
+                title: 'Upcoming shortage',
+                value: data?.stock_upcoming_shortages ?? 0,
+                icon: AssignmentLateRoundedIcon,
+                accent: 'error' as const,
+                to: '/it/reports?report=upcoming_demand',
+              },
+              {
+                title: 'Pending restock',
+                value: data?.stock_pending_restock ?? 0,
+                icon: ShoppingCartRoundedIcon,
+                accent: 'info' as const,
+                to: '/it/inventory?view=restock',
+              },
+              {
+                title: 'Incoming units',
+                value: data?.stock_incoming_units ?? 0,
+                icon: LocalShippingRoundedIcon,
+                accent: 'info' as const,
+                to: '/it/inventory?view=restock',
+              },
+              {
+                title: 'Reorder needed',
+                value: data?.stock_reorder_needed ?? 0,
+                icon: InventoryRoundedIcon,
+                accent: 'warning' as const,
+                to: '/it/inventory?stock_status=reorder',
+              },
+            ].map((card) => (
+              <Grid key={card.title} size={{ xs: 6, sm: 4, md: 2 }}>
+                <KpiMetricCard
+                  title={card.title}
+                  value={String(card.value)}
+                  icon={card.icon}
+                  accent={card.value > 0 ? card.accent : 'success'}
+                  onClick={() => navigate(card.to)}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </ContentCard>
+
         <ContentCard title="Software & licenses">
           <Grid container spacing={1.5}>
             <Grid size={{ xs: 6, sm: 3 }}>
@@ -401,10 +460,11 @@ export function ITDashboardPage() {
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <KpiMetricCard
               title="Virtual Seats"
-              value={String((capacityQuery.data ?? []).reduce((sum, row) => sum + row.total, 0))}
+              value={String(data?.virtual_seats_total ?? 0)}
               icon={EventSeatRoundedIcon}
-              accent="primary"
-              onClick={() => navigate('/it/workstation-packages')}
+              accent={(data?.virtual_seats_incomplete ?? 0) > 0 ? 'warning' : 'primary'}
+              subtitle={`${data?.virtual_seats_incomplete ?? 0} incomplete · ${data?.virtual_seat_conflicts ?? 0} conflicts`}
+              onClick={() => navigate('/it/virtual-seats')}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -526,35 +586,41 @@ export function ITDashboardPage() {
           </ContentCard>
         ) : null}
 
-        {capacityQuery.data?.length ? (
+        {capacityQuery.data?.summary.length ? (
           <ContentCard
-            title="Workstation capacity by shift"
-            subtitle="Physical workstation packages — available vs assigned per shift."
+            title="Free computers by type and shift"
+            subtitle="Same shift rule as assignment validation. Click to open the availability view."
+            action={
+              <Chip
+                size="small"
+                clickable
+                label="Open availability"
+                onClick={() => navigate('/it/inventory?view=availability')}
+              />
+            }
           >
             <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>Type</TableCell>
-                  <TableCell align="right">Total</TableCell>
-                  <TableCell>Shift availability</TableCell>
+                  <TableCell align="right">Computers</TableCell>
+                  {capacityQuery.data.shifts.map((s) => (
+                    <TableCell key={s.shift_id} align="right">
+                      Free · {s.shift_display}
+                    </TableCell>
+                  ))}
                 </TableRow>
               </TableHead>
               <TableBody>
-                {capacityQuery.data.map((row) => (
-                  <TableRow key={row.computer_type}>
+                {capacityQuery.data.summary.map((row) => (
+                  <TableRow key={row.seat_type}>
                     <TableCell>{row.label}</TableCell>
                     <TableCell align="right">{row.total}</TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                        {row.shifts.map((s) => (
-                          <Chip
-                            key={s.shift_code}
-                            size="small"
-                            label={`${s.shift_name}: ${s.available} avail / ${s.assigned} used`}
-                          />
-                        ))}
-                      </Stack>
-                    </TableCell>
+                    {capacityQuery.data.shifts.map((s) => (
+                      <TableCell key={s.shift_id} align="right">
+                        {row.by_shift[s.shift_code] ?? 0}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 ))}
               </TableBody>

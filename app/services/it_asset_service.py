@@ -34,6 +34,7 @@ ASSET_STATUSES = frozenset(
     {
         "available",
         "assigned",
+        "reserved",
         "maintenance",
         "awaiting_return",
         "returned_to_customer",
@@ -44,7 +45,7 @@ ASSET_STATUSES = frozenset(
     }
 )
 CURRENT_INVENTORY_STATUSES = frozenset(
-    {"available", "assigned", "maintenance", "awaiting_return"}
+    {"available", "assigned", "reserved", "maintenance", "awaiting_return"}
 )
 PURCHASED_BY_CODES = frozenset(
     {"organization", "customer", "vendor", "leased", "other", "unknown"}
@@ -109,6 +110,15 @@ def _full_name(user: User | None) -> str | None:
     if user is None:
         return None
     return f"{user.first_name} {user.last_name}".strip() or None
+
+
+def _clean_computer_type(value: str | None) -> str | None:
+    from app.models.it_operations import COMPUTER_TYPES
+
+    code = (value or "").strip().upper() or None
+    if code is not None and code not in COMPUTER_TYPES:
+        raise ProTrackValidationError(f"Invalid computer_type: {code}")
+    return code
 
 
 def get_or_create_settings(db: Session) -> ITSettings:
@@ -1024,6 +1034,7 @@ def create_asset(
     mac_address: str | None = None,
     ip_address_id: UUID | None = None,
     provision_computer: bool | None = None,
+    computer_type: str | None = None,
     commit: bool = True,
 ) -> Asset:
     from app.services.it_master_data_service import resolve_masters_for_asset
@@ -1031,6 +1042,7 @@ def create_asset(
     asset_type = db.get(AssetType, asset_type_id)
     if asset_type is None or not asset_type.is_active:
         raise ProTrackValidationError("Asset type not found or inactive.")
+    computer_type = _clean_computer_type(computer_type)
     _validate_ownership(purchased_by=purchased_by, owner_customer_id=owner_customer_id)
     if owner_customer_id is not None and db.get(Customer, owner_customer_id) is None:
         raise ProTrackValidationError("Owner customer not found.")
@@ -1115,6 +1127,7 @@ def create_asset(
         purchase_cost=purchase_cost,
         warranty_expiry=warranty_expiry,
         location=(location or "").strip() or None,
+        computer_type=computer_type,
         notes=(notes or "").strip() or None,
         is_deleted=False,
     )
@@ -1189,11 +1202,14 @@ def update_asset(
     asset_number: str | None = None,
     computer_name: str | None = None,
     computer_name_reason: str | None = None,
+    computer_type: str | None = None,
     fields_set: set[str] | None = None,
     commit: bool = True,
 ) -> Asset:
     if asset.is_deleted:
         raise ProTrackValidationError("Cannot update a deleted asset.")
+    if "computer_type" in (fields_set or set()) or (fields_set is None and computer_type is not None):
+        asset.computer_type = _clean_computer_type(computer_type)
     old = {
         "status": asset.status,
         "location": asset.location,
@@ -1492,6 +1508,9 @@ def assign_asset(
         if prev is not None:
             db.add(prev)
         _open_status_period(db, asset, actor=by_user, on_date=when)
+    from app.services import virtual_seat_service
+
+    virtual_seat_service.sync_seats(db, actor=by_user, user_ids={user_id})
     log_activity(
         db,
         user=by_user,
@@ -1569,6 +1588,11 @@ def return_asset(
         if prev is not None:
             db.add(prev)
         _open_status_period(db, asset, actor=by_user, on_date=when)
+    from app.services import virtual_seat_service
+
+    virtual_seat_service.sync_seats(
+        db, actor=by_user, user_ids={assignment.assigned_to_user_id}
+    )
     log_activity(
         db,
         user=by_user,
@@ -1645,6 +1669,10 @@ def return_asset_to_customer(
     db.add(event)
     db.add(asset)
     db.flush()
+    if original_assignee is not None:
+        from app.services import virtual_seat_service
+
+        virtual_seat_service.sync_seats(db, actor=by_user, user_ids={original_assignee})
     log_activity(
         db,
         user=by_user,
@@ -1803,6 +1831,8 @@ def list_computers(
     elif avail == "assigned":
         stmt = stmt.where(Asset.status == "assigned")
     elif avail == "reserved":
+        stmt = stmt.where(Asset.status == "reserved")
+    elif avail == "awaiting_return":
         stmt = stmt.where(Asset.status == "awaiting_return")
     elif avail == "maintenance":
         stmt = stmt.where(Asset.status == "maintenance")

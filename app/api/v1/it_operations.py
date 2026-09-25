@@ -344,6 +344,7 @@ def _asset_read(
         warranty_expiry=asset.warranty_expiry,
         warranty_status=it_asset_service.warranty_status_for(asset.warranty_expiry),
         location=asset.location,
+        computer_type=asset.computer_type,
         notes=asset.notes,
         parent_asset_id=getattr(asset, "parent_asset_id", None),
         parent_asset_number=parent.asset_number if parent else None,
@@ -1347,6 +1348,7 @@ def create_asset(
             mac_address=payload.mac_address,
             ip_address_id=payload.ip_address_id,
             provision_computer=payload.provision_computer,
+            computer_type=payload.computer_type,
         )
         asset = it_asset_service.get_asset(db, asset.id) or asset
         return _asset_read(db, asset)
@@ -1537,6 +1539,7 @@ def update_asset(
             condition=payload.condition,
             computer_name=payload.computer_name,
             computer_name_reason=payload.computer_name_reason,
+            computer_type=payload.computer_type,
             fields_set=set(payload.model_fields_set),
         )
         asset = it_asset_service.get_asset(db, asset.id) or asset

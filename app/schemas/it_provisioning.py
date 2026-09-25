@@ -165,6 +165,8 @@ class Employee360Read(BaseModel):
     shift: Optional[dict] = None
     it_assets: list[dict] = Field(default_factory=list)
     workstation_packages: list[dict] = Field(default_factory=list)
+    virtual_seats: list[dict] = Field(default_factory=list)
+    consumables: list[dict] = Field(default_factory=list)
     software_licenses: list[dict] = Field(default_factory=list)
     performance_reviews: list[dict] = Field(default_factory=list)
     projects: list[dict] = Field(default_factory=list)

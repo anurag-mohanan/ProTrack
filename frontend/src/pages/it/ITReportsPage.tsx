@@ -1,8 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Chip, Stack } from '@mui/material';
 import type { GridColDef } from '@mui/x-data-grid';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  fetchInventoryReport,
+  fetchInventoryReportCatalog,
+  itInventoryKeys,
+} from '../../api/itInventory';
+import { downloadCsv, toCsv } from '../../components/it/inventory/inventoryFormat';
 import {
   fetchCustomerReturnsReport,
   itOperationsKeys,
@@ -13,14 +19,126 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ITSectionSubnav, IT_SETTINGS_TABS } from '../../components/it/ITSectionSubnav';
 import { ContentCard } from '../../components/ui/cards';
-import { FormSelect, SearchToolbar } from '../../components/ui/design-system';
+import { FormField, FormSelect, SearchToolbar } from '../../components/ui/design-system';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import type { CustomerAssetReturnReportRow } from '../../types/itOperations';
 import { formatCellValue, formatDate } from '../../utils/format';
 
+const CUSTOMER_RETURNS = 'customer_returns';
+
 export function ITReportsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const report = searchParams.get('report') ?? CUSTOMER_RETURNS;
+  const catalogQuery = useQuery({
+    queryKey: itInventoryKeys.reportCatalog(),
+    queryFn: fetchInventoryReportCatalog,
+  });
+  const reportOptions = [
+    { value: CUSTOMER_RETURNS, label: 'Customer asset returns' },
+    ...(catalogQuery.data ?? []).map((r) => ({ value: r.key, label: r.title })),
+  ];
+  const selector = (
+    <FormSelect
+      label="Report"
+      value={report}
+      onChange={(event) => {
+        const next = new URLSearchParams(searchParams);
+        next.set('report', String(event.target.value));
+        setSearchParams(next, { replace: true });
+      }}
+      options={reportOptions}
+      sx={{ minWidth: 260 }}
+    />
+  );
+  return report === CUSTOMER_RETURNS ? (
+    <CustomerReturnsReport selector={selector} />
+  ) : (
+    <InventoryReportView reportKey={report} selector={selector} />
+  );
+}
+
+function InventoryReportView({ reportKey, selector }: { reportKey: string; selector: ReactNode }) {
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const dated = reportKey === 'stock_movements';
+  const filters = dated ? { date_from: dateFrom || undefined, date_to: dateTo || undefined } : {};
+  const query = useQuery({
+    queryKey: itInventoryKeys.report(reportKey, filters),
+    queryFn: () => fetchInventoryReport(reportKey, filters),
+  });
+  const columns = useMemo<GridColDef[]>(
+    () =>
+      (query.data?.columns ?? []).map((c) => ({
+        field: c.field,
+        headerName: c.header,
+        flex: 1,
+        minWidth: 120,
+        valueFormatter: (value: unknown) =>
+          typeof value === 'boolean' ? (value ? 'Yes' : 'No') : formatCellValue(value),
+      })),
+    [query.data],
+  );
+
+  return (
+    <PageContainer>
+      <PageHeader
+        title={query.data?.title ?? 'IT report'}
+        action={
+          <ProsohmButton
+            buttonVariant="outlined"
+            disabled={!query.data?.rows.length}
+            onClick={() =>
+              query.data &&
+              downloadCsv(`${reportKey}.csv`, toCsv(query.data.columns, query.data.rows))
+            }
+          >
+            Export CSV
+          </ProsohmButton>
+        }
+      />
+      <SearchToolbar sticky>
+        {selector}
+        {dated ? (
+          <>
+            <FormField
+              label="From"
+              type="date"
+              size="small"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <FormField
+              label="To"
+              type="date"
+              size="small"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+          </>
+        ) : null}
+      </SearchToolbar>
+      {query.isError ? (
+        <ErrorState error={query.error} title="Unable to load report" onRetry={() => void query.refetch()} />
+      ) : (
+        <ContentCard noPadding>
+          <ClientPaginatedDataGrid
+            rows={query.data?.rows ?? []}
+            columns={columns}
+            getRowId={(row) => String(row.id)}
+            loading={query.isLoading}
+            autoHeight
+            filterKey={`${reportKey}|${dateFrom}|${dateTo}`}
+          />
+        </ContentCard>
+      )}
+    </PageContainer>
+  );
+}
+
+function CustomerReturnsReport({ selector }: { selector: ReactNode }) {
   const navigate = useNavigate();
   const [customerFilter, setCustomerFilter] = useState('');
 
@@ -182,9 +300,9 @@ export function ITReportsPage() {
         }
       />
 
-      <ITSectionSubnav items={IT_SETTINGS_TABS} />
 
       <SearchToolbar sticky>
+        {selector}
         <FormSelect
           label="Customer"
           value={customerFilter}

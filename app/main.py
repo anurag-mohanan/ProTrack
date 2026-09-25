@@ -277,6 +277,9 @@ from app.db.phase103_workstation_packages_schema_sync import (
 from app.db.phase104_onboarding_task_workflow_schema_sync import (
     ensure_phase104_onboarding_task_workflow_foundation,
 )
+from app.db.phase105_inventory_virtual_seat_schema_sync import (
+    ensure_phase105_inventory_virtual_seat_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
@@ -346,6 +349,11 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
 
     startup_steps = [
+        # Additive columns read by later ORM-based steps (e.g. phase95 loads Asset).
+        (
+            "phase105_inventory_virtual_seat",
+            ensure_phase105_inventory_virtual_seat_foundation,
+        ),
         ("project_actual_hours", ensure_project_actual_hours),
         ("project_health", ensure_project_health),
         ("timesheet_approval_comments", ensure_timesheet_approval_comments),

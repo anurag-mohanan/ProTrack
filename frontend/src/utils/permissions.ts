@@ -419,11 +419,13 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'Assets',
+    label: 'Assets & Inventory',
     path: '/it/assets',
     icon: InventoryRoundedIcon,
     activePaths: [
       '/it/assets',
+      '/it/inventory',
+      '/it/virtual-seats',
       '/it/workstation-packages',
       '/it/maintenance',
       '/it/returned-assets',

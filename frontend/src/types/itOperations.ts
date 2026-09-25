@@ -2,6 +2,7 @@ export type AssetStatus =
   | 'available'
   | 'assigned'
   | 'maintenance'
+  | 'reserved'
   | 'awaiting_return'
   | 'returned_to_customer'
   | 'lost'
@@ -66,6 +67,15 @@ export interface ITDashboardSummary {
   computers_without_mac?: number;
   data_quality_open_issues?: number;
   data_quality_open_records?: number;
+  stock_low_items?: number;
+  stock_out_items?: number;
+  stock_reorder_needed?: number;
+  stock_pending_restock?: number;
+  stock_incoming_units?: number;
+  stock_upcoming_shortages?: number;
+  virtual_seat_conflicts?: number;
+  virtual_seats_total?: number;
+  virtual_seats_incomplete?: number;
   software_catalog_count?: number;
   active_software_count?: number;
   license_pool_count?: number;
@@ -325,6 +335,7 @@ export interface ITAsset {
   current_shift_name?: string | null;
   current_shift_display?: string | null;
   category?: string | null;
+  computer_type?: string | null;
   computer_id?: string | null;
   computer_name?: string | null;
   mac_address?: string | null;
@@ -409,6 +420,7 @@ export interface CustomerAssetReturnReportRow {
 
 export interface ITAssetCreate {
   asset_type_id: string;
+  computer_type?: string | null;
   serial_number?: string | null;
   make?: string | null;
   model?: string | null;
@@ -434,6 +446,7 @@ export interface ITAssetCreate {
 
 export interface ITAssetUpdate {
   asset_type_id?: string;
+  computer_type?: string | null;
   serial_number?: string | null;
   make?: string | null;
   model?: string | null;

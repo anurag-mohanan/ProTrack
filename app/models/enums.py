@@ -254,6 +254,18 @@ class ActivityAction(enum.Enum):
     it_resource_package_assigned = "it_resource_package_assigned"
     onboarding_task_status_changed = "onboarding_task_status_changed"
     onboarding_task_request_linked = "onboarding_task_request_linked"
+    it_virtual_seat_created = "it_virtual_seat_created"
+    it_virtual_seat_primary_changed = "it_virtual_seat_primary_changed"
+    it_virtual_seat_components_changed = "it_virtual_seat_components_changed"
+    it_virtual_seat_ended = "it_virtual_seat_ended"
+    it_stock_item_created = "it_stock_item_created"
+    it_stock_item_updated = "it_stock_item_updated"
+    it_stock_movement = "it_stock_movement"
+    it_stock_reserved = "it_stock_reserved"
+    it_stock_reservation_closed = "it_stock_reservation_closed"
+    it_stock_alert_raised = "it_stock_alert_raised"
+    it_stock_alert_resolved = "it_stock_alert_resolved"
+    it_restock_request_changed = "it_restock_request_changed"
 
 
 class NotificationType(enum.Enum):
@@ -271,6 +283,7 @@ class NotificationType(enum.Enum):
     quote_payment_follow_up = "quote_payment_follow_up"
     new_hire_onboarding = "new_hire_onboarding"
     training_assigned = "training_assigned"
+    it_low_stock = "it_low_stock"
 
 
 class WorkingModelCode(enum.Enum):
@@ -318,6 +331,9 @@ class EntityType(enum.Enum):
     it_provisioning_request = "it_provisioning_request"
     it_workstation_package = "it_workstation_package"
     onboarding_task = "onboarding_task"
+    it_virtual_seat = "it_virtual_seat"
+    it_stock_item = "it_stock_item"
+    it_restock_request = "it_restock_request"
 
 
 class CostNature(enum.Enum):

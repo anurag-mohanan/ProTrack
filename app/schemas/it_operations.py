@@ -77,6 +77,7 @@ class AssetCreate(BlankOptionalFieldsMixin, BaseModel):
     mac_address: Optional[str] = Field(default=None, max_length=17)
     ip_address_id: Optional[UUID] = None
     provision_computer: Optional[bool] = None
+    computer_type: Optional[str] = Field(default=None, max_length=40)
 
 
 class AssetUpdate(BlankOptionalFieldsMixin, BaseModel):
@@ -102,6 +103,7 @@ class AssetUpdate(BlankOptionalFieldsMixin, BaseModel):
     condition: Optional[str] = Field(default=None, max_length=40)
     computer_name: Optional[str] = Field(default=None, max_length=40)
     computer_name_reason: Optional[str] = Field(default=None, max_length=200)
+    computer_type: Optional[str] = Field(default=None, max_length=40)
 
 
 class ShiftAvailabilitySlot(BaseModel):
@@ -153,6 +155,7 @@ class AssetRead(TimestampSchema):
     warranty_expiry: Optional[date] = None
     warranty_status: Optional[str] = None
     location: Optional[str] = None
+    computer_type: Optional[str] = None
     notes: Optional[str] = None
     parent_asset_id: Optional[UUID] = None
     parent_asset_number: Optional[str] = None
@@ -774,6 +777,15 @@ class ITDashboardSummary(BaseModel):
     computers_without_mac: int = 0
     data_quality_open_issues: int = 0
     data_quality_open_records: int = 0
+    stock_low_items: int = 0
+    stock_out_items: int = 0
+    stock_reorder_needed: int = 0
+    stock_pending_restock: int = 0
+    stock_incoming_units: int = 0
+    stock_upcoming_shortages: int = 0
+    virtual_seat_conflicts: int = 0
+    virtual_seats_total: int = 0
+    virtual_seats_incomplete: int = 0
     recent_movements: list[dict] = Field(default_factory=list)
 
 

@@ -14,7 +14,7 @@ export type ActivityAction =
   | 'timesheet_rejected'
   | 'user_logged_in';
 
-export type EntityType = 'project' | 'milestone' | 'timesheet' | 'user';
+export type EntityType = 'project' | 'milestone' | 'timesheet' | 'user' | 'it_stock_item';
 
 export type NotificationType =
   | 'project_assigned'
@@ -22,7 +22,8 @@ export type NotificationType =
   | 'timesheet_approved'
   | 'timesheet_rejected'
   | 'project_overdue'
-  | 'timesheet_submitted';
+  | 'timesheet_submitted'
+  | 'it_low_stock';
 
 export interface Activity extends Timestamped {
   id: string;

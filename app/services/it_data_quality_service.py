@@ -630,7 +630,160 @@ def _seat_issues(db: Session) -> list[dict]:
     ]
 
 
+def _inventory_issues(db: Session) -> list[dict]:
+    """Consumable stock records and derived virtual seats."""
+    from app.models.it_operations import AssetType, InventoryItem
+    from app.services import it_inventory_rules as rules
+    from app.services import it_stock_service as stock
+    from app.services import virtual_seat_service as seats
+
+    rows = stock.item_rows(db)
+    no_min = [
+        {"item_id": r["id"], "item_name": r["name"], "available": r["available"]}
+        for r in rows
+        if r["min_stock"] is None
+    ]
+    low_unsourced = [
+        {
+            "item_id": r["id"],
+            "item_name": r["name"],
+            "available": r["available"],
+            "detail": ", ".join(
+                label
+                for label, missing in (
+                    ("no supplier", not r["supplier_id"]),
+                    ("no reorder qty", not r["reorder_qty"] and r["target_stock"] is None),
+                )
+                if missing
+            ),
+        }
+        for r in rows
+        if r["stock_status"] in {stock.STATUS_LOW, stock.STATUS_OUT}
+        and (not r["supplier_id"] or (not r["reorder_qty"] and r["target_stock"] is None))
+    ]
+    no_history = [
+        {"item_id": r["id"], "item_name": r["name"], "on_hand": r["on_hand"]}
+        for r in rows
+        if not r["has_movements"]
+    ]
+    invalid_qty = [
+        {
+            "item_id": str(item.id),
+            "item_name": item.name,
+            "on_hand": item.on_hand_qty,
+            "detail": "Negative on-hand quantity"
+            if (item.on_hand_qty or 0) < 0
+            else "Minimum above target stock",
+        }
+        for item in db.scalars(select(InventoryItem).where(InventoryItem.is_deleted.is_(False))).all()
+        if (item.on_hand_qty or 0) < 0
+        or (
+            item.min_stock is not None
+            and item.target_stock is not None
+            and item.min_stock > item.target_stock
+        )
+    ]
+
+    derived = seats.derive_seats(db)
+    peripherals_without_primary = [
+        {
+            "user_id": s["user_id"],
+            "user_name": s["user_name"],
+            "detail": f"{len(s['components'])} peripheral(s), no computer assigned",
+        }
+        for s in derived
+        if not s["primary"] and s["components"]
+    ]
+    seat_conflicts = [
+        {
+            "user_id": s["user_id"],
+            "user_name": s["user_name"],
+            "asset_number": s["primary"]["asset_number"],
+            "detail": "Overlaps with "
+            + ", ".join(
+                f"{c.get('user_name') or 'unknown'} ({c.get('shift_display') or 'no shift'})"
+                for c in s["conflicts"]
+            ),
+        }
+        for s in derived
+        if s["primary"] and s["conflicts"]
+    ]
+
+    untyped_computers = []
+    for asset, asset_type in db.execute(
+        select(Asset, AssetType)
+        .join(AssetType, AssetType.id == Asset.asset_type_id)
+        .where(Asset.is_deleted.is_(False), Asset.status.in_(CURRENT_INVENTORY_STATUSES))
+        .order_by(Asset.asset_number)
+    ).all():
+        if rules.role_for_asset_type(asset_type) == rules.ROLE_COMPUTER and not asset.computer_type:
+            untyped_computers.append(
+                {"asset_id": str(asset.id), "asset_number": asset.asset_number, "status": asset.status}
+            )
+
+    return [
+        _issue(
+            code="consumables_without_min_stock",
+            severity="warning",
+            domain="inventory",
+            title="Consumable stock items with no minimum stock",
+            count=len(no_min),
+            samples=no_min,
+        ),
+        _issue(
+            code="low_stock_without_reorder_info",
+            severity="warning",
+            domain="inventory",
+            title="Low / out-of-stock items missing supplier or reorder quantity",
+            count=len(low_unsourced),
+            samples=low_unsourced,
+        ),
+        _issue(
+            code="invalid_stock_quantities",
+            severity="error",
+            domain="inventory",
+            title="Stock items with invalid quantities or thresholds",
+            count=len(invalid_qty),
+            samples=invalid_qty,
+        ),
+        _issue(
+            code="stock_items_without_movements",
+            severity="info",
+            domain="inventory",
+            title="Stock items with no movement history",
+            count=len(no_history),
+            samples=no_history,
+        ),
+        _issue(
+            code="peripherals_without_primary_device",
+            severity="warning",
+            domain="seats",
+            title="Employees with peripherals but no primary computer",
+            count=len(peripherals_without_primary),
+            samples=peripherals_without_primary,
+        ),
+        _issue(
+            code="virtual_seat_conflicts",
+            severity="error",
+            domain="seats",
+            title="Virtual seats with overlapping shift assignments",
+            count=len(seat_conflicts),
+            samples=seat_conflicts,
+        ),
+        _issue(
+            code="computers_without_computer_type",
+            severity="info",
+            domain="computers",
+            title="Computers with no computer type (seat requirements cannot be checked)",
+            count=len(untyped_computers),
+            samples=untyped_computers,
+        ),
+    ]
+
+
 def _href_for_sample(sample: dict) -> str | None:
+    if sample.get("item_id"):
+        return f"/it/inventory?item={sample['item_id']}"
     asset_number = sample.get("asset_number")
     if isinstance(asset_number, str) and asset_number.strip():
         return f"/it/assets?search={asset_number}"
@@ -667,6 +820,7 @@ def build_data_quality_report(db: Session) -> dict:
         + _identity_issues(db)
         + _asset_record_issues(db)
         + _seat_issues(db)
+        + _inventory_issues(db)
     )
     _annotate_sample_hrefs(issues)
 

@@ -1,29 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Alert,
   Box,
-  Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   Typography,
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  assignWorkstationPackage,
-  findAvailableComputer,
-  workstationPackageKeys,
-} from '../../api/workstationPackages';
-import { fetchShifts } from '../../api/resourceShifts';
-import { fetchComputerTypes, itProvisioningKeys } from '../../api/itProvisioning';
-import { fetchItPeoplePaginated } from '../../api/itOperations';
+import { fetchComputerAvailability, fetchInventoryReference, itInventoryKeys } from '../../api/itInventory';
+import { assignAsset, fetchItPeoplePaginated } from '../../api/itOperations';
+import { itProvisioningKeys } from '../../api/itProvisioning';
 import { getErrorMessage } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { FormField, FormSelect } from '../ui/design-system';
@@ -45,32 +40,30 @@ type Props = {
   };
 };
 
+const SEAT_TYPE_OPTIONS = [
+  { value: '', label: 'Any type' },
+  { value: 'ENG_WS', label: 'Engineering Workstation' },
+  { value: 'GENERAL_WS', label: 'General Workstation' },
+  { value: 'IT_WS', label: 'IT Workstation' },
+  { value: 'ENG_LAPTOP', label: 'Engineering Laptop' },
+  { value: 'GENERAL_LAPTOP', label: 'General Laptop' },
+  { value: 'DESKTOP', label: 'Workstation (type not set)' },
+  { value: 'LAPTOP', label: 'Laptop (type not set)' },
+];
+
 export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) {
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
-  const [form, setForm] = useState({
-    on_date: defaults?.on_date || today,
-    shift_id: defaults?.shift_id || '',
-    computer_type: defaults?.computer_type || 'ENG_WS',
-    monitor_quantity: defaults?.monitor_quantity ?? 2,
-    mouse_3d_required: defaults?.mouse_3d_required ?? false,
-  });
+  const [onDate, setOnDate] = useState(defaults?.on_date || today);
+  const [shiftId, setShiftId] = useState(defaults?.shift_id || '');
+  const [seatType, setSeatType] = useState(defaults?.computer_type || '');
   const [assignUserId, setAssignUserId] = useState(defaults?.user_id || '');
-  const [results, setResults] = useState<{
-    exact_matches: Record<string, unknown>[];
-    partial_matches: Record<string, unknown>[];
-    unavailable_matches: Record<string, unknown>[];
-  } | null>(null);
+  const resolvedUserId = defaults?.user_id || assignUserId;
 
-  const shiftsQuery = useQuery({
-    queryKey: ['resource-shifts', 'list', { active_only: true }],
-    queryFn: () => fetchShifts({ active_only: true }),
-    enabled: open,
-  });
-  const typesQuery = useQuery({
-    queryKey: itProvisioningKeys.computerTypes(),
-    queryFn: fetchComputerTypes,
+  const referenceQuery = useQuery({
+    queryKey: itInventoryKeys.reference(),
+    queryFn: fetchInventoryReference,
     enabled: open,
   });
   const peopleQuery = useQuery({
@@ -78,38 +71,27 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
     queryFn: () => fetchItPeoplePaginated({ page: 1, page_size: 200 }),
     enabled: open && !defaults?.user_id,
   });
-
-  const resolvedUserId = defaults?.user_id || assignUserId;
-
-  const searchMutation = useMutation({
-    mutationFn: () =>
-      findAvailableComputer({
-        on_date: form.on_date,
-        shift_id: form.shift_id,
-        computer_type: form.computer_type || null,
-        monitor_quantity: form.monitor_quantity,
-        mouse_3d_required: form.mouse_3d_required,
-        user_id: resolvedUserId || null,
-        provisioning_request_id: defaults?.provisioning_request_id || null,
+  const availabilityQuery = useQuery({
+    queryKey: [...itInventoryKeys.all, 'find-available', onDate, shiftId, seatType],
+    queryFn: () =>
+      fetchComputerAvailability({
+        on_date: onDate,
+        shift_id: shiftId,
+        seat_type: seatType || undefined,
+        only_available: true,
       }),
-    onSuccess: (data) => setResults(data),
-    onError: (error) => showError(getErrorMessage(error)),
+    enabled: open && Boolean(onDate && shiftId),
   });
 
   const assignMutation = useMutation({
-    mutationFn: (packageId: string) =>
-      assignWorkstationPackage(packageId, {
-        user_id: resolvedUserId,
-        shift_id: form.shift_id,
-        effective_from: form.on_date,
-        provisioning_request_id: defaults?.provisioning_request_id || null,
-      }),
-    onSuccess: () => {
+    mutationFn: (assetId: string) =>
+      assignAsset(assetId, { user_id: resolvedUserId, shift_id: shiftId, assigned_date: onDate }),
+    onSuccess: (asset) => {
       const name =
         defaults?.employee_name ||
         (peopleQuery.data?.items || []).find((p) => p.user_id === resolvedUserId)?.full_name;
-      showSuccess(`Virtual seat assigned${name ? ` to ${name}` : ''}.`);
-      void queryClient.invalidateQueries({ queryKey: workstationPackageKeys.all });
+      showSuccess(`${asset.asset_number} assigned${name ? ` to ${name}` : ''}.`);
+      void queryClient.invalidateQueries({ queryKey: itInventoryKeys.all });
       void queryClient.invalidateQueries({ queryKey: itProvisioningKeys.all });
       void queryClient.invalidateQueries({ queryKey: ['it-assets'] });
       onClose();
@@ -117,93 +99,12 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
     onError: (error) => showError(getErrorMessage(error)),
   });
 
-  const shifts = shiftsQuery.data ?? [];
-  const types = typesQuery.data ?? [];
-
-  const canSearch = Boolean(form.on_date && form.shift_id);
-
-  const renderMatchList = (
-    title: string,
-    rows: Record<string, unknown>[],
-    allowAssign: boolean,
-  ) => (
-    <Box sx={{ mb: 2 }}>
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        {title} ({rows.length})
-      </Typography>
-      {rows.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          None
-        </Typography>
-      ) : (
-        <Stack spacing={1}>
-          {rows.map((row) => (
-            <Accordion key={String(row.id)} disableGutters>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  sx={{ width: '100%', alignItems: 'center', pr: 1 }}
-                >
-                  <Typography variant="body2" sx={{ flex: 1 }}>
-                    <strong>{String(row.code)}</strong> ·{' '}
-                    {String(row.computer_type_label || row.computer_type || '—')} ·{' '}
-                    {String(row.monitor_count)} monitors
-                    {row.has_3d_mouse ? ' · 3D mouse' : ''}
-                  </Typography>
-                  {allowAssign && resolvedUserId ? (
-                    <ProsohmButton
-                      buttonVariant="primary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        assignMutation.mutate(String(row.id));
-                      }}
-                      disabled={assignMutation.isPending}
-                    >
-                      Assign
-                      {defaults?.employee_name ? ` to ${defaults.employee_name}` : ''}
-                    </ProsohmButton>
-                  ) : null}
-                </Stack>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Typography variant="body2">
-                  Computer: {String(row.primary_computer_number || '—')}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Availability: {String(row.availability_status)}
-                  {row.availability_reason ? ` — ${String(row.availability_reason)}` : ''}
-                </Typography>
-                {Array.isArray(row.match_reasons) && row.match_reasons.length ? (
-                  <Typography variant="body2" color="warning.main">
-                    {(row.match_reasons as string[]).join('; ')}
-                  </Typography>
-                ) : null}
-                <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
-                  Members:{' '}
-                  {((row.members as Record<string, unknown>[]) || [])
-                    .map((m) => `${m.asset_number} (${m.role})`)
-                    .join(', ') || '—'}
-                </Typography>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </Stack>
-      )}
-    </Box>
-  );
-
-  const emptyHint = useMemo(() => {
-    if (!results) return null;
-    if (
-      !results.exact_matches.length &&
-      !results.partial_matches.length &&
-      !results.unavailable_matches.length
-    ) {
-      return 'No complete workstation package is currently available.';
-    }
-    return null;
-  }, [results]);
+  const shifts = referenceQuery.data?.shifts ?? [];
+  const computers = availabilityQuery.data?.computers ?? [];
+  const peripheralsNeeded = [
+    defaults?.monitor_quantity ? `${defaults.monitor_quantity} monitor(s)` : null,
+    defaults?.mouse_3d_required ? '3D mouse' : null,
+  ].filter(Boolean);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -211,87 +112,108 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
       <DialogContent>
         <Stack spacing={1.5} sx={{ mt: 1 }}>
           {defaults?.employee_name ? (
-            <Alert severity="info">
-              Searching for {defaults.employee_name}
-              {defaults.shift_id ? ' using their onboarding requirements.' : '.'}
-            </Alert>
+            <Alert severity="info">Searching for {defaults.employee_name}.</Alert>
           ) : (
             <FormSelect
               label="Assign to employee"
               value={assignUserId}
               options={[
                 { value: '', label: 'Select employee to enable Assign' },
-                ...(peopleQuery.data?.items || []).map((p) => ({
-                  value: p.user_id,
-                  label: p.full_name,
-                })),
+                ...(peopleQuery.data?.items || []).map((p) => ({ value: p.user_id, label: p.full_name })),
               ]}
               onChange={(e) => setAssignUserId(String(e.target.value))}
             />
           )}
-          <FormField
-            label="Date"
-            type="date"
-            value={form.on_date}
-            onChange={(e) => setForm((f) => ({ ...f, on_date: e.target.value }))}
-            slotProps={{ inputLabel: { shrink: true } }}
-          />
-          <FormSelect
-            label="Shift"
-            value={form.shift_id}
-            options={(Array.isArray(shifts) ? shifts : []).map(
-              (s: { id: string; name: string; start_time?: string; end_time?: string }) => ({
-                value: s.id,
-                label:
-                  s.start_time && s.end_time
-                    ? `${s.name} (${s.start_time}–${s.end_time})`
-                    : s.name,
-              }),
-            )}
-            onChange={(e) => setForm((f) => ({ ...f, shift_id: String(e.target.value) }))}
-          />
-          <FormSelect
-            label="Computer type"
-            value={form.computer_type}
-            options={types.map((t) => ({ value: t.code, label: t.label }))}
-            onChange={(e) => setForm((f) => ({ ...f, computer_type: String(e.target.value) }))}
-          />
-          <FormSelect
-            label="Monitors required"
-            value={String(form.monitor_quantity)}
-            options={[0, 1, 2, 3, 4].map((n) => ({ value: String(n), label: String(n) }))}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, monitor_quantity: Number(e.target.value) }))
-            }
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={form.mouse_3d_required}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, mouse_3d_required: e.target.checked }))
-                }
-              />
-            }
-            label="3D mouse required"
-          />
-          <ProsohmButton
-            buttonVariant="primary"
-            disabled={!canSearch || searchMutation.isPending}
-            onClick={() => searchMutation.mutate()}
-          >
-            {searchMutation.isPending ? 'Searching…' : 'Search packages'}
-          </ProsohmButton>
-
-          {emptyHint ? <Alert severity="warning">{emptyHint}</Alert> : null}
-
-          {results ? (
-            <>
-              {renderMatchList('Exact matches', results.exact_matches, true)}
-              {renderMatchList('Partial matches', results.partial_matches, false)}
-              {renderMatchList('Unavailable matches', results.unavailable_matches, false)}
-            </>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <FormField
+              label="Date"
+              type="date"
+              value={onDate}
+              onChange={(e) => setOnDate(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <FormSelect
+              label="Shift"
+              value={shiftId}
+              options={[
+                { value: '', label: 'Select shift' },
+                ...shifts.map((s) => ({ value: s.id, label: s.label })),
+              ]}
+              onChange={(e) => setShiftId(String(e.target.value))}
+            />
+            <FormSelect
+              label="Computer type"
+              value={seatType}
+              options={SEAT_TYPE_OPTIONS}
+              onChange={(e) => setSeatType(String(e.target.value))}
+            />
+          </Stack>
+          {peripheralsNeeded.length ? (
+            <Typography variant="body2" color="text.secondary">
+              Also required: {peripheralsNeeded.join(', ')}. Assign peripherals to the employee after the
+              computer; the virtual seat shows what is still missing.
+            </Typography>
           ) : null}
+
+          {!shiftId ? (
+            <Alert severity="info">Select a shift to see computers free for that shift.</Alert>
+          ) : availabilityQuery.isLoading ? (
+            <Typography variant="body2">Checking availability…</Typography>
+          ) : availabilityQuery.isError ? (
+            <Alert severity="error">{getErrorMessage(availabilityQuery.error)}</Alert>
+          ) : computers.length === 0 ? (
+            <Alert severity="warning">No computer of this type is free for the selected shift and date.</Alert>
+          ) : (
+            <Box sx={{ overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Computer</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Make / model</TableCell>
+                    <TableCell>Current occupants</TableCell>
+                    <TableCell align="right" />
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {computers.map((c) => (
+                    <TableRow key={c.asset_id}>
+                      <TableCell>
+                        <strong>{c.asset_number}</strong>
+                        {c.computer_name ? ` · ${c.computer_name}` : ''}
+                      </TableCell>
+                      <TableCell>{c.seat_type_label}</TableCell>
+                      <TableCell>{[c.make, c.model].filter(Boolean).join(' ') || '—'}</TableCell>
+                      <TableCell>
+                        {c.occupants.length ? (
+                          <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
+                            {c.occupants.map((o) => (
+                              <Chip
+                                key={o.user_id}
+                                size="small"
+                                label={`${o.user_name ?? '—'}${o.shift_display ? ` (${o.shift_display})` : ''}`}
+                              />
+                            ))}
+                          </Stack>
+                        ) : (
+                          'Unassigned'
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <ProsohmButton
+                          buttonVariant="primary"
+                          disabled={!resolvedUserId || assignMutation.isPending}
+                          onClick={() => assignMutation.mutate(c.asset_id)}
+                        >
+                          Assign
+                        </ProsohmButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>

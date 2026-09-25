@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getNotificationSummary,
   getNotifications,
@@ -23,6 +24,7 @@ import type { Notification } from '../../types';
 
 export function NotificationBell() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   const summaryQuery = useQuery({
@@ -89,6 +91,10 @@ export function NotificationBell() {
               onClick={() => {
                 if (!notification.is_read) {
                   readMutation.mutate(notification.id);
+                }
+                if (notification.entity_type === 'it_stock_item' && notification.entity_id) {
+                  setAnchorEl(null);
+                  navigate(`/it/inventory?view=low-stock&item=${notification.entity_id}`);
                 }
               }}
             >

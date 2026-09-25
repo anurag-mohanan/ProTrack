@@ -217,7 +217,22 @@ def dashboard_summary(db: Session, *, warranty_days: int | None = None) -> dict:
     dq = it_data_quality_service.build_data_quality_report(db)
     open_issues = dq.get("open_issues") or []
     open_by_code = {row["code"]: int(row["count"]) for row in open_issues}
+
+    from app.services import it_stock_service, virtual_seat_service
+
+    stock_rows = it_stock_service.item_rows(db)
+    demand = it_stock_service.upcoming_demand(db)
+    seat_counts = virtual_seat_service.seat_summary(virtual_seat_service.derive_seats(db))
     return {
+        "virtual_seats_total": seat_counts["total_seats"],
+        "virtual_seats_incomplete": seat_counts["incomplete"],
+        "stock_low_items": sum(1 for r in stock_rows if r["stock_status"] == it_stock_service.STATUS_LOW),
+        "stock_out_items": sum(1 for r in stock_rows if r["stock_status"] == it_stock_service.STATUS_OUT),
+        "stock_reorder_needed": sum(1 for r in stock_rows if r["reorder_needed"]),
+        "stock_pending_restock": sum(r["pending_restock_requests"] for r in stock_rows),
+        "stock_incoming_units": sum(r["incoming"] for r in stock_rows),
+        "stock_upcoming_shortages": sum(1 for row in demand if row["shortage"]),
+        "virtual_seat_conflicts": open_by_code.get("virtual_seat_conflicts", 0),
         "total_assets": total_assets,
         "assigned_assets": assigned_assets,
         "available_assets": available_assets,

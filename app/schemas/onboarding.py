@@ -10,7 +10,17 @@ from pydantic import BaseModel, Field
 
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
-OnboardingItemStatus = Literal["pending", "completed", "not_applicable"]
+OnboardingItemStatus = Literal[
+    "not_started",
+    "in_progress",
+    "blocked",
+    "completed",
+    "not_required",
+    "waived",
+    # Legacy values accepted on input and mapped to not_started / not_required.
+    "pending",
+    "not_applicable",
+]
 OnboardingChecklistStatus = Literal["in_progress", "completed", "cancelled"]
 
 
@@ -50,7 +60,20 @@ class OnboardingChecklistUpdate(BlankOptionalFieldsMixin, BaseModel):
 class OnboardingItemStatusUpdate(BaseModel):
     status: OnboardingItemStatus
     completion_date: Optional[date] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    reason: Optional[str] = Field(default=None, max_length=1000)
+    override: bool = False
+
+
+class OnboardingItemRequestCreate(BaseModel):
+    priority: Literal["low", "medium", "high", "urgent"] = "medium"
+    details: Optional[str] = Field(default=None, max_length=2000)
+
+
+class OnboardingItemUpdate(BlankOptionalFieldsMixin, BaseModel):
+    due_date: Optional[date] = None
+    owner_user_id: Optional[UUID] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
 
 
 class OnboardingChecklistItemRead(TimestampSchema):
@@ -66,12 +89,59 @@ class OnboardingChecklistItemRead(TimestampSchema):
     owner_name: Optional[str] = None
     help_ticket_id: Optional[UUID] = None
     help_ticket_number: Optional[str] = None
+    request_status: Optional[str] = None
+    request_category: Optional[str] = None
+    requires_request: bool = False
     completed_by_id: Optional[UUID] = None
     completed_by_name: Optional[str] = None
     completion_date: Optional[date] = None
+    completed_at: Optional[datetime] = None
+    completion_type: Optional[str] = None
     notes: Optional[str] = None
+    due_date: Optional[date] = None
+    is_overdue: bool = False
+    status_reason: Optional[str] = None
+    status_changed_at: Optional[datetime] = None
+    status_changed_by_name: Optional[str] = None
+    validation_rule: Optional[str] = None
+    attention: list[str] = Field(default_factory=list)
     can_edit: bool = False
+    can_waive: bool = False
+    can_create_request: bool = False
     is_mine: bool = False
+
+
+class OnboardingItemHistoryEvent(BaseModel):
+    at: Optional[datetime] = None
+    actor_name: Optional[str] = None
+    event: str
+    old_status: Optional[str] = None
+    new_status: Optional[str] = None
+    reason: Optional[str] = None
+    note: Optional[str] = None
+    completion_type: Optional[str] = None
+    ticket_number: Optional[str] = None
+    source: Optional[str] = None
+
+
+class OnboardingAttentionRow(BaseModel):
+    checklist_id: UUID
+    item_id: UUID
+    employee_name: Optional[str] = None
+    item_text: str
+    responsibility: str
+    status: str
+    due_date: Optional[date] = None
+    attention: list[str] = Field(default_factory=list)
+    ticket_number: Optional[str] = None
+
+
+class OnboardingAttentionSummary(BaseModel):
+    total_tasks: int = 0
+    actionable_total: int = 0
+    counts: dict[str, int] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
+    items: list[OnboardingAttentionRow] = Field(default_factory=list)
 
 
 class OnboardingTriggeredTicket(BaseModel):
@@ -112,7 +182,11 @@ class OnboardingChecklistRead(TimestampSchema):
     published_by_id: Optional[UUID] = None
     total_items: int = 0
     completed_items: int = 0
+    resolved_items: int = 0
     pending_items: int = 0
+    blocked_items: int = 0
+    attention_items: int = 0
+    overdue_items: int = 0
     completion_percent: int = 0
     can_manage: bool = False
     my_pending_items: int = 0

@@ -252,6 +252,8 @@ class ActivityAction(enum.Enum):
     it_data_import_committed = "it_data_import_committed"
     it_data_import_rolled_back = "it_data_import_rolled_back"
     it_resource_package_assigned = "it_resource_package_assigned"
+    onboarding_task_status_changed = "onboarding_task_status_changed"
+    onboarding_task_request_linked = "onboarding_task_request_linked"
 
 
 class NotificationType(enum.Enum):
@@ -315,6 +317,7 @@ class EntityType(enum.Enum):
     it_resource_package = "it_resource_package"
     it_provisioning_request = "it_provisioning_request"
     it_workstation_package = "it_workstation_package"
+    onboarding_task = "onboarding_task"
 
 
 class CostNature(enum.Enum):

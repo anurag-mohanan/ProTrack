@@ -46,12 +46,15 @@ def test_onboarding_assigns_required_trainings_and_blocks_complete(
 
     saw_training_block = False
     for item in body["items"]:
-        if item["status"] == "not_applicable":
+        if item["status"] == "not_required":
             continue
+        payload = {"status": "completed"}
+        if item.get("validation_rule"):
+            payload.update({"override": True, "reason": "Assigned outside ProTrack"})
         resp = client.post(
             f"/api/v1/hr/onboarding/{body['id']}/items/{item['id']}/status",
             headers=auth_headers,
-            json={"status": "completed"},
+            json=payload,
         )
         if resp.status_code == 422:
             saw_training_block = True
@@ -82,11 +85,14 @@ def test_onboarding_assigns_required_trainings_and_blocks_complete(
         f"/api/v1/hr/onboarding/{body['id']}", headers=auth_headers
     ).json()
     for item in checklist["items"]:
-        if item["status"] == "pending":
+        if item["status"] in {"not_started", "in_progress", "blocked"}:
+            payload = {"status": "completed"}
+            if item.get("validation_rule"):
+                payload.update({"override": True, "reason": "Assigned outside ProTrack"})
             resp = client.post(
                 f"/api/v1/hr/onboarding/{body['id']}/items/{item['id']}/status",
                 headers=auth_headers,
-                json={"status": "completed"},
+                json=payload,
             )
             assert resp.status_code == 200, resp.text
 

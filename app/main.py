@@ -274,6 +274,9 @@ from app.db.phase102_it_provisioning_schema_sync import (
 from app.db.phase103_workstation_packages_schema_sync import (
     ensure_phase103_workstation_packages_foundation,
 )
+from app.db.phase104_onboarding_task_workflow_schema_sync import (
+    ensure_phase104_onboarding_task_workflow_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
@@ -464,6 +467,10 @@ async def lifespan(app: FastAPI):
         ("phase101_customer_commercial", ensure_phase101_customer_commercial_foundation),
         ("phase102_it_provisioning", ensure_phase102_it_provisioning_foundation),
         ("phase103_workstation_packages", ensure_phase103_workstation_packages_foundation),
+        (
+            "phase104_onboarding_task_workflow",
+            ensure_phase104_onboarding_task_workflow_foundation,
+        ),
         ("performance_indexes", ensure_performance_indexes),
     ]
 

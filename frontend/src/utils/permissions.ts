@@ -146,6 +146,7 @@ export interface MainNavItem {
   icon: SvgIconComponent;
   module: ModuleKey;
   children?: Array<{ label: string; path: string }>;
+  activePaths?: string[];
 }
 
 export interface AccessContext {
@@ -321,6 +322,8 @@ type SectionNavConfigItem = {
   icon: SvgIconComponent;
   visible?: (ctx: AccessContext) => boolean;
   children?: Array<{ label: string; path: string }>;
+  /** Pathnames (and their sub-paths) that highlight this item regardless of query string. */
+  activePaths?: string[];
 };
 
 // Operations: cross-functional business planning, finance, and reporting.
@@ -405,6 +408,8 @@ const HR_SECTION_NAV: SectionNavConfigItem[] = [
   },
 ];
 
+// IT lists business areas only. Views of an area (asset types, statuses, software tabs,
+// admin pages) are in-page tabs — see components/it/itAreaTabConfig.ts.
 const IT_SECTION_NAV: SectionNavConfigItem[] = [
   {
     module: MODULE_IT_OPERATIONS,
@@ -414,69 +419,50 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'Assets & Inventory',
+    label: 'Assets',
     path: '/it/assets',
     icon: InventoryRoundedIcon,
-    children: [
-      { label: 'All Assets', path: '/it/assets' },
-      { label: 'Computers', path: '/it/assets?category=computer' },
-      { label: 'Virtual Seats', path: '/it/workstation-packages' },
-      { label: 'Peripherals & Equipment', path: '/it/assets?category=peripheral' },
-      { label: 'Returned / Pending Return', path: '/it/returned-assets' },
-      { label: 'Assignments', path: '/it/assets?view=assignments' },
-      { label: 'Asset History', path: '/it/assets?view=history' },
+    activePaths: [
+      '/it/assets',
+      '/it/workstation-packages',
+      '/it/maintenance',
+      '/it/returned-assets',
+      '/it/accounts',
     ],
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'IT People',
-    path: '/it/accounts',
-    icon: BadgeRoundedIcon,
+    label: 'Requests',
+    path: '/it/requests',
+    icon: SupportAgentRoundedIcon,
+    activePaths: ['/it/requests'],
   },
   {
     module: MODULE_IT_OPERATIONS,
     label: 'Software & Licenses',
     path: '/it/software',
     icon: AppsRoundedIcon,
+    activePaths: ['/it/software'],
     visible: (ctx: AccessContext) =>
       userHasSpecial(ctx, SPECIAL_MANAGE_IT_SOFTWARE) || canViewItOperations(ctx),
-    children: [
-      { label: 'Software', path: '/it/software' },
-      { label: 'Licenses', path: '/it/software?tab=licenses' },
-      { label: 'Assignments', path: '/it/software?tab=assignments' },
-      { label: 'Installations', path: '/it/software?tab=installations' },
-      { label: 'Renewals / Expiry', path: '/it/software?tab=expiry' },
-      { label: 'Requirements', path: '/it/software?tab=requirements' },
-      { label: 'Packages', path: '/it/software?tab=packages' },
-    ],
   },
   {
     module: MODULE_IT_OPERATIONS,
-    label: 'IT Service',
-    path: '/it/requests',
-    icon: SupportAgentRoundedIcon,
-    children: [
-      { label: 'Requests', path: '/it/requests' },
-      { label: 'Maintenance', path: '/it/maintenance' },
-    ],
+    label: 'Reports',
+    path: '/it/reports',
+    icon: AssessmentRoundedIcon,
+    activePaths: ['/it/reports'],
+    visible: (ctx: AccessContext) =>
+      userHasSpecial(ctx, SPECIAL_VIEW_IT_REPORTS) || canViewItOperations(ctx),
   },
   {
     module: MODULE_IT_OPERATIONS,
     label: 'Administration',
     path: '/it/settings',
     icon: SettingsRoundedIcon,
+    activePaths: ['/it/settings', '/it/master-data', '/it/data-import', '/it/networks', '/it/computers'],
     visible: (ctx: AccessContext) =>
-      canManageItSettings(ctx) ||
-      canManageItDataImports(ctx) ||
-      userHasSpecial(ctx, SPECIAL_VIEW_IT_REPORTS) ||
-      canViewItOperations(ctx),
-    children: [
-      { label: 'Master Data', path: '/it/master-data' },
-      { label: 'Data Import', path: '/it/data-import' },
-      { label: 'Reports', path: '/it/reports' },
-      { label: 'Settings', path: '/it/settings' },
-      { label: 'IP Pools', path: '/it/networks' },
-    ],
+      canManageItSettings(ctx) || canManageItDataImports(ctx) || canViewItOperations(ctx),
   },
 ];
 export const FUTURE_MODULE_PLACEHOLDERS = [
@@ -959,6 +945,7 @@ function buildSectionNavItems(
       icon: item.icon,
       label: typeof item.label === 'function' ? item.label(ctx) : item.label,
       children: item.children,
+      activePaths: item.activePaths,
     });
   }
   return items;

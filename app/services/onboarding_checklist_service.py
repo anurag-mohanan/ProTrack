@@ -18,10 +18,11 @@ from app.models.models import (
     OnboardingChecklistTemplate,
     User,
 )
+from app.services import onboarding_task_service as tasks
 
 FORM_CODE = "PP-HRD-FO-14"
 FORM_TITLE = "New Hire Onboarding Checklist"
-TEMPLATE_VERSION = 2
+TEMPLATE_VERSION = 3
 
 # Responsibility owners — company-wide buckets (common for every department).
 RESPONSIBILITY_LABELS: dict[str, str] = {
@@ -41,11 +42,7 @@ RESPONSIBILITY_TICKET_CATEGORY: dict[str, str | None] = {
     "manager": None,  # assigned to reporting manager — no department ticket
 }
 
-STATUS_LABELS: dict[str, str] = {
-    "pending": "Pending",
-    "completed": "Completed",
-    "not_applicable": "N/A",
-}
+STATUS_LABELS: dict[str, str] = dict(tasks.STATUS_LABELS)
 
 CHECKLIST_STATUS_LABELS: dict[str, str] = {
     "in_progress": "In Progress",
@@ -89,7 +86,12 @@ PP_HRD_FO_14_STRUCTURE: list[dict[str, Any]] = [
     {
         "section": "IT",
         "items": [
-            {"text": "Workstation, 3D mouse & license ready", "responsibility": "it"},
+            {
+                "text": "Workstation, 3D mouse & license ready",
+                "responsibility": "it",
+                "requires_request": True,
+                "validation": "workstation_assigned",
+            },
             {"text": "Email ID created & set up", "responsibility": "it"},
             {"text": "Teams account created", "responsibility": "it"},
             {"text": "Domain user created", "responsibility": "it"},
@@ -446,7 +448,7 @@ def raise_department_tickets(
 
     by_resp: dict[str, list[OnboardingChecklistItem]] = {}
     for item in checklist.items:
-        if item.status == "not_applicable":
+        if tasks.is_resolved(item.status):
             continue
         by_resp.setdefault(item.responsibility, []).append(item)
 
@@ -568,6 +570,7 @@ def create_checklist_from_template(
             owner_id = resolve_owner_for_responsibility(
                 db, responsibility, reporting_manager_id=manager_id
             )
+            validation = item_row.get("validation")
             db.add(
                 OnboardingChecklistItem(
                     checklist_id=checklist.id,
@@ -575,8 +578,11 @@ def create_checklist_from_template(
                     sort_order=order,
                     item_text=text,
                     responsibility=responsibility,
-                    status="pending",
+                    status=tasks.NOT_STARTED,
                     owner_user_id=owner_id,
+                    due_date=tasks.default_due_date(responsibility, checklist.joining_date),
+                    requires_request=bool(item_row.get("requires_request", False)),
+                    validation_rule=str(validation) if validation else None,
                 )
             )
             order += 1
@@ -603,8 +609,7 @@ def refresh_checklist_status(checklist: OnboardingChecklist, db: Session | None 
     items = list(checklist.items)
     if not items:
         return
-    actionable = [i for i in items if i.status != "not_applicable"]
-    if actionable and all(i.status == "completed" for i in actionable):
+    if all(tasks.is_resolved(i.status) for i in items):
         if db is not None and checklist.employee_user_id is not None:
             from app.services.training_service import assert_required_trainings_complete
 
@@ -624,23 +629,21 @@ def set_item_status(
     actor: User,
     completion_date: date | None = None,
     notes: str | None = None,
+    reason: str | None = None,
+    override: bool = False,
 ) -> OnboardingChecklistItem:
-    if status not in STATUS_LABELS:
-        raise ValueError(f"Invalid item status: {status}")
-    item.status = status
-    if notes is not None:
-        item.notes = notes
-    if status == "completed":
-        item.completed_by_id = actor.id
-        item.completion_date = completion_date or date.today()
-    elif status == "pending":
-        item.completed_by_id = None
-        item.completion_date = None
-    else:
-        # N/A
-        item.completed_by_id = actor.id
-        item.completion_date = completion_date or date.today()
-    db.flush()
+    result = tasks.transition(
+        db,
+        item=item,
+        status=status,
+        actor=actor,
+        can_waive=can_manage_onboarding(db, actor),
+        reason=reason,
+        note=notes,
+        override=override,
+        completion_date=completion_date,
+    )
+    status = result.new_status
     if (
         status == "completed"
         and item.responsibility == "it"
@@ -711,26 +714,38 @@ def _maybe_provision_it_account_metadata(
     )
 
 
+def _checklist_load_options() -> list[Any]:
+    items = selectinload(OnboardingChecklist.items)
+    return [
+        items.selectinload(OnboardingChecklistItem.completed_by),
+        items.selectinload(OnboardingChecklistItem.owner),
+        items.selectinload(OnboardingChecklistItem.help_ticket),
+        items.selectinload(OnboardingChecklistItem.status_changed_by),
+        selectinload(OnboardingChecklist.template),
+        selectinload(OnboardingChecklist.employee),
+        selectinload(OnboardingChecklist.reporting_manager),
+        selectinload(OnboardingChecklist.created_by),
+    ]
+
+
 def load_checklist(db: Session, checklist_id: UUID) -> OnboardingChecklist | None:
     return db.scalar(
         select(OnboardingChecklist)
-        .options(
-            selectinload(OnboardingChecklist.items).selectinload(
-                OnboardingChecklistItem.completed_by
-            ),
-            selectinload(OnboardingChecklist.items).selectinload(
-                OnboardingChecklistItem.owner
-            ),
-            selectinload(OnboardingChecklist.items).selectinload(
-                OnboardingChecklistItem.help_ticket
-            ),
-            selectinload(OnboardingChecklist.template),
-            selectinload(OnboardingChecklist.employee),
-            selectinload(OnboardingChecklist.reporting_manager),
-            selectinload(OnboardingChecklist.created_by),
-        )
+        .options(*_checklist_load_options())
         .where(OnboardingChecklist.id == checklist_id)
     )
+
+
+def load_checklists(db: Session, *, status: str | None = None) -> list[OnboardingChecklist]:
+    """All checklists with items eager-loaded in a fixed number of queries."""
+    stmt = (
+        select(OnboardingChecklist)
+        .options(*_checklist_load_options())
+        .order_by(OnboardingChecklist.created_at.desc())
+    )
+    if status and status != "all":
+        stmt = stmt.where(OnboardingChecklist.status == status)
+    return list(db.scalars(stmt).all())
 
 
 def triggered_tickets_from_items(checklist: OnboardingChecklist) -> list[dict[str, Any]]:
@@ -759,17 +774,4 @@ def triggered_tickets_from_items(checklist: OnboardingChecklist) -> list[dict[st
 
 
 def completion_stats(checklist: OnboardingChecklist) -> dict[str, int]:
-    items = list(checklist.items)
-    total = len(items)
-    completed = sum(1 for i in items if i.status == "completed")
-    pending = sum(1 for i in items if i.status == "pending")
-    na = sum(1 for i in items if i.status == "not_applicable")
-    actionable = total - na
-    percent = int(round((completed / actionable) * 100)) if actionable else 100
-    return {
-        "total": total,
-        "completed": completed,
-        "pending": pending,
-        "not_applicable": na,
-        "percent": percent,
-    }
+    return tasks.completion_stats(checklist)

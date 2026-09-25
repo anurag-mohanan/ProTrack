@@ -340,6 +340,20 @@ def create_provisioning_for_user(
     request.ticket_id = ticket.id
     db.add(request)
     db.flush()
+    if checklist_id is not None:
+        from app.models.models import OnboardingChecklistItem
+        from app.services import onboarding_task_service as onboarding_tasks
+
+        request_items = db.scalars(
+            select(OnboardingChecklistItem).where(
+                OnboardingChecklistItem.checklist_id == checklist_id,
+                OnboardingChecklistItem.responsibility == "it",
+                OnboardingChecklistItem.requires_request.is_(True),
+            )
+        ).all()
+        onboarding_tasks.link_items_to_ticket(
+            db, items=request_items, ticket=ticket, actor=created_by
+        )
 
     log_activity(
         db,
@@ -523,6 +537,10 @@ def update_request_status(
         module=MODULE,
         commit=False,
     )
+    if status != old:
+        from app.services import onboarding_task_service as onboarding_tasks
+
+        onboarding_tasks.sync_from_provisioning(db, request, actor=actor)
     if commit:
         db.commit()
         db.refresh(request)

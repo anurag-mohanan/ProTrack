@@ -16,16 +16,21 @@ from app.core.module_actions import MODULE_ACTION_VIEW, user_has_module_action
 from app.core.permissions import get_role_name
 from app.models.models import OnboardingChecklist, OnboardingChecklistItem, User
 from app.schemas.onboarding import (
+    OnboardingAttentionSummary,
     OnboardingChecklistCreate,
     OnboardingChecklistDetailRead,
     OnboardingChecklistItemRead,
     OnboardingChecklistRead,
     OnboardingChecklistUpdate,
+    OnboardingItemHistoryEvent,
+    OnboardingItemRequestCreate,
     OnboardingItemStatusUpdate,
+    OnboardingItemUpdate,
     OnboardingTemplateRead,
     OnboardingTriggeredTicket,
 )
 from app.services import onboarding_checklist_service as onboard
+from app.services import onboarding_task_service as tasks
 
 router = APIRouter(prefix="/hr/onboarding", tags=["onboarding"])
 
@@ -49,14 +54,30 @@ def _require_hr_or_owner(db: Session, user: User) -> None:
     raise HTTPException(status_code=403, detail="Onboarding access required")
 
 
-def _item_read(
-    db: Session, item: OnboardingChecklistItem, current_user: User
-) -> OnboardingChecklistItemRead:
-    is_mine = (
-        item.owner_user_id == current_user.id
-        or item.responsibility in onboard.responsibilities_for_user(db, current_user)
-    )
+class _Viewer:
+    """Per-request permission facts, computed once instead of per item."""
+
+    def __init__(self, db: Session, user: User) -> None:
+        self.user = user
+        self.can_manage = onboard.can_manage_onboarding(db, user)
+        self.owned = onboard.responsibilities_for_user(db, user)
+
+    def can_edit(self, item: OnboardingChecklistItem) -> bool:
+        return (
+            self.can_manage
+            or item.owner_user_id == self.user.id
+            or item.responsibility in self.owned
+        )
+
+    def is_mine(self, item: OnboardingChecklistItem) -> bool:
+        return item.owner_user_id == self.user.id or item.responsibility in self.owned
+
+
+def _item_read(item: OnboardingChecklistItem, viewer: _Viewer) -> OnboardingChecklistItemRead:
     ticket = item.help_ticket
+    status_value = tasks.LEGACY_STATUS_MAP.get(item.status, item.status)
+    can_edit = viewer.can_edit(item)
+    resolved = tasks.is_resolved(status_value)
     return OnboardingChecklistItemRead(
         id=item.id,
         created_at=item.created_at,
@@ -69,35 +90,56 @@ def _item_read(
         responsibility_label=onboard.RESPONSIBILITY_LABELS.get(
             item.responsibility, item.responsibility
         ),
-        status=item.status,
-        status_label=onboard.STATUS_LABELS.get(item.status, item.status),
+        status=status_value,
+        status_label=tasks.STATUS_LABELS.get(status_value, status_value),
         owner_user_id=item.owner_user_id,
         owner_name=_full_name(item.owner),
         help_ticket_id=item.help_ticket_id,
         help_ticket_number=ticket.ticket_number if ticket is not None else None,
+        request_status=ticket.status if ticket is not None else None,
+        request_category=tasks.request_category(item),
+        requires_request=bool(item.requires_request),
         completed_by_id=item.completed_by_id,
         completed_by_name=_full_name(item.completed_by),
         completion_date=item.completion_date,
+        completed_at=item.completed_at,
+        completion_type=item.completion_type,
         notes=item.notes,
-        can_edit=onboard.can_edit_item(db, current_user, item),
-        is_mine=is_mine,
+        due_date=tasks.effective_due_date(item),
+        is_overdue=tasks.is_overdue(item),
+        status_reason=item.status_reason,
+        status_changed_at=item.status_changed_at,
+        status_changed_by_name=_full_name(item.status_changed_by),
+        validation_rule=item.validation_rule,
+        attention=tasks.attention_codes(item),
+        can_edit=can_edit,
+        can_waive=viewer.can_manage,
+        can_create_request=(
+            can_edit
+            and not resolved
+            and tasks.request_category(item) is not None
+            and not tasks.has_active_request(item)
+        ),
+        is_mine=viewer.is_mine(item),
     )
 
 
 def _to_read(
-    db: Session, checklist: OnboardingChecklist, current_user: User
+    db: Session, checklist: OnboardingChecklist, current_user: User, viewer: _Viewer | None = None
 ) -> OnboardingChecklistRead:
+    viewer = viewer or _Viewer(db, current_user)
     stats = onboard.completion_stats(checklist)
     my_pending = sum(
         1
         for item in checklist.items
-        if item.status == "pending"
-        and (
-            item.owner_user_id == current_user.id
-            or item.responsibility
-            in onboard.responsibilities_for_user(db, current_user)
-        )
+        if not tasks.is_resolved(item.status) and viewer.is_mine(item)
     )
+    attention_items = sum(
+        1
+        for item in checklist.items
+        if set(tasks.attention_codes(item)) - {"unassigned"}
+    )
+    overdue_items = sum(1 for item in checklist.items if tasks.is_overdue(item))
     return OnboardingChecklistRead(
         id=checklist.id,
         created_at=checklist.created_at,
@@ -132,9 +174,13 @@ def _to_read(
         published_by_id=getattr(checklist, "published_by_id", None),
         total_items=stats["total"],
         completed_items=stats["completed"],
-        pending_items=stats["pending"],
+        resolved_items=stats["resolved"],
+        pending_items=stats["unresolved"],
+        blocked_items=stats["blocked"],
+        attention_items=attention_items,
+        overdue_items=overdue_items,
         completion_percent=stats["percent"],
-        can_manage=onboard.can_manage_onboarding(db, current_user),
+        can_manage=viewer.can_manage,
         my_pending_items=my_pending,
     )
 
@@ -169,8 +215,9 @@ def _to_detail(
     triggered: list[dict] | None = None,
     provisioned_temporary_password: str | None = None,
 ) -> OnboardingChecklistDetailRead:
-    base = _to_read(db, checklist, current_user)
-    items = [_item_read(db, item, current_user) for item in checklist.items]
+    viewer = _Viewer(db, current_user)
+    base = _to_read(db, checklist, current_user, viewer)
+    items = [_item_read(item, viewer) for item in checklist.items]
     sections = []
     seen: set[str] = set()
     for item in checklist.items:
@@ -221,27 +268,48 @@ def list_checklists(
 ):
     _require_hr_or_owner(db, current_user)
     onboard.ensure_default_template(db)
-    stmt = (
-        select(OnboardingChecklist)
-        .options(
-            # lightweight: items needed for stats
-        )
-        .order_by(OnboardingChecklist.created_at.desc())
-    )
-    if status_filter and status_filter != "all":
-        stmt = stmt.where(OnboardingChecklist.status == status_filter)
-
-    rows = db.scalars(stmt).all()
-    # Load items for stats
+    viewer = _Viewer(db, current_user)
     result: list[OnboardingChecklistRead] = []
-    for row in rows:
-        full = onboard.load_checklist(db, row.id)
-        if full is None:
+    for row in onboard.load_checklists(db, status=status_filter):
+        if not _viewer_can_view(viewer, row):
             continue
-        if not onboard.can_view_checklist(db, current_user, full):
-            continue
-        result.append(_to_read(db, full, current_user))
+        result.append(_to_read(db, row, current_user, viewer))
     return result
+
+
+def _viewer_can_view(viewer: _Viewer, checklist: OnboardingChecklist) -> bool:
+    user_id = viewer.user.id
+    if viewer.can_manage or viewer.owned:
+        return True
+    if user_id in (
+        checklist.employee_user_id,
+        checklist.reporting_manager_id,
+        checklist.created_by_id,
+    ):
+        return True
+    return any(item.owner_user_id == user_id for item in checklist.items)
+
+
+@router.get("/attention", response_model=OnboardingAttentionSummary)
+def onboarding_attention(
+    responsibility: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Unresolved tasks that need action (missing/cancelled request, blocked, overdue)."""
+    _require_hr_or_owner(db, current_user)
+    viewer = _Viewer(db, current_user)
+    items: list[OnboardingChecklistItem] = []
+    for checklist in onboard.load_checklists(db, status="in_progress"):
+        if not _viewer_can_view(viewer, checklist):
+            continue
+        for item in checklist.items:
+            if responsibility and item.responsibility != responsibility:
+                continue
+            if not viewer.can_manage and not viewer.is_mine(item):
+                continue
+            items.append(item)
+    return OnboardingAttentionSummary(**tasks.attention_summary(items))
 
 
 @router.post("", response_model=OnboardingChecklistDetailRead, status_code=status.HTTP_201_CREATED)
@@ -469,19 +537,7 @@ def update_item_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    checklist = onboard.load_checklist(db, checklist_id)
-    if checklist is None:
-        raise HTTPException(status_code=404, detail="Onboarding checklist not found.")
-    if not onboard.can_view_checklist(db, current_user, checklist):
-        raise HTTPException(status_code=403, detail="Not permitted.")
-    item = next((row for row in checklist.items if row.id == item_id), None)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Checklist item not found.")
-    if not onboard.can_edit_item(db, current_user, item):
-        raise HTTPException(
-            status_code=403,
-            detail="You cannot update items outside your responsibility.",
-        )
+    checklist, item = _load_item_for_edit(db, current_user, checklist_id, item_id)
     try:
         onboard.set_item_status(
             db,
@@ -490,10 +546,116 @@ def update_item_status(
             actor=current_user,
             completion_date=payload.completion_date,
             notes=payload.notes,
+            reason=payload.reason,
+            override=payload.override,
         )
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (ValueError, ProTrackValidationError) as exc:
+        db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.commit()
     loaded = onboard.load_checklist(db, checklist_id)
     assert loaded is not None
     return _to_detail(db, loaded, current_user)
+
+
+def _load_item_for_edit(
+    db: Session, current_user: User, checklist_id: UUID, item_id: UUID
+) -> tuple[OnboardingChecklist, OnboardingChecklistItem]:
+    checklist, item = _load_item_for_view(db, current_user, checklist_id, item_id)
+    if not onboard.can_edit_item(db, current_user, item):
+        raise HTTPException(
+            status_code=403,
+            detail="You cannot update items outside your responsibility.",
+        )
+    return checklist, item
+
+
+def _load_item_for_view(
+    db: Session, current_user: User, checklist_id: UUID, item_id: UUID
+) -> tuple[OnboardingChecklist, OnboardingChecklistItem]:
+    checklist = onboard.load_checklist(db, checklist_id)
+    if checklist is None:
+        raise HTTPException(status_code=404, detail="Onboarding checklist not found.")
+    if not onboard.can_view_checklist(db, current_user, checklist):
+        raise HTTPException(status_code=403, detail="Not permitted.")
+    item = next((row for row in checklist.items if row.id == item_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Checklist item not found.")
+    return checklist, item
+
+
+@router.post(
+    "/{checklist_id}/items/{item_id}/request",
+    response_model=OnboardingChecklistDetailRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_item_request(
+    checklist_id: UUID,
+    item_id: UUID,
+    payload: OnboardingItemRequestCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Raise a Help Desk request for one task and link it (task moves to in progress)."""
+    _checklist, item = _load_item_for_edit(db, current_user, checklist_id, item_id)
+    try:
+        tasks.create_request_for_item(
+            db,
+            item=item,
+            actor=current_user,
+            priority=payload.priority,
+            details=payload.details,
+        )
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.commit()
+    loaded = onboard.load_checklist(db, checklist_id)
+    assert loaded is not None
+    return _to_detail(db, loaded, current_user)
+
+
+@router.patch(
+    "/{checklist_id}/items/{item_id}",
+    response_model=OnboardingChecklistDetailRead,
+)
+def update_item(
+    checklist_id: UUID,
+    item_id: UUID,
+    payload: OnboardingItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit due date / named owner (HR) or notes (task owners)."""
+    _checklist, item = _load_item_for_edit(db, current_user, checklist_id, item_id)
+    data = payload.model_dump(exclude_unset=True)
+    manage_only = {"due_date", "owner_user_id"} & set(data)
+    if manage_only and not onboard.can_manage_onboarding(db, current_user):
+        raise HTTPException(status_code=403, detail="Only HR / Admin can change due date or owner.")
+    if data.get("owner_user_id") is not None:
+        owner = db.get(User, data["owner_user_id"])
+        if owner is None or owner.is_deleted or not owner.is_active:
+            raise HTTPException(status_code=404, detail="Owner not found.")
+    for key, value in data.items():
+        setattr(item, key, value)
+    db.commit()
+    loaded = onboard.load_checklist(db, checklist_id)
+    assert loaded is not None
+    return _to_detail(db, loaded, current_user)
+
+
+@router.get(
+    "/{checklist_id}/items/{item_id}/history",
+    response_model=list[OnboardingItemHistoryEvent],
+)
+def item_history(
+    checklist_id: UUID,
+    item_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _checklist, item = _load_item_for_view(db, current_user, checklist_id, item_id)
+    return [OnboardingItemHistoryEvent(**row) for row in tasks.history_for_item(db, item)]

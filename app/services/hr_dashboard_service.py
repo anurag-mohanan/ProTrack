@@ -34,6 +34,7 @@ from app.models.models import (
     User,
 )
 from app.models.resource_shifts import ResourceShift
+from app.services import onboarding_task_service as onboarding_tasks
 from app.services import resource_shift_service
 from app.services.hr_process_audit_service import INCOMPLETE_ONBOARDING_SLA_DAYS
 from app.services.performance_review_service import current_review_year
@@ -296,8 +297,12 @@ def _onboarding(db: Session, ctx: _Context, base_ids: set[UUID]) -> dict[UUID, d
     out: dict[UUID, dict[str, Any]] = {}
     for user_id, row in latest.items():
         counts = progress.get(row.id, Counter())
-        applicable = counts.get("pending", 0) + counts.get("completed", 0)
-        percent = round(100 * counts.get("completed", 0) / applicable) if applicable else 0
+        total = sum(counts.values())
+        resolved = sum(
+            count for status, count in counts.items() if onboarding_tasks.is_resolved(status)
+        )
+        unresolved = total - resolved
+        percent = round(100 * resolved / total) if total else 0
         anchor = row.joining_date or (row.created_at.date() if row.created_at else None)
         overdue = bool(
             row.status == "in_progress"
@@ -312,7 +317,7 @@ def _onboarding(db: Session, ctx: _Context, base_ids: set[UUID]) -> dict[UUID, d
             "checklist_id": str(row.id),
             "status": row.status,
             "percent_complete": percent,
-            "pending_items": counts.get("pending", 0),
+            "pending_items": unresolved,
             "overdue": overdue,
         }
     return out

@@ -730,6 +730,7 @@ class ITDashboardSummary(BaseModel):
     maintenance_assets: int = 0
     open_it_requests: int = 0
     pending_onboarding_tasks: int = 0
+    onboarding_it_attention: int = 0
     networks: int = 0
     allocated_ips: int = 0
     total_computers: int = 0

@@ -166,6 +166,9 @@ function ITNavGroup({
   const selfActive =
     !childActive && matchItNavPath(item.path, location.pathname, location.search);
   const [open, setOpen] = useState(childActive || selfActive);
+  const areaActive = (item.activePaths ?? []).some(
+    (base) => location.pathname === base || location.pathname.startsWith(`${base}/`),
+  );
 
   useEffect(() => {
     if (childActive || selfActive) setOpen(true);
@@ -177,6 +180,7 @@ function ITNavGroup({
         path={item.path}
         label={item.label}
         icon={item.icon}
+        forceActive={areaActive}
         end={navItemNeedsExactMatch(splitNavPath(item.path).pathname, allNavPaths)}
         onNavigate={onNavigate}
       />

@@ -1918,23 +1918,34 @@ class OnboardingChecklistItem(Base, TimestampMixin, TenantMixin):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     item_text: Mapped[str] = mapped_column(String(500), nullable=False)
     responsibility: Mapped[str] = mapped_column(String(40), nullable=False, default="hr")
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="not_started")
     owner_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
     )
     help_ticket_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("tickets.id"), nullable=True
+        Uuid(as_uuid=True), ForeignKey("tickets.id"), nullable=True, index=True
     )
     completed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     completion_date: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    due_date: Mapped[Optional[date]] = mapped_column(Date)
+    requires_request: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    validation_rule: Mapped[Optional[str]] = mapped_column(String(40))
+    status_reason: Mapped[Optional[str]] = mapped_column(Text)
+    status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    status_changed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    completion_type: Mapped[Optional[str]] = mapped_column(String(30))
 
     checklist: Mapped[OnboardingChecklist] = relationship(back_populates="items")
     owner: Mapped[Optional[User]] = relationship(foreign_keys=[owner_user_id])
     help_ticket: Mapped[Optional["Ticket"]] = relationship(foreign_keys=[help_ticket_id])
     completed_by: Mapped[Optional[User]] = relationship(foreign_keys=[completed_by_id])
+    status_changed_by: Mapped[Optional[User]] = relationship(foreign_keys=[status_changed_by_id])
 
 
 class ExitInterview(Base, TimestampMixin, TenantMixin):

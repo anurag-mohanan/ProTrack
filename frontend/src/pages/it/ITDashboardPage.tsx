@@ -96,6 +96,7 @@ export function ITDashboardPage() {
   const networks = data?.networks ?? 0;
   const allocatedIps = data?.allocated_ips ?? 0;
   const pendingOnboarding = data?.pending_onboarding_tasks ?? 0;
+  const onboardingAttention = data?.onboarding_it_attention ?? 0;
   const totalComputers = data?.total_computers ?? 0;
   const assignedComputers = data?.assigned_computers ?? 0;
   const openComputers = data?.open_computers ?? 0;
@@ -429,8 +430,12 @@ export function ITDashboardPage() {
               title="Pending onboarding IT"
               value={String(pendingOnboarding)}
               icon={HowToRegRoundedIcon}
-              accent="warning"
-              subtitle="Checklist items awaiting IT"
+              accent={onboardingAttention > 0 ? 'error' : 'warning'}
+              subtitle={
+                onboardingAttention > 0
+                  ? `${onboardingAttention} need attention (no request, blocked or overdue)`
+                  : 'Unresolved IT checklist tasks'
+              }
               onClick={() => navigate('/hr/onboarding')}
             />
           </Grid>

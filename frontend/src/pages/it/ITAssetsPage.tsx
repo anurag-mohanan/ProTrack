@@ -62,6 +62,8 @@ import { getErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITAreaTabs } from '../../components/it/ITAreaTabs';
+import { IT_ASSET_AREA_TABS } from '../../components/it/itAreaTabConfig';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { AssetBulkActionBar } from '../../components/it/AssetBulkActionBar';
 import { AssetLifecycleDrawer } from '../../components/it/AssetLifecycleDrawer';
@@ -1531,28 +1533,7 @@ export function ITAssetsPage({
           </Stack>
         }
       />
-
-
-      {defaultInventoryScope !== 'returned' && !urlView ? (
-        <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-          {(
-            [
-              ['', 'All inventory'],
-              ['computer', 'Computers'],
-              ['peripheral', 'Peripherals'],
-              ['network_equipment', 'Network'],
-            ] as const
-          ).map(([value, label]) => (
-            <Chip
-              key={value || 'all'}
-              label={label}
-              color={categoryFilter === value ? 'primary' : 'default'}
-              variant={categoryFilter === value ? 'filled' : 'outlined'}
-              onClick={() => applyCategoryFilter(value)}
-            />
-          ))}
-        </Stack>
-      ) : null}
+      <ITAreaTabs items={IT_ASSET_AREA_TABS} />
 
       <SearchToolbar sticky>
         <FormField

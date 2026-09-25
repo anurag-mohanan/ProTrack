@@ -31,6 +31,7 @@ from app.schemas.ticket import (
     TicketStatusRequest,
     TicketUpdate,
 )
+from app.services import onboarding_task_service as onboarding_tasks
 from app.services import ticketing_service as tickets
 from app.services.activity_service import log_activity
 
@@ -343,6 +344,7 @@ def update_ticket(
 
     db.flush()
     if status_changed:
+        onboarding_tasks.sync_from_ticket(db, ticket, actor=current_user)
         log_activity(
             db,
             user=current_user,
@@ -393,6 +395,7 @@ def assign_ticket(
     if payload.assignee_id is not None and ticket.status == "open":
         tickets.apply_status_timestamps(ticket, "in_progress")
     db.flush()
+    onboarding_tasks.sync_from_ticket(db, ticket, actor=current_user)
     log_activity(
         db,
         user=current_user,
@@ -433,6 +436,7 @@ def change_status(
         ticket.resolution = payload.resolution
     tickets.apply_status_timestamps(ticket, payload.status)
     db.flush()
+    onboarding_tasks.sync_from_ticket(db, ticket, actor=current_user)
     action = ActivityAction.ticket_status_changed
     if payload.status == "resolved":
         action = ActivityAction.ticket_resolved

@@ -1,7 +1,27 @@
 import { apiClient } from './client';
 
-export type OnboardingItemStatus = 'pending' | 'completed' | 'not_applicable';
+export type OnboardingItemStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'blocked'
+  | 'completed'
+  | 'not_required'
+  | 'waived';
 export type OnboardingChecklistStatus = 'in_progress' | 'completed' | 'cancelled';
+
+export const RESOLVED_ITEM_STATUSES: ReadonlySet<OnboardingItemStatus> = new Set([
+  'completed',
+  'not_required',
+  'waived',
+]);
+
+export type OnboardingAttentionCode =
+  | 'request_missing'
+  | 'request_resolved'
+  | 'request_cancelled'
+  | 'blocked'
+  | 'overdue'
+  | 'unassigned';
 
 export interface OnboardingChecklistItem {
   id: string;
@@ -17,14 +37,69 @@ export interface OnboardingChecklistItem {
   owner_name: string | null;
   help_ticket_id: string | null;
   help_ticket_number: string | null;
+  request_status: string | null;
+  request_category: string | null;
+  requires_request: boolean;
   completed_by_id: string | null;
   completed_by_name: string | null;
   completion_date: string | null;
+  completed_at: string | null;
+  completion_type: 'manual' | 'request' | 'manual_override' | null;
   notes: string | null;
+  due_date: string | null;
+  is_overdue: boolean;
+  status_reason: string | null;
+  status_changed_at: string | null;
+  status_changed_by_name: string | null;
+  validation_rule: string | null;
+  attention: OnboardingAttentionCode[];
   can_edit: boolean;
+  can_waive: boolean;
+  can_create_request: boolean;
   is_mine: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface OnboardingItemHistoryEvent {
+  at: string | null;
+  actor_name: string | null;
+  event: 'created' | 'status_changed' | 'request_linked';
+  old_status: string | null;
+  new_status: string | null;
+  reason: string | null;
+  note: string | null;
+  completion_type: string | null;
+  ticket_number: string | null;
+  source: string | null;
+}
+
+export interface OnboardingAttentionRow {
+  checklist_id: string;
+  item_id: string;
+  employee_name: string | null;
+  item_text: string;
+  responsibility: string;
+  status: OnboardingItemStatus;
+  due_date: string | null;
+  attention: OnboardingAttentionCode[];
+  ticket_number: string | null;
+}
+
+export interface OnboardingAttentionSummary {
+  total_tasks: number;
+  actionable_total: number;
+  counts: Record<OnboardingAttentionCode, number>;
+  labels: Record<OnboardingAttentionCode, string>;
+  items: OnboardingAttentionRow[];
+}
+
+export interface OnboardingItemStatusPayload {
+  status: OnboardingItemStatus;
+  completion_date?: string | null;
+  notes?: string | null;
+  reason?: string | null;
+  override?: boolean;
 }
 
 export interface OnboardingTriggeredTicket {
@@ -66,7 +141,11 @@ export interface OnboardingChecklist {
   published_by_id: string | null;
   total_items: number;
   completed_items: number;
+  resolved_items: number;
   pending_items: number;
+  blocked_items: number;
+  attention_items: number;
+  overdue_items: number;
   completion_percent: number;
   can_manage: boolean;
   my_pending_items: number;
@@ -162,15 +241,45 @@ export const onboardingApi = {
   setItemStatus: async (
     checklistId: string,
     itemId: string,
-    payload: {
-      status: OnboardingItemStatus;
-      completion_date?: string | null;
-      notes?: string | null;
-    },
+    payload: OnboardingItemStatusPayload,
   ): Promise<OnboardingChecklistDetail> => {
     const { data } = await apiClient.post<OnboardingChecklistDetail>(
       `/hr/onboarding/${checklistId}/items/${itemId}/status`,
       payload,
+    );
+    return data;
+  },
+  createItemRequest: async (
+    checklistId: string,
+    itemId: string,
+    payload: { priority?: 'low' | 'medium' | 'high' | 'urgent'; details?: string | null },
+  ): Promise<OnboardingChecklistDetail> => {
+    const { data } = await apiClient.post<OnboardingChecklistDetail>(
+      `/hr/onboarding/${checklistId}/items/${itemId}/request`,
+      payload,
+    );
+    return data;
+  },
+  updateItem: async (
+    checklistId: string,
+    itemId: string,
+    payload: { due_date?: string | null; owner_user_id?: string | null; notes?: string | null },
+  ): Promise<OnboardingChecklistDetail> => {
+    const { data } = await apiClient.patch<OnboardingChecklistDetail>(
+      `/hr/onboarding/${checklistId}/items/${itemId}`,
+      payload,
+    );
+    return data;
+  },
+  itemHistory: async (checklistId: string, itemId: string): Promise<OnboardingItemHistoryEvent[]> => {
+    const { data } = await apiClient.get<OnboardingItemHistoryEvent[]>(
+      `/hr/onboarding/${checklistId}/items/${itemId}/history`,
+    );
+    return data;
+  },
+  attention: async (params?: { responsibility?: string }): Promise<OnboardingAttentionSummary> => {
+    const { data } = await apiClient.get<OnboardingAttentionSummary>(
+      `/hr/onboarding/attention${buildQuery(params)}`,
     );
     return data;
   },

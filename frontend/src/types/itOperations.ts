@@ -40,6 +40,7 @@ export interface ITDashboardSummary {
   networks: number;
   allocated_ips: number;
   pending_onboarding_tasks: number;
+  onboarding_it_attention?: number;
   total_computers?: number;
   assigned_computers?: number;
   open_computers?: number;

@@ -25,19 +25,30 @@ test.describe('IT Computers', () => {
     await gotoAuthenticated(page, '/it/assets?category=computer');
     const main = page.getByRole('main');
     await expect(main.getByRole('columnheader', { name: 'Computer' })).toBeVisible({ timeout: 20_000 });
-    // Section navigation lives only in the sidebar; no duplicate top tab bar.
-    await expect(main.getByRole('tab', { name: 'Computers' })).toHaveCount(0);
+    // The sidebar lists the Assets area once; asset views are in-page tabs.
+    await expect(main.getByRole('tab', { name: 'Computers' })).toHaveAttribute('aria-selected', 'true');
     await expect(main.getByRole('columnheader', { name: 'IP' })).toBeVisible();
     await expect(main.getByRole('columnheader', { name: 'User' })).toBeVisible();
 
-    await expect(page.getByRole('link', { name: 'Assets & Inventory' })).toBeVisible();
+    await expect(page.getByRole('link', { name: /^Assets$/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Computers' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Network / IP' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: /^Networks$/ })).toHaveCount(0);
+
+    await main.getByRole('tab', { name: 'Virtual seats' }).click();
+    await expect(page).toHaveURL(/\/it\/workstation-packages/);
+    await expect(page.getByRole('main').getByRole('tab', { name: 'Virtual seats' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 
-  test('software installations tab is reachable from the software hub', async ({ page }) => {
+  test('software installations is a tab inside Software & Licenses', async ({ page }) => {
     await gotoAuthenticated(page, '/it/software?tab=installations');
-    await expect(page.getByRole('link', { name: 'Installations' })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole('main').getByRole('tab', { name: 'Installations' })).toHaveCount(0);
+    const main = page.getByRole('main');
+    await expect(main.getByRole('tab', { name: 'Installations' })).toHaveAttribute('aria-selected', 'true', {
+      timeout: 20_000,
+    });
+    await expect(page.getByRole('link', { name: 'Installations' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Software & Licenses' })).toBeVisible();
   });
 });

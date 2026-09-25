@@ -17,9 +17,14 @@ from app.services.it_asset_service import (
     get_or_create_settings,
     warranty_alert_days,
 )
+from app.services.onboarding_task_service import UNRESOLVED_STATUSES, LEGACY_STATUS_MAP
 from app.services.ticketing_service import OPEN_STATUSES
 
 MODULE = MODULE_IT_OPERATIONS
+
+UNRESOLVED_TASK_STATUSES = sorted(
+    set(UNRESOLVED_STATUSES) | {k for k, v in LEGACY_STATUS_MAP.items() if v in UNRESOLVED_STATUSES}
+)
 
 
 def list_pending_it_onboarding_tasks(db: Session, *, limit: int = 50) -> list[dict]:
@@ -32,7 +37,7 @@ def list_pending_it_onboarding_tasks(db: Session, *, limit: int = 50) -> list[di
         )
         .where(
             OnboardingChecklistItem.responsibility == "it",
-            OnboardingChecklistItem.status == "pending",
+            OnboardingChecklistItem.status.in_(UNRESOLVED_TASK_STATUSES),
         )
         .order_by(OnboardingChecklistItem.sort_order)
         .limit(limit)
@@ -53,6 +58,28 @@ def list_pending_it_onboarding_tasks(db: Session, *, limit: int = 50) -> list[di
             }
         )
     return result
+
+
+def _onboarding_attention_count(db: Session, *, responsibility: str) -> int:
+    """Unresolved tasks with an actionable problem (missing/closed/cancelled request, blocked, overdue)."""
+    from sqlalchemy.orm import selectinload
+
+    from app.services.onboarding_task_service import attention_codes
+
+    items = db.scalars(
+        select(OnboardingChecklistItem)
+        .join(OnboardingChecklist, OnboardingChecklist.id == OnboardingChecklistItem.checklist_id)
+        .where(
+            OnboardingChecklist.status == "in_progress",
+            OnboardingChecklistItem.responsibility == responsibility,
+            OnboardingChecklistItem.status.in_(UNRESOLVED_TASK_STATUSES),
+        )
+        .options(
+            selectinload(OnboardingChecklistItem.help_ticket),
+            selectinload(OnboardingChecklistItem.checklist),
+        )
+    ).all()
+    return sum(1 for item in items if set(attention_codes(item)) - {"unassigned"})
 
 
 def _recent_asset_movements(db: Session, *, limit: int = 10) -> list[dict]:
@@ -152,11 +179,12 @@ def dashboard_summary(db: Session, *, warranty_days: int | None = None) -> dict:
             .select_from(OnboardingChecklistItem)
             .where(
                 OnboardingChecklistItem.responsibility == "it",
-                OnboardingChecklistItem.status == "pending",
+                OnboardingChecklistItem.status.in_(UNRESOLVED_TASK_STATUSES),
             )
         )
         or 0
     )
+    onboarding_it_attention = _onboarding_attention_count(db, responsibility="it")
     networks = int(
         db.scalar(
             select(func.count()).select_from(Network).where(Network.is_active.is_(True))
@@ -205,6 +233,7 @@ def dashboard_summary(db: Session, *, warranty_days: int | None = None) -> dict:
         "overdue_it_requests": overdue_it_requests,
         "unassigned_it_requests": unassigned_it_requests,
         "pending_onboarding_tasks": pending_onboarding_tasks,
+        "onboarding_it_attention": onboarding_it_attention,
         "networks": networks,
         "allocated_ips": allocated_ips,
         **computer_stats,
